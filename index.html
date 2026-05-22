@@ -5,287 +5,111 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pointliner</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fafaf8;--fg:#1a1a1a;--muted:#999;--bullet:#bbb;--bullet-hover:#4a90d9;
+  --cb:#bbb;--indent:24px;--lh:1.65;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --hbg:#fff;--border:#e8e8e8;--accent:#4a90d9;--ring:rgba(74,144,217,.25);
+  --code-bg:#f0f0ec;--del-fg:#999;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1c1c1e;--fg:#e5e5e5;--muted:#666;--bullet:#555;--bullet-hover:#5ba3e8;
+  --cb:#555;--hbg:#111;--border:#2a2a2a;--accent:#5ba3e8;--ring:rgba(91,163,232,.25);
+  --code-bg:#2a2a2a;--del-fg:#666;
+}}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:var(--lh);min-height:100vh}
 
-  :root {
-    --bg: #fafaf8;
-    --fg: #1a1a1a;
-    --muted: #999;
-    --bullet: #bbb;
-    --bullet-hover: #4a90d9;
-    --collapse-btn: #bbb;
-    --indent: 24px;
-    --line-height: 1.65;
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --header-bg: #fff;
-    --border: #e8e8e8;
-    --accent: #4a90d9;
-    --focus-ring: rgba(74, 144, 217, 0.25);
-  }
+/* ── toolbar ── */
+#toolbar{position:sticky;top:0;z-index:10;background:var(--hbg);border-bottom:1px solid var(--border)}
+#toolbar-row{padding:0 16px;height:44px;display:flex;align-items:center;gap:8px}
+.logo{font-weight:700;font-size:15px;letter-spacing:-.3px;color:var(--fg);flex-shrink:0}
+.spacer{flex:1}
+.file-name{font-size:12px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+.dirty-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:none;flex-shrink:0}
+.dirty .dirty-dot{display:block}
+button{cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--fg);font-family:inherit;font-size:12px;padding:3px 9px;border-radius:5px;transition:background .1s;white-space:nowrap;flex-shrink:0}
+button:hover{background:var(--border)}
+button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+#breadcrumb-row{display:none;padding:5px 16px;border-top:1px solid var(--border);font-size:12px;flex-wrap:wrap;align-items:center;gap:4px;background:var(--hbg)}
+#breadcrumb-row.visible{display:flex}
+.crumb{color:var(--muted);cursor:pointer;border-radius:3px;padding:1px 4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.crumb:hover{color:var(--accent)}
+.crumb.current{color:var(--fg);font-weight:500;cursor:default}
+.crumb-sep{color:var(--muted);user-select:none;font-size:11px}
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #1c1c1e;
-      --fg: #e5e5e5;
-      --muted: #666;
-      --bullet: #555;
-      --bullet-hover: #5ba3e8;
-      --collapse-btn: #555;
-      --header-bg: #111;
-      --border: #2a2a2a;
-      --accent: #5ba3e8;
-    }
-  }
+/* ── outline ── */
+#outline{max-width:760px;margin:0 auto;padding:28px 24px 120px}
+.zoom-title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border);outline:none;word-break:break-word;white-space:pre-wrap;cursor:text}
+.zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
+.zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
+.node{position:relative}
+.node-row{display:flex;align-items:flex-start;padding:1px 0}
+.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden;transition:color .1s}
+.has-children>.node-row>.collapse-btn{visibility:visible}
+.collapse-btn:hover{color:var(--accent)}
+.bullet{width:20px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.bullet::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--bullet);transition:background .12s,transform .12s;display:block}
+.bullet:hover::before{background:var(--bullet-hover);transform:scale(1.3)}
+/* todo checkbox replaces bullet dot */
+.node.todo>.node-row>.bullet::before{display:none}
+.node-checkbox{width:14px;height:14px;cursor:pointer;accent-color:var(--accent);position:absolute}
+.node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
+.node-content:focus{box-shadow:0 0 0 2px var(--ring)}
+.node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
+/* markdown inline */
+.node-content strong{font-weight:700}
+.node-content em{font-style:italic}
+.node-content code{font-family:monospace;font-size:.9em;background:var(--code-bg);padding:1px 5px;border-radius:3px}
+.node-content del{text-decoration:line-through;color:var(--del-fg)}
+.node-content a{color:var(--accent);text-decoration:none}
+.node-content a:hover{text-decoration:underline}
+/* checked todo */
+.node.todo.checked>.node-row>.node-content{text-decoration:line-through;opacity:.45}
+.children{padding-left:var(--indent)}
+.collapsed>.children{display:none}
 
-  body {
-    background: var(--bg);
-    color: var(--fg);
-    font-family: var(--font);
-    font-size: 15px;
-    line-height: var(--line-height);
-    min-height: 100vh;
-  }
+/* ── selection toolbar ── */
+#sel-tb{position:fixed;display:none;z-index:600;background:#222;border-radius:7px;padding:4px 5px;gap:2px;align-items:center;box-shadow:0 4px 18px rgba(0,0,0,.35);transform:translateX(-50%)}
+#sel-tb.on{display:flex}
+#sel-tb button{border:none;background:transparent;color:#eee;padding:4px 8px;border-radius:4px;font-size:13px;font-weight:500}
+#sel-tb button:hover{background:rgba(255,255,255,.15)}
+#sel-tb .tb-sep{width:1px;height:16px;background:rgba(255,255,255,.2);margin:0 3px;flex-shrink:0}
 
-  /* ── Header ─────────────────────────────────────────────── */
+/* ── bullet popup ── */
+#bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 4px 20px rgba(0,0,0,.1);min-width:176px}
+#bpop.on{display:block}
+.bpop-item{display:flex;align-items:center;gap:10px;padding:7px 11px;border-radius:5px;cursor:pointer;font-size:13px;color:var(--fg)}
+.bpop-item:hover{background:var(--border)}
+.bpop-item.danger{color:#e55}
+.bpop-icon{width:16px;text-align:center;font-size:12px;color:var(--muted);flex-shrink:0}
 
-  #toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--header-bg);
-    border-bottom: 1px solid var(--border);
-  }
+/* ── slash menu ── */
+#slash-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 8px 28px rgba(0,0,0,.12);min-width:220px;max-height:280px;overflow-y:auto}
+#slash-menu.on{display:block}
+.si{display:flex;align-items:center;gap:11px;padding:7px 10px;border-radius:6px;cursor:pointer}
+.si.hi,.si:hover{background:var(--border)}
+.si-icon{width:30px;height:30px;border-radius:6px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;font-weight:700}
+.si-text{}
+.si-label{font-size:13px;font-weight:500}
+.si-desc{font-size:11px;color:var(--muted)}
 
-  #toolbar-row {
-    padding: 0 20px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .logo {
-    font-weight: 700;
-    font-size: 16px;
-    letter-spacing: -0.3px;
-    color: var(--fg);
-    flex-shrink: 0;
-  }
-
-  #breadcrumb-row {
-    display: none;
-    padding: 5px 20px;
-    border-top: 1px solid var(--border);
-    font-size: 13px;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-    background: var(--header-bg);
-  }
-  #breadcrumb-row.visible { display: flex; }
-
-  .crumb {
-    color: var(--muted);
-    cursor: pointer;
-    border-radius: 3px;
-    padding: 1px 4px;
-    white-space: nowrap;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .crumb:hover { color: var(--accent); }
-  .crumb.current { color: var(--fg); font-weight: 500; cursor: default; }
-  .crumb-sep { color: var(--muted); user-select: none; font-size: 11px; }
-
-  .spacer { flex: 1; }
-
-  .file-name {
-    font-size: 13px;
-    color: var(--muted);
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .dirty-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-    display: none;
-    flex-shrink: 0;
-  }
-  .dirty .dirty-dot { display: block; }
-
-  button {
-    cursor: pointer;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--fg);
-    font-family: inherit;
-    font-size: 13px;
-    padding: 4px 10px;
-    border-radius: 5px;
-    transition: background 0.1s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  button:hover { background: var(--border); }
-
-  /* ── Outline ─────────────────────────────────────────────── */
-
-  #outline {
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 28px 24px 120px;
-  }
-
-  .zoom-title {
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: -0.4px;
-    margin-bottom: 18px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--fg);
-    outline: none;
-    word-break: break-word;
-    white-space: pre-wrap;
-    cursor: text;
-  }
-  .zoom-title:empty::before {
-    content: '(untitled)';
-    color: var(--muted);
-    font-style: italic;
-    font-weight: 400;
-    pointer-events: none;
-  }
-  .zoom-title:focus { box-shadow: 0 0 0 2px var(--focus-ring); border-radius: 3px; }
-
-  .node { position: relative; }
-
-  .node-row {
-    display: flex;
-    align-items: flex-start;
-    padding: 1px 0;
-  }
-
-  .collapse-btn {
-    width: 18px;
-    height: 26px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--collapse-btn);
-    font-size: 9px;
-    user-select: none;
-    visibility: hidden;
-    transition: color 0.1s;
-  }
-  .has-children > .node-row > .collapse-btn { visibility: visible; }
-  .collapse-btn:hover { color: var(--accent); }
-
-  .bullet {
-    width: 20px;
-    height: 26px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .bullet::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--bullet);
-    transition: background 0.12s, transform 0.12s;
-    display: block;
-  }
-  .bullet:hover::before {
-    background: var(--bullet-hover);
-    transform: scale(1.3);
-  }
-
-  .node-content {
-    flex: 1;
-    min-width: 0;
-    outline: none;
-    word-break: break-word;
-    white-space: pre-wrap;
-    line-height: var(--line-height);
-    padding: 1px 3px;
-    border-radius: 3px;
-  }
-  .node-content:focus { box-shadow: 0 0 0 2px var(--focus-ring); }
-  .node-content:empty::before {
-    content: attr(data-placeholder);
-    color: var(--muted);
-    pointer-events: none;
-  }
-
-  .children { padding-left: var(--indent); }
-  .collapsed > .children { display: none; }
-
-  /* ── Shortcuts ───────────────────────────────────────────── */
-
-  .shortcuts-panel {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    background: var(--header-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.9;
-    display: none;
-    z-index: 100;
-    box-shadow: 0 4px 20px rgba(0,0,0,.08);
-  }
-  .shortcuts-panel.visible { display: block; }
-  .shortcuts-panel strong { color: var(--fg); display: block; margin-bottom: 4px; }
-  .shortcuts-panel kbd {
-    font-family: monospace;
-    background: var(--border);
-    border-radius: 3px;
-    padding: 0 4px;
-    font-size: 11px;
-    color: var(--fg);
-  }
-  #shortcuts-toggle {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    font-size: 12px;
-    color: var(--muted);
-    cursor: pointer;
-    user-select: none;
-    border: 1px solid var(--border);
-    background: var(--header-bg);
-    border-radius: 5px;
-    padding: 4px 8px;
-    z-index: 99;
-  }
-  #shortcuts-toggle:hover { color: var(--fg); }
+/* ── shortcuts ── */
+.sc-panel{position:fixed;bottom:16px;right:16px;background:var(--hbg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;font-size:12px;color:var(--muted);line-height:1.9;display:none;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.08)}
+.sc-panel.on{display:block}
+.sc-panel strong{color:var(--fg);display:block;margin-bottom:4px}
+.sc-panel kbd{font-family:monospace;background:var(--border);border-radius:3px;padding:0 4px;font-size:11px;color:var(--fg)}
+#sc-toggle{position:fixed;bottom:16px;right:16px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--border);background:var(--hbg);border-radius:5px;padding:4px 8px;z-index:99}
+#sc-toggle:hover{color:var(--fg)}
 </style>
 </head>
 <body>
-
 <div id="toolbar">
   <div id="toolbar-row">
     <span class="logo">Pointliner</span>
     <span class="dirty-dot" id="dirty-dot"></span>
     <span class="file-name" id="file-name">unsaved</span>
     <span class="spacer"></span>
+    <button id="btn-done" title="Show/hide completed to-dos">Show done</button>
     <button id="btn-new">New</button>
     <button id="btn-open">Open</button>
     <button id="btn-save">Save</button>
@@ -293,259 +117,229 @@
   </div>
   <div id="breadcrumb-row"></div>
 </div>
-
 <div id="outline"></div>
 
-<span id="shortcuts-toggle">?</span>
-<div class="shortcuts-panel" id="shortcuts-panel">
+<!-- floating selection toolbar -->
+<div id="sel-tb">
+  <button data-fmt="bold"><b>B</b></button>
+  <button data-fmt="italic"><i>I</i></button>
+  <button data-fmt="code" style="font-family:monospace">`</button>
+  <button data-fmt="strike"><s>S</s></button>
+  <div class="tb-sep"></div>
+  <button data-fmt="link">Link</button>
+</div>
+
+<!-- bullet hover popup -->
+<div id="bpop"></div>
+
+<!-- slash command menu -->
+<div id="slash-menu"></div>
+
+<span id="sc-toggle">?</span>
+<div class="sc-panel" id="sc-panel">
   <strong>Keyboard shortcuts</strong>
-  <kbd>Enter</kbd> new sibling below<br>
-  <kbd>Tab</kbd> indent (make child)<br>
-  <kbd>Shift+Tab</kbd> outdent<br>
-  <kbd>Alt+↑/↓</kbd> move node up/down<br>
-  <kbd>Ctrl+↑/↓</kbd> collapse/expand<br>
-  <kbd>Backspace</kbd> delete if empty<br>
+  <kbd>Enter</kbd> new sibling<br>
+  <kbd>Tab / Shift+Tab</kbd> indent / outdent<br>
+  <kbd>Alt+↑/↓</kbd> move node<br>
+  <kbd>Ctrl+↑/↓</kbd> collapse / expand<br>
   <kbd>Ctrl+Enter</kbd> zoom into node<br>
   <kbd>Escape</kbd> zoom out<br>
+  <kbd>/</kbd> slash commands<br>
   <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
 </div>
 
 <script>
-// ─── Data model ──────────────────────────────────────────────────────────────
+'use strict';
 
-let root = { id: uid(), text: '', note: '', children: [], collapsed: false };
-let focusedId = null; // null = root view; string = zoomed into this node
-let dirty = false;
+// ─── model ───────────────────────────────────────────────────────────────────
+
+let root       = mkRoot();
+let focusedId  = null;
+let showDone   = false;
+let dirty      = false;
 let fileHandle = null;
-let fileName = 'unsaved';
+let fileName   = 'unsaved';
 
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
+function mkRoot() {
+  return { id: uid(), text: '', note: '', type: 'text', checked: false, children: [], collapsed: false };
+}
+function uid() { return Math.random().toString(36).slice(2, 10); }
+function mkNode(text = '') {
+  return { id: uid(), text, note: '', type: 'text', checked: false, children: [], collapsed: false };
 }
 
-function nodeById(id, node = root) {
-  if (node.id === id) return node;
-  for (const c of node.children) {
-    const found = nodeById(id, c);
-    if (found) return found;
-  }
+function nodeById(id, n = root) {
+  if (n.id === id) return n;
+  for (const c of n.children) { const f = nodeById(id, c); if (f) return f; }
   return null;
 }
-
-// Returns the parent node, or null if id is a direct child of root,
-// or undefined if not found.
-function parentOf(id, node = root, parent = null) {
-  if (node.id === id) return parent;
-  for (const c of node.children) {
-    const found = parentOf(id, c, node);
-    if (found !== undefined) return found;
-  }
+function parentOf(id, n = root, p = null) {
+  if (n.id === id) return p;
+  for (const c of n.children) { const f = parentOf(id, c, n); if (f !== undefined) return f; }
   return undefined;
 }
-
-// Returns ordered array of nodes from root down to (and including) the node with id.
-function pathTo(id, node = root, path = []) {
-  const next = [...path, node];
-  if (node.id === id) return next;
-  for (const c of node.children) {
-    const found = pathTo(id, c, next);
-    if (found) return found;
-  }
+function pathTo(id, n = root, acc = []) {
+  const next = [...acc, n];
+  if (n.id === id) return next;
+  for (const c of n.children) { const f = pathTo(id, c, next); if (f) return f; }
   return null;
 }
 
-// ─── OPML ────────────────────────────────────────────────────────────────────
+// ─── markdown ─────────────────────────────────────────────────────────────────
 
-function toOpml(rootNode) {
-  const title = rootNode.text || 'Pointliner';
+function mdToHtml(raw) {
+  let s = (raw || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // protect code spans
+  const codes = [];
+  s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(`<code>${c}</code>`); return `\x00${codes.length-1}\x00`; });
+  // links (http/https only)
+  s = s.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // bold+italic, bold, italic, strike
+  s = s.replace(/\*\*\*((?!\s)[\s\S]*?(?<!\s))\*\*\*/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/\*\*((?!\s)[\s\S]*?(?<!\s))\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g, '<em>$1</em>');
+  s = s.replace(/~~([\s\S]*?)~~/g, '<del>$1</del>');
+  // restore codes
+  s = s.replace(/\x00(\d+)\x00/g, (_, i) => codes[+i]);
+  return s;
+}
+
+// ─── OPML ─────────────────────────────────────────────────────────────────────
+
+function toOpml(r) {
   const date = new Date().toUTCString();
-
-  function nodeToXml(node, depth) {
-    const pad = '  '.repeat(depth);
+  function nx(n, d) {
+    const pad = '  '.repeat(d);
     const attrs = [
-      `text="${escXml(node.text)}"`,
-      node.note       ? `_note="${escXml(node.note)}"` : '',
-      node.collapsed  ? `_collapsed="true"` : '',
-      `_id="${node.id}"`,
+      `text="${ex(n.text)}"`,
+      n.note      ? `_note="${ex(n.note)}"` : '',
+      n.type && n.type !== 'text' ? `_type="${n.type}"` : '',
+      n.checked   ? `_checked="true"` : '',
+      n.collapsed ? `_collapsed="true"` : '',
+      `_id="${n.id}"`,
     ].filter(Boolean).join(' ');
-
-    if (!node.children.length) return `${pad}<outline ${attrs}/>`;
-    const kids = node.children.map(c => nodeToXml(c, depth + 1)).join('\n');
-    return `${pad}<outline ${attrs}>\n${kids}\n${pad}</outline>`;
+    if (!n.children.length) return `${pad}<outline ${attrs}/>`;
+    return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
-
-  const body = rootNode.children.map(c => nodeToXml(c, 2)).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
-  <head>
-    <title>${escXml(title)}</title>
-    <dateModified>${date}</dateModified>
-  </head>
+  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${date}</dateModified></head>
   <body>
-${body}
+${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
 </opml>`;
 }
+function ex(s){ return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function escXml(s) {
-  return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function fromOpml(xmlText) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, 'application/xml');
+function fromOpml(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
   const err = doc.querySelector('parsererror');
-  if (err) throw new Error('Invalid OPML: ' + err.textContent.slice(0, 100));
-
-  const title = doc.querySelector('head > title')?.textContent || '';
-
-  function parseOutline(el) {
+  if (err) throw new Error('Invalid OPML');
+  function po(el) {
     return {
-      id:        el.getAttribute('_id') || uid(),
-      text:      el.getAttribute('text') || '',
-      note:      el.getAttribute('_note') || '',
+      id: el.getAttribute('_id') || uid(),
+      text: el.getAttribute('text') || '',
+      note: el.getAttribute('_note') || '',
+      type: el.getAttribute('_type') || 'text',
+      checked: el.getAttribute('_checked') === 'true',
       collapsed: el.getAttribute('_collapsed') === 'true',
-      children:  Array.from(el.children)
-                   .filter(c => c.tagName === 'outline')
-                   .map(parseOutline),
+      children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
   }
-
-  const bodyEl = doc.querySelector('body');
-  const children = bodyEl
-    ? Array.from(bodyEl.children).filter(c => c.tagName === 'outline').map(parseOutline)
-    : [];
-
-  return { id: uid(), text: title, note: '', children, collapsed: false };
+  const body = doc.querySelector('body');
+  const title = doc.querySelector('head > title')?.textContent || '';
+  return { id: uid(), text: title, note: '', type: 'text', checked: false, collapsed: false,
+    children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
-// ─── Zoom / breadcrumb ───────────────────────────────────────────────────────
+// ─── zoom / breadcrumb ───────────────────────────────────────────────────────
 
-function zoomInto(id) {
-  const node = nodeById(id);
-  if (!node) return;
-  focusedId = id;
-  render();
-}
-
-function zoomTo(id) {
-  // id=null zooms all the way out to root
-  focusedId = id;
-  render();
-}
-
+function zoomInto(id) { focusedId = id; render(); }
+function zoomTo(id)   { focusedId = id; render(); }
 function zoomOut() {
   if (!focusedId) return;
   const path = pathTo(focusedId);
-  // path[0]=root, path[last]=focused; go up one level (parent, or null for root)
-  if (!path || path.length <= 2) {
-    focusedId = null;
-  } else {
-    focusedId = path[path.length - 2].id;
-    // don't zoom into root itself
-    if (focusedId === root.id) focusedId = null;
-  }
+  focusedId = (!path || path.length <= 2) ? null : (path[path.length-2].id === root.id ? null : path[path.length-2].id);
   render();
 }
 
 function renderBreadcrumb() {
   const bar = document.getElementById('breadcrumb-row');
-  if (!focusedId) {
-    bar.classList.remove('visible');
-    bar.innerHTML = '';
-    return;
-  }
-
+  if (!focusedId) { bar.classList.remove('visible'); bar.innerHTML = ''; return; }
   const path = pathTo(focusedId) || [];
   bar.innerHTML = '';
   bar.classList.add('visible');
-
-  // "Home" crumb
-  const home = document.createElement('span');
-  home.className = 'crumb';
-  home.textContent = 'Home';
-  home.addEventListener('click', () => zoomTo(null));
+  const home = crumbEl('Home', () => zoomTo(null));
   bar.appendChild(home);
-
-  // Ancestors (skip root node itself = path[0], skip last = current)
-  path.slice(1, -1).forEach(ancestor => {
-    const sep = document.createElement('span');
-    sep.className = 'crumb-sep';
-    sep.textContent = '›';
-    bar.appendChild(sep);
-
-    const crumb = document.createElement('span');
-    crumb.className = 'crumb';
-    crumb.textContent = ancestor.text || '(untitled)';
-    crumb.title = ancestor.text;
-    crumb.addEventListener('click', () => zoomTo(ancestor.id));
-    bar.appendChild(crumb);
+  path.slice(1, -1).forEach(anc => {
+    bar.appendChild(sepEl());
+    bar.appendChild(crumbEl(anc.text || '(untitled)', () => zoomTo(anc.id)));
   });
-
-  // Current (last in path)
-  const current = path[path.length - 1];
-  const sep = document.createElement('span');
-  sep.className = 'crumb-sep';
-  sep.textContent = '›';
-  bar.appendChild(sep);
-
-  const curEl = document.createElement('span');
-  curEl.className = 'crumb current';
-  curEl.textContent = current?.text || '(untitled)';
+  const cur = path[path.length - 1];
+  bar.appendChild(sepEl());
+  const curEl = crumbEl(cur?.text || '(untitled)', null);
+  curEl.classList.add('current');
   bar.appendChild(curEl);
 }
+function crumbEl(text, fn) {
+  const s = document.createElement('span');
+  s.className = 'crumb'; s.textContent = text; s.title = text;
+  if (fn) s.addEventListener('click', fn);
+  return s;
+}
+function sepEl() {
+  const s = document.createElement('span');
+  s.className = 'crumb-sep'; s.textContent = '›';
+  return s;
+}
 
-// ─── Render ──────────────────────────────────────────────────────────────────
+// ─── render ──────────────────────────────────────────────────────────────────
 
 function render() {
   renderBreadcrumb();
-
   const container = document.getElementById('outline');
   container.innerHTML = '';
 
-  const viewParent = focusedId ? nodeById(focusedId) : root;
-  if (!viewParent) { focusedId = null; render(); return; }
+  const vp = focusedId ? nodeById(focusedId) : root;
+  if (!vp) { focusedId = null; render(); return; }
 
-  // Zoom title
   if (focusedId) {
     const titleEl = document.createElement('div');
     titleEl.className = 'zoom-title';
     titleEl.contentEditable = 'true';
-    titleEl.spellcheck = true;
-    titleEl.textContent = viewParent.text;
-    titleEl.addEventListener('input', () => {
-      viewParent.text = titleEl.textContent;
-      markDirty();
-      renderBreadcrumb();
-    });
+    titleEl.textContent = vp.text;
+    titleEl.addEventListener('input', () => { vp.text = titleEl.textContent; markDirty(); renderBreadcrumb(); });
     titleEl.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); if (viewParent.children.length) focus(viewParent.children[0].id); }
+      if (e.key === 'Enter') { e.preventDefault(); if (vp.children.length) focusNode(vp.children[0].id); }
       if (e.key === 'Escape') { e.preventDefault(); zoomOut(); }
     });
     container.appendChild(titleEl);
   }
 
-  if (viewParent.children.length === 0) {
-    addFirstChildTo(viewParent, container);
-    return;
-  }
-
-  viewParent.children.forEach(child => renderNode(child, container, 0));
+  if (vp.children.length === 0) { addFirstChild(vp, container); return; }
+  vp.children.forEach(c => { if (isVisible(c)) renderNode(c, container, 0); });
 }
 
-function addFirstChildTo(parent, container) {
-  const newNode = { id: uid(), text: '', note: '', children: [], collapsed: false };
-  parent.children.push(newNode);
+function isVisible(node) {
+  return showDone || node.type !== 'todo' || !node.checked;
+}
+
+function addFirstChild(parent, container) {
+  const n = mkNode();
+  parent.children.push(n);
   markDirty();
-  renderNode(newNode, container, 0);
-  focus(newNode.id);
+  renderNode(n, container, 0);
+  focusNode(n.id);
 }
 
 function renderNode(node, container, depth) {
   const div = document.createElement('div');
-  div.className = 'node' +
-    (node.children.length ? ' has-children' : '') +
-    (node.collapsed ? ' collapsed' : '');
+  div.className = 'node'
+    + (node.children.some(isVisible) ? ' has-children' : '')
+    + (node.collapsed ? ' collapsed' : '')
+    + (node.type === 'todo' ? ' todo' : '')
+    + (node.checked ? ' checked' : '');
   div.dataset.id = node.id;
 
   const row = document.createElement('div');
@@ -558,43 +352,200 @@ function renderNode(node, container, depth) {
   colBtn.title = node.collapsed ? 'Expand' : 'Collapse';
   colBtn.addEventListener('click', () => toggleCollapse(node.id));
 
-  // bullet (click to zoom in)
+  // bullet / checkbox
   const bullet = document.createElement('span');
   bullet.className = 'bullet';
-  bullet.title = 'Zoom in';
-  bullet.addEventListener('click', () => zoomInto(node.id));
+  bullet.title = 'Zoom in (click) · Options (hover)';
 
-  // editable text
+  if (node.type === 'todo') {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'node-checkbox';
+    cb.checked = node.checked;
+    cb.addEventListener('change', () => toggleChecked(node.id, cb.checked));
+    bullet.appendChild(cb);
+  }
+
+  bullet.addEventListener('click', e => { if (node.type !== 'todo') zoomInto(node.id); });
+  bullet.addEventListener('mouseenter', () => showBulletPopup(node.id, bullet));
+  bullet.addEventListener('mouseleave', () => scheduleBpopHide());
+
+  // content
   const content = document.createElement('div');
   content.className = 'node-content';
   content.contentEditable = 'true';
   content.spellcheck = true;
   content.dataset.id = node.id;
-  content.dataset.placeholder = depth === 0 && !focusedId ? 'Start writing...' : '';
-  content.textContent = node.text;
-  content.addEventListener('input', () => {
-    node.text = content.textContent;
-    markDirty();
-  });
-  content.addEventListener('keydown', e => onKeyDown(e, node.id));
+  content.dataset.ph = depth === 0 && !focusedId ? 'Start writing…' : '';
+  content.innerHTML = mdToHtml(node.text);  // display mode by default
+
+  attachContentEvents(content, node);
 
   row.append(colBtn, bullet, content);
   div.appendChild(row);
 
   if (node.children.length) {
-    const childrenDiv = document.createElement('div');
-    childrenDiv.className = 'children';
-    node.children.forEach(c => renderNode(c, childrenDiv, depth + 1));
-    div.appendChild(childrenDiv);
+    const childDiv = document.createElement('div');
+    childDiv.className = 'children';
+    node.children.forEach(c => { if (isVisible(c)) renderNode(c, childDiv, depth + 1); });
+    div.appendChild(childDiv);
   }
 
   container.appendChild(div);
 }
 
-// ─── Keyboard handler ─────────────────────────────────────────────────────────
+// ─── content events (markdown focus/blur, input, paste, keydown) ─────────────
 
-function onKeyDown(e, id) {
+let activeContentId = null;  // which node is in raw-edit mode
+
+function attachContentEvents(content, node) {
+  // mousedown: enter edit mode with cursor at click position
+  content.addEventListener('mousedown', e => {
+    if (content.dataset.editing) return; // already editing
+    e.preventDefault();
+    enterEdit(content, node);
+    content.focus();
+    // place cursor near click
+    const range = caretFromPoint(e.clientX, e.clientY, content);
+    if (range) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); }
+  });
+
+  content.addEventListener('focus', () => {
+    if (!content.dataset.editing) enterEdit(content, node);
+  });
+
+  content.addEventListener('blur', () => {
+    if (!content.dataset.editing) return;
+    exitEdit(content, node);
+  });
+
+  content.addEventListener('input', () => {
+    if (!content.dataset.editing) return;
+    node.text = content.textContent;
+    markDirty();
+    checkSlash(content, node.id);
+    updateSelToolbar();
+  });
+
+  content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
+
+  content.addEventListener('paste', e => handlePaste(e, node, content));
+
+  content.addEventListener('mouseup', updateSelToolbar);
+  content.addEventListener('keyup', updateSelToolbar);
+}
+
+function enterEdit(content, node) {
+  content.dataset.editing = '1';
+  content.textContent = node.text;
+  activeContentId = node.id;
+}
+
+function exitEdit(content, node) {
+  node.text = content.textContent;
+  delete content.dataset.editing;
+  content.innerHTML = mdToHtml(node.text);
+  markDirty();
+  if (activeContentId === node.id) activeContentId = null;
+  hideSlashMenu();
+  updateSelToolbar();
+}
+
+function caretFromPoint(x, y, el) {
+  try {
+    if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+    if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(x, y);
+      if (!p) return null;
+      const r = document.createRange(); r.setStart(p.offsetNode, p.offset); r.collapse(true); return r;
+    }
+  } catch(_) {}
+  return null;
+}
+
+// ─── paste ───────────────────────────────────────────────────────────────────
+
+function handlePaste(e, node, content) {
+  e.preventDefault();
+  const text = e.clipboardData.getData('text/plain');
+  const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+  // collapse trailing blank lines
+  while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
+
+  if (lines.length === 1) {
+    document.execCommand('insertText', false, text);
+    node.text = content.textContent;
+    markDirty();
+    return;
+  }
+
+  // multi-line: parse markdown list structure
+  const parsed = parseMarkdownLines(lines);
+  const parent = parentOf(node.id);
+  if (!parent) { document.execCommand('insertText', false, text); return; }
+
+  // first item merges into current node
+  node.text += parsed[0].text;
+  content.textContent = node.text;
+
+  const idx = parent.children.findIndex(c => c.id === node.id);
+  const newNodes = [];
+
+  function insertItems(items, targetParent, afterIdx) {
+    items.forEach((item, i) => {
+      const nn = mkNode(item.text);
+      targetParent.children.splice(afterIdx + 1 + i, 0, nn);
+      newNodes.push(nn);
+      if (item.children.length) {
+        item.children.forEach(ch => {
+          const cn = mkNode(ch.text); nn.children.push(cn); newNodes.push(cn);
+        });
+      }
+    });
+  }
+  insertItems(parsed.slice(1), parent, idx);
+  markDirty();
+  render();
+  if (newNodes.length) focusNode(newNodes[newNodes.length - 1].id);
+}
+
+function parseMarkdownLines(lines) {
+  // returns flat array of {text, children[]} handling list markers
+  const result = [];
+  const stack = [{ indent: -1, item: { text: '', children: result } }];
+
+  for (const line of lines) {
+    const m = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)/);
+    if (m) {
+      const indent = m[1].length;
+      const text = m[3];
+      const item = { text, children: [] };
+      while (stack.length > 1 && stack[stack.length-1].indent >= indent) stack.pop();
+      stack[stack.length-1].item.children.push(item);
+      stack.push({ indent, item });
+    } else {
+      const item = { text: line.trim(), children: [] };
+      result.push(item);
+      stack.length = 1;
+      stack[0].item = { text: '', children: result };
+    }
+  }
+  return result;
+}
+
+// ─── keydown ─────────────────────────────────────────────────────────────────
+
+function onKeyDown(e, id, content) {
   const ctrl = e.ctrlKey || e.metaKey;
+
+  // slash menu navigation takes priority
+  if (slashState && isSlashMenuOpen()) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); slashMove(1); return; }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
+    if (e.key === 'Enter')     { e.preventDefault(); slashApply(); return; }
+    if (e.key === 'Escape')    { e.preventDefault(); hideSlashMenu(); return; }
+    if (e.key === 'Tab')       { e.preventDefault(); slashApply(); return; }
+  }
 
   if (e.key === 'Enter' && !e.shiftKey && !ctrl) {
     e.preventDefault(); insertSiblingAfter(id);
@@ -606,7 +557,7 @@ function onKeyDown(e, id) {
     e.preventDefault(); outdentNode(id);
   } else if (e.key === 'Backspace') {
     const node = nodeById(id);
-    if (node && node.text === '' && node.children.length === 0) {
+    if (node && content.textContent === '' && node.children.length === 0) {
       e.preventDefault(); deleteNode(id);
     }
   } else if (e.key === 'ArrowUp' && e.altKey) {
@@ -626,73 +577,354 @@ function onKeyDown(e, id) {
   }
 }
 
-// ─── Collapse ────────────────────────────────────────────────────────────────
+// ─── selection toolbar ────────────────────────────────────────────────────────
 
-function setCollapsed(id, val) {
+const selTb = document.getElementById('sel-tb');
+
+// prevent focus loss when clicking toolbar
+selTb.addEventListener('mousedown', e => e.preventDefault());
+
+selTb.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => applyFormat(btn.dataset.fmt));
+});
+
+function updateSelToolbar() {
+  requestAnimationFrame(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) { hideSelTb(); return; }
+    // only show if selection is inside a node-content in edit mode
+    const range = sel.getRangeAt(0);
+    const anchor = range.commonAncestorContainer;
+    const content = anchor.nodeType === 1 ? anchor.closest?.('.node-content') : anchor.parentElement?.closest('.node-content');
+    if (!content || !content.dataset.editing) { hideSelTb(); return; }
+
+    const rect = range.getBoundingClientRect();
+    if (!rect.width) { hideSelTb(); return; }
+    selTb.classList.add('on');
+    selTb.style.left = (rect.left + rect.width / 2) + 'px';
+    selTb.style.top  = (rect.top - 42 + window.scrollY) + 'px';
+  });
+}
+
+function hideSelTb() { selTb.classList.remove('on'); }
+
+document.addEventListener('selectionchange', updateSelToolbar);
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('#sel-tb')) hideSelTb();
+});
+
+function applyFormat(fmt) {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const selected = range.toString();
+  if (!selected) return;
+
+  let wrapped;
+  if (fmt === 'bold')   wrapped = `**${selected}**`;
+  else if (fmt === 'italic') wrapped = `*${selected}*`;
+  else if (fmt === 'code')   wrapped = `\`${selected}\``;
+  else if (fmt === 'strike') wrapped = `~~${selected}~~`;
+  else if (fmt === 'link') {
+    const url = prompt('URL (https://…):');
+    if (!url) return;
+    wrapped = `[${selected}](${url})`;
+  }
+  if (!wrapped) return;
+
+  document.execCommand('insertText', false, wrapped);
+
+  // update node model
+  const content = range.commonAncestorContainer?.parentElement?.closest('.node-content')
+    || range.commonAncestorContainer?.closest?.('.node-content');
+  if (content) {
+    const node = nodeById(content.dataset.id);
+    if (node) { node.text = content.textContent; markDirty(); }
+  }
+  hideSelTb();
+}
+
+// ─── bullet popup ─────────────────────────────────────────────────────────────
+
+const bpop = document.getElementById('bpop');
+let bpopHideTimer = null;
+let bpopNodeId = null;
+
+bpop.addEventListener('mouseenter', () => { clearTimeout(bpopHideTimer); });
+bpop.addEventListener('mouseleave', scheduleBpopHide);
+bpop.addEventListener('mousedown', e => e.preventDefault());
+
+function showBulletPopup(nodeId, bulletEl) {
+  clearTimeout(bpopHideTimer);
+  bpopNodeId = nodeId;
+  const node = nodeById(nodeId);
+  if (!node) return;
+
+  bpop.innerHTML = '';
+
+  const items = [
+    node.type === 'todo'
+      ? { icon: '¶', label: 'Make text',  fn: () => { setNodeType(nodeId, 'text'); hideBpop(); } }
+      : { icon: '☐', label: 'Make to-do', fn: () => { setNodeType(nodeId, 'todo'); hideBpop(); } },
+    { icon: '⊙', label: 'Zoom into',   fn: () => { zoomInto(nodeId); hideBpop(); } },
+    { icon: '↑',  label: 'Move up',    fn: () => { moveNode(nodeId, -1); hideBpop(); } },
+    { icon: '↓',  label: 'Move down',  fn: () => { moveNode(nodeId, 1);  hideBpop(); } },
+    { icon: '✕',  label: 'Delete',     fn: () => { deleteNode(nodeId); hideBpop(); }, cls: 'danger' },
+  ];
+
+  items.forEach(({ icon, label, fn, cls }) => {
+    const div = document.createElement('div');
+    div.className = 'bpop-item' + (cls ? ' ' + cls : '');
+    div.innerHTML = `<span class="bpop-icon">${icon}</span><span>${label}</span>`;
+    div.addEventListener('mousedown', e => { e.preventDefault(); fn(); });
+    bpop.appendChild(div);
+  });
+
+  const rect = bulletEl.getBoundingClientRect();
+  bpop.style.left = (rect.right + 4) + 'px';
+  bpop.style.top  = rect.top + 'px';
+  // keep popup on screen
+  requestAnimationFrame(() => {
+    const pr = bpop.getBoundingClientRect();
+    if (pr.right > window.innerWidth - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
+    if (pr.bottom > window.innerHeight - 8) bpop.style.top = (window.innerHeight - pr.height - 8) + 'px';
+  });
+  bpop.classList.add('on');
+}
+
+function scheduleBpopHide() {
+  bpopHideTimer = setTimeout(hideBpop, 300);
+}
+
+function hideBpop() { bpop.classList.remove('on'); bpopNodeId = null; }
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#bpop') && !e.target.closest('.bullet')) hideBpop();
+});
+
+// ─── slash commands ───────────────────────────────────────────────────────────
+
+const SLASH_CMDS = [
+  { id: 'todo',   icon: '☐', label: 'To-do',        desc: 'Convert to a to-do item' },
+  { id: 'text',   icon: '¶', label: 'Text',          desc: 'Convert to plain text' },
+  { id: 'bold',   icon: 'B', label: 'Bold',          desc: 'Wrap text in **bold**' },
+  { id: 'italic', icon: 'I', label: 'Italic',        desc: 'Wrap text in *italic*' },
+  { id: 'code',   icon: '`', label: 'Code',          desc: 'Wrap text in `code`' },
+  { id: 'strike', icon: 'S', label: 'Strikethrough', desc: 'Wrap text in ~~strike~~' },
+  { id: 'link',   icon: '🔗', label: 'Link',         desc: 'Wrap text as [text](url)' },
+];
+
+const slashMenu = document.getElementById('slash-menu');
+let slashState = null; // { nodeId, content, slashOffset, query, activeIdx, matches }
+
+function isSlashMenuOpen() { return slashMenu.classList.contains('on'); }
+
+slashMenu.addEventListener('mousedown', e => e.preventDefault());
+
+function checkSlash(content, nodeId) {
+  const pos = getCaretOffset(content);
+  const text = content.textContent;
+  const before = text.slice(0, pos);
+  // match '/' at start or after whitespace
+  const m = before.match(/(^|[\s])(\/)(\w*)$/);
+  if (!m) { hideSlashMenu(); return; }
+
+  const query = m[3].toLowerCase();
+  const slashOffset = pos - query.length - 1; // position of '/'
+
+  const matches = SLASH_CMDS.filter(c =>
+    c.id.startsWith(query) || c.label.toLowerCase().startsWith(query)
+  );
+
+  if (!matches.length) { hideSlashMenu(); return; }
+
+  slashState = { nodeId, content, slashOffset, query, activeIdx: 0, matches };
+  renderSlashMenu();
+  positionSlashMenu(content, slashOffset);
+}
+
+function renderSlashMenu() {
+  if (!slashState) return;
+  slashMenu.innerHTML = '';
+  slashState.matches.forEach((cmd, i) => {
+    const div = document.createElement('div');
+    div.className = 'si' + (i === slashState.activeIdx ? ' hi' : '');
+    div.innerHTML = `<div class="si-icon">${cmd.icon}</div><div class="si-text"><div class="si-label">${cmd.label}</div><div class="si-desc">${cmd.desc}</div></div>`;
+    div.addEventListener('mousedown', e => { e.preventDefault(); slashState.activeIdx = i; slashApply(); });
+    slashMenu.appendChild(div);
+  });
+  slashMenu.classList.add('on');
+}
+
+function positionSlashMenu(content, slashOffset) {
+  // get bounding rect of the slash character
+  const tn = content.firstChild;
+  if (!tn) return;
+  const range = document.createRange();
+  range.setStart(tn, Math.min(slashOffset, tn.length || 0));
+  range.setEnd(tn, Math.min(slashOffset + 1, tn.length || 0));
+  const rect = range.getBoundingClientRect();
+  slashMenu.style.left = rect.left + 'px';
+  slashMenu.style.top  = (rect.bottom + 4) + 'px';
+
+  requestAnimationFrame(() => {
+    const mr = slashMenu.getBoundingClientRect();
+    if (mr.right > window.innerWidth - 8) slashMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) slashMenu.style.top = (rect.top - mr.height - 4) + 'px';
+  });
+}
+
+function slashMove(dir) {
+  if (!slashState) return;
+  const n = slashState.matches.length;
+  slashState.activeIdx = (slashState.activeIdx + dir + n) % n;
+  renderSlashMenu();
+}
+
+function slashApply() {
+  if (!slashState) return;
+  const { nodeId, content, slashOffset, query, activeIdx, matches } = slashState;
+  const cmd = matches[activeIdx];
+  hideSlashMenu();
+
+  // remove the /command text from content
+  const afterSlash = content.textContent.slice(slashOffset + 1).match(/^\w*/)?.[0] ?? '';
+  const rawLen = 1 + afterSlash.length;
+  const newText = content.textContent.slice(0, slashOffset) + content.textContent.slice(slashOffset + rawLen);
+  content.textContent = newText;
+  const node = nodeById(nodeId);
+  if (node) node.text = newText;
+
+  // set cursor at slash position
+  try {
+    const tn = content.firstChild || content;
+    const range = document.createRange();
+    range.setStart(tn, Math.min(slashOffset, newText.length));
+    range.collapse(true);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  } catch(_) {}
+
+  // apply command
+  if (cmd.id === 'todo')   { setNodeType(nodeId, 'todo'); }
+  else if (cmd.id === 'text')   { setNodeType(nodeId, 'text'); }
+  else if (cmd.id === 'bold')   { wrapNodeText(node, '**'); }
+  else if (cmd.id === 'italic') { wrapNodeText(node, '*'); }
+  else if (cmd.id === 'code')   { wrapNodeText(node, '`'); }
+  else if (cmd.id === 'strike') { wrapNodeText(node, '~~'); }
+  else if (cmd.id === 'link') {
+    const url = prompt('URL (https://…):');
+    if (url && node) { node.text = `[${node.text}](${url})`; content.textContent = node.text; markDirty(); }
+  }
+  markDirty();
+}
+
+function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
+
+function wrapNodeText(node, marker) {
+  if (!node) return;
+  node.text = `${marker}${node.text}${marker}`;
+  const content = document.querySelector(`.node-content[data-id="${node.id}"]`);
+  if (content) content.textContent = node.text;
+}
+
+function getCaretOffset(el) {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount) return 0;
+  const range = sel.getRangeAt(0);
+  const pre = range.cloneRange();
+  pre.selectNodeContents(el);
+  pre.setEnd(range.startContainer, range.startOffset);
+  return pre.toString().length;
+}
+
+// ─── node type / checked ─────────────────────────────────────────────────────
+
+function setNodeType(id, type) {
   const node = nodeById(id);
   if (!node) return;
-  node.collapsed = val;
+  node.type = type;
+  if (type !== 'todo') node.checked = false;
+  markDirty();
+  // re-render the node element
+  rerenderNode(id);
+}
+
+function toggleChecked(id, checked) {
+  const node = nodeById(id);
+  if (!node) return;
+  node.checked = checked;
   markDirty();
   const el = document.querySelector(`.node[data-id="${id}"]`);
-  if (!el) return;
-  el.classList.toggle('collapsed', val);
-  const btn = el.querySelector(':scope > .node-row > .collapse-btn');
-  if (btn) { btn.textContent = val ? '▶' : '▼'; btn.title = val ? 'Expand' : 'Collapse'; }
+  if (el) el.classList.toggle('checked', checked);
+  // if hiding done and now checked, remove from DOM
+  if (!showDone && checked) {
+    if (el) el.remove();
+    updateParentHasChildren(parentOf(id));
+  }
 }
 
-function toggleCollapse(id) {
+function updateParentHasChildren(parent) {
+  if (!parent || parent === root) return;
+  const el = document.querySelector(`.node[data-id="${parent.id}"]`);
+  if (el) el.classList.toggle('has-children', parent.children.some(isVisible));
+}
+
+function rerenderNode(id) {
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  if (!el) { render(); return; }
   const node = nodeById(id);
-  if (node) setCollapsed(id, !node.collapsed);
+  if (!node) { el.remove(); return; }
+  const container = el.parentElement;
+  const next = el.nextSibling;
+  el.remove();
+  const wrap = document.createElement('div');
+  renderNode(node, wrap, 0);
+  if (next) container.insertBefore(wrap.firstChild, next);
+  else container.appendChild(wrap.firstChild);
 }
 
-// ─── Tree mutations ───────────────────────────────────────────────────────────
+// ─── tree mutations ───────────────────────────────────────────────────────────
 
 function insertSiblingAfter(id) {
   const parent = parentOf(id);
   if (!parent) return;
-  // If inserting after the last child of the focused node, stay within view
   const idx = parent.children.findIndex(c => c.id === id);
-  const newNode = { id: uid(), text: '', note: '', children: [], collapsed: false };
-  parent.children.splice(idx + 1, 0, newNode);
+  const nn = mkNode();
+  parent.children.splice(idx + 1, 0, nn);
   markDirty();
-
-  const currentEl = document.querySelector(`.node[data-id="${id}"]`);
-  if (currentEl) {
-    const wrapper = document.createElement('div');
-    renderNode(newNode, wrapper, 0);
-    currentEl.parentElement.insertBefore(wrapper.firstChild, currentEl.nextSibling);
-    focus(newNode.id);
-  } else {
-    render(); focus(newNode.id);
-  }
+  const curEl = document.querySelector(`.node[data-id="${id}"]`);
+  if (curEl) {
+    const wrap = document.createElement('div');
+    renderNode(nn, wrap, 0);
+    curEl.parentElement.insertBefore(wrap.firstChild, curEl.nextSibling);
+    focusNode(nn.id);
+  } else { render(); focusNode(nn.id); }
 }
 
 function indentNode(id) {
   const parent = parentOf(id);
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
-  if (idx === 0) return; // no previous sibling
+  if (idx === 0) return;
   const newParent = parent.children[idx - 1];
   const [node] = parent.children.splice(idx, 1);
   newParent.children.push(node);
   if (newParent.collapsed) newParent.collapsed = false;
-  markDirty();
-  render(); focus(id);
+  markDirty(); render(); focusNode(id);
 }
 
 function outdentNode(id) {
   const parent = parentOf(id);
-  if (!parent || parent === root) return; // already top-level
-  // Don't let the node escape the current zoom context
+  if (!parent || parent === root) return;
   if (focusedId && parent.id === focusedId) return;
   const grandparent = parentOf(parent.id);
   if (!grandparent) return;
   const idx = parent.children.findIndex(c => c.id === id);
   const [node] = parent.children.splice(idx, 1);
-  const parentIdx = grandparent.children.findIndex(c => c.id === parent.id);
-  grandparent.children.splice(parentIdx + 1, 0, node);
-  markDirty();
-  render(); focus(id);
+  const pi = grandparent.children.findIndex(c => c.id === parent.id);
+  grandparent.children.splice(pi + 1, 0, node);
+  markDirty(); render(); focusNode(id);
 }
 
 function deleteNode(id) {
@@ -702,217 +934,171 @@ function deleteNode(id) {
   parent.children.splice(idx, 1);
   markDirty();
 
-  // Decide where to move focus
-  let focusTarget = null;
-  if (idx > 0) {
-    focusTarget = lastVisible(parent.children[idx - 1]).id;
-  } else if (parent.id !== root.id && parent.id !== focusedId) {
-    focusTarget = parent.id;
-  }
+  let ft = null;
+  if (idx > 0) ft = lastVisible(parent.children[idx - 1]).id;
+  else if (parent.id !== root.id && parent.id !== focusedId) ft = parent.id;
 
   const el = document.querySelector(`.node[data-id="${id}"]`);
   if (el) el.remove();
+  updateParentHasChildren(parent);
 
-  // Update parent's has-children class
-  if (parent.id !== root.id) {
-    const pEl = document.querySelector(`.node[data-id="${parent.id}"]`);
-    if (pEl) pEl.classList.toggle('has-children', parent.children.length > 0);
-  }
-
-  // If the current view is now empty, add a placeholder
-  const viewParent = focusedId ? nodeById(focusedId) : root;
-  if (viewParent && viewParent.children.length === 0) {
-    const container = document.getElementById('outline');
-    // Remove zoom title if present before adding node
-    addFirstChildTo(viewParent, container);
-  } else if (focusTarget) {
-    focus(focusTarget);
-  }
+  const vp = focusedId ? nodeById(focusedId) : root;
+  if (vp && vp.children.length === 0) addFirstChild(vp, document.getElementById('outline'));
+  else if (ft) focusNode(ft);
 }
 
 function lastVisible(node) {
-  if (node.collapsed || node.children.length === 0) return node;
-  return lastVisible(node.children[node.children.length - 1]);
+  if (node.collapsed || !node.children.some(isVisible)) return node;
+  const vis = node.children.filter(isVisible);
+  return lastVisible(vis[vis.length - 1]);
 }
 
 function moveNode(id, dir) {
   const parent = parentOf(id);
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
-  const newIdx = idx + dir;
-  if (newIdx < 0 || newIdx >= parent.children.length) return;
-  [parent.children[idx], parent.children[newIdx]] = [parent.children[newIdx], parent.children[idx]];
+  const ni = idx + dir;
+  if (ni < 0 || ni >= parent.children.length) return;
+  [parent.children[idx], parent.children[ni]] = [parent.children[ni], parent.children[idx]];
   markDirty();
-
   const el = document.querySelector(`.node[data-id="${id}"]`);
   if (el) {
-    if (dir === -1) {
-      const prev = el.previousElementSibling;
-      if (prev) el.parentElement.insertBefore(el, prev);
-    } else {
-      const next = el.nextElementSibling;
-      if (next) el.parentElement.insertBefore(next, el);
-    }
-    focus(id);
-  } else {
-    render(); focus(id);
-  }
+    if (dir === -1) { const p = el.previousElementSibling; if (p) el.parentElement.insertBefore(el, p); }
+    else { const n = el.nextElementSibling; if (n) el.parentElement.insertBefore(n, el); }
+    focusNode(id);
+  } else { render(); focusNode(id); }
 }
 
-function focus(id) {
+function setCollapsed(id, val) {
+  const node = nodeById(id);
+  if (!node) return;
+  node.collapsed = val; markDirty();
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  if (!el) return;
+  el.classList.toggle('collapsed', val);
+  const btn = el.querySelector(':scope>.node-row>.collapse-btn');
+  if (btn) { btn.textContent = val ? '▶' : '▼'; btn.title = val ? 'Expand' : 'Collapse'; }
+}
+function toggleCollapse(id) { const n = nodeById(id); if (n) setCollapsed(id, !n.collapsed); }
+
+function focusNode(id) {
   requestAnimationFrame(() => {
     const el = document.querySelector(`.node-content[data-id="${id}"]`);
     if (!el) return;
+    const node = nodeById(id);
+    if (!el.dataset.editing) { enterEdit(el, node); }
     el.focus();
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+    const r = document.createRange();
+    r.selectNodeContents(el); r.collapse(false);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
   });
 }
 
-// ─── Dirty state ──────────────────────────────────────────────────────────────
+// ─── dirty ───────────────────────────────────────────────────────────────────
 
-function markDirty() {
-  dirty = true;
-  document.getElementById('toolbar-row').classList.add('dirty');
-}
+function markDirty() { dirty = true; document.getElementById('toolbar-row').classList.add('dirty'); }
+function markClean() { dirty = false; document.getElementById('toolbar-row').classList.remove('dirty'); }
 
-function markClean() {
-  dirty = false;
-  document.getElementById('toolbar-row').classList.remove('dirty');
-}
+// ─── file I/O ─────────────────────────────────────────────────────────────────
 
-// ─── File I/O ─────────────────────────────────────────────────────────────────
-
-const hasFileSystemAPI = 'showOpenFilePicker' in window;
-
-const OPML_FILE_TYPE = {
-  description: 'OPML outline files',
-  accept: { 'text/x-opml': ['.opml'], 'text/xml': ['.opml'] },
-};
+const hasFSA = 'showOpenFilePicker' in window;
+const OPML_TYPE = { description: 'OPML outline', accept: { 'text/x-opml': ['.opml'] } };
 
 async function newFile() {
   if (dirty && !confirm('Discard unsaved changes?')) return;
-  root = { id: uid(), text: '', note: '', children: [], collapsed: false };
-  focusedId = null;
-  fileHandle = null;
-  fileName = 'unsaved';
+  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved';
   document.getElementById('file-name').textContent = fileName;
-  markClean();
-  render();
+  markClean(); render();
 }
 
 async function openFile() {
   if (dirty && !confirm('Discard unsaved changes?')) return;
-  if (hasFileSystemAPI) {
+  if (hasFSA) {
     try {
-      [fileHandle] = await window.showOpenFilePicker({ types: [OPML_FILE_TYPE] });
+      [fileHandle] = await window.showOpenFilePicker({ types: [OPML_TYPE] });
       const file = await fileHandle.getFile();
       fileName = file.name;
       root = fromOpml(await file.text());
       focusedId = null;
       document.getElementById('file-name').textContent = fileName;
-      markClean();
-      render();
-    } catch (e) {
-      if (e.name !== 'AbortError') alert('Could not open file: ' + e.message);
-    }
+      markClean(); render();
+    } catch(e) { if (e.name !== 'AbortError') alert('Could not open: ' + e.message); }
   } else {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.opml,text/x-opml,application/xml,text/xml';
-    input.onchange = async () => {
-      const file = input.files[0];
-      if (!file) return;
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.opml,text/x-opml,application/xml,text/xml';
+    inp.onchange = async () => {
+      const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try {
-        root = fromOpml(await file.text());
-        focusedId = null;
-        document.getElementById('file-name').textContent = fileName;
-        markClean();
-        render();
-      } catch (e) { alert('Invalid file: ' + e.message); }
+      try { root = fromOpml(await file.text()); focusedId = null; document.getElementById('file-name').textContent = fileName; markClean(); render(); }
+      catch(e) { alert('Invalid file: ' + e.message); }
     };
-    input.click();
+    inp.click();
   }
 }
 
 async function saveFile() {
-  if (hasFileSystemAPI) {
-    if (fileHandle) await writeToHandle(fileHandle);
-    else await saveAsFile();
-  } else {
-    downloadOpml();
-  }
+  if (hasFSA) { if (fileHandle) await writeHandle(fileHandle); else await saveAsFile(); }
+  else downloadOpml();
 }
 
 async function saveAsFile() {
-  if (hasFileSystemAPI) {
+  if (hasFSA) {
     try {
       fileHandle = await window.showSaveFilePicker({
-        suggestedName: (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i, '')) + '.opml',
-        types: [OPML_FILE_TYPE],
+        suggestedName: (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml',
+        types: [OPML_TYPE],
       });
       fileName = fileHandle.name;
       document.getElementById('file-name').textContent = fileName;
-      await writeToHandle(fileHandle);
-    } catch (e) {
-      if (e.name !== 'AbortError') alert('Could not save: ' + e.message);
-    }
-  } else {
-    downloadOpml();
-  }
+      await writeHandle(fileHandle);
+    } catch(e) { if (e.name !== 'AbortError') alert('Could not save: ' + e.message); }
+  } else downloadOpml();
 }
 
 function downloadOpml() {
   const blob = new Blob([toOpml(root)], { type: 'text/x-opml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i, '')) + '.opml';
-  a.click();
-  URL.revokeObjectURL(url);
-  markClean();
+  a.href = url; a.download = (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml';
+  a.click(); URL.revokeObjectURL(url); markClean();
 }
 
-async function writeToHandle(handle) {
-  try {
-    const w = await handle.createWritable();
-    await w.write(toOpml(root));
-    await w.close();
-    markClean();
-  } catch (e) { alert('Save failed: ' + e.message); }
+async function writeHandle(h) {
+  try { const w = await h.createWritable(); await w.write(toOpml(root)); await w.close(); markClean(); }
+  catch(e) { alert('Save failed: ' + e.message); }
 }
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
+// ─── show/hide done ───────────────────────────────────────────────────────────
+
+document.getElementById('btn-done').addEventListener('click', () => {
+  showDone = !showDone;
+  const btn = document.getElementById('btn-done');
+  btn.textContent = showDone ? 'Hide done' : 'Show done';
+  btn.classList.toggle('active', showDone);
+  render();
+});
+
+// ─── boot ─────────────────────────────────────────────────────────────────────
 
 document.getElementById('btn-new').addEventListener('click', newFile);
 document.getElementById('btn-open').addEventListener('click', openFile);
 document.getElementById('btn-save').addEventListener('click', saveFile);
 document.getElementById('btn-save-as').addEventListener('click', saveAsFile);
 
-document.getElementById('shortcuts-toggle').addEventListener('click', () => {
-  document.getElementById('shortcuts-panel').classList.toggle('visible');
+document.getElementById('sc-toggle').addEventListener('click', () => {
+  document.getElementById('sc-panel').classList.toggle('on');
 });
-document.getElementById('shortcuts-panel').addEventListener('click', () => {
-  document.getElementById('shortcuts-panel').classList.remove('visible');
+document.getElementById('sc-panel').addEventListener('click', () => {
+  document.getElementById('sc-panel').classList.remove('on');
 });
 
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key === 's') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key === 'o') { e.preventDefault(); openFile(); }
-  if (e.key === 'Escape' && !e.target.closest('.node-content, .zoom-title')) {
-    zoomOut();
-  }
 });
 
-window.addEventListener('beforeunload', e => {
-  if (dirty) { e.preventDefault(); e.returnValue = ''; }
-});
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 
 render();
 </script>
