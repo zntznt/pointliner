@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pointliner</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #fafaf8;
+    --fg: #1a1a1a;
+    --muted: #999;
+    --bullet: #ccc;
+    --bullet-hover: #888;
+    --collapse-btn: #bbb;
+    --indent: 24px;
+    --line-height: 1.6;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --header-bg: #fff;
+    --border: #e8e8e8;
+    --accent: #4a90d9;
+    --focus-ring: rgba(74, 144, 217, 0.3);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e;
+      --fg: #e8e8e8;
+      --muted: #666;
+      --bullet: #555;
+      --bullet-hover: #aaa;
+      --collapse-btn: #555;
+      --header-bg: #111;
+      --border: #2a2a2a;
+      --accent: #5ba3e8;
+    }
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: var(--line-height);
+    min-height: 100vh;
+  }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo {
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -0.3px;
+    color: var(--fg);
+    margin-right: auto;
+  }
+
+  .file-name {
+    font-size: 13px;
+    color: var(--muted);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dirty-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: none;
+    flex-shrink: 0;
+  }
+  .dirty .dirty-dot { display: block; }
+
+  button {
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 5px;
+    transition: background 0.1s;
+  }
+  button:hover { background: var(--border); }
+
+  #outline {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 24px 120px;
+  }
+
+  .node {
+    position: relative;
+  }
+
+  .node-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    padding: 1px 0;
+    position: relative;
+  }
+
+  .collapse-btn {
+    width: 18px;
+    height: 24px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--collapse-btn);
+    font-size: 10px;
+    user-select: none;
+    visibility: hidden;
+    transition: color 0.1s;
+    padding-top: 1px;
+  }
+  .has-children .collapse-btn { visibility: visible; }
+  .collapse-btn:hover { color: var(--accent); }
+
+  .bullet {
+    width: 18px;
+    height: 24px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 1px;
+  }
+  .bullet::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--bullet);
+    transition: background 0.1s;
+    display: block;
+  }
+  .node-row:hover .bullet::before { background: var(--bullet-hover); }
+
+  .node-content {
+    flex: 1;
+    min-width: 0;
+    outline: none;
+    word-break: break-word;
+    white-space: pre-wrap;
+    line-height: var(--line-height);
+    padding: 1px 2px;
+    border-radius: 3px;
+  }
+  .node-content:focus {
+    box-shadow: 0 0 0 2px var(--focus-ring);
+  }
+  .node-content:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .children {
+    padding-left: var(--indent);
+  }
+
+  .collapsed > .children { display: none; }
+
+  .node-note {
+    padding-left: 36px;
+    font-size: 13px;
+    color: var(--muted);
+    outline: none;
+    word-break: break-word;
+    white-space: pre-wrap;
+    margin-bottom: 2px;
+  }
+  .node-note:empty::before {
+    content: 'note...';
+    color: var(--muted);
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .node-note:not(:focus):empty { display: none; }
+
+  .shortcuts-panel {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: var(--header-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+    display: none;
+  }
+  .shortcuts-panel.visible { display: block; }
+  .shortcuts-panel kbd {
+    font-family: monospace;
+    background: var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 11px;
+    color: var(--fg);
+  }
+  .shortcuts-toggle {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid var(--border);
+    background: var(--header-bg);
+    border-radius: 5px;
+    padding: 4px 8px;
+  }
+  .shortcuts-toggle:hover { color: var(--fg); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">Pointliner</span>
+  <span class="dirty-dot" id="dirty-dot"></span>
+  <span class="file-name" id="file-name">unsaved</span>
+  <button id="btn-new">New</button>
+  <button id="btn-open">Open</button>
+  <button id="btn-save">Save</button>
+  <button id="btn-save-as">Save As</button>
+</header>
+
+<div id="outline"></div>
+
+<span class="shortcuts-toggle" id="shortcuts-toggle">?</span>
+<div class="shortcuts-panel" id="shortcuts-panel">
+  <strong>Keyboard shortcuts</strong><br>
+  <kbd>Enter</kbd> new sibling below<br>
+  <kbd>Tab</kbd> indent (make child)<br>
+  <kbd>Shift+Tab</kbd> outdent<br>
+  <kbd>Alt+↑/↓</kbd> move node up/down<br>
+  <kbd>Ctrl+↑/↓</kbd> collapse/expand<br>
+  <kbd>Backspace</kbd> delete if empty<br>
+  <kbd>Ctrl+S</kbd> save<br>
+  <kbd>Ctrl+O</kbd> open<br>
+</div>
+
+<script>
+// ─── Data model ──────────────────────────────────────────────────────────────
+
+let root = { id: uid(), text: '', note: '', children: [], collapsed: false };
+let dirty = false;
+let fileHandle = null;
+let fileName = 'unsaved';
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function nodeById(id, node = root) {
+  if (node.id === id) return node;
+  for (const c of node.children) {
+    const found = nodeById(id, c);
+    if (found) return found;
+  }
+  return null;
+}
+
+function parentOf(id, node = root, parent = null) {
+  if (node.id === id) return parent;
+  for (const c of node.children) {
+    const found = parentOf(id, c, node);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+// ─── OPML serialization ───────────────────────────────────────────────────────
+
+function toOpml(rootNode) {
+  const title = rootNode.text || 'Pointliner';
+  const date = new Date().toUTCString();
+
+  function nodeToXml(node, depth) {
+    const indent = '  '.repeat(depth);
+    const text = escXml(node.text);
+    const note = node.note ? ` _note="${escXml(node.note)}"` : '';
+    const collapsed = node.collapsed ? ` _collapsed="true"` : '';
+    const id = ` _id="${node.id}"`;
+
+    if (node.children.length === 0) {
+      return `${indent}<outline text="${text}"${note}${collapsed}${id}/>`;
+    }
+    const children = node.children.map(c => nodeToXml(c, depth + 1)).join('\n');
+    return `${indent}<outline text="${text}"${note}${collapsed}${id}>\n${children}\n${indent}</outline>`;
+  }
+
+  const body = rootNode.children.map(c => nodeToXml(c, 2)).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>${escXml(title)}</title>
+    <dateModified>${date}</dateModified>
+  </head>
+  <body>
+${body}
+  </body>
+</opml>`;
+}
+
+function escXml(s) {
+  return (s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function fromOpml(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'application/xml');
+  const parseErr = doc.querySelector('parsererror');
+  if (parseErr) throw new Error('Invalid OPML: ' + parseErr.textContent.slice(0, 100));
+
+  const titleEl = doc.querySelector('head > title');
+  const title = titleEl ? titleEl.textContent : '';
+
+  function parseOutline(el) {
+    return {
+      id: el.getAttribute('_id') || uid(),
+      text: el.getAttribute('text') || '',
+      note: el.getAttribute('_note') || '',
+      collapsed: el.getAttribute('_collapsed') === 'true',
+      children: Array.from(el.children).filter(c => c.tagName === 'outline').map(parseOutline),
+    };
+  }
+
+  const bodyEl = doc.querySelector('body');
+  const children = bodyEl
+    ? Array.from(bodyEl.children).filter(c => c.tagName === 'outline').map(parseOutline)
+    : [];
+
+  return { id: uid(), text: title, note: '', children, collapsed: false };
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+
+function render() {
+  const container = document.getElementById('outline');
+  container.innerHTML = '';
+  if (root.children.length === 0) {
+    insertFirstNode();
+    return;
+  }
+  root.children.forEach(child => renderNode(child, container, 0));
+}
+
+function renderNode(node, container, depth) {
+  const div = document.createElement('div');
+  div.className = 'node' + (node.children.length ? ' has-children' : '') + (node.collapsed ? ' collapsed' : '');
+  div.dataset.id = node.id;
+
+  const row = document.createElement('div');
+  row.className = 'node-row';
+
+  const collapseBtn = document.createElement('span');
+  collapseBtn.className = 'collapse-btn';
+  collapseBtn.textContent = node.collapsed ? '▶' : '▼';
+  collapseBtn.title = node.collapsed ? 'Expand' : 'Collapse';
+  collapseBtn.addEventListener('click', () => toggleCollapse(node.id));
+
+  const bullet = document.createElement('span');
+  bullet.className = 'bullet';
+
+  const content = document.createElement('div');
+  content.className = 'node-content';
+  content.contentEditable = 'true';
+  content.spellcheck = true;
+  content.dataset.id = node.id;
+  content.dataset.placeholder = depth === 0 ? 'Start writing...' : '';
+  content.textContent = node.text;
+
+  content.addEventListener('input', () => onInput(node.id, content));
+  content.addEventListener('keydown', e => onKeyDown(e, node.id));
+
+  row.appendChild(collapseBtn);
+  row.appendChild(bullet);
+  row.appendChild(content);
+  div.appendChild(row);
+
+  if (node.note) {
+    appendNoteEl(div, node);
+  }
+
+  if (node.children.length) {
+    const childrenDiv = document.createElement('div');
+    childrenDiv.className = 'children';
+    node.children.forEach(child => renderNode(child, childrenDiv, depth + 1));
+    div.appendChild(childrenDiv);
+  }
+
+  container.appendChild(div);
+}
+
+function appendNoteEl(div, node) {
+  const note = document.createElement('div');
+  note.className = 'node-note';
+  note.contentEditable = 'true';
+  note.dataset.noteId = node.id;
+  note.textContent = node.note;
+  note.addEventListener('input', () => { node.note = note.textContent; markDirty(); });
+  div.appendChild(note);
+}
+
+function rerenderSubtree(nodeId, withinParent) {
+  const el = document.querySelector(`.node[data-id="${nodeId}"]`);
+  if (!el) { render(); return; }
+  const container = el.parentElement;
+  const next = el.nextSibling;
+  el.remove();
+  const node = nodeById(nodeId);
+  if (!node) return;
+  const wrapper = document.createElement('div');
+  renderNode(node, wrapper, 0);
+  const rendered = wrapper.firstChild;
+  if (next) container.insertBefore(rendered, next);
+  else container.appendChild(rendered);
+  if (withinParent && withinParent.id !== root.id) updateNodeClass(withinParent.id);
+}
+
+// ─── Edit handlers ────────────────────────────────────────────────────────────
+
+function onInput(id, el) {
+  const node = nodeById(id);
+  if (!node) return;
+  node.text = el.textContent;
+  markDirty();
+}
+
+function updateNodeClass(id) {
+  const node = nodeById(id);
+  if (!node) return;
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  if (!el) return;
+  el.classList.toggle('has-children', node.children.length > 0);
+  el.classList.toggle('collapsed', !!node.collapsed);
+}
+
+function onKeyDown(e, id) {
+  const ctrl = e.ctrlKey || e.metaKey;
+
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    insertSiblingAfter(id);
+  } else if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    indent(id);
+  } else if (e.key === 'Tab' && e.shiftKey) {
+    e.preventDefault();
+    outdent(id);
+  } else if (e.key === 'Backspace') {
+    const node = nodeById(id);
+    if (node && node.text === '' && node.children.length === 0) {
+      e.preventDefault();
+      deleteNode(id);
+    }
+  } else if (e.key === 'ArrowUp' && e.altKey) {
+    e.preventDefault();
+    moveNode(id, -1);
+  } else if (e.key === 'ArrowDown' && e.altKey) {
+    e.preventDefault();
+    moveNode(id, 1);
+  } else if (e.key === 'ArrowUp' && ctrl) {
+    e.preventDefault();
+    setCollapsed(id, true);
+  } else if (e.key === 'ArrowDown' && ctrl) {
+    e.preventDefault();
+    setCollapsed(id, false);
+  } else if (e.key === 's' && ctrl) {
+    e.preventDefault();
+    saveFile();
+  } else if (e.key === 'o' && ctrl) {
+    e.preventDefault();
+    openFile();
+  }
+}
+
+function setCollapsed(id, val) {
+  const node = nodeById(id);
+  if (!node) return;
+  node.collapsed = val;
+  markDirty();
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  if (el) {
+    el.classList.toggle('collapsed', val);
+    const btn = el.querySelector(':scope > .node-row > .collapse-btn');
+    if (btn) { btn.textContent = val ? '▶' : '▼'; btn.title = val ? 'Expand' : 'Collapse'; }
+  }
+}
+
+function toggleCollapse(id) {
+  const node = nodeById(id);
+  if (node) setCollapsed(id, !node.collapsed);
+}
+
+// ─── Tree mutations ───────────────────────────────────────────────────────────
+
+function insertSiblingAfter(id) {
+  const parent = parentOf(id);
+  if (!parent) return;
+  const idx = parent.children.findIndex(c => c.id === id);
+  const newNode = { id: uid(), text: '', note: '', children: [], collapsed: false };
+  parent.children.splice(idx + 1, 0, newNode);
+  markDirty();
+
+  const currentEl = document.querySelector(`.node[data-id="${id}"]`);
+  const container = currentEl ? currentEl.parentElement : null;
+  if (container) {
+    const wrapper = document.createElement('div');
+    renderNode(newNode, wrapper, 0);
+    container.insertBefore(wrapper.firstChild, currentEl.nextSibling);
+    focus(newNode.id);
+  } else {
+    render();
+    focus(newNode.id);
+  }
+}
+
+function indent(id) {
+  const parent = parentOf(id);
+  if (!parent) return;
+  const idx = parent.children.findIndex(c => c.id === id);
+  if (idx === 0) return;
+  const newParent = parent.children[idx - 1];
+  const node = parent.children.splice(idx, 1)[0];
+  newParent.children.push(node);
+  if (newParent.collapsed) newParent.collapsed = false;
+  markDirty();
+  rerenderSubtree(newParent.id, parent);
+  focus(id);
+}
+
+function outdent(id) {
+  const parent = parentOf(id);
+  if (!parent || parent === root) return;
+  const grandparent = parentOf(parent.id);
+  if (!grandparent) return;
+  const idx = parent.children.findIndex(c => c.id === id);
+  const node = parent.children.splice(idx, 1)[0];
+  const parentIdx = grandparent.children.findIndex(c => c.id === parent.id);
+  grandparent.children.splice(parentIdx + 1, 0, node);
+  markDirty();
+  rerenderSubtree(parent.id, grandparent);
+  focus(id);
+}
+
+function deleteNode(id) {
+  const parent = parentOf(id);
+  if (!parent) return;
+  const idx = parent.children.findIndex(c => c.id === id);
+  parent.children.splice(idx, 1);
+  markDirty();
+
+  let focusId = null;
+  if (idx > 0) {
+    focusId = lastVisible(parent.children[idx - 1]).id;
+  } else if (parent.id !== root.id) {
+    focusId = parent.id;
+  }
+
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  if (el) el.remove();
+  if (parent.id !== root.id) updateNodeClass(parent.id);
+
+  if (root.children.length === 0) insertFirstNode();
+  else if (focusId) focus(focusId);
+}
+
+function lastVisible(node) {
+  if (node.collapsed || node.children.length === 0) return node;
+  return lastVisible(node.children[node.children.length - 1]);
+}
+
+function moveNode(id, dir) {
+  const parent = parentOf(id);
+  if (!parent) return;
+  const idx = parent.children.findIndex(c => c.id === id);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= parent.children.length) return;
+  [parent.children[idx], parent.children[newIdx]] = [parent.children[newIdx], parent.children[idx]];
+  markDirty();
+
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  const container = el ? el.parentElement : null;
+  if (container) {
+    if (dir === -1) {
+      const prev = el.previousElementSibling;
+      if (prev) container.insertBefore(el, prev);
+    } else {
+      const next = el.nextElementSibling;
+      if (next) container.insertBefore(next, el);
+    }
+    focus(id);
+  } else {
+    render();
+    focus(id);
+  }
+}
+
+function focus(id) {
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.node-content[data-id="${id}"]`);
+    if (!el) return;
+    el.focus();
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+}
+
+// ─── Dirty state ──────────────────────────────────────────────────────────────
+
+function markDirty() {
+  dirty = true;
+  document.querySelector('header').classList.add('dirty');
+}
+
+function markClean() {
+  dirty = false;
+  document.querySelector('header').classList.remove('dirty');
+}
+
+// ─── File I/O ─────────────────────────────────────────────────────────────────
+
+const hasFileSystemAPI = 'showOpenFilePicker' in window;
+
+const OPML_FILE_TYPE = {
+  description: 'OPML outline files',
+  accept: { 'text/x-opml': ['.opml'], 'text/xml': ['.opml'] },
+};
+
+async function newFile() {
+  if (dirty && !confirm('Discard unsaved changes?')) return;
+  root = { id: uid(), text: '', note: '', children: [], collapsed: false };
+  fileHandle = null;
+  fileName = 'unsaved';
+  document.getElementById('file-name').textContent = fileName;
+  markClean();
+  insertFirstNode();
+}
+
+function insertFirstNode() {
+  const container = document.getElementById('outline');
+  container.innerHTML = '';
+  const newNode = { id: uid(), text: '', note: '', children: [], collapsed: false };
+  root.children = [newNode];
+  renderNode(newNode, container, 0);
+  focus(newNode.id);
+}
+
+async function openFile() {
+  if (dirty && !confirm('Discard unsaved changes?')) return;
+  if (hasFileSystemAPI) {
+    try {
+      [fileHandle] = await window.showOpenFilePicker({ types: [OPML_FILE_TYPE] });
+      const file = await fileHandle.getFile();
+      fileName = file.name;
+      const text = await file.text();
+      root = fromOpml(text);
+      document.getElementById('file-name').textContent = fileName;
+      markClean();
+      render();
+    } catch (e) {
+      if (e.name !== 'AbortError') alert('Could not open file: ' + e.message);
+    }
+  } else {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.opml,text/x-opml,application/xml,text/xml';
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      fileName = file.name;
+      try {
+        const text = await file.text();
+        root = fromOpml(text);
+        document.getElementById('file-name').textContent = fileName;
+        markClean();
+        render();
+      } catch (e) {
+        alert('Invalid file: ' + e.message);
+      }
+    };
+    input.click();
+  }
+}
+
+async function saveFile() {
+  if (hasFileSystemAPI) {
+    if (fileHandle) {
+      await writeToHandle(fileHandle);
+    } else {
+      await saveAsFile();
+    }
+  } else {
+    downloadOpml();
+  }
+}
+
+async function saveAsFile() {
+  if (hasFileSystemAPI) {
+    try {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: fileName === 'unsaved' ? 'outline.opml' : fileName.replace(/\.opml$/i, '') + '.opml',
+        types: [OPML_FILE_TYPE],
+      });
+      fileName = fileHandle.name;
+      document.getElementById('file-name').textContent = fileName;
+      await writeToHandle(fileHandle);
+    } catch (e) {
+      if (e.name !== 'AbortError') alert('Could not save: ' + e.message);
+    }
+  } else {
+    downloadOpml();
+  }
+}
+
+function downloadOpml() {
+  const blob = new Blob([toOpml(root)], { type: 'text/x-opml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName === 'unsaved' ? 'outline.opml' : fileName.replace(/\.opml$/i, '') + '.opml';
+  a.click();
+  URL.revokeObjectURL(url);
+  markClean();
+}
+
+async function writeToHandle(handle) {
+  try {
+    const writable = await handle.createWritable();
+    await writable.write(toOpml(root));
+    await writable.close();
+    markClean();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  }
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-new').addEventListener('click', newFile);
+document.getElementById('btn-open').addEventListener('click', openFile);
+document.getElementById('btn-save').addEventListener('click', saveFile);
+document.getElementById('btn-save-as').addEventListener('click', saveAsFile);
+
+document.getElementById('shortcuts-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('shortcuts-panel');
+  panel.classList.toggle('visible');
+});
+document.getElementById('shortcuts-panel').addEventListener('click', () => {
+  document.getElementById('shortcuts-panel').classList.remove('visible');
+});
+
+document.addEventListener('keydown', e => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key === 's') { e.preventDefault(); saveFile(); }
+  if (ctrl && e.key === 'o') { e.preventDefault(); openFile(); }
+});
+
+window.addEventListener('beforeunload', e => {
+  if (dirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+insertFirstNode();
+</script>
+</body>
+</html>
