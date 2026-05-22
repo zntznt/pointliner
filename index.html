@@ -7,98 +7,151 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#fafaf8;--fg:#1a1a1a;--muted:#999;--bullet:#bbb;--bullet-hover:#4a90d9;
-  --cb:#bbb;--indent:24px;--lh:1.65;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  --hbg:#fff;--border:#e8e8e8;--accent:#4a90d9;--ring:rgba(74,144,217,.25);
-  --code-bg:#f0f0ec;--del-fg:#999;
+  --bg:#fafaf8;--fg:#1a1a1a;--muted:#999;--bullet:#bbb;--bullet-h:#4a90d9;
+  --cb:#bbb;--ind:24px;--lh:1.65;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --hbg:#fff;--bdr:#e8e8e8;--acc:#4a90d9;--ring:rgba(74,144,217,.25);
+  --cbg:#f0f0ec;--del:#999;--qbdr:rgba(74,144,217,.6);
 }
 @media(prefers-color-scheme:dark){:root{
-  --bg:#1c1c1e;--fg:#e5e5e5;--muted:#666;--bullet:#555;--bullet-hover:#5ba3e8;
-  --cb:#555;--hbg:#111;--border:#2a2a2a;--accent:#5ba3e8;--ring:rgba(91,163,232,.25);
-  --code-bg:#2a2a2a;--del-fg:#666;
+  --bg:#1c1c1e;--fg:#e5e5e5;--muted:#666;--bullet:#555;--bullet-h:#5ba3e8;
+  --cb:#555;--hbg:#111;--bdr:#2a2a2a;--acc:#5ba3e8;--ring:rgba(91,163,232,.25);
+  --cbg:#252527;--del:#666;--qbdr:rgba(91,163,232,.5);
 }}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:var(--lh);min-height:100vh}
 
-/* ── toolbar ── */
-#toolbar{position:sticky;top:0;z-index:10;background:var(--hbg);border-bottom:1px solid var(--border)}
-#toolbar-row{padding:0 16px;height:44px;display:flex;align-items:center;gap:8px}
+/* toolbar */
+#toolbar{position:sticky;top:0;z-index:10;background:var(--hbg);border-bottom:1px solid var(--bdr)}
+#toolbar-row{padding:0 14px;height:44px;display:flex;align-items:center;gap:7px;position:relative}
 .logo{font-weight:700;font-size:15px;letter-spacing:-.3px;color:var(--fg);flex-shrink:0}
 .spacer{flex:1}
-.file-name{font-size:12px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
-.dirty-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:none;flex-shrink:0}
+.file-name{font-size:12px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+.dirty-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);display:none;flex-shrink:0}
 .dirty .dirty-dot{display:block}
-button{cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--fg);font-family:inherit;font-size:12px;padding:3px 9px;border-radius:5px;transition:background .1s;white-space:nowrap;flex-shrink:0}
-button:hover{background:var(--border)}
-button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-#breadcrumb-row{display:none;padding:5px 16px;border-top:1px solid var(--border);font-size:12px;flex-wrap:wrap;align-items:center;gap:4px;background:var(--hbg)}
+button{cursor:pointer;border:1px solid var(--bdr);background:transparent;color:var(--fg);font-family:inherit;font-size:12px;padding:3px 9px;border-radius:5px;transition:background .1s;white-space:nowrap;flex-shrink:0}
+button:hover{background:var(--bdr)}
+button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
+/* search — absolutely centered */
+#search-wrap{position:absolute;left:50%;transform:translateX(-50%)}
+#search-box{width:220px;padding:5px 12px 5px 30px;border:1px solid var(--bdr);border-radius:20px;background:var(--bg);color:var(--fg);font:inherit;font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
+#search-box:focus{border-color:var(--acc);box-shadow:0 0 0 2px var(--ring)}
+#search-box::placeholder{color:var(--muted)}
+#search-wrap::before{content:'⌕';position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
+#search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
+#search-clear.on{display:block}
+/* breadcrumb */
+#breadcrumb-row{display:none;padding:5px 16px;border-top:1px solid var(--bdr);font-size:12px;flex-wrap:wrap;align-items:center;gap:4px;background:var(--hbg)}
 #breadcrumb-row.visible{display:flex}
 .crumb{color:var(--muted);cursor:pointer;border-radius:3px;padding:1px 4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
-.crumb:hover{color:var(--accent)}
+.crumb:hover{color:var(--acc)}
 .crumb.current{color:var(--fg);font-weight:500;cursor:default}
 .crumb-sep{color:var(--muted);user-select:none;font-size:11px}
 
-/* ── outline ── */
+/* outline */
 #outline{max-width:760px;margin:0 auto;padding:28px 24px 120px}
-.zoom-title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border);outline:none;word-break:break-word;white-space:pre-wrap;cursor:text}
+.zoom-title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;word-break:break-word;white-space:pre-wrap;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
+
+/* node base */
 .node{position:relative}
 .node-row{display:flex;align-items:flex-start;padding:1px 0}
-.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden;transition:color .1s}
+.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden}
 .has-children>.node-row>.collapse-btn{visibility:visible}
-.collapse-btn:hover{color:var(--accent)}
-.bullet{width:20px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
-.bullet::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--bullet);transition:background .12s,transform .12s;display:block}
-.bullet:hover::before{background:var(--bullet-hover);transform:scale(1.3)}
-/* todo checkbox replaces bullet dot */
-.node.todo>.node-row>.bullet::before{display:none}
-.node-checkbox{width:14px;height:14px;cursor:pointer;accent-color:var(--accent);position:absolute}
+.collapse-btn:hover{color:var(--acc)}
+
+/* bullet area — dot + optional checkbox */
+.bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0}
+.bullet-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;transition:background .12s,transform .12s}
+.bullet:hover .bullet-dot{background:var(--bullet-h);transform:scale(1.3)}
+.node-checkbox{width:13px;height:13px;cursor:pointer;accent-color:var(--acc);flex-shrink:0}
+
+/* node content */
 .node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
 .node-content:focus{box-shadow:0 0 0 2px var(--ring)}
 .node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
-/* markdown inline */
 .node-content strong{font-weight:700}
 .node-content em{font-style:italic}
-.node-content code{font-family:monospace;font-size:.9em;background:var(--code-bg);padding:1px 5px;border-radius:3px}
-.node-content del{text-decoration:line-through;color:var(--del-fg)}
-.node-content a{color:var(--accent);text-decoration:none}
+.node-content u{text-decoration:underline}
+.node-content code{font-family:monospace;font-size:.88em;background:var(--cbg);padding:1px 5px;border-radius:3px}
+.node-content del{text-decoration:line-through;color:var(--del)}
+.node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
-/* checked todo */
-.node.todo.checked>.node-row>.node-content{text-decoration:line-through;opacity:.45}
-.children{padding-left:var(--indent)}
+.nc-italic .node-content{font-style:italic}
+.nc-underline .node-content{text-decoration:underline}
+
+/* node types */
+.nt-h1>.node-row>.node-content{font-size:1.55em;font-weight:800;line-height:1.25;padding-top:3px}
+.nt-h2>.node-row>.node-content{font-size:1.22em;font-weight:700;line-height:1.3}
+.nt-h3>.node-row>.node-content{font-size:1.06em;font-weight:600}
+.nt-h1>.node-row>.bullet-dot,.nt-h2>.node-row>.bullet-dot,.nt-h3>.node-row>.bullet-dot,
+.nt-p>.node-row>.bullet-dot{opacity:.25}
+/* quote */
+.nt-quote>.node-row{border-left:3px solid var(--qbdr);padding-left:10px;margin-left:4px}
+.nt-quote>.node-row>.node-content{color:var(--muted);font-style:italic}
+.nt-quote>.node-row>.bullet-dot{display:none}
+/* code block */
+.nt-code>.node-row>.node-content{font-family:monospace;font-size:.88em;background:var(--cbg);padding:3px 10px;border-radius:5px;white-space:pre;overflow-x:auto}
+.nt-code>.node-row>.bullet-dot{opacity:.2}
+/* divider */
+.nt-divider>.node-row{pointer-events:none;padding:8px 0}
+.nt-divider>.node-row::after{content:'';display:block;height:1px;background:var(--bdr);flex:1}
+.nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.bullet,.nt-divider>.node-row>.node-content{display:none}
+/* ol number */
+.ol-num{color:var(--muted);font-size:.88em;min-width:22px;text-align:right;padding-right:4px;flex-shrink:0;user-select:none}
+/* todo checked */
+.nt-todo.checked>.node-row>.node-content{text-decoration:line-through;opacity:.45}
+
+.children{padding-left:var(--ind)}
 .collapsed>.children{display:none}
 
-/* ── selection toolbar ── */
-#sel-tb{position:fixed;display:none;z-index:600;background:#222;border-radius:7px;padding:4px 5px;gap:2px;align-items:center;box-shadow:0 4px 18px rgba(0,0,0,.35);transform:translateX(-50%)}
+/* search highlight */
+mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1px}
+@media(prefers-color-scheme:dark){mark{background:rgba(200,150,0,.35)}}
+.search-ctx{opacity:.5}
+.search-ctx .node-content{pointer-events:none}
+
+/* unified command item */
+.cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;cursor:pointer}
+.cmd-item:hover,.cmd-item.hi{background:var(--bdr)}
+.cmd-icon{width:26px;height:26px;border-radius:6px;background:var(--bdr);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;color:var(--fg);font-family:monospace}
+.cmd-icon.accent{background:var(--acc);color:#fff}
+.cmd-info{display:flex;flex-direction:column;gap:1px;min-width:0}
+.cmd-label{font-size:13px;font-weight:500;line-height:1.2}
+.cmd-desc{font-size:11px;color:var(--muted)}
+.cmd-sep{height:1px;background:var(--bdr);margin:3px 6px}
+
+/* selection toolbar (dark floating) */
+#sel-tb{position:fixed;display:none;z-index:600;background:#1e1e1e;border-radius:8px;padding:4px;gap:2px;align-items:center;box-shadow:0 4px 20px rgba(0,0,0,.4);transform:translateX(-50%)}
 #sel-tb.on{display:flex}
-#sel-tb button{border:none;background:transparent;color:#eee;padding:4px 8px;border-radius:4px;font-size:13px;font-weight:500}
-#sel-tb button:hover{background:rgba(255,255,255,.15)}
-#sel-tb .tb-sep{width:1px;height:16px;background:rgba(255,255,255,.2);margin:0 3px;flex-shrink:0}
+#sel-tb .cmd-item{padding:4px 7px;border-radius:5px}
+#sel-tb .cmd-item:hover{background:rgba(255,255,255,.12)}
+#sel-tb .cmd-icon{background:transparent;color:#ddd;width:22px;height:22px;font-size:11px}
+#sel-tb .cmd-sep{width:1px;height:16px;background:rgba(255,255,255,.15);margin:0 2px}
 
-/* ── bullet popup ── */
-#bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 4px 20px rgba(0,0,0,.1);min-width:176px}
+/* bullet popup */
+#bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;box-shadow:0 4px 24px rgba(0,0,0,.12);min-width:200px}
 #bpop.on{display:block}
-.bpop-item{display:flex;align-items:center;gap:10px;padding:7px 11px;border-radius:5px;cursor:pointer;font-size:13px;color:var(--fg)}
-.bpop-item:hover{background:var(--border)}
+.bpop-types{display:flex;gap:3px;padding:4px 4px 6px;flex-wrap:wrap;border-bottom:1px solid var(--bdr);margin-bottom:3px}
+.bpop-type{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);font-family:monospace;transition:background .1s,color .1s}
+.bpop-type:hover{background:var(--bdr);color:var(--fg)}
+.bpop-type.cur{background:var(--acc);color:#fff}
+.bpop-actions{}
+.bpop-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--fg)}
+.bpop-item:hover{background:var(--bdr)}
 .bpop-item.danger{color:#e55}
-.bpop-icon{width:16px;text-align:center;font-size:12px;color:var(--muted);flex-shrink:0}
+.bpop-icon{width:16px;text-align:center;font-size:12px;color:var(--muted)}
 
-/* ── slash menu ── */
-#slash-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 8px 28px rgba(0,0,0,.12);min-width:220px;max-height:280px;overflow-y:auto}
+/* slash menu */
+#slash-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:240px;max-height:320px;overflow-y:auto}
 #slash-menu.on{display:block}
-.si{display:flex;align-items:center;gap:11px;padding:7px 10px;border-radius:6px;cursor:pointer}
-.si.hi,.si:hover{background:var(--border)}
-.si-icon{width:30px;height:30px;border-radius:6px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;font-weight:700}
-.si-text{}
-.si-label{font-size:13px;font-weight:500}
-.si-desc{font-size:11px;color:var(--muted)}
+.slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.06em}
 
-/* ── shortcuts ── */
-.sc-panel{position:fixed;bottom:16px;right:16px;background:var(--hbg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;font-size:12px;color:var(--muted);line-height:1.9;display:none;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.08)}
+/* shortcuts */
+.sc-panel{position:fixed;bottom:16px;right:16px;background:var(--hbg);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;font-size:12px;color:var(--muted);line-height:1.9;display:none;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.08)}
 .sc-panel.on{display:block}
 .sc-panel strong{color:var(--fg);display:block;margin-bottom:4px}
-.sc-panel kbd{font-family:monospace;background:var(--border);border-radius:3px;padding:0 4px;font-size:11px;color:var(--fg)}
-#sc-toggle{position:fixed;bottom:16px;right:16px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--border);background:var(--hbg);border-radius:5px;padding:4px 8px;z-index:99}
+.sc-panel kbd{font-family:monospace;background:var(--bdr);border-radius:3px;padding:0 4px;font-size:11px;color:var(--fg)}
+#sc-toggle{position:fixed;bottom:16px;right:16px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--bdr);background:var(--hbg);border-radius:5px;padding:4px 8px;z-index:99}
 #sc-toggle:hover{color:var(--fg)}
 </style>
 </head>
@@ -109,7 +162,12 @@ button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
     <span class="dirty-dot" id="dirty-dot"></span>
     <span class="file-name" id="file-name">unsaved</span>
     <span class="spacer"></span>
-    <button id="btn-done" title="Show/hide completed to-dos">Show done</button>
+    <div id="search-wrap">
+      <input id="search-box" type="text" placeholder="Search…" autocomplete="off" spellcheck="false">
+      <button id="search-clear" title="Clear search">✕</button>
+    </div>
+    <span class="spacer"></span>
+    <button id="btn-done">Show done</button>
     <button id="btn-new">New</button>
     <button id="btn-open">Open</button>
     <button id="btn-save">Save</button>
@@ -119,33 +177,21 @@ button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 </div>
 <div id="outline"></div>
 
-<!-- floating selection toolbar -->
-<div id="sel-tb">
-  <button data-fmt="bold"><b>B</b></button>
-  <button data-fmt="italic"><i>I</i></button>
-  <button data-fmt="code" style="font-family:monospace">`</button>
-  <button data-fmt="strike"><s>S</s></button>
-  <div class="tb-sep"></div>
-  <button data-fmt="link">Link</button>
-</div>
-
-<!-- bullet hover popup -->
+<!-- selection toolbar (dark) -->
+<div id="sel-tb"></div>
+<!-- bullet popup -->
 <div id="bpop"></div>
-
-<!-- slash command menu -->
+<!-- slash menu -->
 <div id="slash-menu"></div>
 
 <span id="sc-toggle">?</span>
 <div class="sc-panel" id="sc-panel">
   <strong>Keyboard shortcuts</strong>
-  <kbd>Enter</kbd> new sibling<br>
+  <kbd>Enter</kbd> new sibling · <kbd>Ctrl+Enter</kbd> zoom in<br>
   <kbd>Tab / Shift+Tab</kbd> indent / outdent<br>
-  <kbd>Alt+↑/↓</kbd> move node<br>
-  <kbd>Ctrl+↑/↓</kbd> collapse / expand<br>
-  <kbd>Ctrl+Enter</kbd> zoom into node<br>
+  <kbd>Alt+↑/↓</kbd> move · <kbd>Ctrl+↑/↓</kbd> collapse<br>
   <kbd>Escape</kbd> zoom out<br>
-  <kbd>/</kbd> slash commands<br>
-  <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
+  <kbd>/</kbd> commands · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
 </div>
 
 <script>
@@ -153,19 +199,24 @@ button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 // ─── model ───────────────────────────────────────────────────────────────────
 
-let root       = mkRoot();
-let focusedId  = null;
-let showDone   = false;
-let dirty      = false;
+let root      = mkRoot();
+let focusedId = null;
+let showDone  = false;
+let searchQuery = '';
+let dirty     = false;
 let fileHandle = null;
-let fileName   = 'unsaved';
+let fileName  = 'unsaved';
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'text', checked: false, children: [], collapsed: false };
+  return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
-function mkNode(text = '') {
-  return { id: uid(), text, note: '', type: 'text', checked: false, children: [], collapsed: false };
+function mkNode(text = '', type = 'ul') {
+  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false };
+}
+// type that a new Enter-sibling should inherit
+function inheritedType(type) {
+  return ['h1','h2','h3','divider'].includes(type) ? 'ul' : type;
 }
 
 function nodeById(id, n = root) {
@@ -187,34 +238,42 @@ function pathTo(id, n = root, acc = []) {
 
 // ─── markdown ─────────────────────────────────────────────────────────────────
 
-function mdToHtml(raw) {
-  let s = (raw || '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  // protect code spans
+function mdToHtml(raw, isCode) {
+  let s = (raw || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  if (isCode) return s; // code blocks: no markdown
   const codes = [];
-  s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(`<code>${c}</code>`); return `\x00${codes.length-1}\x00`; });
-  // links (http/https only)
-  s = s.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  // bold+italic, bold, italic, strike
-  s = s.replace(/\*\*\*((?!\s)[\s\S]*?(?<!\s))\*\*\*/g, '<strong><em>$1</em></strong>');
-  s = s.replace(/\*\*((?!\s)[\s\S]*?(?<!\s))\*\*/g, '<strong>$1</strong>');
-  s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g, '<em>$1</em>');
-  s = s.replace(/~~([\s\S]*?)~~/g, '<del>$1</del>');
-  // restore codes
-  s = s.replace(/\x00(\d+)\x00/g, (_, i) => codes[+i]);
+  s = s.replace(/`([^`\n]+)`/g, (_,c) => { codes.push(`<code>${c}</code>`); return `\x00${codes.length-1}\x00`; });
+  s = s.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/\*\*\*((?!\s)[\s\S]*?(?<!\s))\*\*\*/g,'<strong><em>$1</em></strong>');
+  s = s.replace(/\*\*((?!\s)[\s\S]*?(?<!\s))\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g,'<em>$1</em>');
+  s = s.replace(/~~([\s\S]*?)~~/g,'<del>$1</del>');
+  s = s.replace(/\+\+([\s\S]*?)\+\+/g,'<u>$1</u>');
+  s = s.replace(/\x00(\d+)\x00/g,(_,i)=>codes[+i]);
   return s;
+}
+
+function stripMd(text) {
+  return (text||'')
+    .replace(/`([^`\n]+)`/g,'$1')
+    .replace(/\[([^\]]*)\]\([^)]+\)/g,'$1')
+    .replace(/\*\*\*([\s\S]*?)\*\*\*/g,'$1')
+    .replace(/\*\*([\s\S]*?)\*\*/g,'$1')
+    .replace(/\*([\s\S]*?)\*/g,'$1')
+    .replace(/~~([\s\S]*?)~~/g,'$1')
+    .replace(/\+\+([\s\S]*?)\+\+/g,'$1');
 }
 
 // ─── OPML ─────────────────────────────────────────────────────────────────────
 
 function toOpml(r) {
-  const date = new Date().toUTCString();
   function nx(n, d) {
     const pad = '  '.repeat(d);
     const attrs = [
       `text="${ex(n.text)}"`,
-      n.note      ? `_note="${ex(n.note)}"` : '',
-      n.type && n.type !== 'text' ? `_type="${n.type}"` : '',
+      n.type && n.type !== 'ul' ? `_type="${n.type}"` : '',
+      n.italic    ? `_italic="true"` : '',
+      n.underline ? `_underline="true"` : '',
       n.checked   ? `_checked="true"` : '',
       n.collapsed ? `_collapsed="true"` : '',
       `_id="${n.id}"`,
@@ -224,24 +283,26 @@ function toOpml(r) {
   }
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
-  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${date}</dateModified></head>
+  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified></head>
   <body>
 ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
 </opml>`;
 }
-function ex(s){ return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function ex(s){ return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function fromOpml(xml) {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
-  const err = doc.querySelector('parsererror');
-  if (err) throw new Error('Invalid OPML');
+  const doc = new DOMParser().parseFromString(xml,'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('Invalid OPML');
   function po(el) {
+    const raw = el.getAttribute('_type') || 'ul';
     return {
       id: el.getAttribute('_id') || uid(),
       text: el.getAttribute('text') || '',
       note: el.getAttribute('_note') || '',
-      type: el.getAttribute('_type') || 'text',
+      type: raw === 'text' ? 'ul' : raw,
+      italic: el.getAttribute('_italic') === 'true',
+      underline: el.getAttribute('_underline') === 'true',
       checked: el.getAttribute('_checked') === 'true',
       collapsed: el.getAttribute('_collapsed') === 'true',
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
@@ -249,8 +310,49 @@ function fromOpml(xml) {
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
-  return { id: uid(), text: title, note: '', type: 'text', checked: false, collapsed: false,
+  return { id: uid(), text: title, note: '', type: 'ul', italic: false, underline: false, checked: false, collapsed: false,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
+}
+
+// ─── commands (unified) ───────────────────────────────────────────────────────
+
+const BLOCK_CMDS = [
+  { id:'ul',      icon:'•',    label:'Bullet',     desc:'Bullet point',     section:'Turn into' },
+  { id:'ol',      icon:'1.',   label:'Numbered',   desc:'Numbered list',    section:'Turn into' },
+  { id:'todo',    icon:'☐',    label:'To-do',      desc:'Checkbox item',    section:'Turn into' },
+  { id:'p',       icon:'¶',    label:'Paragraph',  desc:'Plain paragraph',  section:'Turn into' },
+  { id:'h1',      icon:'H1',   label:'Heading 1',  desc:'Large heading',    section:'Turn into' },
+  { id:'h2',      icon:'H2',   label:'Heading 2',  desc:'Medium heading',   section:'Turn into' },
+  { id:'h3',      icon:'H3',   label:'Heading 3',  desc:'Small heading',    section:'Turn into' },
+  { id:'quote',   icon:'❝',    label:'Quote',      desc:'Blockquote',       section:'Turn into' },
+  { id:'code',    icon:'</>',  label:'Code block', desc:'Code block',       section:'Turn into' },
+  { id:'divider', icon:'—',    label:'Divider',    desc:'Horizontal rule',  section:'Turn into' },
+  { id:'italic',  icon:'I',    label:'Italic style',    desc:'Toggle italic on node',    section:'Style' },
+  { id:'underline', icon:'U',  label:'Underline style', desc:'Toggle underline on node', section:'Style' },
+];
+
+const INLINE_CMDS = [
+  { id:'bold',    icon:'B',   label:'Bold',          desc:'**bold**' },
+  { id:'italic',  icon:'I',   label:'Italic',        desc:'*italic*' },
+  { id:'uline',   icon:'U',   label:'Underline',     desc:'++underline++' },
+  { id:'code',    icon:'`',   label:'Inline code',   desc:'`code`' },
+  { id:'strike',  icon:'S',   label:'Strikethrough', desc:'~~strike~~' },
+  { id:'link',    icon:'⌘',   label:'Link',          desc:'[text](url)' },
+];
+
+// build a unified cmd-item element
+function mkCmdItem(icon, label, desc, onClick, active = false) {
+  const div = document.createElement('div');
+  div.className = 'cmd-item' + (active ? ' hi' : '');
+  const ic = document.createElement('div');
+  ic.className = 'cmd-icon' + (active ? ' accent' : '');
+  ic.textContent = icon;
+  const info = document.createElement('div');
+  info.className = 'cmd-info';
+  info.innerHTML = `<span class="cmd-label">${label}</span>${desc ? `<span class="cmd-desc">${desc}</span>` : ''}`;
+  div.append(ic, info);
+  div.addEventListener('mousedown', e => { e.preventDefault(); onClick(); });
+  return div;
 }
 
 // ─── zoom / breadcrumb ───────────────────────────────────────────────────────
@@ -268,31 +370,16 @@ function renderBreadcrumb() {
   const bar = document.getElementById('breadcrumb-row');
   if (!focusedId) { bar.classList.remove('visible'); bar.innerHTML = ''; return; }
   const path = pathTo(focusedId) || [];
-  bar.innerHTML = '';
-  bar.classList.add('visible');
-  const home = crumbEl('Home', () => zoomTo(null));
+  bar.innerHTML = ''; bar.classList.add('visible');
+  const home = mkCrumb('Home', () => zoomTo(null));
   bar.appendChild(home);
-  path.slice(1, -1).forEach(anc => {
-    bar.appendChild(sepEl());
-    bar.appendChild(crumbEl(anc.text || '(untitled)', () => zoomTo(anc.id)));
-  });
-  const cur = path[path.length - 1];
-  bar.appendChild(sepEl());
-  const curEl = crumbEl(cur?.text || '(untitled)', null);
-  curEl.classList.add('current');
-  bar.appendChild(curEl);
+  path.slice(1,-1).forEach(a => { bar.appendChild(mkSep()); bar.appendChild(mkCrumb(a.text||'(untitled)', () => zoomTo(a.id))); });
+  const cur = path[path.length-1];
+  bar.appendChild(mkSep());
+  const ce = mkCrumb(cur?.text||'(untitled)', null); ce.classList.add('current'); bar.appendChild(ce);
 }
-function crumbEl(text, fn) {
-  const s = document.createElement('span');
-  s.className = 'crumb'; s.textContent = text; s.title = text;
-  if (fn) s.addEventListener('click', fn);
-  return s;
-}
-function sepEl() {
-  const s = document.createElement('span');
-  s.className = 'crumb-sep'; s.textContent = '›';
-  return s;
-}
+function mkCrumb(t, fn) { const s=document.createElement('span'); s.className='crumb'; s.textContent=t; s.title=t; if(fn) s.addEventListener('click',fn); return s; }
+function mkSep() { const s=document.createElement('span'); s.className='crumb-sep'; s.textContent='›'; return s; }
 
 // ─── render ──────────────────────────────────────────────────────────────────
 
@@ -300,25 +387,27 @@ function render() {
   renderBreadcrumb();
   const container = document.getElementById('outline');
   container.innerHTML = '';
-
   const vp = focusedId ? nodeById(focusedId) : root;
   if (!vp) { focusedId = null; render(); return; }
 
   if (focusedId) {
-    const titleEl = document.createElement('div');
-    titleEl.className = 'zoom-title';
-    titleEl.contentEditable = 'true';
-    titleEl.textContent = vp.text;
-    titleEl.addEventListener('input', () => { vp.text = titleEl.textContent; markDirty(); renderBreadcrumb(); });
-    titleEl.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); if (vp.children.length) focusNode(vp.children[0].id); }
-      if (e.key === 'Escape') { e.preventDefault(); zoomOut(); }
+    const te = document.createElement('div');
+    te.className = 'zoom-title'; te.contentEditable = 'true'; te.textContent = vp.text;
+    te.addEventListener('input', () => { vp.text = te.textContent; markDirty(); renderBreadcrumb(); });
+    te.addEventListener('keydown', e => {
+      if (e.key==='Enter') { e.preventDefault(); if(vp.children.length) focusNode(vp.children[0].id); }
+      if (e.key==='Escape') { e.preventDefault(); zoomOut(); }
     });
-    container.appendChild(titleEl);
+    container.appendChild(te);
   }
 
   if (vp.children.length === 0) { addFirstChild(vp, container); return; }
-  vp.children.forEach(c => { if (isVisible(c)) renderNode(c, container, 0); });
+
+  if (searchQuery) {
+    renderSearch(vp, container);
+  } else {
+    vp.children.forEach(c => { if (isVisible(c)) renderNode(c, container, 0, vp); });
+  }
 }
 
 function isVisible(node) {
@@ -329,108 +418,188 @@ function addFirstChild(parent, container) {
   const n = mkNode();
   parent.children.push(n);
   markDirty();
-  renderNode(n, container, 0);
+  renderNode(n, container, 0, parent);
   focusNode(n.id);
 }
 
-function renderNode(node, container, depth) {
+// Returns the ol number for this node within parent
+function olNum(node, parent) {
+  if (!parent) return 1;
+  let n = 0;
+  for (const c of parent.children) {
+    if (c === node) break;
+    if (c.type === 'ol') n++;
+  }
+  return n + 1;
+}
+
+function renderNode(node, container, depth, parent, opts = {}) {
   const div = document.createElement('div');
-  div.className = 'node'
-    + (node.children.some(isVisible) ? ' has-children' : '')
-    + (node.collapsed ? ' collapsed' : '')
-    + (node.type === 'todo' ? ' todo' : '')
-    + (node.checked ? ' checked' : '');
+  const visKids = node.children.filter(isVisible);
+  div.className = [
+    'node',
+    `nt-${node.type}`,
+    visKids.length ? 'has-children' : '',
+    node.collapsed  ? 'collapsed' : '',
+    node.checked    ? 'checked' : '',
+    node.italic     ? 'nc-italic' : '',
+    node.underline  ? 'nc-underline' : '',
+    opts.searchCtx  ? 'search-ctx' : '',
+  ].filter(Boolean).join(' ');
   div.dataset.id = node.id;
+
+  if (node.type === 'divider') {
+    const row = document.createElement('div');
+    row.className = 'node-row';
+    div.appendChild(row);
+    container.appendChild(div);
+    return div;
+  }
 
   const row = document.createElement('div');
   row.className = 'node-row';
 
-  // collapse triangle
+  // collapse btn
   const colBtn = document.createElement('span');
   colBtn.className = 'collapse-btn';
   colBtn.textContent = node.collapsed ? '▶' : '▼';
   colBtn.title = node.collapsed ? 'Expand' : 'Collapse';
   colBtn.addEventListener('click', () => toggleCollapse(node.id));
 
-  // bullet / checkbox
+  // bullet area
   const bullet = document.createElement('span');
   bullet.className = 'bullet';
-  bullet.title = 'Zoom in (click) · Options (hover)';
+
+  if (node.type === 'ol') {
+    const num = document.createElement('span');
+    num.className = 'ol-num';
+    num.textContent = olNum(node, parent) + '.';
+    bullet.appendChild(num);
+  } else {
+    const dot = document.createElement('span');
+    dot.className = 'bullet-dot';
+    bullet.appendChild(dot);
+  }
 
   if (node.type === 'todo') {
     const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.className = 'node-checkbox';
-    cb.checked = node.checked;
+    cb.type = 'checkbox'; cb.className = 'node-checkbox'; cb.checked = node.checked;
     cb.addEventListener('change', () => toggleChecked(node.id, cb.checked));
     bullet.appendChild(cb);
   }
 
-  bullet.addEventListener('click', e => { if (node.type !== 'todo') zoomInto(node.id); });
-  bullet.addEventListener('mouseenter', () => showBulletPopup(node.id, bullet));
-  bullet.addEventListener('mouseleave', () => scheduleBpopHide());
+  if (!opts.searchCtx) {
+    bullet.addEventListener('click', e => { if (!e.target.classList.contains('node-checkbox')) zoomInto(node.id); });
+    bullet.addEventListener('mouseenter', () => showBulletPopup(node.id, bullet));
+    bullet.addEventListener('mouseleave', () => scheduleBpopHide());
+  }
 
   // content
   const content = document.createElement('div');
   content.className = 'node-content';
-  content.contentEditable = 'true';
+  content.contentEditable = opts.searchCtx ? 'false' : 'true';
   content.spellcheck = true;
   content.dataset.id = node.id;
   content.dataset.ph = depth === 0 && !focusedId ? 'Start writing…' : '';
-  content.innerHTML = mdToHtml(node.text);  // display mode by default
+  content.innerHTML = mdToHtml(node.text, node.type === 'code');
 
-  attachContentEvents(content, node);
+  if (!opts.searchCtx) attachContentEvents(content, node);
+
+  if (opts.highlight) highlightContent(content, searchQuery);
 
   row.append(colBtn, bullet, content);
   div.appendChild(row);
 
-  if (node.children.length) {
-    const childDiv = document.createElement('div');
-    childDiv.className = 'children';
-    node.children.forEach(c => { if (isVisible(c)) renderNode(c, childDiv, depth + 1); });
-    div.appendChild(childDiv);
+  // children
+  const expanded = opts.searchCtx ? true : !node.collapsed;
+  if (visKids.length && expanded) {
+    const cd = document.createElement('div');
+    cd.className = 'children';
+    visKids.forEach(c => renderNode(c, cd, depth+1, node));
+    div.appendChild(cd);
   }
 
   container.appendChild(div);
+  return div;
 }
 
-// ─── content events (markdown focus/blur, input, paste, keydown) ─────────────
+// ─── search ───────────────────────────────────────────────────────────────────
 
-let activeContentId = null;  // which node is in raw-edit mode
+function nodeMatchesSearch(node) {
+  if (!searchQuery) return false;
+  return stripMd(node.text).toLowerCase().includes(searchQuery.toLowerCase());
+}
+
+function hasMatchBelow(node) {
+  return node.children.some(c => nodeMatchesSearch(c) || hasMatchBelow(c));
+}
+
+function renderSearch(vp, container) {
+  vp.children.forEach(c => renderSearchNode(c, container, 0, vp));
+}
+
+function renderSearchNode(node, container, depth, parent) {
+  const self  = nodeMatchesSearch(node);
+  const below = hasMatchBelow(node);
+  if (!self && !below) return;
+
+  const div = renderNode(node, container, depth, parent, {
+    searchCtx: !self,
+    highlight: self,
+  });
+
+  // In search mode we always show children, and we rebuild the children div
+  if (below) {
+    let cd = div.querySelector(':scope > .children');
+    if (!cd) { cd = document.createElement('div'); cd.className = 'children'; div.appendChild(cd); }
+    else cd.innerHTML = '';
+    node.children.forEach(c => renderSearchNode(c, cd, depth+1, node));
+  }
+}
+
+function highlightContent(el, query) {
+  if (!query) return;
+  const q = query.toLowerCase();
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  for (const tn of nodes) {
+    const text = tn.textContent;
+    const idx = text.toLowerCase().indexOf(q);
+    if (idx === -1) continue;
+    const mark = document.createElement('mark');
+    mark.textContent = text.slice(idx, idx + query.length);
+    const frag = document.createDocumentFragment();
+    frag.appendChild(document.createTextNode(text.slice(0, idx)));
+    frag.appendChild(mark);
+    frag.appendChild(document.createTextNode(text.slice(idx + query.length)));
+    tn.parentNode.replaceChild(frag, tn);
+  }
+}
+
+// ─── content events ───────────────────────────────────────────────────────────
+
+let activeContentId = null;
 
 function attachContentEvents(content, node) {
-  // mousedown: enter edit mode with cursor at click position
   content.addEventListener('mousedown', e => {
-    if (content.dataset.editing) return; // already editing
+    if (content.dataset.editing) return;
     e.preventDefault();
     enterEdit(content, node);
     content.focus();
-    // place cursor near click
-    const range = caretFromPoint(e.clientX, e.clientY, content);
-    if (range) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); }
+    const r = caretFromPoint(e.clientX, e.clientY, content);
+    if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
   });
-
-  content.addEventListener('focus', () => {
-    if (!content.dataset.editing) enterEdit(content, node);
-  });
-
-  content.addEventListener('blur', () => {
-    if (!content.dataset.editing) return;
-    exitEdit(content, node);
-  });
-
+  content.addEventListener('focus', () => { if (!content.dataset.editing) enterEdit(content, node); });
+  content.addEventListener('blur', () => { if (content.dataset.editing) exitEdit(content, node); });
   content.addEventListener('input', () => {
     if (!content.dataset.editing) return;
-    node.text = content.textContent;
-    markDirty();
-    checkSlash(content, node.id);
-    updateSelToolbar();
+    node.text = content.textContent; markDirty();
+    checkSlash(content, node.id); updateSelToolbar();
   });
-
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
-
   content.addEventListener('paste', e => handlePaste(e, node, content));
-
   content.addEventListener('mouseup', updateSelToolbar);
   content.addEventListener('keyup', updateSelToolbar);
 }
@@ -444,14 +613,13 @@ function enterEdit(content, node) {
 function exitEdit(content, node) {
   node.text = content.textContent;
   delete content.dataset.editing;
-  content.innerHTML = mdToHtml(node.text);
+  content.innerHTML = mdToHtml(node.text, node.type === 'code');
   markDirty();
   if (activeContentId === node.id) activeContentId = null;
-  hideSlashMenu();
-  updateSelToolbar();
+  hideSlashMenu(); updateSelToolbar();
 }
 
-function caretFromPoint(x, y, el) {
+function caretFromPoint(x, y) {
   try {
     if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
     if (document.caretPositionFromPoint) {
@@ -468,66 +636,39 @@ function caretFromPoint(x, y, el) {
 function handlePaste(e, node, content) {
   e.preventDefault();
   const text = e.clipboardData.getData('text/plain');
-  const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
-  // collapse trailing blank lines
-  while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
-
-  if (lines.length === 1) {
-    document.execCommand('insertText', false, text);
-    node.text = content.textContent;
-    markDirty();
-    return;
-  }
-
-  // multi-line: parse markdown list structure
-  const parsed = parseMarkdownLines(lines);
+  const lines = text.split('\n').map(l => l.replace(/\r$/,''));
+  while (lines.length > 1 && !lines[lines.length-1].trim()) lines.pop();
+  if (lines.length === 1) { document.execCommand('insertText', false, text); node.text = content.textContent; markDirty(); return; }
+  const parsed = parseMLlines(lines);
   const parent = parentOf(node.id);
   if (!parent) { document.execCommand('insertText', false, text); return; }
-
-  // first item merges into current node
-  node.text += parsed[0].text;
-  content.textContent = node.text;
-
+  node.text += parsed[0].text; content.textContent = node.text;
   const idx = parent.children.findIndex(c => c.id === node.id);
   const newNodes = [];
-
-  function insertItems(items, targetParent, afterIdx) {
-    items.forEach((item, i) => {
-      const nn = mkNode(item.text);
-      targetParent.children.splice(afterIdx + 1 + i, 0, nn);
-      newNodes.push(nn);
-      if (item.children.length) {
-        item.children.forEach(ch => {
-          const cn = mkNode(ch.text); nn.children.push(cn); newNodes.push(cn);
-        });
-      }
+  function ins(items, tp, ai) {
+    items.forEach((it, i) => {
+      const nn = mkNode(it.text); tp.children.splice(ai+1+i, 0, nn); newNodes.push(nn);
+      it.children.forEach(ch => { const cn = mkNode(ch.text); nn.children.push(cn); newNodes.push(cn); });
     });
   }
-  insertItems(parsed.slice(1), parent, idx);
-  markDirty();
-  render();
-  if (newNodes.length) focusNode(newNodes[newNodes.length - 1].id);
+  ins(parsed.slice(1), parent, idx);
+  markDirty(); render();
+  if (newNodes.length) focusNode(newNodes[newNodes.length-1].id);
 }
 
-function parseMarkdownLines(lines) {
-  // returns flat array of {text, children[]} handling list markers
+function parseMLlines(lines) {
   const result = [];
-  const stack = [{ indent: -1, item: { text: '', children: result } }];
-
+  const stack = [{ indent:-1, item:{ text:'', children:result } }];
   for (const line of lines) {
     const m = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)/);
     if (m) {
-      const indent = m[1].length;
-      const text = m[3];
-      const item = { text, children: [] };
+      const indent = m[1].length, text = m[3], item = { text, children:[] };
       while (stack.length > 1 && stack[stack.length-1].indent >= indent) stack.pop();
       stack[stack.length-1].item.children.push(item);
       stack.push({ indent, item });
     } else {
-      const item = { text: line.trim(), children: [] };
-      result.push(item);
-      stack.length = 1;
-      stack[0].item = { text: '', children: result };
+      const item = { text: line.trim(), children:[] };
+      result.push(item); stack.length = 1; stack[0].item = { text:'', children:result };
     }
   }
   return result;
@@ -537,208 +678,179 @@ function parseMarkdownLines(lines) {
 
 function onKeyDown(e, id, content) {
   const ctrl = e.ctrlKey || e.metaKey;
-
-  // slash menu navigation takes priority
   if (slashState && isSlashMenuOpen()) {
-    if (e.key === 'ArrowDown') { e.preventDefault(); slashMove(1); return; }
-    if (e.key === 'ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
-    if (e.key === 'Enter')     { e.preventDefault(); slashApply(); return; }
-    if (e.key === 'Escape')    { e.preventDefault(); hideSlashMenu(); return; }
-    if (e.key === 'Tab')       { e.preventDefault(); slashApply(); return; }
+    if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
+    if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
+    if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
   }
-
-  if (e.key === 'Enter' && !e.shiftKey && !ctrl) {
-    e.preventDefault(); insertSiblingAfter(id);
-  } else if (e.key === 'Enter' && ctrl) {
-    e.preventDefault(); zoomInto(id);
-  } else if (e.key === 'Tab' && !e.shiftKey) {
-    e.preventDefault(); indentNode(id);
-  } else if (e.key === 'Tab' && e.shiftKey) {
-    e.preventDefault(); outdentNode(id);
-  } else if (e.key === 'Backspace') {
+  if (e.key==='Enter' && !e.shiftKey && !ctrl) { e.preventDefault(); insertSiblingAfter(id); }
+  else if (e.key==='Enter' && ctrl) { e.preventDefault(); zoomInto(id); }
+  else if (e.key==='Tab' && !e.shiftKey) { e.preventDefault(); indentNode(id); }
+  else if (e.key==='Tab' && e.shiftKey)  { e.preventDefault(); outdentNode(id); }
+  else if (e.key==='Backspace') {
     const node = nodeById(id);
-    if (node && content.textContent === '' && node.children.length === 0) {
-      e.preventDefault(); deleteNode(id);
-    }
-  } else if (e.key === 'ArrowUp' && e.altKey) {
-    e.preventDefault(); moveNode(id, -1);
-  } else if (e.key === 'ArrowDown' && e.altKey) {
-    e.preventDefault(); moveNode(id, 1);
-  } else if (e.key === 'ArrowUp' && ctrl) {
-    e.preventDefault(); setCollapsed(id, true);
-  } else if (e.key === 'ArrowDown' && ctrl) {
-    e.preventDefault(); setCollapsed(id, false);
-  } else if (e.key === 'Escape') {
-    e.preventDefault(); zoomOut();
-  } else if (e.key === 's' && ctrl) {
-    e.preventDefault(); saveFile();
-  } else if (e.key === 'o' && ctrl) {
-    e.preventDefault(); openFile();
+    if (node && content.textContent==='' && node.children.length===0) { e.preventDefault(); deleteNode(id); }
   }
+  else if (e.key==='ArrowUp'   && e.altKey)  { e.preventDefault(); moveNode(id,-1); }
+  else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
+  else if (e.key==='ArrowUp'   && ctrl) { e.preventDefault(); setCollapsed(id,true); }
+  else if (e.key==='ArrowDown' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
+  else if (e.key==='Escape') { e.preventDefault(); zoomOut(); }
+  else if (e.key==='s' && ctrl) { e.preventDefault(); saveFile(); }
+  else if (e.key==='o' && ctrl) { e.preventDefault(); openFile(); }
 }
 
-// ─── selection toolbar ────────────────────────────────────────────────────────
+// ─── selection toolbar ───────────────────────────────────────────────────────
 
 const selTb = document.getElementById('sel-tb');
-
-// prevent focus loss when clicking toolbar
 selTb.addEventListener('mousedown', e => e.preventDefault());
 
-selTb.querySelectorAll('button').forEach(btn => {
-  btn.addEventListener('click', () => applyFormat(btn.dataset.fmt));
-});
+function buildSelTb() {
+  selTb.innerHTML = '';
+  INLINE_CMDS.forEach((cmd, i) => {
+    if (i === 4) { const sep = document.createElement('div'); sep.className = 'cmd-sep'; selTb.appendChild(sep); }
+    const item = mkCmdItem(cmd.icon, cmd.label, '', () => applyInlineFormat(cmd.id));
+    selTb.appendChild(item);
+  });
+}
+buildSelTb();
 
 function updateSelToolbar() {
   requestAnimationFrame(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) { hideSelTb(); return; }
-    // only show if selection is inside a node-content in edit mode
     const range = sel.getRangeAt(0);
     const anchor = range.commonAncestorContainer;
-    const content = anchor.nodeType === 1 ? anchor.closest?.('.node-content') : anchor.parentElement?.closest('.node-content');
-    if (!content || !content.dataset.editing) { hideSelTb(); return; }
-
+    const cnt = anchor.nodeType===1 ? anchor.closest?.('.node-content') : anchor.parentElement?.closest('.node-content');
+    if (!cnt || !cnt.dataset.editing) { hideSelTb(); return; }
     const rect = range.getBoundingClientRect();
     if (!rect.width) { hideSelTb(); return; }
     selTb.classList.add('on');
-    selTb.style.left = (rect.left + rect.width / 2) + 'px';
-    selTb.style.top  = (rect.top - 42 + window.scrollY) + 'px';
+    selTb.style.left = (rect.left + rect.width/2) + 'px';
+    selTb.style.top  = (rect.top - 46 + window.scrollY) + 'px';
   });
 }
-
 function hideSelTb() { selTb.classList.remove('on'); }
-
 document.addEventListener('selectionchange', updateSelToolbar);
-document.addEventListener('mousedown', e => {
-  if (!e.target.closest('#sel-tb')) hideSelTb();
-});
+document.addEventListener('mousedown', e => { if (!e.target.closest('#sel-tb')) hideSelTb(); });
 
-function applyFormat(fmt) {
+function applyInlineFormat(fmt) {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || !sel.rangeCount) return;
   const range = sel.getRangeAt(0);
   const selected = range.toString();
   if (!selected) return;
-
-  let wrapped;
-  if (fmt === 'bold')   wrapped = `**${selected}**`;
-  else if (fmt === 'italic') wrapped = `*${selected}*`;
-  else if (fmt === 'code')   wrapped = `\`${selected}\``;
-  else if (fmt === 'strike') wrapped = `~~${selected}~~`;
-  else if (fmt === 'link') {
+  const map = { bold:`**${selected}**`, italic:`*${selected}*`, uline:`++${selected}++`, code:`\`${selected}\``, strike:`~~${selected}~~` };
+  let wrapped = map[fmt];
+  if (fmt === 'link') {
     const url = prompt('URL (https://…):');
     if (!url) return;
     wrapped = `[${selected}](${url})`;
   }
   if (!wrapped) return;
-
   document.execCommand('insertText', false, wrapped);
-
-  // update node model
-  const content = range.commonAncestorContainer?.parentElement?.closest('.node-content')
+  const cnt = range.commonAncestorContainer?.parentElement?.closest('.node-content')
     || range.commonAncestorContainer?.closest?.('.node-content');
-  if (content) {
-    const node = nodeById(content.dataset.id);
-    if (node) { node.text = content.textContent; markDirty(); }
-  }
+  if (cnt) { const nd = nodeById(cnt.dataset.id); if (nd) { nd.text = cnt.textContent; markDirty(); } }
   hideSelTb();
 }
 
 // ─── bullet popup ─────────────────────────────────────────────────────────────
 
 const bpop = document.getElementById('bpop');
-let bpopHideTimer = null;
-let bpopNodeId = null;
-
-bpop.addEventListener('mouseenter', () => { clearTimeout(bpopHideTimer); });
+let bpopTimer = null;
+bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
 
 function showBulletPopup(nodeId, bulletEl) {
-  clearTimeout(bpopHideTimer);
-  bpopNodeId = nodeId;
+  clearTimeout(bpopTimer);
   const node = nodeById(nodeId);
   if (!node) return;
-
   bpop.innerHTML = '';
 
-  const items = [
-    node.type === 'todo'
-      ? { icon: '¶', label: 'Make text',  fn: () => { setNodeType(nodeId, 'text'); hideBpop(); } }
-      : { icon: '☐', label: 'Make to-do', fn: () => { setNodeType(nodeId, 'todo'); hideBpop(); } },
-    { icon: '⊙', label: 'Zoom into',   fn: () => { zoomInto(nodeId); hideBpop(); } },
-    { icon: '↑',  label: 'Move up',    fn: () => { moveNode(nodeId, -1); hideBpop(); } },
-    { icon: '↓',  label: 'Move down',  fn: () => { moveNode(nodeId, 1);  hideBpop(); } },
-    { icon: '✕',  label: 'Delete',     fn: () => { deleteNode(nodeId); hideBpop(); }, cls: 'danger' },
-  ];
+  // type switcher row
+  const typeRow = document.createElement('div');
+  typeRow.className = 'bpop-types';
+  BLOCK_CMDS.filter(c => c.section === 'Turn into').forEach(cmd => {
+    const btn = document.createElement('div');
+    btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
+    btn.textContent = cmd.icon;
+    btn.title = cmd.label;
+    btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
+    typeRow.appendChild(btn);
+  });
+  bpop.appendChild(typeRow);
 
-  items.forEach(({ icon, label, fn, cls }) => {
-    const div = document.createElement('div');
-    div.className = 'bpop-item' + (cls ? ' ' + cls : '');
-    div.innerHTML = `<span class="bpop-icon">${icon}</span><span>${label}</span>`;
-    div.addEventListener('mousedown', e => { e.preventDefault(); fn(); });
-    bpop.appendChild(div);
+  // style toggles row
+  const styleRow = document.createElement('div');
+  styleRow.className = 'bpop-types';
+  [{ id:'italic', icon:'I', label:'Italic style' }, { id:'underline', icon:'U', label:'Underline style' }].forEach(s => {
+    const btn = document.createElement('div');
+    btn.className = 'bpop-type' + ((s.id==='italic'&&node.italic)||(s.id==='underline'&&node.underline) ? ' cur' : '');
+    btn.style.fontStyle = s.id==='italic' ? 'italic' : 'normal';
+    btn.style.textDecoration = s.id==='underline' ? 'underline' : 'none';
+    btn.textContent = btn.style.fontFamily = s.icon;
+    btn.title = s.label;
+    btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(s.id, nodeId); hideBpop(); });
+    styleRow.appendChild(btn);
+  });
+  bpop.appendChild(styleRow);
+
+  // actions
+  const actions = [
+    { icon:'⊙', label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
+    { icon:'↑',  label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
+    { icon:'↓',  label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
+    { icon:'✕',  label:'Delete',    fn: () => { deleteNode(nodeId); hideBpop(); }, danger:true },
+  ];
+  actions.forEach(({ icon, label, fn, danger }) => {
+    const d = document.createElement('div');
+    d.className = 'bpop-item' + (danger ? ' danger' : '');
+    d.innerHTML = `<span class="bpop-icon">${icon}</span><span>${label}</span>`;
+    d.addEventListener('mousedown', e => { e.preventDefault(); fn(); });
+    bpop.appendChild(d);
   });
 
   const rect = bulletEl.getBoundingClientRect();
   bpop.style.left = (rect.right + 4) + 'px';
   bpop.style.top  = rect.top + 'px';
-  // keep popup on screen
+  bpop.classList.add('on');
   requestAnimationFrame(() => {
     const pr = bpop.getBoundingClientRect();
-    if (pr.right > window.innerWidth - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
-    if (pr.bottom > window.innerHeight - 8) bpop.style.top = (window.innerHeight - pr.height - 8) + 'px';
+    if (pr.right  > window.innerWidth  - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
+    if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (window.innerHeight - pr.height - 8) + 'px';
   });
-  bpop.classList.add('on');
 }
-
-function scheduleBpopHide() {
-  bpopHideTimer = setTimeout(hideBpop, 300);
-}
-
-function hideBpop() { bpop.classList.remove('on'); bpopNodeId = null; }
-
-document.addEventListener('click', e => {
-  if (!e.target.closest('#bpop') && !e.target.closest('.bullet')) hideBpop();
-});
+function scheduleBpopHide() { bpopTimer = setTimeout(hideBpop, 300); }
+function hideBpop() { bpop.classList.remove('on'); }
+document.addEventListener('click', e => { if (!e.target.closest('#bpop') && !e.target.closest('.bullet')) hideBpop(); });
 
 // ─── slash commands ───────────────────────────────────────────────────────────
 
-const SLASH_CMDS = [
-  { id: 'todo',   icon: '☐', label: 'To-do',        desc: 'Convert to a to-do item' },
-  { id: 'text',   icon: '¶', label: 'Text',          desc: 'Convert to plain text' },
-  { id: 'bold',   icon: 'B', label: 'Bold',          desc: 'Wrap text in **bold**' },
-  { id: 'italic', icon: 'I', label: 'Italic',        desc: 'Wrap text in *italic*' },
-  { id: 'code',   icon: '`', label: 'Code',          desc: 'Wrap text in `code`' },
-  { id: 'strike', icon: 'S', label: 'Strikethrough', desc: 'Wrap text in ~~strike~~' },
-  { id: 'link',   icon: '🔗', label: 'Link',         desc: 'Wrap text as [text](url)' },
-];
-
 const slashMenu = document.getElementById('slash-menu');
-let slashState = null; // { nodeId, content, slashOffset, query, activeIdx, matches }
-
+let slashState = null;
 function isSlashMenuOpen() { return slashMenu.classList.contains('on'); }
-
 slashMenu.addEventListener('mousedown', e => e.preventDefault());
+
+const ALL_SLASH = [
+  ...BLOCK_CMDS,
+  ...INLINE_CMDS.map(c => ({ ...c, section: 'Format' })),
+];
 
 function checkSlash(content, nodeId) {
   const pos = getCaretOffset(content);
-  const text = content.textContent;
-  const before = text.slice(0, pos);
-  // match '/' at start or after whitespace
-  const m = before.match(/(^|[\s])(\/)(\w*)$/);
+  const before = content.textContent.slice(0, pos);
+  const m = before.match(/(^|[\s])\/(\w*)$/);
   if (!m) { hideSlashMenu(); return; }
-
-  const query = m[3].toLowerCase();
-  const slashOffset = pos - query.length - 1; // position of '/'
-
-  const matches = SLASH_CMDS.filter(c =>
-    c.id.startsWith(query) || c.label.toLowerCase().startsWith(query)
+  const query = m[2].toLowerCase();
+  const slashOffset = pos - query.length - 1;
+  const matches = ALL_SLASH.filter(c =>
+    c.id.startsWith(query) || c.label.toLowerCase().includes(query)
   );
-
   if (!matches.length) { hideSlashMenu(); return; }
-
-  slashState = { nodeId, content, slashOffset, query, activeIdx: 0, matches };
+  slashState = { nodeId, content, slashOffset, query, activeIdx:0, matches };
   renderSlashMenu();
   positionSlashMenu(content, slashOffset);
 }
@@ -746,30 +858,32 @@ function checkSlash(content, nodeId) {
 function renderSlashMenu() {
   if (!slashState) return;
   slashMenu.innerHTML = '';
+  let lastSection = null;
   slashState.matches.forEach((cmd, i) => {
-    const div = document.createElement('div');
-    div.className = 'si' + (i === slashState.activeIdx ? ' hi' : '');
-    div.innerHTML = `<div class="si-icon">${cmd.icon}</div><div class="si-text"><div class="si-label">${cmd.label}</div><div class="si-desc">${cmd.desc}</div></div>`;
-    div.addEventListener('mousedown', e => { e.preventDefault(); slashState.activeIdx = i; slashApply(); });
-    slashMenu.appendChild(div);
+    const section = cmd.section || 'Format';
+    if (section !== lastSection) {
+      const hdr = document.createElement('div');
+      hdr.className = 'slash-section'; hdr.textContent = section;
+      slashMenu.appendChild(hdr); lastSection = section;
+    }
+    const item = mkCmdItem(cmd.icon, cmd.label, cmd.desc, () => { slashState.activeIdx = i; slashApply(); }, i === slashState.activeIdx);
+    slashMenu.appendChild(item);
   });
   slashMenu.classList.add('on');
 }
 
 function positionSlashMenu(content, slashOffset) {
-  // get bounding rect of the slash character
   const tn = content.firstChild;
-  if (!tn) return;
+  if (!tn || tn.nodeType !== 3) { slashMenu.style.left='0'; slashMenu.style.top='0'; return; }
   const range = document.createRange();
-  range.setStart(tn, Math.min(slashOffset, tn.length || 0));
-  range.setEnd(tn, Math.min(slashOffset + 1, tn.length || 0));
+  range.setStart(tn, Math.min(slashOffset, tn.length));
+  range.setEnd(tn, Math.min(slashOffset+1, tn.length));
   const rect = range.getBoundingClientRect();
   slashMenu.style.left = rect.left + 'px';
   slashMenu.style.top  = (rect.bottom + 4) + 'px';
-
   requestAnimationFrame(() => {
     const mr = slashMenu.getBoundingClientRect();
-    if (mr.right > window.innerWidth - 8) slashMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
+    if (mr.right  > window.innerWidth - 8) slashMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
     if (mr.bottom > window.innerHeight - 8) slashMenu.style.top = (rect.top - mr.height - 4) + 'px';
   });
 }
@@ -783,58 +897,61 @@ function slashMove(dir) {
 
 function slashApply() {
   if (!slashState) return;
-  const { nodeId, content, slashOffset, query, activeIdx, matches } = slashState;
+  const { nodeId, content, slashOffset, activeIdx, matches } = slashState;
   const cmd = matches[activeIdx];
   hideSlashMenu();
-
-  // remove the /command text from content
-  const afterSlash = content.textContent.slice(slashOffset + 1).match(/^\w*/)?.[0] ?? '';
+  const afterSlash = content.textContent.slice(slashOffset+1).match(/^\w*/)?.[0] ?? '';
   const rawLen = 1 + afterSlash.length;
   const newText = content.textContent.slice(0, slashOffset) + content.textContent.slice(slashOffset + rawLen);
   content.textContent = newText;
   const node = nodeById(nodeId);
   if (node) node.text = newText;
-
-  // set cursor at slash position
   try {
     const tn = content.firstChild || content;
-    const range = document.createRange();
-    range.setStart(tn, Math.min(slashOffset, newText.length));
-    range.collapse(true);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
+    const r = document.createRange();
+    r.setStart(tn, Math.min(slashOffset, newText.length)); r.collapse(true);
+    window.getSelection().removeAllRanges(); window.getSelection().addRange(r);
   } catch(_) {}
-
-  // apply command
-  if (cmd.id === 'todo')   { setNodeType(nodeId, 'todo'); }
-  else if (cmd.id === 'text')   { setNodeType(nodeId, 'text'); }
-  else if (cmd.id === 'bold')   { wrapNodeText(node, '**'); }
-  else if (cmd.id === 'italic') { wrapNodeText(node, '*'); }
-  else if (cmd.id === 'code')   { wrapNodeText(node, '`'); }
-  else if (cmd.id === 'strike') { wrapNodeText(node, '~~'); }
-  else if (cmd.id === 'link') {
-    const url = prompt('URL (https://…):');
-    if (url && node) { node.text = `[${node.text}](${url})`; content.textContent = node.text; markDirty(); }
-  }
+  applyBlockCmd(cmd.id, nodeId, node, content);
   markDirty();
 }
 
 function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
 
-function wrapNodeText(node, marker) {
+function applyBlockCmd(id, nodeId, node, content) {
+  node = node || nodeById(nodeId);
   if (!node) return;
-  node.text = `${marker}${node.text}${marker}`;
-  const content = document.querySelector(`.node-content[data-id="${node.id}"]`);
-  if (content) content.textContent = node.text;
+  // inline formatting
+  if (['bold','italic','uline','code','strike'].includes(id)) {
+    const map = { bold:'**', italic:'*', uline:'++', code:'`', strike:'~~' };
+    const m = map[id];
+    node.text = `${m}${node.text}${m}`;
+    if (content) content.textContent = node.text;
+    else { const c = document.querySelector(`.node-content[data-id="${nodeId}"]`); if(c) c.textContent=node.text; }
+    return;
+  }
+  if (id === 'link') {
+    const url = prompt('URL (https://…):');
+    if (!url) return;
+    node.text = `[${node.text}](${url})`;
+    const c = document.querySelector(`.node-content[data-id="${nodeId}"]`); if(c) c.textContent=node.text;
+    return;
+  }
+  // style toggles
+  if (id === 'italic')    { node.italic    = !node.italic;    markDirty(); rerenderNode(nodeId); return; }
+  if (id === 'underline') { node.underline = !node.underline; markDirty(); rerenderNode(nodeId); return; }
+  // block type
+  node.type = id;
+  if (id !== 'todo') node.checked = false;
+  markDirty();
+  rerenderNode(nodeId);
 }
 
 function getCaretOffset(el) {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return 0;
-  const range = sel.getRangeAt(0);
-  const pre = range.cloneRange();
-  pre.selectNodeContents(el);
-  pre.setEnd(range.startContainer, range.startOffset);
+  const r = sel.getRangeAt(0), pre = r.cloneRange();
+  pre.selectNodeContents(el); pre.setEnd(r.startContainer, r.startOffset);
   return pre.toString().length;
 }
 
@@ -845,26 +962,24 @@ function setNodeType(id, type) {
   if (!node) return;
   node.type = type;
   if (type !== 'todo') node.checked = false;
-  markDirty();
-  // re-render the node element
-  rerenderNode(id);
+  markDirty(); rerenderNode(id);
 }
 
 function toggleChecked(id, checked) {
   const node = nodeById(id);
   if (!node) return;
-  node.checked = checked;
-  markDirty();
-  const el = document.querySelector(`.node[data-id="${id}"]`);
-  if (el) el.classList.toggle('checked', checked);
-  // if hiding done and now checked, remove from DOM
+  node.checked = checked; markDirty();
   if (!showDone && checked) {
+    const el = document.querySelector(`.node[data-id="${id}"]`);
     if (el) el.remove();
-    updateParentHasChildren(parentOf(id));
+    updatePHC(parentOf(id));
+  } else {
+    const el = document.querySelector(`.node[data-id="${id}"]`);
+    if (el) el.classList.toggle('checked', checked);
   }
 }
 
-function updateParentHasChildren(parent) {
+function updatePHC(parent) {
   if (!parent || parent === root) return;
   const el = document.querySelector(`.node[data-id="${parent.id}"]`);
   if (el) el.classList.toggle('has-children', parent.children.some(isVisible));
@@ -872,16 +987,18 @@ function updateParentHasChildren(parent) {
 
 function rerenderNode(id) {
   const el = document.querySelector(`.node[data-id="${id}"]`);
-  if (!el) { render(); return; }
+  const parent = parentOf(id);
+  if (!el || !parent) { render(); return; }
   const node = nodeById(id);
   if (!node) { el.remove(); return; }
-  const container = el.parentElement;
-  const next = el.nextSibling;
+  const container = el.parentElement, next = el.nextSibling;
   el.remove();
   const wrap = document.createElement('div');
-  renderNode(node, wrap, 0);
-  if (next) container.insertBefore(wrap.firstChild, next);
-  else container.appendChild(wrap.firstChild);
+  renderNode(node, wrap, 0, parent);
+  const rendered = wrap.firstChild;
+  if (next) container.insertBefore(rendered, next);
+  else container.appendChild(rendered);
+  focusNode(id);
 }
 
 // ─── tree mutations ───────────────────────────────────────────────────────────
@@ -890,13 +1007,14 @@ function insertSiblingAfter(id) {
   const parent = parentOf(id);
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
-  const nn = mkNode();
-  parent.children.splice(idx + 1, 0, nn);
+  const srcNode = nodeById(id);
+  const nn = mkNode('', srcNode ? inheritedType(srcNode.type) : 'ul');
+  parent.children.splice(idx+1, 0, nn);
   markDirty();
   const curEl = document.querySelector(`.node[data-id="${id}"]`);
   if (curEl) {
     const wrap = document.createElement('div');
-    renderNode(nn, wrap, 0);
+    renderNode(nn, wrap, 0, parent);
     curEl.parentElement.insertBefore(wrap.firstChild, curEl.nextSibling);
     focusNode(nn.id);
   } else { render(); focusNode(nn.id); }
@@ -907,10 +1025,10 @@ function indentNode(id) {
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
   if (idx === 0) return;
-  const newParent = parent.children[idx - 1];
-  const [node] = parent.children.splice(idx, 1);
-  newParent.children.push(node);
-  if (newParent.collapsed) newParent.collapsed = false;
+  const np = parent.children[idx-1];
+  const [node] = parent.children.splice(idx,1);
+  np.children.push(node);
+  if (np.collapsed) np.collapsed = false;
   markDirty(); render(); focusNode(id);
 }
 
@@ -918,12 +1036,12 @@ function outdentNode(id) {
   const parent = parentOf(id);
   if (!parent || parent === root) return;
   if (focusedId && parent.id === focusedId) return;
-  const grandparent = parentOf(parent.id);
-  if (!grandparent) return;
+  const gp = parentOf(parent.id);
+  if (!gp) return;
   const idx = parent.children.findIndex(c => c.id === id);
-  const [node] = parent.children.splice(idx, 1);
-  const pi = grandparent.children.findIndex(c => c.id === parent.id);
-  grandparent.children.splice(pi + 1, 0, node);
+  const [node] = parent.children.splice(idx,1);
+  const pi = gp.children.findIndex(c => c.id === parent.id);
+  gp.children.splice(pi+1, 0, node);
   markDirty(); render(); focusNode(id);
 }
 
@@ -931,26 +1049,21 @@ function deleteNode(id) {
   const parent = parentOf(id);
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
-  parent.children.splice(idx, 1);
-  markDirty();
-
+  parent.children.splice(idx,1); markDirty();
   let ft = null;
-  if (idx > 0) ft = lastVisible(parent.children[idx - 1]).id;
+  if (idx > 0) ft = lastVis(parent.children[idx-1]).id;
   else if (parent.id !== root.id && parent.id !== focusedId) ft = parent.id;
-
   const el = document.querySelector(`.node[data-id="${id}"]`);
-  if (el) el.remove();
-  updateParentHasChildren(parent);
-
+  if (el) el.remove(); updatePHC(parent);
   const vp = focusedId ? nodeById(focusedId) : root;
   if (vp && vp.children.length === 0) addFirstChild(vp, document.getElementById('outline'));
   else if (ft) focusNode(ft);
 }
 
-function lastVisible(node) {
+function lastVis(node) {
   if (node.collapsed || !node.children.some(isVisible)) return node;
-  const vis = node.children.filter(isVisible);
-  return lastVisible(vis[vis.length - 1]);
+  const v = node.children.filter(isVisible);
+  return lastVis(v[v.length-1]);
 }
 
 function moveNode(id, dir) {
@@ -963,8 +1076,8 @@ function moveNode(id, dir) {
   markDirty();
   const el = document.querySelector(`.node[data-id="${id}"]`);
   if (el) {
-    if (dir === -1) { const p = el.previousElementSibling; if (p) el.parentElement.insertBefore(el, p); }
-    else { const n = el.nextElementSibling; if (n) el.parentElement.insertBefore(n, el); }
+    if (dir===-1) { const p=el.previousElementSibling; if(p) el.parentElement.insertBefore(el,p); }
+    else { const n=el.nextElementSibling; if(n) el.parentElement.insertBefore(n,el); }
     focusNode(id);
   } else { render(); focusNode(id); }
 }
@@ -979,14 +1092,14 @@ function setCollapsed(id, val) {
   const btn = el.querySelector(':scope>.node-row>.collapse-btn');
   if (btn) { btn.textContent = val ? '▶' : '▼'; btn.title = val ? 'Expand' : 'Collapse'; }
 }
-function toggleCollapse(id) { const n = nodeById(id); if (n) setCollapsed(id, !n.collapsed); }
+function toggleCollapse(id) { const n=nodeById(id); if(n) setCollapsed(id,!n.collapsed); }
 
 function focusNode(id) {
   requestAnimationFrame(() => {
     const el = document.querySelector(`.node-content[data-id="${id}"]`);
     if (!el) return;
     const node = nodeById(id);
-    if (!el.dataset.editing) { enterEdit(el, node); }
+    if (!el.dataset.editing && node) enterEdit(el, node);
     el.focus();
     const r = document.createRange();
     r.selectNodeContents(el); r.collapse(false);
@@ -994,20 +1107,22 @@ function focusNode(id) {
   });
 }
 
-// ─── dirty ───────────────────────────────────────────────────────────────────
+// ─── dirty ────────────────────────────────────────────────────────────────────
 
-function markDirty() { dirty = true; document.getElementById('toolbar-row').classList.add('dirty'); }
-function markClean() { dirty = false; document.getElementById('toolbar-row').classList.remove('dirty'); }
+function markDirty() { dirty=true; document.getElementById('toolbar-row').classList.add('dirty'); }
+function markClean() { dirty=false; document.getElementById('toolbar-row').classList.remove('dirty'); }
 
 // ─── file I/O ─────────────────────────────────────────────────────────────────
 
 const hasFSA = 'showOpenFilePicker' in window;
-const OPML_TYPE = { description: 'OPML outline', accept: { 'text/x-opml': ['.opml'] } };
+const OPML_TYPE = { description:'OPML outline', accept:{'text/x-opml':['.opml']} };
 
 async function newFile() {
   if (dirty && !confirm('Discard unsaved changes?')) return;
-  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved';
+  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = '';
   document.getElementById('file-name').textContent = fileName;
+  document.getElementById('search-box').value = '';
+  document.getElementById('search-clear').classList.remove('on');
   markClean(); render();
 }
 
@@ -1015,67 +1130,77 @@ async function openFile() {
   if (dirty && !confirm('Discard unsaved changes?')) return;
   if (hasFSA) {
     try {
-      [fileHandle] = await window.showOpenFilePicker({ types: [OPML_TYPE] });
+      [fileHandle] = await window.showOpenFilePicker({ types:[OPML_TYPE] });
       const file = await fileHandle.getFile();
       fileName = file.name;
       root = fromOpml(await file.text());
-      focusedId = null;
+      focusedId = null; searchQuery = '';
       document.getElementById('file-name').textContent = fileName;
+      document.getElementById('search-box').value = '';
+      document.getElementById('search-clear').classList.remove('on');
       markClean(); render();
-    } catch(e) { if (e.name !== 'AbortError') alert('Could not open: ' + e.message); }
+    } catch(e) { if (e.name!=='AbortError') alert('Could not open: '+e.message); }
   } else {
     const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = '.opml,text/x-opml,application/xml,text/xml';
+    inp.type='file'; inp.accept='.opml,text/x-opml,application/xml,text/xml';
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); focusedId = null; document.getElementById('file-name').textContent = fileName; markClean(); render(); }
-      catch(e) { alert('Invalid file: ' + e.message); }
+      try { root = fromOpml(await file.text()); focusedId=null; searchQuery=''; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
+      catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
   }
 }
 
 async function saveFile() {
-  if (hasFSA) { if (fileHandle) await writeHandle(fileHandle); else await saveAsFile(); }
-  else downloadOpml();
+  if (hasFSA) { if (fileHandle) await writeH(fileHandle); else await saveAsFile(); }
+  else dlOpml();
 }
-
 async function saveAsFile() {
   if (hasFSA) {
     try {
       fileHandle = await window.showSaveFilePicker({
-        suggestedName: (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml',
-        types: [OPML_TYPE],
+        suggestedName: (fileName==='unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml',
+        types:[OPML_TYPE],
       });
       fileName = fileHandle.name;
       document.getElementById('file-name').textContent = fileName;
-      await writeHandle(fileHandle);
-    } catch(e) { if (e.name !== 'AbortError') alert('Could not save: ' + e.message); }
-  } else downloadOpml();
+      await writeH(fileHandle);
+    } catch(e) { if (e.name!=='AbortError') alert('Could not save: '+e.message); }
+  } else dlOpml();
 }
-
-function downloadOpml() {
-  const blob = new Blob([toOpml(root)], { type: 'text/x-opml' });
+function dlOpml() {
+  const blob = new Blob([toOpml(root)],{type:'text/x-opml'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml';
+  a.href=url; a.download=(fileName==='unsaved'?'outline':fileName.replace(/\.opml$/i,''))+'.opml';
   a.click(); URL.revokeObjectURL(url); markClean();
 }
-
-async function writeHandle(h) {
-  try { const w = await h.createWritable(); await w.write(toOpml(root)); await w.close(); markClean(); }
-  catch(e) { alert('Save failed: ' + e.message); }
+async function writeH(h) {
+  try { const w=await h.createWritable(); await w.write(toOpml(root)); await w.close(); markClean(); }
+  catch(e) { alert('Save failed: '+e.message); }
 }
 
-// ─── show/hide done ───────────────────────────────────────────────────────────
+// ─── search wiring ────────────────────────────────────────────────────────────
 
-document.getElementById('btn-done').addEventListener('click', () => {
-  showDone = !showDone;
-  const btn = document.getElementById('btn-done');
-  btn.textContent = showDone ? 'Hide done' : 'Show done';
-  btn.classList.toggle('active', showDone);
+document.getElementById('search-box').addEventListener('input', function() {
+  searchQuery = this.value.trim();
+  document.getElementById('search-clear').classList.toggle('on', !!searchQuery);
   render();
+});
+document.getElementById('search-clear').addEventListener('click', () => {
+  searchQuery = '';
+  document.getElementById('search-box').value = '';
+  document.getElementById('search-clear').classList.remove('on');
+  render();
+});
+document.getElementById('search-box').addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    searchQuery = ''; document.getElementById('search-box').value = '';
+    document.getElementById('search-clear').classList.remove('on');
+    render(); document.getElementById('search-box').blur();
+  }
 });
 
 // ─── boot ─────────────────────────────────────────────────────────────────────
@@ -1084,21 +1209,20 @@ document.getElementById('btn-new').addEventListener('click', newFile);
 document.getElementById('btn-open').addEventListener('click', openFile);
 document.getElementById('btn-save').addEventListener('click', saveFile);
 document.getElementById('btn-save-as').addEventListener('click', saveAsFile);
-
-document.getElementById('sc-toggle').addEventListener('click', () => {
-  document.getElementById('sc-panel').classList.toggle('on');
+document.getElementById('btn-done').addEventListener('click', () => {
+  showDone = !showDone;
+  document.getElementById('btn-done').textContent = showDone ? 'Hide done' : 'Show done';
+  document.getElementById('btn-done').classList.toggle('active', showDone);
+  render();
 });
-document.getElementById('sc-panel').addEventListener('click', () => {
-  document.getElementById('sc-panel').classList.remove('on');
-});
-
+document.getElementById('sc-toggle').addEventListener('click', () => document.getElementById('sc-panel').classList.toggle('on'));
+document.getElementById('sc-panel').addEventListener('click', () => document.getElementById('sc-panel').classList.remove('on'));
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
-  if (ctrl && e.key === 's') { e.preventDefault(); saveFile(); }
-  if (ctrl && e.key === 'o') { e.preventDefault(); openFile(); }
+  if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
+  if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
 });
-
-window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue=''; } });
 
 render();
 </script>
