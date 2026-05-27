@@ -680,10 +680,12 @@ function attachContentEvents(content, node) {
   content.addEventListener('focus', () => {
     if (!content.dataset.editing) enterEdit(content, node);
     clearTimeout(fnHideTimer);
-    if (getFnRefs(node.text).length) showFnPanel(node.id); else hideFnPanel();
+    const refs = getFnRefs(node.text);
+    if (refs.length) { fnLocked = true; showFnPanel(node.id); } else hideFnPanel();
   });
   content.addEventListener('blur', () => {
     if (content.dataset.editing) exitEdit(content, node);
+    fnLocked = false;
     scheduleFnHide();
   });
   content.addEventListener('input', () => {
@@ -1470,16 +1472,17 @@ function syncFnEntries(node) {
   });
 }
 
-let fnNodeId = null, fnHideTimer = null;
+let fnNodeId = null, fnHideTimer = null, fnLocked = false;
 
 function scheduleFnHide() {
   clearTimeout(fnHideTimer);
   fnHideTimer = setTimeout(() => {
+    if (fnLocked) return;
     const panel = document.getElementById('fn-panel');
     if (panel?.contains(document.activeElement)) return;
     if (document.activeElement?.classList.contains('node-content')) return;
     hideFnPanel();
-  }, 120);
+  }, 150);
 }
 
 function showFnPanel(nodeId) {
@@ -1494,6 +1497,8 @@ function showFnPanel(nodeId) {
 }
 
 function hideFnPanel() {
+  clearTimeout(fnHideTimer);
+  fnLocked = false;
   fnNodeId = null;
   document.getElementById('fn-panel').classList.remove('on');
 }
@@ -1550,8 +1555,8 @@ function renderFnPanel(node, refs) {
     contentEl.contentEditable = 'true';
     contentEl.spellcheck = false;
     contentEl.innerText = entry.text;
-    contentEl.addEventListener('focus', () => clearTimeout(fnHideTimer));
-    contentEl.addEventListener('blur', () => scheduleFnHide());
+    contentEl.addEventListener('focus', () => { clearTimeout(fnHideTimer); fnLocked = true; });
+    contentEl.addEventListener('blur', () => { fnLocked = false; scheduleFnHide(); });
     contentEl.addEventListener('input', () => {
       entry.text = contentEl.innerText.replace(/\n$/, '');
       markDirty();
@@ -1631,19 +1636,24 @@ function returnToFnRef(key) {
   }, 0);
 }
 
-// hover [^key] in display mode → highlight panel item (fixes bug 3)
+// hover [^key] in display mode → transient panel + highlight matching item
 document.getElementById('outline').addEventListener('mouseover', e => {
   const ref = e.target.closest('.fn-ref');
   document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
   if (ref) {
+    clearTimeout(fnHideTimer);
     const key = ref.dataset.key;
-    document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"] .fn-key`).forEach(el => {
-      el.classList.add('hi');
-      el.closest('.fn-item')?.scrollIntoView({ block: 'nearest' });
-    });
-    if (!document.getElementById('fn-panel').classList.contains('on')) {
-      const nodeEl = ref.closest('.node[data-id]');
-      if (nodeEl) showFnPanel(nodeEl.dataset.id);
+    const nodeEl = ref.closest('.node[data-id]');
+    if (nodeEl) {
+      // if not locked, show panel transiently for this node
+      if (!fnLocked) showFnPanel(nodeEl.dataset.id);
+      // highlight panel item only if panel is showing this node
+      if (fnNodeId === nodeEl.dataset.id) {
+        document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"] .fn-key`).forEach(el => {
+          el.classList.add('hi');
+          el.closest('.fn-item')?.scrollIntoView({ block: 'nearest' });
+        });
+      }
     }
   }
 });
@@ -1651,8 +1661,15 @@ document.getElementById('outline').addEventListener('mouseout', e => {
   const ref = e.target.closest('.fn-ref');
   if (ref && !e.relatedTarget?.closest('.fn-ref')) {
     document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
+    if (!fnLocked) scheduleFnHide();
   }
 });
+// hovering the panel itself keeps it alive in transient mode
+const fnPanelEl = document.getElementById('fn-panel');
+fnPanelEl.addEventListener('mouseenter', () => clearTimeout(fnHideTimer));
+fnPanelEl.addEventListener('mouseleave', () => { if (!fnLocked) scheduleFnHide(); });
+// clicks on non-editable areas of the panel don't steal focus
+fnPanelEl.addEventListener('mousedown', e => { if (!e.target.closest('.fn-content')) e.preventDefault(); });
 
 // ─── boot ─────────────────────────────────────────────────────────────────────
 
