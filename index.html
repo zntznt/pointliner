@@ -125,6 +125,10 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.node-content{display:none}
 .nt-divider>.node-row>.bullet{cursor:pointer}
 .nt-divider>.node-row>.bullet .bullet-dot{opacity:.4}
+/* divider reveal on hover */
+.nt-divider.div-reveal>.node-row>.node-content{display:block;flex:1;color:var(--muted);font-style:italic;animation:div-reveal-in .18s ease;pointer-events:auto}
+.nt-divider.div-reveal>.node-row::after{display:none}
+@keyframes div-reveal-in{from{opacity:0}to{opacity:1}}
 /* ol number — sibling in row, not inside bullet */
 .ol-num{color:var(--muted);font-size:.88em;padding-right:5px;flex-shrink:0;user-select:none;line-height:var(--lh)}
 /* todo checked */
@@ -624,9 +628,6 @@ function renderNode(node, container, depth, parent, opts = {}) {
     });
     bullet.addEventListener('mouseenter', () => { if (!dragId) showBulletPopup(node.id, bullet); });
     bullet.addEventListener('mouseleave', () => scheduleBpopHide());
-    if (node.type === 'divider') {
-      row.addEventListener('mousedown', e => { if (!e.target.closest('.bullet')) e.preventDefault(); });
-    }
     attachDragHandlers(bullet, row, node);
   }
 
@@ -634,13 +635,18 @@ function renderNode(node, container, depth, parent, opts = {}) {
   const content = document.createElement('div');
   content.className = 'node-content';
   const isDivider = node.type === 'divider';
-  content.contentEditable = (opts.searchCtx || isDivider) ? 'false' : 'true';
+  content.contentEditable = opts.searchCtx ? 'false' : 'true';
   content.spellcheck = true;
   content.dataset.id = node.id;
-  content.dataset.ph = depth === 0 && !focusedId ? 'Start writing…' : '';
+  content.dataset.ph = isDivider ? 'Section label…' : (depth === 0 && !focusedId ? 'Start writing…' : '');
   content.innerHTML = mdToHtml(node.text, node.type === 'code');
 
-  if (!opts.searchCtx && !isDivider) attachContentEvents(content, node);
+  if (!opts.searchCtx) attachContentEvents(content, node);
+
+  if (isDivider && !opts.searchCtx) {
+    row.addEventListener('mouseenter', () => { if (node.text) div.classList.add('div-reveal'); });
+    row.addEventListener('mouseleave', () => { if (!content.dataset.editing) div.classList.remove('div-reveal'); });
+  }
 
   if (opts.highlight) highlightContent(content, searchQuery);
 
@@ -745,6 +751,12 @@ function attachContentEvents(content, node) {
     if (content.dataset.editing) exitEdit(content, node);
     fnLocked = false;
     scheduleFnHide();
+    if (node.type === 'divider') {
+      setTimeout(() => {
+        const nodeEl = content.closest('.node');
+        if (nodeEl && !nodeEl.matches(':hover')) nodeEl.classList.remove('div-reveal');
+      }, 80);
+    }
   });
   content.addEventListener('input', () => {
     if (!content.dataset.editing) return;
