@@ -84,6 +84,8 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .node-content del{text-decoration:line-through;color:var(--del)}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
+.hashtag{color:var(--acc);opacity:.65;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
+.hashtag:hover{opacity:1;text-decoration-style:solid}
 .nc-italic .node-content{font-style:italic}
 .nc-underline .node-content{text-decoration:underline}
 
@@ -281,6 +283,7 @@ function mdToHtml(raw, isCode) {
   s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g,'<em>$1</em>');
   s = s.replace(/~~([\s\S]*?)~~/g,'<del>$1</del>');
   s = s.replace(/\+\+([\s\S]*?)\+\+/g,'<u>$1</u>');
+  s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}">#${t}</a>`);
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>codes[+i]);
   return s;
 }
@@ -1390,6 +1393,21 @@ document.getElementById('search-box').addEventListener('keydown', e => {
     document.getElementById('search-clear').classList.remove('on');
     render(); document.getElementById('search-box').blur();
   }
+});
+
+// hashtag clicks
+document.getElementById('outline').addEventListener('mousedown', e => {
+  if (e.target.closest('.hashtag')) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+document.getElementById('outline').addEventListener('click', e => {
+  const tag = e.target.closest('.hashtag');
+  if (!tag) return;
+  const q = tag.dataset.tag;
+  searchQuery = q;
+  const sb = document.getElementById('search-box');
+  sb.value = q;
+  document.getElementById('search-clear').classList.add('on');
+  render();
 });
 
 // ─── boot ─────────────────────────────────────────────────────────────────────
