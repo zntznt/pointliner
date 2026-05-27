@@ -516,9 +516,10 @@ function renderNode(node, container, depth, parent, opts = {}) {
 
   if (!opts.searchCtx) {
     bullet.addEventListener('click', e => {
+      if (bulletDragMoved) return;
       if (!e.target.classList.contains('node-checkbox') && node.type !== 'divider') zoomInto(node.id);
     });
-    bullet.addEventListener('mouseenter', () => showBulletPopup(node.id, bullet));
+    bullet.addEventListener('mouseenter', () => { if (!dragId) showBulletPopup(node.id, bullet); });
     bullet.addEventListener('mouseleave', () => scheduleBpopHide());
     if (node.type === 'divider') {
       row.addEventListener('mousedown', e => { if (!e.target.closest('.bullet')) e.preventDefault(); });
@@ -1159,6 +1160,7 @@ function focusNode(id) {
 
 let dragId = null;
 let dragDropInfo = null;
+let bulletDragMoved = false;
 const dropLine = document.getElementById('drop-line');
 
 function isDescOf(ancId, nodeId) {
@@ -1181,7 +1183,11 @@ function clearAllDrag() {
 function attachDragHandlers(bullet, row, node) {
   bullet.draggable = true;
 
+  bullet.addEventListener('pointerdown', () => { bulletDragMoved = false; });
+
   bullet.addEventListener('dragstart', e => {
+    bulletDragMoved = true;
+    hideBpop();
     dragId = node.id;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', node.id);
