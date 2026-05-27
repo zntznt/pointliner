@@ -1395,6 +1395,7 @@ function markDirty() {
   dirty = true;
   document.getElementById('toolbar-row').classList.add('dirty');
   document.getElementById('fm-dirty-dot').style.display = 'block';
+  scheduleAutosave();
 }
 function markClean() {
   dirty = false;
@@ -1835,6 +1836,47 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncFnPanelBottom);
   window.visualViewport.addEventListener('scroll', syncFnPanelBottom);
 }
+
+// ─── autosave ─────────────────────────────────────────────────────────────────
+
+const AUTOSAVE_KEY = 'pointliner_autosave';
+let autosaveTimer = null;
+
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme }));
+    } catch(_) {}
+  }, 800);
+}
+
+(function restoreAutosave() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.root) {
+      root = data.root;
+      focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
+      if (data.fileName) {
+        fileName = data.fileName;
+        document.getElementById('file-name').textContent = fileName;
+      }
+      if (typeof data.showDone === 'boolean') {
+        showDone = data.showDone;
+        const btn = document.getElementById('btn-done');
+        btn.classList.toggle('active', showDone);
+        btn.title = showDone ? 'Hide completed' : 'Show completed';
+      }
+      if (data.forcedTheme !== undefined) {
+        forcedTheme = data.forcedTheme;
+        applyTheme();
+      }
+      dirty = false; // restored state is "clean" relative to disk
+    }
+  } catch(_) {}
+})();
 
 render();
 </script>
