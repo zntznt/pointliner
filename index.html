@@ -252,6 +252,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <kbd>Alt+↑/↓</kbd> move · <kbd>Ctrl+↑/↓</kbd> collapse<br>
   <kbd>Escape</kbd> zoom out<br>
   <kbd>/</kbd> commands · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
+  <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo<br>
 </div>
 
 <script>
@@ -266,6 +267,8 @@ let searchQuery = '';
 let dirty     = false;
 let fileHandle = null;
 let fileName  = 'unsaved';
+let undoStack = [];
+let redoStack = [];
 
 function mkRoot() {
   return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [] };
@@ -462,10 +465,14 @@ function render() {
     te.dataset.id = vp.id;
     te.innerHTML = mdToHtml(vp.text); // display mode: rendered HTML
 
+    let zpPrevText = '', zpUndoDepth = 0;
     const enterZoomEdit = () => {
       if (te.dataset.editing) return;
       te.dataset.editing = '1';
+      zpPrevText = vp.text;
       te.textContent = vp.text;
+      pushUndo();
+      zpUndoDepth = undoStack.length;
       clearTimeout(fnHideTimer);
       const refs = getFnRefs(vp.text);
       if (refs.length) { fnLocked = true; showFnPanel(vp.id); } else hideFnPanel();
@@ -476,6 +483,7 @@ function render() {
       te.innerHTML = mdToHtml(vp.text);
       markDirty();
       renderBreadcrumb();
+      if (vp.text === zpPrevText && undoStack.length === zpUndoDepth) undoStack.pop();
       fnLocked = false;
       scheduleFnHide();
     };
@@ -537,7 +545,7 @@ function appendGhostRow(parent, container) {
   ghost.addEventListener('click', () => {
     const kids = parent.children;
     if (kids.length) insertSiblingAfter(kids[kids.length - 1].id);
-    else addFirstChild(parent, container);
+    else { pushUndo(); addFirstChild(parent, container); }
   });
   container.appendChild(ghost);
 }
@@ -760,17 +768,24 @@ function attachContentEvents(content, node) {
 
 function enterEdit(content, node) {
   content.dataset.editing = '1';
+  content.dataset.prevText = node.text;
   content.textContent = node.text;
   activeContentId = node.id;
+  pushUndo();
+  content.dataset.undoDepth = undoStack.length;
 }
 
 function exitEdit(content, node) {
+  const prevText = content.dataset.prevText ?? '';
+  const depthAtEnter = Number(content.dataset.undoDepth);
   node.text = content.textContent;
   delete content.dataset.editing;
   content.innerHTML = mdToHtml(node.text, node.type === 'code');
   markDirty();
   if (activeContentId === node.id) activeContentId = null;
   hideSlashMenu(); updateSelToolbar();
+  // discard no-op edit snapshot (text unchanged, no structural op intervened)
+  if (node.text === prevText && undoStack.length === depthAtEnter) undoStack.pop();
 }
 
 function caretFromPoint(x, y) {
@@ -1178,6 +1193,7 @@ function insertSiblingAfter(id) {
   const idx = parent.children.findIndex(c => c.id === id);
   const srcNode = nodeById(id);
   const nn = mkNode('', srcNode ? inheritedType(srcNode.type) : 'ul');
+  pushUndo();
   parent.children.splice(idx+1, 0, nn);
   markDirty();
   const curEl = document.querySelector(`.node[data-id="${id}"]`);
@@ -1195,6 +1211,7 @@ function indentNode(id) {
   const idx = parent.children.findIndex(c => c.id === id);
   if (idx === 0) return;
   const np = parent.children[idx-1];
+  pushUndo();
   const [node] = parent.children.splice(idx,1);
   np.children.push(node);
   if (np.collapsed) np.collapsed = false;
@@ -1207,6 +1224,7 @@ function outdentNode(id) {
   if (focusedId && parent.id === focusedId) return;
   const gp = parentOf(parent.id);
   if (!gp) return;
+  pushUndo();
   const idx = parent.children.findIndex(c => c.id === id);
   const [node] = parent.children.splice(idx,1);
   const pi = gp.children.findIndex(c => c.id === parent.id);
@@ -1217,6 +1235,7 @@ function outdentNode(id) {
 function deleteNode(id) {
   const parent = parentOf(id);
   if (!parent) return;
+  pushUndo();
   const idx = parent.children.findIndex(c => c.id === id);
   parent.children.splice(idx,1); markDirty();
   let ft = null;
@@ -1241,6 +1260,7 @@ function moveNode(id, dir) {
   const idx = parent.children.findIndex(c => c.id === id);
   const ni = idx + dir;
   if (ni < 0 || ni >= parent.children.length) return;
+  pushUndo();
   [parent.children[idx], parent.children[ni]] = [parent.children[ni], parent.children[idx]];
   markDirty();
   const el = document.querySelector(`.node[data-id="${id}"]`);
@@ -1401,6 +1421,32 @@ function markDirty() {
   document.getElementById('fm-dirty-dot').style.display = 'block';
   scheduleAutosave();
 }
+
+// ─── undo / redo ─────────────────────────────────────────────────────────────
+
+function pushUndo() {
+  undoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
+  if (undoStack.length > 100) undoStack.shift();
+  redoStack.length = 0;
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
+  const snap = undoStack.pop();
+  root = snap.root; focusedId = snap.focusedId;
+  markDirty(); render();
+  if (focusedId) focusNode(focusedId);
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
+  const snap = redoStack.pop();
+  root = snap.root; focusedId = snap.focusedId;
+  markDirty(); render();
+  if (focusedId) focusNode(focusedId);
+}
 function markClean() {
   dirty = false;
   document.getElementById('toolbar-row').classList.remove('dirty');
@@ -1415,6 +1461,7 @@ const OPML_TYPE = { description:'OPML outline', accept:{'text/x-opml':['.opml']}
 async function newFile() {
   if (dirty && !confirm('Discard unsaved changes?')) return;
   root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = '';
+  undoStack.length = 0; redoStack.length = 0;
   document.getElementById('file-name').textContent = fileName;
   document.getElementById('search-box').value = '';
   document.getElementById('search-clear').classList.remove('on');
@@ -1430,6 +1477,7 @@ async function openFile() {
       fileName = file.name;
       root = fromOpml(await file.text());
       focusedId = null; searchQuery = '';
+      undoStack.length = 0; redoStack.length = 0;
       document.getElementById('file-name').textContent = fileName;
       document.getElementById('search-box').value = '';
       document.getElementById('search-clear').classList.remove('on');
@@ -1441,7 +1489,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); focusedId=null; searchQuery=''; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
+      try { root = fromOpml(await file.text()); focusedId=null; searchQuery=''; undoStack.length=0; redoStack.length=0; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -1823,6 +1871,14 @@ document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
+  if (ctrl && !e.shiftKey && e.key==='z') {
+    if (document.activeElement?.dataset?.editing) return;
+    e.preventDefault(); undo();
+  }
+  if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) {
+    if (document.activeElement?.dataset?.editing) return;
+    e.preventDefault(); redo();
+  }
 });
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue=''; } });
 
