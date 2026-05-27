@@ -550,7 +550,11 @@ function addFirstChild(parent, container) {
   const n = mkNode();
   parent.children.push(n);
   markDirty();
-  renderNode(n, container, 0, parent);
+  const wrap = document.createElement('div');
+  renderNode(n, wrap, 0, parent);
+  const ghost = container.querySelector('.ghost-row');
+  if (ghost) container.insertBefore(wrap.firstChild, ghost);
+  else container.appendChild(wrap.firstChild);
   focusNode(n.id);
 }
 
@@ -1242,7 +1246,7 @@ function moveNode(id, dir) {
   const el = document.querySelector(`.node[data-id="${id}"]`);
   if (el) {
     if (dir===-1) { const p=el.previousElementSibling; if(p) el.parentElement.insertBefore(el,p); }
-    else { const n=el.nextElementSibling; if(n) el.parentElement.insertBefore(n,el); }
+    else { const n=el.nextElementSibling; if(n && !n.classList.contains('ghost-row')) el.parentElement.insertBefore(n,el); }
     focusNode(id);
   } else { render(); focusNode(id); }
 }
