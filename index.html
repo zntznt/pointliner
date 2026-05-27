@@ -496,6 +496,13 @@ function render() {
       if (e.key === 'Enter') { e.preventDefault(); if (vp.children.length) focusNode(vp.children[0].id); }
       if (e.key === 'Escape') { e.preventDefault(); zoomOut(); }
     });
+    te.addEventListener('mousemove', e => {
+      if (!te.dataset.editing || fnNodeId !== vp.id) return;
+      hiFnItem(getFnKeyAtPoint(e.clientX, e.clientY));
+    });
+    te.addEventListener('mouseleave', () => {
+      if (te.dataset.editing) hiFnItem(null);
+    });
     container.appendChild(te);
   }
 
@@ -734,6 +741,14 @@ function attachContentEvents(content, node) {
   content.addEventListener('paste', e => handlePaste(e, node, content));
   content.addEventListener('mouseup', updateSelToolbar);
   content.addEventListener('keyup', updateSelToolbar);
+  // highlight matching fn-panel item while hovering [^key] text in raw edit mode
+  content.addEventListener('mousemove', e => {
+    if (!content.dataset.editing || fnNodeId !== node.id) return;
+    hiFnItem(getFnKeyAtPoint(e.clientX, e.clientY));
+  });
+  content.addEventListener('mouseleave', () => {
+    if (content.dataset.editing) hiFnItem(null);
+  });
 }
 
 function enterEdit(content, node) {
@@ -1505,6 +1520,38 @@ function syncFnEntries(node) {
   if (!node.footnotes) node.footnotes = [];
   getFnRefs(node.text).forEach(key => {
     if (!node.footnotes.find(f => f.key === key)) node.footnotes.push({ key, text: '' });
+  });
+}
+
+// detect [^key] pattern under a mouse point (for raw-edit-mode hover)
+function getFnKeyAtPoint(x, y) {
+  let range = null;
+  try {
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos) { range = document.createRange(); range.setStart(pos.offsetNode, pos.offset); }
+    }
+  } catch(_) {}
+  if (!range) return null;
+  const tn = range.startContainer;
+  if (tn.nodeType !== Node.TEXT_NODE) return null;
+  const text = tn.textContent, offset = range.startOffset;
+  const re = /\[\^([^\]]+)\]/g; let m;
+  while ((m = re.exec(text)) !== null) {
+    if (offset >= m.index && offset <= m.index + m[0].length) return m[1];
+  }
+  return null;
+}
+
+// highlight fn-panel item for a given key (no cursor movement)
+function hiFnItem(key) {
+  document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
+  if (!key) return;
+  document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"] .fn-key`).forEach(el => {
+    el.classList.add('hi');
+    el.closest('.fn-item')?.scrollIntoView({ block: 'nearest' });
   });
 }
 
