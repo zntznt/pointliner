@@ -98,8 +98,10 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.node-content{display:none}
 .nt-divider>.node-row>.bullet{cursor:pointer}
 .nt-divider>.node-row>.bullet .bullet-dot{opacity:.4}
-/* ol number */
-.ol-num{color:var(--muted);font-size:.88em;min-width:22px;text-align:right;padding-right:4px;flex-shrink:0;user-select:none}
+/* divider line — gap so it doesn't butt against bullet */
+.nt-divider>.node-row::after{margin-left:8px}
+/* ol number — sibling in row, not inside bullet */
+.ol-num{color:var(--muted);font-size:.88em;padding-right:5px;flex-shrink:0;user-select:none;line-height:var(--lh)}
 /* todo checked */
 .nt-todo.checked>.node-row>.node-content{text-decoration:line-through;opacity:.45}
 
@@ -111,6 +113,13 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 @media(prefers-color-scheme:dark){mark{background:rgba(200,150,0,.35)}}
 .search-ctx{opacity:.5}
 .search-ctx .node-content{pointer-events:none}
+
+/* ghost row — always-present placeholder, fades in on hover */
+.ghost-row{display:flex;align-items:center;padding:13px 0;opacity:0;transition:opacity .18s ease;cursor:text;user-select:none}
+.ghost-row:hover{opacity:.55}
+.ghost-spacer{width:16px;flex-shrink:0}
+.ghost-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;margin:0 6px}
+.ghost-label{font-size:14px;color:var(--muted)}
 
 /* unified command item */
 .cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;cursor:pointer}
@@ -409,7 +418,27 @@ function render() {
     renderSearch(vp, container);
   } else {
     vp.children.forEach(c => { if (isVisible(c)) renderNode(c, container, 0, vp); });
+    appendGhostRow(vp, container);
   }
+}
+
+function appendGhostRow(parent, container) {
+  const ghost = document.createElement('div');
+  ghost.className = 'ghost-row';
+  const spacer = document.createElement('span');
+  spacer.className = 'ghost-spacer';
+  const dot = document.createElement('span');
+  dot.className = 'ghost-dot';
+  const label = document.createElement('span');
+  label.className = 'ghost-label';
+  label.textContent = 'New item…';
+  ghost.append(spacer, dot, label);
+  ghost.addEventListener('click', () => {
+    const kids = parent.children;
+    if (kids.length) insertSiblingAfter(kids[kids.length - 1].id);
+    else addFirstChild(parent, container);
+  });
+  container.appendChild(ghost);
 }
 
 function isVisible(node) {
@@ -464,16 +493,9 @@ function renderNode(node, container, depth, parent, opts = {}) {
   const bullet = document.createElement('span');
   bullet.className = 'bullet';
 
-  if (node.type === 'ol') {
-    const num = document.createElement('span');
-    num.className = 'ol-num';
-    num.textContent = olNum(node, parent) + '.';
-    bullet.appendChild(num);
-  } else {
-    const dot = document.createElement('span');
-    dot.className = 'bullet-dot';
-    bullet.appendChild(dot);
-  }
+  const dot = document.createElement('span');
+  dot.className = 'bullet-dot';
+  bullet.appendChild(dot);
 
   if (node.type === 'todo') {
     const cb = document.createElement('input');
@@ -501,7 +523,14 @@ function renderNode(node, container, depth, parent, opts = {}) {
 
   if (opts.highlight) highlightContent(content, searchQuery);
 
-  row.append(colBtn, bullet, content);
+  if (node.type === 'ol') {
+    const num = document.createElement('span');
+    num.className = 'ol-num';
+    num.textContent = olNum(node, parent) + '.';
+    row.append(colBtn, bullet, num, content);
+  } else {
+    row.append(colBtn, bullet, content);
+  }
   div.appendChild(row);
 
   // children
