@@ -1531,11 +1531,15 @@ function renderFnPanel(node, refs) {
     keyEl.textContent = `[^${key}]`;
     keyEl.title = 'Hover to highlight · click to jump to reference';
     keyEl.addEventListener('mouseenter', () => {
-      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.add('hi'));
+      // clear stale highlights from any previous hover (fixes bug 2)
+      document.querySelectorAll('.fn-ref.hi').forEach(el => el.classList.remove('hi'));
+      document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
+      // scope to the owning node only (fixes bug 1)
+      document.querySelectorAll(`.node[data-id="${fnNodeId}"] .fn-ref[data-key="${key}"]`).forEach(el => el.classList.add('hi'));
       keyEl.classList.add('hi');
     });
     keyEl.addEventListener('mouseleave', () => {
-      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.remove('hi'));
+      document.querySelectorAll(`.node[data-id="${fnNodeId}"] .fn-ref[data-key="${key}"]`).forEach(el => el.classList.remove('hi'));
       keyEl.classList.remove('hi');
     });
     keyEl.addEventListener('mousedown', e => e.preventDefault());
@@ -1627,17 +1631,16 @@ function returnToFnRef(key) {
   }, 0);
 }
 
-// hover [^key] in display mode → highlight panel item
+// hover [^key] in display mode → highlight panel item (fixes bug 3)
 document.getElementById('outline').addEventListener('mouseover', e => {
   const ref = e.target.closest('.fn-ref');
-  document.querySelectorAll('#fn-list .fn-item.hi').forEach(el => el.classList.remove('hi'));
+  document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
   if (ref) {
     const key = ref.dataset.key;
-    document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"]`).forEach(el => {
+    document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"] .fn-key`).forEach(el => {
       el.classList.add('hi');
-      el.scrollIntoView({ block: 'nearest' });
+      el.closest('.fn-item')?.scrollIntoView({ block: 'nearest' });
     });
-    // show panel if not already visible
     if (!document.getElementById('fn-panel').classList.contains('on')) {
       const nodeEl = ref.closest('.node[data-id]');
       if (nodeEl) showFnPanel(nodeEl.dataset.id);
@@ -1647,7 +1650,7 @@ document.getElementById('outline').addEventListener('mouseover', e => {
 document.getElementById('outline').addEventListener('mouseout', e => {
   const ref = e.target.closest('.fn-ref');
   if (ref && !e.relatedTarget?.closest('.fn-ref')) {
-    document.querySelectorAll('#fn-list .fn-item.hi').forEach(el => el.classList.remove('hi'));
+    document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
   }
 });
 
