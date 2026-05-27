@@ -89,16 +89,19 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 /* footnotes */
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
-#fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
+#fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
 #fn-panel.on{transform:translateY(0)}
-.fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:9px 20px 7px;border-bottom:1px solid var(--bdr);flex-shrink:0}
-#fn-list{overflow-y:auto;padding:6px 16px 10px;flex:1}
-.fn-item{display:flex;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:6px;transition:background .1s;margin:1px 0}
-.fn-item.hi{background:var(--ring)}
-.fn-key{font-size:.78em;color:var(--acc);font-weight:600;flex-shrink:0;padding-top:3px;min-width:34px;user-select:none}
-.fn-content{flex:1;outline:none;font:inherit;font-size:.88em;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto}
-.fn-return{flex-shrink:0;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 5px;border-radius:4px;user-select:none;align-self:center;transition:color .1s,background .1s;line-height:1}
-.fn-return:hover{color:var(--acc);background:var(--ring)}
+.fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+#fn-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+#fn-list::-webkit-scrollbar{width:4px}
+#fn-list::-webkit-scrollbar-track{background:transparent}
+#fn-list::-webkit-scrollbar-thumb{background:var(--cb);border-radius:4px}
+#fn-list::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+.fn-item{display:grid;grid-template-columns:auto 1fr;align-items:start;gap:12px;padding:5px 0}
+.fn-key{font-size:.73em;color:var(--acc);font-weight:600;background:var(--cbg);border:1px solid var(--bdr);border-radius:7px;padding:3px 8px;user-select:none;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;align-self:start;margin-top:1px;line-height:1.6}
+.fn-key:hover{background:var(--ring);border-color:var(--acc)}
+.fn-key.hi{background:var(--ring);border-color:var(--acc)}
+.fn-content{outline:none;font:inherit;font-size:.88em;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
 .nc-italic .node-content{font-style:italic}
 .nc-underline .node-content{text-decoration:underline}
 
@@ -808,6 +811,13 @@ function buildSelTb() {
     ic.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat(cmd.id); });
     selTb.appendChild(ic);
   });
+  const sep2 = document.createElement('div'); sep2.className = 'cmd-sep'; selTb.appendChild(sep2);
+  const fnIc = document.createElement('div');
+  fnIc.className = 'cmd-icon';
+  fnIc.textContent = '†';
+  fnIc.title = 'Convert to footnote';
+  fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
+  selTb.appendChild(fnIc);
 }
 buildSelTb();
 
@@ -1519,6 +1529,17 @@ function renderFnPanel(node, refs) {
     const keyEl = document.createElement('div');
     keyEl.className = 'fn-key';
     keyEl.textContent = `[^${key}]`;
+    keyEl.title = 'Hover to highlight · click to jump to reference';
+    keyEl.addEventListener('mouseenter', () => {
+      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.add('hi'));
+      keyEl.classList.add('hi');
+    });
+    keyEl.addEventListener('mouseleave', () => {
+      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.remove('hi'));
+      keyEl.classList.remove('hi');
+    });
+    keyEl.addEventListener('mousedown', e => e.preventDefault());
+    keyEl.addEventListener('click', () => returnToFnRef(key));
 
     const contentEl = document.createElement('div');
     contentEl.className = 'fn-content';
@@ -1546,22 +1567,42 @@ function renderFnPanel(node, refs) {
       if (e.key === 'Escape') { e.stopPropagation(); returnToFnRef(key); }
     });
 
-    const retEl = document.createElement('div');
-    retEl.className = 'fn-return';
-    retEl.title = 'Return to reference';
-    retEl.textContent = '↩';
-    retEl.addEventListener('mouseenter', () => {
-      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.add('hi'));
-    });
-    retEl.addEventListener('mouseleave', () => {
-      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.remove('hi'));
-    });
-    retEl.addEventListener('mousedown', e => e.preventDefault()); // keep focus in panel
-    retEl.addEventListener('click', () => returnToFnRef(key));
-
-    item.append(keyEl, contentEl, retEl);
+    item.append(keyEl, contentEl);
     inner.appendChild(item);
   });
+}
+
+function nextFnKey(node) {
+  const existing = new Set([...getFnRefs(node.text), ...(node.footnotes || []).map(f => f.key)]);
+  let n = 1;
+  while (existing.has(String(n))) n++;
+  return String(n);
+}
+
+function convertToFootnote() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const selected = range.toString();
+  if (!selected) return;
+  const cnt = range.commonAncestorContainer?.parentElement?.closest('.node-content')
+    || range.commonAncestorContainer?.closest?.('.node-content');
+  if (!cnt) return;
+  const nd = nodeById(cnt.dataset.id);
+  if (!nd) return;
+  const key = nextFnKey(nd);
+  if (!nd.footnotes) nd.footnotes = [];
+  nd.footnotes.push({ key, text: selected });
+  document.execCommand('insertText', false, `[^${key}]`);
+  nd.text = cnt.textContent;
+  markDirty();
+  showFnPanel(nd.id);
+  // focus the new footnote content after panel renders
+  setTimeout(() => {
+    const contentEl = document.querySelector(`#fn-list .fn-item[data-key="${key}"] .fn-content`);
+    if (contentEl) contentEl.focus();
+  }, 50);
+  hideSelTb();
 }
 
 function returnToFnRef(key) {
