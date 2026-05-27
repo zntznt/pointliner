@@ -6,6 +6,7 @@
 <title>Pointliner</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+button,[contenteditable],input{touch-action:manipulation}
 :root{
   --bg:#fafaf8;--fg:#1a1a1a;--muted:#999;--bullet:#bbb;--bullet-h:#4a90d9;
   --cb:#bbb;--ind:24px;--lh:1.65;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -17,7 +18,7 @@
   --cb:#555;--hbg:#111;--bdr:#2a2a2a;--acc:#5ba3e8;--ring:rgba(91,163,232,.25);
   --cbg:#252527;--del:#666;--qbdr:rgba(91,163,232,.5);
 }}
-body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:var(--lh);min-height:100vh;padding-top:44px}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;line-height:var(--lh);min-height:100vh;padding-top:44px}
 
 /* toolbar */
 #toolbar{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--hbg);border-bottom:1px solid var(--bdr)}
@@ -40,7 +41,7 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 #file-menu.on{display:block}
 .fm-head{display:flex;align-items:center;gap:8px;padding:6px 10px 9px;border-bottom:1px solid var(--bdr);margin-bottom:3px}
 .fm-title{font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
-#search-box{width:220px;padding:5px 12px 5px 30px;border:1px solid var(--bdr);border-radius:20px;background:var(--bg);color:var(--fg);font:inherit;font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
+#search-box{width:220px;padding:5px 12px 5px 30px;border:1px solid var(--bdr);border-radius:20px;background:var(--bg);color:var(--fg);font:inherit;font-size:16px;outline:none;transition:border-color .15s,box-shadow .15s}
 #search-box:focus{border-color:var(--acc);box-shadow:0 0 0 2px var(--ring)}
 #search-box::placeholder{color:var(--muted)}
 #search-wrap::before{content:'⌕';position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
@@ -101,7 +102,7 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .fn-key{font-size:.73em;color:var(--acc);font-weight:600;background:var(--cbg);border:1px solid var(--bdr);border-radius:7px;padding:3px 8px;user-select:none;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;align-self:start;margin-top:1px;line-height:1.6}
 .fn-key:hover{background:var(--ring);border-color:var(--acc)}
 .fn-key.hi{background:var(--ring);border-color:var(--acc)}
-.fn-content{outline:none;font:inherit;font-size:.88em;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
+.fn-content{outline:none;font:inherit;font-size:16px;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
 .nc-italic .node-content{font-style:italic}
 .nc-underline .node-content{text-decoration:underline}
 
