@@ -454,11 +454,47 @@ function render() {
 
   if (focusedId) {
     const te = document.createElement('div');
-    te.className = 'zoom-title'; te.contentEditable = 'true'; te.textContent = vp.text;
-    te.addEventListener('input', () => { vp.text = te.textContent; markDirty(); renderBreadcrumb(); });
+    te.className = 'zoom-title';
+    te.contentEditable = 'true';
+    te.dataset.id = vp.id;
+    te.innerHTML = mdToHtml(vp.text); // display mode: rendered HTML
+
+    const enterZoomEdit = () => {
+      if (te.dataset.editing) return;
+      te.dataset.editing = '1';
+      te.textContent = vp.text;
+      clearTimeout(fnHideTimer);
+      const refs = getFnRefs(vp.text);
+      if (refs.length) { fnLocked = true; showFnPanel(vp.id); } else hideFnPanel();
+    };
+    const exitZoomEdit = () => {
+      vp.text = te.textContent;
+      delete te.dataset.editing;
+      te.innerHTML = mdToHtml(vp.text);
+      markDirty();
+      renderBreadcrumb();
+      fnLocked = false;
+      scheduleFnHide();
+    };
+
+    te.addEventListener('mousedown', e => {
+      if (te.dataset.editing) return;
+      e.preventDefault();
+      enterZoomEdit();
+      te.focus();
+      const r = caretFromPoint(e.clientX, e.clientY, te);
+      if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+    });
+    te.addEventListener('focus', () => { if (!te.dataset.editing) enterZoomEdit(); });
+    te.addEventListener('blur',  () => { if (te.dataset.editing) exitZoomEdit(); });
+    te.addEventListener('input', () => {
+      if (!te.dataset.editing) return;
+      vp.text = te.textContent; markDirty(); renderBreadcrumb();
+      updateFnPanel(vp);
+    });
     te.addEventListener('keydown', e => {
-      if (e.key==='Enter') { e.preventDefault(); if(vp.children.length) focusNode(vp.children[0].id); }
-      if (e.key==='Escape') { e.preventDefault(); zoomOut(); }
+      if (e.key === 'Enter') { e.preventDefault(); if (vp.children.length) focusNode(vp.children[0].id); }
+      if (e.key === 'Escape') { e.preventDefault(); zoomOut(); }
     });
     container.appendChild(te);
   }
