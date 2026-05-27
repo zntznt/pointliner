@@ -86,6 +86,19 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .node-content a:hover{text-decoration:underline}
 .hashtag{color:var(--acc);opacity:.65;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .hashtag:hover{opacity:1;text-decoration-style:solid}
+/* footnotes */
+.fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
+.fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
+#fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
+#fn-panel.on{transform:translateY(0)}
+.fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:9px 20px 7px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+#fn-list{overflow-y:auto;padding:6px 16px 10px;flex:1}
+.fn-item{display:flex;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:6px;transition:background .1s;margin:1px 0}
+.fn-item.hi{background:var(--ring)}
+.fn-key{font-size:.78em;color:var(--acc);font-weight:600;flex-shrink:0;padding-top:3px;min-width:34px;user-select:none}
+.fn-content{flex:1;outline:none;font:inherit;font-size:.88em;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto}
+.fn-return{flex-shrink:0;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 5px;border-radius:4px;user-select:none;align-self:center;transition:color .1s,background .1s;line-height:1}
+.fn-return:hover{color:var(--acc);background:var(--ring)}
 .nc-italic .node-content{font-style:italic}
 .nc-underline .node-content{text-decoration:underline}
 
@@ -219,6 +232,11 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 <div id="slash-menu"></div>
 <!-- drag indicator -->
 <div id="drop-line"></div>
+<!-- footnote panel -->
+<div id="fn-panel">
+  <div class="fn-panel-hd">Footnotes</div>
+  <div id="fn-list"></div>
+</div>
 
 <span id="sc-toggle">?</span>
 <div class="sc-panel" id="sc-panel">
@@ -244,11 +262,11 @@ let fileHandle = null;
 let fileName  = 'unsaved';
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false };
+  return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false };
+  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -285,6 +303,7 @@ function mdToHtml(raw, isCode) {
   s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g,'<em>$1</em>');
   s = s.replace(/~~([\s\S]*?)~~/g,'<del>$1</del>');
   s = s.replace(/\+\+([\s\S]*?)\+\+/g,'<u>$1</u>');
+  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => `<sup class="fn-ref" data-key="${k}">[${k}]</sup>`);
   s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}">#${t}</a>`);
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>codes[+i]);
   return s;
@@ -294,6 +313,7 @@ function stripMd(text) {
   return (text||'')
     .replace(/`([^`\n]+)`/g,'$1')
     .replace(/\[([^\]]*)\]\([^)]+\)/g,'$1')
+    .replace(/\[\^[^\]]+\]/g,'')
     .replace(/\*\*\*([\s\S]*?)\*\*\*/g,'$1')
     .replace(/\*\*([\s\S]*?)\*\*/g,'$1')
     .replace(/\*([\s\S]*?)\*/g,'$1')
@@ -313,6 +333,7 @@ function toOpml(r) {
       n.underline ? `_underline="true"` : '',
       n.checked   ? `_checked="true"` : '',
       n.collapsed ? `_collapsed="true"` : '',
+      n.footnotes?.length ? `_footnotes="${ex(JSON.stringify(n.footnotes))}"` : '',
       `_id="${n.id}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -342,6 +363,7 @@ function fromOpml(xml) {
       underline: el.getAttribute('_underline') === 'true',
       checked: el.getAttribute('_checked') === 'true',
       collapsed: el.getAttribute('_collapsed') === 'true',
+      footnotes: (() => { try { return JSON.parse(el.getAttribute('_footnotes') || '[]'); } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
   }
@@ -652,12 +674,20 @@ function attachContentEvents(content, node) {
     const r = caretFromPoint(e.clientX, e.clientY, content);
     if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
   });
-  content.addEventListener('focus', () => { if (!content.dataset.editing) enterEdit(content, node); });
-  content.addEventListener('blur', () => { if (content.dataset.editing) exitEdit(content, node); });
+  content.addEventListener('focus', () => {
+    if (!content.dataset.editing) enterEdit(content, node);
+    clearTimeout(fnHideTimer);
+    if (getFnRefs(node.text).length) showFnPanel(node.id); else hideFnPanel();
+  });
+  content.addEventListener('blur', () => {
+    if (content.dataset.editing) exitEdit(content, node);
+    scheduleFnHide();
+  });
   content.addEventListener('input', () => {
     if (!content.dataset.editing) return;
     node.text = content.textContent; markDirty();
     checkSlash(content, node.id); updateSelToolbar();
+    updateFnPanel(node);
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
   content.addEventListener('paste', e => handlePaste(e, node, content));
@@ -1410,6 +1440,174 @@ document.getElementById('outline').addEventListener('click', e => {
   sb.value = q;
   document.getElementById('search-clear').classList.add('on');
   render();
+});
+
+// ─── footnotes ────────────────────────────────────────────────────────────────
+
+function getFnRefs(text) {
+  const refs = [], seen = new Set();
+  const re = /\[\^([^\]]+)\]/g; let m;
+  while ((m = re.exec(text || '')) !== null) {
+    if (!seen.has(m[1])) { seen.add(m[1]); refs.push(m[1]); }
+  }
+  return refs;
+}
+
+function syncFnEntries(node) {
+  if (!node.footnotes) node.footnotes = [];
+  getFnRefs(node.text).forEach(key => {
+    if (!node.footnotes.find(f => f.key === key)) node.footnotes.push({ key, text: '' });
+  });
+}
+
+let fnNodeId = null, fnHideTimer = null;
+
+function scheduleFnHide() {
+  clearTimeout(fnHideTimer);
+  fnHideTimer = setTimeout(() => {
+    const panel = document.getElementById('fn-panel');
+    if (panel?.contains(document.activeElement)) return;
+    if (document.activeElement?.classList.contains('node-content')) return;
+    hideFnPanel();
+  }, 120);
+}
+
+function showFnPanel(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return hideFnPanel();
+  const refs = getFnRefs(node.text);
+  if (!refs.length) return hideFnPanel();
+  syncFnEntries(node);
+  fnNodeId = nodeId;
+  renderFnPanel(node, refs);
+  document.getElementById('fn-panel').classList.add('on');
+}
+
+function hideFnPanel() {
+  fnNodeId = null;
+  document.getElementById('fn-panel').classList.remove('on');
+}
+
+function updateFnPanel(node) {
+  if (fnNodeId !== node.id) {
+    // new node — show if it has refs, otherwise hide
+    const refs = getFnRefs(node.text);
+    if (refs.length) { syncFnEntries(node); showFnPanel(node.id); }
+    else hideFnPanel();
+    return;
+  }
+  const refs = getFnRefs(node.text);
+  if (!refs.length) { hideFnPanel(); return; }
+  syncFnEntries(node);
+  // only re-render if the key list changed (avoid disrupting edits in panel)
+  const inner = document.getElementById('fn-list');
+  const existing = Array.from(inner.querySelectorAll('.fn-item')).map(el => el.dataset.key);
+  if (refs.join(',') !== existing.join(',')) renderFnPanel(node, refs);
+}
+
+function renderFnPanel(node, refs) {
+  const inner = document.getElementById('fn-list');
+  inner.innerHTML = '';
+  refs.forEach(key => {
+    let entry = node.footnotes.find(f => f.key === key);
+    if (!entry) { entry = { key, text: '' }; node.footnotes.push(entry); }
+
+    const item = document.createElement('div');
+    item.className = 'fn-item';
+    item.dataset.key = key;
+
+    const keyEl = document.createElement('div');
+    keyEl.className = 'fn-key';
+    keyEl.textContent = `[^${key}]`;
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'fn-content';
+    contentEl.contentEditable = 'true';
+    contentEl.spellcheck = false;
+    contentEl.innerText = entry.text;
+    contentEl.addEventListener('focus', () => clearTimeout(fnHideTimer));
+    contentEl.addEventListener('blur', () => scheduleFnHide());
+    contentEl.addEventListener('input', () => {
+      entry.text = contentEl.innerText.replace(/\n$/, '');
+      markDirty();
+    });
+    contentEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault(); e.stopPropagation();
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const br = document.createElement('br');
+        range.insertNode(br);
+        range.setStartAfter(br); range.collapse(true);
+        sel.removeAllRanges(); sel.addRange(range);
+      }
+      if (e.key === 'Escape') { e.stopPropagation(); returnToFnRef(key); }
+    });
+
+    const retEl = document.createElement('div');
+    retEl.className = 'fn-return';
+    retEl.title = 'Return to reference';
+    retEl.textContent = '↩';
+    retEl.addEventListener('mouseenter', () => {
+      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.add('hi'));
+    });
+    retEl.addEventListener('mouseleave', () => {
+      document.querySelectorAll(`.fn-ref[data-key="${key}"]`).forEach(el => el.classList.remove('hi'));
+    });
+    retEl.addEventListener('mousedown', e => e.preventDefault()); // keep focus in panel
+    retEl.addEventListener('click', () => returnToFnRef(key));
+
+    item.append(keyEl, contentEl, retEl);
+    inner.appendChild(item);
+  });
+}
+
+function returnToFnRef(key) {
+  if (!fnNodeId) return;
+  const contentEl = document.querySelector(`.node[data-id="${fnNodeId}"] .node-content`);
+  if (!contentEl) return;
+  contentEl.focus();
+  setTimeout(() => {
+    const target = `[^${key}]`;
+    const text = contentEl.textContent;
+    const idx = text.indexOf(target);
+    if (idx < 0) return;
+    const textNode = contentEl.firstChild;
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return;
+    try {
+      const range = document.createRange();
+      range.setStart(textNode, idx);
+      range.setEnd(textNode, idx + target.length);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+    } catch(_) {}
+  }, 0);
+}
+
+// hover [^key] in display mode → highlight panel item
+document.getElementById('outline').addEventListener('mouseover', e => {
+  const ref = e.target.closest('.fn-ref');
+  document.querySelectorAll('#fn-list .fn-item.hi').forEach(el => el.classList.remove('hi'));
+  if (ref) {
+    const key = ref.dataset.key;
+    document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"]`).forEach(el => {
+      el.classList.add('hi');
+      el.scrollIntoView({ block: 'nearest' });
+    });
+    // show panel if not already visible
+    if (!document.getElementById('fn-panel').classList.contains('on')) {
+      const nodeEl = ref.closest('.node[data-id]');
+      if (nodeEl) showFnPanel(nodeEl.dataset.id);
+    }
+  }
+});
+document.getElementById('outline').addEventListener('mouseout', e => {
+  const ref = e.target.closest('.fn-ref');
+  if (ref && !e.relatedTarget?.closest('.fn-ref')) {
+    document.querySelectorAll('#fn-list .fn-item.hi').forEach(el => el.classList.remove('hi'));
+  }
 });
 
 // ─── boot ─────────────────────────────────────────────────────────────────────
