@@ -17,10 +17,10 @@
   --cb:#555;--hbg:#111;--bdr:#2a2a2a;--acc:#5ba3e8;--ring:rgba(91,163,232,.25);
   --cbg:#252527;--del:#666;--qbdr:rgba(91,163,232,.5);
 }}
-body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:var(--lh);min-height:100vh}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:var(--lh);min-height:100vh;padding-top:44px}
 
 /* toolbar */
-#toolbar{position:sticky;top:0;z-index:10;background:var(--hbg);border-bottom:1px solid var(--bdr)}
+#toolbar{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--hbg);border-bottom:1px solid var(--bdr)}
 #toolbar-row{padding:0 14px;height:44px;display:flex;align-items:center;gap:7px;position:relative;user-select:none;caret-color:transparent}
 #toolbar-row #search-wrap{caret-color:auto}
 .logo{font-weight:700;font-size:15px;letter-spacing:-.3px;color:var(--fg);flex-shrink:0;cursor:pointer;user-select:none}
@@ -1770,6 +1770,21 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
 });
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue=''; } });
+
+// keep body padding in sync with toolbar height (toolbar is fixed; breadcrumb changes its height)
+new ResizeObserver(() => {
+  document.body.style.paddingTop = document.getElementById('toolbar').offsetHeight + 'px';
+}).observe(document.getElementById('toolbar'));
+
+// keep footnote panel above the software keyboard on mobile
+if (window.visualViewport) {
+  const syncFnPanelBottom = () => {
+    const kbH = Math.max(0, window.innerHeight - window.visualViewport.height);
+    document.getElementById('fn-panel').style.bottom = kbH + 'px';
+  };
+  window.visualViewport.addEventListener('resize', syncFnPanelBottom);
+  window.visualViewport.addEventListener('scroll', syncFnPanelBottom);
+}
 
 render();
 </script>
