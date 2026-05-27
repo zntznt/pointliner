@@ -93,13 +93,11 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .nt-code>.node-row>.node-content{font-family:monospace;font-size:.88em;background:var(--cbg);padding:3px 10px;border-radius:5px;white-space:pre;overflow-x:auto}
 .nt-code>.node-row>.bullet .bullet-dot{opacity:.2}
 /* divider */
-.nt-divider>.node-row{padding:8px 0;pointer-events:none}
+.nt-divider>.node-row{padding:8px 0;cursor:default;user-select:none}
 .nt-divider>.node-row::after{content:'';display:block;height:1px;background:var(--bdr);flex:1;align-self:center;margin-left:8px}
 .nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.node-content{display:none}
-.nt-divider>.node-row>.bullet{pointer-events:auto;cursor:pointer}
+.nt-divider>.node-row>.bullet{cursor:pointer}
 .nt-divider>.node-row>.bullet .bullet-dot{opacity:.4}
-/* divider line — gap so it doesn't butt against bullet */
-.nt-divider>.node-row::after{margin-left:8px}
 /* ol number — sibling in row, not inside bullet */
 .ol-num{color:var(--muted);font-size:.88em;padding-right:5px;flex-shrink:0;user-select:none;line-height:var(--lh)}
 /* todo checked */
@@ -162,6 +160,14 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .sc-panel kbd{font-family:monospace;background:var(--bdr);border-radius:3px;padding:0 4px;font-size:11px;color:var(--fg)}
 #sc-toggle{position:fixed;bottom:16px;right:16px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--bdr);background:var(--hbg);border-radius:5px;padding:4px 8px;z-index:99}
 #sc-toggle:hover{color:var(--fg)}
+
+/* drag and drop */
+.dragging{opacity:.3}
+.drop-child-hi>.node-row>.node-content{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+#drop-line{position:fixed;height:2px;background:var(--acc);border-radius:2px;pointer-events:none;z-index:800;display:none}
+#drop-line::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--acc)}
+.bullet[draggable=true]{cursor:grab}
+.bullet[draggable=true]:active{cursor:grabbing}
 </style>
 </head>
 <body>
@@ -192,6 +198,8 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 <div id="bpop"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
+<!-- drag indicator -->
+<div id="drop-line"></div>
 
 <span id="sc-toggle">?</span>
 <div class="sc-panel" id="sc-panel">
@@ -507,9 +515,15 @@ function renderNode(node, container, depth, parent, opts = {}) {
   }
 
   if (!opts.searchCtx) {
-    bullet.addEventListener('click', e => { if (!e.target.classList.contains('node-checkbox')) zoomInto(node.id); });
+    bullet.addEventListener('click', e => {
+      if (!e.target.classList.contains('node-checkbox') && node.type !== 'divider') zoomInto(node.id);
+    });
     bullet.addEventListener('mouseenter', () => showBulletPopup(node.id, bullet));
     bullet.addEventListener('mouseleave', () => scheduleBpopHide());
+    if (node.type === 'divider') {
+      row.addEventListener('mousedown', e => { if (!e.target.closest('.bullet')) e.preventDefault(); });
+    }
+    attachDragHandlers(bullet, row, node);
   }
 
   // content
@@ -1139,6 +1153,118 @@ function focusNode(id) {
     r.selectNodeContents(el); r.collapse(false);
     const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
   });
+}
+
+// ─── drag and drop ───────────────────────────────────────────────────────────
+
+let dragId = null;
+let dragDropInfo = null;
+const dropLine = document.getElementById('drop-line');
+
+function isDescOf(ancId, nodeId) {
+  const anc = nodeById(ancId);
+  if (!anc) return false;
+  function walk(n) { for (const c of n.children) { if (c.id === nodeId || walk(c)) return true; } return false; }
+  return walk(anc);
+}
+
+function clearDropVisuals() {
+  document.querySelectorAll('.drop-child-hi').forEach(el => el.classList.remove('drop-child-hi'));
+  dropLine.style.display = 'none';
+}
+
+function clearAllDrag() {
+  clearDropVisuals();
+  document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+}
+
+function attachDragHandlers(bullet, row, node) {
+  bullet.draggable = true;
+
+  bullet.addEventListener('dragstart', e => {
+    dragId = node.id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', node.id);
+    // Custom ghost image showing node text
+    const ghost = document.createElement('div');
+    ghost.textContent = node.text || '…';
+    ghost.style.cssText = 'position:fixed;top:-999px;padding:4px 12px;background:var(--hbg);border:1px solid var(--bdr);border-radius:6px;font-size:14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.15)';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 16, 16);
+    setTimeout(() => ghost.remove(), 0);
+    requestAnimationFrame(() => {
+      document.querySelector(`.node[data-id="${node.id}"]`)?.classList.add('dragging');
+    });
+  });
+
+  bullet.addEventListener('dragend', () => {
+    dragId = null;
+    dragDropInfo = null;
+    clearAllDrag();
+  });
+
+  row.addEventListener('dragover', e => {
+    if (!dragId || dragId === node.id || isDescOf(dragId, node.id)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    const rr = row.getBoundingClientRect();
+    const isTop = e.clientY < rr.top + rr.height * 0.45;
+    const contentEl = row.querySelector('.node-content');
+    const cLeft = contentEl ? contentEl.getBoundingClientRect().left : rr.left + 36;
+    const isChild = !isTop && e.clientX > cLeft;
+
+    const position = isTop ? 'before' : isChild ? 'child' : 'after';
+    dragDropInfo = { targetId: node.id, position };
+
+    clearDropVisuals();
+    if (position === 'child') {
+      document.querySelector(`.node[data-id="${node.id}"]`)?.classList.add('drop-child-hi');
+    } else {
+      const y = (position === 'before' ? rr.top : rr.bottom) - 1;
+      dropLine.style.display = 'block';
+      dropLine.style.top    = y + 'px';
+      dropLine.style.left   = cLeft + 'px';
+      dropLine.style.width  = Math.max(0, rr.right - cLeft - 8) + 'px';
+    }
+  });
+
+  row.addEventListener('drop', e => {
+    e.preventDefault();
+    if (!dragId || !dragDropInfo) return;
+    const { targetId, position } = dragDropInfo;
+    const fromId = dragId;
+    dragId = null; dragDropInfo = null;
+    clearAllDrag();
+    performDrop(fromId, targetId, position);
+  });
+}
+
+function performDrop(fromId, targetId, position) {
+  if (fromId === targetId || isDescOf(fromId, targetId)) return;
+  const fromParent = parentOf(fromId);
+  const fromNode   = nodeById(fromId);
+  if (!fromParent || !fromNode) return;
+
+  const fromIdx = fromParent.children.findIndex(c => c.id === fromId);
+  fromParent.children.splice(fromIdx, 1);
+
+  if (position === 'child') {
+    const target = nodeById(targetId);
+    if (!target) { fromParent.children.splice(fromIdx, 0, fromNode); return; }
+    if (target.collapsed) target.collapsed = false;
+    target.children.push(fromNode);
+  } else {
+    const tParent = parentOf(targetId);
+    if (!tParent) { fromParent.children.splice(fromIdx, 0, fromNode); return; }
+    let ti = tParent.children.findIndex(c => c.id === targetId);
+    if (ti === -1) { fromParent.children.splice(fromIdx, 0, fromNode); return; }
+    if (position === 'after') ti++;
+    tParent.children.splice(ti, 0, fromNode);
+  }
+
+  markDirty();
+  render();
 }
 
 // ─── dirty ────────────────────────────────────────────────────────────────────
