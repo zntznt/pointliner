@@ -83,19 +83,21 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .nt-h1>.node-row>.node-content{font-size:1.55em;font-weight:800;line-height:1.25;padding-top:3px}
 .nt-h2>.node-row>.node-content{font-size:1.22em;font-weight:700;line-height:1.3}
 .nt-h3>.node-row>.node-content{font-size:1.06em;font-weight:600}
-.nt-h1>.node-row>.bullet-dot,.nt-h2>.node-row>.bullet-dot,.nt-h3>.node-row>.bullet-dot,
-.nt-p>.node-row>.bullet-dot{opacity:.25}
+.nt-h1>.node-row>.bullet .bullet-dot,.nt-h2>.node-row>.bullet .bullet-dot,.nt-h3>.node-row>.bullet .bullet-dot,
+.nt-p>.node-row>.bullet .bullet-dot{opacity:.25}
 /* quote */
 .nt-quote>.node-row{border-left:3px solid var(--qbdr);padding-left:10px;margin-left:4px}
 .nt-quote>.node-row>.node-content{color:var(--muted);font-style:italic}
-.nt-quote>.node-row>.bullet-dot{display:none}
+.nt-quote>.node-row>.bullet .bullet-dot{display:none}
 /* code block */
 .nt-code>.node-row>.node-content{font-family:monospace;font-size:.88em;background:var(--cbg);padding:3px 10px;border-radius:5px;white-space:pre;overflow-x:auto}
-.nt-code>.node-row>.bullet-dot{opacity:.2}
+.nt-code>.node-row>.bullet .bullet-dot{opacity:.2}
 /* divider */
-.nt-divider>.node-row{pointer-events:none;padding:8px 0}
-.nt-divider>.node-row::after{content:'';display:block;height:1px;background:var(--bdr);flex:1}
-.nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.bullet,.nt-divider>.node-row>.node-content{display:none}
+.nt-divider>.node-row{padding:8px 0;cursor:default}
+.nt-divider>.node-row::after{content:'';display:block;height:1px;background:var(--bdr);flex:1;align-self:center}
+.nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.node-content{display:none}
+.nt-divider>.node-row>.bullet{cursor:pointer}
+.nt-divider>.node-row>.bullet .bullet-dot{opacity:.4}
 /* ol number */
 .ol-num{color:var(--muted);font-size:.88em;min-width:22px;text-align:right;padding-right:4px;flex-shrink:0;user-select:none}
 /* todo checked */
@@ -327,17 +329,17 @@ const BLOCK_CMDS = [
   { id:'quote',   icon:'❝',    label:'Quote',      desc:'Blockquote',       section:'Turn into' },
   { id:'code',    icon:'</>',  label:'Code block', desc:'Code block',       section:'Turn into' },
   { id:'divider', icon:'—',    label:'Divider',    desc:'Horizontal rule',  section:'Turn into' },
-  { id:'italic',  icon:'I',    label:'Italic style',    desc:'Toggle italic on node',    section:'Style' },
-  { id:'underline', icon:'U',  label:'Underline style', desc:'Toggle underline on node', section:'Style' },
+  { id:'style-italic',    icon:'I',  label:'Italic style',    desc:'Toggle italic on node',    section:'Style' },
+  { id:'style-underline', icon:'U',  label:'Underline style', desc:'Toggle underline on node', section:'Style' },
 ];
 
 const INLINE_CMDS = [
-  { id:'bold',    icon:'B',   label:'Bold',          desc:'**bold**' },
-  { id:'italic',  icon:'I',   label:'Italic',        desc:'*italic*' },
-  { id:'uline',   icon:'U',   label:'Underline',     desc:'++underline++' },
-  { id:'code',    icon:'`',   label:'Inline code',   desc:'`code`' },
-  { id:'strike',  icon:'S',   label:'Strikethrough', desc:'~~strike~~' },
-  { id:'link',    icon:'⌘',   label:'Link',          desc:'[text](url)' },
+  { id:'bold',     icon:'B',   label:'Bold',          desc:'**bold**' },
+  { id:'italic',   icon:'I',   label:'Italic',        desc:'*italic*' },
+  { id:'uline',    icon:'U',   label:'Underline',     desc:'++underline++' },
+  { id:'inlcode',  icon:'`',   label:'Inline code',   desc:'`code`' },
+  { id:'strike',   icon:'S',   label:'Strikethrough', desc:'~~strike~~' },
+  { id:'link',     icon:'⌘',   label:'Link',          desc:'[text](url)' },
 ];
 
 // build a unified cmd-item element
@@ -447,14 +449,6 @@ function renderNode(node, container, depth, parent, opts = {}) {
     opts.searchCtx  ? 'search-ctx' : '',
   ].filter(Boolean).join(' ');
   div.dataset.id = node.id;
-
-  if (node.type === 'divider') {
-    const row = document.createElement('div');
-    row.className = 'node-row';
-    div.appendChild(row);
-    container.appendChild(div);
-    return div;
-  }
 
   const row = document.createElement('div');
   row.className = 'node-row';
@@ -741,7 +735,7 @@ function applyInlineFormat(fmt) {
   const range = sel.getRangeAt(0);
   const selected = range.toString();
   if (!selected) return;
-  const map = { bold:`**${selected}**`, italic:`*${selected}*`, uline:`++${selected}++`, code:`\`${selected}\``, strike:`~~${selected}~~` };
+  const map = { bold:`**${selected}**`, italic:`*${selected}*`, uline:`++${selected}++`, inlcode:`\`${selected}\``, strike:`~~${selected}~~` };
   let wrapped = map[fmt];
   if (fmt === 'link') {
     const url = prompt('URL (https://…):');
@@ -786,12 +780,12 @@ function showBulletPopup(nodeId, bulletEl) {
   // style toggles row
   const styleRow = document.createElement('div');
   styleRow.className = 'bpop-types';
-  [{ id:'italic', icon:'I', label:'Italic style' }, { id:'underline', icon:'U', label:'Underline style' }].forEach(s => {
+  [{ id:'style-italic', icon:'I', label:'Italic style', flag:'italic' }, { id:'style-underline', icon:'U', label:'Underline style', flag:'underline' }].forEach(s => {
     const btn = document.createElement('div');
-    btn.className = 'bpop-type' + ((s.id==='italic'&&node.italic)||(s.id==='underline'&&node.underline) ? ' cur' : '');
-    btn.style.fontStyle = s.id==='italic' ? 'italic' : 'normal';
-    btn.style.textDecoration = s.id==='underline' ? 'underline' : 'none';
-    btn.textContent = btn.style.fontFamily = s.icon;
+    btn.className = 'bpop-type' + (node[s.flag] ? ' cur' : '');
+    btn.style.fontStyle = s.flag==='italic' ? 'italic' : 'normal';
+    btn.style.textDecoration = s.flag==='underline' ? 'underline' : 'none';
+    btn.textContent = s.icon;
     btn.title = s.label;
     btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(s.id, nodeId); hideBpop(); });
     styleRow.appendChild(btn);
@@ -922,8 +916,8 @@ function applyBlockCmd(id, nodeId, node, content) {
   node = node || nodeById(nodeId);
   if (!node) return;
   // inline formatting
-  if (['bold','italic','uline','code','strike'].includes(id)) {
-    const map = { bold:'**', italic:'*', uline:'++', code:'`', strike:'~~' };
+  if (['bold','italic','uline','inlcode','strike'].includes(id)) {
+    const map = { bold:'**', italic:'*', uline:'++', inlcode:'`', strike:'~~' };
     const m = map[id];
     node.text = `${m}${node.text}${m}`;
     if (content) content.textContent = node.text;
@@ -938,8 +932,8 @@ function applyBlockCmd(id, nodeId, node, content) {
     return;
   }
   // style toggles
-  if (id === 'italic')    { node.italic    = !node.italic;    markDirty(); rerenderNode(nodeId); return; }
-  if (id === 'underline') { node.underline = !node.underline; markDirty(); rerenderNode(nodeId); return; }
+  if (id === 'style-italic')    { node.italic    = !node.italic;    markDirty(); rerenderNode(nodeId); return; }
+  if (id === 'style-underline') { node.underline = !node.underline; markDirty(); rerenderNode(nodeId); return; }
   // block type
   node.type = id;
   if (id !== 'todo') node.checked = false;
