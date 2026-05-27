@@ -22,16 +22,24 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px
 /* toolbar */
 #toolbar{position:sticky;top:0;z-index:10;background:var(--hbg);border-bottom:1px solid var(--bdr)}
 #toolbar-row{padding:0 14px;height:44px;display:flex;align-items:center;gap:7px;position:relative}
-.logo{font-weight:700;font-size:15px;letter-spacing:-.3px;color:var(--fg);flex-shrink:0}
+.logo{font-weight:700;font-size:15px;letter-spacing:-.3px;color:var(--fg);flex-shrink:0;cursor:pointer;user-select:none}
+.logo:hover{opacity:.75}
+.logo-arr{font-size:9px;color:var(--muted);transition:transform .15s;display:inline-block;vertical-align:middle;margin-left:2px}
+.logo-arr.open{transform:rotate(180deg)}
 .spacer{flex:1}
-.file-name{font-size:12px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
 .dirty-dot{width:7px;height:7px;border-radius:50%;background:var(--acc);display:none;flex-shrink:0}
 .dirty .dirty-dot{display:block}
 button{cursor:pointer;border:1px solid var(--bdr);background:transparent;color:var(--fg);font-family:inherit;font-size:12px;padding:3px 9px;border-radius:5px;transition:background .1s;white-space:nowrap;flex-shrink:0}
 button:hover{background:var(--bdr)}
 button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
-/* search — absolutely centered */
-#search-wrap{position:absolute;left:50%;transform:translateX(-50%)}
+/* search — absolutely centered, pointer-events guard keeps it from blocking toolbar sides */
+#search-wrap{position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}
+#search-wrap>*{pointer-events:auto}
+/* file menu */
+#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;min-width:220px;box-shadow:0 8px 30px rgba(0,0,0,.12)}
+#file-menu.on{display:block}
+.fm-head{display:flex;align-items:center;gap:8px;padding:6px 10px 9px;border-bottom:1px solid var(--bdr);margin-bottom:3px}
+.fm-title{font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
 #search-box{width:220px;padding:5px 12px 5px 30px;border:1px solid var(--bdr);border-radius:20px;background:var(--bg);color:var(--fg);font:inherit;font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
 #search-box:focus{border-color:var(--acc);box-shadow:0 0 0 2px var(--ring)}
 #search-box::placeholder{color:var(--muted)}
@@ -173,22 +181,29 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 <body>
 <div id="toolbar">
   <div id="toolbar-row">
-    <span class="logo">Pointliner</span>
+    <span class="logo" id="logo-btn">Pointliner <span class="logo-arr" id="logo-arr">▾</span></span>
     <span class="dirty-dot" id="dirty-dot"></span>
-    <span class="file-name" id="file-name">unsaved</span>
     <span class="spacer"></span>
     <div id="search-wrap">
       <input id="search-box" type="text" placeholder="Search…" autocomplete="off" spellcheck="false">
       <button id="search-clear" title="Clear search">✕</button>
     </div>
     <span class="spacer"></span>
-    <button id="btn-done">Show done</button>
-    <button id="btn-new">New</button>
-    <button id="btn-open">Open</button>
-    <button id="btn-save">Save</button>
-    <button id="btn-save-as">Save As</button>
+    <button id="btn-done" title="Show completed">✓</button>
   </div>
   <div id="breadcrumb-row"></div>
+</div>
+<div id="file-menu">
+  <div class="fm-head">
+    <div class="cmd-icon" style="font-size:11px">◻</div>
+    <span class="fm-title" id="file-name">unsaved</span>
+    <span class="dirty-dot" id="fm-dirty-dot"></span>
+  </div>
+  <div class="cmd-item" id="btn-new"><div class="cmd-icon">+</div><div class="cmd-info"><span class="cmd-label">New</span><span class="cmd-desc">Start a fresh outline</span></div></div>
+  <div class="cmd-item" id="btn-open"><div class="cmd-icon">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Load an OPML file</span></div></div>
+  <div class="cmd-sep"></div>
+  <div class="cmd-item" id="btn-save"><div class="cmd-icon">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">⌘S</span></div></div>
+  <div class="cmd-item" id="btn-save-as"><div class="cmd-icon">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Export to a new file</span></div></div>
 </div>
 <div id="outline"></div>
 
@@ -1275,8 +1290,16 @@ function performDrop(fromId, targetId, position) {
 
 // ─── dirty ────────────────────────────────────────────────────────────────────
 
-function markDirty() { dirty=true; document.getElementById('toolbar-row').classList.add('dirty'); }
-function markClean() { dirty=false; document.getElementById('toolbar-row').classList.remove('dirty'); }
+function markDirty() {
+  dirty = true;
+  document.getElementById('toolbar-row').classList.add('dirty');
+  document.getElementById('fm-dirty-dot').style.display = 'block';
+}
+function markClean() {
+  dirty = false;
+  document.getElementById('toolbar-row').classList.remove('dirty');
+  document.getElementById('fm-dirty-dot').style.display = 'none';
+}
 
 // ─── file I/O ─────────────────────────────────────────────────────────────────
 
@@ -1371,14 +1394,39 @@ document.getElementById('search-box').addEventListener('keydown', e => {
 
 // ─── boot ─────────────────────────────────────────────────────────────────────
 
-document.getElementById('btn-new').addEventListener('click', newFile);
-document.getElementById('btn-open').addEventListener('click', openFile);
-document.getElementById('btn-save').addEventListener('click', saveFile);
-document.getElementById('btn-save-as').addEventListener('click', saveAsFile);
+// file menu
+const fileMenu  = document.getElementById('file-menu');
+const logoBtn   = document.getElementById('logo-btn');
+const logoArr   = document.getElementById('logo-arr');
+
+function openFileMenu() {
+  const rect = document.getElementById('toolbar-row').getBoundingClientRect();
+  fileMenu.style.top  = (rect.bottom + 4) + 'px';
+  fileMenu.style.left = (rect.left + 8) + 'px';
+  fileMenu.classList.add('on');
+  logoArr.classList.add('open');
+}
+function closeFileMenu() {
+  fileMenu.classList.remove('on');
+  logoArr.classList.remove('open');
+}
+
+logoBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  fileMenu.classList.contains('on') ? closeFileMenu() : openFileMenu();
+});
+fileMenu.addEventListener('click', e => e.stopPropagation());
+document.addEventListener('click', closeFileMenu);
+
+document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });
+document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
+document.getElementById('btn-save').addEventListener('click', () => { saveFile(); closeFileMenu(); });
+document.getElementById('btn-save-as').addEventListener('click', () => { saveAsFile(); closeFileMenu(); });
 document.getElementById('btn-done').addEventListener('click', () => {
   showDone = !showDone;
-  document.getElementById('btn-done').textContent = showDone ? 'Hide done' : 'Show done';
-  document.getElementById('btn-done').classList.toggle('active', showDone);
+  const btn = document.getElementById('btn-done');
+  btn.title = showDone ? 'Hide completed' : 'Show completed';
+  btn.classList.toggle('active', showDone);
   render();
 });
 document.getElementById('sc-toggle').addEventListener('click', () => document.getElementById('sc-panel').classList.toggle('on'));
