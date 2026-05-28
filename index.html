@@ -83,9 +83,6 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .node-content u{text-decoration:underline}
 .node-content code{font-family:monospace;font-size:.88em;background:var(--cbg);padding:1px 5px;border-radius:3px}
 .node-content del{text-decoration:line-through;color:var(--del)}
-.node-content mark{background:rgba(255,210,0,.35);color:inherit;border-radius:2px;padding:0 1px}
-.node-content sub{font-size:.75em;vertical-align:sub}
-.node-content sup:not(.fn-ref){font-size:.75em;vertical-align:super}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
 .hashtag{color:var(--acc);opacity:.65;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
@@ -261,8 +258,6 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <kbd>/</kbd> commands · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
   <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo<br>
   <kbd>#</kbd> h1 · <kbd>##</kbd> h2 · <kbd>###</kbd> h3 · <kbd>&gt;</kbd> quote · <kbd>```</kbd> code · <kbd>---</kbd> divider<br>
-  <kbd>- [ ]</kbd> todo · <kbd>- [x]</kbd> done · <kbd>1.</kbd> numbered · <kbd>- </kbd> bullet<br>
-  inline: <kbd>**b**</kbd> <kbd>*i*</kbd> <kbd>~~s~~</kbd> <kbd>==hi==</kbd> <kbd>^sup^</kbd> <kbd>~sub~</kbd><br>
 </div>
 
 <script>
@@ -317,19 +312,11 @@ function mdToHtml(raw, isCode) {
   const codes = [];
   s = s.replace(/`([^`\n]+)`/g, (_,c) => { codes.push(`<code>${c}</code>`); return `\x00${codes.length-1}\x00`; });
   s = s.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  // bold + italic (longest match first)
   s = s.replace(/\*\*\*((?!\s)[\s\S]*?(?<!\s))\*\*\*/g,'<strong><em>$1</em></strong>');
-  s = s.replace(/___((?!\s)[\s\S]*?(?<!\s))___/g,'<strong><em>$1</em></strong>');
   s = s.replace(/\*\*((?!\s)[\s\S]*?(?<!\s))\*\*/g,'<strong>$1</strong>');
-  s = s.replace(/__((?!\s)[\s\S]*?(?<!\s))__/g,'<strong>$1</strong>');
   s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g,'<em>$1</em>');
-  s = s.replace(/_((?!\s)[^_\n]*?(?<!\s))_/g,'<em>$1</em>');
-  // strikethrough, underline, highlight, sub, super
   s = s.replace(/~~([\s\S]*?)~~/g,'<del>$1</del>');
-  s = s.replace(/~([^~\n]+)~/g,'<sub>$1</sub>');
   s = s.replace(/\+\+([\s\S]*?)\+\+/g,'<u>$1</u>');
-  s = s.replace(/==([^=\n]+)==/g,'<mark>$1</mark>');
-  s = s.replace(/\^([^^]+)\^/g,'<sup>$1</sup>');
   s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => `<sup class="fn-ref" data-key="${k}">[${k}]</sup>`);
   s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}">#${t}</a>`);
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>codes[+i]);
@@ -341,13 +328,11 @@ function stripMd(text) {
     .replace(/`([^`\n]+)`/g,'$1')
     .replace(/\[([^\]]*)\]\([^)]+\)/g,'$1')
     .replace(/\[\^[^\]]+\]/g,'')
-    .replace(/\*\*\*([\s\S]*?)\*\*\*/g,'$1').replace(/___([\s\S]*?)___/g,'$1')
-    .replace(/\*\*([\s\S]*?)\*\*/g,'$1').replace(/__([\s\S]*?)__/g,'$1')
-    .replace(/\*([\s\S]*?)\*/g,'$1').replace(/_([\s\S]*?)_/g,'$1')
-    .replace(/~~([\s\S]*?)~~/g,'$1').replace(/~([^~]+)~/g,'$1')
-    .replace(/\+\+([\s\S]*?)\+\+/g,'$1')
-    .replace(/==([^=]+)==/g,'$1')
-    .replace(/\^([^^]+)\^/g,'$1');
+    .replace(/\*\*\*([\s\S]*?)\*\*\*/g,'$1')
+    .replace(/\*\*([\s\S]*?)\*\*/g,'$1')
+    .replace(/\*([\s\S]*?)\*/g,'$1')
+    .replace(/~~([\s\S]*?)~~/g,'$1')
+    .replace(/\+\+([\s\S]*?)\+\+/g,'$1');
 }
 
 // ─── OPML ─────────────────────────────────────────────────────────────────────
@@ -403,6 +388,20 @@ function fromOpml(xml) {
 }
 
 // ─── commands (unified) ───────────────────────────────────────────────────────
+
+const BLOCK_CMDS = [
+  { id:'ul',      icon:'•',    label:'Bullet',     desc:'Bullet point',     section:'Turn into' },
+  { id:'ol',      icon:'1.',   label:'Numbered',   desc:'Numbered list',    section:'Turn into' },
+  { id:'todo',    icon:'☐',    label:'To-do',      desc:'Checkbox item',    section:'Turn into' },
+  { id:'h1',      icon:'H1',   label:'Heading 1',  desc:'Large heading',    section:'Turn into' },
+  { id:'h2',      icon:'H2',   label:'Heading 2',  desc:'Medium heading',   section:'Turn into' },
+  { id:'h3',      icon:'H3',   label:'Heading 3',  desc:'Small heading',    section:'Turn into' },
+  { id:'quote',   icon:'❝',    label:'Quote',      desc:'Blockquote',       section:'Turn into' },
+  { id:'code',    icon:'</>',  label:'Code block', desc:'Code block',       section:'Turn into' },
+  { id:'divider', icon:'—',    label:'Divider',    desc:'Horizontal rule',  section:'Turn into' },
+  { id:'style-italic',    icon:'I',  label:'Italic style',    desc:'Toggle italic on node',    section:'Style' },
+  { id:'style-underline', icon:'U',  label:'Underline style', desc:'Toggle underline on node', section:'Style' },
+];
 
 const INLINE_CMDS = [
   { id:'bold',     icon:'B',   label:'Bold',          desc:'**bold**' },
@@ -960,8 +959,37 @@ bpop.addEventListener('mousedown', e => e.preventDefault());
 
 function showBulletPopup(nodeId, bulletEl) {
   clearTimeout(bpopTimer);
-  if (!nodeById(nodeId)) return;
+  const node = nodeById(nodeId);
+  if (!node) return;
   bpop.innerHTML = '';
+
+  // type switcher row
+  const typeRow = document.createElement('div');
+  typeRow.className = 'bpop-types';
+  BLOCK_CMDS.filter(c => c.section === 'Turn into').forEach(cmd => {
+    const btn = document.createElement('div');
+    btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
+    btn.textContent = cmd.icon;
+    btn.title = cmd.label;
+    btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
+    typeRow.appendChild(btn);
+  });
+  bpop.appendChild(typeRow);
+
+  // style toggles row
+  const styleRow = document.createElement('div');
+  styleRow.className = 'bpop-types';
+  [{ id:'style-italic', icon:'I', label:'Italic style', flag:'italic' }, { id:'style-underline', icon:'U', label:'Underline style', flag:'underline' }].forEach(s => {
+    const btn = document.createElement('div');
+    btn.className = 'bpop-type' + (node[s.flag] ? ' cur' : '');
+    btn.style.fontStyle = s.flag==='italic' ? 'italic' : 'normal';
+    btn.style.textDecoration = s.flag==='underline' ? 'underline' : 'none';
+    btn.textContent = s.icon;
+    btn.title = s.label;
+    btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(s.id, nodeId); hideBpop(); });
+    styleRow.appendChild(btn);
+  });
+  bpop.appendChild(styleRow);
 
   // actions
   const actions = [
@@ -1000,7 +1028,10 @@ let slashState = null;
 function isSlashMenuOpen() { return slashMenu.classList.contains('on'); }
 slashMenu.addEventListener('mousedown', e => e.preventDefault());
 
-const ALL_SLASH = INLINE_CMDS.map(c => ({ ...c, section: 'Format' }));
+const ALL_SLASH = [
+  ...BLOCK_CMDS,
+  ...INLINE_CMDS.map(c => ({ ...c, section: 'Format' })),
+];
 
 function checkSlash(content, nodeId) {
   const pos = getCaretOffset(content);
@@ -1082,26 +1113,12 @@ function slashApply() {
 function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
 
 const MD_BLOCK_TRIGGERS = [
-  // headings — longest first to avoid partial matches
-  { re: /^#{6} (.*)/, type: 'h3' },
-  { re: /^#{5} (.*)/, type: 'h3' },
-  { re: /^#{4} (.*)/, type: 'h3' },
   { re: /^### (.*)/, type: 'h3' },
   { re: /^## (.*)/,  type: 'h2' },
   { re: /^# (.*)/,   type: 'h1' },
-  // blockquote
-  { re: /^> (.*)/, type: 'quote' },
-  // fenced code block
-  { re: /^```(.*)/, type: 'code' },
-  // horizontal rule (3+ dashes)
-  { re: /^---+\s*$/, type: 'divider' },
-  // task list — checked before unchecked
-  { re: /^- \[[Xx]\] (.*)/, type: 'todo', checked: true },
-  { re: /^- \[ \] (.*)/,   type: 'todo', checked: false },
-  // ordered list
-  { re: /^\d+\. (.*)/, type: 'ol' },
-  // unordered list (- * +)
-  { re: /^[-*+] (.*)/, type: 'ul' },
+  { re: /^> (.*)/,   type: 'quote' },
+  { re: /^```(.*)/,  type: 'code' },
+  { re: /^---\s*$/,  type: 'divider' },
 ];
 
 function checkMdBlockPrefix(content, node) {
@@ -1110,33 +1127,27 @@ function checkMdBlockPrefix(content, node) {
     const m = text.match(pat.re);
     if (!m) continue;
     const newText = pat.type === 'divider' ? '' : (m[1] ?? '');
+    const oldType = node.type;
     node.type = pat.type;
     node.text = newText;
-    if ('checked' in pat) node.checked = pat.checked;
     markDirty();
-    // save edit-session state to resume after rerender
-    const savedPrev  = content.dataset.prevText  ?? '';
-    const savedDepth = content.dataset.undoDepth ?? '0';
-    delete content.dataset.editing;
-    rerenderNode(node.id);
-    if (pat.type !== 'divider') {
-      requestAnimationFrame(() => {
-        const nc = document.querySelector(`.node-content[data-id="${node.id}"]`);
-        if (!nc) return;
-        nc.dataset.editing   = '1';
-        nc.dataset.prevText  = savedPrev;
-        nc.dataset.undoDepth = savedDepth;
-        activeContentId = node.id;
-        nc.textContent = newText;
-        nc.focus();
-        try {
-          const r = document.createRange();
-          r.selectNodeContents(nc); r.collapse(false);
-          window.getSelection().removeAllRanges();
-          window.getSelection().addRange(r);
-        } catch(_) {}
-      });
+    if (pat.type === 'divider') {
+      delete content.dataset.editing;
+      rerenderNode(node.id);
+      return true;
     }
+    // update outer class so CSS styles apply immediately (no full re-render)
+    const nodeEl = content.closest('.node');
+    if (nodeEl) { nodeEl.classList.remove(`nt-${oldType}`); nodeEl.classList.add(`nt-${node.type}`); }
+    content.textContent = newText;
+    // restore caret to end of stripped text
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(content);
+      r.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+    } catch(_) {}
     return true;
   }
   return false;
