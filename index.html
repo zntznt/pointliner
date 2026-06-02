@@ -287,6 +287,8 @@ let root      = mkRoot();
 let focusedId = null;
 let showDone  = false;
 let searchQuery = '';
+let searchQueryLC = '';        // lowercased once, reused per node during a search
+let searchMatchSet = null;     // ids whose subtree (incl self) contains a match
 let dirty     = false;
 let fileHandle = null;
 let fileName  = 'unsaved';
@@ -699,22 +701,29 @@ function renderNode(node, container, depth, parent, opts = {}) {
 // ─── search ───────────────────────────────────────────────────────────────────
 
 function nodeMatchesSearch(node) {
-  if (!searchQuery) return false;
-  return stripMd(node.text).toLowerCase().includes(searchQuery.toLowerCase());
+  if (!searchQueryLC) return false;
+  return stripMd(node.text).toLowerCase().includes(searchQueryLC);
 }
 
-function hasMatchBelow(node) {
-  return node.children.some(c => nodeMatchesSearch(c) || hasMatchBelow(c));
+// Single post-order pass: record every node whose subtree (incl. self) matches,
+// so renderSearchNode is O(n) instead of re-scanning subtrees at every level.
+function computeMatchSet(node, set) {
+  let any = nodeMatchesSearch(node);
+  for (const c of node.children) { if (computeMatchSet(c, set)) any = true; }
+  if (any) set.add(node.id);
+  return any;
 }
 
 function renderSearch(vp, container) {
+  searchMatchSet = new Set();
+  vp.children.forEach(c => computeMatchSet(c, searchMatchSet));
   vp.children.forEach(c => renderSearchNode(c, container, 0, vp));
 }
 
 function renderSearchNode(node, container, depth, parent) {
+  if (!searchMatchSet.has(node.id)) return; // neither self nor any descendant matches
   const self  = nodeMatchesSearch(node);
-  const below = hasMatchBelow(node);
-  if (!self && !below) return;
+  const below = node.children.some(c => searchMatchSet.has(c.id));
 
   const div = renderNode(node, container, depth, parent, {
     searchCtx: !self,
@@ -1558,7 +1567,7 @@ const OPML_TYPE = { description:'OPML outline', accept:{'text/x-opml':['.opml']}
 
 async function newFile() {
   if (dirty && !confirm('Discard unsaved changes?')) return;
-  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = '';
+  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = ''; searchQueryLC = '';
   undoStack.length = 0; redoStack.length = 0;
   document.getElementById('file-name').textContent = fileName;
   document.getElementById('search-box').value = '';
@@ -1576,7 +1585,7 @@ async function openFile() {
       fileName = file.name;
       root = fromOpml(await file.text());
       buildIndex(root, null);
-      focusedId = null; searchQuery = '';
+      focusedId = null; searchQuery = ''; searchQueryLC = '';
       undoStack.length = 0; redoStack.length = 0;
       document.getElementById('file-name').textContent = fileName;
       document.getElementById('search-box').value = '';
@@ -1589,7 +1598,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; undoStack.length=0; redoStack.length=0; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
+      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -1627,22 +1636,35 @@ async function writeH(h) {
 
 // ─── search wiring ────────────────────────────────────────────────────────────
 
-document.getElementById('search-box').addEventListener('input', function() {
-  searchQuery = this.value.trim();
-  document.getElementById('search-clear').classList.toggle('on', !!searchQuery);
+let searchDebounce = null;
+
+// Apply a search query and re-render. Heavy keystroke-driven searches go
+// through the debounced input handler; direct actions (clear, Esc, hashtag)
+// call this immediately.
+function applySearch(q) {
+  clearTimeout(searchDebounce);
+  searchQuery = q;
+  searchQueryLC = q.toLowerCase();
+  document.getElementById('search-clear').classList.toggle('on', !!q);
   render();
+}
+
+document.getElementById('search-box').addEventListener('input', function() {
+  const q = this.value.trim();
+  // toggle the clear affordance instantly for responsiveness; defer the walk
+  document.getElementById('search-clear').classList.toggle('on', !!q);
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => applySearch(q), 140);
 });
 document.getElementById('search-clear').addEventListener('click', () => {
-  searchQuery = '';
   document.getElementById('search-box').value = '';
-  document.getElementById('search-clear').classList.remove('on');
-  render();
+  applySearch('');
 });
 document.getElementById('search-box').addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    searchQuery = ''; document.getElementById('search-box').value = '';
-    document.getElementById('search-clear').classList.remove('on');
-    render(); document.getElementById('search-box').blur();
+    document.getElementById('search-box').value = '';
+    applySearch('');
+    document.getElementById('search-box').blur();
   }
 });
 
@@ -1654,11 +1676,8 @@ document.getElementById('outline').addEventListener('click', e => {
   const tag = e.target.closest('.hashtag');
   if (!tag) return;
   const q = tag.dataset.tag;
-  searchQuery = q;
-  const sb = document.getElementById('search-box');
-  sb.value = q;
-  document.getElementById('search-clear').classList.add('on');
-  render();
+  document.getElementById('search-box').value = q;
+  applySearch(q);
 });
 
 // ─── footnotes ────────────────────────────────────────────────────────────────
