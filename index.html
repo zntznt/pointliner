@@ -350,6 +350,33 @@ function inheritedType(type) {
   return ['h1','h2','h3','divider'].includes(type) ? 'ul' : type;
 }
 
+// Block types that store their markdown prefix in node.text
+const BLOCK_PREFIX_MAP = { h1: '# ', h2: '## ', h3: '### ', quote: '> ', code: '```' };
+
+function deriveTypeFromText(text) {
+  if (!text) return null;
+  if (text.startsWith('### ')) return 'h3';
+  if (text.startsWith('## '))  return 'h2';
+  if (text.startsWith('# '))   return 'h1';
+  if (text.startsWith('> '))   return 'quote';
+  if (text.startsWith('```'))  return 'code';
+  return null;
+}
+
+// Text shown in rendered (non-edit) view — block prefix stripped
+function textForDisplay(node) {
+  const prefix = BLOCK_PREFIX_MAP[node.type];
+  if (prefix && node.text.startsWith(prefix)) return node.text.slice(prefix.length);
+  return node.text;
+}
+
+// Add block prefix to nodes that have a type but no prefix in text (migration)
+function migrateNodePrefixes(n) {
+  const prefix = BLOCK_PREFIX_MAP[n.type];
+  if (prefix && !n.text.startsWith(prefix)) n.text = prefix + n.text;
+  n.children.forEach(migrateNodePrefixes);
+}
+
 function buildIndex(n, parent = null) {
   nodeMap.set(n.id, n);
   parentMap.set(n.id, parent);
@@ -510,10 +537,10 @@ function renderBreadcrumb() {
   bar.innerHTML = ''; bar.classList.add('visible');
   const home = mkCrumb('Home', () => zoomTo(null));
   bar.appendChild(home);
-  path.slice(1,-1).forEach(a => { bar.appendChild(mkSep()); bar.appendChild(mkCrumb(a.text||'(untitled)', () => zoomTo(a.id))); });
+  path.slice(1,-1).forEach(a => { bar.appendChild(mkSep()); bar.appendChild(mkCrumb(textForDisplay(a)||'(untitled)', () => zoomTo(a.id))); });
   const cur = path[path.length-1];
   bar.appendChild(mkSep());
-  const ce = mkCrumb(cur?.text||'(untitled)', null); ce.classList.add('current'); bar.appendChild(ce);
+  const ce = mkCrumb(cur ? (textForDisplay(cur)||'(untitled)') : '(untitled)', null); ce.classList.add('current'); bar.appendChild(ce);
 }
 function mkCrumb(t, fn) { const s=document.createElement('span'); s.className='crumb'; s.textContent=t; s.title=t; if(fn) s.addEventListener('click',fn); return s; }
 function mkSep() { const s=document.createElement('span'); s.className='crumb-sep'; s.textContent='›'; return s; }
@@ -532,7 +559,7 @@ function render() {
     te.className = 'zoom-title';
     te.contentEditable = 'true';
     te.dataset.id = vp.id;
-    te.innerHTML = mdToHtml(vp.text); // display mode: rendered HTML
+    te.innerHTML = mdToHtml(textForDisplay(vp)); // display mode: rendered HTML
 
     let zpPrevText = '', zpUndoDepth = 0;
     const enterZoomEdit = () => {
@@ -548,8 +575,11 @@ function render() {
     };
     const exitZoomEdit = () => {
       vp.text = te.textContent;
+      const zt = deriveTypeFromText(vp.text);
+      if (zt) vp.type = zt;
+      else if (vp.type in BLOCK_PREFIX_MAP) vp.type = 'ul';
       delete te.dataset.editing;
-      te.innerHTML = mdToHtml(vp.text);
+      te.innerHTML = mdToHtml(textForDisplay(vp));
       markDirty();
       renderBreadcrumb();
       if (vp.text === zpPrevText && undoStack.length === zpUndoDepth) undoStack.pop();
@@ -857,7 +887,7 @@ function renderRow(r) {
   content.spellcheck = true;
   content.dataset.id = node.id;
   content.dataset.ph = isDivider ? 'Section label…' : (depth === 0 && !focusedId ? 'Start writing…' : '');
-  content.innerHTML = mdToHtml(node.text, node.type === 'code');
+  content.innerHTML = mdToHtml(textForDisplay(node), node.type === 'code');
 
   if (!opts.searchCtx) attachContentEvents(content, node);
 
@@ -884,7 +914,7 @@ function renderRow(r) {
 
 function nodeMatchesSearch(node) {
   if (!searchQueryLC) return false;
-  return stripMd(node.text).toLowerCase().includes(searchQueryLC);
+  return stripMd(textForDisplay(node)).toLowerCase().includes(searchQueryLC);
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
@@ -992,8 +1022,11 @@ function enterEdit(content, node) {
 function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
   node.text = content.textContent;
+  const et = deriveTypeFromText(node.text);
+  if (et) node.type = et;
+  else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
   delete content.dataset.editing;
-  content.innerHTML = mdToHtml(node.text, node.type === 'code');
+  content.innerHTML = mdToHtml(textForDisplay(node), node.type === 'code');
   markDirty();
   if (activeContentId === node.id) activeContentId = null;
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
@@ -1483,32 +1516,21 @@ const MD_BLOCK_TRIGGERS = [
 
 function checkMdBlockPrefix(content, node) {
   const text = content.textContent;
-  for (const pat of MD_BLOCK_TRIGGERS) {
-    const m = text.match(pat.re);
-    if (!m) continue;
-    const newText = pat.type === 'divider' ? '' : (m[1] ?? '');
-    const oldType = node.type;
-    node.type = pat.type;
-    node.text = newText;
-    markDirty();
-    if (pat.type === 'divider') {
-      delete content.dataset.editing;
-      rerenderNode(node.id);
-      return true;
-    }
-    // update outer class so CSS styles apply immediately (no full re-render)
-    const nodeEl = content.closest('.node');
-    if (nodeEl) { nodeEl.classList.remove(`nt-${oldType}`); nodeEl.classList.add(`nt-${node.type}`); }
-    content.textContent = newText;
-    // restore caret to end of stripped text
-    try {
-      const r = document.createRange();
-      r.selectNodeContents(content);
-      r.collapse(false);
-      const sel = window.getSelection();
-      sel.removeAllRanges(); sel.addRange(r);
-    } catch(_) {}
+  // Divider is the only type that converts immediately (no persistent prefix)
+  if (/^---\s*$/.test(text)) {
+    node.type = 'divider'; node.text = '';
+    delete content.dataset.editing;
+    rerenderNode(node.id);
     return true;
+  }
+  // For all other block types: prefix stays in text, just update type + CSS live
+  const newType = deriveTypeFromText(text)
+    ?? (node.type in BLOCK_PREFIX_MAP ? 'ul' : node.type);
+  if (newType !== node.type) {
+    const nodeEl = content.closest('.node');
+    if (nodeEl) { nodeEl.classList.remove(`nt-${node.type}`); nodeEl.classList.add(`nt-${newType}`); }
+    node.type = newType;
+    markDirty();
   }
   return false;
 }
@@ -1535,9 +1557,16 @@ function applyBlockCmd(id, nodeId, node, content) {
   // style toggles
   if (id === 'style-italic')    { node.italic    = !node.italic;    markDirty(); rerenderNode(nodeId); return; }
   if (id === 'style-underline') { node.underline = !node.underline; markDirty(); rerenderNode(nodeId); return; }
-  // block type
+  // block type — swap prefix in node.text to match the new type
+  const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
+  const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
+  const cleanText = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
+  node.text = id === 'divider' ? '' : newPrefix + cleanText;
   node.type = id;
   if (id !== 'todo') node.checked = false;
+  // if currently editing this node, sync the live contenteditable
+  const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+  if (activeEl) activeEl.textContent = node.text;
   markDirty();
   rerenderNode(nodeId);
 }
@@ -1760,7 +1789,7 @@ function attachDragHandlers(bullet, row, node) {
     e.dataTransfer.setData('text/plain', node.id);
     // Custom ghost image showing node text (or count when multi-dragging)
     const ghost = document.createElement('div');
-    ghost.textContent = dragIds ? `${dragIds.size} items` : (node.text || '…');
+    ghost.textContent = dragIds ? `${dragIds.size} items` : (textForDisplay(node) || '…');
     ghost.style.cssText = 'position:fixed;top:-999px;padding:4px 12px;background:var(--hbg);border:1px solid var(--bdr);border-radius:6px;font-size:14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.15)';
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 16, 16);
@@ -1973,7 +2002,12 @@ function applyEntry(entry, intoStack, dir) {
       if (el) { delete el.dataset.editing; delete el.dataset.prevText; }
       activeContentId = null;
     }
-    if (node) node.text = entry[dir];
+    if (node) {
+      node.text = entry[dir];
+      const rt = deriveTypeFromText(node.text);
+      if (rt) node.type = rt;
+      else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
+    }
     markDirty(); render();
     if (node) { ensureRowVisible(entry.nodeId); focusNode(entry.nodeId); }
   } else {
@@ -2017,6 +2051,7 @@ async function newFile() {
   updateTitle();
   document.getElementById('search-box').value = '';
   document.getElementById('search-clear').classList.remove('on');
+  migrateNodePrefixes(root);
   buildIndex(root, null);
   markClean(); render();
 }
@@ -2029,6 +2064,7 @@ async function openFile() {
       const file = await fileHandle.getFile();
       fileName = file.name;
       root = fromOpml(await file.text());
+      migrateNodePrefixes(root);
       buildIndex(root, null);
       focusedId = null; searchQuery = ''; searchQueryLC = '';
       undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
@@ -2044,7 +2080,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
+      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -2535,6 +2571,7 @@ function scheduleAutosave() {
     const data = JSON.parse(raw);
     if (data.root) {
       root = data.root;
+      migrateNodePrefixes(root);
       buildIndex(root, null);
       focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
       if (data.fileName) {
@@ -2557,6 +2594,7 @@ function scheduleAutosave() {
   } catch(_) {}
 })();
 
+migrateNodePrefixes(root);
 buildIndex(root, null);
 render();
 updateTitle();
