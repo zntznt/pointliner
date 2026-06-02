@@ -275,10 +275,10 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <strong>Keyboard shortcuts</strong>
   <kbd>Enter</kbd> new sibling · <kbd>Ctrl+Enter</kbd> zoom in<br>
   <kbd>Tab / Shift+Tab</kbd> indent / outdent<br>
-  <kbd>Alt+↑/↓</kbd> move · <kbd>Ctrl+↑/↓</kbd> collapse<br>
-  <kbd>Escape</kbd> zoom out<br>
+  <kbd>↑/↓</kbd> navigate nodes · <kbd>Alt+↑/↓</kbd> move<br>
+  <kbd>Ctrl+↑/↓</kbd> collapse · <kbd>Escape</kbd> zoom out / deselect<br>
   <kbd>/</kbd> commands · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
-  <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo<br>
+  <kbd>Ctrl+F</kbd> search · <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo<br>
   <kbd>#</kbd> h1 · <kbd>##</kbd> h2 · <kbd>###</kbd> h3 · <kbd>&gt;</kbd> quote · <kbd>```</kbd> code · <kbd>---</kbd> divider<br>
 </div>
 
@@ -1041,7 +1041,13 @@ function onKeyDown(e, id, content) {
   else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
   else if (e.key==='ArrowUp'   && ctrl) { e.preventDefault(); setCollapsed(id,true); }
   else if (e.key==='ArrowDown' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
-  else if (e.key==='Escape') { e.preventDefault(); zoomOut(); }
+  else if (e.key==='ArrowUp'   && !e.altKey && !ctrl && !e.shiftKey) {
+    if (isAtFirstLine(content)) { e.preventDefault(); navigateToPrev(id); }
+  }
+  else if (e.key==='ArrowDown' && !e.altKey && !ctrl && !e.shiftKey) {
+    if (isAtLastLine(content)) { e.preventDefault(); navigateToNext(id); }
+  }
+  else if (e.key==='Escape') { e.preventDefault(); if (focusedId) zoomOut(); else content.blur(); }
   else if (e.key==='s' && ctrl) { e.preventDefault(); saveFile(); }
   else if (e.key==='o' && ctrl) { e.preventDefault(); openFile(); }
 }
@@ -1469,6 +1475,50 @@ function focusNode(id) {
   });
 }
 
+// ─── arrow-key cross-node navigation ─────────────────────────────────────────
+
+function lineH(el) { return parseFloat(getComputedStyle(el).lineHeight) || 28; }
+function isAtFirstLine(el) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const rects = sel.getRangeAt(0).getClientRects();
+  if (!rects.length) return true;
+  return rects[0].bottom <= el.getBoundingClientRect().top + lineH(el);
+}
+function isAtLastLine(el) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const rects = sel.getRangeAt(0).getClientRects();
+  if (!rects.length) return true;
+  return rects[0].top >= el.getBoundingClientRect().bottom - lineH(el);
+}
+function navigateToPrev(id) {
+  const fi = flatIndex.get(id);
+  if (fi == null || fi === 0) return;
+  const prevId = flatRows[fi - 1].node.id;
+  ensureRowVisible(prevId);
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.node-content[data-id="${prevId}"]`);
+    if (!el) return;
+    el.focus();
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  });
+}
+function navigateToNext(id) {
+  const fi = flatIndex.get(id);
+  if (fi == null || fi >= flatRows.length - 1) return;
+  const nextId = flatRows[fi + 1].node.id;
+  ensureRowVisible(nextId);
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.node-content[data-id="${nextId}"]`);
+    if (!el) return;
+    el.focus();
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(true);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  });
+}
+
 // ─── drag and drop ───────────────────────────────────────────────────────────
 
 let dragId = null;
@@ -1667,7 +1717,7 @@ function applyEntry(entry, intoStack, dir) {
     }
     if (node) node.text = entry[dir];
     markDirty(); render();
-    if (node) ensureRowVisible(entry.nodeId);
+    if (node) { ensureRowVisible(entry.nodeId); focusNode(entry.nodeId); }
   } else {
     intoStack.push(snapshot());
     restoreSnapshot(entry);
@@ -1692,6 +1742,9 @@ function markClean() {
   document.getElementById('toolbar-row').classList.remove('dirty');
   document.getElementById('fm-dirty-dot').style.display = 'none';
 }
+function updateTitle() {
+  document.title = fileName === 'unsaved' ? 'Pointliner' : `${fileName} — Pointliner`;
+}
 
 // ─── file I/O ─────────────────────────────────────────────────────────────────
 
@@ -1703,6 +1756,7 @@ async function newFile() {
   root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = ''; searchQueryLC = '';
   undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
   document.getElementById('file-name').textContent = fileName;
+  updateTitle();
   document.getElementById('search-box').value = '';
   document.getElementById('search-clear').classList.remove('on');
   buildIndex(root, null);
@@ -1721,6 +1775,7 @@ async function openFile() {
       focusedId = null; searchQuery = ''; searchQueryLC = '';
       undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
       document.getElementById('file-name').textContent = fileName;
+      updateTitle();
       document.getElementById('search-box').value = '';
       document.getElementById('search-clear').classList.remove('on');
       markClean(); render();
@@ -1731,7 +1786,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
+      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -1751,6 +1806,7 @@ async function saveAsFile() {
       });
       fileName = fileHandle.name;
       document.getElementById('file-name').textContent = fileName;
+      updateTitle();
       await writeH(fileHandle);
     } catch(e) { if (e.name!=='AbortError') alert('Could not save: '+e.message); }
   } else dlOpml();
@@ -2123,6 +2179,7 @@ document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
+  if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
   if (ctrl && !e.shiftKey && e.key==='z') { e.preventDefault(); undo(); }
   if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) { e.preventDefault(); redo(); }
 });
@@ -2205,6 +2262,7 @@ function scheduleAutosave() {
       if (data.fileName) {
         fileName = data.fileName;
         document.getElementById('file-name').textContent = fileName;
+        updateTitle();
       }
       if (typeof data.showDone === 'boolean') {
         showDone = data.showDone;
@@ -2223,6 +2281,11 @@ function scheduleAutosave() {
 
 buildIndex(root, null);
 render();
+updateTitle();
+// Focus the first node so the user can start typing immediately
+requestAnimationFrame(() => {
+  if (flatRows.length > 0) focusNode(flatRows[0].node.id);
+});
 </script>
 </body>
 </html>
