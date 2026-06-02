@@ -87,6 +87,11 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .node-content u{text-decoration:underline}
 .node-content code{font-family:monospace;font-size:.88em;background:var(--cbg);padding:1px 5px;border-radius:3px}
 .node-content del{text-decoration:line-through;color:var(--del)}
+.node-content .md-list{margin:2px 0;padding-left:1.5em}
+.node-content .md-list li{margin:1px 0}
+.node-content ul.md-list{list-style:disc}
+.node-content ol.md-list{list-style:decimal}
+.node-content .md-img{max-width:100%;max-height:360px;border-radius:6px;margin:3px 0;display:block;vertical-align:bottom}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
 .hashtag{color:var(--acc);opacity:.65;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
@@ -295,7 +300,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 <span id="sc-toggle">?</span>
 <div class="sc-panel" id="sc-panel">
   <strong>Keyboard shortcuts</strong>
-  <kbd>Enter</kbd> new sibling · <kbd>Ctrl+Enter</kbd> zoom in<br>
+  <kbd>Enter</kbd> new sibling · <kbd>Shift+Enter</kbd> line break · <kbd>Ctrl+Enter</kbd> zoom in<br>
   <kbd>Tab / Shift+Tab</kbd> indent / outdent<br>
   <kbd>↑/↓</kbd> navigate nodes · <kbd>Alt+↑/↓</kbd> move<br>
   <kbd>Ctrl+↑/↓</kbd> collapse · <kbd>Escape</kbd> zoom out / deselect<br>
@@ -400,12 +405,36 @@ function pathTo(id) {
 
 // ─── markdown ─────────────────────────────────────────────────────────────────
 
-function mdToHtml(raw, isCode) {
-  let s = (raw || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  if (isCode) return s; // code blocks: no markdown
+// Zero-width space used by insertLineBreak to anchor the caret on blank lines.
+const ZWSP = '​';
+// Read a live contenteditable's text with those anchors stripped.
+function editableText(el) { return el.textContent.replace(/​/g, ''); }
+
+// reject URLs that could execute script; allow data:image only for <img>
+function safeUrl(u, allowDataImage) {
+  const t = (u || '').trim();
+  if (/^(javascript|vbscript):/i.test(t)) return '';
+  if (/^data:/i.test(t) && !(allowDataImage && /^data:image\//i.test(t))) return '';
+  return t;
+}
+// url/alt/title arrive already &<>-escaped from the caller; only quotes remain
+const escQ = s => (s || '').replace(/"/g,'&quot;');
+
+// inline markdown within a single line (text is NOT yet escaped)
+function mdInline(s) {
+  s = (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const codes = [];
   s = s.replace(/`([^`\n]+)`/g, (_,c) => { codes.push(`<code>${c}</code>`); return `\x00${codes.length-1}\x00`; });
-  s = s.replace(/\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // images first: ![alt](url "title") — superset of link syntax
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
+    const u = safeUrl(url, true); if (!u) return '';
+    return `<img src="${escQ(u)}" alt="${escQ(alt)}"${title?` title="${escQ(title)}"`:''} class="md-img" loading="lazy">`;
+  });
+  // links: [text](url "title")
+  s = s.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, txt, url, title) => {
+    const u = safeUrl(url); if (!u) return txt;
+    return `<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${txt}</a>`;
+  });
   s = s.replace(/\*\*\*((?!\s)[\s\S]*?(?<!\s))\*\*\*/g,'<strong><em>$1</em></strong>');
   s = s.replace(/\*\*((?!\s)[\s\S]*?(?<!\s))\*\*/g,'<strong>$1</strong>');
   s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g,'<em>$1</em>');
@@ -417,16 +446,47 @@ function mdToHtml(raw, isCode) {
   return s;
 }
 
+const UL_RE = /^\s*[-*+]\s+(.*)$/;
+const OL_RE = /^\s*\d+\.\s+(.*)$/;
+
+function mdToHtml(raw, isCode) {
+  if (isCode) return (raw || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines = (raw || '').split('\n');
+  const out = [];
+  let para = [];
+  const flush = () => { if (para.length) { out.push(para.join('<br>')); para = []; } };
+  let i = 0;
+  while (i < lines.length) {
+    const isUl = UL_RE.test(lines[i]);
+    const isOl = !isUl && OL_RE.test(lines[i]);
+    if (isUl || isOl) {
+      flush();
+      const re = isUl ? UL_RE : OL_RE, tag = isUl ? 'ul' : 'ol';
+      const items = [];
+      let m;
+      while (i < lines.length && (m = lines[i].match(re))) { items.push(`<li>${mdInline(m[1])}</li>`); i++; }
+      out.push(`<${tag} class="md-list">${items.join('')}</${tag}>`);
+    } else {
+      para.push(mdInline(lines[i])); i++;
+    }
+  }
+  flush();
+  return out.join('');
+}
+
 function stripMd(text) {
   return (text||'')
     .replace(/`([^`\n]+)`/g,'$1')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g,'$1')
     .replace(/\[([^\]]*)\]\([^)]+\)/g,'$1')
     .replace(/\[\^[^\]]+\]/g,'')
     .replace(/\*\*\*([\s\S]*?)\*\*\*/g,'$1')
     .replace(/\*\*([\s\S]*?)\*\*/g,'$1')
     .replace(/\*([\s\S]*?)\*/g,'$1')
     .replace(/~~([\s\S]*?)~~/g,'$1')
-    .replace(/\+\+([\s\S]*?)\+\+/g,'$1');
+    .replace(/\+\+([\s\S]*?)\+\+/g,'$1')
+    .replace(/^\s*[-*+]\s+/gm,'')
+    .replace(/^\s*\d+\.\s+/gm,'');
 }
 
 // ─── OPML ─────────────────────────────────────────────────────────────────────
@@ -455,7 +515,9 @@ ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
 </opml>`;
 }
-function ex(s){ return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// Encode newlines as &#10; — XML attribute-value normalization collapses literal
+// newlines to spaces on re-parse, but numeric character references survive intact.
+function ex(s){ return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'&#10;'); }
 
 function fromOpml(xml) {
   const doc = new DOMParser().parseFromString(xml,'application/xml');
@@ -502,6 +564,7 @@ const INLINE_CMDS = [
   { id:'inlcode',  icon:'`',   label:'Inline code',   desc:'`code`' },
   { id:'strike',   icon:'S',   label:'Strikethrough', desc:'~~strike~~' },
   { id:'link',     icon:'⌘',   label:'Link',          desc:'[text](url)' },
+  { id:'image',    icon:'🖼',   label:'Image',         desc:'![alt](url)' },
 ];
 
 // build a unified cmd-item element
@@ -989,7 +1052,7 @@ function attachContentEvents(content, node) {
   });
   content.addEventListener('input', () => {
     if (!content.dataset.editing) return;
-    node.text = content.textContent; markDirty();
+    node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id); updateSelToolbar();
@@ -1021,7 +1084,7 @@ function enterEdit(content, node) {
 
 function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
-  node.text = content.textContent;
+  node.text = editableText(content);
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
@@ -1053,7 +1116,7 @@ function handlePaste(e, node, content) {
   const text = e.clipboardData.getData('text/plain');
   const lines = text.split('\n').map(l => l.replace(/\r$/,''));
   while (lines.length > 1 && !lines[lines.length-1].trim()) lines.pop();
-  if (lines.length === 1) { document.execCommand('insertText', false, text); node.text = content.textContent; markDirty(); return; }
+  if (lines.length === 1) { document.execCommand('insertText', false, text); node.text = editableText(content); markDirty(); return; }
   const parsed = parseMLlines(lines);
   const parent = parentOf(node.id);
   if (!parent) { document.execCommand('insertText', false, text); return; }
@@ -1104,7 +1167,8 @@ function onKeyDown(e, id, content) {
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
   }
-  if (e.key==='Enter' && !e.shiftKey && !ctrl) { e.preventDefault(); insertSiblingAfter(id); }
+  if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); insertLineBreak(content); }
+  else if (e.key==='Enter' && !ctrl) { e.preventDefault(); insertSiblingAfter(id); }
   else if (e.key==='Enter' && ctrl) { e.preventDefault(); zoomInto(id); }
   else if (e.key==='Tab' && !e.shiftKey) { e.preventDefault(); indentNode(id); }
   else if (e.key==='Tab' && e.shiftKey)  { e.preventDefault(); outdentNode(id); }
@@ -1492,7 +1556,7 @@ function slashApply() {
   const newText = content.textContent.slice(0, slashOffset) + content.textContent.slice(slashOffset + rawLen);
   content.textContent = newText;
   const node = nodeById(nodeId);
-  if (node) node.text = newText;
+  if (node) node.text = newText.replace(/​/g, '');
   try {
     const tn = content.firstChild || content;
     const r = document.createRange();
@@ -1506,7 +1570,7 @@ function slashApply() {
 function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
 
 function checkMdBlockPrefix(content, node) {
-  const text = content.textContent;
+  const text = editableText(content);
   // Divider is the only type that converts immediately (no persistent prefix)
   if (/^---\s*$/.test(text)) {
     node.type = 'divider'; node.text = '';
@@ -1541,7 +1605,14 @@ function applyBlockCmd(id, nodeId, node, content) {
   if (id === 'link') {
     const url = prompt('URL (https://…):');
     if (!url) return;
-    node.text = `[${node.text}](${url})`;
+    node.text = `[${node.text || 'link'}](${url})`;
+    const c = document.querySelector(`.node-content[data-id="${nodeId}"]`); if(c) c.textContent=node.text;
+    return;
+  }
+  if (id === 'image') {
+    const url = prompt('Image URL (https://…):');
+    if (!url) return;
+    node.text = `${node.text}${node.text ? ' ' : ''}![${node.text || 'image'}](${url})`;
     const c = document.querySelector(`.node-content[data-id="${nodeId}"]`); if(c) c.textContent=node.text;
     return;
   }
@@ -1692,6 +1763,28 @@ function focusNode(id) {
 // ─── arrow-key cross-node navigation ─────────────────────────────────────────
 
 function lineH(el) { return parseFloat(getComputedStyle(el).lineHeight) || 28; }
+// Shift+Enter: add a newline inside the same point (multi-line content).
+// We insert a literal '\n' text node (not a <br>) so it survives the
+// content.textContent round-trip used to store node.text; white-space:pre-wrap
+// renders it as a line break. A trailing '\n' at the very end of the block is
+// followed by a zero-width space so Chrome shows the caret on the new line.
+function insertLineBreak(content) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const r = sel.getRangeAt(0);
+  r.deleteContents();
+  // A trailing '\n' in white-space:pre-wrap renders no line and can't hold a caret,
+  // so Chrome collapses the caret back before it. We follow the '\n' with a
+  // zero-width space to give the new line real content (and a stable caret spot);
+  // editableText() strips these ZWSPs so they never reach node.text.
+  const nl = document.createTextNode('\n');
+  const zw = document.createTextNode(ZWSP);
+  r.insertNode(zw);
+  r.insertNode(nl);
+  r.setStart(zw, 1); r.collapse(true);
+  sel.removeAllRanges(); sel.addRange(r);
+}
+
 function isAtFirstLine(el) {
   const sel = window.getSelection();
   if (!sel.rangeCount || !sel.isCollapsed) return false;
@@ -1960,7 +2053,7 @@ function flushActiveTextEdit() {
   const node = nodeById(activeContentId);
   if (!node) return;
   const prev = el.dataset.prevText ?? '';
-  node.text = el.textContent;
+  node.text = editableText(el);
   recordTextEdit(activeContentId, prev, node.text);
   el.dataset.prevText = node.text; // reset baseline so exitEdit won't double-record
 }
