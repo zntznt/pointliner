@@ -100,6 +100,42 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-hl{background:rgba(255,225,0,.45);color:inherit;border-radius:2px;padding:0 1px}
 @media(prefers-color-scheme:dark){.md-hl{background:rgba(220,180,0,.4)}}
 .node-content sub,.node-content sup{font-size:.72em;line-height:0}
+/* ── interactive table builder ── */
+.md-table-host{flex:1;min-width:0;padding:2px 0}
+.mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
+.md-table{border-collapse:separate;border-spacing:0;font-size:.95em}
+.md-table td,.md-table th{border:1px solid var(--bdr)}
+.mt-cell{padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
+.mt-cell:focus{box-shadow:inset 0 0 0 2px var(--ring)}
+.mt-cell.mt-selected{background:rgba(74,144,217,.18)}
+@media(prefers-color-scheme:dark){.mt-cell.mt-selected{background:rgba(91,163,232,.22)}}
+.mt-headcell{font-weight:700;background:var(--cbg)}
+.mt-cell.mt-a-center{text-align:center}
+.mt-cell.mt-a-right{text-align:right}
+.mt-cell .md-img{max-height:120px}
+/* handle cells (row/col grips) */
+.mt-corner,.mt-colh,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
+.mt-colh{height:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-bottom:none}
+.mt-rowh{width:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-right:none}
+.mt-colh:active,.mt-rowh:active{cursor:grabbing}
+.mt-grip{display:block;width:100%;height:100%;min-height:12px;opacity:.35}
+.mt-colh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) 0 center/5px 3px repeat-x}
+.mt-rowh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center 0/3px 5px repeat-y}
+.mt-colh:hover,.mt-rowh:hover{background:var(--hbg)}
+.mt-colh:hover .mt-grip,.mt-rowh:hover .mt-grip{opacity:.7}
+.mt-del{position:absolute;display:none;z-index:2;width:15px;height:15px;line-height:13px;text-align:center;font-size:12px;border-radius:50%;background:var(--del);color:#fff;cursor:pointer}
+.mt-colh:hover .mt-delcol{display:block;top:-7px;right:-7px}
+.mt-rowh:hover .mt-delrow{display:block;left:-7px;top:-7px}
+.mt-colh.mt-dragover{background:var(--acc)}
+.mt-rowh.mt-dragover{background:var(--acc)}
+.mt-addcol,.mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
+.mt-addcol{width:22px;height:100%;min-height:30px;padding:0;line-height:1}
+.mt-addcol:hover,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
+.mt-addcol-cell{vertical-align:middle;padding-left:3px}
+.mt-addrow-cell{padding-top:3px}
+.mt-align-bar{display:flex;gap:3px;align-items:center;margin:4px 0 2px;font-size:11px;color:var(--muted)}
+.mt-align-bar button{font-size:11px;padding:1px 6px}
+.mt-align-bar button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:6px;margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
@@ -569,6 +605,57 @@ function stripMd(text) {
     .replace(/^:\s+/gm,'');
 }
 
+// ─── tables (model ↔ markdown) ───────────────────────────────────────────────
+// A table node stores standard markdown-table text in node.text; the builder
+// widget parses it to {aligns, rows} (rows[0] is the header) and re-serializes.
+
+function mtSplitRow(line) {
+  let s = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+  const cells = []; let cur = '';
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\' && s[i+1] === '|') { cur += '|'; i++; }
+    else if (s[i] === '|') { cells.push(cur.trim()); cur = ''; }
+    else cur += s[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function parseTable(text) {
+  const lines = (text || '').split('\n').filter(l => l.trim() !== '');
+  if (!lines.length) return null;
+  const header = mtSplitRow(lines[0]);
+  let aligns = header.map(() => null), bodyStart = 1;
+  if (lines[1] && /^[\s|:-]+$/.test(lines[1]) && lines[1].includes('-')) {
+    aligns = mtSplitRow(lines[1]).map(s => {
+      const l = s.startsWith(':'), r = s.endsWith(':');
+      return l && r ? 'center' : r ? 'right' : l ? 'left' : null;
+    });
+    bodyStart = 2;
+  }
+  const ncols = Math.max(header.length, aligns.length, 1);
+  const pad = row => { while (row.length < ncols) row.push(''); return row.slice(0, ncols); };
+  const rows = [pad(header.slice())];
+  for (let i = bodyStart; i < lines.length; i++) rows.push(pad(mtSplitRow(lines[i])));
+  while (aligns.length < ncols) aligns.push(null);
+  return { aligns: aligns.slice(0, ncols), rows };
+}
+
+function serializeTable(t) {
+  const esc = c => (c || '').replace(/\\/g,'\\\\').replace(/\|/g,'\\|').replace(/\n/g,' ');
+  const sep = t.aligns.map(a => a==='center'?':---:':a==='right'?'---:':a==='left'?':---':'---');
+  const out = [
+    '| ' + t.rows[0].map(esc).join(' | ') + ' |',
+    '| ' + sep.join(' | ') + ' |',
+  ];
+  for (let i = 1; i < t.rows.length; i++) out.push('| ' + t.rows[i].map(esc).join(' | ') + ' |');
+  return out.join('\n');
+}
+
+function starterTableText() {
+  return '| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| | | |\n| | | |';
+}
+
 // ─── OPML ─────────────────────────────────────────────────────────────────────
 
 function toOpml(r) {
@@ -635,6 +722,7 @@ const BLOCK_CMDS = [
   { id:'quote',   icon:'❝',    label:'Quote',      desc:'Blockquote',       section:'Turn into' },
   { id:'code',    icon:'</>',  label:'Code block', desc:'Code block',       section:'Turn into' },
   { id:'divider', icon:'—',    label:'Divider',    desc:'Horizontal rule',  section:'Turn into' },
+  { id:'table',   icon:'▦',    label:'Table',      desc:'Insert a table',   section:'Insert' },
 ];
 
 const INLINE_CMDS = [
@@ -969,6 +1057,210 @@ function olNum(node, parent) {
   return n + 1;
 }
 
+// ─── interactive table widget ────────────────────────────────────────────────
+let mtSel = null;   // rectangular cell selection { nodeId, r0,c0, r1,c1 }
+let mtDrag = null;  // in-flight range-select gesture
+let mtReorder = null; // { kind:'col'|'row', from }
+let mtGlobalInit = false;
+
+function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${id}"]`); }
+function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splice(to, 0, x); }
+function mtModel(node) { return parseTable(node.text) || parseTable(starterTableText()); }
+function mtCommit(node, model) { node.text = serializeTable(model); markDirty(); }
+
+function refreshTable(node) {
+  const host = mtHost(node.id);
+  if (!host) { render(); return; }
+  host.replaceWith(buildTableWidget(node));
+  scheduleReconcile();
+}
+
+function mtClearSelection() {
+  document.querySelectorAll('.mt-cell.mt-selected').forEach(c => c.classList.remove('mt-selected'));
+  mtSel = null;
+}
+function mtSelRect() {
+  return { r0:Math.min(mtSel.r0,mtSel.r1), r1:Math.max(mtSel.r0,mtSel.r1),
+           c0:Math.min(mtSel.c0,mtSel.c1), c1:Math.max(mtSel.c0,mtSel.c1) };
+}
+function mtApplySelection() {
+  const host = mtHost(mtSel?.nodeId); if (!host) return;
+  host.querySelectorAll('.mt-cell.mt-selected').forEach(c => c.classList.remove('mt-selected'));
+  if (!mtSel) return;
+  const b = mtSelRect();
+  host.querySelectorAll('.mt-cell').forEach(cell => {
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    if (r>=b.r0 && r<=b.r1 && c>=b.c0 && c<=b.c1) cell.classList.add('mt-selected');
+  });
+}
+
+function buildTableWidget(node, readOnly) {
+  const model = mtModel(node);
+  const nc = model.aligns.length;
+  const aCls = a => a==='center'?' mt-a-center':a==='right'?' mt-a-right':'';
+  const ro = readOnly ? '' : ' contenteditable="true"';
+  let h = '<div class="mt-scroll"><table class="md-table"><thead>';
+  if (!readOnly) {
+    h += '<tr class="mt-tophandles"><th class="mt-corner"></th>';
+    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder · double-click to cycle alignment"><span class="mt-grip"></span><span class="mt-del mt-delcol" data-c="${c}" title="Delete column">×</span></th>`;
+    h += '<th class="mt-addcol-cell"><button class="mt-addcol" title="Add column">+</button></th></tr>';
+  }
+  h += '<tr class="mt-headrow" data-r="0">';
+  if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
+  for (let c=0;c<nc;c++) h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${ro}>${mdInline(model.rows[0][c]||'')}</th>`;
+  if (!readOnly) h += '<th class="mt-pad"></th>';
+  h += '</tr></thead><tbody>';
+  for (let r=1;r<model.rows.length;r++) {
+    h += `<tr data-r="${r}">`;
+    if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
+    for (let c=0;c<nc;c++) h += `<td class="mt-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${ro}>${mdInline(model.rows[r][c]||'')}</td>`;
+    if (!readOnly) h += '<td class="mt-pad"></td>';
+    h += '</tr>';
+  }
+  if (!readOnly) h += `<tr class="mt-addrow-row"><th></th><td class="mt-addrow-cell" colspan="${nc}"><button class="mt-addrow">+ Add row</button></td><td></td></tr>`;
+  h += '</tbody></table></div>';
+
+  const host = document.createElement('div');
+  host.className = 'md-table-host';
+  host.dataset.id = node.id;
+  host.innerHTML = h;
+  if (readOnly) return host;
+
+  // cell editing: show raw text on focus, render markdown on blur
+  host.addEventListener('focusin', e => {
+    const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    mtClearSelection();
+    forceIncludeId = node.id;
+    const m = mtModel(node);
+    cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+  });
+  host.addEventListener('input', e => {
+    const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    const m = mtModel(node);
+    m.rows[+cell.dataset.r][+cell.dataset.c] = cell.textContent;
+    mtCommit(node, m);
+  });
+  host.addEventListener('focusout', e => {
+    const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    const raw = cell.textContent;
+    const m = mtModel(node);
+    m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
+    mtCommit(node, m);
+    cell.innerHTML = mdInline(raw);
+    forceIncludeId = null;
+    scheduleReconcile();
+  });
+
+  // add / delete row & column
+  host.addEventListener('click', e => {
+    if (e.target.closest('.mt-addcol')) {
+      const m = mtModel(node); m.aligns.push(null); m.rows.forEach(r => r.push('')); mtCommit(node,m); refreshTable(node);
+    } else if (e.target.closest('.mt-addrow')) {
+      const m = mtModel(node); m.rows.push(Array(m.aligns.length).fill('')); mtCommit(node,m); refreshTable(node);
+    } else if (e.target.closest('.mt-delcol')) {
+      const c = +e.target.closest('.mt-delcol').dataset.c; const m = mtModel(node);
+      if (m.aligns.length > 1) { m.aligns.splice(c,1); m.rows.forEach(r => r.splice(c,1)); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
+    } else if (e.target.closest('.mt-delrow')) {
+      const r = +e.target.closest('.mt-delrow').dataset.r; const m = mtModel(node);
+      if (m.rows.length > 2 && r >= 1) { m.rows.splice(r,1); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
+    }
+  });
+  // double-click a column handle: cycle alignment
+  host.addEventListener('dblclick', e => {
+    const ch = e.target.closest('.mt-colh'); if (!ch) return;
+    const c = +ch.dataset.c; const m = mtModel(node);
+    const order = [null,'left','center','right'];
+    m.aligns[c] = order[(order.indexOf(m.aligns[c]) + 1) % order.length];
+    mtCommit(node,m); refreshTable(node);
+  });
+  // drag-reorder rows / columns via handle drag
+  host.addEventListener('dragstart', e => {
+    const ch = e.target.closest('.mt-colh'), rh = e.target.closest('.mt-rowh');
+    if (ch) mtReorder = { kind:'col', from:+ch.dataset.c };
+    else if (rh && rh.dataset.r) mtReorder = { kind:'row', from:+rh.dataset.r };
+    else return;
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain','');
+  });
+  host.addEventListener('dragover', e => {
+    if (!mtReorder) return;
+    const sel = mtReorder.kind==='col' ? '.mt-colh' : '.mt-rowh';
+    const tgt = e.target.closest(sel);
+    if (!tgt || (mtReorder.kind==='row' && !tgt.dataset.r)) return;
+    e.preventDefault();
+    host.querySelectorAll('.mt-dragover').forEach(x => x.classList.remove('mt-dragover'));
+    tgt.classList.add('mt-dragover');
+  });
+  host.addEventListener('drop', e => {
+    if (!mtReorder) return;
+    e.preventDefault();
+    const m = mtModel(node);
+    if (mtReorder.kind==='col') {
+      const ch = e.target.closest('.mt-colh');
+      if (ch) { const to=+ch.dataset.c; mtMoveItem(m.aligns, mtReorder.from, to); m.rows.forEach(r => mtMoveItem(r, mtReorder.from, to)); mtCommit(node,m); }
+    } else {
+      const rh = e.target.closest('.mt-rowh');
+      if (rh && rh.dataset.r) { mtMoveItem(m.rows, mtReorder.from, +rh.dataset.r); mtCommit(node,m); }
+    }
+    mtReorder = null; mtClearSelection(); refreshTable(node);
+  });
+  host.addEventListener('dragend', () => {
+    mtReorder = null;
+    host.querySelectorAll('.mt-dragover').forEach(x => x.classList.remove('mt-dragover'));
+  });
+  // begin a rectangular cell selection
+  host.addEventListener('mousedown', e => {
+    const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    mtDrag = { nodeId:node.id, r0:+cell.dataset.r, c0:+cell.dataset.c, started:false };
+  });
+
+  mtInitGlobal();
+  return host;
+}
+
+// global gesture + keyboard handlers for table cell selection (attached once)
+function mtInitGlobal() {
+  if (mtGlobalInit) return; mtGlobalInit = true;
+  document.addEventListener('mousemove', e => {
+    if (!mtDrag) return;
+    const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.mt-cell');
+    if (!cell || cell.closest('.md-table-host')?.dataset.id !== mtDrag.nodeId) return;
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    if (!mtDrag.started) {
+      if (r === mtDrag.r0 && c === mtDrag.c0) return; // same cell: let it be edited
+      mtDrag.started = true;
+      if (document.activeElement?.classList?.contains('mt-cell')) document.activeElement.blur();
+      window.getSelection()?.removeAllRanges();
+    }
+    mtSel = { nodeId:mtDrag.nodeId, r0:mtDrag.r0, c0:mtDrag.c0, r1:r, c1:c };
+    mtApplySelection();
+    e.preventDefault();
+  });
+  document.addEventListener('mouseup', () => { mtDrag = null; });
+  // clear selection when clicking outside any table
+  document.addEventListener('mousedown', e => {
+    if (mtSel && !e.target.closest('.md-table-host')) mtClearSelection();
+  });
+  // delete / copy / escape on the active cell selection
+  document.addEventListener('keydown', e => {
+    if (!mtSel) return;
+    if (document.activeElement?.classList?.contains('mt-cell')) return; // editing a cell
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      const node = nodeById(mtSel.nodeId); if (!node) return;
+      const m = mtModel(node), b = mtSelRect();
+      for (let r=b.r0;r<=b.r1;r++) for (let c=b.c0;c<=b.c1;c++) m.rows[r][c] = '';
+      mtCommit(node,m); refreshTable(node); mtSel = null;
+    } else if ((e.ctrlKey||e.metaKey) && e.key === 'c') {
+      const node = nodeById(mtSel.nodeId); if (!node) return;
+      const m = mtModel(node), b = mtSelRect(), out = [];
+      for (let r=b.r0;r<=b.r1;r++) { const row=[]; for (let c=b.c0;c<=b.c1;c++) row.push(m.rows[r][c]||''); out.push(row.join('\t')); }
+      navigator.clipboard?.writeText(out.join('\n'));
+    } else if (e.key === 'Escape') {
+      mtClearSelection();
+    }
+  });
+}
+
 function renderRow(r) {
   const { node, depth, parent } = r;
   const opts = { searchCtx: r.searchCtx, highlight: r.highlight };
@@ -1016,11 +1308,19 @@ function renderRow(r) {
   if (!opts.searchCtx) {
     bullet.addEventListener('click', e => {
       if (bulletDragMoved) return;
-      if (!e.target.classList.contains('node-checkbox') && node.type !== 'divider') zoomInto(node.id);
+      if (!e.target.classList.contains('node-checkbox') && node.type !== 'divider' && node.type !== 'table') zoomInto(node.id);
     });
     bullet.addEventListener('mouseenter', () => { if (!dragId) showBulletPopup(node.id, bullet); });
     bullet.addEventListener('mouseleave', () => scheduleBpopHide());
     attachDragHandlers(bullet, row, node);
+  }
+
+  // table node: render the interactive builder instead of a contenteditable
+  if (node.type === 'table') {
+    const tbl = buildTableWidget(node, opts.searchCtx);
+    row.append(colBtn, bullet, tbl);
+    div.appendChild(row);
+    return div;
   }
 
   // content
@@ -1706,6 +2006,14 @@ function applyBlockCmd(id, nodeId, node, content) {
   // style toggles
   if (id === 'style-italic')    { node.italic    = !node.italic;    markDirty(); rerenderNode(nodeId); return; }
   if (id === 'style-underline') { node.underline = !node.underline; markDirty(); rerenderNode(nodeId); return; }
+  // table: seed a starter table and switch the node into builder mode
+  if (id === 'table') {
+    if (activeContentId === nodeId) { const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`); if (el) el.blur(); }
+    if (!parseTable(node.text)) node.text = starterTableText();
+    node.type = 'table'; node.checked = false;
+    markDirty(); render();
+    return;
+  }
   // block type — swap prefix in node.text to match the new type
   const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
   const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
