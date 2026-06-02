@@ -945,25 +945,22 @@ function attachContentEvents(content, node) {
 
 function enterEdit(content, node) {
   content.dataset.editing = '1';
-  content.dataset.prevText = node.text;
+  content.dataset.prevText = node.text; // baseline for a lightweight text-undo entry
   content.textContent = node.text;
   activeContentId = node.id;
-  pushUndo();
-  content.dataset.undoDepth = undoStack.length;
   scheduleReconcile(); // raw markdown text may differ in height from rendered HTML
 }
 
 function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
-  const depthAtEnter = Number(content.dataset.undoDepth);
   node.text = content.textContent;
   delete content.dataset.editing;
   content.innerHTML = mdToHtml(node.text, node.type === 'code');
   markDirty();
   if (activeContentId === node.id) activeContentId = null;
+  recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
+  delete content.dataset.prevText;
   hideSlashMenu(); updateSelToolbar(); scheduleReconcile();
-  // discard no-op edit snapshot (text unchanged, no structural op intervened)
-  if (node.text === prevText && undoStack.length === depthAtEnter) undoStack.pop();
 }
 
 function caretFromPoint(x, y) {
@@ -1611,7 +1608,7 @@ const UNDO_MAX_BYTES    = 24 * 1024 * 1024; // ~24MB of undo history
 
 function snapshot() {
   const s = JSON.stringify(root);
-  return { root: s, focusedId, size: s.length };
+  return { kind: 'snapshot', root: s, focusedId, size: s.length };
 }
 function trimStack(stack) {
   while (stack.length > UNDO_MAX_ENTRIES) stack.shift();
@@ -1626,28 +1623,69 @@ function restoreSnapshot(snap) {
   buildIndex(root, null);
 }
 
+// Text edits are recorded as tiny {prev,next} entries instead of full-tree
+// snapshots, so editing a node is O(1) no matter how large the outline is.
+function recordTextEdit(nodeId, prev, next) {
+  if (prev === next) return; // no-op edit (focus + blur, or unchanged)
+  undoStack.push({ kind: 'text', nodeId, prev, next, focusedId, size: prev.length + next.length + 64 });
+  trimStack(undoStack);
+  redoStack.length = 0;
+}
+// Commit an in-progress text edit before a structural op snapshots the tree,
+// so the typing and the structural change become separate undo steps.
+function flushActiveTextEdit() {
+  if (activeContentId == null) return;
+  const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
+  if (!el) return;
+  const node = nodeById(activeContentId);
+  if (!node) return;
+  const prev = el.dataset.prevText ?? '';
+  node.text = el.textContent;
+  recordTextEdit(activeContentId, prev, node.text);
+  el.dataset.prevText = node.text; // reset baseline so exitEdit won't double-record
+}
+
+// structural ops: flush any in-progress text edit, then snapshot the whole tree
 function pushUndo() {
+  flushActiveTextEdit();
   undoStack.push(snapshot());
   trimStack(undoStack);
   redoStack.length = 0;
 }
 
+// apply one history entry; `dir` is 'prev' for undo, 'next' for redo
+function applyEntry(entry, intoStack, dir) {
+  if (entry.kind === 'text') {
+    const node = nodeById(entry.nodeId);
+    intoStack.push(entry); // same entry reverses symmetrically
+    // Strip editing state before render: container.innerHTML='' fires blur which
+    // would call exitEdit and overwrite the text we're about to restore.
+    if (activeContentId != null) {
+      const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
+      if (el) { delete el.dataset.editing; delete el.dataset.prevText; }
+      activeContentId = null;
+    }
+    if (node) node.text = entry[dir];
+    markDirty(); render();
+    if (node) ensureRowVisible(entry.nodeId);
+  } else {
+    intoStack.push(snapshot());
+    restoreSnapshot(entry);
+    markDirty(); render();
+    if (focusedId) focusNode(focusedId);
+  }
+  trimStack(intoStack);
+}
+
 function undo() {
+  flushActiveTextEdit();
   if (!undoStack.length) return;
-  redoStack.push(snapshot());
-  trimStack(redoStack);
-  restoreSnapshot(undoStack.pop());
-  markDirty(); render();
-  if (focusedId) focusNode(focusedId);
+  applyEntry(undoStack.pop(), redoStack, 'prev');
 }
 
 function redo() {
   if (!redoStack.length) return;
-  undoStack.push(snapshot());
-  trimStack(undoStack);
-  restoreSnapshot(redoStack.pop());
-  markDirty(); render();
-  if (focusedId) focusNode(focusedId);
+  applyEntry(redoStack.pop(), undoStack, 'next');
 }
 function markClean() {
   dirty = false;
@@ -1663,7 +1701,7 @@ const OPML_TYPE = { description:'OPML outline', accept:{'text/x-opml':['.opml']}
 async function newFile() {
   if (dirty && !confirm('Discard unsaved changes?')) return;
   root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = ''; searchQueryLC = '';
-  undoStack.length = 0; redoStack.length = 0;
+  undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
   document.getElementById('file-name').textContent = fileName;
   document.getElementById('search-box').value = '';
   document.getElementById('search-clear').classList.remove('on');
@@ -1681,7 +1719,7 @@ async function openFile() {
       root = fromOpml(await file.text());
       buildIndex(root, null);
       focusedId = null; searchQuery = ''; searchQueryLC = '';
-      undoStack.length = 0; redoStack.length = 0;
+      undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
       document.getElementById('file-name').textContent = fileName;
       document.getElementById('search-box').value = '';
       document.getElementById('search-clear').classList.remove('on');
@@ -1693,7 +1731,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
+      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -2085,14 +2123,8 @@ document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
-  if (ctrl && !e.shiftKey && e.key==='z') {
-    if (document.activeElement?.dataset?.editing) return;
-    e.preventDefault(); undo();
-  }
-  if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) {
-    if (document.activeElement?.dataset?.editing) return;
-    e.preventDefault(); redo();
-  }
+  if (ctrl && !e.shiftKey && e.key==='z') { e.preventDefault(); undo(); }
+  if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) { e.preventDefault(); redo(); }
 });
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue=''; } });
 
@@ -2115,6 +2147,7 @@ if (window.visualViewport) {
 
 const AUTOSAVE_KEY = 'pointliner_autosave';
 let autosaveTimer = null;
+let autosaveDisabled = false; // set once an outline proves too large for localStorage
 // Most browsers cap localStorage near 5MB. Warn before we hit the wall so the
 // user can save to a real file rather than discovering a silent autosave loss.
 const STORAGE_SOFT_LIMIT = 4_200_000; // chars — proactive warning threshold
@@ -2140,18 +2173,22 @@ function hideStorageWarn() {
 }
 
 function scheduleAutosave() {
+  // Once an outline is too large for localStorage, stop re-serializing the whole
+  // tree every 800ms only to fail — the OPML file is the store for big outlines.
+  if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     const payload = JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme });
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {
-        showStorageWarn('soft', 'This outline is getting large — autosave may stop working soon. Save it to a file as backup.');
+        showStorageWarn('soft', 'This outline is getting large — auto-backup may stop soon. Save it to a file to be safe.');
       } else if (storageWarnState) {
         storageWarnState = null; hideStorageWarn(); // back under the limit
       }
     } catch(e) {
-      showStorageWarn('hard', 'Autosave failed — browser storage is full. Save to a file now to avoid losing changes.');
+      autosaveDisabled = true; // don't thrash on every keystroke for a tree that can't fit
+      showStorageWarn('hard', 'This outline is too large for browser auto-backup — your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
     }
   }, 800);
 }
