@@ -217,9 +217,6 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .bullet[draggable=true]:active{cursor:grabbing}
 
 /* multi-select */
-.sel-check{width:16px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s;font-size:10px;color:var(--muted);user-select:none}
-.node-row:hover .sel-check,.node-selected>.node-row .sel-check{opacity:1}
-.node-selected>.node-row .sel-check{color:var(--acc)}
 .node-selected>.node-row{background:rgba(74,144,217,.1);border-radius:4px}
 @media(prefers-color-scheme:dark){.node-selected>.node-row{background:rgba(91,163,232,.12)}}
 #node-sel-bar{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:6px 10px;display:none;align-items:center;gap:6px;box-shadow:0 8px 30px rgba(0,0,0,.15);font-size:13px;white-space:nowrap}
@@ -871,32 +868,13 @@ function renderRow(r) {
 
   if (opts.highlight) highlightContent(content, searchQuery);
 
-  const selCheck = document.createElement('span');
-  selCheck.className = 'sel-check';
-  selCheck.textContent = selectedIds.has(node.id) ? '◆' : '◇';
-  selCheck.title = 'Select (Shift+click for range)';
-  if (!opts.searchCtx) {
-    selCheck.addEventListener('mousedown', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.shiftKey && selAnchorId) {
-        rangeSelectTo(node.id);
-      } else {
-        if (selectedIds.has(node.id)) selectedIds.delete(node.id);
-        else { selectedIds.add(node.id); selAnchorId = node.id; }
-        updateSelVisuals();
-        updateNodeSelBar();
-      }
-    });
-  }
-
   if (node.type === 'ol') {
     const num = document.createElement('span');
     num.className = 'ol-num';
     num.textContent = olNum(node, parent) + '.';
-    row.append(selCheck, colBtn, bullet, num, content);
+    row.append(colBtn, bullet, num, content);
   } else {
-    row.append(selCheck, colBtn, bullet, content);
+    row.append(colBtn, bullet, content);
   }
   div.appendChild(row);
   return div;
@@ -1128,11 +1106,7 @@ function clearSelection() {
 function updateSelVisuals() {
   if (!vlist) return;
   vlist.querySelectorAll('.node[data-id]').forEach(el => {
-    const id = el.dataset.id;
-    const sel = selectedIds.has(id);
-    el.classList.toggle('node-selected', sel);
-    const ch = el.querySelector('.sel-check');
-    if (ch) ch.textContent = sel ? '◆' : '◇';
+    el.classList.toggle('node-selected', selectedIds.has(el.dataset.id));
   });
 }
 
