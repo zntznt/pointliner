@@ -1300,7 +1300,7 @@ function hideSelTb() { selTb.classList.remove('on'); }
 document.addEventListener('selectionchange', updateSelToolbar);
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('#sel-tb')) hideSelTb();
-  if (selectedIds.size > 0 && !e.target.closest('.sel-check') && !e.target.closest('#node-sel-bar')) clearSelection();
+  if (selectedIds.size > 0 && !e.target.closest('.sel-check') && !e.target.closest('#node-sel-bar') && !e.target.closest('.bullet')) clearSelection();
 });
 
 function applyInlineFormat(fmt) {
