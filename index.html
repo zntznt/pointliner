@@ -276,6 +276,8 @@ let fileHandle = null;
 let fileName  = 'unsaved';
 let undoStack = [];
 let redoStack = [];
+let nodeMap   = new Map(); // id → node
+let parentMap = new Map(); // id → parent node (null for root)
 
 function mkRoot() {
   return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [] };
@@ -289,21 +291,25 @@ function inheritedType(type) {
   return ['h1','h2','h3','divider'].includes(type) ? 'ul' : type;
 }
 
-function nodeById(id, n = root) {
-  if (n.id === id) return n;
-  for (const c of n.children) { const f = nodeById(id, c); if (f) return f; }
-  return null;
+function buildIndex(n, parent = null) {
+  nodeMap.set(n.id, n);
+  parentMap.set(n.id, parent);
+  for (const c of n.children) buildIndex(c, n);
 }
-function parentOf(id, n = root, p = null) {
-  if (n.id === id) return p;
-  for (const c of n.children) { const f = parentOf(id, c, n); if (f !== undefined) return f; }
-  return undefined;
+function deregisterSubtree(n) {
+  nodeMap.delete(n.id);
+  parentMap.delete(n.id);
+  for (const c of n.children) deregisterSubtree(c);
 }
-function pathTo(id, n = root, acc = []) {
-  const next = [...acc, n];
-  if (n.id === id) return next;
-  for (const c of n.children) { const f = pathTo(id, c, next); if (f) return f; }
-  return null;
+function nodeById(id) { return nodeMap.get(id) ?? null; }
+function parentOf(id) { return parentMap.has(id) ? parentMap.get(id) : undefined; }
+function pathTo(id) {
+  if (!nodeMap.has(id)) return null;
+  const path = [];
+  let cur = nodeMap.get(id);
+  while (cur) { path.push(cur); cur = parentMap.get(cur.id) ?? null; }
+  path.reverse();
+  return path;
 }
 
 // ─── markdown ─────────────────────────────────────────────────────────────────
@@ -561,6 +567,7 @@ function isVisible(node) {
 function addFirstChild(parent, container) {
   const n = mkNode();
   parent.children.push(n);
+  nodeMap.set(n.id, n); parentMap.set(n.id, parent);
   markDirty();
   const wrap = document.createElement('div');
   renderNode(n, wrap, 0, parent);
@@ -834,6 +841,7 @@ function handlePaste(e, node, content) {
     });
   }
   ins(parsed.slice(1), parent, idx);
+  buildIndex(root, null);
   markDirty(); render();
   if (newNodes.length) focusNode(newNodes[newNodes.length-1].id);
 }
@@ -1238,6 +1246,7 @@ function insertSiblingAfter(id) {
   const nn = mkNode('', srcNode ? inheritedType(srcNode.type) : 'ul');
   pushUndo();
   parent.children.splice(idx+1, 0, nn);
+  nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
   markDirty();
   const curEl = document.querySelector(`.node[data-id="${id}"]`);
   if (curEl) {
@@ -1257,6 +1266,7 @@ function indentNode(id) {
   pushUndo();
   const [node] = parent.children.splice(idx,1);
   np.children.push(node);
+  parentMap.set(node.id, np);
   if (np.collapsed) np.collapsed = false;
   markDirty(); render(); focusNode(id);
 }
@@ -1272,6 +1282,7 @@ function outdentNode(id) {
   const [node] = parent.children.splice(idx,1);
   const pi = gp.children.findIndex(c => c.id === parent.id);
   gp.children.splice(pi+1, 0, node);
+  parentMap.set(node.id, gp);
   markDirty(); render(); focusNode(id);
 }
 
@@ -1280,7 +1291,9 @@ function deleteNode(id) {
   if (!parent) return;
   pushUndo();
   const idx = parent.children.findIndex(c => c.id === id);
-  parent.children.splice(idx,1); markDirty();
+  const [removedNode] = parent.children.splice(idx,1);
+  deregisterSubtree(removedNode);
+  markDirty();
   let ft = null;
   if (idx > 0) ft = lastVis(parent.children[idx-1]).id;
   else if (parent.id !== root.id && parent.id !== focusedId) ft = parent.id;
@@ -1443,6 +1456,7 @@ function performDrop(fromId, targetId, position) {
     if (!target) { fromParent.children.splice(fromIdx, 0, fromNode); return; }
     if (target.collapsed) target.collapsed = false;
     target.children.push(fromNode);
+    parentMap.set(fromNode.id, target);
   } else {
     const tParent = parentOf(targetId);
     if (!tParent) { fromParent.children.splice(fromIdx, 0, fromNode); return; }
@@ -1450,6 +1464,7 @@ function performDrop(fromId, targetId, position) {
     if (ti === -1) { fromParent.children.splice(fromIdx, 0, fromNode); return; }
     if (position === 'after') ti++;
     tParent.children.splice(ti, 0, fromNode);
+    parentMap.set(fromNode.id, tParent);
   }
 
   markDirty();
@@ -1478,6 +1493,7 @@ function undo() {
   redoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
   const snap = undoStack.pop();
   root = snap.root; focusedId = snap.focusedId;
+  buildIndex(root, null);
   markDirty(); render();
   if (focusedId) focusNode(focusedId);
 }
@@ -1487,6 +1503,7 @@ function redo() {
   undoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
   const snap = redoStack.pop();
   root = snap.root; focusedId = snap.focusedId;
+  buildIndex(root, null);
   markDirty(); render();
   if (focusedId) focusNode(focusedId);
 }
@@ -1508,6 +1525,7 @@ async function newFile() {
   document.getElementById('file-name').textContent = fileName;
   document.getElementById('search-box').value = '';
   document.getElementById('search-clear').classList.remove('on');
+  buildIndex(root, null);
   markClean(); render();
 }
 
@@ -1519,6 +1537,7 @@ async function openFile() {
       const file = await fileHandle.getFile();
       fileName = file.name;
       root = fromOpml(await file.text());
+      buildIndex(root, null);
       focusedId = null; searchQuery = '';
       undoStack.length = 0; redoStack.length = 0;
       document.getElementById('file-name').textContent = fileName;
@@ -1532,7 +1551,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); focusedId=null; searchQuery=''; undoStack.length=0; redoStack.length=0; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
+      try { root = fromOpml(await file.text()); buildIndex(root, null); focusedId=null; searchQuery=''; undoStack.length=0; redoStack.length=0; document.getElementById('file-name').textContent=fileName; markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -1961,6 +1980,7 @@ function scheduleAutosave() {
     const data = JSON.parse(raw);
     if (data.root) {
       root = data.root;
+      buildIndex(root, null);
       focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
       if (data.fileName) {
         fileName = data.fileName;
@@ -1981,6 +2001,7 @@ function scheduleAutosave() {
   } catch(_) {}
 })();
 
+buildIndex(root, null);
 render();
 </script>
 </body>
