@@ -57,6 +57,10 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 
 /* outline */
 #outline{max-width:760px;margin:0 auto;padding:28px 24px 120px}
+/* virtual list: only a window of rows is in the DOM; spacers reserve the rest */
+#vlist{position:relative}
+.vspacer{flex:none;width:100%}
+#vlist>.node{position:relative}
 .zoom-title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;word-break:break-word;white-space:pre-wrap;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
@@ -289,6 +293,18 @@ let showDone  = false;
 let searchQuery = '';
 let searchQueryLC = '';        // lowercased once, reused per node during a search
 let searchMatchSet = null;     // ids whose subtree (incl self) contains a match
+
+// ─── virtualization state ──────────────────────────────────────────────────────
+const IND = 24;        // px indent per depth level (matches former --ind nesting)
+const EST_ROW = 30;    // height estimate for not-yet-measured rows
+const OVERSCAN = 10;   // extra rows rendered above/below the viewport
+let flatRows  = [];    // ordered visible rows: { node, depth, parent, searchCtx?, highlight? }
+let flatIndex = new Map();   // node id → index in flatRows
+let rowTops   = [];    // cumulative top offset of each row (length flatRows.length+1)
+let totalHeight = 0;
+let heightCache = new Map(); // node id → measured px height
+let vlist = null, vTop = null, vBot = null;
+let winStart = 0, winEnd = -1;
 let dirty     = false;
 let fileHandle = null;
 let fileName  = 'unsaved';
@@ -545,19 +561,172 @@ function render() {
     container.appendChild(te);
   }
 
-  if (vp.children.length === 0) {
-    addFirstChild(vp, container);
-    appendGhostRow(vp, container);
-    return;
+  flatten(vp);
+
+  // create a first child when the viewport is empty (never while searching)
+  let firstChildId = null;
+  if (flatRows.length === 0 && !searchQuery) {
+    const n = createChildModel(vp);
+    firstChildId = n.id;
+    flatten(vp);
   }
 
+  // virtual-list scaffold: a relative container with two spacers framing the window
+  vlist = document.createElement('div'); vlist.id = 'vlist';
+  vTop = document.createElement('div'); vTop.className = 'vspacer';
+  vBot = document.createElement('div'); vBot.className = 'vspacer';
+  vlist.append(vTop, vBot);
+  container.appendChild(vlist);
+  appendGhostRow(vp, container);
+
+  measureTops();
+  winStart = 0; winEnd = -1;
+  renderWindow(true);
+
+  if (firstChildId) focusNode(firstChildId);
+}
+
+// ─── virtual list ──────────────────────────────────────────────────────────────
+
+function pushRows(node, depth, parent) {
+  if (!isVisible(node)) return;
+  flatRows.push({ node, depth, parent });
+  if (!node.collapsed) for (const c of node.children) pushRows(c, depth + 1, node);
+}
+function pushSearchRows(node, depth, parent) {
+  if (!searchMatchSet.has(node.id)) return;
+  const self = nodeMatchesSearch(node);
+  flatRows.push({ node, depth, parent, searchCtx: !self, highlight: self });
+  for (const c of node.children) pushSearchRows(c, depth + 1, node); // search always expands
+}
+function flatten(vp) {
+  flatRows = []; flatIndex = new Map();
   if (searchQuery) {
-    renderSearch(vp, container);
+    searchMatchSet = new Set();
+    vp.children.forEach(c => computeMatchSet(c, searchMatchSet));
+    vp.children.forEach(c => pushSearchRows(c, 0, vp));
   } else {
-    vp.children.forEach(c => { if (isVisible(c)) renderNode(c, container, 0, vp); });
-    appendGhostRow(vp, container);
+    vp.children.forEach(c => pushRows(c, 0, vp));
+  }
+  for (let i = 0; i < flatRows.length; i++) flatIndex.set(flatRows[i].node.id, i);
+}
+
+function measureTops() {
+  rowTops = new Array(flatRows.length + 1);
+  let y = 0;
+  for (let i = 0; i < flatRows.length; i++) {
+    rowTops[i] = y;
+    y += heightCache.get(flatRows[i].node.id) || EST_ROW;
+  }
+  rowTops[flatRows.length] = y;
+  totalHeight = y;
+}
+
+// largest index i with rowTops[i] <= y (clamped to valid range)
+function rowAtOffset(y) {
+  let lo = 0, hi = flatRows.length - 1, ans = 0;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (rowTops[m] <= y) { ans = m; lo = m + 1; } else hi = m - 1; }
+  return ans;
+}
+
+function computeWindow() {
+  if (flatRows.length === 0) return [0, -1];
+  const rect = vlist.getBoundingClientRect();
+  const listTopDoc = rect.top + window.scrollY;
+  const viewTop = Math.max(0, window.scrollY - listTopDoc);
+  const viewBot = viewTop + window.innerHeight;
+  let start = rowAtOffset(viewTop) - OVERSCAN;
+  let end   = rowAtOffset(viewBot) + OVERSCAN;
+  if (start < 0) start = 0;
+  if (end > flatRows.length - 1) end = flatRows.length - 1;
+  return [start, end];
+}
+
+function renderWindow(force) {
+  if (!vlist) return;
+  let [s, e] = computeWindow();
+  // never drop the row currently being edited from the DOM (would kill focus)
+  const keepId = activeContentId ?? forceIncludeId;
+  if (keepId != null) {
+    const fi = flatIndex.get(keepId);
+    if (fi != null) { s = Math.min(s, fi); e = Math.max(e, fi); }
+  }
+  if (!force && s === winStart && e === winEnd) return;
+
+  // preserve the live editing element across the rebuild (keeps caret + edit state)
+  const activeEl = activeContentId != null ? vlist.querySelector(`.node[data-id="${activeContentId}"]`) : null;
+  if (activeEl) activeEl.remove();
+
+  vlist.innerHTML = '';
+  vlist.appendChild(vTop);
+  for (let i = s; i <= e; i++) {
+    const r = flatRows[i];
+    let el;
+    if (activeEl && r.node.id === activeContentId) { el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; }
+    else el = renderRow(r);
+    vlist.appendChild(el);
+  }
+  vlist.appendChild(vBot);
+  winStart = s; winEnd = e;
+
+  vTop.style.height = (e >= s ? rowTops[s] : 0) + 'px';
+  vBot.style.height = (e >= 0 ? totalHeight - rowTops[e + 1] : 0) + 'px';
+  reconcileHeights();
+}
+
+// measure rendered rows; if real heights differ from estimates, fix offsets/spacers
+function reconcileHeights() {
+  if (!vlist) return;
+  let changed = false;
+  for (const el of vlist.children) {
+    const id = el.dataset && el.dataset.id;
+    if (!id) continue; // spacer
+    const h = el.offsetHeight;
+    if (h && heightCache.get(id) !== h) { heightCache.set(id, h); changed = true; }
+  }
+  if (changed) {
+    measureTops();
+    vTop.style.height = (winEnd >= winStart ? rowTops[winStart] : 0) + 'px';
+    vBot.style.height = (winEnd >= 0 ? totalHeight - rowTops[winEnd + 1] : 0) + 'px';
   }
 }
+
+let reconcileRaf = null;
+function scheduleReconcile() {
+  if (reconcileRaf) return;
+  reconcileRaf = requestAnimationFrame(() => { reconcileRaf = null; reconcileHeights(); });
+}
+
+// scroll the page so a given row sits comfortably in view, then re-window
+let forceIncludeId = null;
+function ensureRowVisible(id) {
+  const i = flatIndex.get(id);
+  if (i == null || !vlist) return false;
+  const rect = vlist.getBoundingClientRect();
+  const listTopDoc = rect.top + window.scrollY;
+  const rowTopDoc = listTopDoc + rowTops[i];
+  const rowBotDoc = listTopDoc + rowTops[i + 1];
+  const margin = 60;
+  if (rowTopDoc < window.scrollY + margin) window.scrollTo(0, Math.max(0, rowTopDoc - margin));
+  else if (rowBotDoc > window.scrollY + window.innerHeight - margin) window.scrollTo(0, rowBotDoc - window.innerHeight + margin);
+  forceIncludeId = id;
+  renderWindow(true);
+  forceIncludeId = null;
+  return true;
+}
+
+let winRaf = null;
+window.addEventListener('scroll', () => {
+  if (winRaf) return;
+  winRaf = requestAnimationFrame(() => { winRaf = null; renderWindow(false); });
+}, { passive: true });
+window.addEventListener('resize', () => {
+  if (!vlist) return;
+  heightCache.clear();       // wrapping changes with width — discard stale measurements
+  measureTops();
+  winStart = 0; winEnd = -1;
+  renderWindow(true);
+});
 
 function appendGhostRow(parent, container) {
   const ghost = document.createElement('div');
@@ -573,7 +742,7 @@ function appendGhostRow(parent, container) {
   ghost.addEventListener('click', () => {
     const kids = parent.children;
     if (kids.length) insertSiblingAfter(kids[kids.length - 1].id);
-    else { pushUndo(); addFirstChild(parent, container); }
+    else { pushUndo(); const n = createChildModel(parent); render(); focusNode(n.id); }
   });
   container.appendChild(ghost);
 }
@@ -582,17 +751,12 @@ function isVisible(node) {
   return showDone || node.type !== 'todo' || !node.checked;
 }
 
-function addFirstChild(parent, container) {
+function createChildModel(parent) {
   const n = mkNode();
   parent.children.push(n);
   nodeMap.set(n.id, n); parentMap.set(n.id, parent);
   markDirty();
-  const wrap = document.createElement('div');
-  renderNode(n, wrap, 0, parent);
-  const ghost = container.querySelector('.ghost-row');
-  if (ghost) container.insertBefore(wrap.firstChild, ghost);
-  else container.appendChild(wrap.firstChild);
-  focusNode(n.id);
+  return n;
 }
 
 // Returns the ol number for this node within parent
@@ -606,8 +770,11 @@ function olNum(node, parent) {
   return n + 1;
 }
 
-function renderNode(node, container, depth, parent, opts = {}) {
+function renderRow(r) {
+  const { node, depth, parent } = r;
+  const opts = { searchCtx: r.searchCtx, highlight: r.highlight };
   const div = document.createElement('div');
+  div.style.paddingLeft = (depth * IND) + 'px';
   const visKids = node.children.filter(isVisible);
   div.className = [
     'node',
@@ -684,17 +851,6 @@ function renderNode(node, container, depth, parent, opts = {}) {
     row.append(colBtn, bullet, content);
   }
   div.appendChild(row);
-
-  // children
-  const expanded = opts.searchCtx ? true : !node.collapsed;
-  if (visKids.length && expanded) {
-    const cd = document.createElement('div');
-    cd.className = 'children';
-    visKids.forEach(c => renderNode(c, cd, depth+1, node));
-    div.appendChild(cd);
-  }
-
-  container.appendChild(div);
   return div;
 }
 
@@ -706,37 +862,12 @@ function nodeMatchesSearch(node) {
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
-// so renderSearchNode is O(n) instead of re-scanning subtrees at every level.
+// so the flatten pass is O(n) instead of re-scanning subtrees at every level.
 function computeMatchSet(node, set) {
   let any = nodeMatchesSearch(node);
   for (const c of node.children) { if (computeMatchSet(c, set)) any = true; }
   if (any) set.add(node.id);
   return any;
-}
-
-function renderSearch(vp, container) {
-  searchMatchSet = new Set();
-  vp.children.forEach(c => computeMatchSet(c, searchMatchSet));
-  vp.children.forEach(c => renderSearchNode(c, container, 0, vp));
-}
-
-function renderSearchNode(node, container, depth, parent) {
-  if (!searchMatchSet.has(node.id)) return; // neither self nor any descendant matches
-  const self  = nodeMatchesSearch(node);
-  const below = node.children.some(c => searchMatchSet.has(c.id));
-
-  const div = renderNode(node, container, depth, parent, {
-    searchCtx: !self,
-    highlight: self,
-  });
-
-  // In search mode we always show children, and we rebuild the children div
-  if (below) {
-    let cd = div.querySelector(':scope > .children');
-    if (!cd) { cd = document.createElement('div'); cd.className = 'children'; div.appendChild(cd); }
-    else cd.innerHTML = '';
-    node.children.forEach(c => renderSearchNode(c, cd, depth+1, node));
-  }
 }
 
 function highlightContent(el, query) {
@@ -793,6 +924,7 @@ function attachContentEvents(content, node) {
   content.addEventListener('input', () => {
     if (!content.dataset.editing) return;
     node.text = content.textContent; markDirty();
+    scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id); updateSelToolbar();
     updateFnPanel(node);
@@ -818,6 +950,7 @@ function enterEdit(content, node) {
   activeContentId = node.id;
   pushUndo();
   content.dataset.undoDepth = undoStack.length;
+  scheduleReconcile(); // raw markdown text may differ in height from rendered HTML
 }
 
 function exitEdit(content, node) {
@@ -828,7 +961,7 @@ function exitEdit(content, node) {
   content.innerHTML = mdToHtml(node.text, node.type === 'code');
   markDirty();
   if (activeContentId === node.id) activeContentId = null;
-  hideSlashMenu(); updateSelToolbar();
+  hideSlashMenu(); updateSelToolbar(); scheduleReconcile();
   // discard no-op edit snapshot (text unchanged, no structural op intervened)
   if (node.text === prevText && undoStack.length === depthAtEnter) undoStack.pop();
 }
@@ -1226,39 +1359,16 @@ function toggleChecked(id, checked) {
   const node = nodeById(id);
   if (!node) return;
   node.checked = checked; markDirty();
-  if (!showDone && checked) {
-    const el = document.querySelector(`.node[data-id="${id}"]`);
-    if (el) el.remove();
-    updatePHC(parentOf(id));
-  } else {
-    const el = document.querySelector(`.node[data-id="${id}"]`);
-    if (el) el.classList.toggle('checked', checked);
-  }
-}
-
-function updatePHC(parent) {
-  if (!parent || parent === root) return;
-  const el = document.querySelector(`.node[data-id="${parent.id}"]`);
-  if (el) el.classList.toggle('has-children', parent.children.some(isVisible));
+  render();
 }
 
 function rerenderNode(id) {
-  const el = document.querySelector(`.node[data-id="${id}"]`);
-  const parent = parentOf(id);
-  if (!el || !parent) { render(); return; }
   const node = nodeById(id);
-  if (!node) { el.remove(); return; }
-  const container = el.parentElement, next = el.nextSibling;
-  el.remove();
-  const wrap = document.createElement('div');
-  renderNode(node, wrap, 0, parent);
-  const rendered = wrap.firstChild;
-  if (next) container.insertBefore(rendered, next);
-  else container.appendChild(rendered);
-  if (node.type === 'divider') {
+  render();
+  if (node && node.type === 'divider') {
     if (document.activeElement?.blur) document.activeElement.blur();
     window.getSelection()?.removeAllRanges();
-  } else focusNode(id);
+  } else if (node) focusNode(id);
 }
 
 // ─── tree mutations ───────────────────────────────────────────────────────────
@@ -1273,13 +1383,7 @@ function insertSiblingAfter(id) {
   parent.children.splice(idx+1, 0, nn);
   nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
   markDirty();
-  const curEl = document.querySelector(`.node[data-id="${id}"]`);
-  if (curEl) {
-    const wrap = document.createElement('div');
-    renderNode(nn, wrap, 0, parent);
-    curEl.parentElement.insertBefore(wrap.firstChild, curEl.nextSibling);
-    focusNode(nn.id);
-  } else { render(); focusNode(nn.id); }
+  render(); focusNode(nn.id);
 }
 
 function indentNode(id) {
@@ -1322,11 +1426,8 @@ function deleteNode(id) {
   let ft = null;
   if (idx > 0) ft = lastVis(parent.children[idx-1]).id;
   else if (parent.id !== root.id && parent.id !== focusedId) ft = parent.id;
-  const el = document.querySelector(`.node[data-id="${id}"]`);
-  if (el) el.remove(); updatePHC(parent);
-  const vp = focusedId ? nodeById(focusedId) : root;
-  if (vp && vp.children.length === 0) addFirstChild(vp, document.getElementById('outline'));
-  else if (ft) focusNode(ft);
+  render();
+  if (ft) focusNode(ft);
 }
 
 function lastVis(node) {
@@ -1344,28 +1445,22 @@ function moveNode(id, dir) {
   pushUndo();
   [parent.children[idx], parent.children[ni]] = [parent.children[ni], parent.children[idx]];
   markDirty();
-  const el = document.querySelector(`.node[data-id="${id}"]`);
-  if (el) {
-    if (dir===-1) { const p=el.previousElementSibling; if(p) el.parentElement.insertBefore(el,p); }
-    else { const n=el.nextElementSibling; if(n && !n.classList.contains('ghost-row')) el.parentElement.insertBefore(n,el); }
-    focusNode(id);
-  } else { render(); focusNode(id); }
+  render(); focusNode(id);
 }
 
 function setCollapsed(id, val) {
   const node = nodeById(id);
   if (!node) return;
   node.collapsed = val; markDirty();
-  const el = document.querySelector(`.node[data-id="${id}"]`);
-  if (!el) return;
-  el.classList.toggle('collapsed', val);
-  const btn = el.querySelector(':scope>.node-row>.collapse-btn');
-  if (btn) { btn.textContent = val ? '▶' : '▼'; btn.title = val ? 'Expand' : 'Collapse'; }
+  const editing = activeContentId === id;
+  render();
+  if (editing) focusNode(id);
 }
 function toggleCollapse(id) { const n=nodeById(id); if(n) setCollapsed(id,!n.collapsed); }
 
 function focusNode(id) {
   requestAnimationFrame(() => {
+    ensureRowVisible(id); // bring the row into the rendered window if it was offscreen
     const el = document.querySelector(`.node-content[data-id="${id}"]`);
     if (!el) return;
     const node = nodeById(id);
