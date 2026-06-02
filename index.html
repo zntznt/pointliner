@@ -215,6 +215,20 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #drop-line::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--acc)}
 .bullet[draggable=true]{cursor:grab}
 .bullet[draggable=true]:active{cursor:grabbing}
+
+/* multi-select */
+.sel-check{width:16px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s;font-size:10px;color:var(--muted);user-select:none}
+.node-row:hover .sel-check,.node-selected>.node-row .sel-check{opacity:1}
+.node-selected>.node-row .sel-check{color:var(--acc)}
+.node-selected>.node-row{background:rgba(74,144,217,.1);border-radius:4px}
+@media(prefers-color-scheme:dark){.node-selected>.node-row{background:rgba(91,163,232,.12)}}
+#node-sel-bar{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:6px 10px;display:none;align-items:center;gap:6px;box-shadow:0 8px 30px rgba(0,0,0,.15);font-size:13px;white-space:nowrap}
+#node-sel-bar.on{display:flex}
+.nsb-count{color:var(--muted);font-size:12px;padding-right:4px}
+.nsb-sep{width:1px;height:18px;background:var(--bdr);flex-shrink:0;margin:0 1px}
+.nsb-btn{cursor:pointer;padding:3px 9px;border-radius:5px;border:1px solid var(--bdr);background:transparent;color:var(--fg);font:inherit;font-size:12px;white-space:nowrap;transition:background .1s}
+.nsb-btn:hover{background:var(--bdr)}
+.nsb-btn.danger:hover{background:rgba(229,85,85,.1);border-color:#e55;color:#e55}
 </style>
 </head>
 <body>
@@ -258,6 +272,17 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 <div id="slash-menu"></div>
 <!-- drag indicator -->
 <div id="drop-line"></div>
+<!-- multi-select action bar -->
+<div id="node-sel-bar">
+  <span class="nsb-count" id="nsb-count">0 selected</span>
+  <span class="nsb-sep"></span>
+  <button class="nsb-btn" id="nsb-copy">Copy</button>
+  <button class="nsb-btn" id="nsb-indent">Indent →</button>
+  <button class="nsb-btn" id="nsb-outdent">← Outdent</button>
+  <span class="nsb-sep"></span>
+  <button class="nsb-btn danger" id="nsb-delete">Delete</button>
+  <button class="nsb-btn" id="nsb-clear">✕</button>
+</div>
 <!-- footnote panel -->
 <div id="fn-panel">
   <div class="fn-panel-hd">Footnotes</div>
@@ -312,6 +337,9 @@ let undoStack = [];
 let redoStack = [];
 let nodeMap   = new Map(); // id → node
 let parentMap = new Map(); // id → parent node (null for root)
+let selectedIds  = new Set();
+let selAnchorId  = null;
+let nodeClipboard = null;
 
 function mkRoot() {
   return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [] };
@@ -785,6 +813,7 @@ function renderRow(r) {
     node.italic     ? 'nc-italic' : '',
     node.underline  ? 'nc-underline' : '',
     opts.searchCtx  ? 'search-ctx' : '',
+    selectedIds.has(node.id) ? 'node-selected' : '',
   ].filter(Boolean).join(' ');
   div.dataset.id = node.id;
 
@@ -842,13 +871,32 @@ function renderRow(r) {
 
   if (opts.highlight) highlightContent(content, searchQuery);
 
+  const selCheck = document.createElement('span');
+  selCheck.className = 'sel-check';
+  selCheck.textContent = selectedIds.has(node.id) ? '◆' : '◇';
+  selCheck.title = 'Select (Shift+click for range)';
+  if (!opts.searchCtx) {
+    selCheck.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey && selAnchorId) {
+        rangeSelectTo(node.id);
+      } else {
+        if (selectedIds.has(node.id)) selectedIds.delete(node.id);
+        else { selectedIds.add(node.id); selAnchorId = node.id; }
+        updateSelVisuals();
+        updateNodeSelBar();
+      }
+    });
+  }
+
   if (node.type === 'ol') {
     const num = document.createElement('span');
     num.className = 'ol-num';
     num.textContent = olNum(node, parent) + '.';
-    row.append(colBtn, bullet, num, content);
+    row.append(selCheck, colBtn, bullet, num, content);
   } else {
-    row.append(colBtn, bullet, content);
+    row.append(selCheck, colBtn, bullet, content);
   }
   div.appendChild(row);
   return div;
@@ -944,6 +992,7 @@ function attachContentEvents(content, node) {
 }
 
 function enterEdit(content, node) {
+  if (selectedIds.size > 0) clearSelection();
   content.dataset.editing = '1';
   content.dataset.prevText = node.text; // baseline for a lightweight text-undo entry
   content.textContent = node.text;
@@ -989,10 +1038,14 @@ function handlePaste(e, node, content) {
   node.text += parsed[0].text; content.textContent = node.text;
   const idx = parent.children.findIndex(c => c.id === node.id);
   const newNodes = [];
+  function insDeep(item, par) {
+    const nn = mkNode(item.text); par.children.push(nn); newNodes.push(nn);
+    item.children.forEach(ch => insDeep(ch, nn));
+  }
   function ins(items, tp, ai) {
     items.forEach((it, i) => {
       const nn = mkNode(it.text); tp.children.splice(ai+1+i, 0, nn); newNodes.push(nn);
-      it.children.forEach(ch => { const cn = mkNode(ch.text); nn.children.push(cn); newNodes.push(cn); });
+      it.children.forEach(ch => insDeep(ch, nn));
     });
   }
   ins(parsed.slice(1), parent, idx);
@@ -1052,6 +1105,159 @@ function onKeyDown(e, id, content) {
   else if (e.key==='o' && ctrl) { e.preventDefault(); openFile(); }
 }
 
+// ─── multi-select ─────────────────────────────────────────────────────────────
+
+function clearSelection() {
+  selectedIds.clear();
+  selAnchorId = null;
+  updateSelVisuals();
+  updateNodeSelBar();
+}
+
+function updateSelVisuals() {
+  if (!vlist) return;
+  vlist.querySelectorAll('.node[data-id]').forEach(el => {
+    const id = el.dataset.id;
+    const sel = selectedIds.has(id);
+    el.classList.toggle('node-selected', sel);
+    const ch = el.querySelector('.sel-check');
+    if (ch) ch.textContent = sel ? '◆' : '◇';
+  });
+}
+
+function updateNodeSelBar() {
+  const bar = document.getElementById('node-sel-bar');
+  if (selectedIds.size === 0) { bar.classList.remove('on'); return; }
+  bar.classList.add('on');
+  document.getElementById('nsb-count').textContent = `${selectedIds.size} selected`;
+}
+
+function rangeSelectTo(id) {
+  if (!selAnchorId) { selectedIds.add(id); selAnchorId = id; updateSelVisuals(); updateNodeSelBar(); return; }
+  const ai = flatIndex.get(selAnchorId) ?? -1;
+  const bi = flatIndex.get(id) ?? -1;
+  if (ai === -1 || bi === -1) { selectedIds.add(id); selAnchorId = id; updateSelVisuals(); updateNodeSelBar(); return; }
+  const lo = Math.min(ai, bi), hi = Math.max(ai, bi);
+  for (let i = lo; i <= hi; i++) selectedIds.add(flatRows[i].node.id);
+  updateSelVisuals();
+  updateNodeSelBar();
+}
+
+function getTopLevelSelected() {
+  return flatRows
+    .filter(r => selectedIds.has(r.node.id))
+    .filter(r => {
+      let p = parentOf(r.node.id);
+      while (p && p !== root) {
+        if (selectedIds.has(p.id)) return false;
+        p = parentOf(p.id);
+      }
+      return true;
+    })
+    .map(r => r.node);
+}
+
+function deepCloneNodeNewIds(node) {
+  return { ...node, id: uid(), children: node.children.map(c => deepCloneNodeNewIds(c)) };
+}
+
+function serializeNodesToText(nodes) {
+  function lines(n, depth) {
+    const r = ['  '.repeat(depth) + '- ' + n.text];
+    for (const c of n.children) r.push(...lines(c, depth + 1));
+    return r;
+  }
+  return nodes.flatMap(n => lines(n, 0)).join('\n');
+}
+
+function copySelection() {
+  if (selectedIds.size === 0) return;
+  const tops = getTopLevelSelected();
+  if (!tops.length) return;
+  nodeClipboard = { nodes: tops.map(n => JSON.parse(JSON.stringify(n))) };
+  const text = serializeNodesToText(tops);
+  navigator.clipboard?.writeText(text).catch(() => {});
+  clearSelection();
+}
+
+function deleteSelected() {
+  if (selectedIds.size === 0) return;
+  pushUndo();
+  const toDelete = [...flatRows]
+    .filter(r => selectedIds.has(r.node.id))
+    .map(r => r.node.id)
+    .reverse();
+  for (const id of toDelete) {
+    const parent = parentOf(id);
+    if (!parent) continue;
+    const idx = parent.children.findIndex(c => c.id === id);
+    if (idx < 0) continue;
+    const [removedNode] = parent.children.splice(idx, 1);
+    deregisterSubtree(removedNode);
+  }
+  clearSelection();
+  markDirty();
+  render();
+}
+
+function indentSelected() {
+  if (selectedIds.size === 0) return;
+  pushUndo();
+  const toIndent = flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node.id);
+  for (const id of toIndent) {
+    const parent = parentOf(id);
+    if (!parent) continue;
+    const idx = parent.children.findIndex(c => c.id === id);
+    if (idx <= 0) continue;
+    const np = parent.children[idx - 1];
+    if (selectedIds.has(np.id)) continue; // prev is also being indented — skip to avoid double-move
+    const [node] = parent.children.splice(idx, 1);
+    np.children.push(node);
+    parentMap.set(node.id, np);
+    if (np.collapsed) np.collapsed = false;
+  }
+  markDirty();
+  render();
+  updateSelVisuals();
+  updateNodeSelBar();
+}
+
+function outdentSelected() {
+  if (selectedIds.size === 0) return;
+  pushUndo();
+  const toOutdent = flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node.id).reverse();
+  for (const id of toOutdent) {
+    const parent = parentOf(id);
+    if (!parent || parent === root) continue;
+    if (focusedId && parent.id === focusedId) continue;
+    const gp = parentOf(parent.id);
+    if (!gp) continue;
+    const idx = parent.children.findIndex(c => c.id === id);
+    const [node] = parent.children.splice(idx, 1);
+    const pi = gp.children.findIndex(c => c.id === parent.id);
+    gp.children.splice(pi + 1, 0, node);
+    parentMap.set(node.id, gp);
+  }
+  markDirty();
+  render();
+  updateSelVisuals();
+  updateNodeSelBar();
+}
+
+function pasteFromNodeClipboard(atId) {
+  if (!nodeClipboard || !nodeClipboard.nodes.length) return;
+  const parent = parentOf(atId);
+  if (!parent) return;
+  pushUndo();
+  const idx = parent.children.findIndex(c => c.id === atId);
+  const newNodes = nodeClipboard.nodes.map(n => deepCloneNodeNewIds(n));
+  parent.children.splice(idx + 1, 0, ...newNodes);
+  buildIndex(root, null);
+  markDirty();
+  render();
+  if (newNodes.length) focusNode(newNodes[newNodes.length - 1].id);
+}
+
 // ─── selection toolbar ───────────────────────────────────────────────────────
 
 const selTb = document.getElementById('sel-tb');
@@ -1078,6 +1284,13 @@ function buildSelTb() {
 }
 buildSelTb();
 
+document.getElementById('nsb-copy').addEventListener('click', copySelection);
+document.getElementById('nsb-indent').addEventListener('click', indentSelected);
+document.getElementById('nsb-outdent').addEventListener('click', outdentSelected);
+document.getElementById('nsb-delete').addEventListener('click', deleteSelected);
+document.getElementById('nsb-clear').addEventListener('click', clearSelection);
+document.getElementById('node-sel-bar').addEventListener('mousedown', e => e.stopPropagation());
+
 function updateSelToolbar() {
   requestAnimationFrame(() => {
     const sel = window.getSelection();
@@ -1099,7 +1312,10 @@ function updateSelToolbar() {
 }
 function hideSelTb() { selTb.classList.remove('on'); }
 document.addEventListener('selectionchange', updateSelToolbar);
-document.addEventListener('mousedown', e => { if (!e.target.closest('#sel-tb')) hideSelTb(); });
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('#sel-tb')) hideSelTb();
+  if (selectedIds.size > 0 && !e.target.closest('.sel-check') && !e.target.closest('#node-sel-bar')) clearSelection();
+});
 
 function applyInlineFormat(fmt) {
   const sel = window.getSelection();
@@ -1522,6 +1738,7 @@ function navigateToNext(id) {
 // ─── drag and drop ───────────────────────────────────────────────────────────
 
 let dragId = null;
+let dragIds = null;
 let dragDropInfo = null;
 let bulletDragMoved = false;
 const dropLine = document.getElementById('drop-line');
@@ -1552,28 +1769,39 @@ function attachDragHandlers(bullet, row, node) {
     bulletDragMoved = true;
     hideBpop();
     dragId = node.id;
+    dragIds = (selectedIds.has(node.id) && selectedIds.size > 1) ? new Set(selectedIds) : null;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', node.id);
-    // Custom ghost image showing node text
+    // Custom ghost image showing node text (or count when multi-dragging)
     const ghost = document.createElement('div');
-    ghost.textContent = node.text || '…';
+    ghost.textContent = dragIds ? `${dragIds.size} items` : (node.text || '…');
     ghost.style.cssText = 'position:fixed;top:-999px;padding:4px 12px;background:var(--hbg);border:1px solid var(--bdr);border-radius:6px;font-size:14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.15)';
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 16, 16);
     setTimeout(() => ghost.remove(), 0);
     requestAnimationFrame(() => {
-      document.querySelector(`.node[data-id="${node.id}"]`)?.classList.add('dragging');
+      if (dragIds) {
+        dragIds.forEach(id => document.querySelector(`.node[data-id="${id}"]`)?.classList.add('dragging'));
+      } else {
+        document.querySelector(`.node[data-id="${node.id}"]`)?.classList.add('dragging');
+      }
     });
   });
 
   bullet.addEventListener('dragend', () => {
     dragId = null;
+    dragIds = null;
     dragDropInfo = null;
     clearAllDrag();
   });
 
   row.addEventListener('dragover', e => {
-    if (!dragId || dragId === node.id || isDescOf(dragId, node.id)) return;
+    if (!dragId) return;
+    if (dragIds) {
+      if (dragIds.has(node.id) || [...dragIds].some(id => isDescOf(id, node.id))) return;
+    } else {
+      if (dragId === node.id || isDescOf(dragId, node.id)) return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
 
@@ -1603,9 +1831,11 @@ function attachDragHandlers(bullet, row, node) {
     if (!dragId || !dragDropInfo) return;
     const { targetId, position } = dragDropInfo;
     const fromId = dragId;
-    dragId = null; dragDropInfo = null;
+    const fromIds = dragIds;
+    dragId = null; dragIds = null; dragDropInfo = null;
     clearAllDrag();
-    performDrop(fromId, targetId, position);
+    if (fromIds) performMultiDrop(fromIds, targetId, position);
+    else performDrop(fromId, targetId, position);
   });
 }
 
@@ -1635,6 +1865,48 @@ function performDrop(fromId, targetId, position) {
   }
 
   markDirty();
+  render();
+}
+
+function performMultiDrop(ids, targetId, position) {
+  const toMove = flatRows
+    .filter(r => ids.has(r.node.id))
+    .filter(r => {
+      let p = parentOf(r.node.id);
+      while (p && p !== root) { if (ids.has(p.id)) return false; p = parentOf(p.id); }
+      return true;
+    })
+    .map(r => r.node);
+  if (!toMove.length) return;
+  if (toMove.some(n => n.id === targetId || isDescOf(n.id, targetId))) return;
+
+  pushUndo();
+  for (const node of toMove) {
+    const par = parentOf(node.id);
+    if (!par) continue;
+    const idx = par.children.findIndex(c => c.id === node.id);
+    if (idx >= 0) par.children.splice(idx, 1);
+  }
+
+  if (position === 'child') {
+    const target = nodeById(targetId);
+    if (!target) return;
+    if (target.collapsed) target.collapsed = false;
+    for (const node of toMove) { target.children.push(node); parentMap.set(node.id, target); }
+  } else {
+    const tParent = parentOf(targetId);
+    if (!tParent) return;
+    let ti = tParent.children.findIndex(c => c.id === targetId);
+    if (ti === -1) return;
+    if (position === 'after') ti++;
+    for (let i = 0; i < toMove.length; i++) {
+      tParent.children.splice(ti + i, 0, toMove[i]);
+      parentMap.set(toMove[i].id, tParent);
+    }
+  }
+
+  markDirty();
+  clearSelection();
   render();
 }
 
@@ -2182,6 +2454,26 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
   if (ctrl && !e.shiftKey && e.key==='z') { e.preventDefault(); undo(); }
   if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) { e.preventDefault(); redo(); }
+  // multi-select shortcuts
+  if (ctrl && e.key==='c' && !e.shiftKey && selectedIds.size > 0) { e.preventDefault(); copySelection(); }
+  if (ctrl && e.key==='x' && selectedIds.size > 0) {
+    e.preventDefault();
+    const tops = getTopLevelSelected();
+    nodeClipboard = { nodes: tops.map(n => JSON.parse(JSON.stringify(n))) };
+    deleteSelected();
+  }
+  if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {
+    e.preventDefault();
+    const el = document.activeElement?.closest?.('.node[data-id]');
+    const id = el?.dataset?.id ?? (flatRows.length ? flatRows[flatRows.length - 1].node.id : null);
+    if (id) pasteFromNodeClipboard(id);
+  }
+  if (e.key==='Delete' && selectedIds.size > 0 && activeContentId == null && !ctrl) { e.preventDefault(); deleteSelected(); }
+  if (e.key==='Escape' && selectedIds.size > 0 && activeContentId == null) { clearSelection(); }
+  if (e.key==='Tab' && selectedIds.size > 0 && activeContentId == null) {
+    e.preventDefault();
+    if (e.shiftKey) outdentSelected(); else indentSelected();
+  }
 });
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue=''; } });
 
