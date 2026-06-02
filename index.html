@@ -91,6 +91,15 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 .md-list li{margin:1px 0}
 ul.md-list{list-style:disc}
 ol.md-list{list-style:decimal}
+ul.md-tasklist{list-style:none;padding-left:.2em}
+.md-task{display:flex;align-items:baseline;gap:.5em}
+.md-task-check{cursor:pointer;transform:translateY(1px);flex-shrink:0}
+.md-dl{margin:2px 0 2px 0}
+.md-dl dt{font-weight:600}
+.md-dl dd{margin:0 0 2px 1.2em;color:var(--muted)}
+.md-hl{background:rgba(255,225,0,.45);color:inherit;border-radius:2px;padding:0 1px}
+@media(prefers-color-scheme:dark){.md-hl{background:rgba(220,180,0,.4)}}
+.node-content sub,.node-content sup{font-size:.72em;line-height:0}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:6px;margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
@@ -307,6 +316,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <kbd>/</kbd> commands · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
   <kbd>Ctrl+F</kbd> search · <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo<br>
   <kbd>#</kbd> h1 · <kbd>##</kbd> h2 · <kbd>###</kbd> h3 · <kbd>&gt;</kbd> quote · <kbd>```</kbd> code · <kbd>---</kbd> divider<br>
+  <kbd>==hi==</kbd> highlight · <kbd>~sub~</kbd> · <kbd>^sup^</kbd> · <kbd>:emoji:</kbd> · <kbd>- [ ]</kbd> task · <kbd>/table</kbd> table<br>
 </div>
 
 <script>
@@ -420,52 +430,118 @@ function safeUrl(u, allowDataImage) {
 // url/alt/title arrive already &<>-escaped from the caller; only quotes remain
 const escQ = s => (s || '').replace(/"/g,'&quot;');
 
-// inline markdown within a single line (text is NOT yet escaped)
-function mdInline(s) {
-  s = (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const codes = [];
-  s = s.replace(/`([^`\n]+)`/g, (_,c) => { codes.push(`<code>${c}</code>`); return `\x00${codes.length-1}\x00`; });
-  // images first: ![alt](url "title") — superset of link syntax
-  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
-    const u = safeUrl(url, true); if (!u) return '';
-    return `<img src="${escQ(u)}" alt="${escQ(alt)}"${title?` title="${escQ(title)}"`:''} class="md-img" loading="lazy">`;
-  });
-  // links: [text](url "title")
-  s = s.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, txt, url, title) => {
-    const u = safeUrl(url); if (!u) return txt;
-    return `<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${txt}</a>`;
-  });
+// Common emoji shortcodes (:name:). Unknown codes are left as typed.
+const EMOJI = {
+  smile:'😄', grin:'😁', joy:'😂', rofl:'🤣', laughing:'😆', wink:'😉', blush:'😊',
+  heart_eyes:'😍', kissing_heart:'😘', thinking:'🤔', neutral_face:'😐', unamused:'😒',
+  sweat_smile:'😅', sob:'😭', cry:'😢', angry:'😠', rage:'😡', sunglasses:'😎',
+  scream:'😱', confused:'😕', worried:'😟', yum:'😋', sleeping:'😴', nerd:'🤓',
+  heart:'❤️', broken_heart:'💔', sparkling_heart:'💖', fire:'🔥', star:'⭐', star2:'🌟',
+  zap:'⚡', boom:'💥', tada:'🎉', sparkles:'✨', rocket:'🚀', bulb:'💡', '100':'💯',
+  thumbsup:'👍', '+1':'👍', thumbsdown:'👎', '-1':'👎', ok_hand:'👌', clap:'👏', wave:'👋',
+  pray:'🙏', muscle:'💪', point_right:'👉', point_left:'👈', eyes:'👀', brain:'🧠',
+  check:'✅', white_check_mark:'✅', heavy_check_mark:'✔️', x:'❌', warning:'⚠️',
+  question:'❓', exclamation:'❗', no_entry:'⛔', bell:'🔔', lock:'🔒', key:'🔑',
+  hourglass:'⌛', clock:'🕐', calendar:'📅', pushpin:'📌', paperclip:'📎', memo:'📝',
+  book:'📖', books:'📚', bookmark:'🔖', email:'📧', phone:'📱', computer:'💻',
+  coffee:'☕', beer:'🍺', pizza:'🍕', cake:'🎂', gift:'🎁', moneybag:'💰', chart:'📈',
+  sun:'☀️', moon:'🌙', cloud:'☁️', snowflake:'❄️', umbrella:'☔', rainbow:'🌈',
+  earth:'🌍', dog:'🐶', cat:'🐱', bug:'🐛', snake:'🐍', whale:'🐳', bird:'🐦',
+  tree:'🌳', flower:'🌸', rose:'🌹', four_leaf_clover:'🍀', wrench:'🔧', hammer:'🔨',
+  gear:'⚙️', package:'📦', label:'🏷️', flag:'🚩', trophy:'🏆', medal:'🏅', dart:'🎯',
+  hand:'✋', raised_hands:'🙌', handshake:'🤝', skull:'💀', ghost:'👻', alien:'👽',
+  robot:'🤖', poop:'💩', smiley:'😃', slightly_smiling_face:'🙂', upside_down_face:'🙃',
+};
+
+// Emphasis / highlight / sub / sup — runs on already-escaped text. Shared by the
+// main inline pass and by link text so emphasis works inside links.
+function mdEmph(s) {
+  s = s.replace(/==([^=\n]+?)==/g,'<mark class="md-hl">$1</mark>');
   s = s.replace(/\*\*\*((?!\s)[\s\S]*?(?<!\s))\*\*\*/g,'<strong><em>$1</em></strong>');
   s = s.replace(/\*\*((?!\s)[\s\S]*?(?<!\s))\*\*/g,'<strong>$1</strong>');
   s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g,'<em>$1</em>');
-  s = s.replace(/~~([\s\S]*?)~~/g,'<del>$1</del>');
-  s = s.replace(/\+\+([\s\S]*?)\+\+/g,'<u>$1</u>');
-  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => `<sup class="fn-ref" data-key="${k}">[${k}]</sup>`);
+  s = s.replace(/~~([\s\S]*?)~~/g,'<del>$1</del>');          // strikethrough (before sub)
+  s = s.replace(/\+\+([\s\S]*?)\+\+/g,'<u>$1</u>');           // underline (non-standard)
+  s = s.replace(/~(?!~)([^~\s]+?)~/g,'<sub>$1</sub>');        // subscript H~2~O
+  s = s.replace(/\^([^\^\s]+?)\^/g,'<sup>$1</sup>');          // superscript X^2^
+  return s;
+}
+
+// inline markdown within a single line (text is NOT yet escaped)
+function mdInline(s) {
+  s = (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Stash code/image/link/footnote as opaque tokens so later passes (emoji,
+  // hashtags, autolink) can't reach inside their URLs or attributes.
+  const tok = [];
+  const stash = html => { tok.push(html); return `\x00${tok.length-1}\x00`; };
+  s = s.replace(/`([^`\n]+)`/g, (_,c) => stash(`<code>${c}</code>`));
+  // images first: ![alt](url "title") — superset of link syntax
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
+    const u = safeUrl(url, true); if (!u) return '';
+    return stash(`<img src="${escQ(u)}" alt="${escQ(alt)}"${title?` title="${escQ(title)}"`:''} class="md-img" loading="lazy">`);
+  });
+  // links: [text](url "title") — emphasis allowed inside the text
+  s = s.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, txt, url, title) => {
+    const u = safeUrl(url); if (!u) return txt;
+    return stash(`<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${mdEmph(txt)}</a>`);
+  });
+  // footnote refs
+  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => stash(`<sup class="fn-ref" data-key="${k}">[${k}]</sup>`));
+  s = mdEmph(s);
+  // emoji shortcodes
+  s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
+  // hashtags
   s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}">#${t}</a>`);
-  s = s.replace(/\x00(\d+)\x00/g,(_,i)=>codes[+i]);
+  // automatic URL linking for bare http(s) URLs not already inside markup
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
+    (_, pre, url) => `${pre}<a href="${escQ(url)}" target="_blank" rel="noopener">${url}</a>`);
+  s = s.replace(/\x00(\d+)\x00/g,(_,i)=>tok[+i]);
   return s;
 }
 
 const UL_RE = /^\s*[-*+]\s+(.*)$/;
 const OL_RE = /^\s*\d+\.\s+(.*)$/;
+const TASK_RE = /^\[([ xX])\]\s+(.*)$/;   // applied to a list item's inner text
+const DD_RE = /^:\s+(.*)$/;               // definition-list "  : definition"
+
+// One <li>; task-list items (`- [ ] foo`) render a clickable checkbox. taskNo is
+// a running counter so a click can map back to the Nth task line in node.text.
+function renderListItem(inner, taskNo) {
+  const tm = inner.match(TASK_RE);
+  if (tm) {
+    const checked = tm[1].toLowerCase() === 'x';
+    return `<li class="md-task"><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2])}</li>`;
+  }
+  return `<li>${mdInline(inner)}</li>`;
+}
 
 function mdToHtml(raw, isCode) {
   if (isCode) return (raw || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const lines = (raw || '').split('\n');
   const out = [];
   let para = [];
+  const taskNo = { n: 0 };
   const flush = () => { if (para.length) { out.push(para.join('<br>')); para = []; } };
   let i = 0;
   while (i < lines.length) {
     const isUl = UL_RE.test(lines[i]);
     const isOl = !isUl && OL_RE.test(lines[i]);
+    // definition list: a term line immediately followed by one or more ": def" lines
+    const isDefTerm = !isUl && !isOl && lines[i].trim() !== '' && !DD_RE.test(lines[i]) && i+1 < lines.length && DD_RE.test(lines[i+1]);
     if (isUl || isOl) {
       flush();
       const re = isUl ? UL_RE : OL_RE, tag = isUl ? 'ul' : 'ol';
+      const hasTask = isUl && TASK_RE.test(lines[i].match(UL_RE)[1]);
       const items = [];
       let m;
-      while (i < lines.length && (m = lines[i].match(re))) { items.push(`<li>${mdInline(m[1])}</li>`); i++; }
-      out.push(`<${tag} class="md-list">${items.join('')}</${tag}>`);
+      while (i < lines.length && (m = lines[i].match(re))) { items.push(renderListItem(m[1], taskNo)); i++; }
+      out.push(`<${tag} class="md-list${hasTask?' md-tasklist':''}">${items.join('')}</${tag}>`);
+    } else if (isDefTerm) {
+      flush();
+      let dl = `<dt>${mdInline(lines[i])}</dt>`; i++;
+      let dm;
+      while (i < lines.length && (dm = lines[i].match(DD_RE))) { dl += `<dd>${mdInline(dm[1])}</dd>`; i++; }
+      out.push(`<dl class="md-dl">${dl}</dl>`);
     } else {
       para.push(mdInline(lines[i])); i++;
     }
@@ -480,13 +556,17 @@ function stripMd(text) {
     .replace(/!\[([^\]]*)\]\([^)]+\)/g,'$1')
     .replace(/\[([^\]]*)\]\([^)]+\)/g,'$1')
     .replace(/\[\^[^\]]+\]/g,'')
+    .replace(/==([^=\n]+?)==/g,'$1')
     .replace(/\*\*\*([\s\S]*?)\*\*\*/g,'$1')
     .replace(/\*\*([\s\S]*?)\*\*/g,'$1')
     .replace(/\*([\s\S]*?)\*/g,'$1')
     .replace(/~~([\s\S]*?)~~/g,'$1')
     .replace(/\+\+([\s\S]*?)\+\+/g,'$1')
-    .replace(/^\s*[-*+]\s+/gm,'')
-    .replace(/^\s*\d+\.\s+/gm,'');
+    .replace(/~(?!~)([^~\s]+?)~/g,'$1')
+    .replace(/\^([^\^\s]+?)\^/g,'$1')
+    .replace(/^\s*[-*+]\s+(?:\[[ xX]\]\s+)?/gm,'')
+    .replace(/^\s*\d+\.\s+/gm,'')
+    .replace(/^:\s+/gm,'');
 }
 
 // ─── OPML ─────────────────────────────────────────────────────────────────────
@@ -563,6 +643,7 @@ const INLINE_CMDS = [
   { id:'uline',    icon:'U',   label:'Underline',     desc:'++underline++' },
   { id:'inlcode',  icon:'`',   label:'Inline code',   desc:'`code`' },
   { id:'strike',   icon:'S',   label:'Strikethrough', desc:'~~strike~~' },
+  { id:'mark',     icon:'H',   label:'Highlight',     desc:'==highlight==' },
   { id:'link',     icon:'⌘',   label:'Link',          desc:'[text](url)' },
   { id:'image',    icon:'🖼',   label:'Image',         desc:'![alt](url)' },
 ];
@@ -1016,6 +1097,12 @@ let activeContentId = null;
 
 function attachContentEvents(content, node) {
   content.addEventListener('mousedown', e => {
+    // task-list checkbox: toggle the source line without entering raw-edit mode
+    if (!content.dataset.editing && e.target.classList && e.target.classList.contains('md-task-check')) {
+      e.preventDefault(); e.stopPropagation();
+      toggleTaskInNode(node, +e.target.dataset.task);
+      return;
+    }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {
       e.preventDefault();
       e.stopPropagation(); // prevent doc mousedown from immediately clearing the selection
@@ -1594,8 +1681,8 @@ function applyBlockCmd(id, nodeId, node, content) {
   node = node || nodeById(nodeId);
   if (!node) return;
   // inline formatting
-  if (['bold','italic','uline','inlcode','strike'].includes(id)) {
-    const map = { bold:'**', italic:'*', uline:'++', inlcode:'`', strike:'~~' };
+  if (['bold','italic','uline','inlcode','strike','mark'].includes(id)) {
+    const map = { bold:'**', italic:'*', uline:'++', inlcode:'`', strike:'~~', mark:'==' };
     const m = map[id];
     node.text = `${m}${node.text}${m}`;
     if (content) content.textContent = node.text;
@@ -1648,6 +1735,28 @@ function toggleChecked(id, checked) {
   if (!node) return;
   node.checked = checked; markDirty();
   render();
+}
+
+// Flip the Nth task-list checkbox (- [ ] / - [x]) in a node's text, then refresh
+// just that node's rendered content in place (no edit-mode, no full re-render).
+function toggleTaskInNode(node, taskIndex) {
+  if (!node) return;
+  let n = 0;
+  const lines = node.text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*[-*+]\s+)\[([ xX])\](\s.*)$/);
+    if (!m) continue;
+    if (n === taskIndex) {
+      const checked = m[2].toLowerCase() === 'x';
+      lines[i] = `${m[1]}[${checked ? ' ' : 'x'}]${m[3]}`;
+      break;
+    }
+    n++;
+  }
+  node.text = lines.join('\n');
+  markDirty();
+  const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
+  if (el && !el.dataset.editing) el.innerHTML = mdToHtml(textForDisplay(node), node.type === 'code');
 }
 
 function rerenderNode(id) {
