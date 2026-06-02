@@ -1482,28 +1482,50 @@ function markDirty() {
 
 // ─── undo / redo ─────────────────────────────────────────────────────────────
 
+// Snapshots are stored as JSON strings, not live object graphs: a parsed
+// tree costs several times its serialized size in heap, so strings let the
+// history hold far more states for the same memory. The stack is bounded by
+// both an entry count and a total-bytes budget (whichever bites first).
+const UNDO_MAX_ENTRIES = 100;
+const UNDO_MAX_BYTES    = 24 * 1024 * 1024; // ~24MB of undo history
+
+function snapshot() {
+  const s = JSON.stringify(root);
+  return { root: s, focusedId, size: s.length };
+}
+function trimStack(stack) {
+  while (stack.length > UNDO_MAX_ENTRIES) stack.shift();
+  let bytes = 0;
+  for (const e of stack) bytes += e.size;
+  // keep at least one entry even if a single snapshot exceeds the budget
+  while (stack.length > 1 && bytes > UNDO_MAX_BYTES) bytes -= stack.shift().size;
+}
+function restoreSnapshot(snap) {
+  root = JSON.parse(snap.root);
+  focusedId = snap.focusedId;
+  buildIndex(root, null);
+}
+
 function pushUndo() {
-  undoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
-  if (undoStack.length > 100) undoStack.shift();
+  undoStack.push(snapshot());
+  trimStack(undoStack);
   redoStack.length = 0;
 }
 
 function undo() {
   if (!undoStack.length) return;
-  redoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
-  const snap = undoStack.pop();
-  root = snap.root; focusedId = snap.focusedId;
-  buildIndex(root, null);
+  redoStack.push(snapshot());
+  trimStack(redoStack);
+  restoreSnapshot(undoStack.pop());
   markDirty(); render();
   if (focusedId) focusNode(focusedId);
 }
 
 function redo() {
   if (!redoStack.length) return;
-  undoStack.push({ root: JSON.parse(JSON.stringify(root)), focusedId });
-  const snap = redoStack.pop();
-  root = snap.root; focusedId = snap.focusedId;
-  buildIndex(root, null);
+  undoStack.push(snapshot());
+  trimStack(undoStack);
+  restoreSnapshot(redoStack.pop());
   markDirty(); render();
   if (focusedId) focusNode(focusedId);
 }
