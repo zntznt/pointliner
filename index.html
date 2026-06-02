@@ -1505,15 +1505,6 @@ function slashApply() {
 
 function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
 
-const MD_BLOCK_TRIGGERS = [
-  { re: /^### (.*)/, type: 'h3' },
-  { re: /^## (.*)/,  type: 'h2' },
-  { re: /^# (.*)/,   type: 'h1' },
-  { re: /^> (.*)/,   type: 'quote' },
-  { re: /^```(.*)/,  type: 'code' },
-  { re: /^---\s*$/,  type: 'divider' },
-];
-
 function checkMdBlockPrefix(content, node) {
   const text = content.textContent;
   // Divider is the only type that converts immediately (no persistent prefix)
@@ -1580,14 +1571,6 @@ function getCaretOffset(el) {
 }
 
 // ─── node type / checked ─────────────────────────────────────────────────────
-
-function setNodeType(id, type) {
-  const node = nodeById(id);
-  if (!node) return;
-  node.type = type;
-  if (type !== 'todo') node.checked = false;
-  markDirty(); rerenderNode(id);
-}
 
 function toggleChecked(id, checked) {
   const node = nodeById(id);
