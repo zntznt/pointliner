@@ -945,6 +945,16 @@ let activeContentId = null;
 
 function attachContentEvents(content, node) {
   content.addEventListener('mousedown', e => {
+    if (e.shiftKey && selAnchorId && !content.dataset.editing) {
+      e.preventDefault();
+      e.stopPropagation(); // prevent doc mousedown from immediately clearing the selection
+      if (activeContentId) {
+        const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
+        if (el) el.blur();
+      }
+      rangeSelectTo(node.id);
+      return;
+    }
     if (content.dataset.editing) return;
     e.preventDefault();
     enterEdit(content, node);
@@ -993,6 +1003,7 @@ function attachContentEvents(content, node) {
 
 function enterEdit(content, node) {
   if (selectedIds.size > 0) clearSelection();
+  selAnchorId = node.id;
   content.dataset.editing = '1';
   content.dataset.prevText = node.text; // baseline for a lightweight text-undo entry
   content.textContent = node.text;
@@ -1137,6 +1148,7 @@ function rangeSelectTo(id) {
   const ai = flatIndex.get(selAnchorId) ?? -1;
   const bi = flatIndex.get(id) ?? -1;
   if (ai === -1 || bi === -1) { selectedIds.add(id); selAnchorId = id; updateSelVisuals(); updateNodeSelBar(); return; }
+  selectedIds.clear();
   const lo = Math.min(ai, bi), hi = Math.max(ai, bi);
   for (let i = lo; i <= hi; i++) selectedIds.add(flatRows[i].node.id);
   updateSelVisuals();
