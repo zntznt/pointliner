@@ -194,6 +194,16 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* keep the help affordance from colliding with the footnote panel */
 #fn-panel.on ~ #sc-toggle,#fn-panel.on ~ .sc-panel{display:none}
 
+/* storage warning banner */
+#storage-warn{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:400;background:#c0392b;color:#fff;font-size:12.5px;line-height:1.45;padding:8px 10px 8px 14px;border-radius:9px;box-shadow:0 6px 24px rgba(0,0,0,.22);display:none;align-items:center;gap:10px;max-width:calc(100vw - 24px)}
+#storage-warn.on{display:flex}
+#storage-warn.soft{background:#d68910}
+#storage-warn-msg{flex:1;min-width:0}
+#storage-warn button{border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.12);color:#fff;font-size:11.5px;padding:3px 9px;border-radius:5px;flex-shrink:0}
+#storage-warn button:hover{background:rgba(255,255,255,.25)}
+#storage-warn-close{cursor:pointer;opacity:.8;font-size:13px;flex-shrink:0;user-select:none;line-height:1}
+#storage-warn-close:hover{opacity:1}
+
 /* drag and drop */
 .dragging{opacity:.3}
 .drop-child-hi>.node-row>.node-content{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
@@ -248,6 +258,12 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 <div id="fn-panel">
   <div class="fn-panel-hd">Footnotes</div>
   <div id="fn-list"></div>
+</div>
+
+<div id="storage-warn">
+  <span id="storage-warn-msg"></span>
+  <button id="storage-warn-save">Save to file</button>
+  <span id="storage-warn-close" title="Dismiss">✕</span>
 </div>
 
 <span id="sc-toggle">?</span>
@@ -1985,13 +2001,44 @@ if (window.visualViewport) {
 
 const AUTOSAVE_KEY = 'pointliner_autosave';
 let autosaveTimer = null;
+// Most browsers cap localStorage near 5MB. Warn before we hit the wall so the
+// user can save to a real file rather than discovering a silent autosave loss.
+const STORAGE_SOFT_LIMIT = 4_200_000; // chars — proactive warning threshold
+let storageWarnState = null;          // null | 'soft' | 'hard' — avoid re-nagging
+
+const storageWarn     = document.getElementById('storage-warn');
+const storageWarnMsg  = document.getElementById('storage-warn-msg');
+document.getElementById('storage-warn-save').addEventListener('click', () => { hideStorageWarn(); saveFile(); });
+document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
+
+function showStorageWarn(kind, msg) {
+  if (storageWarnState === kind) return; // already showing this level
+  storageWarnState = kind;
+  storageWarnMsg.textContent = msg;
+  storageWarn.classList.toggle('soft', kind === 'soft');
+  storageWarn.classList.add('on');
+  storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
+function hideStorageWarn() {
+  storageWarn.classList.remove('on');
+  // keep storageWarnState so a dismissed warning doesn't immediately reappear;
+  // it clears only when a save succeeds comfortably under the limit
+}
 
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
+    const payload = JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme });
     try {
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme }));
-    } catch(_) {}
+      localStorage.setItem(AUTOSAVE_KEY, payload);
+      if (payload.length > STORAGE_SOFT_LIMIT) {
+        showStorageWarn('soft', 'This outline is getting large — autosave may stop working soon. Save it to a file as backup.');
+      } else if (storageWarnState) {
+        storageWarnState = null; hideStorageWarn(); // back under the limit
+      }
+    } catch(e) {
+      showStorageWarn('hard', 'Autosave failed — browser storage is full. Save to a file now to avoid losing changes.');
+    }
   }, 800);
 }
 
