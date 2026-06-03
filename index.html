@@ -364,7 +364,8 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <kbd>Tab / Shift+Tab</kbd> indent / outdent<br>
   <kbd>↑/↓</kbd> navigate nodes · <kbd>Alt+↑/↓</kbd> move<br>
   <kbd>Ctrl+↑/↓</kbd> collapse · <kbd>Escape</kbd> zoom out / deselect<br>
-  <kbd>/</kbd> commands · <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
+  <kbd>/</kbd> point commands · <kbd>@</kbd> insert link/image/footnote<br>
+  <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
   <kbd>Ctrl+F</kbd> search · <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo<br>
   <kbd>#</kbd> h1 · <kbd>##</kbd> h2 · <kbd>###</kbd> h3 · <kbd>&gt;</kbd> quote · <kbd>```</kbd> code · <kbd>---</kbd> divider<br>
   <kbd>==hi==</kbd> highlight · <kbd>~sub~</kbd> · <kbd>^sup^</kbd> · <kbd>:emoji:</kbd> · <kbd>- [ ]</kbd> task · <kbd>/table</kbd> table<br>
@@ -732,6 +733,7 @@ function fromOpml(xml) {
 
 // ─── commands (unified) ───────────────────────────────────────────────────────
 
+// Point-level commands — change WHAT THIS POINT IS. Triggered by "/".
 const BLOCK_CMDS = [
   { id:'ul',      icon:'•',    label:'Bullet',     desc:'Bullet point',     section:'Turn into' },
   { id:'ol',      icon:'1.',   label:'Numbered',   desc:'Numbered list',    section:'Turn into' },
@@ -745,15 +747,21 @@ const BLOCK_CMDS = [
   { id:'table',   icon:'▦',    label:'Table',      desc:'Insert a table',   section:'Insert' },
 ];
 
-const INLINE_CMDS = [
+// Inline inserts — drop a thing AT THE CARET. Triggered by "@".
+const INSERT_CMDS = [
+  { id:'link',     icon:'⌘',  label:'Link',     desc:'[text](url)',   section:'Insert' },
+  { id:'image',    icon:'🖼',  label:'Image',    desc:'![alt](url)',   section:'Insert' },
+  { id:'footnote', icon:'†',  label:'Footnote', desc:'[^ref] + note', section:'Insert' },
+];
+
+// Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
+const FORMAT_CMDS = [
   { id:'bold',     icon:'B',   label:'Bold',          desc:'**bold**' },
   { id:'italic',   icon:'I',   label:'Italic',        desc:'*italic*' },
   { id:'uline',    icon:'U',   label:'Underline',     desc:'++underline++' },
   { id:'inlcode',  icon:'`',   label:'Inline code',   desc:'`code`' },
   { id:'strike',   icon:'S',   label:'Strikethrough', desc:'~~strike~~' },
   { id:'mark',     icon:'H',   label:'Highlight',     desc:'==highlight==' },
-  { id:'link',     icon:'⌘',   label:'Link',          desc:'[text](url)' },
-  { id:'image',    icon:'🖼',   label:'Image',         desc:'![alt](url)' },
 ];
 
 // build a unified cmd-item element
@@ -1794,7 +1802,7 @@ selTb.addEventListener('mousedown', e => e.preventDefault());
 
 function buildSelTb() {
   selTb.innerHTML = '';
-  INLINE_CMDS.forEach((cmd, i) => {
+  FORMAT_CMDS.forEach((cmd, i) => {
     if (i === 4) { const sep = document.createElement('div'); sep.className = 'cmd-sep'; selTb.appendChild(sep); }
     const ic = document.createElement('div');
     ic.className = 'cmd-icon';
@@ -1804,6 +1812,13 @@ function buildSelTb() {
     selTb.appendChild(ic);
   });
   const sep2 = document.createElement('div'); sep2.className = 'cmd-sep'; selTb.appendChild(sep2);
+  // link wraps the selection; footnote converts the selection into a note
+  const linkIc = document.createElement('div');
+  linkIc.className = 'cmd-icon';
+  linkIc.textContent = '⌘';
+  linkIc.title = 'Link';
+  linkIc.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat('link'); });
+  selTb.appendChild(linkIc);
   const fnIc = document.createElement('div');
   fnIc.className = 'cmd-icon';
   fnIc.textContent = '†';
@@ -1852,7 +1867,7 @@ function applyInlineFormat(fmt) {
   const range = sel.getRangeAt(0);
   const selected = range.toString();
   if (!selected) return;
-  const map = { bold:`**${selected}**`, italic:`*${selected}*`, uline:`++${selected}++`, inlcode:`\`${selected}\``, strike:`~~${selected}~~` };
+  const map = { bold:`**${selected}**`, italic:`*${selected}*`, uline:`++${selected}++`, inlcode:`\`${selected}\``, strike:`~~${selected}~~`, mark:`==${selected}==` };
   let wrapped = map[fmt];
   if (fmt === 'link') {
     const url = prompt('URL (https://…):');
@@ -1931,23 +1946,21 @@ let slashState = null;
 function isSlashMenuOpen() { return slashMenu.classList.contains('on'); }
 slashMenu.addEventListener('mousedown', e => e.preventDefault());
 
-const ALL_SLASH = [
-  ...BLOCK_CMDS,
-  ...INLINE_CMDS.map(c => ({ ...c, section: 'Format' })),
-];
-
+// "/" opens the point-level menu, "@" opens the inline-insert menu.
 function checkSlash(content, nodeId) {
   const pos = getCaretOffset(content);
   const before = content.textContent.slice(0, pos);
-  const m = before.match(/(^|[\s])\/(\w*)$/);
+  const m = before.match(/(^|[\s])([/@])(\w*)$/);
   if (!m) { hideSlashMenu(); return; }
-  const query = m[2].toLowerCase();
+  const trigger = m[2];
+  const query = m[3].toLowerCase();
   const slashOffset = pos - query.length - 1;
-  const matches = ALL_SLASH.filter(c =>
+  const pool = trigger === '@' ? INSERT_CMDS : BLOCK_CMDS;
+  const matches = pool.filter(c =>
     c.id.startsWith(query) || c.label.toLowerCase().includes(query)
   );
   if (!matches.length) { hideSlashMenu(); return; }
-  slashState = { nodeId, content, slashOffset, query, activeIdx:0, matches };
+  slashState = { nodeId, content, slashOffset, query, activeIdx:0, matches, trigger };
   renderSlashMenu();
   positionSlashMenu(content, slashOffset);
 }
@@ -1994,23 +2007,52 @@ function slashMove(dir) {
 
 function slashApply() {
   if (!slashState) return;
-  const { nodeId, content, slashOffset, activeIdx, matches } = slashState;
+  const { nodeId, content, slashOffset, activeIdx, matches, trigger } = slashState;
   const cmd = matches[activeIdx];
   hideSlashMenu();
-  const afterSlash = content.textContent.slice(slashOffset+1).match(/^\w*/)?.[0] ?? '';
-  const rawLen = 1 + afterSlash.length;
+  // strip the trigger char + the query the user typed after it
+  const afterTrigger = content.textContent.slice(slashOffset+1).match(/^\w*/)?.[0] ?? '';
+  const rawLen = 1 + afterTrigger.length;
   const newText = content.textContent.slice(0, slashOffset) + content.textContent.slice(slashOffset + rawLen);
   content.textContent = newText;
   const node = nodeById(nodeId);
   if (node) node.text = newText.replace(/​/g, '');
+  // restore the caret where the trigger char was
   try {
     const tn = content.firstChild || content;
     const r = document.createRange();
     r.setStart(tn, Math.min(slashOffset, newText.length)); r.collapse(true);
     window.getSelection().removeAllRanges(); window.getSelection().addRange(r);
   } catch(_) {}
-  applyBlockCmd(cmd.id, nodeId, node, content);
+  if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
+  else applyBlockCmd(cmd.id, nodeId, node, content);
   markDirty();
+}
+
+// Insert an inline artifact at the current caret (used by the "@" menu).
+function insertInlineArtifact(id, nodeId, content) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  if (id === 'link') {
+    const url = prompt('URL (https://…):'); if (!url) return;
+    document.execCommand('insertText', false, `[text](${url})`);
+  } else if (id === 'image') {
+    const url = prompt('Image URL (https://…):'); if (!url) return;
+    document.execCommand('insertText', false, `![alt](${url})`);
+  } else if (id === 'footnote') {
+    const key = nextFnKey(node);
+    if (!node.footnotes) node.footnotes = [];
+    node.footnotes.push({ key, text: '' });
+    document.execCommand('insertText', false, `[^${key}]`);
+    node.text = editableText(content); markDirty();
+    showFnPanel(node.id);
+    setTimeout(() => {
+      const el = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(key)}"] .fn-content`);
+      if (el) el.focus();
+    }, 50);
+    return;
+  }
+  node.text = editableText(content); markDirty();
 }
 
 function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
@@ -2036,35 +2078,11 @@ function checkMdBlockPrefix(content, node) {
   return false;
 }
 
+// Point-level command: change the node's type (or insert a table). Inline
+// formatting and inline inserts are handled elsewhere (selection toolbar / "@").
 function applyBlockCmd(id, nodeId, node, content) {
   node = node || nodeById(nodeId);
   if (!node) return;
-  // inline formatting
-  if (['bold','italic','uline','inlcode','strike','mark'].includes(id)) {
-    const map = { bold:'**', italic:'*', uline:'++', inlcode:'`', strike:'~~', mark:'==' };
-    const m = map[id];
-    node.text = `${m}${node.text}${m}`;
-    if (content) content.textContent = node.text;
-    else { const c = document.querySelector(`.node-content[data-id="${nodeId}"]`); if(c) c.textContent=node.text; }
-    return;
-  }
-  if (id === 'link') {
-    const url = prompt('URL (https://…):');
-    if (!url) return;
-    node.text = `[${node.text || 'link'}](${url})`;
-    const c = document.querySelector(`.node-content[data-id="${nodeId}"]`); if(c) c.textContent=node.text;
-    return;
-  }
-  if (id === 'image') {
-    const url = prompt('Image URL (https://…):');
-    if (!url) return;
-    node.text = `${node.text}${node.text ? ' ' : ''}![${node.text || 'image'}](${url})`;
-    const c = document.querySelector(`.node-content[data-id="${nodeId}"]`); if(c) c.textContent=node.text;
-    return;
-  }
-  // style toggles
-  if (id === 'style-italic')    { node.italic    = !node.italic;    markDirty(); rerenderNode(nodeId); return; }
-  if (id === 'style-underline') { node.underline = !node.underline; markDirty(); rerenderNode(nodeId); return; }
   // table: seed a starter table and switch the node into builder mode
   if (id === 'table') {
     if (activeContentId === nodeId) { const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`); if (el) el.blur(); }
