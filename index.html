@@ -521,7 +521,7 @@ function textForDisplay(node) {
 // tokens can resolve). mdToHtml is synchronous, so the global is safe.
 function renderContentHTML(node) {
   diceRenderList = node.dice || null;
-  const html = renderContentHTML(node);
+  const html = mdToHtml(textForDisplay(node), node.type === 'code');
   diceRenderList = null;
   return html;
 }
