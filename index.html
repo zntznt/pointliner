@@ -38,7 +38,8 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 #search-wrap>*{pointer-events:auto}
 /* file menu */
 #file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;min-width:220px;box-shadow:0 8px 30px rgba(0,0,0,.12)}
-#file-menu.on{display:block}
+@keyframes menu-pop{from{opacity:0;transform:scale(.95) translateY(-6px)}to{opacity:1;transform:none}}
+#file-menu.on{display:block;animation:menu-pop .15s cubic-bezier(.2,.8,.3,1)}
 .fm-head{display:flex;align-items:center;gap:8px;padding:6px 10px 9px;border-bottom:1px solid var(--bdr);margin-bottom:3px}
 .fm-title{font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
 #search-box{width:clamp(150px,40vw,220px);padding:5px 12px 5px 30px;border:1px solid var(--bdr);border-radius:20px;background:var(--bg);color:var(--fg);font:inherit;font-size:16px;outline:none;transition:border-color .15s,box-shadow .15s}
@@ -69,10 +70,18 @@ body.full-width #outline{max-width:none}
 
 /* node base */
 .node{position:relative}
-.node-row{display:flex;align-items:flex-start;padding:1px 0}
-.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden}
+.node-row{display:flex;align-items:flex-start;padding:1px 0;border-radius:4px;transition:background .08s}
+.node-row:hover{background:rgba(0,0,0,.028)}
+@media(prefers-color-scheme:dark){.node-row:hover{background:rgba(255,255,255,.04)}}
+.search-ctx .node-row:hover{background:transparent}
+.node-row:has(.node-content[data-editing]){background:rgba(74,144,217,.055)}
+@media(prefers-color-scheme:dark){.node-row:has(.node-content[data-editing]){background:rgba(91,163,232,.08)}}
+.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden}
 .has-children>.node-row>.collapse-btn{visibility:visible}
 .collapse-btn:hover{color:var(--acc)}
+.col-chevron{display:inline-block;transition:transform .18s ease;line-height:1}
+.has-children:not(.collapsed)>.node-row>.collapse-btn .col-chevron{transform:rotate(90deg)}
+.collapse-count{font-size:8px;font-weight:700;line-height:1;margin-top:1px;opacity:.6}
 
 /* bullet area — dot + optional checkbox */
 .bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0}
@@ -163,6 +172,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .nc-underline .node-content{text-decoration:underline}
 
 /* node types */
+.nt-h1{margin-top:12px}.nt-h2{margin-top:7px}
 .nt-h1>.node-row>.node-content{font-size:1.55em;font-weight:800;line-height:1.25;padding-top:3px}
 .nt-h2>.node-row>.node-content{font-size:1.22em;font-weight:700;line-height:1.3}
 .nt-h3>.node-row>.node-content{font-size:1.06em;font-weight:600}
@@ -199,12 +209,13 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .search-ctx{opacity:.5}
 .search-ctx .node-content{pointer-events:none}
 
-/* ghost row — baseline visible, JS proximity-boost on mouse approach */
-.ghost-row{display:flex;align-items:center;padding:14px 0;opacity:.25;transition:opacity .15s ease;cursor:pointer;user-select:none}
-.ghost-row:hover{opacity:.75}
+/* ghost row */
+.ghost-row{display:flex;align-items:center;padding:14px 0;opacity:.3;transition:opacity .2s ease;cursor:pointer;user-select:none}
+.ghost-row:hover{opacity:.65}
 .ghost-spacer{width:16px;flex-shrink:0}
-.ghost-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;margin:0 6px}
-.ghost-label{font-size:14px;color:var(--muted)}
+.ghost-dot{width:5px;height:5px;border-radius:50%;background:var(--bullet);flex-shrink:0;margin:0 7px;transition:background .12s,transform .12s}
+.ghost-row:hover .ghost-dot{background:var(--bullet-h);transform:scale(1.3)}
+.ghost-label{font-size:13px;color:var(--muted);letter-spacing:.01em}
 
 /* unified command item */
 .cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;cursor:pointer}
@@ -271,8 +282,9 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* multi-select */
 .node-selected>.node-row{background:rgba(74,144,217,.1);border-radius:4px}
 @media(prefers-color-scheme:dark){.node-selected>.node-row{background:rgba(91,163,232,.12)}}
+@keyframes bar-up{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 #node-sel-bar{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:6px 10px;display:none;align-items:center;gap:6px;box-shadow:0 8px 30px rgba(0,0,0,.15);font-size:13px;white-space:nowrap}
-#node-sel-bar.on{display:flex}
+#node-sel-bar.on{display:flex;animation:bar-up .16s ease}
 .nsb-count{color:var(--muted);font-size:12px;padding-right:4px}
 .nsb-sep{width:1px;height:18px;background:var(--bdr);flex-shrink:0;margin:0 1px}
 .nsb-btn{cursor:pointer;padding:3px 9px;border-radius:5px;border:1px solid var(--bdr);background:transparent;color:var(--fg);font:inherit;font-size:12px;white-space:nowrap;transition:background .1s}
@@ -1279,6 +1291,12 @@ function mtInitGlobal() {
   });
 }
 
+function countDescendants(n) {
+  let c = n.children.length;
+  for (const ch of n.children) c += countDescendants(ch);
+  return c;
+}
+
 function renderRow(r) {
   const { node, depth, parent } = r;
   const opts = { searchCtx: r.searchCtx, highlight: r.highlight };
@@ -1301,11 +1319,20 @@ function renderRow(r) {
   const row = document.createElement('div');
   row.className = 'node-row';
 
-  // collapse btn
+  // collapse btn — single ▶ rotated 90° via CSS when expanded; count badge when collapsed
   const colBtn = document.createElement('span');
   colBtn.className = 'collapse-btn';
-  colBtn.textContent = node.collapsed ? '▶' : '▼';
   colBtn.title = node.collapsed ? 'Expand' : 'Collapse';
+  const chevron = document.createElement('span');
+  chevron.className = 'col-chevron';
+  chevron.textContent = '▶';
+  colBtn.appendChild(chevron);
+  if (node.collapsed && visKids.length) {
+    const badge = document.createElement('span');
+    badge.className = 'collapse-count';
+    badge.textContent = countDescendants(node);
+    colBtn.appendChild(badge);
+  }
   colBtn.addEventListener('click', () => toggleCollapse(node.id));
 
   // bullet area
