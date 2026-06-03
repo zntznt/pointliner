@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pointliner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 button,[contenteditable],input{touch-action:manipulation}
@@ -309,20 +310,20 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 </div>
 <div id="file-menu">
   <div class="fm-head">
-    <div class="cmd-icon" style="font-size:11px">◻</div>
+    <div class="cmd-icon" style="font-size:11px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
     <span class="fm-title" id="file-name">unsaved</span>
     <span class="dirty-dot" id="fm-dirty-dot"></span>
   </div>
-  <div class="cmd-item" id="btn-new"><div class="cmd-icon">+</div><div class="cmd-info"><span class="cmd-label">New</span><span class="cmd-desc">Start a fresh outline</span></div></div>
-  <div class="cmd-item" id="btn-open"><div class="cmd-icon">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Load an OPML file</span></div></div>
+  <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label">New</span><span class="cmd-desc">Start a fresh outline</span></div></div>
+  <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Load an OPML file</span></div></div>
   <div class="cmd-sep"></div>
-  <div class="cmd-item" id="btn-save"><div class="cmd-icon">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">⌘S</span></div></div>
-  <div class="cmd-item" id="btn-save-as"><div class="cmd-icon">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Export to a new file</span></div></div>
+  <div class="cmd-item" id="btn-save"><div class="cmd-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">⌘S</span></div></div>
+  <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Export to a new file</span></div></div>
   <div class="cmd-sep"></div>
-  <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Light mode</span><span class="cmd-desc">Switch appearance</span></div></div>
-  <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
+  <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Light mode</span><span class="cmd-desc">Switch appearance</span></div></div>
+  <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
   <div class="cmd-sep"></div>
-  <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit" id="btn-github"><div class="cmd-icon">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
+  <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit" id="btn-github"><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
 </div>
 <div id="outline"></div>
 
@@ -735,34 +736,71 @@ function fromOpml(xml) {
 
 // Point-level commands — change WHAT THIS POINT IS. Triggered by "/".
 const BLOCK_CMDS = [
-  { id:'ul',      icon:'•',    label:'Bullet',     desc:'Bullet point',     section:'Turn into' },
-  { id:'ol',      icon:'1.',   label:'Numbered',   desc:'Numbered list',    section:'Turn into' },
-  { id:'todo',    icon:'☐',    label:'To-do',      desc:'Checkbox item',    section:'Turn into' },
-  { id:'h1',      icon:'H1',   label:'Heading 1',  desc:'Large heading',    section:'Turn into' },
-  { id:'h2',      icon:'H2',   label:'Heading 2',  desc:'Medium heading',   section:'Turn into' },
-  { id:'h3',      icon:'H3',   label:'Heading 3',  desc:'Small heading',    section:'Turn into' },
-  { id:'quote',   icon:'❝',    label:'Quote',      desc:'Blockquote',       section:'Turn into' },
-  { id:'code',    icon:'</>',  label:'Code block', desc:'Code block',       section:'Turn into' },
-  { id:'divider', icon:'—',    label:'Divider',    desc:'Horizontal rule',  section:'Turn into' },
-  { id:'table',   icon:'▦',    label:'Table',      desc:'Insert a table',   section:'Insert' },
+  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Bullet point',     section:'Turn into' },
+  { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Numbered list',    section:'Turn into' },
+  { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox item',    section:'Turn into' },
+  { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Large heading',    section:'Turn into' },
+  { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium heading',   section:'Turn into' },
+  { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Small heading',    section:'Turn into' },
+  { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Blockquote',       section:'Turn into' },
+  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Code block',       section:'Turn into' },
+  { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule',  section:'Turn into' },
+  { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert a table',   section:'Insert' },
 ];
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
 const INSERT_CMDS = [
-  { id:'link',     icon:'⌘',  label:'Link',     desc:'[text](url)',   section:'Insert' },
-  { id:'image',    icon:'🖼',  label:'Image',    desc:'![alt](url)',   section:'Insert' },
-  { id:'footnote', icon:'†',  label:'Footnote', desc:'[^ref] + note', section:'Insert' },
+  { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'[text](url)',   section:'Insert' },
+  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'![alt](url)',   section:'Insert' },
+  { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'[^ref] + note', section:'Insert' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
 const FORMAT_CMDS = [
-  { id:'bold',     icon:'B',   label:'Bold',          desc:'**bold**' },
-  { id:'italic',   icon:'I',   label:'Italic',        desc:'*italic*' },
-  { id:'uline',    icon:'U',   label:'Underline',     desc:'++underline++' },
-  { id:'inlcode',  icon:'`',   label:'Inline code',   desc:'`code`' },
-  { id:'strike',   icon:'S',   label:'Strikethrough', desc:'~~strike~~' },
-  { id:'mark',     icon:'H',   label:'Highlight',     desc:'==highlight==' },
+  { id:'bold',     icon:'B',   fa:'fa-solid fa-bold',          label:'Bold',          desc:'**bold**' },
+  { id:'italic',   icon:'I',   fa:'fa-solid fa-italic',        label:'Italic',        desc:'*italic*' },
+  { id:'uline',    icon:'U',   fa:'fa-solid fa-underline',     label:'Underline',     desc:'++underline++' },
+  { id:'inlcode',  icon:'`',   fa:'fa-solid fa-code',          label:'Inline code',   desc:'`code`' },
+  { id:'strike',   icon:'S',   fa:'fa-solid fa-strikethrough', label:'Strikethrough', desc:'~~strike~~' },
+  { id:'mark',     icon:'H',   fa:'fa-solid fa-highlighter',   label:'Highlight',     desc:'==highlight==' },
 ];
+
+// ─── icons: Font Awesome with a unicode fallback ─────────────────────────────
+// Every glyph carries both a FA class (data-fa) and a unicode char (data-fb).
+// We render FA only once the webfont is confirmed loaded; otherwise the unicode
+// fallback stands in, so a blocked CDN degrades gracefully instead of showing
+// empty boxes.
+let FA_OK = false;
+function paintIcon(el) {
+  const fa = el.dataset.fa;
+  if (FA_OK && fa) el.innerHTML = `<i class="${fa}"></i>`;
+  else el.textContent = el.dataset.fb ?? '';
+}
+// `spec` is either a unicode string (fallback only) or {fa, fb}
+function setIcon(el, spec) {
+  if (spec && typeof spec === 'object') { el.dataset.fa = spec.fa || ''; el.dataset.fb = spec.fb ?? ''; }
+  else { el.dataset.fa = ''; el.dataset.fb = spec ?? ''; }
+  paintIcon(el);
+}
+function refreshIcons() { document.querySelectorAll('[data-fb]').forEach(paintIcon); }
+function detectFontAwesome() {
+  // force the webfont to be requested so fonts.ready actually waits on it
+  const probe = document.createElement('i');
+  probe.className = 'fa-solid fa-bold';
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;left:-9999px;top:-9999px;font-size:32px';
+  document.body.appendChild(probe);
+  let settled = false;
+  const finish = () => {
+    if (settled) return; settled = true;
+    probe.remove();
+    let ok = false;
+    try { ok = document.fonts.check('900 16px "Font Awesome 6 Free"'); } catch (e) { ok = false; }
+    if (ok) { FA_OK = true; refreshIcons(); }
+  };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(finish);
+  setTimeout(finish, 2000);
+}
 
 // build a unified cmd-item element
 function mkCmdItem(icon, label, desc, onClick, active = false) {
@@ -770,7 +808,7 @@ function mkCmdItem(icon, label, desc, onClick, active = false) {
   div.className = 'cmd-item' + (active ? ' hi' : '');
   const ic = document.createElement('div');
   ic.className = 'cmd-icon' + (active ? ' accent' : '');
-  ic.textContent = icon;
+  setIcon(ic, icon);
   const info = document.createElement('div');
   info.className = 'cmd-info';
   info.innerHTML = `<span class="cmd-label">${label}</span>${desc ? `<span class="cmd-desc">${desc}</span>` : ''}`;
@@ -1806,7 +1844,7 @@ function buildSelTb() {
     if (i === 4) { const sep = document.createElement('div'); sep.className = 'cmd-sep'; selTb.appendChild(sep); }
     const ic = document.createElement('div');
     ic.className = 'cmd-icon';
-    ic.textContent = cmd.icon;
+    setIcon(ic, { fa:cmd.fa, fb:cmd.icon });
     ic.title = cmd.label;
     ic.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat(cmd.id); });
     selTb.appendChild(ic);
@@ -1815,13 +1853,13 @@ function buildSelTb() {
   // link wraps the selection; footnote converts the selection into a note
   const linkIc = document.createElement('div');
   linkIc.className = 'cmd-icon';
-  linkIc.textContent = '⌘';
+  setIcon(linkIc, { fa:'fa-solid fa-link', fb:'⌘' });
   linkIc.title = 'Link';
   linkIc.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat('link'); });
   selTb.appendChild(linkIc);
   const fnIc = document.createElement('div');
   fnIc.className = 'cmd-icon';
-  fnIc.textContent = '†';
+  setIcon(fnIc, { fa:'fa-solid fa-superscript', fb:'†' });
   fnIc.title = 'Convert to footnote';
   fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
   selTb.appendChild(fnIc);
@@ -1902,7 +1940,7 @@ function showBulletPopup(nodeId, bulletEl) {
   BLOCK_CMDS.filter(c => c.section === 'Turn into').forEach(cmd => {
     const btn = document.createElement('div');
     btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
-    btn.textContent = cmd.icon;
+    setIcon(btn, { fa:cmd.fa, fb:cmd.icon });
     btn.title = cmd.label;
     btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
     typeRow.appendChild(btn);
@@ -1911,10 +1949,10 @@ function showBulletPopup(nodeId, bulletEl) {
 
   // actions
   const actions = [
-    { icon:'⊙', label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
-    { icon:'↑',  label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
-    { icon:'↓',  label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
-    { icon:'✕',  label:'Delete',    fn: () => { deleteNode(nodeId); hideBpop(); }, danger:true },
+    { icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
+    { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
+    { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
+    { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',    fn: () => { deleteNode(nodeId); hideBpop(); }, danger:true },
   ];
   actions.forEach(({ icon, label, fn, danger }) => {
     const item = mkCmdItem(icon, label, '', fn);
@@ -1976,7 +2014,7 @@ function renderSlashMenu() {
       hdr.className = 'slash-section'; hdr.textContent = section;
       slashMenu.appendChild(hdr); lastSection = section;
     }
-    const item = mkCmdItem(cmd.icon, cmd.label, cmd.desc, () => { slashState.activeIdx = i; slashApply(); }, i === slashState.activeIdx);
+    const item = mkCmdItem({ fa:cmd.fa, fb:cmd.icon }, cmd.label, cmd.desc, () => { slashState.activeIdx = i; slashApply(); }, i === slashState.activeIdx);
     slashMenu.appendChild(item);
   });
   slashMenu.classList.add('on');
@@ -3022,7 +3060,9 @@ function applyTheme() {
     ? ':root{--bg:#1c1c1e;--fg:#e5e5e5;--muted:#666;--bullet:#555;--bullet-h:#5ba3e8;--cb:#555;--hbg:#111;--bdr:#2a2a2a;--acc:#5ba3e8;--ring:rgba(91,163,232,.25);--cbg:#252527;--del:#666;--qbdr:rgba(91,163,232,.5)}'
     : ':root{--bg:#fafaf8;--fg:#1a1a1a;--muted:#999;--bullet:#bbb;--bullet-h:#4a90d9;--cb:#bbb;--hbg:#fff;--bdr:#e8e8e8;--acc:#4a90d9;--ring:rgba(74,144,217,.25);--cbg:#f0f0ec;--del:#999;--qbdr:rgba(74,144,217,.6)}'
   ) : '';
-  document.getElementById('theme-icon').textContent  = dark ? '○' : '●';
+  setIcon(document.getElementById('theme-icon'), dark
+    ? { fa:'fa-regular fa-sun',  fb:'○' }
+    : { fa:'fa-solid fa-moon',   fb:'●' });
   document.getElementById('theme-label').textContent = dark ? 'Light mode' : 'Dark mode';
 }
 applyTheme();
@@ -3191,6 +3231,7 @@ migrateNodePrefixes(root);
 buildIndex(root, null);
 render();
 updateTitle();
+detectFontAwesome();
 // Focus the first node so the user can start typing immediately
 requestAnimationFrame(() => {
   if (flatRows.length > 0) focusNode(flatRows[0].node.id);
