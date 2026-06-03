@@ -399,7 +399,9 @@ function mkNode(text = '', type = 'ul') {
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
-  return ['h1','h2','h3','divider'].includes(type) ? 'ul' : type;
+  // headings, dividers and tables don't propagate to a new sibling — a new
+  // point under a table should be a plain bullet, not another table widget
+  return ['h1','h2','h3','divider','table'].includes(type) ? 'ul' : type;
 }
 
 // Block types that store their markdown prefix in node.text
