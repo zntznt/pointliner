@@ -2034,11 +2034,13 @@ function insertInlineArtifact(id, nodeId, content) {
   const node = nodeById(nodeId);
   if (!node) return;
   if (id === 'link') {
+    const text = prompt('Link text:', 'link'); if (text === null) return;
     const url = prompt('URL (https://…):'); if (!url) return;
-    document.execCommand('insertText', false, `[text](${url})`);
+    document.execCommand('insertText', false, `[${text || 'link'}](${url})`);
   } else if (id === 'image') {
+    const alt = prompt('Alt text (description):', 'image'); if (alt === null) return;
     const url = prompt('Image URL (https://…):'); if (!url) return;
-    document.execCommand('insertText', false, `![alt](${url})`);
+    document.execCommand('insertText', false, `![${alt || 'image'}](${url})`);
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
