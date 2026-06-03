@@ -349,6 +349,9 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-field textarea::placeholder{color:var(--muted);opacity:.6}
 .io-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+.io-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.io-chip{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1;padding:4px 9px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.io-chip:hover{background:var(--acc);border-color:var(--acc);color:#fff}
 
 /* shortcuts */
 .sc-panel{position:fixed;bottom:16px;right:16px;background:var(--hbg);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;font-size:12px;color:var(--muted);line-height:1.9;display:none;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.08)}
@@ -2428,7 +2431,7 @@ function insertInlineArtifact(id, nodeId, content) {
       title: 'Roll dice',
       submitLabel: 'Roll',
       fields: [
-        { key:'expr', label:'Formula', placeholder:'e.g. 2d6+3 or 4d6-2+5d12', value:selected.replace(/\s+/g,'') },
+        { key:'expr', label:'Formula', placeholder:'e.g. 2d6+3 or 4d6-2+5d12', value:selected.replace(/\s+/g,''), chips: DICE_CHIPS },
       ],
       validate: v => !!parseDice(v.expr),
       onSubmit: v => {
@@ -2522,6 +2525,29 @@ function applyInlineReplace(nodeId, start, end, str) {
 const ioBack = document.getElementById('io-back');
 const ioCard = document.getElementById('io-card');
 let ioCancel = null;
+
+// Insert text at an input/textarea caret (used by the syntax-helper chips).
+function insertAtCaret(el, text) {
+  const s = el.selectionStart ?? el.value.length;
+  const e = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, s) + text + el.value.slice(e);
+  const p = s + text.length;
+  el.setSelectionRange(p, p);
+}
+
+// Syntax-helper chips shown beneath the dice / markov fields.
+const DICE_CHIPS = ['d4','d6','d8','d10','d12','d20','d100','+','−'].map(l => ({
+  label: l, insert: l === '−' ? '-' : l,
+}));
+const MARKOV_CHIPS = [
+  { label:'+ rule', insert: el => {
+      const nl = el.value && !el.value.endsWith('\n') ? '\n' : '';
+      el.value += nl + 'State -> Target 1';
+      const p = el.value.length; el.setSelectionRange(p, p);
+    } },
+  { label:'→', insert:' -> ' },
+  { label:', target', insert:', Target 1' },
+];
 function openInsertDialog(opts) {
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
@@ -2549,6 +2575,20 @@ function openInsertDialog(opts) {
       else if (e.key === 'Enter' && (!area || e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     });
     wrap.append(lab, inp);
+    if (f.chips) {
+      const row = document.createElement('div'); row.className = 'io-chips';
+      f.chips.forEach(chip => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'io-chip'; b.textContent = chip.label;
+        b.title = 'Insert';
+        b.addEventListener('mousedown', e => {
+          e.preventDefault(); // keep the field focused / caret intact
+          if (typeof chip.insert === 'function') chip.insert(inp); else insertAtCaret(inp, chip.insert);
+          validate(); inp.focus();
+        });
+        row.appendChild(b);
+      });
+      wrap.appendChild(row);
+    }
     if (f.hint) { const h = document.createElement('div'); h.className = 'io-hint'; h.textContent = f.hint; wrap.appendChild(h); }
     ioCard.appendChild(wrap);
   });
@@ -2581,7 +2621,7 @@ function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = ''
     title,
     submitLabel: submitLabel || 'Roll',
     fields: [
-      { key:'def', label:'States & transitions', type:'textarea', rows:5, value:def,
+      { key:'def', label:'States & transitions', type:'textarea', rows:5, value:def, chips: MARKOV_CHIPS,
         placeholder:'Sunny  -> Sunny 0.6, Cloudy 0.3, Rainy 0.1\nCloudy -> Sunny 0.4, Rainy 0.4, Cloudy 0.2\nRainy  -> Cloudy 0.5, Rainy 0.5',
         hint:'One rule per line: State -> Target weight, … (weights need not sum to 1)' },
       { key:'start', label:'Start state', placeholder:'defaults to the first state', value:start },
