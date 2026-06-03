@@ -1520,6 +1520,7 @@ function handlePaste(e, node, content) {
       it.children.forEach(ch => insDeep(ch, nn));
     });
   }
+  parsed[0].children.forEach(ch => insDeep(ch, node));
   ins(parsed.slice(1), parent, idx);
   buildIndex(root, null);
   markDirty(); render();
@@ -1530,15 +1531,26 @@ function parseMLlines(lines) {
   const result = [];
   const stack = [{ indent:-1, item:{ text:'', children:result } }];
   for (const line of lines) {
-    const m = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)/);
-    if (m) {
-      const indent = m[1].length, text = m[3], item = { text, children:[] };
+    const listM = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)/);
+    if (listM) {
+      const indent = listM[1].length, text = listM[3], item = { text, children:[] };
       while (stack.length > 1 && stack[stack.length-1].indent >= indent) stack.pop();
       stack[stack.length-1].item.children.push(item);
       stack.push({ indent, item });
     } else {
-      const item = { text: line.trim(), children:[] };
-      result.push(item); stack.length = 1; stack[0].item = { text:'', children:result };
+      const indentM = line.match(/^(\s*)(.*)/);
+      const indent = indentM[1].length, text = indentM[2].trim();
+      if (!text) continue;
+      const item = { text, children:[] };
+      if (indent > 0) {
+        while (stack.length > 1 && stack[stack.length-1].indent >= indent) stack.pop();
+        stack[stack.length-1].item.children.push(item);
+        stack.push({ indent, item });
+      } else {
+        result.push(item);
+        stack.length = 1;
+        stack.push({ indent:0, item });
+      }
     }
   }
   return result;
