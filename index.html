@@ -2535,18 +2535,64 @@ function insertAtCaret(el, text) {
   el.setSelectionRange(p, p);
 }
 
-// Syntax-helper chips shown beneath the dice / markov fields.
-const DICE_CHIPS = ['d4','d6','d8','d10','d12','d20','d100','+','−'].map(l => ({
-  label: l, insert: l === '−' ? '-' : l,
-}));
+// Syntax-helper chips shown beneath the dice / markov fields. These are built
+// for click-only composition: chips chain sensibly without producing garbage.
+const caretEnd = el => { const p = el.value.length; el.setSelectionRange(p, p); };
+
+// Add a die: if the formula already ends with this exact die, bump its count
+// (d6 → 1d6 → 2d6 …); otherwise append it with a leading "+" when needed.
+function diceAddDie(el, sides) {
+  let v = el.value.replace(/\s+/g, '');
+  const m = v.match(new RegExp('(\\d*)d' + sides + '$'));
+  if (m) {
+    const cur = m[1] === '' ? 1 : parseInt(m[1], 10);
+    v = v.slice(0, m.index) + (cur + 1) + 'd' + sides;
+  } else {
+    const sep = (v === '' || /[+\-]$/.test(v)) ? '' : '+';
+    v = v + sep + '1d' + sides;
+  }
+  el.value = v; caretEnd(el);
+}
+
+// Adjust a flat modifier: bump a trailing ±N in place (collapsing to nothing at
+// 0), otherwise append a fresh modifier.
+function diceAddMod(el, delta) {
+  let v = el.value.replace(/\s+/g, '');
+  const m = v.match(/([+-])(\d+)$/);
+  if (m) {
+    const cur = parseInt(m[1] + m[2], 10) + delta;
+    const base = v.slice(0, m.index);
+    v = cur === 0 ? base : base + (cur > 0 ? '+' + cur : String(cur));
+  } else {
+    v = v === '' ? String(delta) : v + (delta > 0 ? '+' + delta : String(delta));
+  }
+  el.value = v; caretEnd(el);
+}
+
+const DICE_CHIPS = [
+  ...['d4','d6','d8','d10','d12','d20','d100'].map(d => ({ label:d, insert: el => diceAddDie(el, d.slice(1)) })),
+  { label:'+1', insert: el => diceAddMod(el, 1) },
+  { label:'−1', insert: el => diceAddMod(el, -1) },
+];
+
+// Insert text and select a placeholder word inside it, so the user can type
+// the real name right away.
+function insertAndSelect(el, before, word, after) {
+  const s = el.selectionStart ?? el.value.length;
+  const e = el.selectionEnd ?? s;
+  const head = el.value.slice(0, s) + before;
+  el.value = head + word + after + el.value.slice(e);
+  el.setSelectionRange(head.length, head.length + word.length);
+}
+
 const MARKOV_CHIPS = [
   { label:'+ rule', insert: el => {
       const nl = el.value && !el.value.endsWith('\n') ? '\n' : '';
-      el.value += nl + 'State -> Target 1';
-      const p = el.value.length; el.setSelectionRange(p, p);
+      caretEnd(el);
+      insertAndSelect(el, nl, 'State', ' -> Target 1');
     } },
   { label:'→', insert:' -> ' },
-  { label:', target', insert:', Target 1' },
+  { label:'+ target', insert: el => { caretEnd(el); insertAndSelect(el, ', ', 'Target', ' 1'); } },
 ];
 function openInsertDialog(opts) {
   ioCard.innerHTML = '';
