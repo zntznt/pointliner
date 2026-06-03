@@ -289,6 +289,26 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #slash-menu.on{display:block}
 .slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.06em}
 
+/* inline-insert dialog (links / images) */
+#io-back{position:fixed;inset:0;z-index:800;background:rgba(20,20,28,.34);display:none;align-items:flex-start;justify-content:center}
+#io-back.on{display:flex;animation:io-fade .14s ease}
+@keyframes io-fade{from{opacity:0}to{opacity:1}}
+#io-card{margin-top:16vh;width:400px;max-width:calc(100vw - 32px);background:var(--hbg);border:1px solid var(--bdr);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.24);padding:16px 17px 14px;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
+.io-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.io-head .cmd-icon{width:30px;height:30px;font-size:14px}
+.io-title{font-size:14.5px;font-weight:600}
+.io-field{margin-bottom:11px}
+.io-field label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:7px;padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
+.io-field input::placeholder{color:var(--muted);opacity:.7}
+.io-field input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
+.io-btn{font-family:var(--font);font-size:13px;font-weight:500;padding:7px 15px;border-radius:7px;border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,filter .12s}
+.io-btn:hover{background:var(--bdr)}
+.io-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.io-btn.primary:hover{filter:brightness(1.07)}
+.io-btn.primary:disabled{opacity:.4;cursor:not-allowed;filter:none}
+
 /* shortcuts */
 .sc-panel{position:fixed;bottom:16px;right:16px;background:var(--hbg);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;font-size:12px;color:var(--muted);line-height:1.9;display:none;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.08)}
 .sc-panel.on{display:block}
@@ -370,6 +390,8 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 <div id="bpop"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
+<!-- inline-insert dialog (links / images) -->
+<div id="io-back"><div id="io-card"></div></div>
 <!-- drag indicator -->
 <div id="drop-line"></div>
 <!-- multi-select action bar -->
@@ -1924,17 +1946,31 @@ function applyInlineFormat(fmt) {
   const range = sel.getRangeAt(0);
   const selected = range.toString();
   if (!selected) return;
-  const map = { bold:`**${selected}**`, italic:`*${selected}*`, uline:`++${selected}++`, inlcode:`\`${selected}\``, strike:`~~${selected}~~`, mark:`==${selected}==` };
-  let wrapped = map[fmt];
-  if (fmt === 'link') {
-    const url = prompt('URL (https://…):');
-    if (!url) return;
-    wrapped = `[${selected}](${url})`;
-  }
-  if (!wrapped) return;
-  document.execCommand('insertText', false, wrapped);
   const cnt = range.commonAncestorContainer?.parentElement?.closest('.node-content')
     || range.commonAncestorContainer?.closest?.('.node-content');
+  // Link needs a URL — collect it in the dialog rather than wrapping inline.
+  if (fmt === 'link') {
+    if (!cnt) return;
+    const nodeId = cnt.dataset.id;
+    const start = rangeOffset(cnt, range.startContainer, range.startOffset);
+    const end   = rangeOffset(cnt, range.endContainer, range.endOffset);
+    hideSelTb();
+    openInsertDialog({
+      icon: { fa:'fa-solid fa-link', fb:'⌘' },
+      title: 'Insert link',
+      submitLabel: 'Insert link',
+      fields: [
+        { key:'url',  label:'URL',  placeholder:'https://example.com', required:true },
+        { key:'text', label:'Text to show', placeholder:'Link text', value:selected },
+      ],
+      onSubmit: v => applyInlineReplace(nodeId, start, end, `[${v.text || v.url}](${v.url})`),
+    });
+    return;
+  }
+  const map = { bold:`**${selected}**`, italic:`*${selected}*`, uline:`++${selected}++`, inlcode:`\`${selected}\``, strike:`~~${selected}~~`, mark:`==${selected}==` };
+  const wrapped = map[fmt];
+  if (!wrapped) return;
+  document.execCommand('insertText', false, wrapped);
   if (cnt) { const nd = nodeById(cnt.dataset.id); if (nd) { nd.text = cnt.textContent; markDirty(); } }
   hideSelTb();
 }
@@ -2090,14 +2126,33 @@ function slashApply() {
 function insertInlineArtifact(id, nodeId, content) {
   const node = nodeById(nodeId);
   if (!node) return;
+  // where the @ trigger sat — splice point for whatever we build
+  const offset = getCaretOffset(content);
+  // grab any text the user had selected before opening the @ menu, to prefill
+  const selected = (window.getSelection()?.toString() || '').trim();
+
   if (id === 'link') {
-    const text = prompt('Link text:', 'link'); if (text === null) return;
-    const url = prompt('URL (https://…):'); if (!url) return;
-    document.execCommand('insertText', false, `[${text || 'link'}](${url})`);
+    openInsertDialog({
+      icon: { fa:'fa-solid fa-link', fb:'⌘' },
+      title: 'Insert link',
+      submitLabel: 'Insert link',
+      fields: [
+        { key:'url',  label:'URL',  placeholder:'https://example.com', required:true },
+        { key:'text', label:'Text to show', placeholder:'Link text (optional)', value:selected },
+      ],
+      onSubmit: v => applyInlineInsertion(nodeId, offset, `[${v.text || v.url}](${v.url})`),
+    });
   } else if (id === 'image') {
-    const alt = prompt('Alt text (description):', 'image'); if (alt === null) return;
-    const url = prompt('Image URL (https://…):'); if (!url) return;
-    document.execCommand('insertText', false, `![${alt || 'image'}](${url})`);
+    openInsertDialog({
+      icon: { fa:'fa-regular fa-image', fb:'🖼' },
+      title: 'Insert image',
+      submitLabel: 'Insert image',
+      fields: [
+        { key:'url', label:'Image URL', placeholder:'https://…/picture.png', required:true },
+        { key:'alt', label:'Alt text', placeholder:'Describe the image (optional)', value:selected },
+      ],
+      onSubmit: v => applyInlineInsertion(nodeId, offset, `![${v.alt || 'image'}](${v.url})`),
+    });
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -2111,8 +2166,99 @@ function insertInlineArtifact(id, nodeId, content) {
     }, 50);
     return;
   }
-  node.text = editableText(content); markDirty();
 }
+
+// Character offset of a (container, offset) DOM point within an element's text.
+function rangeOffset(el, container, off) {
+  const pre = document.createRange();
+  pre.selectNodeContents(el); pre.setEnd(container, off);
+  return pre.toString().length;
+}
+
+// Insert raw markdown at a caret offset.
+function applyInlineInsertion(nodeId, offset, str) { applyInlineReplace(nodeId, offset, offset, str); }
+
+// Replace the text span [start,end) of a node with `str`, then drop back into
+// edit mode with the caret parked right after it so typing can continue.
+function applyInlineReplace(nodeId, start, end, str) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  const len = node.text.length;
+  const a = Math.min(Math.max(Math.min(start, end), 0), len);
+  const b = Math.min(Math.max(Math.max(start, end), 0), len);
+  const prev = node.text;
+  node.text = node.text.slice(0, a) + str + node.text.slice(b);
+  recordTextEdit(nodeId, prev, node.text); // keep the change undoable
+  markDirty();
+  render();
+  const caret = a + str.length;
+  requestAnimationFrame(() => {
+    ensureRowVisible(nodeId);
+    const el = document.querySelector(`.node-content[data-id="${nodeId}"]`);
+    if (!el) return;
+    if (!el.dataset.editing) enterEdit(el, node); // shows raw text === node.text
+    el.focus();
+    try {
+      const tn = el.firstChild;
+      const r = document.createRange();
+      if (tn && tn.nodeType === 3) r.setStart(tn, Math.min(caret, tn.length));
+      else { r.selectNodeContents(el); }
+      r.collapse(true);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    } catch (_) {}
+  });
+}
+
+// ─── inline-insert dialog ────────────────────────────────────────────────────
+// A small in-app modal that replaces native prompt() for links/images. Styled
+// to match the app's overlays; Enter submits, Esc / backdrop-click cancels.
+const ioBack = document.getElementById('io-back');
+const ioCard = document.getElementById('io-card');
+let ioCancel = null;
+function openInsertDialog(opts) {
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, opts.icon);
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title;
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const inputs = {};
+  opts.fields.forEach((f, i) => {
+    const wrap = document.createElement('div'); wrap.className = 'io-field';
+    const lab = document.createElement('label'); lab.textContent = f.label;
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.placeholder = f.placeholder || ''; inp.value = f.value || '';
+    inp.spellcheck = false; inp.autocomplete = 'off';
+    if (i === 0) inp.dataset.first = '1';
+    inputs[f.key] = inp;
+    inp.addEventListener('input', validate);
+    inp.addEventListener('keydown', e => {
+      e.stopPropagation(); // don't let typing trigger global editor shortcuts
+      if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    wrap.append(lab, inp); ioCard.appendChild(wrap);
+  });
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
+  const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = opts.submitLabel || 'Insert';
+  cancelBtn.addEventListener('click', cancel);
+  okBtn.addEventListener('click', submit);
+  foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
+
+  const vals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].value.trim(); return v; };
+  const valid = () => opts.fields.every(f => !f.required || vals()[f.key]);
+  function validate() { okBtn.disabled = !valid(); }
+  function submit() { if (!valid()) return; closeIo(); opts.onSubmit(vals()); }
+  function cancel() { closeIo(); }
+  ioCancel = cancel;
+  validate();
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { const f = ioCard.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
+}
+function closeIo() { ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null; }
+ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) closeIo(); });
 
 function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
 
