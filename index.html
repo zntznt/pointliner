@@ -437,6 +437,7 @@ function buildIndex(n, parent = null) {
 function deregisterSubtree(n) {
   nodeMap.delete(n.id);
   parentMap.delete(n.id);
+  heightCache.delete(n.id);
   for (const c of n.children) deregisterSubtree(c);
 }
 function nodeById(id) { return nodeMap.get(id) ?? null; }
@@ -523,15 +524,16 @@ function mdInline(s) {
     return stash(`<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${mdEmph(txt)}</a>`);
   });
   // footnote refs
-  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => stash(`<sup class="fn-ref" data-key="${k}">[${k}]</sup>`));
+  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => stash(`<sup class="fn-ref" data-key="${escQ(k)}">[${k}]</sup>`));
+  // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
+  // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:)
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
+    (_, pre, url) => pre + stash(`<a href="${escQ(url)}" target="_blank" rel="noopener">${url}</a>`));
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
   // hashtags
   s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}">#${t}</a>`);
-  // automatic URL linking for bare http(s) URLs not already inside markup
-  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
-    (_, pre, url) => `${pre}<a href="${escQ(url)}" target="_blank" rel="noopener">${url}</a>`);
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>tok[+i]);
   return s;
 }
@@ -614,7 +616,8 @@ function mtSplitRow(line) {
   let s = line.trim().replace(/^\|/, '').replace(/\|$/, '');
   const cells = []; let cur = '';
   for (let i = 0; i < s.length; i++) {
-    if (s[i] === '\\' && s[i+1] === '|') { cur += '|'; i++; }
+    // inverse of serializeTable's esc: unescape any \x (covers \\ and \|)
+    if (s[i] === '\\') { cur += s[i+1] ?? '\\'; i++; }
     else if (s[i] === '|') { cells.push(cur.trim()); cur = ''; }
     else cur += s[i];
   }
@@ -813,7 +816,7 @@ function render() {
       if (refs.length) { fnLocked = true; showFnPanel(vp.id); } else hideFnPanel();
     };
     const exitZoomEdit = () => {
-      vp.text = te.textContent;
+      vp.text = editableText(te);
       const zt = deriveTypeFromText(vp.text);
       if (zt) vp.type = zt;
       else if (vp.type in BLOCK_PREFIX_MAP) vp.type = 'ul';
@@ -838,7 +841,7 @@ function render() {
     te.addEventListener('blur',  () => { if (te.dataset.editing) exitZoomEdit(); });
     te.addEventListener('input', () => {
       if (!te.dataset.editing) return;
-      vp.text = te.textContent; markDirty(); renderBreadcrumb();
+      vp.text = editableText(te); markDirty(); renderBreadcrumb();
       updateFnPanel(vp);
     });
     te.addEventListener('keydown', e => {
@@ -948,8 +951,11 @@ function renderWindow(force) {
   }
   if (!force && s === winStart && e === winEnd) return;
 
-  // preserve the live editing element across the rebuild (keeps caret + edit state)
-  const activeEl = activeContentId != null ? vlist.querySelector(`.node[data-id="${activeContentId}"]`) : null;
+  // preserve the live editing element across the rebuild (keeps caret + edit state).
+  // covers a .node-content editor (activeContentId) AND a focused table cell
+  // (forceIncludeId), so scroll/resize re-renders don't destroy the caret.
+  const liveId = activeContentId ?? forceIncludeId;
+  const activeEl = liveId != null ? vlist.querySelector(`.node[data-id="${liveId}"]`) : null;
   if (activeEl) activeEl.remove();
 
   vlist.innerHTML = '';
@@ -957,7 +963,7 @@ function renderWindow(force) {
   for (let i = s; i <= e; i++) {
     const r = flatRows[i];
     let el;
-    if (activeEl && r.node.id === activeContentId) { el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; }
+    if (activeEl && r.node.id === liveId) { el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; }
     else el = renderRow(r);
     vlist.appendChild(el);
   }
@@ -1515,7 +1521,9 @@ function handlePaste(e, node, content) {
   const parsed = parseMLlines(lines);
   const parent = parentOf(node.id);
   if (!parent) { document.execCommand('insertText', false, text); return; }
+  pushUndo(); // flush the in-progress text edit + snapshot the pre-paste tree (undoable as a unit)
   node.text += parsed[0].text; content.textContent = node.text;
+  content.dataset.prevText = node.text; // keep the edit baseline in sync so blur won't re-record
   const idx = parent.children.findIndex(c => c.id === node.id);
   const newNodes = [];
   function insDeep(item, par) {
@@ -2072,7 +2080,7 @@ function toggleTaskInNode(node, taskIndex) {
   let n = 0;
   const lines = node.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*[-*+]\s+)\[([ xX])\](\s.*)$/);
+    const m = lines[i].match(/^(\s*(?:[-*+]|\d+\.)\s+)\[([ xX])\](\s.*)$/);
     if (!m) continue;
     if (n === taskIndex) {
       const checked = m[2].toLowerCase() === 'x';
@@ -2720,7 +2728,7 @@ function getFnKeyAtPoint(x, y) {
 function hiFnItem(key) {
   document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
   if (!key) return;
-  document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"] .fn-key`).forEach(el => {
+  document.querySelectorAll(`#fn-list .fn-item[data-key="${CSS.escape(key)}"] .fn-key`).forEach(el => {
     el.classList.add('hi');
     el.closest('.fn-item')?.scrollIntoView({ block: 'nearest' });
   });
@@ -2794,11 +2802,11 @@ function renderFnPanel(node, refs) {
       document.querySelectorAll('.fn-ref.hi').forEach(el => el.classList.remove('hi'));
       document.querySelectorAll('#fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
       // scope to the owning node only (fixes bug 1)
-      document.querySelectorAll(`.node[data-id="${fnNodeId}"] .fn-ref[data-key="${key}"]`).forEach(el => el.classList.add('hi'));
+      document.querySelectorAll(`.node[data-id="${fnNodeId}"] .fn-ref[data-key="${CSS.escape(key)}"]`).forEach(el => el.classList.add('hi'));
       keyEl.classList.add('hi');
     });
     keyEl.addEventListener('mouseleave', () => {
-      document.querySelectorAll(`.node[data-id="${fnNodeId}"] .fn-ref[data-key="${key}"]`).forEach(el => el.classList.remove('hi'));
+      document.querySelectorAll(`.node[data-id="${fnNodeId}"] .fn-ref[data-key="${CSS.escape(key)}"]`).forEach(el => el.classList.remove('hi'));
       keyEl.classList.remove('hi');
     });
     keyEl.addEventListener('mousedown', e => e.preventDefault());
@@ -2862,7 +2870,7 @@ function convertToFootnote() {
   showFnPanel(nd.id);
   // focus the new footnote content after panel renders
   setTimeout(() => {
-    const contentEl = document.querySelector(`#fn-list .fn-item[data-key="${key}"] .fn-content`);
+    const contentEl = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(key)}"] .fn-content`);
     if (contentEl) contentEl.focus();
   }, 50);
   hideSelTb();
@@ -2903,7 +2911,7 @@ document.getElementById('outline').addEventListener('mouseover', e => {
       if (!fnLocked) showFnPanel(nodeEl.dataset.id);
       // highlight panel item only if panel is showing this node
       if (fnNodeId === nodeEl.dataset.id) {
-        document.querySelectorAll(`#fn-list .fn-item[data-key="${key}"] .fn-key`).forEach(el => {
+        document.querySelectorAll(`#fn-list .fn-item[data-key="${CSS.escape(key)}"] .fn-key`).forEach(el => {
           el.classList.add('hi');
           el.closest('.fn-item')?.scrollIntoView({ block: 'nearest' });
         });
