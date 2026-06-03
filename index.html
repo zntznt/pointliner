@@ -57,6 +57,7 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 
 /* outline */
 #outline{max-width:760px;margin:0 auto;padding:28px 24px 120px}
+body.full-width #outline{max-width:none}
 /* virtual list: only a window of rows is in the DOM; spacers reserve the rest */
 #vlist{position:relative}
 .vspacer{flex:none;width:100%}
@@ -307,8 +308,9 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Export to a new file</span></div></div>
   <div class="cmd-sep"></div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Light mode</span><span class="cmd-desc">Switch appearance</span></div></div>
+  <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
   <div class="cmd-sep"></div>
-  <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit" id="btn-github"><div class="cmd-icon">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source &amp; contribute</span></div></a>
+  <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit" id="btn-github"><div class="cmd-icon">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
 </div>
 <div id="outline"></div>
 
@@ -2983,6 +2985,23 @@ document.getElementById('btn-theme').addEventListener('click', () => {
   applyTheme();
   closeFileMenu();
 });
+
+let fullWidth = false;
+function applyWidth() {
+  document.body.classList.toggle('full-width', fullWidth);
+  document.getElementById('width-label').textContent = fullWidth ? 'Narrow width' : 'Full width';
+  document.getElementById('btn-width').querySelector('.cmd-desc').textContent =
+    fullWidth ? 'Center the editing column' : 'Widen the editing column';
+  // wrapping changes with the column width — discard stale row heights and re-measure
+  if (vlist) { heightCache.clear(); measureTops(); winStart = 0; winEnd = -1; renderWindow(true); }
+}
+applyWidth();
+document.getElementById('btn-width').addEventListener('click', () => {
+  fullWidth = !fullWidth;
+  applyWidth();
+  scheduleAutosave();
+  closeFileMenu();
+});
 document.getElementById('btn-done').addEventListener('click', () => {
   showDone = !showDone;
   const btn = document.getElementById('btn-done');
@@ -3072,7 +3091,7 @@ function scheduleAutosave() {
   if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme });
+    const payload = JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme, fullWidth });
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -3111,6 +3130,10 @@ function scheduleAutosave() {
       if (data.forcedTheme !== undefined) {
         forcedTheme = data.forcedTheme;
         applyTheme();
+      }
+      if (typeof data.fullWidth === 'boolean') {
+        fullWidth = data.fullWidth;
+        applyWidth();
       }
       dirty = false; // restored state is "clean" relative to disk
     }
