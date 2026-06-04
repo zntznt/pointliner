@@ -77,6 +77,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px
 button{cursor:pointer;border:1px solid var(--bdr);background:transparent;color:var(--fg);font-family:inherit;font-size:12px;padding:3px 9px;border-radius:5px;transition:background .1s;white-space:nowrap;flex-shrink:0}
 button:hover{background:var(--bdr)}
 button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
+/* outline level control (segmented) */
+#level-ctl{display:flex;border:1px solid var(--bdr);border-radius:6px;overflow:hidden;flex-shrink:0}
+#level-ctl .lvl-btn{border:none;border-radius:0;padding:3px 8px;font-size:12px;min-width:26px;color:var(--muted)}
+#level-ctl .lvl-btn+.lvl-btn{border-left:1px solid var(--bdr)}
+#level-ctl .lvl-btn:hover{background:var(--bdr);color:var(--fg)}
+#level-ctl #lvl-all{font-size:11px;color:var(--fg)}
 /* search — absolutely centered, pointer-events guard keeps it from blocking toolbar sides */
 #search-wrap{position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}
 #search-wrap>*{pointer-events:auto}
@@ -499,6 +505,12 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
       <button id="search-clear" title="Clear search">✕</button>
     </div>
     <span class="spacer"></span>
+    <div id="level-ctl" title="Show first N levels (collapse deeper)">
+      <button class="lvl-btn" data-lvl="1">1</button>
+      <button class="lvl-btn" data-lvl="2">2</button>
+      <button class="lvl-btn" data-lvl="3">3</button>
+      <button class="lvl-btn" id="lvl-all" title="Expand everything">All</button>
+    </div>
     <button id="btn-done" title="Show completed">✓</button>
   </div>
   <div id="breadcrumb-row"></div>
@@ -4150,6 +4162,29 @@ function setCollapsed(id, val) {
 }
 function toggleCollapse(id) { const n=nodeById(id); if(n) setCollapsed(id,!n.collapsed); }
 
+// Collapse the whole (current viewport) outline so only its first `n` levels show.
+// Depth is counted from the viewport root's direct children (depth 0). A node at
+// depth d is collapsed once d >= n-1, so its children at depth n and deeper hide;
+// shallower nodes are expanded. n=1 → only top level; n=2 → two levels; etc.
+function collapseToLevel(n) {
+  const vp = focusedId ? nodeById(focusedId) : root;
+  if (!vp) return;
+  (function walk(node, depth) {
+    if (node.children.length) node.collapsed = depth >= (n - 1);
+    for (const c of node.children) walk(c, depth + 1);
+  })(vp, -1); // vp itself is the container (depth -1, never collapsed); children are depth 0
+  markDirty();
+  render();
+}
+// Expand every node in the current viewport (show all levels).
+function expandAll() {
+  const vp = focusedId ? nodeById(focusedId) : root;
+  if (!vp) return;
+  (function walk(node) { if (node.children.length) node.collapsed = false; node.children.forEach(walk); })(vp);
+  markDirty();
+  render();
+}
+
 function focusNode(id) {
   requestAnimationFrame(() => {
     ensureRowVisible(id); // bring the row into the rendered window if it was offscreen
@@ -5037,6 +5072,14 @@ document.getElementById('btn-save-as').addEventListener('click', () => { saveAsF
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
 
+// outline level control — collapse to first N levels / expand all
+document.getElementById('level-ctl').addEventListener('click', e => {
+  const btn = e.target.closest('.lvl-btn');
+  if (!btn) return;
+  if (btn.id === 'lvl-all') expandAll();
+  else collapseToLevel(+btn.dataset.lvl);
+});
+
 // theme toggle
 let forcedTheme = null; // null = system, 'light', 'dark'
 const themeStyle = document.createElement('style');
@@ -5091,7 +5134,8 @@ const MOD = IS_MAC ? '⌘' : 'Ctrl';
 const SHORTCUTS = [
   { sec: 'Navigate', rows: [
     { keys: ['↑', '↓'],            desc: 'Move between points' },
-    { keys: [`${MOD}+↑`, '↓'],    desc: 'Collapse / expand' },
+    { keys: [`${MOD}+↑`, '↓'],    desc: 'Collapse / expand point' },
+    { keys: [`${MOD}+1`, '…', '6'], desc: 'Show first N levels (or use the toolbar 1·2·3·All)' },
     { keys: [`${MOD}+Enter`],     desc: 'Zoom into point' },
     { keys: ['Esc'],              desc: 'Zoom out / deselect' },
   ]},
@@ -5154,6 +5198,10 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
+  // collapse outline to first N levels (Ctrl/Cmd+1..6). Some browsers reserve
+  // these for tab switching and won't deliver the event — the toolbar control is
+  // the reliable path; this is a best-effort accelerator.
+  if (ctrl && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '6') { e.preventDefault(); collapseToLevel(+e.key); return; }
   if (ctrl && !e.shiftKey && e.key==='z') { e.preventDefault(); undo(); }
   if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) { e.preventDefault(); redo(); }
   // multi-select shortcuts

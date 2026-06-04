@@ -243,6 +243,11 @@ Implemented:
 - **Inline token editing** — pills render in edit mode; raw tokens never shown.
 - **Pill interaction model** — display-mode click enters edit mode; edit-mode
   body click rerolls in place; pencil opens the dialog.
+- **Collapse to level N** — `collapseToLevel(n)` / `expandAll()` (≈4151) set
+  every node's `collapsed` flag by depth relative to the current viewport
+  (`focusedId` or root). Toolbar segmented control `1·2·3·All`; keyboard
+  `Ctrl/Cmd+1..6` is a best-effort accelerator (browsers may claim those chords
+  for tab switching, so the toolbar is the reliable path).
 
 ## Planned / ideas (with fit notes for proposers)
 
