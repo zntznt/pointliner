@@ -35,8 +35,9 @@ Each opens an insert dialog, creates a token in `node.text` and a record in the 
 - **Dice** — `@dice` → NdM±mod expression; click pill to reroll, pencil to edit formula
 - **Markov chains** — `@markov` → state-machine walk; click to re-walk, pencil to edit
 - **Roll tables** — `@rolltable` → weighted entry list; click to re-roll, pencil to edit
+- **Dice (extended)** — `@dice` supports `NdM`, modifiers, `@var` mods, plus: exploding `2d6!`, keep/drop high/low `4d6kh3`/`kl`/`dl`/`dh`, and Fate dice `4dF`. Roll chains stored per-die in `parts[].rolls` (array of arrays); old flat-number saves still render.
 - **Math** — `@math` → expression evaluated with mathjs-style parser (trig, log, constants); pencil to edit; recomputes live when vars change
-- **Variables** — `@var` → named value usable in `@math` (e.g. `2*pi*r`) and `@dice` (e.g. `2d6+str_mod`); pencil to edit
+- **Variables** — `@var` → named value usable in `@math` (e.g. `2*pi*r`) and `@dice` (e.g. `2d6+str_mod`); pencil to edit. Variables may reference OTHER variables (e.g. `area = pi*r^2`); `collectVars()` resolves lazily via a Proxy and detects reference cycles (a→b→a), flagging members with a `↻` indicator (`.var-cycle`) instead of overflowing.
 - **Inline token editing** — pills render in edit mode as `contenteditable=false` spans; raw token syntax is never shown to the user
 - **Pill interactions in edit mode** — reroll (dice/markov/rolltable) stays in edit mode and updates the pill in place; pencil exits edit mode then opens dialog
 - **Display-mode pill clicks enter edit mode** — clicking any pill in display mode now also enters text-edit mode (fixes nodes that are entirely tokens)

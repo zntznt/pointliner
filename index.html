@@ -279,6 +279,8 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .var-edit:hover{opacity:1;background:var(--acc);color:#fff}
 .var-pill.var-bad{color:var(--del);border-style:dashed;cursor:default}
 .var-pill.var-bad:hover{box-shadow:none;border-color:var(--bdr)}
+.var-pill.var-cycle{border-color:#e0a52e;border-style:dashed}
+.var-pill.var-cycle .var-val{color:#e0a52e}
 .var-preview-result{font-weight:700;color:var(--acc);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1.1em}
 /* footnotes */
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
@@ -620,26 +622,64 @@ function renderContentHTML(node) {
 
 // Walk the entire tree in document order, evaluating each [[var:KEY]] token's
 // expression to build a name→number map available in math and dice formulas.
-// Result is cached per markDirty() generation.
+// Variables may reference OTHER variables (e.g. area = pi*r^2 where r is a var);
+// references are resolved lazily and reference cycles (a→b→a) are detected and
+// broken instead of overflowing the stack. Result is cached per markDirty() gen.
 function collectVars() {
   if (_varsCacheVer === _varsVer) return _varsCached;
-  const vars = {};
-  function walk(node) {
+  // Pass 1: gather declarations in document order (last declaration of a name wins).
+  const defs = {};   // lowercase name -> expr string
+  const order = [];  // names in first-seen order, for deterministic resolution
+  function gather(node) {
     const re = /\[\[var:([a-z0-9]+)\]\]/gi;
     let m;
     while ((m = re.exec(node.text)) !== null) {
       const v = node.vars?.find(v => v.key === m[1]);
       if (v?.name) {
-        const val = evalMath(v.expr); // var exprs don't reference other vars
-        if (val !== null && isFinite(val)) vars[v.name.toLowerCase()] = val;
+        const nm = v.name.toLowerCase();
+        if (!(nm in defs)) order.push(nm);
+        defs[nm] = v.expr;
       }
     }
-    for (const c of node.children) walk(c);
+    for (const c of node.children) gather(c);
   }
-  if (root?.children) for (const c of root.children) walk(c);
+  if (root?.children) for (const c of root.children) gather(c);
+
+  // Pass 2: resolve lazily. A Proxy lets evalMath's `name in vars` / `vars[name]`
+  // drive on-demand resolution of dependencies; `stack` tracks the active chain so
+  // a re-entered name is recognised as a cycle (and every member of that cycle is
+  // flagged) rather than recursing forever.
+  const resolved = {};   // name -> number (successful only; the returned map)
+  const memo = {};       // name -> number | undefined (incl. failures)
+  const stack = [];
+  const cycles = new Set();
+  const proxy = new Proxy({}, {
+    has: (_, k) => typeof k === 'string' && k.toLowerCase() in defs,
+    get: (_, k) => resolve(String(k).toLowerCase()),
+  });
+  function resolve(name) {
+    if (name in memo) return memo[name];
+    if (!(name in defs)) return undefined;
+    const idx = stack.indexOf(name);
+    if (idx !== -1) {                       // cycle: flag the whole loop, bail
+      for (let i = idx; i < stack.length; i++) cycles.add(stack[i]);
+      cycles.add(name);
+      return undefined;
+    }
+    stack.push(name);
+    const val = evalMath(defs[name], proxy);
+    stack.pop();
+    const ok = val !== null && isFinite(val) && !cycles.has(name);
+    memo[name] = ok ? val : undefined;
+    if (ok) resolved[name] = val;
+    return memo[name];
+  }
+  for (const nm of order) resolve(nm);
+
+  _varCycles = cycles;
   _varsCacheVer = _varsVer;
-  _varsCached = vars;
-  return vars;
+  _varsCached = resolved;
+  return resolved;
 }
 
 // Add block prefix to nodes that have a type but no prefix in text (migration)
@@ -799,6 +839,7 @@ let varRenderList  = null;
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
 let _varsCacheVer = -1, _varsVer = 0, _varsCached = {};
+let _varCycles = new Set();   // names that participate in a reference cycle
 
 // ─── dice rolls ──────────────────────────────────────────────────────────────
 // A node carries a `dice` array of {key, expr, total, parts}; the text holds
@@ -3377,9 +3418,12 @@ function varKey() { return 'v' + Math.random().toString(36).slice(2, 9); }
 
 function renderVarPill(key, v) {
   if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}">$ ?</span>`;
-  const fresh = evalMath(v.expr, globalVarMap);
-  const display = fresh !== null ? formatMathResult(fresh) : '?';
-  return `<span class="var-pill" data-key="${escQ(key)}" contenteditable="false" title="Click to edit">`
+  const cyclic = _varCycles.has((v.name || '').toLowerCase());
+  const fresh = cyclic ? null : evalMath(v.expr, globalVarMap);
+  const display = fresh !== null ? formatMathResult(fresh) : (cyclic ? '↻' : '?');
+  const cls = cyclic ? 'var-pill var-cycle' : 'var-pill';
+  const title = cyclic ? 'Circular reference — click to edit' : 'Click to edit';
+  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
     + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
     + `<span class="var-name">${escHtml(v.name)}</span>`
     + `<span class="var-eq">=</span>`
@@ -3492,14 +3536,15 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
         hint:'Used in math (2*pi*r) and dice (2d6+str_mod) throughout this document.' },
       { key:'expr', label:'Value (expression)', placeholder:'e.g. 5, 2*pi, sqrt(16)', value: expr,
         chips: VAR_CHIPS,
+        hint:'May reference other variables (e.g. area = pi*r^2). Circular references are flagged.',
         preview: v => {
           if (!v) return '';
-          const r = evalMath(v);
+          const r = evalMath(v, collectVars());
           if (r === null) return `<span class="io-preview-bad">Invalid expression</span>`;
           return `<span class="var-preview-result">${escHtml(formatMathResult(r))}</span>`;
         } },
     ],
-    validate: v => VAR_NAME_RE.test(v.name) && evalMath(v.expr) !== null,
+    validate: v => VAR_NAME_RE.test(v.name) && evalMath(v.expr, collectVars()) !== null,
     onSubmit: v => {
       const result = { key: existing || varKey(), name: v.name, expr: v.expr };
       onResult(result);
