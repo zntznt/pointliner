@@ -87,17 +87,32 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 #search-wrap{position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}
 #search-wrap>*{pointer-events:auto}
 /* file menu */
-#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;min-width:220px;box-shadow:0 8px 30px rgba(0,0,0,.12)}
-#accent-row{display:flex;align-items:center;gap:8px;padding:4px 8px 7px 40px}
-.acc-row-lbl{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
-#accent-swatches{display:flex;gap:5px;flex-wrap:wrap}
-.acc-swatch{width:16px;height:16px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s;outline:none;padding:0;flex-shrink:0}
-.acc-swatch:hover{transform:scale(1.25)}
+#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:12px;padding:6px;min-width:252px;box-shadow:0 12px 40px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.07)}
+@keyframes menu-pop{from{opacity:0;transform:scale(.96) translateY(-8px)}to{opacity:1;transform:none}}
+#file-menu.on{display:block;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
+/* header */
+.fm-head{display:flex;align-items:center;gap:10px;padding:7px 9px 11px;border-bottom:1px solid var(--bdr);margin-bottom:4px}
+.fm-head .cmd-icon{background:var(--acc);color:#fff}
+.fm-head-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.fm-status{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* section labels */
+.fm-group{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:8px 10px 3px;opacity:.65}
+/* file-menu rows: accent-tinted hover, icon + label light up, shortcut chips */
+#file-menu .cmd-item{padding:7px 9px;border-radius:8px;transition:background .12s}
+#file-menu .cmd-item:hover,#file-menu .cmd-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent)}
+#file-menu .cmd-item:hover .cmd-icon,#file-menu .cmd-item.hi .cmd-icon{background:var(--acc);color:#fff}
+#file-menu .cmd-item:hover .cmd-label,#file-menu .cmd-item.hi .cmd-label{color:var(--acc)}
+#file-menu .cmd-sep{margin:5px 8px}
+.cmd-key{margin-left:auto;align-self:center;font-size:11px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--cbg);border:1px solid var(--bdr);border-radius:5px;padding:1px 6px;white-space:nowrap;flex-shrink:0}
+#file-menu .cmd-item:hover .cmd-key{border-color:transparent;background:color-mix(in srgb,var(--acc) 22%,transparent)}
+/* accent picker row */
+#accent-row{display:flex;align-items:center;gap:8px;padding:5px 9px 8px 45px}
+.acc-row-lbl{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;flex-shrink:0;opacity:.65}
+#accent-swatches{display:flex;gap:6px;flex-wrap:wrap}
+.acc-swatch{width:17px;height:17px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s,box-shadow .12s;outline:none;padding:0;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.acc-swatch:hover{transform:scale(1.22)}
 .acc-swatch.on{outline:2px solid var(--fg);outline-offset:2px}
-@keyframes menu-pop{from{opacity:0;transform:scale(.95) translateY(-6px)}to{opacity:1;transform:none}}
-#file-menu.on{display:block;animation:menu-pop .15s cubic-bezier(.2,.8,.3,1)}
-.fm-head{display:flex;align-items:center;gap:8px;padding:6px 10px 9px;border-bottom:1px solid var(--bdr);margin-bottom:3px}
-.fm-title{font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
 #search-box{width:clamp(150px,40vw,220px);padding:5px 12px 5px 30px;border:1px solid var(--bdr);border-radius:20px;background:var(--bg);color:var(--fg);font:inherit;font-size:16px;outline:none;transition:border-color .15s,box-shadow .15s}
 #search-box:focus{border-color:var(--acc);box-shadow:0 0 0 2px var(--ring)}
 #search-box::placeholder{color:var(--muted)}
@@ -523,22 +538,29 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 </div>
 <div id="file-menu">
   <div class="fm-head">
-    <div class="cmd-icon" style="font-size:11px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
-    <span class="fm-title" id="file-name">unsaved</span>
-    <span class="dirty-dot" id="fm-dirty-dot"></span>
+    <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
+    <div class="fm-head-info">
+      <span class="fm-title" id="file-name">unsaved</span>
+      <span class="fm-status" id="fm-status">Not saved to a file</span>
+    </div>
+    <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes"></span>
   </div>
+
+  <div class="fm-group">File</div>
   <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label">New</span><span class="cmd-desc">Start a fresh outline</span></div></div>
   <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Load an OPML file</span></div></div>
-  <div class="cmd-sep"></div>
-  <div class="cmd-item" id="btn-save"><div class="cmd-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">⌘S</span></div></div>
+  <div class="cmd-item" id="btn-save"><div class="cmd-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">Write to the current file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Export to a new file</span></div></div>
-  <div class="cmd-sep"></div>
-  <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Export Markdown</span><span class="cmd-desc">.md — artifacts frozen</span></div></div>
-  <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Export Text</span><span class="cmd-desc">.txt — plain outline</span></div></div>
-  <div class="cmd-sep"></div>
+
+  <div class="fm-group">Export</div>
+  <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">.md — artifacts frozen</span></div></div>
+  <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">.txt — plain outline</span></div></div>
+
+  <div class="fm-group">Appearance</div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Light mode</span><span class="cmd-desc">Switch appearance</span></div></div>
   <div id="accent-row"><span class="acc-row-lbl">Color</span><div id="accent-swatches"></div></div>
   <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
+
   <div class="cmd-sep"></div>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit" id="btn-github"><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
 </div>
@@ -5055,7 +5077,19 @@ fnPanelEl.addEventListener('mousedown', e => { if (!e.target.closest('.fn-conten
 const fileMenu  = document.getElementById('file-menu');
 const logoBtn   = document.getElementById('logo-btn');
 
+function updateFmStatus() {
+  const status = document.getElementById('fm-status');
+  if (!status) return;
+  if (fileName === 'unsaved')      status.textContent = dirty ? 'Unsaved — not on disk yet' : 'Not saved to a file';
+  else if (dirty)                  status.textContent = 'Unsaved changes';
+  else                             status.textContent = 'All changes saved';
+}
+
 function openFileMenu() {
+  // platform-correct Save shortcut chip (⌘ on Mac, Ctrl elsewhere)
+  const keySave = document.getElementById('key-save');
+  if (keySave) keySave.textContent = (typeof MOD !== 'undefined' ? MOD : '⌘') + 'S';
+  updateFmStatus();
   const rect = document.getElementById('toolbar-row').getBoundingClientRect();
   fileMenu.style.top  = (rect.bottom + 4) + 'px';
   fileMenu.style.left = (rect.left + 8) + 'px';
