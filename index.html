@@ -2752,6 +2752,8 @@ function renderSlashMenu() {
   if (!slashState) return;
   slashMenu.innerHTML = '';
   const list = document.createElement('div'); list.id = 'slash-menu-list';
+  let footer; // referenced by mouseenter closures below; assigned after the loop
+  const items = [];
   let lastSection = null;
   slashState.matches.forEach((cmd, i) => {
     const section = cmd.section || 'Format';
@@ -2762,10 +2764,19 @@ function renderSlashMenu() {
     }
     const item = mkCmdItem({ fa:cmd.fa, fb:cmd.icon }, cmd.label, cmd.desc,
       () => { slashState.activeIdx = i; slashApply(); }, i === slashState.activeIdx);
+    item.addEventListener('mouseenter', () => {
+      slashState.activeIdx = i;
+      items.forEach((it, j) => {
+        it.classList.toggle('hi', j === i);
+        it.querySelector('.cmd-icon').classList.toggle('accent', j === i);
+      });
+      if (footer) footer.textContent = cmd.desc || '';
+    });
+    items.push(item);
     list.appendChild(item);
   });
   slashMenu.appendChild(list);
-  const footer = document.createElement('div'); footer.className = 'slash-footer';
+  footer = document.createElement('div'); footer.className = 'slash-footer';
   footer.textContent = slashState.matches[slashState.activeIdx]?.desc || '';
   slashMenu.appendChild(footer);
   slashMenu.classList.add('on');
