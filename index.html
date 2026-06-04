@@ -440,13 +440,20 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-preview{margin-top:8px;min-height:22px;line-height:1.5}
 .io-preview-bad{font-size:12px;color:var(--del)}
 
-/* shortcuts */
-.sc-panel{position:fixed;bottom:16px;right:16px;background:var(--hbg);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;font-size:12px;color:var(--muted);line-height:1.9;display:none;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.08)}
-.sc-panel.on{display:block}
-.sc-panel strong{color:var(--fg);display:block;margin-bottom:4px}
-.sc-panel kbd{font-family:monospace;background:var(--bdr);border-radius:3px;padding:0 4px;font-size:11px;color:var(--fg)}
-#sc-toggle{position:fixed;bottom:16px;right:16px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--bdr);background:var(--hbg);border-radius:5px;padding:4px 8px;z-index:99}
-#sc-toggle:hover{color:var(--fg)}
+/* shortcuts / syntax reference */
+.sc-panel{position:fixed;bottom:54px;right:16px;width:338px;max-width:calc(100vw - 32px);max-height:calc(100vh - 90px);overflow-y:auto;background:var(--hbg);border:1px solid var(--bdr);border-radius:12px;padding:14px 16px 16px;font-size:12px;color:var(--fg);box-shadow:0 14px 44px rgba(0,0,0,.20);display:none;z-index:100;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+.sc-panel.on{display:block;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
+.sc-panel::-webkit-scrollbar{width:5px}
+.sc-panel::-webkit-scrollbar-thumb{background:var(--cb);border-radius:4px}
+.sc-head{font-size:13px;font-weight:600;color:var(--fg);margin-bottom:6px}
+.sc-sec{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:13px 0 5px}
+.sc-row{display:grid;grid-template-columns:124px 1fr;gap:10px;align-items:baseline;padding:2.5px 0}
+.sc-keys{display:flex;gap:3px;flex-wrap:wrap}
+.sc-desc{color:var(--muted);line-height:1.45}
+.sc-panel kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--bdr);border-radius:4px;padding:1px 5px;font-size:11px;color:var(--fg);white-space:nowrap;line-height:1.5}
+#sc-toggle{position:fixed;bottom:16px;right:16px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--bdr);background:var(--hbg);border-radius:50%;z-index:99;box-shadow:0 2px 10px rgba(0,0,0,.07);transition:color .12s,border-color .12s,background .12s}
+#sc-toggle:hover{color:var(--fg);border-color:var(--acc)}
+#sc-toggle.on{background:var(--acc);border-color:var(--acc);color:#fff}
 /* keep the help affordance from colliding with the footnote panel */
 #fn-panel.on ~ #sc-toggle,#fn-panel.on ~ .sc-panel{display:none}
 
@@ -548,19 +555,8 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <span id="storage-warn-close" title="Dismiss">✕</span>
 </div>
 
-<span id="sc-toggle">?</span>
-<div class="sc-panel" id="sc-panel">
-  <strong>Keyboard shortcuts</strong>
-  <kbd>Enter</kbd> new sibling · <kbd>Shift+Enter</kbd> line break · <kbd>Ctrl+Enter</kbd> zoom in<br>
-  <kbd>Tab / Shift+Tab</kbd> indent / outdent<br>
-  <kbd>↑/↓</kbd> navigate nodes · <kbd>Alt+↑/↓</kbd> move<br>
-  <kbd>Ctrl+↑/↓</kbd> collapse · <kbd>Escape</kbd> zoom out / deselect<br>
-  <kbd>/</kbd> point commands · <kbd>@</kbd> insert link/image/footnote/dice/markov<br>
-  <kbd>Ctrl+S</kbd> save · <kbd>Ctrl+O</kbd> open<br>
-  <kbd>Ctrl+F</kbd> search · <kbd>Ctrl+Z</kbd> undo · <kbd>Ctrl+Y</kbd> redo<br>
-  <kbd>#</kbd> h1 · <kbd>##</kbd> h2 · <kbd>###</kbd> h3 · <kbd>&gt;</kbd> quote · <kbd>```</kbd> code · <kbd>---</kbd> divider<br>
-  <kbd>==hi==</kbd> highlight · <kbd>~sub~</kbd> · <kbd>^sup^</kbd> · <kbd>:emoji:</kbd> · <kbd>- [ ]</kbd> task · <kbd>/table</kbd> table<br>
-</div>
+<span id="sc-toggle" title="Keyboard shortcuts &amp; syntax">?</span>
+<div class="sc-panel" id="sc-panel"></div>
 
 <script>
 'use strict';
@@ -4968,10 +4964,74 @@ document.getElementById('btn-done').addEventListener('click', () => {
   btn.classList.toggle('active', showDone);
   render();
 });
-document.getElementById('sc-toggle').addEventListener('click', () => document.getElementById('sc-panel').classList.toggle('on'));
-document.getElementById('sc-panel').addEventListener('click', () => document.getElementById('sc-panel').classList.remove('on'));
+// ─── shortcuts / syntax reference ────────────────────────────────────────────
+// Grouped, data-driven so it stays in sync as features are added. The modifier
+// key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
+const IS_MAC = /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || '');
+const MOD = IS_MAC ? '⌘' : 'Ctrl';
+const SHORTCUTS = [
+  { sec: 'Navigate', rows: [
+    { keys: ['↑', '↓'],            desc: 'Move between points' },
+    { keys: [`${MOD}+↑`, '↓'],    desc: 'Collapse / expand' },
+    { keys: [`${MOD}+Enter`],     desc: 'Zoom into point' },
+    { keys: ['Esc'],              desc: 'Zoom out / deselect' },
+  ]},
+  { sec: 'Edit structure', rows: [
+    { keys: ['Enter'],            desc: 'New point' },
+    { keys: ['⇧+Enter'],         desc: 'Line break inside a point' },
+    { keys: ['Tab', '⇧+Tab'],    desc: 'Indent / outdent' },
+    { keys: ['Alt+↑', '↓'],      desc: 'Move point up / down' },
+  ]},
+  { sec: 'Insert & commands', rows: [
+    { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
+    { keys: ['@'],  desc: 'Insert link, image, footnote, dice, math, variable…' },
+  ]},
+  { sec: 'Format (markdown)', rows: [
+    { keys: ['#', '##', '###'],   desc: 'Headings' },
+    { keys: ['>'],                desc: 'Quote' },
+    { keys: ['```'],              desc: 'Code block' },
+    { keys: ['---'],              desc: 'Divider' },
+    { keys: ['- [ ]'],            desc: 'To-do checkbox' },
+    { keys: ['**b**', '*i*'],     desc: 'Bold / italic' },
+    { keys: ['==hi=='],           desc: 'Highlight' },
+    { keys: [':emoji:'],          desc: 'Emoji shortcode' },
+  ]},
+  { sec: 'File & history', rows: [
+    { keys: [`${MOD}+S`, `${MOD}+O`], desc: 'Save / open' },
+    { keys: [`${MOD}+F`],             desc: 'Search' },
+    { keys: [`${MOD}+Z`, `${MOD}+Y`], desc: 'Undo / redo' },
+  ]},
+];
+(function buildShortcutsPanel() {
+  const panel = document.getElementById('sc-panel');
+  let html = '<div class="sc-head">Shortcuts &amp; syntax</div>';
+  for (const group of SHORTCUTS) {
+    html += `<div class="sc-sec">${group.sec}</div>`;
+    for (const r of group.rows) {
+      const keys = r.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('');
+      html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(r.desc)}</span></div>`;
+    }
+  }
+  panel.innerHTML = html;
+})();
+const scToggle = document.getElementById('sc-toggle');
+const scPanel  = document.getElementById('sc-panel');
+function toggleShortcuts(force) {
+  const on = force === undefined ? !scPanel.classList.contains('on') : force;
+  scPanel.classList.toggle('on', on);
+  scToggle.classList.toggle('on', on);
+}
+scToggle.addEventListener('click', e => { e.stopPropagation(); toggleShortcuts(); });
+// click anywhere outside the panel (and not the toggle) closes it; selecting text
+// inside the panel no longer dismisses it
+document.addEventListener('mousedown', e => {
+  if (!scPanel.classList.contains('on')) return;
+  if (scPanel.contains(e.target) || scToggle.contains(e.target)) return;
+  toggleShortcuts(false);
+});
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
+  if (e.key==='Escape' && scPanel.classList.contains('on')) { e.preventDefault(); toggleShortcuts(false); return; }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
