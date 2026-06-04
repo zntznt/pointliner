@@ -456,6 +456,8 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
 .io-btn.primary:hover{filter:brightness(1.07)}
 .io-btn.primary:disabled{opacity:.4;cursor:not-allowed;filter:none}
+.io-btn.danger{background:#c94040;border-color:#c94040;color:#fff}
+.io-btn.danger:hover{filter:brightness(1.08)}
 .io-field textarea{width:100%;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:7px;padding:8px 11px;outline:none;resize:vertical;line-height:1.5;transition:border-color .12s,box-shadow .12s}
 .io-field textarea.io-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
@@ -3245,6 +3247,46 @@ function openInsertDialog(opts) {
 function closeIo() { ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null; }
 ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) closeIo(); });
 
+// Lightweight destructive-action confirmation. Returns a Promise that resolves
+// to true (confirmed) or false (cancelled). Reuses the io-back/io-card overlay.
+function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'OK', cancelLabel = 'Cancel' }) {
+  return new Promise(resolve => {
+    ioCard.innerHTML = '';
+
+    const head = document.createElement('div'); head.className = 'io-head';
+    const ic = document.createElement('div'); ic.className = 'cmd-icon';
+    ic.style.cssText = 'background:rgba(201,64,64,.14);color:#c94040';
+    setIcon(ic, { fa:'fa-solid fa-triangle-exclamation', fb:'⚠' });
+    const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = title;
+    head.append(ic, ttl); ioCard.appendChild(head);
+
+    const msg = document.createElement('p');
+    msg.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 16px;line-height:1.55';
+    msg.textContent = message;
+    ioCard.appendChild(msg);
+
+    const foot = document.createElement('div'); foot.className = 'io-foot';
+    const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = cancelLabel;
+    const okBtn     = document.createElement('button'); okBtn.className = 'io-btn danger'; okBtn.textContent = confirmLabel;
+    foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
+
+    function finish(result) { closeIo(); resolve(result); }
+    cancelBtn.addEventListener('click', () => finish(false));
+    okBtn.addEventListener('click',     () => finish(true));
+    ioCancel = () => finish(false);
+
+    // Keyboard: Escape = cancel, Enter = confirm
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); ioBack.removeEventListener('keydown', onKey); finish(false); }
+      if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); ioBack.removeEventListener('keydown', onKey); finish(true); }
+    }
+    ioBack.addEventListener('keydown', onKey);
+
+    ioBack.classList.add('on');
+    cancelBtn.focus(); // focus Cancel so Enter doesn't accidentally discard
+  });
+}
+
 // Shared dialog for creating / editing a dice formula. Calls back with a fresh
 // roll object (existing key is reused when editing so the token stays valid).
 function openDiceDialog({ title, submitLabel, expr = '', existing = null, onResult }) {
@@ -4589,7 +4631,11 @@ const hasFSA = 'showOpenFilePicker' in window;
 const OPML_TYPE = { description:'OPML outline', accept:{'text/x-opml':['.opml']} };
 
 async function newFile() {
-  if (dirty && !confirm('Discard unsaved changes?')) return;
+  if (dirty && !await openConfirmDialog({
+    title: 'Discard unsaved changes?',
+    message: 'Your current outline has unsaved changes. Starting a new file will discard them permanently.',
+    confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+  })) return;
   root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = ''; searchQueryLC = '';
   undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
   document.getElementById('file-name').textContent = fileName;
@@ -4602,7 +4648,11 @@ async function newFile() {
 }
 
 async function openFile() {
-  if (dirty && !confirm('Discard unsaved changes?')) return;
+  if (dirty && !await openConfirmDialog({
+    title: 'Discard unsaved changes?',
+    message: 'Your current outline has unsaved changes. Opening a different file will discard them permanently.',
+    confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+  })) return;
   if (hasFSA) {
     try {
       [fileHandle] = await window.showOpenFilePicker({ types:[OPML_TYPE] });
