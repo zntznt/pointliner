@@ -1374,29 +1374,35 @@ function fromOpml(xml) {
 
 // Point-level commands — change WHAT THIS POINT IS. Triggered by "/".
 const BLOCK_CMDS = [
-  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point — the default block.', ex:'- text', section:'Turn into' },
-  { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Turn into' },
-  { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Turn into' },
-  { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Largest section heading.',                ex:'# text', section:'Turn into' },
-  { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium sub-section heading.',             ex:'## text', section:'Turn into' },
-  { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Smallest heading.',                       ex:'### text', section:'Turn into' },
-  { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Turn into' },
-  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced, unformatted code block.',     ex:'```', section:'Turn into' },
-  { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Turn into' },
-  { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert an editable grid of cells.',       section:'Insert' },
+  // Lists — the everyday blocks, shown first
+  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point — the default block.', ex:'- text', section:'Lists', turn:true },
+  { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Lists', turn:true },
+  { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Lists', turn:true },
+  // Headings
+  { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Largest section heading.',                ex:'# text', section:'Headings', turn:true },
+  { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium sub-section heading.',             ex:'## text', section:'Headings', turn:true },
+  { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Smallest heading.',                       ex:'### text', section:'Headings', turn:true },
+  // Blocks
+  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced, unformatted code block.',     ex:'```', section:'Blocks', turn:true },
+  { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
+  { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
+  { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert an editable grid of cells.',       section:'Blocks' },
 ];
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
 const INSERT_CMDS = [
-  { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
-  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
+  // Insert — basic inline elements, most common
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
-  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF', section:'Insert' },
-  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Insert' },
-  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'Pick a weighted entry; click to re-roll.',  ex:'1 sword · 2 shield',  section:'Insert' },
-  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Insert' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Name a value for use in math and dice.',    ex:'r = 5 · area = pi*r^2', section:'Insert' },
-  { id:'varref',   icon:'↳$', fa:'fa-solid fa-dollar-sign', label:'Var reference', desc:'Show a variable\'s value without redefining it.', ex:'shows $name = value', section:'Insert' },
+  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
+  { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
+  // Random — generators
+  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF', section:'Random' },
+  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
+  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'Pick a weighted entry; click to re-roll.',  ex:'1 sword · 2 shield',  section:'Random' },
+  // Math & variables
+  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
+  { id:'varref',   icon:'↳$', fa:'fa-solid fa-dollar-sign', label:'Var reference', desc:'Show a variable\'s value without redefining it.', ex:'shows $name = value', section:'Math' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Name a value for use in math and dice.',    ex:'r = 5 · area = pi*r^2', section:'Math' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -2690,7 +2696,7 @@ function showBulletPopup(nodeId, bulletEl) {
   // type switcher row
   const typeRow = document.createElement('div');
   typeRow.className = 'bpop-types';
-  BLOCK_CMDS.filter(c => c.section === 'Turn into').forEach(cmd => {
+  BLOCK_CMDS.filter(c => c.turn).forEach(cmd => {
     const btn = document.createElement('div');
     btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
     setIcon(btn, { fa:cmd.fa, fb:cmd.icon });
