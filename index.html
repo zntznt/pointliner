@@ -58,9 +58,9 @@ button,[contenteditable],input{touch-action:manipulation}
   --cbg:#f0f0ec;--del:#999;--qbdr:rgba(74,144,217,.6);
 }
 @media(prefers-color-scheme:dark){:root{
-  --bg:#1c1c1e;--fg:#e5e5e5;--muted:#666;--bullet:#555;--bullet-h:#5ba3e8;
-  --cb:#555;--hbg:#111;--bdr:#2a2a2a;--acc:#5ba3e8;--ring:rgba(91,163,232,.25);
-  --cbg:#252527;--del:#666;--qbdr:rgba(91,163,232,.5);
+  --bg:#1c1c1e;--fg:#e5e5e5;--muted:#6a6a6a;--bullet:#555;--bullet-h:#5ba3e8;
+  --cb:#555;--hbg:#111;--bdr:#333;--acc:#5ba3e8;--ring:rgba(91,163,232,.25);
+  --cbg:#28282a;--del:#6a6a6a;--qbdr:rgba(91,163,232,.5);
 }}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;line-height:var(--lh);min-height:100vh;padding-top:44px}
 
@@ -88,6 +88,12 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 #search-wrap>*{pointer-events:auto}
 /* file menu */
 #file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;min-width:220px;box-shadow:0 8px 30px rgba(0,0,0,.12)}
+#accent-row{display:flex;align-items:center;gap:8px;padding:4px 8px 7px 40px}
+.acc-row-lbl{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+#accent-swatches{display:flex;gap:5px;flex-wrap:wrap}
+.acc-swatch{width:16px;height:16px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s;outline:none;padding:0;flex-shrink:0}
+.acc-swatch:hover{transform:scale(1.25)}
+.acc-swatch.on{outline:2px solid var(--fg);outline-offset:2px}
 @keyframes menu-pop{from{opacity:0;transform:scale(.95) translateY(-6px)}to{opacity:1;transform:none}}
 #file-menu.on{display:block;animation:menu-pop .15s cubic-bezier(.2,.8,.3,1)}
 .fm-head{display:flex;align-items:center;gap:8px;padding:6px 10px 9px;border-bottom:1px solid var(--bdr);margin-bottom:3px}
@@ -531,6 +537,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Export Text</span><span class="cmd-desc">.txt — plain outline</span></div></div>
   <div class="cmd-sep"></div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Light mode</span><span class="cmd-desc">Switch appearance</span></div></div>
+  <div id="accent-row"><span class="acc-row-lbl">Color</span><div id="accent-swatches"></div></div>
   <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
   <div class="cmd-sep"></div>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit" id="btn-github"><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -5080,16 +5087,70 @@ document.getElementById('level-ctl').addEventListener('click', e => {
   else collapseToLevel(+btn.dataset.lvl);
 });
 
-// theme toggle
+// ─── theme + accent ──────────────────────────────────────────────────────────
 let forcedTheme = null; // null = system, 'light', 'dark'
-const themeStyle = document.createElement('style');
+const themeStyle  = document.createElement('style');
+const accentStyle = document.createElement('style');
 document.head.appendChild(themeStyle);
+document.head.appendChild(accentStyle);
+
+const ACCENT_PRESETS = [
+  { id: 'blue',   label: 'Blue',   light: '#4a90d9', dark: '#5ba3e8' },
+  { id: 'purple', label: 'Purple', light: '#7c5cbf', dark: '#9b7fe8' },
+  { id: 'green',  label: 'Green',  light: '#2e9b5a', dark: '#4db87a' },
+  { id: 'teal',   label: 'Teal',   light: '#2a9b94', dark: '#3bbdb5' },
+  { id: 'orange', label: 'Orange', light: '#c97a2e', dark: '#e89a4a' },
+  { id: 'red',    label: 'Red',    light: '#c94040', dark: '#e06060' },
+  { id: 'pink',   label: 'Pink',   light: '#bf4090', dark: '#e060b8' },
+  { id: 'indigo', label: 'Indigo', light: '#4356b8', dark: '#6b80e8' },
+];
+let accentId = 'blue';
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+function applyAccentCSS(dark) {
+  const preset = ACCENT_PRESETS.find(p => p.id === accentId) || ACCENT_PRESETS[0];
+  const hex = dark ? preset.dark : preset.light;
+  const [r,g,b] = hexToRgb(hex);
+  accentStyle.textContent = `:root{--acc:${hex};--ring:rgba(${r},${g},${b},.25);--bullet-h:${hex};--qbdr:rgba(${r},${g},${b},${dark ? .5 : .6})}`;
+  // refresh swatch selection ring
+  document.querySelectorAll('.acc-swatch').forEach(sw => {
+    sw.classList.toggle('on', sw.dataset.id === accentId);
+  });
+}
+
+function buildAccentSwatches(dark) {
+  const container = document.getElementById('accent-swatches');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const p of ACCENT_PRESETS) {
+    const sw = document.createElement('button');
+    sw.className = 'acc-swatch' + (p.id === accentId ? ' on' : '');
+    sw.style.background = dark ? p.dark : p.light;
+    sw.dataset.id = p.id;
+    sw.title = p.label;
+    sw.addEventListener('click', e => {
+      e.stopPropagation();
+      accentId = p.id;
+      const isDark = forcedTheme === 'dark' || (forcedTheme === null && window.matchMedia('(prefers-color-scheme:dark)').matches);
+      applyAccentCSS(isDark);
+      scheduleAutosave();
+    });
+    container.appendChild(sw);
+  }
+}
+
 function applyTheme() {
   const dark = forcedTheme === 'dark' || (forcedTheme === null && window.matchMedia('(prefers-color-scheme:dark)').matches);
   themeStyle.textContent = forcedTheme ? (forcedTheme === 'dark'
-    ? ':root{--bg:#1c1c1e;--fg:#e5e5e5;--muted:#666;--bullet:#555;--bullet-h:#5ba3e8;--cb:#555;--hbg:#111;--bdr:#2a2a2a;--acc:#5ba3e8;--ring:rgba(91,163,232,.25);--cbg:#252527;--del:#666;--qbdr:rgba(91,163,232,.5)}'
-    : ':root{--bg:#fafaf8;--fg:#1a1a1a;--muted:#999;--bullet:#bbb;--bullet-h:#4a90d9;--cb:#bbb;--hbg:#fff;--bdr:#e8e8e8;--acc:#4a90d9;--ring:rgba(74,144,217,.25);--cbg:#f0f0ec;--del:#999;--qbdr:rgba(74,144,217,.6)}'
+    ? ':root{--bg:#1c1c1e;--fg:#e5e5e5;--muted:#6a6a6a;--bullet:#555;--cb:#555;--hbg:#111;--bdr:#333;--cbg:#28282a;--del:#6a6a6a}'
+    : ':root{--bg:#fafaf8;--fg:#1a1a1a;--muted:#999;--bullet:#bbb;--cb:#bbb;--hbg:#fff;--bdr:#e8e8e8;--cbg:#f0f0ec;--del:#999}'
   ) : '';
+  applyAccentCSS(dark);
+  buildAccentSwatches(dark);
   setIcon(document.getElementById('theme-icon'), dark
     ? { fa:'fa-regular fa-sun',  fb:'○' }
     : { fa:'fa-solid fa-moon',   fb:'●' });
@@ -5281,7 +5342,7 @@ function scheduleAutosave() {
   if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme, fullWidth });
+    const payload = JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme, fullWidth, accentId });
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -5317,10 +5378,11 @@ function scheduleAutosave() {
         btn.classList.toggle('active', showDone);
         btn.title = showDone ? 'Hide completed' : 'Show completed';
       }
-      if (data.forcedTheme !== undefined) {
-        forcedTheme = data.forcedTheme;
-        applyTheme();
+      if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) {
+        accentId = data.accentId;
       }
+      if (data.forcedTheme !== undefined) forcedTheme = data.forcedTheme;
+      applyTheme();
       if (typeof data.fullWidth === 'boolean') {
         fullWidth = data.fullWidth;
         applyWidth();
