@@ -1922,43 +1922,62 @@ function attachContentEvents(content, node) {
     const pill = e.target.closest?.('.dice-roll');
     if (pill && !pill.classList.contains('dice-bad')) {
       e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) exitEdit(content, node);
-      if (e.target.closest('.dice-edit')) editDice(node, pill.dataset.key);
-      else rerollDice(node, pill.dataset.key);
+      if (content.dataset.editing) {
+        if (e.target.closest('.dice-edit')) { exitEdit(content, node); editDice(node, pill.dataset.key); }
+        else { const off = getCaretOffset(content); rerollDice(node, pill.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+      } else {
+        if (e.target.closest('.dice-edit')) editDice(node, pill.dataset.key);
+        else rerollDice(node, pill.dataset.key);
+        enterEdit(content, node); content.focus();
+      }
       return;
     }
     // markov pill: pencil opens the editor, body re-rolls the walk
     const mk = e.target.closest?.('.mk-roll');
     if (mk && !mk.classList.contains('mk-bad')) {
       e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) exitEdit(content, node);
-      if (e.target.closest('.mk-edit')) editMarkov(node, mk.dataset.key);
-      else rerollMarkov(node, mk.dataset.key);
+      if (content.dataset.editing) {
+        if (e.target.closest('.mk-edit')) { exitEdit(content, node); editMarkov(node, mk.dataset.key); }
+        else { const off = getCaretOffset(content); rerollMarkov(node, mk.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+      } else {
+        if (e.target.closest('.mk-edit')) editMarkov(node, mk.dataset.key);
+        else rerollMarkov(node, mk.dataset.key);
+        enterEdit(content, node); content.focus();
+      }
       return;
     }
     // roll table pill: pencil opens the editor, body re-rolls
     const rt = e.target.closest?.('.rt-roll');
     if (rt && !rt.classList.contains('rt-bad')) {
       e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) exitEdit(content, node);
-      if (e.target.closest('.rt-edit')) editRolltable(node, rt.dataset.key);
-      else rerollRolltable(node, rt.dataset.key);
+      if (content.dataset.editing) {
+        if (e.target.closest('.rt-edit')) { exitEdit(content, node); editRolltable(node, rt.dataset.key); }
+        else { const off = getCaretOffset(content); rerollRolltable(node, rt.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+      } else {
+        if (e.target.closest('.rt-edit')) editRolltable(node, rt.dataset.key);
+        else rerollRolltable(node, rt.dataset.key);
+        enterEdit(content, node); content.focus();
+      }
       return;
     }
     // math pill: click anywhere opens the editor (no re-roll — result is deterministic)
     const mp = e.target.closest?.('.math-roll');
     if (mp && !mp.classList.contains('math-bad')) {
       e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) exitEdit(content, node);
+      const mpWasEditing = !!content.dataset.editing;
+      if (mpWasEditing) exitEdit(content, node);
       editMath(node, mp.dataset.key);
+      if (!mpWasEditing) { enterEdit(content, node); content.focus(); }
       return;
     }
     // var pill: click anywhere opens the editor
     const vp2 = e.target.closest?.('.var-pill');
     if (vp2 && !vp2.classList.contains('var-bad')) {
       e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) exitEdit(content, node);
+      const vpWasEditing = !!content.dataset.editing;
+      if (vpWasEditing) exitEdit(content, node);
       editVar(node, vp2.dataset.key);
+      if (!vpWasEditing) { enterEdit(content, node); content.focus(); }
       return;
     }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {
