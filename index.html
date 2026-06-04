@@ -434,7 +434,9 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #slash-menu-list::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 #slash-menu .cmd-item{padding:5px 8px}
 #slash-menu .cmd-desc{display:none}
-.slash-footer{font-size:11px;color:var(--muted);padding:4px 10px 7px;border-top:1px solid var(--bdr);min-height:22px;line-height:1.4}
+.slash-footer{display:flex;flex-direction:column;gap:3px;padding:6px 10px 8px;border-top:1px solid var(--bdr);min-height:24px}
+.sf-desc{font-size:11px;color:var(--muted);line-height:1.4}
+.sf-ex{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--acc);background:var(--cbg);border-radius:5px;padding:2px 6px;line-height:1.4;word-break:break-word}
 .slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.06em}
 
 /* inline-insert dialog (links / images) */
@@ -1367,29 +1369,29 @@ function fromOpml(xml) {
 
 // Point-level commands — change WHAT THIS POINT IS. Triggered by "/".
 const BLOCK_CMDS = [
-  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Bullet point',     section:'Turn into' },
-  { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Numbered list',    section:'Turn into' },
-  { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox item',    section:'Turn into' },
-  { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Large heading',    section:'Turn into' },
-  { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium heading',   section:'Turn into' },
-  { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Small heading',    section:'Turn into' },
-  { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Blockquote',       section:'Turn into' },
-  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Code block',       section:'Turn into' },
-  { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule',  section:'Turn into' },
-  { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert a table',   section:'Insert' },
+  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point — the default block.', ex:'- text', section:'Turn into' },
+  { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Turn into' },
+  { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Turn into' },
+  { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Largest section heading.',                ex:'# text', section:'Turn into' },
+  { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium sub-section heading.',             ex:'## text', section:'Turn into' },
+  { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Smallest heading.',                       ex:'### text', section:'Turn into' },
+  { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Turn into' },
+  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced, unformatted code block.',     ex:'```', section:'Turn into' },
+  { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Turn into' },
+  { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert an editable grid of cells.',       section:'Insert' },
 ];
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
 const INSERT_CMDS = [
-  { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'[text](url)',   section:'Insert' },
-  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'![alt](url)',   section:'Insert' },
-  { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'[^ref] + note', section:'Insert' },
-  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll', desc:'Roll XdY, e.g. 2d6+mod', section:'Insert' },
-  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Roll a state walk', section:'Insert' },
-  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'Roll a random entry',  section:'Insert' },
-  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'2+2, sqrt(16), 2*pi',  section:'Insert' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Named value, e.g. r=5',section:'Insert' },
-  { id:'varref',   icon:'↳$', fa:'fa-solid fa-dollar-sign', label:'Var reference', desc:'Show a variable\'s value inline', section:'Insert' },
+  { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
+  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
+  { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
+  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF', section:'Insert' },
+  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Insert' },
+  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'Pick a weighted entry; click to re-roll.',  ex:'1 sword · 2 shield',  section:'Insert' },
+  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Insert' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Name a value for use in math and dice.',    ex:'r = 5 · area = pi*r^2', section:'Insert' },
+  { id:'varref',   icon:'↳$', fa:'fa-solid fa-dollar-sign', label:'Var reference', desc:'Show a variable\'s value without redefining it.', ex:'shows $name = value', section:'Insert' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -2748,6 +2750,15 @@ function checkSlash(content, nodeId) {
   positionSlashMenu(content, slashOffset);
 }
 
+// Footer content for the / and @ menus: a one-line description plus, when the
+// command has example syntax, a monospace example line beneath it.
+function slashFooterHTML(cmd) {
+  if (!cmd) return '';
+  let html = `<span class="sf-desc">${escHtml(cmd.desc || '')}</span>`;
+  if (cmd.ex) html += `<span class="sf-ex">${escHtml(cmd.ex)}</span>`;
+  return html;
+}
+
 function renderSlashMenu() {
   if (!slashState) return;
   slashMenu.innerHTML = '';
@@ -2770,14 +2781,14 @@ function renderSlashMenu() {
         it.classList.toggle('hi', j === i);
         it.querySelector('.cmd-icon').classList.toggle('accent', j === i);
       });
-      if (footer) footer.textContent = cmd.desc || '';
+      if (footer) footer.innerHTML = slashFooterHTML(cmd);
     });
     items.push(item);
     list.appendChild(item);
   });
   slashMenu.appendChild(list);
   footer = document.createElement('div'); footer.className = 'slash-footer';
-  footer.textContent = slashState.matches[slashState.activeIdx]?.desc || '';
+  footer.innerHTML = slashFooterHTML(slashState.matches[slashState.activeIdx]);
   slashMenu.appendChild(footer);
   slashMenu.classList.add('on');
   list.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
