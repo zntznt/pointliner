@@ -207,6 +207,9 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .dice-mod{font-family:monospace;color:var(--fg);opacity:.75}
 .dice-eq{color:var(--muted);opacity:.6;padding:0 1px}
 .dice-total{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
+.dice-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.3;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.dice-roll:hover .dice-edit{opacity:.6}
+.dice-edit:hover{opacity:1;background:var(--acc);color:#fff}
 .dice-roll.dice-bad{color:var(--del);border-style:dashed;cursor:default}
 .dice-roll.dice-bad:hover{box-shadow:none;border-color:var(--bdr)}
 @keyframes dice-pop{0%{transform:scale(.82)}60%{transform:scale(1.06)}100%{transform:scale(1)}}
@@ -220,8 +223,8 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mk-path{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
 .mk-state{font-weight:600;color:var(--fg)}
 .mk-arrow{color:var(--muted);opacity:.55;font-size:.9em}
-.mk-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
-.mk-roll:hover .mk-edit{opacity:.7}
+.mk-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.3;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.mk-roll:hover .mk-edit{opacity:.6}
 .mk-edit:hover{opacity:1;background:var(--acc);color:#fff}
 .mk-roll.mk-bad{color:var(--del);border-style:dashed;cursor:default}
 .mk-roll.mk-bad:hover{box-shadow:none;border-color:var(--bdr)}
@@ -234,9 +237,9 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .rt-roll .rt-ico{color:var(--acc);font-size:.92em;display:inline-flex;transition:transform .25s ease}
 .rt-roll:hover .rt-ico{transform:scale(1.15)}
 .rt-result{font-weight:600;color:var(--fg)}
-.rt-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
-.rt-roll:hover .rt-edit{opacity:.7}
-.rt-edit:hover{opacity:1!important;background:var(--acc);color:#fff}
+.rt-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.3;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.rt-roll:hover .rt-edit{opacity:.6}
+.rt-edit:hover{opacity:1;background:var(--acc);color:#fff}
 .rt-roll.rt-bad{color:var(--del);border-style:dashed;cursor:default}
 .rt-roll.rt-bad:hover{box-shadow:none;border-color:var(--bdr)}
 @keyframes rt-pop{0%{opacity:.3;transform:scale(.88)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
@@ -792,6 +795,7 @@ function renderDicePill(key, d) {
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
     + `<span class="dice-eq">=</span>`
     + `<span class="dice-total">${d.total}</span>`
+    + `<span class="dice-edit" title="Edit dice"><i class="fa-solid fa-pen"></i></span>`
     + `</span>`;
 }
 
@@ -874,7 +878,7 @@ function renderMarkovPill(key, mk) {
   const path = mk.path
     .map(s => `<span class="mk-state">${escHtml(s)}</span>`)
     .join('<span class="mk-arrow">→</span>');
-  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${escAttr(mk.def)}">`
+  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
     + `<span class="mk-path">${path}</span>`
     + `<span class="mk-edit" title="Edit chain"><i class="fa-solid fa-pen"></i></span>`
@@ -1813,11 +1817,12 @@ function attachContentEvents(content, node) {
       toggleTaskInNode(node, +e.target.dataset.task);
       return;
     }
-    // dice pill: re-roll in place without entering raw-edit mode
+    // dice pill: pencil opens the editor, body re-rolls in place
     const pill = !content.dataset.editing && e.target.closest?.('.dice-roll');
     if (pill && !pill.classList.contains('dice-bad')) {
       e.preventDefault(); e.stopPropagation();
-      rerollDice(node, pill.dataset.key);
+      if (e.target.closest('.dice-edit')) editDice(node, pill.dataset.key);
+      else rerollDice(node, pill.dataset.key);
       return;
     }
     // markov pill: pencil opens the editor, body re-rolls the walk
@@ -2465,17 +2470,11 @@ function insertInlineArtifact(id, nodeId, content) {
       onSubmit: v => applyInlineInsertion(nodeId, offset, `![${v.alt || 'image'}](${v.url})`),
     });
   } else if (id === 'dice') {
-    openInsertDialog({
-      icon: { fa:'fa-solid fa-dice-d20', fb:'🎲' },
+    openDiceDialog({
       title: 'Roll dice',
       submitLabel: 'Roll',
-      fields: [
-        { key:'expr', label:'Formula', placeholder:'e.g. 2d6+3 or 4d6-2+5d12', value:selected.replace(/\s+/g,''), chips: DICE_CHIPS },
-      ],
-      validate: v => !!parseDice(v.expr),
-      onSubmit: v => {
-        const roll = makeDiceRoll(v.expr);
-        if (!roll) return;
+      expr: selected,
+      onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.dice ||= []).push(roll);
         // splice the token, then render in display mode so the pill is visible
@@ -2743,6 +2742,26 @@ function openInsertDialog(opts) {
 function closeIo() { ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null; }
 ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) closeIo(); });
 
+// Shared dialog for creating / editing a dice formula. Calls back with a fresh
+// roll object (existing key is reused when editing so the token stays valid).
+function openDiceDialog({ title, submitLabel, expr = '', existing = null, onResult }) {
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-dice-d20', fb:'🎲' },
+    title,
+    submitLabel: submitLabel || 'Roll',
+    fields: [
+      { key:'expr', label:'Formula', placeholder:'e.g. 2d6+3 or 4d6-2+5d12', value: (expr || '').replace(/\s+/g,''), chips: DICE_CHIPS },
+    ],
+    validate: v => !!parseDice(v.expr),
+    onSubmit: v => {
+      const roll = makeDiceRoll(v.expr);
+      if (!roll) return;
+      if (existing) roll.key = existing;   // keep the same token when editing
+      onResult(roll);
+    },
+  });
+}
+
 // Shared dialog for creating / editing a Markov chain. Calls back with a fresh
 // roll object (existing.key is reused when editing so the token stays valid).
 function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = '', existing = null, onResult }) {
@@ -2971,6 +2990,24 @@ function rerollDice(node, key) {
     el.innerHTML = renderContentHTML(node);
     el.querySelector(`.dice-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('dice-rolled');
   }
+}
+
+// Open the editor for an existing dice token; on submit, replace its formula
+// and re-roll (mirrors editMarkov / editRolltable).
+function editDice(node, key) {
+  const d = node?.dice?.find(x => x.key === key);
+  if (!d) return;
+  openDiceDialog({
+    title: 'Edit dice',
+    submitLabel: 'Save & roll',
+    expr: d.expr, existing: key,
+    onResult: roll => {
+      Object.assign(d, { expr: roll.expr, total: roll.total, parts: roll.parts });
+      markDirty();
+      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
+      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+    },
+  });
 }
 
 // Drop dice records whose [[dice:KEY]] token no longer appears in the text.
