@@ -350,6 +350,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .fn-key:hover{background:var(--ring);border-color:var(--acc)}
 .fn-key.hi{background:var(--ring);border-color:var(--acc)}
 .fn-content{outline:none;font:inherit;font-size:16px;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
+.fn-content:empty::before{content:'Add a note…';color:var(--muted);opacity:.65;pointer-events:none}
 .nc-italic .node-content{font-style:italic}
 .nc-underline .node-content{text-decoration:underline}
 
@@ -593,7 +594,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 </div>
 <!-- footnote panel -->
 <div id="fn-panel">
-  <div class="fn-panel-hd">Footnotes</div>
+  <div class="fn-panel-hd" id="fn-panel-hd">Footnotes</div>
   <div id="fn-list"></div>
 </div>
 
@@ -2287,7 +2288,8 @@ function exitEdit(content, node) {
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
-  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneVarrefs(node); // drop data for deleted tokens
+  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneVarrefs(node); pruneFootnotes(node); // drop data for deleted tokens
+  if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
   markDirty();
@@ -4806,6 +4808,11 @@ function toMarkdown(rootNode) {
       out.push(`${indent}${marker} ${lines[0]}`);
       for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}`);
     }
+    // footnote definitions in reference order, indented under the node
+    getFnRefs(node.text).forEach(key => {
+      const fn = (node.footnotes || []).find(f => f.key === key);
+      if (fn && fn.text.trim()) out.push(`${indent}  [^${key}]: ${fn.text.replace(/\n+/g, ' ').trim()}`);
+    });
     let olN = 0;
     for (const c of node.children) emit(c, depth + 1, c.type === 'ol' ? ++olN : 0);
   }
@@ -4831,6 +4838,11 @@ function toPlainText(rootNode) {
       out.push(`${indent}${lines[0]}`);
       for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);
     }
+    // footnote text in reference order, indented under the node
+    getFnRefs(node.text).forEach(key => {
+      const fn = (node.footnotes || []).find(f => f.key === key);
+      if (fn && fn.text.trim()) out.push(`${indent}\t[^${key}] ${stripInlineMd(fn.text).replace(/\n+/g, ' ').trim()}`);
+    });
     for (const c of node.children) emit(c, depth + 1);
   }
   for (const c of rootNode.children) emit(c, 0);
@@ -4912,6 +4924,15 @@ function syncFnEntries(node) {
   });
 }
 
+// Drop footnote records whose [^key] no longer appears in the text — mirrors the
+// pruneXxx() artifact cleanup. Called on exitEdit so deleting a reference also
+// retires its note instead of leaving dead weight in the OPML.
+function pruneFootnotes(node) {
+  if (!node.footnotes || !node.footnotes.length) return;
+  const refs = new Set(getFnRefs(node.text));
+  node.footnotes = node.footnotes.filter(f => refs.has(f.key));
+}
+
 // detect [^key] pattern under a mouse point (for raw-edit-mode hover)
 function getFnKeyAtPoint(x, y) {
   let range = null;
@@ -4966,6 +4987,7 @@ function showFnPanel(nodeId) {
   fnNodeId = nodeId;
   renderFnPanel(node, refs);
   document.getElementById('fn-panel').classList.add('on');
+  syncFnPanelBottom(); // lift above the mobile keyboard if it's open
 }
 
 function hideFnPanel() {
@@ -4973,6 +4995,20 @@ function hideFnPanel() {
   fnLocked = false;
   fnNodeId = null;
   document.getElementById('fn-panel').classList.remove('on');
+  syncFnPanelBottom(); // reset bottom so the hidden panel can't peek above the keyboard
+}
+
+// Keep the panel docked above the software keyboard on mobile. Crucially the
+// offset is applied ONLY while the panel is open — otherwise bumping `bottom`
+// up by the keyboard height would push the translateY(100%)-hidden panel back
+// into view, which is the "empty footnote bar" bug on phones.
+function syncFnPanelBottom() {
+  const panel = document.getElementById('fn-panel');
+  if (!panel) return;
+  const open = panel.classList.contains('on');
+  const kbH = (open && window.visualViewport)
+    ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
+  panel.style.bottom = kbH + 'px';
 }
 
 function updateFnPanel(node) {
@@ -4994,6 +5030,8 @@ function updateFnPanel(node) {
 
 function renderFnPanel(node, refs) {
   const inner = document.getElementById('fn-list');
+  const hd = document.getElementById('fn-panel-hd');
+  if (hd) hd.textContent = refs.length === 1 ? 'Footnote' : `Footnotes · ${refs.length}`;
   inner.innerHTML = '';
   refs.forEach(key => {
     let entry = node.footnotes.find(f => f.key === key);
@@ -5075,7 +5113,7 @@ function convertToFootnote() {
   if (!nd.footnotes) nd.footnotes = [];
   nd.footnotes.push({ key, text: selected });
   document.execCommand('insertText', false, `[^${key}]`);
-  nd.text = cnt.textContent;
+  nd.text = editableText(cnt); // serialize via tokens so artifact pills aren't flattened
   markDirty();
   showFnPanel(nd.id);
   // focus the new footnote content after panel renders
@@ -5403,12 +5441,10 @@ new ResizeObserver(() => {
   document.body.style.paddingTop = document.getElementById('toolbar').offsetHeight + 'px';
 }).observe(document.getElementById('toolbar'));
 
-// keep footnote panel above the software keyboard on mobile
+// keep footnote panel above the software keyboard on mobile (syncFnPanelBottom
+// is defined in the footnotes section; it no-ops the offset while the panel is
+// hidden so an empty bar can't appear above the keyboard)
 if (window.visualViewport) {
-  const syncFnPanelBottom = () => {
-    const kbH = Math.max(0, window.innerHeight - window.visualViewport.height);
-    document.getElementById('fn-panel').style.bottom = kbH + 'px';
-  };
   window.visualViewport.addEventListener('resize', syncFnPanelBottom);
   window.visualViewport.addEventListener('scroll', syncFnPanelBottom);
 }

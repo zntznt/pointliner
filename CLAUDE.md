@@ -280,7 +280,13 @@ Other open items:
 
 - [ ] UX pass on the artifact dialogs.
 - [ ] Keyboard shortcut to enter edit mode on a selected node without clicking.
-- [ ] Footnote/citation feature partially scaffolded (fn-panel in DOM).
+- [x] Footnotes — `[^key]` markers + per-node `footnotes` sidecar, edited in the
+      bottom `#fn-panel`. Insert via `@footnote` or convert a selection from the
+      selection toolbar; hover/click jumps between marker and note. Orphaned
+      notes are dropped by `pruneFootnotes()` on `exitEdit`; both md/txt exports
+      emit the note text indented under the node. The panel docks above the
+      mobile keyboard via `syncFnPanelBottom()` (offset applied only while open,
+      so it can't peek when hidden).
 
 ---
 
