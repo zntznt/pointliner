@@ -115,6 +115,18 @@ storage format, not an interchange format** — the app owns the files, so inven
 attributes is fine, but the data won't survive a round-trip through other OPML
 tools.
 
+### Export — Markdown / plain text (one-way snapshots)
+
+`toMarkdown(root)` / `toPlainText(root)` (≈4597). Unlike OPML these are **lossy,
+one-way interchange** formats for reading/sharing, not re-import. The key step is
+`flattenArtifacts(text, node, varMap)`: every `[[type:key]]` token is replaced
+with the *frozen* result it currently shows (dice → `expr = total`, markov →
+`a → b → c`, rolltable → its entry, math/var/varref → the resolved value) because
+a flat file can't re-roll or recompute. Markdown emits a nested bullet list (2
+spaces/level, todos as `- [ ]`, ol numbered, headings bolded, tables as raw md
+blocks); plain text is tab-indented with `stripInlineMd()` removing emphasis
+markers. Neither calls `markClean()` — OPML save remains the canonical "saved".
+
 ---
 
 ## The two-engine reality

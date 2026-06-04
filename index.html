@@ -515,6 +515,9 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
   <div class="cmd-item" id="btn-save"><div class="cmd-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">⌘S</span></div></div>
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Export to a new file</span></div></div>
   <div class="cmd-sep"></div>
+  <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Export Markdown</span><span class="cmd-desc">.md — artifacts frozen</span></div></div>
+  <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Export Text</span><span class="cmd-desc">.txt — plain outline</span></div></div>
+  <div class="cmd-sep"></div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Light mode</span><span class="cmd-desc">Switch appearance</span></div></div>
   <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
   <div class="cmd-sep"></div>
@@ -4595,6 +4598,120 @@ async function writeH(h) {
   catch(e) { alert('Save failed: '+e.message); }
 }
 
+// ─── plain-text / markdown export ─────────────────────────────────────────────
+// These are interchange formats, not the canonical store (OPML is). Artifacts are
+// live in the app — a dice roll re-rolls, a math pill recomputes — but a flat text
+// file can't carry that behaviour, so each [[type:key]] token is replaced with the
+// frozen result it currently shows. The export is a snapshot, not a round-trip.
+
+function flattenArtifacts(text, node, varMap) {
+  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var|varref):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+    type = type.toLowerCase();
+    if (type === 'dice') {
+      const d = node.dice?.find(x => x.key === key); if (!d) return '';
+      const isFate = d.parts?.some(p => p.kind === 'dice' && p.sides === 'F');
+      const total = isFate && d.total > 0 ? '+' + d.total : String(d.total);
+      return `${d.expr} = ${total}`;
+    }
+    if (type === 'markov') {
+      const mk = node.markov?.find(x => x.key === key); if (!mk) return '';
+      return mk.path.join(' → ');
+    }
+    if (type === 'rolltable') {
+      const rt = node.rolltable?.find(x => x.key === key); if (!rt) return '';
+      return rt.result;
+    }
+    if (type === 'math') {
+      const m = node.math?.find(x => x.key === key); if (!m) return '';
+      const fresh = evalMath(m.expr, varMap);
+      return fresh !== null ? formatMathResult(fresh) : m.result;
+    }
+    // var / varref both display as "name = value"
+    const rec = (type === 'var' ? node.vars : node.varrefs)?.find(x => x.key === key);
+    if (!rec) return '';
+    const val = varMap[(rec.name || '').toLowerCase()];
+    return `${rec.name} = ${val !== undefined ? formatMathResult(val) : '?'}`;
+  });
+}
+
+// Strip the inline markdown emphasis markers for a clean plain-text rendering.
+function stripInlineMd(s) {
+  return (s || '')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')   // image -> alt text
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)') // link -> text (url)
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\+\+([^+]+)\+\+/g, '$1')
+    .replace(/==([^=]+)==/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/`([^`]+)`/g, '$1');
+}
+
+// Markdown export: a nested bullet list mirroring the outline, 2 spaces per level.
+function toMarkdown(rootNode) {
+  const varMap = collectVars();
+  const out = [];
+  function emit(node, depth, ordinal) {
+    const indent = '  '.repeat(depth);
+    if (node.type === 'table') {
+      // a table node's text is already a markdown table — emit it as its own block
+      const body = flattenArtifacts(node.text, node, varMap);
+      body.split('\n').forEach(l => out.push(indent + l));
+    } else if (node.type === 'divider') {
+      out.push(`${indent}- ---`);
+    } else {
+      let body = flattenArtifacts(textForDisplay(node), node, varMap);
+      if (node.type === 'h1' || node.type === 'h2' || node.type === 'h3') body = `**${body}**`;
+      else if (node.type === 'quote') body = `> ${body}`;
+      else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
+      const marker = node.type === 'ol' ? `${ordinal}.` : node.type === 'todo' ? (node.checked ? '- [x]' : '- [ ]') : '-';
+      const lines = body.split('\n');
+      out.push(`${indent}${marker} ${lines[0]}`);
+      for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}`);
+    }
+    let olN = 0;
+    for (const c of node.children) emit(c, depth + 1, c.type === 'ol' ? ++olN : 0);
+  }
+  let olN = 0;
+  for (const c of rootNode.children) emit(c, 0, c.type === 'ol' ? ++olN : 0);
+  return out.join('\n') + '\n';
+}
+
+// Plain-text export: tab-indented hierarchy, markdown emphasis stripped.
+function toPlainText(rootNode) {
+  const varMap = collectVars();
+  const out = [];
+  function emit(node, depth) {
+    const indent = '\t'.repeat(depth);
+    if (node.type === 'table') {
+      stripInlineMd(flattenArtifacts(node.text, node, varMap)).split('\n').forEach(l => out.push(indent + l));
+    } else if (node.type === 'divider') {
+      out.push(`${indent}----------`);
+    } else {
+      let body = stripInlineMd(flattenArtifacts(textForDisplay(node), node, varMap));
+      if (node.type === 'todo') body = (node.checked ? '[x] ' : '[ ] ') + body;
+      const lines = body.split('\n');
+      out.push(`${indent}${lines[0]}`);
+      for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);
+    }
+    for (const c of node.children) emit(c, depth + 1);
+  }
+  for (const c of rootNode.children) emit(c, 0);
+  return out.join('\n') + '\n';
+}
+
+function downloadText(content, ext, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i, '')) + ext;
+  a.click(); URL.revokeObjectURL(url);
+}
+function exportMarkdown() { downloadText(toMarkdown(root), '.md', 'text/markdown'); }
+function exportPlainText() { downloadText(toPlainText(root), '.txt', 'text/plain'); }
+
 // ─── search wiring ────────────────────────────────────────────────────────────
 
 let searchDebounce = null;
@@ -4917,6 +5034,8 @@ document.getElementById('btn-new').addEventListener('click', () => { newFile(); 
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
 document.getElementById('btn-save').addEventListener('click', () => { saveFile(); closeFileMenu(); });
 document.getElementById('btn-save-as').addEventListener('click', () => { saveAsFile(); closeFileMenu(); });
+document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
+document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
 
 // theme toggle
 let forcedTheme = null; // null = system, 'light', 'dark'
