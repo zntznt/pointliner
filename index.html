@@ -3267,7 +3267,9 @@ function pruneRolltable(node) {
 // [[math:KEY]] tokens. Click on the pill opens an edit dialog with a live
 // preview — the expression is evaluated in place, no randomness involved.
 // Supports: +−×/^%, unary −, parentheses, named constants (pi/π, e, tau),
-// and the most common functions (sqrt, abs, sin, cos, tan, log, ln, …).
+// the most common functions (sqrt, abs, sin, cos, tan, log, ln, …),
+// comparison operators (>, >=, <, <=, ==, !=) returning 0/1, and
+// conditionals: ternary  a > b ? x : y  or function form  if(cond, then, else).
 // Uses a recursive-descent parser — no eval(), safe to run on user input.
 
 function evalMath(input, vars = {}) {
@@ -3279,7 +3281,10 @@ function evalMath(input, vars = {}) {
     .replace(/τ/g, 'tau')
     .replace(/×/g, '*')
     .replace(/÷/g, '/')
-    .replace(/−/g, '-');
+    .replace(/−/g, '-')
+    .replace(/≥/g, '>=')
+    .replace(/≤/g, '<=')
+    .replace(/≠/g, '!=');
   if (!s) return null;
   let pos = 0;
   const peek = () => s[pos] || '';
@@ -3318,12 +3323,23 @@ function evalMath(input, vars = {}) {
     while (/[a-z0-9_]/.test(peek())) name += eat();
     if (name in CONSTS) return CONSTS[name];
     if (name in vars) return vars[name]; // document variable
+    if (name === 'if') {
+      // if(cond, then, else) — function form of ternary
+      expect('(');
+      const cond = ternary();
+      expect(',');
+      const thenV = ternary();
+      expect(',');
+      const elseV = ternary();
+      expect(')');
+      return cond ? thenV : elseV;
+    }
     if (name in FN1 || name in FN2 || name === 'min' || name === 'max') {
       expect('(');
       const args = [];
       if (peek() !== ')') {
-        args.push(addSub());
-        while (peek() === ',') { eat(); args.push(addSub()); }
+        args.push(ternary());
+        while (peek() === ',') { eat(); args.push(ternary()); }
       }
       expect(')');
       if (name in FN1) { if (args.length !== 1) throw 0; return FN1[name](args[0]); }
@@ -3335,7 +3351,7 @@ function evalMath(input, vars = {}) {
   }
 
   function atom() {
-    if (peek() === '(') { eat(); const v = addSub(); expect(')'); return v; }
+    if (peek() === '(') { eat(); const v = ternary(); expect(')'); return v; }
     if (/[0-9.]/.test(peek())) return number();
     if (/[a-z]/.test(peek())) return ident();
     throw 0;
@@ -3373,9 +3389,37 @@ function evalMath(input, vars = {}) {
     }
     return v;
   }
+  // Comparison: returns 1 (true) or 0 (false). Only one comparison per cmp()
+  // call — chaining (a < b < c) is not supported; use ternary for that.
+  function cmp() {
+    const left = addSub();
+    const ch = peek();
+    let op = '';
+    if ((ch === '>' || ch === '<') ) { op = eat(); if (peek() === '=') op += eat(); }
+    else if (ch === '=' && s[pos + 1] === '=') { op = eat() + eat(); }
+    else if (ch === '!' && s[pos + 1] === '=') { op = eat() + eat(); }
+    if (!op) return left;
+    const right = addSub();
+    if (op === '>')  return left > right  ? 1 : 0;
+    if (op === '>=') return left >= right ? 1 : 0;
+    if (op === '<')  return left < right  ? 1 : 0;
+    if (op === '<=') return left <= right ? 1 : 0;
+    if (op === '==' || op === '!=') return (left === right) === (op === '==') ? 1 : 0;
+    throw 0;
+  }
+  // Ternary: cond ? then : else  (right-associative; else branch can itself be a ternary)
+  function ternary() {
+    const cond = cmp();
+    if (peek() !== '?') return cond;
+    eat(); // '?'
+    const thenV = ternary();
+    expect(':');
+    const elseV = ternary();
+    return cond ? thenV : elseV;
+  }
 
   try {
-    const result = addSub();
+    const result = ternary();
     if (pos !== s.length) return null;   // unconsumed trailing characters
     if (isNaN(result)) return null;
     return result;                        // Infinity/-Infinity are valid results
@@ -3445,6 +3489,8 @@ const MATH_CHIPS = [
   { label:'^',     insert: '^' },
   { label:'√',     insert: '√' },
   { label:'()',    insert: el => insertAndSelect(el, '(', 'expr', ')') },
+  { label:'if',    insert: el => insertAndSelect(el, 'if(', 'cond', ', then, else)') },
+  { label:'? :',   insert: el => insertAndSelect(el, '', 'cond', ' ? then : else') },
   { label:'sin',   insert: el => insertAndSelect(el, 'sin(', 'x', ')') },
   { label:'cos',   insert: el => insertAndSelect(el, 'cos(', 'x', ')') },
   { label:'log',   insert: el => insertAndSelect(el, 'log(', 'x', ')') },
@@ -3461,7 +3507,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, onResu
       {
         key: 'expr',
         label: 'Expression',
-        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, sin(pi/6)',
+        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0',
         value: expr,
         chips: MATH_CHIPS,
         // live preview rendered right below the input as the user types
