@@ -4998,7 +4998,11 @@ document.addEventListener('keydown', e => {
     if (e.shiftKey) outdentSelected(); else indentSelected();
   }
 });
-window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue=''; } });
+// Only block reload when data would genuinely be lost:
+// - fileHandle means the user is working on a named OPML file whose disk copy is stale
+// - autosaveDisabled means localStorage is full and the only copy is in memory
+// Plain autosave (no file) survives a reload via localStorage, so no warning needed.
+window.addEventListener('beforeunload', e => { if (dirty && (fileHandle || autosaveDisabled)) { e.preventDefault(); e.returnValue=''; } });
 
 // keep body padding in sync with toolbar height (toolbar is fixed; breadcrumb changes its height)
 new ResizeObserver(() => {
