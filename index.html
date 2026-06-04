@@ -628,8 +628,20 @@ function pathTo(id) {
 
 // Zero-width space used by insertLineBreak to anchor the caret on blank lines.
 const ZWSP = '​';
-// Read a live contenteditable's text with those anchors stripped.
-function editableText(el) { return el.textContent.replace(/​/g, ''); }
+// Read a live contenteditable's text: token spans contribute their raw [[TYPE:KEY]]
+// token, <br> contributes \n, text nodes are taken verbatim minus ZWSP anchors.
+function editableText(el) {
+  let out = '';
+  function walk(node) {
+    if (node.nodeType === 3) { out += node.nodeValue.replace(/​/g, ''); return; }
+    if (node.nodeType !== 1) return;
+    if (node.dataset && node.dataset.token) { out += node.dataset.token; return; }
+    if (node.nodeName === 'BR') { out += '\n'; return; }
+    for (const c of node.childNodes) walk(c);
+  }
+  for (const c of el.childNodes) walk(c);
+  return out;
+}
 
 // reject URLs that could execute script; allow data:image only for <img>
 function safeUrl(u, allowDataImage) {
@@ -1846,33 +1858,37 @@ function attachContentEvents(content, node) {
       return;
     }
     // dice pill: pencil opens the editor, body re-rolls in place
-    const pill = !content.dataset.editing && e.target.closest?.('.dice-roll');
+    const pill = e.target.closest?.('.dice-roll');
     if (pill && !pill.classList.contains('dice-bad')) {
       e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) exitEdit(content, node);
       if (e.target.closest('.dice-edit')) editDice(node, pill.dataset.key);
       else rerollDice(node, pill.dataset.key);
       return;
     }
     // markov pill: pencil opens the editor, body re-rolls the walk
-    const mk = !content.dataset.editing && e.target.closest?.('.mk-roll');
+    const mk = e.target.closest?.('.mk-roll');
     if (mk && !mk.classList.contains('mk-bad')) {
       e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) exitEdit(content, node);
       if (e.target.closest('.mk-edit')) editMarkov(node, mk.dataset.key);
       else rerollMarkov(node, mk.dataset.key);
       return;
     }
     // roll table pill: pencil opens the editor, body re-rolls
-    const rt = !content.dataset.editing && e.target.closest?.('.rt-roll');
+    const rt = e.target.closest?.('.rt-roll');
     if (rt && !rt.classList.contains('rt-bad')) {
       e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) exitEdit(content, node);
       if (e.target.closest('.rt-edit')) editRolltable(node, rt.dataset.key);
       else rerollRolltable(node, rt.dataset.key);
       return;
     }
     // math pill: click anywhere opens the editor (no re-roll — result is deterministic)
-    const mp = !content.dataset.editing && e.target.closest?.('.math-roll');
+    const mp = e.target.closest?.('.math-roll');
     if (mp && !mp.classList.contains('math-bad')) {
       e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) exitEdit(content, node);
       editMath(node, mp.dataset.key);
       return;
     }
@@ -1932,12 +1948,34 @@ function attachContentEvents(content, node) {
   });
 }
 
+// Build the innerHTML for a node in edit mode: plain text segments are HTML-escaped,
+// [[TYPE:KEY]] tokens are rendered as contenteditable=false pill spans so the user
+// never sees the raw token syntax while typing.
+function editModeHTML(node) {
+  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math):([a-z0-9]+)\]\])/gi;
+  let html = '', last = 0, m;
+  TOKEN_RE.lastIndex = 0;
+  while ((m = TOKEN_RE.exec(node.text)) !== null) {
+    if (m.index > last) html += escHtml(node.text.slice(last, m.index));
+    const [, raw, type, key] = m;
+    let pill;
+    if (type === 'dice')      pill = renderDicePill(key, node.dice?.find(d => d.key === key));
+    else if (type === 'markov')    pill = renderMarkovPill(key, node.markov?.find(d => d.key === key));
+    else if (type === 'rolltable') pill = renderRolltablePill(key, node.rolltable?.find(d => d.key === key));
+    else                           pill = renderMathPill(key, node.math?.find(d => d.key === key));
+    html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>`;
+    last = m.index + m[0].length;
+  }
+  if (last < node.text.length) html += escHtml(node.text.slice(last));
+  return html;
+}
+
 function enterEdit(content, node) {
   if (selectedIds.size > 0) clearSelection();
   selAnchorId = node.id;
   content.dataset.editing = '1';
   content.dataset.prevText = node.text; // baseline for a lightweight text-undo entry
-  content.textContent = node.text;
+  content.innerHTML = editModeHTML(node);
   activeContentId = node.id;
   scheduleReconcile(); // raw markdown text may differ in height from rendered HTML
 }
@@ -2323,7 +2361,7 @@ function applyInlineFormat(fmt) {
   const wrapped = map[fmt];
   if (!wrapped) return;
   document.execCommand('insertText', false, wrapped);
-  if (cnt) { const nd = nodeById(cnt.dataset.id); if (nd) { nd.text = cnt.textContent; markDirty(); } }
+  if (cnt) { const nd = nodeById(cnt.dataset.id); if (nd) { nd.text = editableText(cnt); markDirty(); } }
   hideSelTb();
 }
 
@@ -2394,7 +2432,7 @@ slashMenu.addEventListener('mousedown', e => e.preventDefault());
 // "/" opens the point-level menu, "@" opens the inline-insert menu.
 function checkSlash(content, nodeId) {
   const pos = getCaretOffset(content);
-  const before = content.textContent.slice(0, pos);
+  const before = editableText(content).slice(0, pos);
   const m = before.match(/(^|[\s])([/@])(\w*)$/);
   if (!m) { hideSlashMenu(); return; }
   const trigger = m[2];
@@ -2428,11 +2466,31 @@ function renderSlashMenu() {
 }
 
 function positionSlashMenu(content, slashOffset) {
-  const tn = content.firstChild;
-  if (!tn || tn.nodeType !== 3) { slashMenu.style.left='0'; slashMenu.style.top='0'; return; }
+  // Walk the DOM to find the text node and raw offset for the given logical offset.
+  let rem = slashOffset, targetNode = null, targetRawOff = 0;
+  function walk(node) {
+    if (targetNode) return;
+    if (node.nodeType === 3) {
+      const raw = node.nodeValue;
+      let logical = 0, i = 0;
+      for (; i < raw.length; i++) {
+        if (raw[i] !== '​') {
+          if (logical === rem) { targetNode = node; targetRawOff = i; return; }
+          logical++;
+        }
+      }
+      rem -= logical; return;
+    }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) { rem -= node.dataset.token.length; return; }
+    if (node.nodeName === 'BR') { rem -= 1; return; }
+    for (const c of node.childNodes) walk(c);
+  }
+  for (const c of content.childNodes) walk(c);
+  if (!targetNode) { slashMenu.style.left='0'; slashMenu.style.top='0'; return; }
   const range = document.createRange();
-  range.setStart(tn, Math.min(slashOffset, tn.length));
-  range.setEnd(tn, Math.min(slashOffset+1, tn.length));
+  range.setStart(targetNode, targetRawOff);
+  range.setEnd(targetNode, Math.min(targetRawOff + 1, targetNode.length));
   const rect = range.getBoundingClientRect();
   slashMenu.style.left = rect.left + 'px';
   slashMenu.style.top  = (rect.bottom + 4) + 'px';
@@ -2456,19 +2514,17 @@ function slashApply() {
   const cmd = matches[activeIdx];
   hideSlashMenu();
   // strip the trigger char + the query the user typed after it
-  const afterTrigger = content.textContent.slice(slashOffset+1).match(/^\w*/)?.[0] ?? '';
+  const currentText = editableText(content);
+  const afterTrigger = currentText.slice(slashOffset+1).match(/^\w*/)?.[0] ?? '';
   const rawLen = 1 + afterTrigger.length;
-  const newText = content.textContent.slice(0, slashOffset) + content.textContent.slice(slashOffset + rawLen);
-  content.textContent = newText;
+  const newText = currentText.slice(0, slashOffset) + currentText.slice(slashOffset + rawLen);
   const node = nodeById(nodeId);
-  if (node) node.text = newText.replace(/​/g, '');
+  if (node) {
+    node.text = newText;
+    content.innerHTML = editModeHTML(node);
+  }
   // restore the caret where the trigger char was
-  try {
-    const tn = content.firstChild || content;
-    const r = document.createRange();
-    r.setStart(tn, Math.min(slashOffset, newText.length)); r.collapse(true);
-    window.getSelection().removeAllRanges(); window.getSelection().addRange(r);
-  } catch(_) {}
+  try { setCaretByOffset(content, slashOffset); } catch(_) {}
   if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
   else applyBlockCmd(cmd.id, nodeId, node, content);
   markDirty();
@@ -2582,11 +2638,37 @@ function insertInlineArtifact(id, nodeId, content) {
   }
 }
 
-// Character offset of a (container, offset) DOM point within an element's text.
+// Logical character offset of a (container, off) DOM point within el's text.
+// Token spans count as their raw token string length, mirroring getCaretOffset.
 function rangeOffset(el, container, off) {
-  const pre = document.createRange();
-  pre.selectNodeContents(el); pre.setEnd(container, off);
-  return pre.toString().length;
+  let count = 0, found = false;
+  function countAll(node) {
+    if (node.nodeType === 3) count += node.nodeValue.replace(/​/g,'').length;
+    else if (node.nodeType === 1) {
+      if (node.dataset?.token) count += node.dataset.token.length;
+      else if (node.nodeName === 'BR') count += 1;
+      else for (const c of node.childNodes) countAll(c);
+    }
+  }
+  function walk(node) {
+    if (found) return;
+    if (node === container) {
+      if (node.nodeType === 3) count += off;
+      else for (let i = 0; i < off; i++) countAll(node.childNodes[i]);
+      found = true; return;
+    }
+    if (node.nodeType === 3) { count += node.nodeValue.replace(/​/g,'').length; return; }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) {
+      if (node.contains(container)) { found = true; count += node.dataset.token.length; }
+      else count += node.dataset.token.length;
+      return;
+    }
+    if (node.nodeName === 'BR') { count += 1; return; }
+    for (const c of node.childNodes) { walk(c); if (found) return; }
+  }
+  for (const c of el.childNodes) { walk(c); if (found) break; }
+  return count;
 }
 
 // Insert raw markdown at a caret offset.
@@ -2610,16 +2692,9 @@ function applyInlineReplace(nodeId, start, end, str) {
     ensureRowVisible(nodeId);
     const el = document.querySelector(`.node-content[data-id="${nodeId}"]`);
     if (!el) return;
-    if (!el.dataset.editing) enterEdit(el, node); // shows raw text === node.text
+    if (!el.dataset.editing) enterEdit(el, node);
     el.focus();
-    try {
-      const tn = el.firstChild;
-      const r = document.createRange();
-      if (tn && tn.nodeType === 3) r.setStart(tn, Math.min(caret, tn.length));
-      else { r.selectNodeContents(el); }
-      r.collapse(true);
-      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-    } catch (_) {}
+    try { setCaretByOffset(el, caret); } catch (_) {}
   });
 }
 
@@ -3211,17 +3286,87 @@ function applyBlockCmd(id, nodeId, node, content) {
   if (id !== 'todo') node.checked = false;
   // if currently editing this node, sync the live contenteditable
   const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
-  if (activeEl) activeEl.textContent = node.text;
+  if (activeEl) activeEl.innerHTML = editModeHTML(node);
   markDirty();
   rerenderNode(nodeId);
 }
 
+// Returns the logical character offset of the caret within el.
+// Token spans (data-token) count as their raw token string length; <br> counts as 1.
 function getCaretOffset(el) {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return 0;
-  const r = sel.getRangeAt(0), pre = r.cloneRange();
-  pre.selectNodeContents(el); pre.setEnd(r.startContainer, r.startOffset);
-  return pre.toString().length;
+  const range = sel.getRangeAt(0);
+  let count = 0, found = false;
+  function countAll(node) {
+    if (node.nodeType === 3) count += node.nodeValue.replace(/​/g,'').length;
+    else if (node.nodeType === 1) {
+      if (node.dataset?.token) count += node.dataset.token.length;
+      else if (node.nodeName === 'BR') count += 1;
+      else for (const c of node.childNodes) countAll(c);
+    }
+  }
+  function walk(node) {
+    if (found) return;
+    if (node === range.startContainer) {
+      if (node.nodeType === 3) count += range.startOffset;
+      else for (let i = 0; i < range.startOffset; i++) countAll(node.childNodes[i]);
+      found = true; return;
+    }
+    if (node.nodeType === 3) { count += node.nodeValue.replace(/​/g,'').length; return; }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) {
+      if (node.contains(range.startContainer)) { found = true; count += node.dataset.token.length; }
+      else count += node.dataset.token.length;
+      return;
+    }
+    if (node.nodeName === 'BR') { count += 1; return; }
+    for (const c of node.childNodes) { walk(c); if (found) return; }
+  }
+  for (const c of el.childNodes) { walk(c); if (found) break; }
+  return count;
+}
+
+// Set the caret to a logical character offset within el (inverse of getCaretOffset).
+function setCaretByOffset(el, target) {
+  let rem = target, done = false;
+  function place(node, rawOff) {
+    const r = document.createRange();
+    r.setStart(node, rawOff); r.collapse(true);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    done = true;
+  }
+  function walk(node) {
+    if (done) return;
+    if (node.nodeType === 3) {
+      const raw = node.nodeValue;
+      let logical = 0, i = 0;
+      for (; i < raw.length; i++) {
+        if (raw[i] !== '​') {
+          if (logical === rem) { place(node, i); return; }
+          logical++;
+        }
+      }
+      if (logical >= rem) { place(node, i); return; }
+      rem -= logical; return;
+    }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) {
+      const len = node.dataset.token.length;
+      if (rem <= 0) { const r = document.createRange(); r.setStartBefore(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
+      else if (rem < len) { const r = document.createRange(); r.setStartAfter(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
+      else rem -= len;
+      return;
+    }
+    if (node.nodeName === 'BR') {
+      if (rem === 0) { const r = document.createRange(); r.setStartBefore(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
+      else rem -= 1;
+      return;
+    }
+    for (const c of node.childNodes) { walk(c); if (done) return; }
+  }
+  for (const c of el.childNodes) { walk(c); if (done) break; }
+  if (!done) { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
 }
 
 // ─── node type / checked ─────────────────────────────────────────────────────
