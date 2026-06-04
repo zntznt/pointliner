@@ -398,12 +398,16 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .bpop-type.cur{background:var(--acc);color:#fff}
 
 /* slash menu */
-#slash-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:240px;max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
-#slash-menu::-webkit-scrollbar{width:4px}
-#slash-menu::-webkit-scrollbar-track{background:transparent}
-#slash-menu::-webkit-scrollbar-thumb{background:var(--cb);border-radius:4px}
-#slash-menu::-webkit-scrollbar-thumb:hover{background:var(--muted)}
-#slash-menu.on{display:block}
+#slash-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:204px;overflow:hidden}
+#slash-menu.on{display:flex;flex-direction:column}
+#slash-menu-list{padding:5px;overflow-y:auto;max-height:290px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+#slash-menu-list::-webkit-scrollbar{width:4px}
+#slash-menu-list::-webkit-scrollbar-track{background:transparent}
+#slash-menu-list::-webkit-scrollbar-thumb{background:var(--cb);border-radius:4px}
+#slash-menu-list::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+#slash-menu .cmd-item{padding:5px 8px}
+#slash-menu .cmd-desc{display:none}
+.slash-footer{font-size:11px;color:var(--muted);padding:4px 10px 7px;border-top:1px solid var(--bdr);min-height:22px;line-height:1.4}
 .slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.06em}
 
 /* inline-insert dialog (links / images) */
@@ -2705,18 +2709,25 @@ function checkSlash(content, nodeId) {
 function renderSlashMenu() {
   if (!slashState) return;
   slashMenu.innerHTML = '';
+  const list = document.createElement('div'); list.id = 'slash-menu-list';
   let lastSection = null;
   slashState.matches.forEach((cmd, i) => {
     const section = cmd.section || 'Format';
     if (section !== lastSection) {
       const hdr = document.createElement('div');
       hdr.className = 'slash-section'; hdr.textContent = section;
-      slashMenu.appendChild(hdr); lastSection = section;
+      list.appendChild(hdr); lastSection = section;
     }
-    const item = mkCmdItem({ fa:cmd.fa, fb:cmd.icon }, cmd.label, cmd.desc, () => { slashState.activeIdx = i; slashApply(); }, i === slashState.activeIdx);
-    slashMenu.appendChild(item);
+    const item = mkCmdItem({ fa:cmd.fa, fb:cmd.icon }, cmd.label, cmd.desc,
+      () => { slashState.activeIdx = i; slashApply(); }, i === slashState.activeIdx);
+    list.appendChild(item);
   });
+  slashMenu.appendChild(list);
+  const footer = document.createElement('div'); footer.className = 'slash-footer';
+  footer.textContent = slashState.matches[slashState.activeIdx]?.desc || '';
+  slashMenu.appendChild(footer);
   slashMenu.classList.add('on');
+  list.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
 
 function positionSlashMenu(content, slashOffset) {
