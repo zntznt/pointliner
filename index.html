@@ -319,6 +319,13 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .var-pill.var-ref{border:1.5px solid var(--acc);background:color-mix(in srgb,var(--acc) 8%,var(--cbg))}
 .var-pill.var-undef{border-color:var(--del);border-style:dashed}
 .var-preview-result{font-weight:700;color:var(--acc);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1.1em}
+/* variable picker grid inside the insert dialog */
+.var-pick-grid{display:flex;flex-wrap:wrap;gap:6px;max-height:110px;overflow-y:auto;padding:2px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+.var-pick-card{display:flex;flex-direction:column;gap:1px;padding:6px 10px;border:1.5px solid var(--bdr);border-radius:9px;cursor:pointer;transition:border-color .12s,background .12s,box-shadow .12s;user-select:none;min-width:64px}
+.var-pick-card:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.var-pick-card.selected{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.var-pick-name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-style:italic;color:var(--muted);font-size:.78em}
+.var-pick-val{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--acc);font-size:1em}
 /* footnotes */
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
@@ -3750,29 +3757,119 @@ const VAR_CHIPS = [
 ];
 
 function openVarDialog({ title, submitLabel, name = '', expr = '', existing = null, onResult }) {
-  openInsertDialog({
-    icon: { fa:'fa-solid fa-dollar-sign', fb:'$' },
-    title,
-    submitLabel: submitLabel || 'Insert',
-    fields: [
-      { key:'name', label:'Name', placeholder:'e.g. r, str_mod, dmg_bonus', value: name,
-        hint:'Used in math (2*pi*r) and dice (2d6+str_mod) throughout this document.' },
-      { key:'expr', label:'Value (optional expression)', placeholder:'e.g. 5, 2*pi, sqrt(16) — leave blank to display', value: expr,
-        chips: VAR_CHIPS,
-        hint:'Leave blank to display an existing variable without redefining it. May reference other variables (e.g. area = pi*r^2).',
-        preview: v => {
-          if (!v) return '';
-          const r = evalMath(v, collectVars());
-          if (r === null) return `<span class="io-preview-bad">Invalid expression</span>`;
-          return `<span class="var-preview-result">${escHtml(formatMathResult(r))}</span>`;
-        } },
-    ],
-    validate: v => VAR_NAME_RE.test(v.name) && (v.expr === '' || evalMath(v.expr, collectVars()) !== null),
-    onSubmit: v => {
-      const result = { key: existing || varKey(), name: v.name, expr: v.expr };
-      onResult(result);
-    },
+  const varMap  = collectVars();
+  const allDefs = Object.keys(_varActiveExprs).sort().map(nm => ({
+    name: nm, expr: _varActiveExprs[nm], val: varMap[nm],
+  }));
+
+  ioCard.innerHTML = '';
+
+  // Header
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, { fa:'fa-solid fa-dollar-sign', fb:'$' });
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = title;
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  // Known-variable picker (only when vars exist)
+  let cardEls = [];
+  if (allDefs.length > 0) {
+    const sec = document.createElement('div'); sec.className = 'io-field';
+    const lab = document.createElement('label'); lab.textContent = 'Known variables';
+    const grid = document.createElement('div'); grid.className = 'var-pick-grid';
+    allDefs.forEach(({ name: nm, expr: ex, val }) => {
+      const card = document.createElement('div'); card.className = 'var-pick-card';
+      card.title = `${nm} = ${ex}`;
+      const nameEl = document.createElement('div'); nameEl.className = 'var-pick-name'; nameEl.textContent = '$' + nm;
+      const valEl  = document.createElement('div'); valEl.className  = 'var-pick-val';  valEl.textContent  = val !== undefined ? formatMathResult(val) : '?';
+      card.append(nameEl, valEl);
+      card.addEventListener('click', () => {
+        cardEls.forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        nameInp.value = nm; exprInp.value = ex;
+        nameInp.dispatchEvent(new Event('input')); exprInp.dispatchEvent(new Event('input'));
+        validate();
+      });
+      cardEls.push(card);
+      grid.appendChild(card);
+    });
+    sec.append(lab, grid); ioCard.appendChild(sec);
+  }
+
+  // Name field
+  const nameWrap = document.createElement('div'); nameWrap.className = 'io-field';
+  const nameLab  = document.createElement('label'); nameLab.textContent = 'Name';
+  const nameInp  = document.createElement('input'); nameInp.type = 'text';
+  nameInp.placeholder = 'e.g. r, str_mod, dmg_bonus'; nameInp.value = name;
+  nameInp.spellcheck = false; nameInp.autocomplete = 'off';
+  const nameHint = document.createElement('div'); nameHint.className = 'io-hint';
+  nameHint.textContent = 'Used in math (2*pi*r) and dice (2d6+str_mod) throughout this document.';
+  nameWrap.append(nameLab, nameInp, nameHint); ioCard.appendChild(nameWrap);
+
+  // Expression field
+  const exprWrap = document.createElement('div'); exprWrap.className = 'io-field';
+  const exprLab  = document.createElement('label'); exprLab.textContent = 'Value (optional)';
+  const exprInp  = document.createElement('input'); exprInp.type = 'text';
+  exprInp.placeholder = 'e.g. 5, 2*pi, sqrt(16) — leave blank to just display';
+  exprInp.value = expr; exprInp.spellcheck = false; exprInp.autocomplete = 'off';
+  const prev = document.createElement('div'); prev.className = 'io-preview';
+  const updatePrev = () => {
+    const v = exprInp.value.trim(); if (!v) { prev.innerHTML = ''; return; }
+    const r = evalMath(v, collectVars());
+    prev.innerHTML = r === null ? '<span class="io-preview-bad">Invalid expression</span>'
+      : `<span class="var-preview-result">${escHtml(formatMathResult(r))}</span>`;
+  };
+  const chipsRow = document.createElement('div'); chipsRow.className = 'io-chips';
+  VAR_CHIPS.forEach(chip => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'io-chip'; b.textContent = chip.label;
+    b.addEventListener('mousedown', e => {
+      e.preventDefault();
+      if (typeof chip.insert === 'function') chip.insert(exprInp); else insertAtCaret(exprInp, chip.insert);
+      exprInp.dispatchEvent(new Event('input')); validate(); exprInp.focus();
+    });
+    chipsRow.appendChild(b);
   });
+  const exprHint = document.createElement('div'); exprHint.className = 'io-hint';
+  exprHint.textContent = 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
+  exprWrap.append(exprLab, exprInp, prev, chipsRow, exprHint); ioCard.appendChild(exprWrap);
+
+  // Footer
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
+  const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = submitLabel || 'Insert';
+  cancelBtn.addEventListener('click', () => closeIo());
+  okBtn.addEventListener('click', submit);
+  foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
+
+  function valid() {
+    const nm = nameInp.value.trim(), ex = exprInp.value.trim();
+    return VAR_NAME_RE.test(nm) && (ex === '' || evalMath(ex, collectVars()) !== null);
+  }
+  function validate() { okBtn.disabled = !valid(); }
+  function submit() {
+    if (!valid()) return;
+    closeIo();
+    onResult({ key: existing || varKey(), name: nameInp.value.trim(), expr: exprInp.value.trim() });
+  }
+
+  [nameInp, exprInp].forEach(inp => {
+    inp.addEventListener('input', () => { if (inp === exprInp) updatePrev(); validate(); });
+    inp.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+      else if (e.key === 'Enter') { e.preventDefault(); submit(); }
+    });
+  });
+
+  // Highlight the card matching the pre-filled name (edit mode)
+  if (name) {
+    const match = cardEls.find(c => c.title.startsWith(name.toLowerCase() + ' ') || c.title.startsWith(name + ' '));
+    match?.classList.add('selected');
+  }
+
+  ioCancel = () => closeIo();
+  validate(); updatePrev();
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { nameInp.focus(); nameInp.select(); });
 }
 
 function editVar(node, key) {
