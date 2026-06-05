@@ -267,6 +267,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mk-edit:hover{opacity:1;background:var(--acc);color:#fff}
 .mk-roll.mk-bad{color:var(--del);border-style:dashed;cursor:default}
 .mk-roll.mk-bad:hover{box-shadow:none;border-color:var(--bdr)}
+.mk-terminal{color:var(--muted);opacity:.5;font-style:italic;font-size:.9em}
 @keyframes mk-pop{0%{opacity:.35;transform:translateY(2px)}100%{opacity:1;transform:none}}
 .mk-roll.mk-rolled .mk-path{animation:mk-pop .25s ease}
 /* roll table pill */
@@ -1174,9 +1175,11 @@ function makeMarkovRoll(def, startInput, stepsInput, name) {
 
 function renderMarkovPill(key, mk) {
   if (!mk) return `<span class="mk-roll mk-bad" data-key="${escQ(key)}">⛓ ?</span>`;
+  const stoppedEarly = mk.path.length - 1 < mk.steps;
   const path = mk.path
     .map(s => `<span class="mk-state">${escHtml(s)}</span>`)
-    .join('<span class="mk-arrow">→</span>');
+    .join('<span class="mk-arrow">→</span>')
+    + (stoppedEarly ? `<span class="mk-arrow">→</span><span class="mk-terminal" title="Walk ended — last state has no outgoing transitions. Add more rules to continue.">…</span>` : '');
   const nameTag = mk.name ? `<span class="mk-name" title="Callable as {${escQ(mk.name)}}">${escHtml(mk.name)}</span>` : '';
   return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
@@ -2294,17 +2297,24 @@ function braceWouldPromote(body) {
 }
 
 // Escape a plain-text segment for edit mode, wrapping each top-level {…} that
-// would promote to a pill in a .gr-src span so it reads as editable grammar text.
-function highlightGrammarText(str) {
+// would promote to a pill (or was unfolded from an existing artifact) in a
+// .gr-src span so it reads as editable grammar text.
+// unfoldedSet: optional Set of {sh} strings from the current unfold session —
+// always highlighted even if braceWouldPromote returns false (e.g. {color} when
+// the rule isn't defined yet in this document).
+function highlightGrammarText(str, unfoldedSet) {
   let out = '', run = '', i = 0;
   const flush = () => { if (run) { out += escHtml(run); run = ''; } };
   while (i < str.length) {
     if (str[i] === '{') {
       const j = matchBrace(str, i);
-      if (j > i && braceWouldPromote(str.slice(i + 1, j))) {
-        flush();
-        out += `<span class="gr-src">${escHtml(str.slice(i, j + 1))}</span>`;
-        i = j + 1; continue;
+      if (j > i) {
+        const brace = str.slice(i, j + 1);
+        if ((unfoldedSet && unfoldedSet.has(brace)) || braceWouldPromote(str.slice(i + 1, j))) {
+          flush();
+          out += `<span class="gr-src">${escHtml(brace)}</span>`;
+          i = j + 1; continue;
+        }
       }
     }
     run += str[i++];
@@ -2319,10 +2329,15 @@ function highlightGrammarText(str) {
 // inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
   const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\])/gi;
+  // Build a set of shorthands that were unfolded from existing artifacts — always
+  // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
+  // the rule isn't currently defined in the document).
+  const unfolded = _unfoldData.get(node);
+  const unfoldedSet = unfolded?.length ? new Set(unfolded.map(u => u.sh)) : null;
   let html = '', last = 0, m;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(node.text)) !== null) {
-    if (m.index > last) html += highlightGrammarText(node.text.slice(last, m.index));
+    if (m.index > last) html += highlightGrammarText(node.text.slice(last, m.index), unfoldedSet);
     const [, raw, type, key] = m;
     let pill;
     if (type === 'dice')           pill = renderDicePill(key, node.dice?.find(d => d.key === key));
@@ -2334,7 +2349,7 @@ function editModeHTML(node) {
     html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>`;
     last = m.index + m[0].length;
   }
-  if (last < node.text.length) html += highlightGrammarText(node.text.slice(last));
+  if (last < node.text.length) html += highlightGrammarText(node.text.slice(last), unfoldedSet);
   return html;
 }
 
