@@ -282,6 +282,20 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .rt-roll.rt-bad:hover{box-shadow:none;border-color:var(--bdr)}
 @keyframes rt-pop{0%{opacity:.3;transform:scale(.88)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
 .rt-roll.rt-rolled .rt-result{display:inline-block;animation:rt-pop .28s cubic-bezier(.2,.8,.3,1)}
+/* grammar pill — generative recursive-substitution output */
+.gr-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
+.gr-roll:hover{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.gr-roll:active{transform:translateY(.5px)}
+.gr-roll .gr-ico{color:var(--acc);font-size:.9em;display:inline-flex;transition:transform .3s ease}
+.gr-roll:hover .gr-ico{transform:rotate(180deg)}
+.gr-result{font-weight:600;color:var(--fg)}
+.gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.3;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.gr-roll:hover .gr-edit{opacity:.6}
+.gr-edit:hover{opacity:1;background:var(--acc);color:#fff}
+.gr-roll.gr-bad{color:var(--del);border-style:dashed;cursor:default}
+.gr-roll.gr-bad:hover{box-shadow:none;border-color:var(--bdr)}
+.gr-roll.gr-rolled .gr-result{display:inline-block;animation:rt-pop .28s cubic-bezier(.2,.8,.3,1)}
+.gr-preview-result{font-weight:600;color:var(--acc)}
 /* math expression pill */
 .math-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .math-roll:hover{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
@@ -634,11 +648,11 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [] };
+  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -676,6 +690,7 @@ function renderContentHTML(node) {
   rolltableRenderList = node.rolltable || null;
   mathRenderList    = node.math    || null;
   varRenderList     = node.vars    || null;
+  grammarRenderList = node.grammar || null;
   globalVarMap      = collectVars();
   const html = mdToHtml(textForDisplay(node), node.type === 'code');
   diceRenderList    = null;
@@ -683,6 +698,7 @@ function renderContentHTML(node) {
   rolltableRenderList = null;
   mathRenderList    = null;
   varRenderList     = null;
+  grammarRenderList = null;
   return html;
 }
 
@@ -892,6 +908,8 @@ function mdInline(s) {
     stash(renderMathPill(k, mathRenderList?.find(m => m.key === k))));
   s = s.replace(/\[\[var:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderVarPill(k, varRenderList?.find(v => v.key === k))));
+  s = s.replace(/\[\[grammar:([a-z0-9]+)\]\]/gi, (_, k) =>
+    stash(renderGrammarPill(k, grammarRenderList?.find(g => g.key === k))));
   // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:)
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
@@ -913,6 +931,7 @@ let markovRenderList = null;
 let rolltableRenderList = null;
 let mathRenderList = null;
 let varRenderList    = null;
+let grammarRenderList = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
@@ -1222,6 +1241,7 @@ function stripMd(text) {
     .replace(/\[\[rolltable:[a-z0-9]+\]\]/gi,'🎯')
     .replace(/\[\[math:[a-z0-9]+\]\]/gi,'🖩')
     .replace(/\[\[var:[a-z0-9]+\]\]/gi,'$')
+    .replace(/\[\[grammar:[a-z0-9]+\]\]/gi,'❖')
     .replace(/==([^=\n]+?)==/g,'$1')
     .replace(/\*\*\*([\s\S]*?)\*\*\*/g,'$1')
     .replace(/\*\*([\s\S]*?)\*\*/g,'$1')
@@ -1305,6 +1325,7 @@ function toOpml(r) {
       n.rolltable?.length ? `_rolltable="${ex(JSON.stringify(n.rolltable))}"` : '',
       n.math?.length     ? `_math="${ex(JSON.stringify(n.math))}"` : '',
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
+      n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
       `_id="${n.id}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -1342,6 +1363,7 @@ function fromOpml(xml) {
       rolltable: (() => { try { return JSON.parse(el.getAttribute('_rolltable') || '[]'); } catch(_) { return []; } })(),
       math:      (() => { try { return JSON.parse(el.getAttribute('_math')      || '[]'); } catch(_) { return []; } })(),
       vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
+      grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
     // Legacy migration: convert old [[varref:KEY]] tokens to display-only [[var:KEY]] records
@@ -1392,6 +1414,7 @@ const INSERT_CMDS = [
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'Pick a weighted entry; click to re-roll.',  ex:'1 sword · 2 shield',  section:'Random' },
+  { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value, or display an existing one. Leave expression blank to reference only.', ex:'r = 5 · area = pi*r^2', section:'Math' },
@@ -2160,6 +2183,20 @@ function attachContentEvents(content, node) {
       }
       return;
     }
+    // grammar pill: pencil opens the editor, body re-generates
+    const gr = e.target.closest?.('.gr-roll');
+    if (gr && !gr.classList.contains('gr-bad')) {
+      e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) {
+        if (e.target.closest('.gr-edit')) { exitEdit(content, node); editGrammar(node, gr.dataset.key); }
+        else { const off = getCaretOffset(content); rerollGrammar(node, gr.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+      } else {
+        if (e.target.closest('.gr-edit')) editGrammar(node, gr.dataset.key);
+        else rerollGrammar(node, gr.dataset.key);
+        enterEdit(content, node); content.focus();
+      }
+      return;
+    }
     // math pill: click anywhere opens the editor (no re-roll — result is deterministic)
     const mp = e.target.closest?.('.math-roll');
     if (mp && !mp.classList.contains('math-bad')) {
@@ -2240,7 +2277,7 @@ function attachContentEvents(content, node) {
 // [[TYPE:KEY]] tokens are rendered as contenteditable=false pill spans so the user
 // never sees the raw token syntax while typing.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var):([a-z0-9]+)\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\])/gi;
   let html = '', last = 0, m;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(node.text)) !== null) {
@@ -2251,6 +2288,7 @@ function editModeHTML(node) {
     else if (type === 'markov')    pill = renderMarkovPill(key, node.markov?.find(d => d.key === key));
     else if (type === 'rolltable') pill = renderRolltablePill(key, node.rolltable?.find(d => d.key === key));
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
+    else if (type === 'grammar')   pill = renderGrammarPill(key, node.grammar?.find(d => d.key === key));
     else                           pill = renderVarPill(key, node.vars?.find(d => d.key === key));
     html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>`;
     last = m.index + m[0].length;
@@ -2275,7 +2313,7 @@ function exitEdit(content, node) {
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
-  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneFootnotes(node); // drop data for deleted tokens
+  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneFootnotes(node); // drop data for deleted tokens
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
@@ -2454,6 +2492,7 @@ function deepCloneNodeNewIds(node) {
     rolltable: (node.rolltable || []).map(r => ({ ...r })),
     math:      (node.math      || []).map(m => ({ ...m })),
     vars:      (node.vars      || []).map(v => ({ ...v })),
+    grammar:   (node.grammar   || []).map(g => ({ ...g })),
     children: node.children.map(c => deepCloneNodeNewIds(c)),
   };
 }
@@ -2921,6 +2960,21 @@ function insertInlineArtifact(id, nodeId, content) {
         const off = Math.min(Math.max(offset, 0), n.text.length);
         const prev = n.text;
         n.text = n.text.slice(0, off) + `[[rolltable:${roll.key}]]` + n.text.slice(off);
+        recordTextEdit(nodeId, prev, n.text);
+        markDirty();
+        render();
+      },
+    });
+  } else if (id === 'grammar') {
+    openGrammarDialog({
+      title: 'New grammar',
+      submitLabel: 'Generate',
+      onResult: roll => {
+        const n = nodeById(nodeId); if (!n) return;
+        (n.grammar ||= []).push(roll);
+        const off = Math.min(Math.max(offset, 0), n.text.length);
+        const prev = n.text;
+        n.text = n.text.slice(0, off) + `[[grammar:${roll.key}]]` + n.text.slice(off);
         recordTextEdit(nodeId, prev, n.text);
         markDirty();
         render();
@@ -3426,6 +3480,247 @@ function editRolltable(node, key) {
 function pruneRolltable(node) {
   if (!node.rolltable?.length) return;
   node.rolltable = node.rolltable.filter(r => node.text.includes(`[[rolltable:${r.key}]]`));
+}
+
+// ─── generative grammar engine ───────────────────────────────────────────────
+// A recursive-substitution engine (Tracery-style) that is the generative core:
+// alternation {a|b|c}, named rule refs {name}, dice {2d6}, and expressions
+// {= 2*r} all share one brace syntax and can nest. Rules are document-wide
+// (see collectRules) so any grammar pill can reference rules declared anywhere.
+// Pure: no DOM. Tested standalone in Node (see working notes).
+
+const DICE_SNIFF = /^[+-]?\d*d[0-9Ff]/i;
+
+// Split `str` on top-level `sep`, ignoring separators nested inside {...}.
+function splitTopLevel(str, sep) {
+  const out = []; let depth = 0, cur = '';
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '{') { depth++; cur += ch; }
+    else if (ch === '}') { depth = Math.max(0, depth - 1); cur += ch; }
+    else if (ch === sep && depth === 0) { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+// Index of the `}` matching the `{` at `open`; -1 if unmatched.
+function matchBrace(str, open) {
+  let depth = 0;
+  for (let i = open; i < str.length; i++) {
+    if (str[i] === '{') depth++;
+    else if (str[i] === '}') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// One alternative "template 2" → {template, weight}; trailing integer = weight.
+function parseAlt(a) {
+  const wm = a.match(/^([\s\S]*?)\s+(\d+)\s*$/);
+  return { template: (wm ? wm[1] : a).trim(), weight: wm ? parseInt(wm[2], 10) : 1 };
+}
+
+// Parse a multi-line definition into {rules:{name:[{template,weight}]}, order:[]}.
+// "name: a | b 2 | c" per line; "//" lines are comments. null if malformed.
+function parseRules(def) {
+  const rules = {}; const order = [];
+  for (const raw of (def || '').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('//')) continue;
+    const ci = line.indexOf(':');
+    if (ci < 0) return null;
+    const name = line.slice(0, ci).trim().toLowerCase();
+    if (!/^[a-z_][\w]*$/.test(name)) return null;
+    const rhs = line.slice(ci + 1).trim();
+    if (!rhs) return null;
+    const alts = splitTopLevel(rhs, '|').map(parseAlt).filter(a => a.template !== '' && a.weight >= 1);
+    if (!alts.length) return null;
+    if (!(name in rules)) order.push(name);
+    rules[name] = alts;
+  }
+  return order.length ? { rules, order } : null;
+}
+
+// Weighted random choice among [{...,weight}] entries.
+function pickWeightedAlt(alts) {
+  const total = alts.reduce((a, x) => a + x.weight, 0);
+  let r = Math.random() * total;
+  for (const a of alts) { r -= a.weight; if (r < 0) return a; }
+  return alts[alts.length - 1];
+}
+
+// Replace every {...} in a template via resolveBrace, recursively.
+function expandTemplate(tpl, ctx) {
+  let out = '', i = 0;
+  while (i < tpl.length) {
+    if (tpl[i] === '{') {
+      const j = matchBrace(tpl, i);
+      if (j < 0) { out += tpl[i++]; continue; }
+      out += resolveBrace(tpl.slice(i + 1, j), ctx);
+      i = j + 1;
+    } else out += tpl[i++];
+  }
+  return out;
+}
+
+// Resolve one {...} body. Content-sniffed: top-level `|` → alternation;
+// leading `=` → expression; dice pattern → roll; bare identifier → rule ref.
+function resolveBrace(body, ctx) {
+  body = body.trim();
+  if (body === '') return '';
+  const alts = splitTopLevel(body, '|');
+  if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt)).template, ctx);
+  if (body[0] === '=') {
+    const r = evalMath(body.slice(1), ctx.vars);
+    return r === null ? '?' : formatMathResult(r);
+  }
+  if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {
+    const terms = parseDice(body, ctx.vars);
+    if (terms) return String(rollParsed(terms).total);
+  }
+  if (/^[a-z_][\w]*$/i.test(body)) return expandRule(body.toLowerCase(), ctx);
+  return body;
+}
+
+// Expand a named rule, guarding against cycles (↻) and runaway depth (…).
+function expandRule(name, ctx) {
+  const rule = ctx.rules[name];
+  if (!rule) return `{${name}?}`;
+  if (ctx.stack.includes(name)) return '↻';
+  if (ctx.depth > 200) return '…';
+  ctx.stack.push(name); ctx.depth++;
+  const out = expandTemplate(pickWeightedAlt(rule).template, ctx);
+  ctx.stack.pop(); ctx.depth--;
+  return out;
+}
+
+// Run a grammar definition, merged with document-wide rules. Local rules win.
+// Returns the expanded string, or null if the definition is malformed / origin
+// rule is missing.
+function runGrammar(def, origin, docRules = null, vars = null) {
+  const parsed = parseRules(def);
+  if (!parsed) return null;
+  const rules = { ...(docRules || collectRules()), ...parsed.rules };
+  const start = (origin && origin.toLowerCase()) || parsed.order[0];
+  if (!rules[start]) return null;
+  return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [] });
+}
+
+// Document-wide rule map: walk the whole tree, parse every grammar pill's def,
+// merge all named rules into one map (later declarations win). Cached per
+// markDirty() generation, like collectVars(). Cycles are caught lazily at
+// expansion time, so no eager resolution is needed here.
+let _rulesCacheVer = -1, _rulesCached = {};
+function collectRules() {
+  if (_rulesCacheVer === _varsVer) return _rulesCached;
+  const merged = {};
+  function gather(node) {
+    if (node.grammar?.length) {
+      for (const g of node.grammar) {
+        if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
+        const parsed = parseRules(g.def);
+        if (parsed) Object.assign(merged, parsed.rules);
+      }
+    }
+    for (const c of node.children) gather(c);
+  }
+  if (root?.children) for (const c of root.children) gather(c);
+  _rulesCacheVer = _varsVer;
+  _rulesCached = merged;
+  return merged;
+}
+
+function grammarKey() { return 'g' + Math.random().toString(36).slice(2, 9); }
+
+// Build a fresh grammar record from a definition; null if malformed.
+function makeGrammarRoll(def, originInput) {
+  const parsed = parseRules(def);
+  if (!parsed) return null;
+  const origin = (originInput && originInput.trim().toLowerCase()) || parsed.order[0];
+  if (!parsed.rules[origin]) return null;
+  const result = runGrammar(def, origin);
+  if (result === null) return null;
+  return { key: grammarKey(), def, origin, result };
+}
+
+function renderGrammarPill(key, g) {
+  if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}">❖ ?</span>`;
+  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-generate">`
+    + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
+    + `<span class="gr-result">${escHtml(g.result)}</span>`
+    + `<span class="gr-edit" title="Edit grammar"><i class="fa-solid fa-pen"></i></span>`
+    + `</span>`;
+}
+
+const GRAMMAR_CHIPS = [
+  { label:'rule:',  insert: el => insertAtCaret(el, 'name: ') },
+  { label:'| alt',  insert: ' | ' },
+  { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
+  { label:'{dice}', insert: el => insertAndSelect(el, '{', '2d6', '}') },
+  { label:'{= }',   insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
+];
+
+function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing = null, onResult }) {
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-shuffle', fb:'❖' },
+    title,
+    submitLabel: submitLabel || 'Generate',
+    fields: [
+      { key:'def', label:'Rules (one per line: name: a | b | c)', type:'textarea', rows:6, value:def, chips: GRAMMAR_CHIPS,
+        placeholder:'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
+        hint:'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math. | separates weighted alternatives.',
+        preview: v => {
+          const r = runGrammar(v, origin || undefined);
+          if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
+          return `<span class="gr-preview-result">${escHtml(r)}</span>`;
+        } },
+      { key:'origin', label:'Start rule (optional)', placeholder:'defaults to the first rule', value:origin,
+        hint:'Which rule to expand. Leave blank to use the first one declared.' },
+    ],
+    validate: v => !!makeGrammarRoll(v.def, v.origin),
+    onSubmit: v => {
+      const roll = makeGrammarRoll(v.def, v.origin);
+      if (!roll) return;
+      if (existing) roll.key = existing;
+      onResult(roll);
+    },
+  });
+}
+
+function rerollGrammar(node, key) {
+  const g = node?.grammar?.find(x => x.key === key);
+  if (!g) return;
+  const result = runGrammar(g.def, g.origin);
+  if (result === null) return;
+  g.result = result;
+  markDirty();
+  const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
+  if (el && !el.dataset.editing) {
+    el.innerHTML = renderContentHTML(node);
+    el.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
+  }
+}
+
+function editGrammar(node, key) {
+  const g = node?.grammar?.find(x => x.key === key);
+  if (!g) return;
+  openGrammarDialog({
+    title: 'Edit grammar',
+    submitLabel: 'Save & generate',
+    def: g.def, origin: g.origin, existing: key,
+    onResult: roll => {
+      Object.assign(g, { def: roll.def, origin: roll.origin, result: roll.result });
+      markDirty();
+      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
+      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+    },
+  });
+}
+
+function pruneGrammar(node) {
+  if (!node.grammar?.length) return;
+  node.grammar = node.grammar.filter(g => node.text.includes(`[[grammar:${g.key}]]`));
 }
 
 // ─── math expressions ────────────────────────────────────────────────────────
@@ -4707,8 +5002,12 @@ async function writeH(h) {
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
 function flattenArtifacts(text, node, varMap) {
-  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\]/gi, (_, type, key) => {
     type = type.toLowerCase();
+    if (type === 'grammar') {
+      const g = node.grammar?.find(x => x.key === key); if (!g) return '';
+      return g.result;
+    }
     if (type === 'dice') {
       const d = node.dice?.find(x => x.key === key); if (!d) return '';
       const isFate = d.parts?.some(p => p.kind === 'dice' && p.sides === 'F');
