@@ -298,6 +298,8 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .gr-roll.gr-bad:hover{box-shadow:none;border-color:var(--bdr)}
 .gr-roll.gr-rolled .gr-result{display:inline-block;animation:rt-pop .28s cubic-bezier(.2,.8,.3,1)}
 .gr-preview-result{font-weight:600;color:var(--acc)}
+/* grammar source, shown while editing so {…} artifacts read as editable text */
+.gr-src{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:color-mix(in srgb,var(--acc) 12%,var(--cbg));color:var(--acc);border-radius:5px;padding:.5px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 /* math expression pill */
 .math-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .math-roll:hover{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
@@ -2260,7 +2262,7 @@ function attachContentEvents(content, node) {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
-    if (checkInlinePromote(content, node)) return; // typed {2d6} / {=x} / {a|b} → pill
+    if (checkInlineHighlight(content, node)) return; // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id); updateSelToolbar();
     updateFnPanel(node);
@@ -2279,15 +2281,52 @@ function attachContentEvents(content, node) {
   });
 }
 
-// Build the innerHTML for a node in edit mode: plain text segments are HTML-escaped,
-// [[TYPE:KEY]] tokens are rendered as contenteditable=false pill spans so the user
-// never sees the raw token syntax while typing.
+// Would a {body} promote to an artifact pill on exit? Pure mirror of
+// promoteBraceBody's success conditions (no side effects) — used to decide which
+// {…} get the grammar-source styling while editing.
+function braceWouldPromote(body) {
+  body = body.trim();
+  if (!body) return false;
+  if (body[0] === '=') return body.slice(1).trim().length > 0;          // {= expr}
+  if (DICE_SNIFF.test(body.replace(/\s/g, ''))) return true;            // {2d6}
+  if (splitTopLevel(body, '|').length > 1) return true;                 // {a|b}
+  if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
+    const low = body.toLowerCase();
+    return !!collectRules()[low] || (low in collectVars());
+  }
+  return false;
+}
+
+// Escape a plain-text segment for edit mode, wrapping each top-level {…} that
+// would promote to a pill in a .gr-src span so it reads as editable grammar text.
+function highlightGrammarText(str) {
+  let out = '', run = '', i = 0;
+  const flush = () => { if (run) { out += escHtml(run); run = ''; } };
+  while (i < str.length) {
+    if (str[i] === '{') {
+      const j = matchBrace(str, i);
+      if (j > i && braceWouldPromote(str.slice(i + 1, j))) {
+        flush();
+        out += `<span class="gr-src">${escHtml(str.slice(i, j + 1))}</span>`;
+        i = j + 1; continue;
+      }
+    }
+    run += str[i++];
+  }
+  flush();
+  return out;
+}
+
+// Build the innerHTML for a node in edit mode: plain text segments are HTML-escaped
+// (with {…} grammar styled), [[TYPE:KEY]] tokens for artifacts that have no inline
+// form render as contenteditable=false pill spans (edited via the pencil/dialog);
+// inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
   const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\])/gi;
   let html = '', last = 0, m;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(node.text)) !== null) {
-    if (m.index > last) html += escHtml(node.text.slice(last, m.index));
+    if (m.index > last) html += highlightGrammarText(node.text.slice(last, m.index));
     const [, raw, type, key] = m;
     let pill;
     if (type === 'dice')           pill = renderDicePill(key, node.dice?.find(d => d.key === key));
@@ -2299,7 +2338,7 @@ function editModeHTML(node) {
     html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>`;
     last = m.index + m[0].length;
   }
-  if (last < node.text.length) html += escHtml(node.text.slice(last));
+  if (last < node.text.length) html += highlightGrammarText(node.text.slice(last));
   return html;
 }
 
@@ -2308,6 +2347,7 @@ function enterEdit(content, node) {
   selAnchorId = node.id;
   content.dataset.editing = '1';
   content.dataset.prevText = node.text; // baseline for a lightweight text-undo entry
+  unfoldArtifacts(node); // inline-able [[type:key]] tokens → editable {…} grammar text
   content.innerHTML = editModeHTML(node);
   activeContentId = node.id;
   scheduleReconcile(); // raw markdown text may differ in height from rendered HTML
@@ -2316,7 +2356,8 @@ function enterEdit(content, node) {
 function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
-  promoteInlineShorthand(node); // promote any remaining typed {…} shorthand to pills
+  refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
+  promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
@@ -3050,7 +3091,9 @@ function applyInlineReplace(nodeId, start, end, str) {
   recordTextEdit(nodeId, prev, node.text); // keep the change undoable
   markDirty();
   render();
-  const caret = a + str.length;
+  // enterEdit (below) unfolds inline-able tokens to shorter {…} text, shifting
+  // offsets, so translate the post-insert caret into unfolded coordinates.
+  const caret = unfoldedPrefixLen(node, node.text.slice(0, a + str.length));
   requestAnimationFrame(() => {
     ensureRowVisible(nodeId);
     const el = document.querySelector(`.node-content[data-id="${nodeId}"]`);
@@ -3816,10 +3859,134 @@ function promoteInlineShorthand(node) {
   return changed;
 }
 
-// Live promotion while editing: fires when the caret sits just after a `}`. Finds
-// the matching `{`, promotes if valid, then re-renders edit mode with the caret
-// restored after the new pill (mirrors the in-edit reroll dance).
-function checkInlinePromote(content, node) {
+// Inline-able artifact ⇄ grammar source. Returns the {…} text an artifact
+// unfolds to while editing, or null for artifacts with no clean inline form
+// (roll tables, markov chains, multi-rule grammars, declaring variables) — those
+// stay atomic pills and are edited via the pencil/dialog.
+function artifactToShorthand(type, rec) {
+  if (!rec) return null;
+  if (type === 'dice') return rec.expr ? `{${rec.expr}}` : null;
+  if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
+  if (type === 'var')  return (!rec.expr && rec.name) ? `{${rec.name}}` : null; // display-only only
+  if (type === 'grammar') {
+    const def = (rec.def || '').trim();
+    if (def.includes('\n')) return null; // multi-rule grammar → stays a pill
+    const m = def.match(/^([a-z_][\w]*)\s*:\s*(.+)$/i);
+    if (!m || !rec.origin || m[1].toLowerCase() !== rec.origin.toLowerCase()) return null;
+    const rhs = m[2].trim();
+    // RHS already a single brace expr ({color}) → that *is* the source; else wrap.
+    return (rhs[0] === '{' && matchBrace(rhs, 0) === rhs.length - 1) ? rhs : `{${rhs}}`;
+  }
+  return null;
+}
+
+// Length `prefix` would have after unfoldArtifacts rewrites its inline-able tokens
+// to {…} source — lets caret math translate folded offsets into unfolded ones.
+function unfoldedPrefixLen(node, prefix) {
+  const RE = /\[\[(dice|math|var|grammar):([a-z0-9]+)\]\]/gi;
+  let len = 0, last = 0, m;
+  RE.lastIndex = 0;
+  while ((m = RE.exec(prefix)) !== null) {
+    len += m.index - last;
+    const arr = node[m[1] === 'var' ? 'vars' : m[1]];
+    const sh = artifactToShorthand(m[1], arr?.find(r => r.key === m[2]));
+    len += sh == null ? m[0].length : sh.length;
+    last = m.index + m[0].length;
+  }
+  return len + (prefix.length - last);
+}
+
+// While a node is in edit mode its text transiently holds {…} grammar source in
+// place of inline-able [[type:key]] tokens. The original {sh}→token pairs are kept
+// in a WeakMap (not on the node, so they never reach JSON/OPML serialization) so an
+// untouched artifact can be refolded verbatim — preserving its frozen roll/key.
+const _unfoldData = new WeakMap(); // node → [{sh, token}]
+
+// Entering edit mode: rewrite each inline-able token in node.text to its {…} source
+// so the user can edit it as text. Records are left in their sidecars untouched.
+function unfoldArtifacts(node) {
+  const list = [];
+  const TOKEN_RE = /\[\[(dice|math|var|grammar):([a-z0-9]+)\]\]/gi;
+  node.text = node.text.replace(TOKEN_RE, (full, type, key) => {
+    const arr = node[type === 'var' ? 'vars' : type];
+    const sh = artifactToShorthand(type, arr?.find(r => r.key === key));
+    if (sh == null) return full; // not inline-able → leave the token (renders as a pill)
+    list.push({ sh, token: full });
+    return sh;
+  });
+  _unfoldData.set(node, list);
+}
+
+// Restore each untouched unfolded {sh} in `text` back to its token (pure helper).
+function applyRefold(text, pairs) {
+  for (const u of pairs) {
+    const idx = text.indexOf(u.sh);
+    if (idx < 0) continue; // edited or removed → left for promoteInlineShorthand
+    text = text.slice(0, idx) + u.token + text.slice(idx + u.sh.length);
+  }
+  return text;
+}
+
+// Leaving edit mode: fold untouched {…} back to their original tokens (frozen state
+// survives a no-op edit); new/edited {…} are left for promoteInlineShorthand.
+function refoldArtifacts(node) {
+  const un = _unfoldData.get(node); _unfoldData.delete(node);
+  if (un && un.length) node.text = applyRefold(node.text, un);
+}
+
+// Canonical (folded) text of a node that may currently be unfolded for editing —
+// used so serialization (autosave/OPML/undo) never persists raw {…} for artifacts
+// the user hasn't touched. Does not mutate the node.
+function foldedTextForSave(node) {
+  const un = _unfoldData.get(node);
+  return un && un.length ? applyRefold(node.text, un) : node.text;
+}
+
+// Run `fn` with the actively-edited node's text temporarily folded, then restore
+// the live editing buffer. Wrap any whole-tree serialization in this.
+function withFoldedActive(fn) {
+  const ed = activeContentId ? nodeById(activeContentId) : null;
+  if (!ed || !_unfoldData.has(ed)) return fn();
+  const buf = ed.text;
+  ed.text = foldedTextForSave(ed);
+  try { return fn(); } finally { ed.text = buf; }
+}
+
+// Place the caret immediately *after* the .gr-src span whose content ends at
+// logical offset `target` (so continued typing lands as plain text, not inside the
+// grammar styling). Returns false if no such span boundary is found.
+function caretAfterGrSrc(el, target) {
+  let count = 0, done = false;
+  function textLen(node) {
+    if (node.nodeType === 3) return node.nodeValue.replace(/​/g, '').length;
+    let n = 0; for (const c of node.childNodes) n += textLen(c); return n;
+  }
+  function walk(node) {
+    if (done) return;
+    if (node.nodeType === 3) { count += node.nodeValue.replace(/​/g, '').length; return; }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) { count += node.dataset.token.length; return; }
+    if (node.nodeName === 'BR') { count += 1; return; }
+    if (node.classList?.contains('gr-src')) {
+      const before = count; count += textLen(node);
+      if (before < target && count === target) {
+        const r = document.createRange(); r.setStartAfter(node); r.collapse(true);
+        const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); done = true;
+      }
+      return;
+    }
+    for (const c of node.childNodes) { walk(c); if (done) return; }
+  }
+  for (const c of el.childNodes) { walk(c); if (done) break; }
+  return done;
+}
+
+// Live grammar styling while editing: when the caret lands just after a `}` that
+// closes a balanced, would-promote {…}, re-render so the completed shorthand picks
+// up its .gr-src styling. Unlike promotion this never changes node.text length, so
+// the caret is restored to where it was — but parked *after* the new grammar span
+// (deferred a frame, since the browser resets the selection after an input handler).
+function checkInlineHighlight(content, node) {
   const off = getCaretOffset(content);
   if (off < 2 || node.text[off - 1] !== '}') return false;
   let depth = 0, start = -1;
@@ -3827,17 +3994,11 @@ function checkInlinePromote(content, node) {
     if (node.text[k] === '}') depth++;
     else if (node.text[k] === '{') { depth--; if (depth === 0) { start = k; break; } }
   }
-  if (start < 0) return false;
-  const token = promoteBraceBody(node, node.text.slice(start + 1, off - 1));
-  if (!token) return false;
-  node.text = node.text.slice(0, start) + token + node.text.slice(off);
-  markDirty();
-  globalVarMap = collectVars();
+  if (start < 0 || !braceWouldPromote(node.text.slice(start + 1, off - 1))) return false;
   content.innerHTML = editModeHTML(node);
-  const caretTarget = start + token.length;
   requestAnimationFrame(() => {
     content.focus();
-    try { setCaretByOffset(content, caretTarget); } catch(_) {}
+    try { if (!caretAfterGrSrc(content, off)) setCaretByOffset(content, off); } catch(_) {}
   });
   return true;
 }
@@ -4933,7 +5094,7 @@ const UNDO_MAX_ENTRIES = 100;
 const UNDO_MAX_BYTES    = 24 * 1024 * 1024; // ~24MB of undo history
 
 function snapshot() {
-  const s = JSON.stringify(root);
+  const s = withFoldedActive(() => JSON.stringify(root));
   return { kind: 'snapshot', root: s, focusedId, size: s.length };
 }
 function trimStack(stack) {
@@ -5103,14 +5264,14 @@ async function saveAsFile() {
   } else dlOpml();
 }
 function dlOpml() {
-  const blob = new Blob([toOpml(root)],{type:'text/x-opml'});
+  const blob = new Blob([withFoldedActive(() => toOpml(root))],{type:'text/x-opml'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href=url; a.download=(fileName==='unsaved'?'outline':fileName.replace(/\.opml$/i,''))+'.opml';
   a.click(); URL.revokeObjectURL(url); markClean();
 }
 async function writeH(h) {
-  try { const w=await h.createWritable(); await w.write(toOpml(root)); await w.close(); markClean(); }
+  try { const w=await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); }
   catch(e) { alert('Save failed: '+e.message); }
 }
 
@@ -5240,8 +5401,8 @@ function downloadText(content, ext, mime) {
   a.download = (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i, '')) + ext;
   a.click(); URL.revokeObjectURL(url);
 }
-function exportMarkdown() { downloadText(toMarkdown(root), '.md', 'text/markdown'); }
-function exportPlainText() { downloadText(toPlainText(root), '.txt', 'text/plain'); }
+function exportMarkdown() { downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); }
+function exportPlainText() { downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); }
 
 // ─── search wiring ────────────────────────────────────────────────────────────
 
@@ -5875,7 +6036,7 @@ function scheduleAutosave() {
   if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme, fullWidth, accentId });
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme, fullWidth, accentId }));
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {

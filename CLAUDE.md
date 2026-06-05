@@ -57,10 +57,34 @@ mode:
   `renderXxxPill(key, record)` to produce HTML, stashed as an opaque
   `\x00N\x00` placeholder so later passes (emphasis, emoji, hashtags, autolink)
   can't reach inside the pill markup. Placeholders are un-stashed at the end.
-- **Edit mode:** `editModeHTML(node)` (≈2023) emits the *same* pill HTML wrapped
-  in `<span contenteditable="false" data-token="[[type:key]]">…</span>`, with the
-  surrounding plain text HTML-escaped. The user edits real text around atomic,
-  uneditable pills and **never sees raw `[[…]]` syntax.**
+- **Edit mode:** `editModeHTML(node)` (≈2023) renders two ways depending on the
+  artifact. **Complex artifacts** with no clean inline form (roll tables, markov
+  chains, multi-rule grammars, *declaring* variables) emit the *same* pill HTML
+  wrapped in `<span contenteditable="false" data-token="[[type:key]]">…</span>` —
+  atomic, uneditable, edited via the pencil/dialog. **Inline-able artifacts**
+  (dice, math, display-only variables, single-line grammars) are *unfolded* to
+  their editable `{…}` grammar source instead (see "Unfold" below), styled with a
+  `.gr-src` span so they read as grammar, not prose. Either way the user **never
+  sees raw `[[…]]` syntax.**
+
+### Unfold: editing an inline artifact as text
+
+`node.text` stays the token form (`[[dice:KEY]]`) as the saved source of truth.
+But while a node is in edit mode, `enterEdit` calls `unfoldArtifacts(node)` to
+rewrite each *inline-able* token in `node.text` to its `{…}` source
+(`artifactToShorthand`), so the user edits real grammar text. `exitEdit` calls
+`refoldArtifacts(node)` first (restores every untouched `{sh}` to its original
+token via the `_unfoldData` WeakMap, **preserving the frozen roll + key**), then
+`promoteInlineShorthand(node)` promotes anything new/edited into fresh pills. The
+`{sh}→token` map lives in a **WeakMap, not on the node**, so it never reaches
+JSON/OPML. Because the edit buffer transiently holds `{…}` instead of tokens,
+**every whole-tree serialization is wrapped in `withFoldedActive(fn)`** (autosave,
+`toOpml`, `toMarkdown`/`toPlainText`, undo `snapshot`) — it folds the active
+node's text just for the serialize, so a mid-edit save/refresh never persists raw
+`{…}` for an untouched artifact. `unfoldedPrefixLen` translates a folded caret
+offset into unfolded coordinates for the insert path. Typed `{…}` shorthand is no
+longer promoted live; it stays grammar-styled text while editing and promotes on
+exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
 
 ### Render context globals (read this before touching rendering)
 
@@ -158,13 +182,15 @@ when proposing features:
   pill freezes its expansion like dice/rolltable; click re-generates. Pure and
   Node-testable.
 
-  *Typed shorthand → pill promotion* (`promoteBraceBody`, `promoteInlineShorthand`,
-  `checkInlinePromote`): you can **write** an artifact instead of using a dialog.
-  Typing a `{…}` whose body is a valid artifact converts it in place to the
-  matching pill — `{2d6}`→dice, `{= 2*r}`→math, `{a|b}` / `{knownRule/table}`→
-  grammar, `{knownVar}`→display-only variable pill. It fires live the moment you
-  type the closing `}` (caret restored after the new pill), and again as a
-  catch-all on `exitEdit` (covers paste / multiple). An invalid or unknown body is
+  *Typed shorthand → pill promotion* (`promoteBraceBody`, `promoteInlineShorthand`):
+  you can **write** an artifact instead of using a dialog. Typing a `{…}` whose body
+  is a valid artifact promotes it to the matching pill — `{2d6}`→dice, `{= 2*r}`→
+  math, `{a|b}` / `{knownRule/table}`→grammar, `{knownVar}`→display-only variable
+  pill. Promotion happens on `exitEdit` (catch-all, also covers paste / multiple),
+  **not live** — while editing, a completed `{…}` just picks up `.gr-src` grammar
+  styling (`checkInlineHighlight`), staying editable text so you can keep tweaking
+  it. This is the same mechanism as the unfold model above: in edit mode artifacts
+  are grammar text, out of edit mode they are pills. An invalid or unknown body is
   left as literal text — that's the escape hatch.
 
   Dice, roll tables, and markov chains all resolve through this one engine: a
@@ -243,8 +269,11 @@ Only the glyphs the app uses are embedded as base64 woff2 in the `#fa-embed`
 ## Conventions & invariants (the stuff that bites if ignored)
 
 - **`node.text` is plain text, always.** Never store HTML in it.
-- **Pills are atomic in edit mode** (`contenteditable=false`); caret math depends
-  on it. Don't make pill internals editable.
+- **Complex pills stay atomic in edit mode** (`contenteditable=false`,
+  `data-token`); caret math counts them as their token length and depends on it.
+  Don't make a *pill's internals* editable. Inline-able artifacts instead *unfold*
+  to plain editable `{…}` text (a `.gr-src` span with no `data-token`, counted as
+  ordinary characters) — the whole pill becomes text, the atom is never split.
 - **Pure cores return `null` on invalid input**; callers branch on `null`. Keep
   parsing/rolling free of DOM access so they stay testable in plain Node.
 - **`mdToHtml` must stay synchronous** (render-context globals depend on it).
@@ -290,9 +319,11 @@ Implemented:
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
   and flagged (`↻`, `.var-cycle`).
 - **Typed shorthand** — write `{2d6}`, `{= 2*r}`, `{a|b|c}`, `{knownRule}` and it
-  auto-promotes to the matching pill on the closing `}` (and on exit, for paste);
-  invalid/unknown bodies stay as literal text.
-- **Inline token editing** — pills render in edit mode; raw tokens never shown.
+  promotes to the matching pill when you leave the node (and on paste); while
+  editing it stays grammar-styled text. Invalid/unknown bodies stay literal text.
+- **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
+  inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
+  complex ones stay atomic pills. Raw `[[…]]` tokens are never shown.
 - **Pill interaction model** — display-mode click enters edit mode; edit-mode
   body click rerolls in place; pencil opens the dialog.
 - **Collapse to level N** — `collapseToLevel(n)` / `expandAll()` (≈4151) set
