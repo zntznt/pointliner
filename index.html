@@ -2255,6 +2255,7 @@ function attachContentEvents(content, node) {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
+    if (checkInlinePromote(content, node)) return; // typed {2d6} / {=x} / {a|b} → pill
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id); updateSelToolbar();
     updateFnPanel(node);
@@ -2310,6 +2311,7 @@ function enterEdit(content, node) {
 function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
+  promoteInlineShorthand(node); // promote any remaining typed {…} shorthand to pills
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
@@ -3721,6 +3723,86 @@ function editGrammar(node, key) {
 function pruneGrammar(node) {
   if (!node.grammar?.length) return;
   node.grammar = node.grammar.filter(g => node.text.includes(`[[grammar:${g.key}]]`));
+}
+
+// ─── typed shorthand → pill promotion ────────────────────────────────────────
+// Lets the user *write* an artifact inline instead of using a dialog: a brace
+// body is classified exactly like resolveBrace, an artifact record is built, and
+// the `{…}` is replaced in node.text with the matching `[[type:key]]` token.
+// Returns the token string, or null if the body isn't a valid artifact (in which
+// case the braces are left as plain text — the natural "escape": invalid stays
+// literal). Mutates the node's sidecar array on success.
+
+function promoteBraceBody(node, body) {
+  body = body.trim();
+  if (!body) return null;
+  // expression: {= expr}
+  if (body[0] === '=') {
+    const roll = makeMathResult(body.slice(1).trim());
+    if (!roll) return null;
+    (node.math ||= []).push(roll);
+    return `[[math:${roll.key}]]`;
+  }
+  // dice: {2d6}, {4d6kh3}, {2d6!}, {4dF}
+  if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {
+    const roll = makeDiceRoll(body);
+    if (roll) { (node.dice ||= []).push(roll); return `[[dice:${roll.key}]]`; }
+  }
+  // inline alternation: {a | b 2 | c} → an anonymous grammar
+  if (splitTopLevel(body, '|').length > 1) {
+    const roll = makeGrammarRoll(`origin: ${body}`, 'origin');
+    if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  // bare rule reference: {color} → grammar that expands it, but only if the rule
+  // actually exists document-wide (so a stray {word} stays plain text).
+  if (/^[a-z_][\w]*$/i.test(body) && collectRules()[body.toLowerCase()]) {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  return null;
+}
+
+// Scan all top-level {…} in node.text and promote each valid one. Outer braces
+// win (a nested {b|c} inside {a|{b|c}} rides along in the grammar def). Used as
+// the catch-all on exitEdit and after paste. Returns true if anything changed.
+function promoteInlineShorthand(node) {
+  const text = node.text;
+  if (text.indexOf('{') < 0) return false;
+  let out = '', i = 0, changed = false;
+  while (i < text.length) {
+    if (text[i] === '{') {
+      const j = matchBrace(text, i);
+      if (j > i) {
+        const token = promoteBraceBody(node, text.slice(i + 1, j));
+        if (token) { out += token; i = j + 1; changed = true; continue; }
+      }
+    }
+    out += text[i++];
+  }
+  if (changed) node.text = out;
+  return changed;
+}
+
+// Live promotion while editing: fires when the caret sits just after a `}`. Finds
+// the matching `{`, promotes if valid, then re-renders edit mode with the caret
+// restored after the new pill (mirrors the in-edit reroll dance).
+function checkInlinePromote(content, node) {
+  const off = getCaretOffset(content);
+  if (off < 2 || node.text[off - 1] !== '}') return false;
+  let depth = 0, start = -1;
+  for (let k = off - 1; k >= 0; k--) {
+    if (node.text[k] === '}') depth++;
+    else if (node.text[k] === '{') { depth--; if (depth === 0) { start = k; break; } }
+  }
+  if (start < 0) return false;
+  const token = promoteBraceBody(node, node.text.slice(start + 1, off - 1));
+  if (!token) return false;
+  node.text = node.text.slice(0, start) + token + node.text.slice(off);
+  markDirty();
+  globalVarMap = collectVars();
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, start + token.length); } catch(_) {}
+  return true;
 }
 
 // ─── math expressions ────────────────────────────────────────────────────────

@@ -152,9 +152,16 @@ when proposing features:
   markers) — no eager resolution. The `[[grammar:KEY]]` pill freezes its expansion
   like dice/rolltable; click re-generates. Pure and Node-testable.
 
+  *Typed shorthand → pill promotion* (`promoteBraceBody`, `promoteInlineShorthand`,
+  `checkInlinePromote`): you can **write** an artifact instead of using a dialog.
+  Typing a `{…}` whose body is a valid artifact converts it in place to the
+  matching pill — `{2d6}`→dice, `{= 2*r}`→math, `{a|b}` / `{knownRule}`→grammar.
+  It fires live the moment you type the closing `}` (caret restored after the new
+  pill), and again as a catch-all on `exitEdit` (covers paste / multiple). An
+  invalid or unknown body is left as literal text — that's the escape hatch.
+
   *Still pending:* folding dice/markov/rolltable onto this engine (rolltable ≈
-  anonymous alternation; markov's stateful walk is the awkward fit), and
-  auto-promoting typed `{...}` shorthand into the matching pill on exit/space.
+  anonymous alternation; markov's stateful walk is the awkward fit).
 
 **Engine 2 — expression evaluator** (`evalMath`, ≈3232). A hand-written
 recursive-descent parser: `addSub → mulDiv → power → unary → atom`, with
@@ -263,6 +270,9 @@ Implemented:
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
   and flagged (`↻`, `.var-cycle`).
+- **Typed shorthand** — write `{2d6}`, `{= 2*r}`, `{a|b|c}`, `{knownRule}` and it
+  auto-promotes to the matching pill on the closing `}` (and on exit, for paste);
+  invalid/unknown bodies stay as literal text.
 - **Inline token editing** — pills render in edit mode; raw tokens never shown.
 - **Pill interaction model** — display-mode click enters edit mode; edit-mode
   body click rerolls in place; pencil opens the dialog.
