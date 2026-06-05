@@ -274,6 +274,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .rt-roll:active{transform:translateY(.5px)}
 .rt-roll .rt-ico{color:var(--acc);font-size:.92em;display:inline-flex;transition:transform .25s ease}
 .rt-roll:hover .rt-ico{transform:scale(1.15)}
+.rt-name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px}
 .rt-result{font-weight:600;color:var(--fg)}
 .rt-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.3;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .rt-roll:hover .rt-edit{opacity:.6}
@@ -3405,43 +3406,50 @@ function parseRolltable(def) {
   return entries.length ? entries : null;
 }
 
+// Pick a weighted entry, then expand its {…} through the grammar engine so an
+// entry can roll dice ({2d6} gold), call a rule, or reference another table.
 function rollTable(entries) {
   const total = entries.reduce((a, e) => a + e.weight, 0);
-  let r = Math.random() * total;
-  for (const e of entries) { r -= e.weight; if (r < 0) return e.text; }
-  return entries[entries.length - 1].text;
+  let r = Math.random() * total, picked = entries[entries.length - 1].text;
+  for (const e of entries) { r -= e.weight; if (r < 0) { picked = e.text; break; } }
+  return expandText(picked);
 }
 
 function rolltableKey() { return 't' + Math.random().toString(36).slice(2, 9); }
 
-function makeRolltableRoll(def) {
+function makeRolltableRoll(def, name) {
   const entries = parseRolltable(def);
   if (!entries) return null;
-  return { key: rolltableKey(), def, result: rollTable(entries) };
+  const nm = (name || '').trim();
+  return { key: rolltableKey(), def, name: nm || undefined, result: rollTable(entries) };
 }
 
 function renderRolltablePill(key, rt) {
   if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}">🎯 ?</span>`;
-  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll">`
+  const nameTag = rt.name ? `<span class="rt-name" title="Callable as {${escQ(rt.name)}}">${escHtml(rt.name)}</span>` : '';
+  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}">`
     + `<span class="rt-ico"><i class="fa-solid fa-table-list"></i></span>`
+    + nameTag
     + `<span class="rt-result">${escHtml(rt.result)}</span>`
     + `<span class="rt-edit" title="Edit table"><i class="fa-solid fa-pen"></i></span>`
     + `</span>`;
 }
 
-function openRolltableDialog({ title, submitLabel, def = '', existing = null, onResult }) {
+function openRolltableDialog({ title, submitLabel, def = '', name = '', existing = null, onResult }) {
   openInsertDialog({
     icon: { fa:'fa-solid fa-table-list', fb:'🎯' },
     title,
     submitLabel: submitLabel || 'Roll',
     fields: [
       { key:'def', label:'Table entries (one per line, optional weight)', type:'textarea', rows:6, value:def, chips: ROLLTABLE_CHIPS,
-        placeholder:'Critical hit\nHit\nNear miss  2\nMiss       3',
-        hint:'Each line is one entry. Append a number to set its weight (default 1).' },
+        placeholder:'Critical hit\nHit\nNear miss  2\n{2d6} gold   3',
+        hint:'One entry per line; append a number for its weight. Entries may use {2d6}, {= expr}, {rule}.' },
+      { key:'name', label:'Name (optional)', placeholder:'e.g. loot — lets {loot} call this table anywhere', value:name,
+        hint:'Give the table a name to call it from grammar/shorthand as {name}.' },
     ],
-    validate: v => !!parseRolltable(v.def),
+    validate: v => !!parseRolltable(v.def) && (!v.name || VAR_NAME_RE.test(v.name)),
     onSubmit: v => {
-      const roll = makeRolltableRoll(v.def);
+      const roll = makeRolltableRoll(v.def, v.name);
       if (!roll) return;
       if (existing) roll.key = existing;
       onResult(roll);
@@ -3469,9 +3477,9 @@ function editRolltable(node, key) {
   openRolltableDialog({
     title: 'Edit roll table',
     submitLabel: 'Save & roll',
-    def: rt.def, existing: key,
+    def: rt.def, name: rt.name || '', existing: key,
     onResult: roll => {
-      Object.assign(rt, { def: roll.def, result: roll.result });
+      Object.assign(rt, { def: roll.def, name: roll.name, result: roll.result });
       markDirty();
       const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
       if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
@@ -3567,7 +3575,9 @@ function expandTemplate(tpl, ctx) {
 }
 
 // Resolve one {...} body. Content-sniffed: top-level `|` → alternation;
-// leading `=` → expression; dice pattern → roll; bare identifier → rule ref.
+// leading `=` → expression; dice pattern → roll; a bare identifier → a named
+// rule (grammar rule or named roll table) if one exists, otherwise a document
+// variable's value, otherwise an undefined-name marker.
 function resolveBrace(body, ctx) {
   body = body.trim();
   if (body === '') return '';
@@ -3581,7 +3591,12 @@ function resolveBrace(body, ctx) {
     const terms = parseDice(body, ctx.vars);
     if (terms) return String(rollParsed(terms).total);
   }
-  if (/^[a-z_][\w]*$/i.test(body)) return expandRule(body.toLowerCase(), ctx);
+  if (/^[a-z_][\w]*$/i.test(body)) {
+    const low = body.toLowerCase();
+    if (ctx.rules[low]) return expandRule(low, ctx);
+    if (ctx.vars && low in ctx.vars) return formatMathResult(ctx.vars[low]);
+    return `{${body}?}`;
+  }
   return body;
 }
 
@@ -3609,10 +3624,19 @@ function runGrammar(def, origin, docRules = null, vars = null) {
   return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [] });
 }
 
-// Document-wide rule map: walk the whole tree, parse every grammar pill's def,
-// merge all named rules into one map (later declarations win). Cached per
-// markDirty() generation, like collectVars(). Cycles are caught lazily at
-// expansion time, so no eager resolution is needed here.
+// Expand a plain string's {…} against document-wide rules + variables. Used by
+// any artifact that wants composition (e.g. roll-table entries that roll dice or
+// call rules). A bare string with no braces comes back unchanged.
+function expandText(str) {
+  return expandTemplate(str || '', { rules: collectRules(), vars: collectVars(), depth: 0, stack: [] });
+}
+
+// Document-wide rule map: walk the whole tree and merge into one namespace
+// (later declarations win) every grammar pill's named rules AND every *named*
+// roll table (its entries become a weighted alternation rule). This is what lets
+// `{ruleName}` / `{tableName}` resolve from any grammar or shorthand anywhere.
+// Cached per markDirty() generation, like collectVars(). Cycles are caught lazily
+// at expansion time, so no eager resolution is needed here.
 let _rulesCacheVer = -1, _rulesCached = {};
 function collectRules() {
   if (_rulesCacheVer === _varsVer) return _rulesCached;
@@ -3623,6 +3647,13 @@ function collectRules() {
         if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
         const parsed = parseRules(g.def);
         if (parsed) Object.assign(merged, parsed.rules);
+      }
+    }
+    if (node.rolltable?.length) {
+      for (const rt of node.rolltable) {
+        if (!rt.name || !node.text.includes(`[[rolltable:${rt.key}]]`)) continue;
+        const entries = parseRolltable(rt.def);
+        if (entries) merged[rt.name.toLowerCase()] = entries.map(e => ({ template: e.text, weight: e.weight }));
       }
     }
     for (const c of node.children) gather(c);
@@ -3753,11 +3784,20 @@ function promoteBraceBody(node, body) {
     const roll = makeGrammarRoll(`origin: ${body}`, 'origin');
     if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
-  // bare rule reference: {color} → grammar that expands it, but only if the rule
-  // actually exists document-wide (so a stray {word} stays plain text).
-  if (/^[a-z_][\w]*$/i.test(body) && collectRules()[body.toLowerCase()]) {
-    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
-    if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  // bare identifier: {color} → grammar that expands a known rule/table; else
+  // {strength} → a display-only variable pill if it's a defined variable. A
+  // stray {word} that matches neither stays plain text.
+  if (/^[a-z_][\w]*$/i.test(body)) {
+    const low = body.toLowerCase();
+    if (collectRules()[low]) {
+      const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+      if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+    }
+    if (low in collectVars()) {
+      const rec = { key: varKey(), name: body, expr: '' };
+      (node.vars ||= []).push(rec);
+      return `[[var:${rec.key}]]`;
+    }
   }
   return null;
 }

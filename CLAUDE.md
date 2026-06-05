@@ -140,28 +140,37 @@ when proposing features:
   (`parseDice`, `parseMarkov`, `parseRolltable`) producing a structured form, plus
   a roll/walk step producing displayed state. These still back their own pills.
 - *Unified grammar engine* (`runGrammar`, `expandTemplate`, `resolveBrace`,
-  `expandRule`, `parseRules`) — a recursive-substitution engine (Tracery-style)
-  that **is** the composition layer. One brace syntax `{...}` covers everything,
-  content-sniffed inside `resolveBrace`: top-level `|` → weighted alternation
-  (`{a|b 2|c}`); leading `=` → expression (`{= 2*r}`, calls `evalMath`); a dice
-  pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`); a bare identifier →
-  a named-rule reference (`{color}`). Rules are **document-wide**: `collectRules()`
-  walks the tree (mirroring `collectVars`, cached on `_varsVer`) and merges every
-  grammar pill's `def` into one rule map, so `{rule}` resolves across nodes.
-  Cycles (`a→b→a`) and runaway depth are caught lazily during expansion (`↻`/`…`
-  markers) — no eager resolution. The `[[grammar:KEY]]` pill freezes its expansion
-  like dice/rolltable; click re-generates. Pure and Node-testable.
+  `expandRule`, `parseRules`, `expandText`) — a recursive-substitution engine
+  (Tracery-style) that **is** the composition layer. One brace syntax `{...}`
+  covers everything, content-sniffed inside `resolveBrace`: top-level `|` →
+  weighted alternation (`{a|b 2|c}`); leading `=` → expression (`{= 2*r}`, calls
+  `evalMath`); a dice pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`);
+  a bare identifier → a named rule/table (`{color}`) if one exists, else a
+  document **variable's** value (`{strength}`), else a `{name?}` marker. Names are
+  **document-wide**: `collectRules()` walks the tree (mirroring `collectVars`,
+  cached on `_varsVer`) and merges into one namespace both every grammar pill's
+  rules *and* every **named roll table** (its entries become a weighted
+  alternation rule), so `{rule}`/`{table}` resolve across nodes. Cycles (`a→b→a`)
+  and runaway depth are caught lazily during expansion (`↻`/`…` markers) — no
+  eager resolution. `expandText(str)` runs `{...}` in any plain string against the
+  doc namespace; **roll-table entries flow through it**, so an entry can roll dice
+  (`{2d6} gold`), call a rule, or reference another table. The `[[grammar:KEY]]`
+  pill freezes its expansion like dice/rolltable; click re-generates. Pure and
+  Node-testable.
 
   *Typed shorthand → pill promotion* (`promoteBraceBody`, `promoteInlineShorthand`,
   `checkInlinePromote`): you can **write** an artifact instead of using a dialog.
   Typing a `{…}` whose body is a valid artifact converts it in place to the
-  matching pill — `{2d6}`→dice, `{= 2*r}`→math, `{a|b}` / `{knownRule}`→grammar.
-  It fires live the moment you type the closing `}` (caret restored after the new
-  pill), and again as a catch-all on `exitEdit` (covers paste / multiple). An
-  invalid or unknown body is left as literal text — that's the escape hatch.
+  matching pill — `{2d6}`→dice, `{= 2*r}`→math, `{a|b}` / `{knownRule/table}`→
+  grammar, `{knownVar}`→display-only variable pill. It fires live the moment you
+  type the closing `}` (caret restored after the new pill), and again as a
+  catch-all on `exitEdit` (covers paste / multiple). An invalid or unknown body is
+  left as literal text — that's the escape hatch.
 
-  *Still pending:* folding dice/markov/rolltable onto this engine (rolltable ≈
-  anonymous alternation; markov's stateful walk is the awkward fit).
+  Dice and roll tables now resolve through this one engine (a table picks a
+  weighted entry then `expandText`s it; dice is a `{NdM}` primitive). *Still
+  pending:* markov — its stateful walk (current-state → weighted next, repeated)
+  doesn't map onto stateless substitution, so it stays its own engine for now.
 
 **Engine 2 — expression evaluator** (`evalMath`, ≈3232). A hand-written
 recursive-descent parser: `addSub → mulDiv → power → unary → atom`, with
@@ -258,12 +267,16 @@ Implemented:
   flat-number saves still render via a compat branch in `diceBreakdownHTML`.
 - **Markov chains** — `@markov`: weighted transition rules, walk N steps from a
   start state; click to re-walk.
-- **Roll tables** — `@rolltable`: weighted entries; click to re-roll.
+- **Roll tables** — `@rolltable`: weighted entries; click to re-roll. Entries
+  **compose through the grammar engine** (`{2d6} gold`, `{rule}`, `{= expr}`). An
+  optional **name** registers the table as a document-wide rule so `{name}` calls
+  it from any grammar or shorthand.
 - **Grammar** — `@grammar`: recursive-substitution generator (`runGrammar`).
   Named rules `name: a | b 2 | c`, one per line; one brace syntax `{...}` for rule
-  refs `{color}`, dice `{2d6}`, expressions `{= 2*r}`, and inline alternation
-  `{a|b}`, all nestable. Rules are **document-wide** (`collectRules()`), so any
-  pill can call rules declared anywhere. Cycles/depth caught at expansion (`↻`/`…`).
+  refs `{color}`, named tables `{loot}`, variables `{strength}`, dice `{2d6}`,
+  expressions `{= 2*r}`, and inline alternation `{a|b}`, all nestable. Names are
+  **document-wide** (`collectRules()` — grammar rules + named tables), so any pill
+  can call anything declared anywhere. Cycles/depth caught at expansion (`↻`/`…`).
   Freezes its expansion like dice; click to re-generate.
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change.
