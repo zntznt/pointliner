@@ -2156,9 +2156,9 @@ function attachContentEvents(content, node) {
         if (e.target.closest('.dice-edit')) { exitEdit(content, node); editDice(node, pill.dataset.key); }
         else { const off = getCaretOffset(content); rerollDice(node, pill.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
+        // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.dice-edit')) editDice(node, pill.dataset.key);
         else rerollDice(node, pill.dataset.key);
-        enterEdit(content, node); content.focus();
       }
       return;
     }
@@ -2170,9 +2170,9 @@ function attachContentEvents(content, node) {
         if (e.target.closest('.mk-edit')) { exitEdit(content, node); editMarkov(node, mk.dataset.key); }
         else { const off = getCaretOffset(content); rerollMarkov(node, mk.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
+        // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.mk-edit')) editMarkov(node, mk.dataset.key);
         else rerollMarkov(node, mk.dataset.key);
-        enterEdit(content, node); content.focus();
       }
       return;
     }
@@ -2184,9 +2184,9 @@ function attachContentEvents(content, node) {
         if (e.target.closest('.rt-edit')) { exitEdit(content, node); editRolltable(node, rt.dataset.key); }
         else { const off = getCaretOffset(content); rerollRolltable(node, rt.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
+        // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.rt-edit')) editRolltable(node, rt.dataset.key);
         else rerollRolltable(node, rt.dataset.key);
-        enterEdit(content, node); content.focus();
       }
       return;
     }
@@ -2198,9 +2198,9 @@ function attachContentEvents(content, node) {
         if (e.target.closest('.gr-edit')) { exitEdit(content, node); editGrammar(node, gr.dataset.key); }
         else { const off = getCaretOffset(content); rerollGrammar(node, gr.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
+        // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.gr-edit')) editGrammar(node, gr.dataset.key);
         else rerollGrammar(node, gr.dataset.key);
-        enterEdit(content, node); content.focus();
       }
       return;
     }
@@ -2208,20 +2208,16 @@ function attachContentEvents(content, node) {
     const mp = e.target.closest?.('.math-roll');
     if (mp && !mp.classList.contains('math-bad')) {
       e.preventDefault(); e.stopPropagation();
-      const mpWasEditing = !!content.dataset.editing;
-      if (mpWasEditing) exitEdit(content, node);
-      editMath(node, mp.dataset.key);
-      if (!mpWasEditing) { enterEdit(content, node); content.focus(); }
+      if (content.dataset.editing) exitEdit(content, node); // commit any in-progress edit first
+      editMath(node, mp.dataset.key); // opens a dialog; stays in display mode
       return;
     }
     // var pill: click anywhere opens the editor
     const vp2 = e.target.closest?.('.var-pill');
     if (vp2 && !vp2.classList.contains('var-bad')) {
       e.preventDefault(); e.stopPropagation();
-      const vpWasEditing = !!content.dataset.editing;
-      if (vpWasEditing) exitEdit(content, node);
-      editVar(node, vp2.dataset.key);
-      if (!vpWasEditing) { enterEdit(content, node); content.focus(); }
+      if (content.dataset.editing) exitEdit(content, node); // commit any in-progress edit first
+      editVar(node, vp2.dataset.key); // opens a dialog; stays in display mode
       return;
     }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {

@@ -241,10 +241,16 @@ Every artifact follows the same path. To add one (say `@oracle`):
 8. **Slash menu** — add an entry to `INSERT_CMDS` and a branch in
    `insertInlineArtifact` (which splices the token and pushes the record).
 9. **Click handler** — add a `closest('.oracle-pill')` branch to the
-   `mousedown` handler in `attachContentEvents`. Follow the existing convention:
-   display-mode click performs the action *and* enters edit mode; edit-mode body
-   click rerolls in place (save caret → mutate → `editModeHTML` → restore caret);
-   pencil exits edit mode then opens the dialog.
+   `mousedown` handler in `attachContentEvents`. Follow the existing convention
+   (`e.preventDefault()` keeps focus off the node so it never enters edit mode):
+   in **display mode** the pill is a live widget — a body click performs the action
+   and re-renders in place (the `rerollXxx` helper already does
+   `el.innerHTML = renderContentHTML(node)` when `!el.dataset.editing`), the pencil
+   opens the dialog; both stay in display mode. In **edit mode** a body click
+   rerolls in place (save caret → mutate → `editModeHTML` → restore caret) and the
+   pencil exits edit mode then opens the dialog. (Note: inline-able artifacts are
+   unfolded to `{…}` text in edit mode, so only complex pills — tables/markov — get
+   edit-mode clicks; dice/math/grammar pills only exist in display mode.)
 10. **Prune + edit** — `pruneOracle(node)` (drop records with no token) called in
     `exitEdit`; `editOracle(node, key)` opens the dialog prefilled.
 11. **CSS** — a `.oracle-pill` block near the other pill styles; reuse the
@@ -324,8 +330,10 @@ Implemented:
 - **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
   inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
   complex ones stay atomic pills. Raw `[[…]]` tokens are never shown.
-- **Pill interaction model** — display-mode click enters edit mode; edit-mode
-  body click rerolls in place; pencil opens the dialog.
+- **Pill interaction model** — in display mode a pill is a live widget: a body
+  click re-rolls/re-generates in place and **stays rendered** (never enters edit
+  mode), the pencil opens the dialog. To edit the surrounding text, click the text,
+  not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
 - **Collapse to level N** — `collapseToLevel(n)` / `expandAll()` (≈4151) set
   every node's `collapsed` flag by depth relative to the current viewport
   (`focusedId` or root). Toolbar segmented control `1·2·3·All`; keyboard
