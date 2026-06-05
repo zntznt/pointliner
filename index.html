@@ -315,28 +315,9 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .var-pill.var-shadowed{opacity:.38;border-style:dashed}
 .var-pill.var-shadowed .var-val{text-decoration:line-through}
 .var-pill.var-shadowed:hover{opacity:.65}
-/* var reference pill — read-only display of a document variable */
-.varref-pill{display:inline-flex;align-items:center;gap:4px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1.5px solid var(--acc);border-radius:999px;background:color-mix(in srgb,var(--acc) 8%,var(--cbg));font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
-.varref-pill:hover{box-shadow:0 0 0 3px var(--ring)}
-.varref-pill:active{transform:translateY(.5px)}
-.varref-pill .varref-ico{color:var(--acc);font-size:.82em;display:inline-flex}
-.varref-name{color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-style:italic;font-size:.9em}
-.varref-val{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding-left:3px}
-.varref-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.3;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
-.varref-pill:hover .varref-edit{opacity:.6}
-.varref-edit:hover{opacity:1 !important;background:var(--acc);color:#fff}
-.varref-pill.varref-bad{color:var(--del);border-style:dashed;cursor:default;background:var(--cbg)}
-.varref-pill.varref-bad:hover{box-shadow:none}
-.varref-pill.varref-undef{border-color:var(--del);border-style:dashed}
-/* varref picker dialog */
-.varref-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;max-height:220px;overflow-y:auto;padding:2px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
-.varref-card{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1.5px solid var(--bdr);border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s,box-shadow .12s;user-select:none}
-.varref-card:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
-.varref-card.varref-selected{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring);background:color-mix(in srgb,var(--acc) 10%,transparent)}
-.varref-card-name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-style:italic;color:var(--muted);font-size:.82em}
-.varref-card-val{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--acc);font-size:1.05em}
-.varref-card-expr{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);font-size:.75em;opacity:.65;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
-.varref-empty{color:var(--muted);text-align:center;padding:28px 16px;font-size:.88em;grid-column:1/-1}
+/* var-ref: display-only variant (no expression — reads from globalVarMap) */
+.var-pill.var-ref{border:1.5px solid var(--acc);background:color-mix(in srgb,var(--acc) 8%,var(--cbg))}
+.var-pill.var-undef{border-color:var(--del);border-style:dashed}
 .var-preview-result{font-weight:700;color:var(--acc);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1.1em}
 /* footnotes */
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
@@ -650,7 +631,7 @@ function mkRoot() {
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], varrefs: [] };
+  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -688,7 +669,6 @@ function renderContentHTML(node) {
   rolltableRenderList = node.rolltable || null;
   mathRenderList    = node.math    || null;
   varRenderList     = node.vars    || null;
-  varrefRenderList  = node.varrefs || null;
   globalVarMap      = collectVars();
   const html = mdToHtml(textForDisplay(node), node.type === 'code');
   diceRenderList    = null;
@@ -696,7 +676,6 @@ function renderContentHTML(node) {
   rolltableRenderList = null;
   mathRenderList    = null;
   varRenderList     = null;
-  varrefRenderList  = null;
   return html;
 }
 
@@ -717,7 +696,7 @@ function collectVars() {
     let m;
     while ((m = re.exec(node.text)) !== null) {
       const v = node.vars?.find(v => v.key === m[1]);
-      if (v?.name) {
+      if (v?.name && v.expr) {   // skip display-only records (empty expr)
         const nm = v.name.toLowerCase();
         if (!(nm in defs)) order.push(nm);
         defs[nm] = v.expr;
@@ -906,8 +885,6 @@ function mdInline(s) {
     stash(renderMathPill(k, mathRenderList?.find(m => m.key === k))));
   s = s.replace(/\[\[var:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderVarPill(k, varRenderList?.find(v => v.key === k))));
-  s = s.replace(/\[\[varref:([a-z0-9]+)\]\]/gi, (_, k) =>
-    stash(renderVarrefPill(k, varrefRenderList?.find(v => v.key === k))));
   // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:)
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
@@ -929,7 +906,6 @@ let markovRenderList = null;
 let rolltableRenderList = null;
 let mathRenderList = null;
 let varRenderList    = null;
-let varrefRenderList = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
@@ -1322,7 +1298,6 @@ function toOpml(r) {
       n.rolltable?.length ? `_rolltable="${ex(JSON.stringify(n.rolltable))}"` : '',
       n.math?.length     ? `_math="${ex(JSON.stringify(n.math))}"` : '',
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
-      n.varrefs?.length  ? `_varrefs="${ex(JSON.stringify(n.varrefs))}"` : '',
       `_id="${n.id}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -1345,7 +1320,7 @@ function fromOpml(xml) {
   if (doc.querySelector('parsererror')) throw new Error('Invalid OPML');
   function po(el) {
     const raw = el.getAttribute('_type') || 'ul';
-    return {
+    const n = {
       id: el.getAttribute('_id') || uid(),
       text: el.getAttribute('text') || '',
       note: el.getAttribute('_note') || '',
@@ -1360,9 +1335,20 @@ function fromOpml(xml) {
       rolltable: (() => { try { return JSON.parse(el.getAttribute('_rolltable') || '[]'); } catch(_) { return []; } })(),
       math:      (() => { try { return JSON.parse(el.getAttribute('_math')      || '[]'); } catch(_) { return []; } })(),
       vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
-      varrefs:   (() => { try { return JSON.parse(el.getAttribute('_varrefs')   || '[]'); } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
+    // Legacy migration: convert old [[varref:KEY]] tokens to display-only [[var:KEY]] records
+    const legacyVarrefs = el.getAttribute('_varrefs');
+    if (legacyVarrefs) {
+      try {
+        const vrs = JSON.parse(legacyVarrefs);
+        for (const vr of vrs) {
+          n.vars.push({ key: vr.key, name: vr.name, expr: '' });
+          n.text = n.text.replace(`[[varref:${vr.key}]]`, `[[var:${vr.key}]]`);
+        }
+      } catch(_) {}
+    }
+    return n;
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
@@ -1401,8 +1387,7 @@ const INSERT_CMDS = [
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'Pick a weighted entry; click to re-roll.',  ex:'1 sword · 2 shield',  section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
-  { id:'varref',   icon:'↳$', fa:'fa-solid fa-dollar-sign', label:'Var reference', desc:'Show a variable\'s value without redefining it.', ex:'shows $name = value', section:'Math' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Name a value for use in math and dice.',    ex:'r = 5 · area = pi*r^2', section:'Math' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value, or display an existing one. Leave expression blank to reference only.', ex:'r = 5 · area = pi*r^2', section:'Math' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -2188,20 +2173,6 @@ function attachContentEvents(content, node) {
       if (!vpWasEditing) { enterEdit(content, node); content.focus(); }
       return;
     }
-    // varref pill: pencil opens the picker; body click just enters edit mode
-    const vrp = e.target.closest?.('.varref-pill');
-    if (vrp && !vrp.classList.contains('varref-bad')) {
-      e.preventDefault(); e.stopPropagation();
-      if (e.target.closest('.varref-edit')) {
-        const vrpWasEditing = !!content.dataset.editing;
-        if (vrpWasEditing) exitEdit(content, node);
-        editVarref(node, vrp.dataset.key);
-        if (!vrpWasEditing) { enterEdit(content, node); content.focus(); }
-      } else if (!content.dataset.editing) {
-        enterEdit(content, node); content.focus();
-      }
-      return;
-    }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {
       e.preventDefault();
       e.stopPropagation(); // prevent doc mousedown from immediately clearing the selection
@@ -2262,7 +2233,7 @@ function attachContentEvents(content, node) {
 // [[TYPE:KEY]] tokens are rendered as contenteditable=false pill spans so the user
 // never sees the raw token syntax while typing.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|varref):([a-z0-9]+)\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var):([a-z0-9]+)\]\])/gi;
   let html = '', last = 0, m;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(node.text)) !== null) {
@@ -2273,7 +2244,6 @@ function editModeHTML(node) {
     else if (type === 'markov')    pill = renderMarkovPill(key, node.markov?.find(d => d.key === key));
     else if (type === 'rolltable') pill = renderRolltablePill(key, node.rolltable?.find(d => d.key === key));
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
-    else if (type === 'varref')    pill = renderVarrefPill(key, node.varrefs?.find(d => d.key === key));
     else                           pill = renderVarPill(key, node.vars?.find(d => d.key === key));
     html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>`;
     last = m.index + m[0].length;
@@ -2298,7 +2268,7 @@ function exitEdit(content, node) {
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
-  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneVarrefs(node); pruneFootnotes(node); // drop data for deleted tokens
+  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneFootnotes(node); // drop data for deleted tokens
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
@@ -2979,22 +2949,6 @@ function insertInlineArtifact(id, nodeId, content) {
         render();
       },
     });
-  } else if (id === 'varref') {
-    openVarrefDialog({
-      title: 'Reference a variable',
-      submitLabel: 'Insert',
-      onResult: result => {
-        const n = nodeById(nodeId); if (!n) return;
-        const rec = { key: varrefKey(), name: result.name };
-        (n.varrefs ||= []).push(rec);
-        const off = Math.min(Math.max(offset, 0), n.text.length);
-        const prev = n.text;
-        n.text = n.text.slice(0, off) + `[[varref:${rec.key}]]` + n.text.slice(off);
-        recordTextEdit(nodeId, prev, n.text);
-        markDirty();
-        render();
-      },
-    });
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -3667,6 +3621,19 @@ function varKey() { return 'v' + Math.random().toString(36).slice(2, 9); }
 
 function renderVarPill(key, v) {
   if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}">$ ?</span>`;
+  // Display-only mode: empty expr — read value from globalVarMap without declaring
+  if (!v.expr) {
+    const val = globalVarMap[(v.name || '').toLowerCase()];
+    const display = val !== undefined ? formatMathResult(val) : '—';
+    const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
+    const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
+      + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
+      + `<span class="var-name">${escHtml(v.name)}</span>`
+      + `<span class="var-val">${escHtml(display)}</span>`
+      + `<span class="var-edit" title="Edit"><i class="fa-solid fa-pen"></i></span>`
+      + `</span>`;
+  }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
   const shadowed = _varShadowedKeys.has(key);
   const fresh    = cyclic ? null : evalMath(v.expr, globalVarMap);
@@ -3689,116 +3656,6 @@ function renderVarPill(key, v) {
 function pruneVars(node) {
   if (!node.vars?.length) return;
   node.vars = node.vars.filter(v => node.text.includes(`[[var:${v.key}]]`));
-}
-
-// ─── var reference pill ───────────────────────────────────────────────────────
-// [[varref:KEY]] — read-only display of a document variable's current value.
-// Records live in node.varrefs = [{key, name}]; no expression stored here, the
-// value is always read from globalVarMap (i.e. whatever collectVars() resolved).
-
-function varrefKey() { return 'p' + Math.random().toString(36).slice(2, 9); }
-
-function renderVarrefPill(key, v) {
-  if (!v) return `<span class="varref-pill varref-bad" data-key="${escQ(key)}">$ ?</span>`;
-  const val = globalVarMap[(v.name || '').toLowerCase()];
-  const display = val !== undefined ? formatMathResult(val) : '—';
-  const cls = `varref-pill${val === undefined ? ' varref-undef' : ''}`;
-  const title = val === undefined ? 'Variable not found — click pencil to change'
-    : `$${v.name} — click pencil to change`;
-  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
-    + `<span class="varref-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
-    + `<span class="varref-name">${escHtml(v.name)}</span>`
-    + `<span class="varref-val">${escHtml(display)}</span>`
-    + `<span class="varref-edit" title="Change reference"><i class="fa-solid fa-pen"></i></span>`
-    + `</span>`;
-}
-
-function pruneVarrefs(node) {
-  if (!node.varrefs?.length) return;
-  node.varrefs = node.varrefs.filter(v => node.text.includes(`[[varref:${v.key}]]`));
-}
-
-// Dialog for picking which variable to reference. Shows all declared variables
-// as clickable cards with their name, resolved value, and expression.
-function openVarrefDialog({ title, submitLabel, existing = null, onResult }) {
-  const varMap  = collectVars();
-  const allDefs = Object.keys(_varActiveExprs).sort().map(name => ({
-    name, expr: _varActiveExprs[name], val: varMap[name],
-  }));
-
-  ioCard.innerHTML = '';
-  let selectedName = existing && (existing.toLowerCase() in _varActiveExprs) ? existing : null;
-
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, { fa:'fa-solid fa-dollar-sign', fb:'$' });
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = title;
-  head.append(ic, ttl); ioCard.appendChild(head);
-
-  const wrap = document.createElement('div'); wrap.className = 'io-field';
-  const lab = document.createElement('label'); lab.textContent = 'Choose a variable';
-  wrap.appendChild(lab);
-
-  const grid = document.createElement('div'); grid.className = 'varref-picker';
-
-  if (allDefs.length === 0) {
-    const empty = document.createElement('div'); empty.className = 'varref-empty';
-    empty.textContent = 'No variables declared yet. Use @var to add one first.';
-    grid.appendChild(empty);
-  } else {
-    allDefs.forEach(({ name, expr, val }) => {
-      const card = document.createElement('div'); card.className = 'varref-card';
-      if (name === (selectedName || '').toLowerCase()) {
-        card.classList.add('varref-selected');
-        selectedName = name;
-      }
-      card.dataset.name = name;
-      const nameEl = document.createElement('div'); nameEl.className = 'varref-card-name'; nameEl.textContent = '$' + name;
-      const valEl  = document.createElement('div'); valEl.className  = 'varref-card-val';  valEl.textContent  = val !== undefined ? formatMathResult(val) : '?';
-      const exprEl = document.createElement('div'); exprEl.className = 'varref-card-expr'; exprEl.textContent = expr;
-      card.append(nameEl, valEl, exprEl);
-      card.addEventListener('click', () => {
-        grid.querySelectorAll('.varref-card').forEach(c => c.classList.remove('varref-selected'));
-        card.classList.add('varref-selected');
-        selectedName = name;
-        validate();
-      });
-      grid.appendChild(card);
-    });
-  }
-
-  wrap.appendChild(grid); ioCard.appendChild(wrap);
-
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = submitLabel || 'Insert';
-  cancelBtn.addEventListener('click', () => closeIo());
-  okBtn.addEventListener('click', () => {
-    if (!selectedName) return;
-    closeIo();
-    onResult({ name: selectedName });
-  });
-  foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
-
-  function validate() { okBtn.disabled = !selectedName; }
-  ioCancel = () => closeIo();
-  validate();
-  ioBack.classList.add('on');
-}
-
-function editVarref(node, key) {
-  const v = node?.varrefs?.find(x => x.key === key);
-  if (!v) return;
-  openVarrefDialog({
-    title: 'Change variable reference',
-    submitLabel: 'Save',
-    existing: v.name,
-    onResult: result => {
-      v.name = result.name;
-      markDirty();
-      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
-    },
-  });
 }
 
 // Math chips: constants + operators that are tedious to type, plus the most
@@ -3900,9 +3757,9 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
     fields: [
       { key:'name', label:'Name', placeholder:'e.g. r, str_mod, dmg_bonus', value: name,
         hint:'Used in math (2*pi*r) and dice (2d6+str_mod) throughout this document.' },
-      { key:'expr', label:'Value (expression)', placeholder:'e.g. 5, 2*pi, sqrt(16)', value: expr,
+      { key:'expr', label:'Value (optional expression)', placeholder:'e.g. 5, 2*pi, sqrt(16) — leave blank to display', value: expr,
         chips: VAR_CHIPS,
-        hint:'May reference other variables (e.g. area = pi*r^2). Circular references are flagged.',
+        hint:'Leave blank to display an existing variable without redefining it. May reference other variables (e.g. area = pi*r^2).',
         preview: v => {
           if (!v) return '';
           const r = evalMath(v, collectVars());
@@ -3910,7 +3767,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
           return `<span class="var-preview-result">${escHtml(formatMathResult(r))}</span>`;
         } },
     ],
-    validate: v => VAR_NAME_RE.test(v.name) && evalMath(v.expr, collectVars()) !== null,
+    validate: v => VAR_NAME_RE.test(v.name) && (v.expr === '' || evalMath(v.expr, collectVars()) !== null),
     onSubmit: v => {
       const result = { key: existing || varKey(), name: v.name, expr: v.expr };
       onResult(result);
@@ -4753,7 +4610,7 @@ async function writeH(h) {
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
 function flattenArtifacts(text, node, varMap) {
-  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var|varref):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var):([a-z0-9]+)\]\]/gi, (_, type, key) => {
     type = type.toLowerCase();
     if (type === 'dice') {
       const d = node.dice?.find(x => x.key === key); if (!d) return '';
@@ -4774,11 +4631,12 @@ function flattenArtifacts(text, node, varMap) {
       const fresh = evalMath(m.expr, varMap);
       return fresh !== null ? formatMathResult(fresh) : m.result;
     }
-    // var / varref both display as "name = value"
-    const rec = (type === 'var' ? node.vars : node.varrefs)?.find(x => x.key === key);
+    // var: show "name = value" for defining pills, or just "value" for display-only
+    const rec = node.vars?.find(x => x.key === key);
     if (!rec) return '';
     const val = varMap[(rec.name || '').toLowerCase()];
-    return `${rec.name} = ${val !== undefined ? formatMathResult(val) : '?'}`;
+    const valStr = val !== undefined ? formatMathResult(val) : '?';
+    return rec.expr ? `${rec.name} = ${valStr}` : valStr;
   });
 }
 
