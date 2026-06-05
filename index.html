@@ -2933,13 +2933,7 @@ function insertInlineArtifact(id, nodeId, content) {
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.dice ||= []).push(roll);
-        // splice the token, then render in display mode so the pill is visible
-        const off = Math.min(Math.max(offset, 0), n.text.length);
-        const prev = n.text;
-        n.text = n.text.slice(0, off) + `[[dice:${roll.key}]]` + n.text.slice(off);
-        recordTextEdit(nodeId, prev, n.text);
-        markDirty();
-        render();
+        applyInlineInsertion(nodeId, offset, `[[dice:${roll.key}]]`);
       },
     });
   } else if (id === 'markov') {
@@ -2949,12 +2943,7 @@ function insertInlineArtifact(id, nodeId, content) {
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.markov ||= []).push(roll);
-        const off = Math.min(Math.max(offset, 0), n.text.length);
-        const prev = n.text;
-        n.text = n.text.slice(0, off) + `[[markov:${roll.key}]]` + n.text.slice(off);
-        recordTextEdit(nodeId, prev, n.text);
-        markDirty();
-        render();
+        applyInlineInsertion(nodeId, offset, `[[markov:${roll.key}]]`);
       },
     });
   } else if (id === 'rolltable') {
@@ -2964,12 +2953,7 @@ function insertInlineArtifact(id, nodeId, content) {
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.rolltable ||= []).push(roll);
-        const off = Math.min(Math.max(offset, 0), n.text.length);
-        const prev = n.text;
-        n.text = n.text.slice(0, off) + `[[rolltable:${roll.key}]]` + n.text.slice(off);
-        recordTextEdit(nodeId, prev, n.text);
-        markDirty();
-        render();
+        applyInlineInsertion(nodeId, offset, `[[rolltable:${roll.key}]]`);
       },
     });
   } else if (id === 'grammar') {
@@ -2979,12 +2963,7 @@ function insertInlineArtifact(id, nodeId, content) {
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.grammar ||= []).push(roll);
-        const off = Math.min(Math.max(offset, 0), n.text.length);
-        const prev = n.text;
-        n.text = n.text.slice(0, off) + `[[grammar:${roll.key}]]` + n.text.slice(off);
-        recordTextEdit(nodeId, prev, n.text);
-        markDirty();
-        render();
+        applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
       },
     });
   } else if (id === 'math') {
@@ -2994,12 +2973,7 @@ function insertInlineArtifact(id, nodeId, content) {
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.math ||= []).push(roll);
-        const off = Math.min(Math.max(offset, 0), n.text.length);
-        const prev = n.text;
-        n.text = n.text.slice(0, off) + `[[math:${roll.key}]]` + n.text.slice(off);
-        recordTextEdit(nodeId, prev, n.text);
-        markDirty();
-        render();
+        applyInlineInsertion(nodeId, offset, `[[math:${roll.key}]]`);
       },
     });
   } else if (id === 'var') {
@@ -3009,12 +2983,7 @@ function insertInlineArtifact(id, nodeId, content) {
       onResult: v => {
         const n = nodeById(nodeId); if (!n) return;
         (n.vars ||= []).push(v);
-        const off = Math.min(Math.max(offset, 0), n.text.length);
-        const prev = n.text;
-        n.text = n.text.slice(0, off) + `[[var:${v.key}]]` + n.text.slice(off);
-        recordTextEdit(nodeId, prev, n.text);
-        markDirty();
-        render();
+        applyInlineInsertion(nodeId, offset, `[[var:${v.key}]]`);
       },
     });
   } else if (id === 'footnote') {
@@ -3865,7 +3834,11 @@ function checkInlinePromote(content, node) {
   markDirty();
   globalVarMap = collectVars();
   content.innerHTML = editModeHTML(node);
-  try { setCaretByOffset(content, start + token.length); } catch(_) {}
+  const caretTarget = start + token.length;
+  requestAnimationFrame(() => {
+    content.focus();
+    try { setCaretByOffset(content, caretTarget); } catch(_) {}
+  });
   return true;
 }
 
@@ -4442,7 +4415,7 @@ function setCaretByOffset(el, target) {
     if (node.dataset?.token) {
       const len = node.dataset.token.length;
       if (rem <= 0) { const r = document.createRange(); r.setStartBefore(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
-      else if (rem < len) { const r = document.createRange(); r.setStartAfter(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
+      else if (rem <= len) { const r = document.createRange(); r.setStartAfter(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
       else rem -= len;
       return;
     }
