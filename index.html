@@ -261,6 +261,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mk-path{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
 .mk-state{font-weight:600;color:var(--fg)}
 .mk-arrow{color:var(--muted);opacity:.55;font-size:.9em}
+.mk-name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px;margin-right:1px}
 .mk-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.3;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .mk-roll:hover .mk-edit{opacity:.6}
 .mk-edit:hover{opacity:1;background:var(--acc);color:#fff}
@@ -1159,13 +1160,14 @@ function walkMarkov(parsed, start, steps) {
 
 function markovKey() { return 'm' + Math.random().toString(36).slice(2, 9); }
 
-function makeMarkovRoll(def, startInput, stepsInput) {
+function makeMarkovRoll(def, startInput, stepsInput, name) {
   const parsed = parseMarkov(def);
   if (!parsed) return null;
   const start = (startInput && startInput.trim()) || parsed.order[0];
   if (!parsed.order.includes(start)) return null;   // start must be a known state
   const steps = Math.max(1, Math.min(500, parseInt(stepsInput, 10) || 5));
-  return { key: markovKey(), def, start, steps, path: walkMarkov(parsed, start, steps) };
+  const nm = (name || '').trim();
+  return { key: markovKey(), def, start, steps, name: nm || undefined, path: walkMarkov(parsed, start, steps) };
 }
 
 function renderMarkovPill(key, mk) {
@@ -1173,8 +1175,10 @@ function renderMarkovPill(key, mk) {
   const path = mk.path
     .map(s => `<span class="mk-state">${escHtml(s)}</span>`)
     .join('<span class="mk-arrow">→</span>');
-  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll">`
+  const nameTag = mk.name ? `<span class="mk-name" title="Callable as {${escQ(mk.name)}}">${escHtml(mk.name)}</span>` : '';
+  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
+    + nameTag
     + `<span class="mk-path">${path}</span>`
     + `<span class="mk-edit" title="Edit chain"><i class="fa-solid fa-pen"></i></span>`
     + `</span>`;
@@ -3362,7 +3366,7 @@ function openDiceDialog({ title, submitLabel, expr = '', existing = null, onResu
 
 // Shared dialog for creating / editing a Markov chain. Calls back with a fresh
 // roll object (existing.key is reused when editing so the token stays valid).
-function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = '', existing = null, onResult }) {
+function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = '', name = '', existing = null, onResult }) {
   openInsertDialog({
     icon: { fa:'fa-solid fa-circle-nodes', fb:'⛓' },
     title,
@@ -3373,10 +3377,12 @@ function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = ''
         hint:'One rule per line: State -> Target weight, … (weights need not sum to 1)' },
       { key:'start', label:'Start state', placeholder:'defaults to the first state', value:start },
       { key:'steps', label:'Steps', placeholder:'5', value:steps === '' ? '' : String(steps) },
+      { key:'name', label:'Name (optional)', placeholder:'e.g. weather — lets {weather} call this chain', value:name,
+        hint:'Give the chain a name to call its walk from grammar/shorthand as {name}.' },
     ],
-    validate: v => !!parseMarkov(v.def) && (!v.start || parseMarkov(v.def).order.includes(v.start)),
+    validate: v => !!parseMarkov(v.def) && (!v.start || parseMarkov(v.def).order.includes(v.start)) && (!v.name || VAR_NAME_RE.test(v.name)),
     onSubmit: v => {
-      const roll = makeMarkovRoll(v.def, v.start, v.steps);
+      const roll = makeMarkovRoll(v.def, v.start, v.steps, v.name);
       if (!roll) return;
       if (existing) roll.key = existing;   // keep the same token when editing
       onResult(roll);
@@ -3600,14 +3606,25 @@ function resolveBrace(body, ctx) {
   return body;
 }
 
-// Expand a named rule, guarding against cycles (↻) and runaway depth (…).
+// Expand a named rule, guarding against cycles (↻) and runaway depth (…). A rule
+// value is either a weighted-alternation array (grammar rule / named table) or a
+// typed descriptor — currently {kind:'markov', …}, which runs a stateful walk
+// and joins the path. Each visited state is itself expanded so a chain can emit
+// composable text.
 function expandRule(name, ctx) {
   const rule = ctx.rules[name];
   if (!rule) return `{${name}?}`;
   if (ctx.stack.includes(name)) return '↻';
   if (ctx.depth > 200) return '…';
   ctx.stack.push(name); ctx.depth++;
-  const out = expandTemplate(pickWeightedAlt(rule).template, ctx);
+  let out;
+  if (Array.isArray(rule)) {
+    out = expandTemplate(pickWeightedAlt(rule).template, ctx);
+  } else if (rule.kind === 'markov') {
+    out = walkMarkov(rule.parsed, rule.start, rule.steps).map(s => expandTemplate(s, ctx)).join(' → ');
+  } else {
+    out = '';
+  }
   ctx.stack.pop(); ctx.depth--;
   return out;
 }
@@ -3654,6 +3671,13 @@ function collectRules() {
         if (!rt.name || !node.text.includes(`[[rolltable:${rt.key}]]`)) continue;
         const entries = parseRolltable(rt.def);
         if (entries) merged[rt.name.toLowerCase()] = entries.map(e => ({ template: e.text, weight: e.weight }));
+      }
+    }
+    if (node.markov?.length) {
+      for (const mk of node.markov) {
+        if (!mk.name || !node.text.includes(`[[markov:${mk.key}]]`)) continue;
+        const parsed = parseMarkov(mk.def);
+        if (parsed) merged[mk.name.toLowerCase()] = { kind: 'markov', parsed, start: mk.start, steps: mk.steps };
       }
     }
     for (const c of node.children) gather(c);
@@ -4526,9 +4550,9 @@ function editMarkov(node, key) {
   openMarkovDialog({
     title: 'Edit Markov chain',
     submitLabel: 'Save & roll',
-    def: mk.def, start: mk.start, steps: mk.steps, existing: key,
+    def: mk.def, start: mk.start, steps: mk.steps, name: mk.name || '', existing: key,
     onResult: roll => {
-      Object.assign(mk, { def: roll.def, start: roll.start, steps: roll.steps, path: roll.path });
+      Object.assign(mk, { def: roll.def, start: roll.start, steps: roll.steps, name: roll.name, path: roll.path });
       markDirty();
       const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
       if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);

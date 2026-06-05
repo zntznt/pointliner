@@ -167,10 +167,14 @@ when proposing features:
   catch-all on `exitEdit` (covers paste / multiple). An invalid or unknown body is
   left as literal text — that's the escape hatch.
 
-  Dice and roll tables now resolve through this one engine (a table picks a
-  weighted entry then `expandText`s it; dice is a `{NdM}` primitive). *Still
-  pending:* markov — its stateful walk (current-state → weighted next, repeated)
-  doesn't map onto stateless substitution, so it stays its own engine for now.
+  Dice, roll tables, and markov chains all resolve through this one engine: a
+  table picks a weighted entry then `expandText`s it; dice is a `{NdM}` primitive;
+  a **named** markov chain registers in `collectRules` as a typed descriptor
+  `{kind:'markov', parsed, start, steps}` and `expandRule` branches on it — an
+  array rule is alternation, a `kind:'markov'` rule runs `walkMarkov` and joins
+  the path. Markov keeps its own walk core (the stateful step loop) but is now
+  callable as `{chainName}` like everything else. Every custom artifact is under
+  grammar.
 
 **Engine 2 — expression evaluator** (`evalMath`, ≈3232). A hand-written
 recursive-descent parser: `addSub → mulDiv → power → unary → atom`, with
@@ -266,18 +270,20 @@ Implemented:
   Rolls stored per-die as chains in `parts[].rolls` (array of arrays); old
   flat-number saves still render via a compat branch in `diceBreakdownHTML`.
 - **Markov chains** — `@markov`: weighted transition rules, walk N steps from a
-  start state; click to re-walk.
+  start state; click to re-walk. An optional **name** registers the chain so
+  `{name}` runs a fresh walk from any grammar or shorthand (joined with ` → `).
 - **Roll tables** — `@rolltable`: weighted entries; click to re-roll. Entries
   **compose through the grammar engine** (`{2d6} gold`, `{rule}`, `{= expr}`). An
   optional **name** registers the table as a document-wide rule so `{name}` calls
   it from any grammar or shorthand.
 - **Grammar** — `@grammar`: recursive-substitution generator (`runGrammar`).
   Named rules `name: a | b 2 | c`, one per line; one brace syntax `{...}` for rule
-  refs `{color}`, named tables `{loot}`, variables `{strength}`, dice `{2d6}`,
-  expressions `{= 2*r}`, and inline alternation `{a|b}`, all nestable. Names are
-  **document-wide** (`collectRules()` — grammar rules + named tables), so any pill
-  can call anything declared anywhere. Cycles/depth caught at expansion (`↻`/`…`).
-  Freezes its expansion like dice; click to re-generate.
+  refs `{color}`, named tables `{loot}`, named markov chains `{weather}`, variables
+  `{strength}`, dice `{2d6}`, expressions `{= 2*r}`, and inline alternation `{a|b}`,
+  all nestable. Names are **document-wide** (`collectRules()` — grammar rules +
+  named tables + named chains), so any pill can call anything declared anywhere.
+  Cycles/depth caught at expansion (`↻`/`…`). Freezes its expansion like dice;
+  click to re-generate.
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change.
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
