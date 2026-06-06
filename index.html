@@ -1367,7 +1367,7 @@ function mtSplitRow(line) {
 
 function parseTable(text) {
   const lines = (text || '').split('\n').filter(l => l.trim() !== '');
-  if (!lines.length) return null;
+  if (!lines.length || !lines[0].includes('|')) return null;
   const header = mtSplitRow(lines[0]);
   let aligns = header.map(() => null), bodyStart = 1;
   if (lines[1] && /^[\s|:-]+$/.test(lines[1]) && lines[1].includes('-')) {
@@ -1380,7 +1380,10 @@ function parseTable(text) {
   const ncols = Math.max(header.length, aligns.length, 1);
   const pad = row => { while (row.length < ncols) row.push(''); return row.slice(0, ncols); };
   const rows = [pad(header.slice())];
-  for (let i = bodyStart; i < lines.length; i++) rows.push(pad(mtSplitRow(lines[i])));
+  for (let i = bodyStart; i < lines.length; i++) {
+    if (!lines[i].includes('|')) continue; // skip non-pipe rows (not valid table syntax)
+    rows.push(pad(mtSplitRow(lines[i])));
+  }
   while (aligns.length < ncols) aligns.push(null);
   return { aligns: aligns.slice(0, ncols), rows };
 }
@@ -2506,8 +2509,11 @@ function exitEdit(content, node) {
     markDirty();
     if (activeContentId === node.id) activeContentId = null;
     recordTextEdit(node.id, prevText, node.text);
-    if (parseTable(node.text)) {
-      // Still valid table: rebuild widget in-place without a full render.
+    const parsed = parseTable(node.text);
+    if (parsed) {
+      // Normalize: re-serialize so every row has pipe formatting (guards against
+      // rows typed without | in the markdown editor).
+      node.text = serializeTable(parsed);
       content.textContent = '';
       content.appendChild(buildTableWidget(node, false));
       const btn = document.createElement('button');
