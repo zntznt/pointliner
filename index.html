@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Pointliner</title>
 <!-- favicon: FontAwesome circle-minus, inline SVG so it works offline; tinted
      to the current accent at runtime by updateFavicon() -->
@@ -547,12 +547,81 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .nsb-btn{cursor:pointer;padding:3px 9px;border-radius:5px;border:1px solid var(--bdr);background:transparent;color:var(--fg);font:inherit;font-size:12px;white-space:nowrap;transition:background .1s}
 .nsb-btn:hover{background:var(--bdr)}
 .nsb-btn.danger:hover{background:rgba(229,85,85,.1);border-color:#e55;color:#e55}
+
+/* ============================ mobile & touch ============================ */
+html{-webkit-text-size-adjust:100%}
+/* honor iOS safe-area insets on the fixed chrome (no-op on non-notched / desktop) */
+#toolbar{padding-top:env(safe-area-inset-top)}
+body{padding-top:calc(44px + env(safe-area-inset-top))}
+#fn-panel{padding-bottom:env(safe-area-inset-bottom)}
+#sc-toggle{bottom:calc(16px + env(safe-area-inset-bottom))}
+.sc-panel{bottom:calc(54px + env(safe-area-inset-bottom))}
+#node-sel-bar{bottom:calc(72px + env(safe-area-inset-bottom))}
+
+/* ── narrow screens: reflow toolbar so search can't overlap the level control ── */
+@media(max-width:560px){
+  .logo .logo-text{display:none}
+  .logo{padding:4px 3px}
+  .logo-mark{width:20px;height:20px}
+  #toolbar-row{gap:6px;padding:0 8px}
+  #toolbar-row .spacer{display:none}
+  /* search becomes an in-flow flex item (was absolutely centered → overlapped) */
+  #search-wrap{position:relative;left:auto;transform:none;flex:1 1 auto;min-width:0}
+  #search-box{width:100%}
+  #level-ctl .lvl-btn{padding:5px 9px}
+  :root{--ind:16px}
+  #outline{padding:20px 14px 140px}
+  .crumb{max-width:120px}
+  .zoom-title{font-size:20px}
+  /* keep floating menus inside the viewport */
+  #slash-menu{width:min(204px,calc(100vw - 16px))}
+  #bpop{min-width:0;width:min(248px,calc(100vw - 16px))}
+  #file-menu{min-width:0;width:min(290px,calc(100vw - 16px))}
+  #io-card{margin-top:8vh}
+}
+
+/* ── touch devices: surface hover-only affordances + grow tap targets ── */
+@media(hover:none){
+  /* edit pencils on pills are hover-revealed on desktop — always show on touch */
+  .dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit{
+    opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr)}
+  /* table row/column handles + delete buttons: always visible, bigger */
+  .mt-colh{height:22px}
+  .mt-rowh{width:22px}
+  .mt-grip{opacity:.5}
+  .mt-del{display:block;width:19px;height:19px;line-height:17px;font-size:12px;opacity:.5}
+  .mt-del:active{opacity:1}
+  .mt-colh .mt-delcol{top:-8px;right:-8px}
+  .mt-rowh .mt-delrow{left:-8px;top:-8px}
+  .mt-addcol{min-height:38px}
+  .mt-editmd-btn{opacity:.6;font-size:.78em;padding:5px 4px}
+  /* left-gutter controls */
+  .collapse-btn{width:24px;height:30px;font-size:11px}
+  .bullet{height:30px;padding:0 7px;gap:6px}
+  .bullet-dot{width:8px;height:8px}
+  .node-checkbox,.md-task-check{width:20px;height:20px}
+  .md-task{gap:.6em}
+  /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
+  .io-field input,.io-field textarea{font-size:16px}
+  .nt-table>.node-row>.node-content[data-editing]{font-size:16px}
+  /* roomier action targets in menus / dialogs / bars */
+  .io-btn{padding:10px 16px;font-size:15px}
+  .nsb-btn{padding:8px 12px;font-size:14px}
+  .bpop-type{width:34px;height:34px;font-size:14px}
+  #bpop .cmd-item{padding:10px}
+  #slash-menu .cmd-item{padding:9px 10px}
+  #file-menu .cmd-item{padding:10px 9px}
+  .fn-key{padding:6px 11px}
+  #sc-toggle{width:36px;height:36px;font-size:15px}
+  /* suppress the iOS long-press text/callout on tappable widgets */
+  .bullet,.collapse-btn,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.fn-ref{-webkit-touch-callout:none}
+}
 </style>
 </head>
 <body>
 <div id="toolbar">
   <div id="toolbar-row">
-    <span class="logo" id="logo-btn"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM184 232H328c13.3 0 24 10.7 24 24s-10.7 24-24 24H184c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg>Pointliner</span>
+    <span class="logo" id="logo-btn"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM184 232H328c13.3 0 24 10.7 24 24s-10.7 24-24 24H184c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span></span>
     <span class="dirty-dot" id="dirty-dot"></span>
     <span class="spacer"></span>
     <div id="search-wrap">
@@ -649,7 +718,11 @@ let searchQueryLC = '';        // lowercased once, reused per node during a sear
 let searchMatchSet = null;     // ids whose subtree (incl self) contains a match
 
 // ─── virtualization state ──────────────────────────────────────────────────────
-const IND = 24;        // px indent per depth level (matches former --ind nesting)
+let IND = computeIndent();  // px indent per depth level (responsive — tighter on phones)
+function computeIndent() { return window.innerWidth <= 560 ? 16 : 24; }
+// Touch devices have no hover, so hover-revealed affordances need touch fallbacks.
+const IS_TOUCH = matchMedia('(hover:none) and (pointer:coarse)').matches;
+let bulletLongPressed = false;  // set by a bullet long-press so the trailing click won't also zoom
 const EST_ROW = 30;    // height estimate for not-yet-measured rows
 const OVERSCAN = 10;   // extra rows rendered above/below the viewport
 let flatRows  = [];    // ordered visible rows: { node, depth, parent, searchCtx?, highlight? }
@@ -1829,6 +1902,7 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 window.addEventListener('resize', () => {
   if (!vlist) return;
+  IND = computeIndent();     // indent step tightens/loosens at the phone breakpoint
   heightCache.clear();       // wrapping changes with width — discard stale measurements
   measureTops();
   winStart = 0; winEnd = -1;
@@ -2142,11 +2216,16 @@ function renderRow(r) {
 
   if (!opts.searchCtx) {
     bullet.addEventListener('click', e => {
-      if (bulletDragMoved) return;
+      if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
       if (!e.target.classList.contains('node-checkbox') && node.type !== 'divider') zoomInto(node.id);
     });
-    bullet.addEventListener('mouseenter', () => { if (!dragId) showBulletPopup(node.id, bullet); });
-    bullet.addEventListener('mouseleave', () => scheduleBpopHide());
+    if (IS_TOUCH) {
+      // No hover on touch: long-press the bullet to open the node menu (type/move/delete/zoom).
+      attachBulletLongPress(bullet, node);
+    } else {
+      bullet.addEventListener('mouseenter', () => { if (!dragId) showBulletPopup(node.id, bullet); });
+      bullet.addEventListener('mouseleave', () => scheduleBpopHide());
+    }
     attachDragHandlers(bullet, row, node);
   }
 
@@ -5102,7 +5181,9 @@ function clearAllDrag() {
 }
 
 function attachDragHandlers(bullet, row, node) {
-  bullet.draggable = true;
+  // HTML5 drag-and-drop never fires on touch; skip it there (long-press menu covers
+  // reordering via Move up/down) so a touch-hold doesn't trigger native drag artifacts.
+  bullet.draggable = !IS_TOUCH;
 
   bullet.addEventListener('pointerdown', () => { bulletDragMoved = false; });
 
@@ -5178,6 +5259,30 @@ function attachDragHandlers(bullet, row, node) {
     if (fromIds) performMultiDrop(fromIds, targetId, position);
     else performDrop(fromId, targetId, position);
   });
+}
+
+// Touch replacement for the desktop hover popup: a ~450ms press on a bullet opens the
+// node menu. A small move budget keeps scrolling from triggering it; the menu's own
+// Move up/down/Delete/type buttons give reordering + actions without HTML5 drag.
+function attachBulletLongPress(bullet, node) {
+  let timer = null, sx = 0, sy = 0;
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  bullet.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;   // a real mouse still uses hover (hybrid devices)
+    sx = e.clientX; sy = e.clientY;
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      bulletLongPressed = true;              // suppress the trailing click's zoom
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+      showBulletPopup(node.id, bullet);
+    }, 450);
+  });
+  bullet.addEventListener('pointermove', e => {
+    if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel();
+  });
+  bullet.addEventListener('pointerup', cancel);
+  bullet.addEventListener('pointercancel', cancel);
 }
 
 function performDrop(fromId, targetId, position) {

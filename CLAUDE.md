@@ -304,6 +304,15 @@ Only the glyphs the app uses are embedded as base64 woff2 in the `#fa-embed`
   swaps the variables.
 - **Custom OPML attributes are underscore-prefixed.** Add serialize + parse in
   the same change or data silently drops on save.
+- **Hover-only affordances need a touch fallback.** Edit pencils, table grips, the
+  bullet popup and the `✏ markdown` button are revealed on `:hover` for the mouse,
+  but touch has no hover. The `@media(hover:none)` CSS block makes those always
+  visible and enlarges tap targets; the bullet's hover popup is replaced by a
+  **long-press** (`attachBulletLongPress`, gated on the module-level `IS_TOUCH`,
+  which also sets `bullet.draggable=false` since HTML5 drag never fires on touch —
+  reordering is done via the popup's Move up/down). `IND` (indent step) is a `let`
+  recomputed from viewport width in the `resize` handler. Any new mouse-only
+  interaction must ship a touch path the same way.
 - **Stateful randomness has nowhere clean to live yet.** Decks/bags (draw without
   replacement) need persisted state; today everything re-rolls statelessly. This
   is an open design question, not an oversight (see below).
