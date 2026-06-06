@@ -368,16 +368,25 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 
 /* node types */
 .nt-h1{margin-top:12px}.nt-h2{margin-top:7px}
-.nt-h1>.node-row>.node-content{font-size:1.55em;font-weight:800;line-height:1.25;padding-top:3px}
-.nt-h2>.node-row>.node-content{font-size:1.22em;font-weight:700;line-height:1.3}
-.nt-h3>.node-row>.node-content{font-size:1.06em;font-weight:600}
-.nt-h1>.node-row>.bullet .bullet-dot,.nt-h2>.node-row>.bullet .bullet-dot,.nt-h3>.node-row>.bullet .bullet-dot{opacity:.25}
-/* quote */
-.nt-quote>.node-row{border-left:3px solid var(--qbdr);padding-left:10px;margin-left:4px}
-.nt-quote>.node-row>.node-content{color:var(--muted);font-style:italic}
+.nt-h1>.node-row>.bullet .bullet-dot,.nt-h2>.node-row>.bullet .bullet-dot,.nt-h3>.node-row>.bullet .bullet-dot,.nt-h4>.node-row>.bullet .bullet-dot,.nt-h5>.node-row>.bullet .bullet-dot,.nt-h6>.node-row>.bullet .bullet-dot{opacity:.25}
+/* markdown headings — rendered as real <hN> elements by mdToHtml, on any line */
+.node-content :is(h1,h2,h3,h4,h5,h6).md-h{margin:.12em 0 .08em;line-height:1.25;font-weight:700}
+.node-content h1.md-h{font-size:1.55em;font-weight:800}
+.node-content h2.md-h{font-size:1.22em}
+.node-content h3.md-h{font-size:1.06em}
+.node-content h4.md-h{font-size:1em}
+.node-content h5.md-h{font-size:.92em}
+.node-content h6.md-h{font-size:.85em;color:var(--muted)}
+/* markdown blockquote — element-driven so it works on any line */
+.node-content blockquote.md-bq{border-left:3px solid var(--qbdr);padding-left:10px;margin:3px 0 3px 2px;color:var(--muted);font-style:italic}
 .nt-quote>.node-row>.bullet .bullet-dot{opacity:.25}
-/* code block */
-.nt-code>.node-row>.node-content{font-family:monospace;font-size:.88em;background:var(--cbg);padding:3px 10px;border-radius:5px;white-space:pre;overflow-x:auto}
+/* markdown thematic break */
+.node-content hr.md-hr{border:none;border-top:1px solid var(--bdr);margin:7px 0}
+/* markdown fenced code block (inside a node) + whole-node code type */
+.node-content pre.md-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:var(--cbg);padding:6px 10px;border-radius:5px;overflow-x:auto;margin:3px 0;white-space:pre}
+.node-content pre.md-code code{background:none;padding:0;font-size:1em;border-radius:0}
+/* while editing a code node the raw ``` text shows in monospace */
+.nt-code>.node-row>.node-content[data-editing]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
 .nt-code>.node-row>.bullet .bullet-dot{opacity:.2}
 /* paragraph */
 .nt-para>.node-row>.bullet .bullet-dot{opacity:0}
@@ -667,14 +676,17 @@ function mkNode(text = '', type = 'ul') {
 function inheritedType(type) {
   // headings, dividers and tables don't propagate to a new sibling — a new
   // point under a table should be a plain bullet, not another table widget
-  return ['h1','h2','h3','divider','table'].includes(type) ? 'ul' : type;
+  return ['h1','h2','h3','h4','h5','h6','divider','table'].includes(type) ? 'ul' : type;
 }
 
 // Block types that store their markdown prefix in node.text
-const BLOCK_PREFIX_MAP = { h1: '# ', h2: '## ', h3: '### ', quote: '> ', code: '```' };
+const BLOCK_PREFIX_MAP = { h1: '# ', h2: '## ', h3: '### ', h4: '#### ', h5: '##### ', h6: '###### ', quote: '> ', code: '```' };
 
 function deriveTypeFromText(text) {
   if (!text) return null;
+  if (text.startsWith('###### ')) return 'h6';
+  if (text.startsWith('##### '))  return 'h5';
+  if (text.startsWith('#### '))   return 'h4';
   if (text.startsWith('### ')) return 'h3';
   if (text.startsWith('## '))  return 'h2';
   if (text.startsWith('# '))   return 'h1';
@@ -690,6 +702,21 @@ function textForDisplay(node) {
   return node.text;
 }
 
+// Render a whole-node code block (node.type === 'code'). The text is `\`\`\`` +
+// content; this strips an optional language token on the opening line and an
+// optional closing `\`\`\`` fence, so a pasted ```lang … ``` block renders cleanly
+// instead of showing the literal language tag and trailing fence.
+function codeNodeHTML(node) {
+  let t = textForDisplay(node);                  // drops the leading ``` prefix
+  let lang = '';
+  const lm = t.match(/^([\w+-]+)[ \t]*\r?\n/);   // a lone language token on line 1
+  if (lm) { lang = lm[1]; t = t.slice(lm[0].length); }
+  else t = t.replace(/^\r?\n/, '');              // or just a leading blank line
+  t = t.replace(/\r?\n?`{3,}[ \t]*$/, '');       // drop a trailing closing fence
+  const esc = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `<pre class="md-code"><code${lang ? ` class="language-${escQ(lang)}"` : ''}>${esc}</code></pre>`;
+}
+
 // Render a node's display HTML with its dice/markov/rolltable data in scope so
 // inline tokens ([[dice:KEY]] etc.) can resolve. mdToHtml is synchronous, so
 // the globals are safe (no re-entrance).
@@ -701,7 +728,10 @@ function renderContentHTML(node) {
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   globalVarMap      = collectVars();
-  const html = mdToHtml(textForDisplay(node), node.type === 'code');
+  // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
+  // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
+  // Whole-node code blocks get their own fence-aware renderer.
+  const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   diceRenderList    = null;
   markovRenderList  = null;
   rolltableRenderList = null;
@@ -873,9 +903,15 @@ const EMOJI = {
 // main inline pass and by link text so emphasis works inside links.
 function mdEmph(s) {
   s = s.replace(/==([^=\n]+?)==/g,'<mark class="md-hl">$1</mark>');
+  // bold+italic: *** works anywhere; ___ only at word boundaries so a___b stays literal
   s = s.replace(/\*\*\*((?!\s)[\s\S]*?(?<!\s))\*\*\*/g,'<strong><em>$1</em></strong>');
+  s = s.replace(/(?<!\w)___(?![\s_])([\s\S]*?)(?<![\s_])___(?!\w)/g,'<strong><em>$1</em></strong>');
+  // bold: ** anywhere; __ only at word boundaries so snake__case stays literal
   s = s.replace(/\*\*((?!\s)[\s\S]*?(?<!\s))\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/(?<!\w)__(?![\s_])([\s\S]*?)(?<![\s_])__(?!\w)/g,'<strong>$1</strong>');
+  // italic: * anywhere; _ only at word boundaries so snake_case stays literal
   s = s.replace(/\*((?!\s)[^*\n]*?(?<!\s))\*/g,'<em>$1</em>');
+  s = s.replace(/(?<!\w)_(?![\s_])([^_\n]*?)(?<![\s_])_(?!\w)/g,'<em>$1</em>');
   s = s.replace(/~~([\s\S]*?)~~/g,'<del>$1</del>');          // strikethrough (before sub)
   s = s.replace(/\+\+([\s\S]*?)\+\+/g,'<u>$1</u>');           // underline (non-standard)
   s = s.replace(/~(?!~)([^~\s]+?)~/g,'<sub>$1</sub>');        // subscript H~2~O
@@ -1197,6 +1233,10 @@ const UL_RE = /^\s*[-*+]\s+(.*)$/;
 const OL_RE = /^\s*\d+\.\s+(.*)$/;
 const TASK_RE = /^\[([ xX])\]\s+(.*)$/;   // applied to a list item's inner text
 const DD_RE = /^:\s+(.*)$/;               // definition-list "  : definition"
+const ATX_RE = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;       // ATX heading "## Text", trailing #'s optional
+const HR_RE  = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;       // thematic break --- *** ___
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})\s*([\w+-]*)\s*$/;  // fenced code ```lang
+const BQ_RE  = /^ {0,3}>\s?(.*)$/;                        // blockquote "> text"
 
 // One <li>; task-list items (`- [ ] foo`) render a clickable checkbox. taskNo is
 // a running counter so a click can map back to the Nth task line in node.text.
@@ -1209,6 +1249,10 @@ function renderListItem(inner, taskNo) {
   return `<li>${mdInline(inner)}</li>`;
 }
 
+// Per-line block markdown → HTML. Each line is classified independently so a single
+// node (especially a multi-line `para`) can mix headings, blockquotes, code fences,
+// thematic breaks, lists and paragraphs — i.e. markdown works on every line, not just
+// the node's first. `isCode` short-circuits to a raw preformatted code node.
 function mdToHtml(raw, isCode) {
   if (isCode) return (raw || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const lines = (raw || '').split('\n');
@@ -1218,26 +1262,53 @@ function mdToHtml(raw, isCode) {
   const flush = () => { if (para.length) { out.push(para.join('<br>')); para = []; } };
   let i = 0;
   while (i < lines.length) {
-    const isUl = UL_RE.test(lines[i]);
-    const isOl = !isUl && OL_RE.test(lines[i]);
+    const line = lines[i];
+    // fenced code block: ```lang … ``` (or ~~~). Body is escaped, not markdown-parsed.
+    const fm = line.match(FENCE_RE);
+    if (fm) {
+      flush();
+      const ch = fm[1][0], len = fm[1].length, lang = fm[2];
+      const close = new RegExp('^ {0,3}\\' + ch + '{' + len + ',}\\s*$');
+      const body = []; i++;
+      while (i < lines.length && !close.test(lines[i])) { body.push(lines[i]); i++; }
+      if (i < lines.length) i++; // consume the closing fence
+      const esc = body.join('\n').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      out.push(`<pre class="md-code"><code${lang ? ` class="language-${escQ(lang)}"` : ''}>${esc}</code></pre>`);
+      continue;
+    }
+    // ATX heading: # … ###### (space required after the #'s)
+    const hm = line.match(ATX_RE);
+    if (hm) { flush(); const lvl = hm[1].length; out.push(`<h${lvl} class="md-h">${mdInline(hm[2])}</h${lvl}>`); i++; continue; }
+    // thematic break: --- *** ___
+    if (HR_RE.test(line)) { flush(); out.push('<hr class="md-hr">'); i++; continue; }
+    // blockquote: group consecutive "> " lines into one <blockquote>
+    if (BQ_RE.test(line)) {
+      flush();
+      const q = [];
+      while (i < lines.length && BQ_RE.test(lines[i])) { q.push(lines[i].match(BQ_RE)[1]); i++; }
+      out.push(`<blockquote class="md-bq">${q.map(mdInline).join('<br>')}</blockquote>`);
+      continue;
+    }
+    const isUl = UL_RE.test(line);
+    const isOl = !isUl && OL_RE.test(line);
     // definition list: a term line immediately followed by one or more ": def" lines
-    const isDefTerm = !isUl && !isOl && lines[i].trim() !== '' && !DD_RE.test(lines[i]) && i+1 < lines.length && DD_RE.test(lines[i+1]);
+    const isDefTerm = !isUl && !isOl && line.trim() !== '' && !DD_RE.test(line) && i+1 < lines.length && DD_RE.test(lines[i+1]);
     if (isUl || isOl) {
       flush();
       const re = isUl ? UL_RE : OL_RE, tag = isUl ? 'ul' : 'ol';
-      const hasTask = isUl && TASK_RE.test(lines[i].match(UL_RE)[1]);
+      const hasTask = isUl && TASK_RE.test(line.match(UL_RE)[1]);
       const items = [];
       let m;
       while (i < lines.length && (m = lines[i].match(re))) { items.push(renderListItem(m[1], taskNo)); i++; }
       out.push(`<${tag} class="md-list${hasTask?' md-tasklist':''}">${items.join('')}</${tag}>`);
     } else if (isDefTerm) {
       flush();
-      let dl = `<dt>${mdInline(lines[i])}</dt>`; i++;
+      let dl = `<dt>${mdInline(line)}</dt>`; i++;
       let dm;
       while (i < lines.length && (dm = lines[i].match(DD_RE))) { dl += `<dd>${mdInline(dm[1])}</dd>`; i++; }
       out.push(`<dl class="md-dl">${dl}</dl>`);
     } else {
-      para.push(mdInline(lines[i])); i++;
+      para.push(mdInline(line)); i++;
     }
   }
   flush();
@@ -5361,12 +5432,14 @@ function toMarkdown(rootNode) {
       out.push(`${indent}- ---`);
     } else {
       let body = flattenArtifacts(textForDisplay(node), node, varMap);
-      if (node.type === 'h1' || node.type === 'h2' || node.type === 'h3') body = `**${body}**`;
-      else if (node.type === 'quote') body = `> ${body}`;
+      const hLvl = { h1:1, h2:2, h3:3, h4:4, h5:5, h6:6 }[node.type];
+      if (node.type === 'quote') body = `> ${body}`;
       else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
       const lines = body.split('\n');
-      if (node.type === 'para') {
-        out.push(`${indent}${lines[0]}`);
+      if (hLvl || node.type === 'para') {
+        // headings and paragraphs export without a list marker; headings get their #'s
+        const prefix = hLvl ? '#'.repeat(hLvl) + ' ' : '';
+        out.push(`${indent}${prefix}${lines[0]}`);
         for (let i = 1; i < lines.length; i++) out.push(`${indent}${lines[i]}`);
       } else {
         const marker = node.type === 'ol' ? `${ordinal}.` : node.type === 'todo' ? (node.checked ? '- [x]' : '- [ ]') : '-';
@@ -5929,14 +6002,16 @@ const SHORTCUTS = [
     { keys: ['@'],  desc: 'Insert link, image, footnote, dice, math, variable…' },
   ]},
   { sec: 'Format (markdown)', rows: [
-    { keys: ['#', '##', '###'],   desc: 'Headings' },
-    { keys: ['>'],                desc: 'Quote' },
-    { keys: ['```'],              desc: 'Code block' },
-    { keys: ['---'],              desc: 'Divider' },
-    { keys: ['- [ ]'],            desc: 'To-do checkbox' },
-    { keys: ['**b**', '*i*'],     desc: 'Bold / italic' },
+    { keys: ['#', '…', '######'], desc: 'Headings (any line, h1–h6)' },
+    { keys: ['>'],                desc: 'Blockquote (any line)' },
+    { keys: ['```', '~~~'],       desc: 'Fenced code block' },
+    { keys: ['---', '***'],       desc: 'Divider / rule' },
+    { keys: ['-', '1.', '- [ ]'], desc: 'Bullet / numbered / to-do' },
+    { keys: ['**b**', '__b__'],   desc: 'Bold' },
+    { keys: ['*i*', '_i_'],       desc: 'Italic' },
+    { keys: ['~~s~~', '`c`'],     desc: 'Strikethrough / inline code' },
     { keys: ['==hi=='],           desc: 'Highlight' },
-    { keys: [':emoji:'],          desc: 'Emoji shortcode' },
+    { keys: ['[t](url)', ':emoji:'], desc: 'Link / emoji shortcode' },
   ]},
   { sec: 'File & history', rows: [
     { keys: [`${MOD}+S`, `${MOD}+O`], desc: 'Save / open' },

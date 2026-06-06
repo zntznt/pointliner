@@ -36,11 +36,25 @@ canonical shape:
 - **`node.text` is plain text and is the source of truth.** It holds markdown
   (`**bold**`, `- item`, `# heading`) and opaque artifact tokens
   (`[[dice:r3k9x2a]]`). It never holds HTML.
-- **Block type lives in two places by design.** Headings/quote/code store their
-  markdown prefix *in* `node.text` (`"# Title"`) AND set `node.type` (`'h1'`).
-  `BLOCK_PREFIX_MAP` / `deriveTypeFromText()` / `textForDisplay()` keep these in
-  sync. Lists (`ul`/`ol`) are detected per-line inside `mdToHtml`, not from
-  `node.type`.
+- **Markdown rendering is per-line and element-driven.** `mdToHtml` is a full
+  per-line block parser: every line is classified independently (fenced code,
+  ATX heading `#`–`######`, thematic break `---`/`***`/`___`, blockquote `>`,
+  ul/ol/task list, definition list, else paragraph), so **markdown works on any
+  line of a node**, not just the first — a multi-line `para` node is effectively a
+  mini markdown document. Headings/quotes/hr/fenced-code render as real
+  `<h1>`…`<hr>`/`<blockquote>`/`<pre>` elements (styled via `.md-h`/`.md-bq`/
+  `.md-hr`/`.md-code`), **not** via whole-node CSS. `renderContentHTML` passes the
+  **raw** `node.text` (prefixes intact) to `mdToHtml` for this reason; `node.type
+  === 'code'` is the one whole-node exception, rendered by `codeNodeHTML`.
+- **`node.type` for headings/quote is now a derived hint, not the renderer.**
+  Headings/quote/code still store their prefix in `node.text` (`"# Title"`) and
+  `deriveTypeFromText()`/`checkMdBlockPrefix()` still set `node.type` (`'h1'`) for
+  bullet-dimming, OPML round-trip and the type-switcher — but the **visual comes
+  from the markdown element `mdToHtml` emits**, so a `#`/`>` on line 2+ formats
+  too. `textForDisplay()` (prefix-stripped) is used for breadcrumb/search/export,
+  not for the main render. Inline emphasis supports both `**`/`__` (bold),
+  `*`/`_` (italic), `***`/`___` (both); underscore forms are word-boundary-guarded
+  so `snake_case` stays literal.
 - **Artifact sidecars** (`dice`, `markov`, etc.) are arrays of records keyed by a
   random `key`. The token `[[dice:KEY]]` in the text is the only inline trace;
   the record `{key, ...config, ...rolledState}` holds everything else. A record
