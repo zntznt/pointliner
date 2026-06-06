@@ -43,19 +43,22 @@ Real buttons that need an `aria-label`:
 - The level control buttons (`.lvl-btn`: 1 · 2 · 3 · All).
 - Pill pencil buttons (`.dice-edit`, `.mk-edit`, `.rt-edit`, `.gr-edit`,
   `.math-edit`, `.var-edit`).
-- The footnote-panel close button and table add-row/col / delete buttons —
-  **verify each is a `<button>` first**; if any is a `<div>`, push it to Phase 1.
+- Table add buttons (`.mt-addcol`, `.mt-addrow`) — confirmed `<button>` elements
+  in `buildTableWidget`. Add an `aria-label` ("Add column", "Add row").
 - Decorative `<i class="fas …">`/`.cmd-icon` glyphs inside a labeled control get
   `aria-hidden="true"` so the accessible name isn't doubled.
 - `#search-box` gets `aria-label="Search outline"` (it has no `<label>`).
 
-> **Correction vs. the original brief.** The brief listed "new file, save,
-> export, undo/redo, import, accent swatches, theme, width" as Phase-0 toolbar
-> buttons. They are not. The visible toolbar (`#toolbar-row`) holds only the
-> level control and `#btn-done`. New / Open / Save / Save As / Theme / Width live
-> in the **file menu** and are `<div class="cmd-item">`, not `<button>` — see
-> Phase 1. There are **no** undo/redo or import buttons in the toolbar (undo/redo
-> are keyboard-only). Don't hunt for or invent controls that aren't there.
+> **Corrections vs. the original brief.**
+> - The brief listed "new file, save, export, undo/redo, import, accent swatches,
+>   theme, width" as Phase-0 toolbar buttons. They are not. The visible toolbar
+>   (`#toolbar-row`) holds only the level control and `#btn-done`. New / Open /
+>   Save / Save As / Theme / Width live in the **file menu** and are
+>   `<div class="cmd-item">`, not `<button>` — see Phase 1. There are **no**
+>   undo/redo or import buttons in the toolbar (undo/redo are keyboard-only).
+>   Don't hunt for or invent controls that aren't there.
+> - "Footnote-panel close button" was a phantom — `#fn-panel` has no close
+>   button in the markup; the panel shows/hides based on editor focus. Removed.
 
 ## Phase 1 — Keyboard operability
 
@@ -85,6 +88,8 @@ Controls that need this treatment:
 - `.fn-key` footnote markers.
 - `.ghost-row` (table "add row" affordance).
 - Table column/row handles (`.mt-colh`, `.mt-rowh`).
+- Table delete controls (`.mt-delcol`, `.mt-delrow`) — confirmed `<span>` elements
+  inside the column/row handle `<th>`s, not buttons.
 
 **Menu ARIA pattern — file menu and slash menu:**
 

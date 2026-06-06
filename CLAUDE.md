@@ -400,10 +400,13 @@ that informed these):
   - Decks / bags (draw without replacement) — **needs persisted per-instance
     state**; decide whether that state lives in the OPML record (portable, ugly)
     or a sidecar. This is the first feature that breaks the stateless purity.
-  - Unified grammar engine collapsing dice+markov+rolltable into one
-    recursive-substitution engine — the only item that would *refactor* existing
-    features. Earns its complexity only once composition (tables calling tables,
-    dice inside entries) is actually wanted.
+  - Retire the legacy per-feature pill paths (`parseDice`/`parseMarkov`/
+    `parseRolltable`) now that everything also resolves through the unified
+    grammar engine (`expandText`/`collectRules`). Composition (tables calling
+    rules/other tables, dice inside entries, named chains callable as
+    `{chainName}`) is already wired — this is a cleanup refactor that removes
+    duplicated code, not a capability addition. Defer until the duplication
+    actually causes friction.
 - **Tier 3 — queries / database (different product, cross deliberately):**
   - `{query: tag=todo}`, backlinks, saved views. Turns the outliner into a
     personal DB. Out of current scope.
