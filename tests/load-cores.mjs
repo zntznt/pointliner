@@ -139,6 +139,7 @@ export function loadCores() {
     'evalMath', 'formatMathResult',
     'parseMarkov', 'walkMarkov', 'weightedPick',
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace',
+    'collectVars', 'collectRules',
     'mkRoot', 'mkNode', 'toOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml',
   ];

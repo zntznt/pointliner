@@ -824,8 +824,10 @@ function renderContentHTML(node) {
 // Variables may reference OTHER variables (e.g. area = pi*r^2 where r is a var);
 // references are resolved lazily and reference cycles (a→b→a) are detected and
 // broken instead of overflowing the stack. Result is cached per markDirty() gen.
-function collectVars() {
-  if (_varsCacheVer === _varsVer) return _varsCached;
+function collectVars(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _varsCacheVer === _varsVer) return _varsCached;
   // Pass 1: gather declarations in document order (last declaration of a name wins).
   const defs = {};         // lowercase name -> expr string (last wins)
   const order = [];        // names in first-seen order, for deterministic resolution
@@ -846,7 +848,7 @@ function collectVars() {
     }
     for (const c of node.children) gather(c);
   }
-  if (root?.children) for (const c of root.children) gather(c);
+  if (rootNode?.children) for (const c of rootNode.children) gather(c);
   // Identify shadowed keys (all declarations of a name except the last one)
   const shadowedKeys = new Set();
   for (const nm of Object.keys(allKeysForName)) {
@@ -888,8 +890,7 @@ function collectVars() {
   for (const nm of order) resolve(nm);
 
   _varCycles = cycles;
-  _varsCacheVer = _varsVer;
-  _varsCached = resolved;
+  if (useCache) { _varsCacheVer = _varsVer; _varsCached = resolved; }
   return resolved;
 }
 
@@ -3921,8 +3922,10 @@ function expandText(str) {
 // Cached per markDirty() generation, like collectVars(). Cycles are caught lazily
 // at expansion time, so no eager resolution is needed here.
 let _rulesCacheVer = -1, _rulesCached = {};
-function collectRules() {
-  if (_rulesCacheVer === _varsVer) return _rulesCached;
+function collectRules(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _rulesCacheVer === _varsVer) return _rulesCached;
   const merged = {};
   function gather(node) {
     if (node.grammar?.length) {
@@ -3948,9 +3951,8 @@ function collectRules() {
     }
     for (const c of node.children) gather(c);
   }
-  if (root?.children) for (const c of root.children) gather(c);
-  _rulesCacheVer = _varsVer;
-  _rulesCached = merged;
+  if (rootNode?.children) for (const c of rootNode.children) gather(c);
+  if (useCache) { _rulesCacheVer = _varsVer; _rulesCached = merged; }
   return merged;
 }
 

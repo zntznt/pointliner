@@ -215,3 +215,46 @@ test('toOpml — sidecar arrays serialize into underscore attributes', () => {
   assert.ok(xml.includes('_dice='), 'dice sidecar should serialize');
   assert.ok(xml.includes('r1'), 'dice key should appear in the attribute');
 });
+
+// ── collectVars / collectRules (explicit root, parameterized) ───────────────
+const mkVarRoot = (decls) => {
+  const root = c.mkRoot();
+  for (const [key, name, expr] of decls) {
+    const n = c.mkNode(`[[var:${key}]]`);
+    n.vars = [{ key, name, expr }];
+    root.children.push(n);
+  }
+  return root;
+};
+
+test('collectVars — resolves a chain (one var references another)', () => {
+  const root = mkVarRoot([['r', 'r', '5'], ['area', 'area', 'pi*r^2']]);
+  const vars = c.collectVars(root);
+  assert.equal(vars.r, 5);
+  assert.ok(Math.abs(vars.area - Math.PI * 25) < 1e-9, `area was ${vars.area}`);
+});
+
+test('collectVars — a reference cycle is broken, not resolved (no hang/overflow)', () => {
+  const root = mkVarRoot([['a', 'a', 'b'], ['b', 'b', 'a']]);
+  const vars = c.collectVars(root);
+  assert.equal('a' in vars, false);
+  assert.equal('b' in vars, false);
+});
+
+test('collectVars — later declaration of a name shadows the earlier (last wins)', () => {
+  const root = mkVarRoot([['x1', 'x', '1'], ['x2', 'x', '2']]);
+  assert.equal(c.collectVars(root).x, 2);
+});
+
+test('collectVars — explicit root bypasses the cache (distinct roots, distinct results)', () => {
+  assert.equal(c.collectVars(mkVarRoot([['n', 'n', '10']])).n, 10);
+  assert.equal(c.collectVars(mkVarRoot([['n', 'n', '20']])).n, 20);
+});
+
+test('collectRules — a grammar pill registers its named rules document-wide', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('[[grammar:g1]]');
+  n.grammar = [{ key: 'g1', def: 'color: red | blue', origin: 'color', result: 'red' }];
+  root.children.push(n);
+  assert.ok('color' in c.collectRules(root), 'named grammar rule should be registered');
+});
