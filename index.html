@@ -188,7 +188,12 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 @media(prefers-color-scheme:dark){.md-hl{background:rgba(220,180,0,.4)}}
 .node-content sub,.node-content sup{font-size:.72em;line-height:0}
 /* ── interactive table builder ── */
-.md-table-host{flex:1;min-width:0;padding:2px 0}
+.nt-table>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
+.nt-table>.node-row>.node-content[data-editing]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;white-space:pre-wrap;cursor:text}
+.mt-editmd-btn{display:block;width:100%;padding:1px 2px;text-align:right;font-size:.68em;color:var(--muted);background:none;border:none;cursor:pointer;opacity:0;transition:opacity .12s;line-height:1.6;user-select:none}
+.nt-table>.node-row:hover .mt-editmd-btn{opacity:.55}
+.mt-editmd-btn:hover{opacity:1!important;text-decoration:underline}
+.md-table-host{min-width:0;padding:2px 0}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
@@ -2142,23 +2147,28 @@ function renderRow(r) {
     attachDragHandlers(bullet, row, node);
   }
 
-  // table node: render the interactive builder instead of a contenteditable
-  if (node.type === 'table') {
-    const tbl = buildTableWidget(node, opts.searchCtx);
-    row.append(colBtn, bullet, tbl);
-    div.appendChild(row);
-    return div;
-  }
-
   // content
   const content = document.createElement('div');
   content.className = 'node-content';
   const isDivider = node.type === 'divider';
-  content.contentEditable = opts.searchCtx ? 'false' : 'true';
-  content.spellcheck = true;
+  const isTable = node.type === 'table';
+  // Tables manage their own cell-level edit; contenteditable is only enabled when
+  // the user enters raw-markdown text-edit mode (toggled in enterEdit/exitEdit).
+  content.contentEditable = (opts.searchCtx || isTable) ? 'false' : 'true';
+  content.spellcheck = !isTable;
   content.dataset.id = node.id;
   content.dataset.ph = isDivider ? 'Section label…' : (depth === 0 && !focusedId ? 'Start writing…' : '');
-  content.innerHTML = renderContentHTML(node);
+  if (isTable) {
+    content.appendChild(buildTableWidget(node, !!opts.searchCtx));
+    if (!opts.searchCtx) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'mt-editmd-btn'; editBtn.title = 'Edit table as Markdown';
+      editBtn.textContent = '✏ markdown';
+      content.appendChild(editBtn);
+    }
+  } else {
+    content.innerHTML = renderContentHTML(node);
+  }
 
   if (!opts.searchCtx) attachContentEvents(content, node);
 
@@ -2223,6 +2233,33 @@ function highlightContent(el, query) {
 let activeContentId = null;
 
 function attachContentEvents(content, node) {
+  // Table nodes: clicking OUTSIDE the widget → raw-markdown text edit; clicking ON
+  // the widget → cell editing handled internally by buildTableWidget.
+  if (node.type === 'table') {
+    content.addEventListener('mousedown', e => {
+      if (content.dataset.editing) return;
+      if (e.target.closest('.md-table-host')) return; // let the widget handle it
+      e.preventDefault();
+      enterEdit(content, node);
+      content.focus();
+    });
+    content.addEventListener('blur', () => {
+      if (content.dataset.editing) exitEdit(content, node);
+    });
+    content.addEventListener('keydown', e => {
+      if (!content.dataset.editing) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        content.textContent = content.dataset.prevText ?? node.text;
+        content.blur();
+      }
+      if ((e.key === 'Enter') && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault(); content.blur();
+      }
+    });
+    return;
+  }
+
   content.addEventListener('mousedown', e => {
     // task-list checkbox: toggle the source line without entering raw-edit mode
     if (!content.dataset.editing && e.target.classList && e.target.classList.contains('md-task-check')) {
@@ -2433,6 +2470,21 @@ function editModeHTML(node) {
 }
 
 function enterEdit(content, node) {
+  if (node.type === 'table') {
+    if (content.dataset.editing) return;
+    if (selectedIds.size > 0) clearSelection();
+    selAnchorId = node.id;
+    content.dataset.editing = '1';
+    content.dataset.prevText = node.text;
+    // Hide the interactive widget; show raw markdown text so the user can edit it.
+    const tbl = content.querySelector('.md-table-host');
+    if (tbl) tbl.style.display = 'none';
+    content.contentEditable = 'true';
+    content.textContent = node.text;
+    activeContentId = node.id;
+    scheduleReconcile();
+    return;
+  }
   if (selectedIds.size > 0) clearSelection();
   selAnchorId = node.id;
   content.dataset.editing = '1';
@@ -2446,6 +2498,32 @@ function enterEdit(content, node) {
 function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
+
+  if (node.type === 'table') {
+    delete content.dataset.editing;
+    delete content.dataset.prevText;
+    content.contentEditable = 'false';
+    markDirty();
+    if (activeContentId === node.id) activeContentId = null;
+    recordTextEdit(node.id, prevText, node.text);
+    if (parseTable(node.text)) {
+      // Still valid table: rebuild widget in-place without a full render.
+      content.textContent = '';
+      content.appendChild(buildTableWidget(node, false));
+      const btn = document.createElement('button');
+      btn.className = 'mt-editmd-btn'; btn.title = 'Edit table as Markdown';
+      btn.textContent = '✏ markdown';
+      content.appendChild(btn);
+    } else {
+      // User removed the table structure — re-derive type and full re-render.
+      const et = deriveTypeFromText(node.text);
+      node.type = et ?? 'ul';
+      render();
+    }
+    scheduleReconcile();
+    return;
+  }
+
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   const et = deriveTypeFromText(node.text);
@@ -4916,6 +4994,8 @@ function focusNode(id) {
     const el = document.querySelector(`.node-content[data-id="${id}"]`);
     if (!el) return;
     const node = nodeById(id);
+    // Table nodes manage their own cell focus; don't force text-edit mode on navigation.
+    if (node?.type === 'table') return;
     if (!el.dataset.editing && node) enterEdit(el, node);
     el.focus();
     const r = document.createRange();
