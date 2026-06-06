@@ -1296,10 +1296,13 @@ function mdToHtml(raw, isCode) {
     if (isUl || isOl) {
       flush();
       const re = isUl ? UL_RE : OL_RE, tag = isUl ? 'ul' : 'ol';
-      const hasTask = isUl && TASK_RE.test(line.match(UL_RE)[1]);
       const items = [];
-      let m;
-      while (i < lines.length && (m = lines[i].match(re))) { items.push(renderListItem(m[1], taskNo)); i++; }
+      let m, hasTask = false;
+      while (i < lines.length && (m = lines[i].match(re))) {
+        const inner = m[1];
+        if (isUl && TASK_RE.test(inner)) hasTask = true;
+        items.push(renderListItem(inner, taskNo)); i++;
+      }
       out.push(`<${tag} class="md-list${hasTask?' md-tasklist':''}">${items.join('')}</${tag}>`);
     } else if (isDefTerm) {
       flush();
