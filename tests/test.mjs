@@ -1,0 +1,217 @@
+// test.mjs — first batch of behavior pins for Pointliner's pure cores.
+//
+// Run from this directory:
+//     POINTLINER_HTML=/path/to/index.html node --test
+// In the real repo (tests/ next to index.html) the env var isn't needed:
+//     node --test
+//
+// These are PINS, not a spec: they capture how the cores behave *today* so a
+// future refactor (e.g. collapsing the per-feature pill paths into the grammar
+// engine, or adding evalMath primitives) can't silently change results. If you
+// intentionally change a behavior, update the pin in the same commit.
+//
+// Deterministic randomness: makeDiceRoll/rollParsed/runGrammar call Math.random.
+// `seedSequence([...])` makes it return a fixed, looping sequence so rolls are
+// reproducible. rnd(sides) = 1 + floor(r*sides), so r=0 → the die's minimum.
+//
+// Not yet covered (need a small, behavior-preserving change in index.html):
+//   • collectVars() / collectRules() read the module-level `root` with no
+//     parameter, so they can't be driven from a test. Add a default param —
+//     `function collectVars(rootNode = root)` — and they become unit-testable.
+//   • fromOpml() needs DOMParser (absent in Node). Pair it with toOpml for a
+//     round-trip once a parser is available (jsdom, or Node's experimental one).
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { loadCores } from './load-cores.mjs';
+
+const c = loadCores();
+
+// Arrays/objects returned by the cores live in the vm context's realm, so their
+// prototypes differ from the host's and strict deepEqual rejects them despite
+// identical structure. Normalize to plain host-realm values before comparing.
+const host = (x) => JSON.parse(JSON.stringify(x));
+
+// ── dice: parsing ──────────────────────────────────────────────────────────
+test('parseDice — basic NdM + modifier', () => {
+  const t = c.parseDice('2d6+3');
+  assert.equal(t.length, 2);
+  assert.equal(t[0].kind, 'dice');
+  assert.equal(t[0].count, 2);
+  assert.equal(t[0].sides, 6);
+  assert.equal(t[0].sign, 1);
+  assert.deepEqual({ kind: t[1].kind, value: t[1].value, sign: t[1].sign }, { kind: 'mod', value: 3, sign: 1 });
+});
+
+test('parseDice — implicit count (d20) defaults to 1', () => {
+  assert.equal(c.parseDice('d20')[0].count, 1);
+});
+
+test('parseDice — keep/drop low normalizes to keep-high', () => {
+  // 4d6dl1 = drop lowest 1 = keep highest 3
+  const t = c.parseDice('4d6dl1')[0];
+  assert.equal(t.keepMode, 'kh');
+  assert.equal(t.keepCount, 3);
+});
+
+test('parseDice — exploding and Fate flags', () => {
+  assert.equal(c.parseDice('2d6!')[0].exploding, true);
+  assert.equal(c.parseDice('4dF')[0].sides, 'F');
+});
+
+test('parseDice — rejects malformed / out-of-range input', () => {
+  assert.equal(c.parseDice('nope'), null);
+  assert.equal(c.parseDice('2d6x'), null);   // trailing junk
+  assert.equal(c.parseDice('1000d6'), null); // count > 999
+  assert.equal(c.parseDice('1d200000'), null); // sides > 100000
+  assert.equal(c.parseDice('5'), null);      // no dice term → null
+});
+
+test('parseDice — variable identifier as a modifier', () => {
+  const t = c.parseDice('2d6+str', { str: 3 });
+  assert.equal(t[1].kind, 'mod');
+  assert.equal(t[1].value, 3);
+  assert.equal(c.parseDice('2d6+str'), null); // undefined var → null
+});
+
+// ── dice: rolling (deterministic) ──────────────────────────────────────────
+test('rollParsed — minimum roll (all randoms = 0)', () => {
+  c.seedSequence([0]);
+  try {
+    assert.equal(c.rollParsed(c.parseDice('3d6')).total, 3);   // 1+1+1
+    assert.equal(c.rollParsed(c.parseDice('2d6+3')).total, 5); // 1+1+3
+  } finally { c.resetRandom(); }
+});
+
+test('rollParsed — keep-high keeps the top N dice', () => {
+  c.seedSequence([0.9, 0, 0, 0]); // → dice [6,1,1,1]
+  try {
+    assert.equal(c.rollParsed(c.parseDice('4d6kh3')).total, 8); // 6+1+1
+  } finally { c.resetRandom(); }
+});
+
+test('rollParsed — exploding chains on a max die', () => {
+  c.seedSequence([0.99, 0]); // first die = 6 (explodes) then 1
+  try {
+    assert.equal(c.rollParsed(c.parseDice('1d6!')).total, 7); // 6 → +1
+  } finally { c.resetRandom(); }
+});
+
+test('rollParsed — total stays within bounds over many rolls', () => {
+  c.resetRandom();
+  for (let i = 0; i < 200; i++) {
+    const total = c.rollParsed(c.parseDice('3d6+2')).total;
+    assert.ok(total >= 5 && total <= 20, `3d6+2 out of range: ${total}`);
+  }
+});
+
+// ── math evaluator ─────────────────────────────────────────────────────────
+test('evalMath — precedence, associativity, operators', () => {
+  assert.equal(c.evalMath('2+3*4'), 14);
+  assert.equal(c.evalMath('(2+3)*4'), 20);
+  assert.equal(c.evalMath('2^3^2'), 512); // right-associative
+  assert.equal(c.evalMath('10%3'), 1);
+});
+
+test('evalMath — functions, constants, variables', () => {
+  assert.equal(c.evalMath('sqrt(16)'), 4);
+  assert.equal(c.evalMath('min(3,5,1)'), 1);
+  assert.equal(c.evalMath('max(2,9)'), 9);
+  assert.equal(c.evalMath('log(100)'), 2);
+  assert.equal(c.evalMath('ln(e)'), 1);
+  assert.equal(c.evalMath('x*2', { x: 5 }), 10);
+});
+
+test('evalMath — comparisons and ternary return 0/1', () => {
+  assert.equal(c.evalMath('3>2 ? 10 : 20'), 10);
+  assert.equal(c.evalMath('3>=3'), 1);
+  assert.equal(c.evalMath('1==2'), 0);
+  assert.equal(c.evalMath('1!=2'), 1);
+});
+
+test('evalMath — division by zero: Infinity is valid, NaN is null', () => {
+  assert.equal(c.evalMath('1/0'), Infinity);
+  assert.equal(c.evalMath('0/0'), null);
+});
+
+test('evalMath — malformed input returns null (callers branch on null)', () => {
+  assert.equal(c.evalMath(''), null);
+  assert.equal(c.evalMath('1+'), null);
+  assert.equal(c.evalMath('2+2x'), null); // unconsumed trailing token
+});
+
+// ── markov ─────────────────────────────────────────────────────────────────
+test('parseMarkov — declaration order and weighted targets', () => {
+  const p = c.parseMarkov('A -> B 2, C 1');
+  assert.deepEqual(host(p.order), ['A', 'B', 'C']);
+  assert.deepEqual(host(p.trans.A), [{ to: 'B', w: 2 }, { to: 'C', w: 1 }]);
+});
+
+test('walkMarkov — stops early at a terminal state', () => {
+  const p = c.parseMarkov('A -> B\nB -> C'); // C has no outgoing rule
+  assert.deepEqual(host(c.walkMarkov(p, 'A', 5)), ['A', 'B', 'C']);
+});
+
+// ── grammar engine ─────────────────────────────────────────────────────────
+test('runGrammar — deterministic single-alternative expansion', () => {
+  assert.equal(c.runGrammar('origin: hello', 'origin', {}, {}), 'hello');
+});
+
+test('runGrammar — unknown rule renders {name?} marker', () => {
+  assert.equal(c.runGrammar('origin: {missing}', 'origin', {}, {}), '{missing?}');
+});
+
+test('runGrammar — reference cycle is caught (↻), not infinite', () => {
+  assert.equal(c.runGrammar('a: {b}\nb: {a}', 'a', {}, {}), '↻');
+});
+
+test('runGrammar — embedded math and dice primitives', () => {
+  assert.equal(c.runGrammar('origin: {= 2*3}', 'origin', {}, {}), '6');
+  c.seedSequence([0]); // 2d6 → 2
+  try {
+    assert.equal(c.runGrammar('origin: roll {2d6}', 'origin', {}, {}), 'roll 2');
+  } finally { c.resetRandom(); }
+});
+
+test('runGrammar — invalid definition returns null', () => {
+  assert.equal(c.runGrammar('not a rule line', 'origin', {}, {}), null);
+});
+
+// ── tables (model ↔ markdown) ──────────────────────────────────────────────
+test('parseTable / serializeTable — alignment + round-trip', () => {
+  const t = c.parseTable('| a | b |\n| --- | :-: |\n| 1 | 2 |');
+  assert.deepEqual(host(t.aligns), [null, 'center']);
+  assert.deepEqual(host(t.rows), [['a', 'b'], ['1', '2']]);
+  // serialize normalizes the center marker to :---:
+  assert.equal(c.serializeTable(t), '| a | b |\n| --- | :---: |\n| 1 | 2 |');
+});
+
+// ── markdown helpers ───────────────────────────────────────────────────────
+test('stripMd — strips inline markers and link/code syntax', () => {
+  assert.equal(c.stripMd('**bold** and `code` and [x](y)'), 'bold and code and x');
+});
+
+test('mdToHtml — ATX heading becomes a real <h1>', () => {
+  assert.equal(c.mdToHtml('# Title'), '<h1 class="md-h">Title</h1>');
+});
+
+// ── OPML serialization ─────────────────────────────────────────────────────
+test('toOpml — escapes text and encodes newlines as &#10;', () => {
+  const root = c.mkRoot();
+  root.text = 'Doc';
+  root.children.push(c.mkNode('line1\nline2'));
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('text="line1&#10;line2"'), 'newline should encode as &#10;');
+  assert.ok(xml.includes('<opml version="2.0">'));
+});
+
+test('toOpml — sidecar arrays serialize into underscore attributes', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('roll');
+  n.dice = [{ key: 'r1', expr: '2d6', total: 7, parts: [] }];
+  n.text = 'roll [[dice:r1]]';
+  root.children.push(n);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_dice='), 'dice sidecar should serialize');
+  assert.ok(xml.includes('r1'), 'dice key should appear in the attribute');
+});
