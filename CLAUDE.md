@@ -21,6 +21,40 @@ in a browser and it runs.
 
 ---
 
+## Conventions & invariants (the stuff that bites if ignored)
+
+- **`node.text` is plain text, always.** Never store HTML in it.
+- **Complex pills stay atomic in edit mode** (`contenteditable=false`,
+  `data-token`); caret math counts them as their token length and depends on it.
+  Don't make a *pill's internals* editable. Inline-able artifacts instead *unfold*
+  to plain editable `{…}` text (a `.gr-src` span with no `data-token`, counted as
+  ordinary characters) — the whole pill becomes text, the atom is never split.
+- **Pure cores return `null` on invalid input**; callers branch on `null`. Keep
+  parsing/rolling free of DOM access so they stay testable in plain Node.
+- **`mdToHtml` must stay synchronous** (render-context globals depend on it).
+- **`markDirty()` is the single invalidation point** — it bumps `_varsVer`. Any
+  new cross-node cache must be invalidated there too.
+- **Theme via CSS custom properties** (`--acc`, `--bg`, `--fg`, `--bdr`,
+  `--ring`, `--muted`, …). Don't hardcode colors; dark mode is a media query that
+  swaps the variables.
+- **Custom OPML attributes are underscore-prefixed.** Add serialize + parse in
+  the same change or data silently drops on save.
+- **Hover-only affordances need a touch fallback.** Edit pencils, table grips, the
+  bullet popup and the `✏ markdown` button are revealed on `:hover` for the mouse,
+  but touch has no hover. The `@media(hover:none)` CSS block makes those always
+  visible and enlarges tap targets; the bullet's hover popup is replaced by a
+  **long-press** (`attachBulletLongPress`, gated on the module-level `IS_TOUCH`,
+  which also sets `bullet.draggable=false` since HTML5 drag never fires on touch —
+  reordering is done via the popup's Move up/down). `IND` (indent step) is a `let`
+  recomputed from viewport width in the `resize` handler. Any new mouse-only
+  interaction must ship a touch path the same way.
+- **Stateful randomness has nowhere clean to live yet.** Decks/bags (draw without
+  replacement) need persisted state; today everything re-rolls statelessly. This
+  is an open design question, not an oversight (see below).
+- **Run `node --test tests/test.mjs` before and after changing any parsing/eval core.** The 32 pins must stay green; if you intentionally change a behavior, update the pin in the same commit.
+
+---
+
 ## Core architecture
 
 ### Data model
@@ -240,87 +274,11 @@ modifiers (`2d6+str_mod`).
 
 ---
 
-## Recipe: add a new inline artifact
+## Adding a new artifact or icon
 
-Every artifact follows the same path. To add one (say `@oracle`):
-
-1. **Token + sidecar.** Pick a token name `[[oracle:KEY]]` and a node array
-   `node.oracle`. Add it to `mkNode()`, `toOpml` (`_oracle` attr), and `fromOpml`.
-2. **Pure core.** Write the parse/eval/roll as pure functions returning a record
-   `{key, ...}` or `null` on invalid input. Mirror `makeDiceRoll`.
-3. **Pill renderer.** `renderOraclePill(key, record)` → returns the pill HTML;
-   handle the missing-record case with a `…-bad` class.
-4. **Wire into `mdInline`** — one `.replace(/\[\[oracle:([a-z0-9]+)\]\]/gi, …)`
-   line that calls `renderOraclePill` against the render-list global.
-5. **Render-list global** — add `oracleRenderList`, set/clear it in
-   `renderContentHTML`, set the node array source.
-6. **Edit mode** — add the `type === 'oracle'` branch in `editModeHTML`.
-7. **Dialog** — `openOracleDialog(...)` built on `openInsertDialog` (shared field
-   /chip/preview/validate harness).
-8. **Slash menu** — add an entry to `INSERT_CMDS` and a branch in
-   `insertInlineArtifact` (which splices the token and pushes the record).
-9. **Click handler** — add a `closest('.oracle-pill')` branch to the
-   `mousedown` handler in `attachContentEvents`. Follow the existing convention
-   (`e.preventDefault()` keeps focus off the node so it never enters edit mode):
-   in **display mode** the pill is a live widget — a body click performs the action
-   and re-renders in place (the `rerollXxx` helper already does
-   `el.innerHTML = renderContentHTML(node)` when `!el.dataset.editing`), the pencil
-   opens the dialog; both stay in display mode. In **edit mode** a body click
-   rerolls in place (save caret → mutate → `editModeHTML` → restore caret) and the
-   pencil exits edit mode then opens the dialog. (Note: inline-able artifacts are
-   unfolded to `{…}` text in edit mode, so only complex pills — tables/markov — get
-   edit-mode clicks; dice/math/grammar pills only exist in display mode.)
-10. **Prune + edit** — `pruneOracle(node)` (drop records with no token) called in
-    `exitEdit`; `editOracle(node, key)` opens the dialog prefilled.
-11. **CSS** — a `.oracle-pill` block near the other pill styles; reuse the
-    `--acc` / `--ring` / `--bdr` tokens so light/dark themes work automatically.
-12. **Font Awesome** — if you need a new icon, see the workflow below.
-
----
-
-## Font Awesome (subsetted, inlined)
-
-Only the glyphs the app uses are embedded as base64 woff2 in the `#fa-embed`
-`<style>`. To add an icon:
-
-1. Put FA Free files in `/tmp/faemb/` (`all.min.css`, `fa-solid-900.woff2`, …).
-2. Add the icon name to the `USED` dict in `/tmp/faemb/build.py`.
-3. `cd /tmp/faemb && python3 build.py`.
-4. Replace the `@font-face` block and the icon-rule block in `index.html` with
-   the regenerated `faface.css` / `faicons.css` contents.
-
----
-
-## Conventions & invariants (the stuff that bites if ignored)
-
-- **`node.text` is plain text, always.** Never store HTML in it.
-- **Complex pills stay atomic in edit mode** (`contenteditable=false`,
-  `data-token`); caret math counts them as their token length and depends on it.
-  Don't make a *pill's internals* editable. Inline-able artifacts instead *unfold*
-  to plain editable `{…}` text (a `.gr-src` span with no `data-token`, counted as
-  ordinary characters) — the whole pill becomes text, the atom is never split.
-- **Pure cores return `null` on invalid input**; callers branch on `null`. Keep
-  parsing/rolling free of DOM access so they stay testable in plain Node.
-- **`mdToHtml` must stay synchronous** (render-context globals depend on it).
-- **`markDirty()` is the single invalidation point** — it bumps `_varsVer`. Any
-  new cross-node cache must be invalidated there too.
-- **Theme via CSS custom properties** (`--acc`, `--bg`, `--fg`, `--bdr`,
-  `--ring`, `--muted`, …). Don't hardcode colors; dark mode is a media query that
-  swaps the variables.
-- **Custom OPML attributes are underscore-prefixed.** Add serialize + parse in
-  the same change or data silently drops on save.
-- **Hover-only affordances need a touch fallback.** Edit pencils, table grips, the
-  bullet popup and the `✏ markdown` button are revealed on `:hover` for the mouse,
-  but touch has no hover. The `@media(hover:none)` CSS block makes those always
-  visible and enlarges tap targets; the bullet's hover popup is replaced by a
-  **long-press** (`attachBulletLongPress`, gated on the module-level `IS_TOUCH`,
-  which also sets `bullet.draggable=false` since HTML5 drag never fires on touch —
-  reordering is done via the popup's Move up/down). `IND` (indent step) is a `let`
-  recomputed from viewport width in the `resize` handler. Any new mouse-only
-  interaction must ship a touch path the same way.
-- **Stateful randomness has nowhere clean to live yet.** Decks/bags (draw without
-  replacement) need persisted state; today everything re-rolls statelessly. This
-  is an open design question, not an oversight (see below).
+When adding a new artifact type or a Font Awesome icon, see
+`docs/adding-an-artifact.md` — the 12-step recipe and the icon-rebuild workflow
+live there.
 
 ---
 
@@ -339,89 +297,13 @@ changes are additive (attributes + CSS), never a visual redesign.
 
 ## Feature status
 
-Implemented:
+Implemented: Dice · Markov · Roll tables · Grammar · Math · Variables · Typed shorthand · Footnotes · Tables · Collapse-to-level. Details: `docs/features.md`
 
-- **Dice** — `@dice`: `NdM`, `+/-` modifiers, `@var` modifiers, **exploding**
-  (`2d6!`), **keep/drop high/low** (`4d6kh3`/`kl`/`dl`/`dh`), **Fate** (`4dF`).
-  Rolls stored per-die as chains in `parts[].rolls` (array of arrays); old
-  flat-number saves still render via a compat branch in `diceBreakdownHTML`.
-- **Markov chains** — `@markov`: weighted transition rules, walk N steps from a
-  start state; click to re-walk. An optional **name** registers the chain so
-  `{name}` runs a fresh walk from any grammar or shorthand (joined with ` → `).
-- **Roll tables** — `@rolltable`: weighted entries; click to re-roll. Entries
-  **compose through the grammar engine** (`{2d6} gold`, `{rule}`, `{= expr}`). An
-  optional **name** registers the table as a document-wide rule so `{name}` calls
-  it from any grammar or shorthand.
-- **Grammar** — `@grammar`: recursive-substitution generator (`runGrammar`).
-  Named rules `name: a | b 2 | c`, one per line; one brace syntax `{...}` for rule
-  refs `{color}`, named tables `{loot}`, named markov chains `{weather}`, variables
-  `{strength}`, dice `{2d6}`, expressions `{= 2*r}`, and inline alternation `{a|b}`,
-  all nestable. Names are **document-wide** (`collectRules()` — grammar rules +
-  named tables + named chains), so any pill can call anything declared anywhere.
-  Cycles/depth caught at expansion (`↻`/`…`). Freezes its expansion like dice;
-  click to re-generate.
-- **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
-  change.
-- **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
-  (`2d6+str_mod`); **may reference other variables**; reference cycles detected
-  and flagged (`↻`, `.var-cycle`).
-- **Typed shorthand** — write `{2d6}`, `{= 2*r}`, `{a|b|c}`, `{knownRule}` and it
-  promotes to the matching pill when you leave the node (and on paste); while
-  editing it stays grammar-styled text. Invalid/unknown bodies stay literal text.
-- **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
-  inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
-  complex ones stay atomic pills. Raw `[[…]]` tokens are never shown.
-- **Pill interaction model** — in display mode a pill is a live widget: a body
-  click re-rolls/re-generates in place and **stays rendered** (never enters edit
-  mode), the pencil opens the dialog. To edit the surrounding text, click the text,
-  not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
-- **Collapse to level N** — `collapseToLevel(n)` / `expandAll()` set
-  every node's `collapsed` flag by depth relative to the current viewport
-  (`focusedId` or root). Toolbar segmented control `1·2·3·All`; keyboard
-  `Ctrl/Cmd+1..6` is a best-effort accelerator (browsers may claim those chords
-  for tab switching, so the toolbar is the reliable path).
+## Planned / ideas
 
-## Planned / ideas (with fit notes for proposers)
-
-Tiered roughly by how much they pull against "keep it simple" (see the brainstorm
-that informed these):
-
-- **Tier 1 — pure & stateless (good fit, additive):**
-  - Dice already extended; could add reroll (`r`), success-counting pools.
-  - Math: conditionals (`if a>b : x | y`), date math, unit conversion — all new
-    `evalMath` primitives, no architecture change.
-  - Oracle pill (`yes/no` with tunable odds) — straight off the recipe above.
-  - Inline quick syntax `{= expr}` / `{NdM}` that evaluates at render without a
-    stored record — additive second syntax alongside `[[type:key]]`.
-- **Tier 2 — references & state (heavier, real design cost):**
-  - Aggregations over children (`sum`/`count`/`avg` of a subtree) — foundation
-    exists (`collectVars` already tree-walks); needs a new token type + a
-    render-time subtree walk. Reuse `markDirty`/`_varsVer`-style invalidation.
-  - Decks / bags (draw without replacement) — **needs persisted per-instance
-    state**; decide whether that state lives in the OPML record (portable, ugly)
-    or a sidecar. This is the first feature that breaks the stateless purity.
-  - Retire the legacy per-feature pill paths (`parseDice`/`parseMarkov`/
-    `parseRolltable`) now that everything also resolves through the unified
-    grammar engine (`expandText`/`collectRules`). Composition (tables calling
-    rules/other tables, dice inside entries, named chains callable as
-    `{chainName}`) is already wired — this is a cleanup refactor that removes
-    duplicated code, not a capability addition. Defer until the duplication
-    actually causes friction.
-- **Tier 3 — queries / database (different product, cross deliberately):**
-  - `{query: tag=todo}`, backlinks, saved views. Turns the outliner into a
-    personal DB. Out of current scope.
-
-Other open items:
-
-- [ ] UX pass on the artifact dialogs.
-- [ ] Keyboard shortcut to enter edit mode on a selected node without clicking.
-- [x] Footnotes — `[^key]` markers + per-node `footnotes` sidecar, edited in the
-      bottom `#fn-panel`. Insert via `@footnote` or convert a selection from the
-      selection toolbar; hover/click jumps between marker and note. Orphaned
-      notes are dropped by `pruneFootnotes()` on `exitEdit`; both md/txt exports
-      emit the note text indented under the node. The panel docks above the
-      mobile keyboard via `syncFnPanelBottom()` (offset applied only while open,
-      so it can't peek when hidden).
+Tiered feature ideas and open items are in `docs/roadmap.md`. Check there before
+proposing new work — Tier 1 items are a good fit, Tier 3 are explicitly out of
+scope.
 
 ---
 
