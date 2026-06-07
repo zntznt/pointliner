@@ -56,8 +56,7 @@ Real buttons that need an `aria-label`:
 >   theme, width" as Phase-0 toolbar buttons. They are not. The visible toolbar
 >   (`#toolbar-row`) holds the level control, `#btn-done`, the logo (`#logo-btn`,
 >   a `<span>` → Phase 1), and `#search-clear` (a real `<button>` → Phase 0).
->   New / Open /
->   Save / Save As / Theme / Width live in the **file menu** and are
+>   New / Open / Save / Save As / Theme / Width live in the **file menu** and are
 >   `<div class="cmd-item">`, not `<button>` — see Phase 1. There are **no**
 >   undo/redo or import buttons in the toolbar (undo/redo are keyboard-only).
 >   Don't hunt for or invent controls that aren't there.
