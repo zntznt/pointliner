@@ -403,3 +403,71 @@ test('date — arity guard: date() needs exactly 3 args', () => {
   assert.equal(c.evalMath('date(2026,12)'), null);
   assert.equal(c.evalMath('date(2026,12,25,1)'), null);
 });
+
+// ─── collectLinks ─────────────────────────────────────────────────────────────
+import { test as ltest } from 'node:test';
+import assert2 from 'node:assert/strict';
+{
+  const c2 = (await import('./load-cores.mjs')).loadCores();
+  const host2 = (x) => JSON.parse(JSON.stringify(x));
+  const mk2 = (text) => { const n = c2.mkNode(''); n.text = text; return n; };
+
+  ltest('collectLinks — a link records outgoing + backlink, no broken', () => {
+    const a = mk2(''), b = mk2('target B');
+    a.text = `see [[#${b.id}|B]]`;
+    const root = c2.mkRoot(); root.children.push(a, b);
+    const idx = c2.collectLinks(root);
+    assert2.deepEqual(host2(idx.outgoing[a.id]), [{ target: b.id, label: 'B' }]);
+    assert2.deepEqual(host2(idx.backlinks[b.id]), [a.id]);
+    assert2.deepEqual(host2(idx.broken), []);
+  });
+
+  ltest('collectLinks — label is optional', () => {
+    const a = mk2(''), b = mk2('B');
+    a.text = `[[#${b.id}]]`;
+    const root = c2.mkRoot(); root.children.push(a, b);
+    assert2.equal(c2.collectLinks(root).outgoing[a.id][0].label, '');
+  });
+
+  ltest('collectLinks — a missing target is flagged broken', () => {
+    const a = mk2('A'); a.text = `[[#deadbeef|gone]]`;
+    const root = c2.mkRoot(); root.children.push(a);
+    const idx = c2.collectLinks(root);
+    assert2.deepEqual(host2(idx.backlinks['deadbeef']), [a.id]);
+    assert2.deepEqual(host2(idx.broken), ['deadbeef']);
+  });
+
+  ltest('collectLinks — duplicate links: outgoing keeps both, backlink dedupes the source', () => {
+    const a = mk2(''), b = mk2('B');
+    a.text = `[[#${b.id}|one]] and again [[#${b.id}|two]]`;
+    const root = c2.mkRoot(); root.children.push(a, b);
+    const idx = c2.collectLinks(root);
+    assert2.equal(idx.outgoing[a.id].length, 2);
+    assert2.deepEqual(host2(idx.backlinks[b.id]), [a.id]);
+  });
+
+  ltest('collectLinks — multiple sources to one target', () => {
+    const a = mk2(''), d = mk2(''), b = mk2('B');
+    a.text = `[[#${b.id}]]`; d.text = `[[#${b.id}]]`;
+    const root = c2.mkRoot(); root.children.push(a, d, b);
+    assert2.deepEqual(host2(c2.collectLinks(root).backlinks[b.id]).sort(), [a.id, d.id].sort());
+  });
+
+  ltest('collectLinks — nested children; ignores artifact tokens and #hashtags', () => {
+    const a = mk2(''), b = mk2('B');
+    const parent = c2.mkNode(''); parent.children.push(a);
+    a.text = `nested [[#${b.id}]]`;
+    parent.text = 'no link here, just #hashtag and [[dice:abc]]';
+    const root = c2.mkRoot(); root.children.push(parent, b);
+    const idx = c2.collectLinks(root);
+    assert2.deepEqual(host2(idx.backlinks[b.id]), [a.id]);
+    assert2.equal(idx.outgoing[parent.id], undefined);
+  });
+
+  ltest('collectLinks — empty doc yields an empty index', () => {
+    const idx = c2.collectLinks(c2.mkRoot());
+    assert2.deepEqual(host2(idx.outgoing), {});
+    assert2.deepEqual(host2(idx.backlinks), {});
+    assert2.deepEqual(host2(idx.broken), []);
+  });
+}

@@ -581,6 +581,21 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   #io-card{margin-top:8vh}
 }
 
+/* ── node links ── */
+.node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
+.node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:2px;padding:0 1px}
+/* ── backlinks panel ── */
+#bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
+#bl-panel.on{transform:translateY(0)}
+#bl-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+.bl-item{padding:3px 0;cursor:pointer;font-size:13px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bl-item:hover{text-decoration:underline}
+/* ── link picker ([[ trigger) ── */
+#lp-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:260px;max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
+#lp-menu.on{display:block}
+.lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
+
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
   /* edit pencils on pills are hover-revealed on desktop — always show on touch */
@@ -676,6 +691,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="bpop"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
+<div id="lp-menu"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card"></div></div>
 <!-- drag indicator -->
@@ -695,6 +711,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="fn-panel">
   <div class="fn-panel-hd" id="fn-panel-hd">Footnotes</div>
   <div id="fn-list"></div>
+</div>
+<!-- backlinks panel -->
+<div id="bl-panel">
+  <div class="fn-panel-hd" id="bl-panel-hd">Linked from</div>
+  <div id="bl-list"></div>
 </div>
 
 <div id="storage-warn">
@@ -1000,6 +1021,16 @@ function mdEmph(s) {
 }
 
 // inline markdown within a single line (text is NOT yet escaped)
+function renderLinkPill(target, label) {
+  const tn = nodeById(target);
+  if (!tn) {
+    const cap = escHtml(label || target);
+    return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false">${cap}</span>`;
+  }
+  const title = escHtml(textForDisplay(tn) || '(untitled)');
+  return `<span class="node-link" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
+}
+
 function mdInline(s) {
   s = (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   // Stash code/image/link/footnote as opaque tokens so later passes (emoji,
@@ -1035,6 +1066,9 @@ function mdInline(s) {
     stash(renderVarPill(k, varRenderList?.find(v => v.key === k))));
   s = s.replace(/\[\[grammar:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderGrammarPill(k, grammarRenderList?.find(g => g.key === k))));
+  // node links — [[#TARGETID]] or [[#TARGETID|label]]
+  s = s.replace(/\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, target, label) =>
+    stash(renderLinkPill(target, label ?? '')));
   // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:)
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
@@ -2472,6 +2506,14 @@ function attachContentEvents(content, node) {
       editVar(node, vp2.dataset.key); // opens a dialog; stays in display mode
       return;
     }
+    // node link: click zooms to the target (display mode only — in edit mode the pill is atomic)
+    const lnk = e.target.closest?.('.node-link');
+    if (lnk && !content.dataset.editing) {
+      e.preventDefault(); e.stopPropagation();
+      const tid = lnk.dataset.target;
+      if (tid && nodeById(tid)) zoomInto(tid);
+      return;
+    }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {
       e.preventDefault();
       e.stopPropagation(); // prevent doc mousedown from immediately clearing the selection
@@ -2494,11 +2536,14 @@ function attachContentEvents(content, node) {
     clearTimeout(fnHideTimer);
     const refs = getFnRefs(node.text);
     if (refs.length) { fnLocked = true; showFnPanel(node.id); } else hideFnPanel();
+    updateBlPanel(node.id);
   });
   content.addEventListener('blur', () => {
     if (content.dataset.editing) exitEdit(content, node);
     fnLocked = false;
     scheduleFnHide();
+    scheduleBlHide();
+    hideLinkMenu();
     if (node.type === 'divider') {
       setTimeout(() => {
         const nodeEl = content.closest('.node');
@@ -2512,7 +2557,9 @@ function attachContentEvents(content, node) {
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
     if (checkInlineHighlight(content, node)) return; // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
     if (checkMdBlockPrefix(content, node)) return;
-    checkSlash(content, node.id); updateSelToolbar();
+    checkSlash(content, node.id);
+    checkLinkTrigger(content, node.id);
+    updateSelToolbar();
     updateFnPanel(node);
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
@@ -2577,7 +2624,7 @@ function highlightGrammarText(str, unfoldedSet) {
 // form render as contenteditable=false pill spans (edited via the pencil/dialog);
 // inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\]|\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
   // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
   // the rule isn't currently defined in the document).
@@ -2587,9 +2634,11 @@ function editModeHTML(node) {
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(node.text)) !== null) {
     if (m.index > last) html += highlightGrammarText(node.text.slice(last, m.index), unfoldedSet);
-    const [, raw, type, key] = m;
+    const [, raw, type, key, linkId, linkLabel] = m;
     let pill;
-    if (type === 'dice')           pill = renderDicePill(key, node.dice?.find(d => d.key === key));
+    if (linkId !== undefined) {
+      pill = renderLinkPill(linkId, linkLabel ?? '');
+    } else if (type === 'dice')    pill = renderDicePill(key, node.dice?.find(d => d.key === key));
     else if (type === 'markov')    pill = renderMarkovPill(key, node.markov?.find(d => d.key === key));
     else if (type === 'rolltable') pill = renderRolltablePill(key, node.rolltable?.find(d => d.key === key));
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
@@ -2754,6 +2803,12 @@ function parseMLlines(lines) {
 
 function onKeyDown(e, id, content) {
   const ctrl = e.ctrlKey || e.metaKey;
+  if (lpState && isLpMenuOpen()) {
+    if (e.key==='ArrowDown') { e.preventDefault(); lpMove(1); return; }
+    if (e.key==='ArrowUp')   { e.preventDefault(); lpMove(-1); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); lpApply(); return; }
+    if (e.key==='Escape')    { e.preventDefault(); hideLinkMenu(); return; }
+  }
   if (slashState && isSlashMenuOpen()) {
     if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
     if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
@@ -4006,6 +4061,37 @@ function collectRules(rootNode) {
   return merged;
 }
 
+// ─── node links (same-document) ──────────────────────────────────────────────
+// A link is a [[#TARGETID|label]] token in node.text pointing at another node by id.
+// `label` is only a fallback caption — display resolves the target's LIVE title.
+// Pure over rootNode; cached on _varsVer for the live document (mirrors collectVars).
+const LINK_RE = /\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
+let _linksCacheVer = -1, _linksCached = null;
+function collectLinks(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _linksCacheVer === _varsVer && _linksCached) return _linksCached;
+  const outgoing = {};   // sourceId -> [{ target, label }]  (every occurrence)
+  const backlinks = {};  // targetId -> [sourceId]           (each source once)
+  const ids = new Set(); // every node id, to flag broken targets
+  function walk(n) {
+    ids.add(n.id);
+    const seen = new Set();
+    let m; LINK_RE.lastIndex = 0;
+    while ((m = LINK_RE.exec(n.text)) !== null) {
+      const target = m[1], label = m[2] ?? '';
+      (outgoing[n.id] ||= []).push({ target, label });
+      if (!seen.has(target)) { seen.add(target); (backlinks[target] ||= []).push(n.id); }
+    }
+    for (const c of n.children) walk(c);
+  }
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  const broken = Object.keys(backlinks).filter(t => !ids.has(t));
+  const result = { outgoing, backlinks, broken };
+  if (useCache) { _linksCacheVer = _varsVer; _linksCached = result; }
+  return result;
+}
+
 function grammarKey() { return 'g' + Math.random().toString(36).slice(2, 9); }
 
 // Build a fresh grammar record from a definition; null if malformed.
@@ -4804,6 +4890,109 @@ function editVar(node, key) {
 }
 
 function hideSlashMenu() { slashMenu.classList.remove('on'); slashState = null; }
+
+// ─── link picker ([[ trigger) ─────────────────────────────────────────────────
+const lpMenu = document.getElementById('lp-menu');
+let lpState = null;
+function isLpMenuOpen() { return lpMenu.classList.contains('on'); }
+lpMenu.addEventListener('mousedown', e => e.preventDefault());
+
+function hideLinkMenu() { lpMenu.classList.remove('on'); lpState = null; }
+
+function checkLinkTrigger(content, nodeId) {
+  if (isSlashMenuOpen()) { hideLinkMenu(); return; }
+  const pos = getCaretOffset(content);
+  const before = editableText(content).slice(0, pos);
+  const m = before.match(/\[\[([^\]\n#]*)$/);
+  if (!m) { hideLinkMenu(); return; }
+  const query = m[1].toLowerCase();
+  const triggerOffset = m.index;
+  const candidates = [];
+  function walkForLinks(n) {
+    if (n.id !== nodeId) {
+      const title = textForDisplay(n);
+      if (title && (query === '' || title.toLowerCase().includes(query))) candidates.push({ id: n.id, title });
+    }
+    for (const c of n.children) walkForLinks(c);
+  }
+  if (root?.children) for (const c of root.children) walkForLinks(c);
+  if (!candidates.length) { hideLinkMenu(); return; }
+  lpState = { nodeId, content, triggerOffset, query, activeIdx: 0, matches: candidates.slice(0, 20) };
+  hideSlashMenu();
+  renderLinkMenu();
+  positionLinkMenu(content, triggerOffset);
+}
+
+function renderLinkMenu() {
+  if (!lpState) return;
+  lpMenu.innerHTML = '';
+  lpState.matches.forEach((nd, i) => {
+    const item = document.createElement('div');
+    item.className = 'lp-item' + (i === lpState.activeIdx ? ' hi' : '');
+    item.textContent = nd.title;
+    item.addEventListener('mouseenter', () => { lpState.activeIdx = i; renderLinkMenu(); });
+    item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = i; lpApply(); });
+    lpMenu.appendChild(item);
+  });
+  lpMenu.classList.add('on');
+  lpMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+}
+
+function lpMove(dir) {
+  if (!lpState) return;
+  const n = lpState.matches.length;
+  lpState.activeIdx = (lpState.activeIdx + dir + n) % n;
+  renderLinkMenu();
+}
+
+function lpApply() {
+  if (!lpState) return;
+  const { nodeId, content, triggerOffset, query, activeIdx, matches } = lpState;
+  const chosen = matches[activeIdx];
+  hideLinkMenu();
+  const fullText = editableText(content);
+  const token = `[[#${chosen.id}|${chosen.title}]]`;
+  const newText = fullText.slice(0, triggerOffset) + token + fullText.slice(triggerOffset + 2 + query.length);
+  const node = nodeById(nodeId); if (!node) return;
+  node.text = newText;
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, triggerOffset + token.length); } catch(_) {}
+  markDirty();
+}
+
+function positionLinkMenu(content, offset) {
+  let rem = offset, targetNode = null, targetRawOff = 0;
+  function walkDom(node) {
+    if (targetNode) return;
+    if (node.nodeType === 3) {
+      const raw = node.nodeValue; let logical = 0, i = 0;
+      for (; i < raw.length; i++) {
+        if (raw[i] !== '​') {
+          if (logical === rem) { targetNode = node; targetRawOff = i; return; }
+          logical++;
+        }
+      }
+      rem -= logical; return;
+    }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) { rem -= node.dataset.token.length; return; }
+    if (node.nodeName === 'BR') { rem -= 1; return; }
+    for (const c of node.childNodes) walkDom(c);
+  }
+  for (const c of content.childNodes) walkDom(c);
+  if (!targetNode) { lpMenu.style.left='0'; lpMenu.style.top='0'; return; }
+  const range = document.createRange();
+  range.setStart(targetNode, targetRawOff);
+  range.setEnd(targetNode, Math.min(targetRawOff + 1, targetNode.length));
+  const rect = range.getBoundingClientRect();
+  lpMenu.style.left = rect.left + 'px';
+  lpMenu.style.top  = (rect.bottom + 4) + 'px';
+  requestAnimationFrame(() => {
+    const mr = lpMenu.getBoundingClientRect();
+    if (mr.right  > window.innerWidth - 8) lpMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) lpMenu.style.top  = (rect.top - mr.height - 4) + 'px';
+  });
+}
 
 function checkMdBlockPrefix(content, node) {
   const text = editableText(content);
@@ -5907,6 +6096,7 @@ function showFnPanel(nodeId) {
   renderFnPanel(node, refs);
   document.getElementById('fn-panel').classList.add('on');
   syncFnPanelBottom(); // lift above the mobile keyboard if it's open
+  syncBlPanelBottom(); // re-stack bl-panel above fn-panel if both are open
 }
 
 function hideFnPanel() {
@@ -5915,6 +6105,64 @@ function hideFnPanel() {
   fnNodeId = null;
   document.getElementById('fn-panel').classList.remove('on');
   syncFnPanelBottom(); // reset bottom so the hidden panel can't peek above the keyboard
+  syncBlPanelBottom(); // re-stack bl-panel if it's open
+}
+
+// ─── backlinks panel ─────────────────────────────────────────────────────────
+let blNodeId = null, blHideTimer = null;
+
+function scheduleBlHide() {
+  clearTimeout(blHideTimer);
+  blHideTimer = setTimeout(() => {
+    if (document.activeElement?.classList.contains('node-content')) return;
+    hideBlPanel();
+  }, 150);
+}
+
+function syncBlPanelBottom() {
+  const bl = document.getElementById('bl-panel');
+  if (!bl) return;
+  const fn = document.getElementById('fn-panel');
+  const fnH = (fn?.classList.contains('on')) ? fn.offsetHeight : 0;
+  bl.style.bottom = (bl.classList.contains('on') && fnH > 0) ? fnH + 'px' : '0';
+}
+
+function showBlPanel(nodeId) {
+  const idx = collectLinks();
+  const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
+  if (!sources.length) { hideBlPanel(); return; }
+  blNodeId = nodeId;
+  renderBlPanel(sources);
+  document.getElementById('bl-panel').classList.add('on');
+  syncBlPanelBottom();
+}
+
+function hideBlPanel() {
+  clearTimeout(blHideTimer);
+  blNodeId = null;
+  document.getElementById('bl-panel').classList.remove('on');
+  syncBlPanelBottom();
+}
+
+function renderBlPanel(sources) {
+  const inner = document.getElementById('bl-list');
+  const hd = document.getElementById('bl-panel-hd');
+  if (hd) hd.textContent = sources.length === 1 ? 'Linked from' : `Linked from · ${sources.length}`;
+  inner.innerHTML = '';
+  sources.forEach(src => {
+    const item = document.createElement('div');
+    item.className = 'bl-item';
+    item.textContent = textForDisplay(src) || '(untitled)';
+    item.title = 'Click to zoom into this node';
+    item.addEventListener('click', () => { hideBlPanel(); zoomInto(src.id); });
+    inner.appendChild(item);
+  });
+}
+
+function updateBlPanel(nodeId) {
+  const idx = collectLinks();
+  const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
+  if (sources.length) showBlPanel(nodeId); else hideBlPanel();
 }
 
 // Keep the panel docked above the software keyboard on mobile. Crucially the
@@ -6099,6 +6347,12 @@ fnPanelEl.addEventListener('mouseenter', () => clearTimeout(fnHideTimer));
 fnPanelEl.addEventListener('mouseleave', () => { if (!fnLocked) scheduleFnHide(); });
 // clicks on non-editable areas of the panel don't steal focus
 fnPanelEl.addEventListener('mousedown', e => { if (!e.target.closest('.fn-content')) e.preventDefault(); });
+
+// backlinks panel
+const blPanelEl = document.getElementById('bl-panel');
+blPanelEl.addEventListener('mouseenter', () => clearTimeout(blHideTimer));
+blPanelEl.addEventListener('mouseleave', scheduleBlHide);
+blPanelEl.addEventListener('mousedown', e => e.preventDefault());
 
 // ─── boot ─────────────────────────────────────────────────────────────────────
 
