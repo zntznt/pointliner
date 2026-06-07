@@ -2417,6 +2417,34 @@ function renderRow(r) {
 
   if (!opts.searchCtx) attachContentEvents(content, node);
 
+  // Click anywhere non-interactive in the row (empty space right of / below the
+  // text, row padding) enters edit mode — a node should always be editable by
+  // clicking it, not just its text glyphs. Clicks inside .node-content defer to
+  // its own handler (which also enters edit + places the caret); clicks on the
+  // listed interactive elements keep their own behavior; modifier clicks (shift =
+  // range select) are left untouched so multi-select still works.
+  if (!opts.searchCtx && !isDivider && !isTable) {
+    const INTERACTIVE = '.node-content,.bullet,.collapse-btn,.node-checkbox,'
+      + '.md-task-check,.node-link,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,'
+      + '.var-pill,.dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit,'
+      + '.hashtag,.fn-ref,.md-table-host';
+    row.addEventListener('mousedown', e => {
+      if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (content.dataset.editing) return;
+      if (e.target.closest?.(INTERACTIVE)) return; // let interactive el / content handle it
+      e.preventDefault();
+      enterEdit(content, node);
+      content.focus();
+      const r = caretFromPoint(e.clientX, e.clientY);
+      if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+      else { // no caret point (clicked below/right of text) → caret at end
+        const s = window.getSelection(), rng = document.createRange();
+        rng.selectNodeContents(content); rng.collapse(false);
+        s.removeAllRanges(); s.addRange(rng);
+      }
+    });
+  }
+
   if (isDivider && !opts.searchCtx) {
     row.addEventListener('mouseenter', () => { if (node.text) div.classList.add('div-reveal'); });
     row.addEventListener('mouseleave', () => { if (!content.dataset.editing) div.classList.remove('div-reveal'); });
