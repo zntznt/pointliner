@@ -48,11 +48,15 @@ Real buttons that need an `aria-label`:
 - Decorative `<i class="fas …">`/`.cmd-icon` glyphs inside a labeled control get
   `aria-hidden="true"` so the accessible name isn't doubled.
 - `#search-box` gets `aria-label="Search outline"` (it has no `<label>`).
+- `#search-clear` gets `aria-label="Clear search"` — it's a real `<button>` (confirmed)
+  with only a `title` attribute today; only visible when a search query is active.
 
 > **Corrections vs. the original brief.**
 > - The brief listed "new file, save, export, undo/redo, import, accent swatches,
 >   theme, width" as Phase-0 toolbar buttons. They are not. The visible toolbar
->   (`#toolbar-row`) holds only the level control and `#btn-done`. New / Open /
+>   (`#toolbar-row`) holds the level control, `#btn-done`, the logo (`#logo-btn`,
+>   a `<span>` → Phase 1), and `#search-clear` (a real `<button>` → Phase 0).
+>   New / Open /
 >   Save / Save As / Theme / Width live in the **file menu** and are
 >   `<div class="cmd-item">`, not `<button>` — see Phase 1. There are **no**
 >   undo/redo or import buttons in the toolbar (undo/redo are keyboard-only).
