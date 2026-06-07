@@ -1027,7 +1027,7 @@ function renderLinkPill(target, label) {
     const cap = escHtml(label || target);
     return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false">${cap}</span>`;
   }
-  const title = escHtml(textForDisplay(tn) || '(untitled)');
+  const title = escHtml(label || textForDisplay(tn) || '(untitled)');
   return `<span class="node-link" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
 }
 
@@ -2668,7 +2668,7 @@ function highlightGrammarText(str, unfoldedSet) {
 // form render as contenteditable=false pill spans (edited via the pencil/dialog);
 // inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\]|\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
   // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
   // the rule isn't currently defined in the document).
@@ -2678,11 +2678,9 @@ function editModeHTML(node) {
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(node.text)) !== null) {
     if (m.index > last) html += highlightGrammarText(node.text.slice(last, m.index), unfoldedSet);
-    const [, raw, type, key, linkId, linkLabel] = m;
+    const [, raw, type, key] = m;
     let pill;
-    if (linkId !== undefined) {
-      pill = renderLinkPill(linkId, linkLabel ?? '');
-    } else if (type === 'dice')    pill = renderDicePill(key, node.dice?.find(d => d.key === key));
+    if (type === 'dice')    pill = renderDicePill(key, node.dice?.find(d => d.key === key));
     else if (type === 'markov')    pill = renderMarkovPill(key, node.markov?.find(d => d.key === key));
     else if (type === 'rolltable') pill = renderRolltablePill(key, node.rolltable?.find(d => d.key === key));
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
