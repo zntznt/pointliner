@@ -258,3 +258,65 @@ test('collectRules — a grammar pill registers its named rules document-wide', 
   root.children.push(n);
   assert.ok('color' in c.collectRules(root), 'named grammar rule should be registered');
 });
+
+// ── success-counting dice pools ─────────────────────────────────────────────
+// A comparison suffix (>=,<=,>,<,=) turns the term into "count dice that match".
+
+test('parseDice — success comparison is parsed onto the term', () => {
+  assert.deepEqual(host(c.parseDice('6d10>=7')[0].success), { op: '>=', target: 7 });
+  assert.deepEqual(host(c.parseDice('4d6<=2')[0].success), { op: '<=', target: 2 });
+  assert.deepEqual(host(c.parseDice('5d6=6')[0].success), { op: '=', target: 6 });
+});
+
+test('parseDice — plain dice still parse unchanged (no regression)', () => {
+  const t = c.parseDice('2d6+3');
+  assert.equal(t[0].count, 2);
+  assert.equal(t[0].sides, 6);
+  assert.equal(t[0].success, undefined);
+  assert.equal(t[1].value, 3);
+  assert.equal(c.parseDice('4d6kh3')[0].keepMode, 'kh'); // keep/drop path intact
+});
+
+test('parseDice — success pools reject mixing and bad combos', () => {
+  assert.equal(c.parseDice('6d10>=7+2'), null);   // no modifier mixing
+  assert.equal(c.parseDice('2d6>=4+1d8>=4'), null); // no second term
+  assert.equal(c.parseDice('6d6kh3>=4'), null);   // keep/drop + success disallowed
+  assert.equal(c.parseDice('4dF>=1'), null);      // Fate + success disallowed
+});
+
+// Seed each d6 to a known face: rnd(6)=1+floor(r*6), so r=(face-1)/6.
+const seedFaces = (...faces) => c.seedSequence(faces.map(f => (f - 1) / 6));
+
+test('rollParsed — counts NUMBER of successes, not the pip sum', () => {
+  seedFaces(1, 2, 3, 4, 5, 6);
+  try {
+    // the canonical example: target 4-or-under over 1..6 → {1,2,3,4} = 4 successes
+    assert.equal(c.rollParsed(c.parseDice('6d6<=4')).total, 4);
+  } finally { c.resetRandom(); }
+});
+
+test('rollParsed — comparison direction changes which dice count', () => {
+  const faces = [1, 2, 3, 4, 5, 6];
+  for (const [expr, expected] of [['6d6>=4', 3], ['6d6>=5', 2], ['6d6=6', 1], ['6d6<=2', 2], ['6d6>4', 2]]) {
+    seedFaces(...faces);
+    try { assert.equal(c.rollParsed(c.parseDice(expr)).total, expected, expr); } finally { c.resetRandom(); }
+  }
+});
+
+test('rollParsed — exposes per-die hits and the success count on the part', () => {
+  seedFaces(1, 2, 3, 4, 5, 6);
+  try {
+    const part = c.rollParsed(c.parseDice('6d6>=5')).parts[0];
+    assert.equal(part.successes, 2);
+    assert.deepEqual(host(part.hits), [false, false, false, false, true, true]);
+    assert.equal(part.sum, undefined); // success parts carry a count, not a sum
+  } finally { c.resetRandom(); }
+});
+
+test('makeDiceRoll — a success roll stores the count as its total', () => {
+  seedFaces(1, 2, 3, 4, 5, 6);
+  try {
+    const roll = c.parseDice('6d6<=4') && c.rollParsed(c.parseDice('6d6<=4'));
+    assert.equal(roll.total, 4);
+  } finally { c.resetRandom(); }
+});
