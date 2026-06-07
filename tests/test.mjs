@@ -337,3 +337,32 @@ test('rollParsed — one die can explode multiple times, each face counted', () 
     assert.deepEqual(host(r.parts[0].hits[0]), [true, true, false]);
   } finally { c.resetRandom(); }
 });
+
+// ── unit conversions (evalMath) ─────────────────────────────────────────────
+const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
+
+test('math — conditionals already work (ternary + if())', () => {
+  assert.equal(c.evalMath('3 > 2 ? 10 : 20'), 10);
+  assert.equal(c.evalMath('if(3 > 2, 10, 20)'), 10);
+  assert.equal(c.evalMath('if(1 > 2, 10, 20)'), 20);
+});
+test('math — unit conversion: temperature', () => {
+  assert.equal(c.evalMath('c2f(20)'), 68);
+  assert.equal(c.evalMath('f2c(32)'), 0);
+  near(c.evalMath('f2c(98.6)'), 37);
+});
+test('math — unit conversion: distance, mass, speed, volume', () => {
+  near(c.evalMath('mi2km(1)'), 1.609344);
+  near(c.evalMath('ft2m(1)'), 0.3048);
+  near(c.evalMath('lb2kg(1)'), 0.45359237);
+  near(c.evalMath('mph2kmh(60)'), 96.56064);
+  near(c.evalMath('gal2l(1)'), 3.785411784);
+});
+test('math — conversions compose with the evaluator', () => {
+  assert.equal(c.evalMath('round(mi2km(26.2))'), 42);
+  near(c.evalMath('km2mi(mi2km(5))'), 5);
+});
+test('math — conversion names need one argument', () => {
+  assert.equal(c.evalMath('c2f'), null);
+  assert.equal(c.evalMath('c2f()'), null);
+});

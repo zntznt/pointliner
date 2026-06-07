@@ -4362,6 +4362,14 @@ function evalMath(input, vars = {}) {
     ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
     exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
     deg: x => x * (180 / Math.PI), rad: x => x * (Math.PI / 180),
+    // unit conversions — each a pure unary fn named from2to (factors are exact)
+    c2f: x => x * 9 / 5 + 32,            f2c: x => (x - 32) * 5 / 9,           // temperature
+    km2mi: x => x / 1.609344,            mi2km: x => x * 1.609344,             // distance (long)
+    m2ft: x => x / 0.3048,               ft2m: x => x * 0.3048,
+    cm2in: x => x / 2.54,                in2cm: x => x * 2.54,                 // distance (short)
+    kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
+    kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
+    l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
   };
   const FN2 = { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot };
 
@@ -4572,7 +4580,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, onResu
       {
         key: 'expr',
         label: 'Expression',
-        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0',
+        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), mi2km(5)',
         value: expr,
         chips: MATH_CHIPS,
         // live preview rendered right below the input as the user types
