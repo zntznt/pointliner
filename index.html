@@ -1665,13 +1665,18 @@ function computeTable(model, tblfm) {
   const dims = { nrows, ncols };
 
   // target cell "r,c" → expr. Column formulas skip the header (data rows = 1…).
+  // Org rule: field formulas take precedence over column/row formulas regardless of
+  // source order, so apply col/row first and let field formulas override in a 2nd pass
+  // (the footer-total idiom: `$4=$2*$3 :: @>$4=vsum(…)` overrides just the total cell).
   const fmap = new Map();
+  const fieldFormulas = [];
   for (const f of parseTblfm(tblfm, dims)) {
     const t = f.target;
-    if (t.kind === 'field') fmap.set(t.row + ',' + t.col, f.expr);
-    else if (t.kind === 'col') { for (let r = 1; r < nrows; r++) fmap.set(r + ',' + t.col, f.expr); }
+    if (t.kind === 'col') { for (let r = 1; r < nrows; r++) fmap.set(r + ',' + t.col, f.expr); }
     else if (t.kind === 'row') { for (let c = 0; c < ncols; c++) fmap.set(t.row + ',' + c, f.expr); }
+    else if (t.kind === 'field') fieldFormulas.push(f);
   }
+  for (const f of fieldFormulas) fmap.set(f.target.row + ',' + f.target.col, f.expr);
 
   const memo = new Map();      // "r,c" -> number | null (null = blank/non-numeric)
   const stack = new Set();     // targets currently evaluating (cycle detection)

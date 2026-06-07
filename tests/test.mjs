@@ -580,6 +580,20 @@ test('table: cycle detection yields #ERR, not a hang', () => {
   assert.equal(out[1][1], '#ERR');
 });
 
+test('table: field formula overrides column formula regardless of source order', () => {
+  // footer-total idiom: column formula fills all data rows (incl. the total row,
+  // where it would be 0*0); a field formula overrides just the total cell. Field
+  // written FIRST, column SECOND — the field still wins (Org precedence rule).
+  const m = { aligns: [null, null, null, null], rows: [
+    ['Item', 'Qty', 'Price', 'Total'],
+    ['a', '2', '3', ''], ['b', '5', '4', ''], ['Sum', '', '', ''],
+  ] };
+  const out = computeTable(m, '@4$4=vsum(@2$4..@3$4) :: $4=$2*$3');
+  assert.equal(out[1][3], '6');
+  assert.equal(out[2][3], '20');
+  assert.equal(out[3][3], '26');   // 6+20, not 0*0
+});
+
 test('table: non-formula cells preserved verbatim', () => {
   const out = computeTable(tblModel(), '$3=$1*$2');
   assert.equal(out[1][0], 'a');

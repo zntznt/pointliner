@@ -61,8 +61,11 @@ Implemented:
   column(current row) · `@2` row(current col) · relative `@-1`/`$+1` · `@<`/`@>` first/last
   row · `$<`/`$>` first/last column · `@#`/`$#` current row/col *number*; rectangular ranges
   `@2$1..@>$3` feed `vsum`/`vmean`/`vmax`/`vmin`/`vcount`/`vmedian`. Assignments separated by
-  `::`; column formulas (`$N=…`) fill data rows only (header skipped). Blank cells = 0 in
-  scalar context, suppressed inside ranges; cycles/invalid → `#ERR` (never hangs). The
+  `::`; column formulas (`$N=…`) fill data rows only (header skipped). **Field formulas take
+  precedence over column/row formulas regardless of source order** (Org rule; applied in a
+  second pass): `$4=$2*$3 :: @>$4=vsum(@2$4..@-1$4)` fills the body and overrides just the
+  total cell — the footer-total idiom works without a second hline. Blank cells = 0 in scalar
+  context, suppressed inside ranges; cycles/invalid → `#ERR` (never hangs). The
   reference layer (`orgResolveComp`/`parseOrgRef`/`parseTblfm`/`computeTable`) is **translated
   onto the existing `evalMath` engine** — so the full math grammar (units, dates, conditionals,
   functions, variables) works inside formulas. Edit affordance = plain editable text: the
