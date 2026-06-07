@@ -51,7 +51,7 @@ in a browser and it runs.
 - **Stateful randomness has nowhere clean to live yet.** Decks/bags (draw without
   replacement) need persisted state; today everything re-rolls statelessly. This
   is an open design question, not an oversight (see below).
-- **Run `node --test tests/test.mjs` before and after changing any parsing/eval core.** The 32 pins must stay green; if you intentionally change a behavior, update the pin in the same commit.
+- **Run `node --test tests/test.mjs` before and after changing any parsing/eval core.** (`node --test tests/` fails on Node 22.x — it resolves the directory as a module rather than discovering test files; use the explicit path.) All tests must stay green; if you intentionally change a behavior, update the pin in the same commit.
 
 ---
 
