@@ -2639,10 +2639,13 @@ function attachContentEvents(content, node) {
     content.focus();
     // enterEdit swaps innerHTML (display → edit mode), so the layout changes before
     // caretFromPoint runs. Validate the returned range is inside THIS content element;
-    // if it's not (coordinates now land in a neighbour's DOM) discard it and leave
-    // the caret where focus() placed it rather than jumping to the wrong node.
+    // if it's not (coordinates now land in a neighbour's DOM, or there's no caret
+    // point), fall back to the END of the content rather than leaving the caret at the
+    // start where focus() put it.
+    const s = window.getSelection();
     const r = caretFromPoint(e.clientX, e.clientY);
-    if (r && content.contains(r.startContainer)) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+    if (r && content.contains(r.startContainer)) { s.removeAllRanges(); s.addRange(r); }
+    else { const rng = document.createRange(); rng.selectNodeContents(content); rng.collapse(false); s.removeAllRanges(); s.addRange(rng); }
   });
   content.addEventListener('focus', () => {
     if (!content.dataset.editing) enterEdit(content, node);
