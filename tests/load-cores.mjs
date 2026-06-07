@@ -136,7 +136,7 @@ export function loadCores() {
 
   const need = [
     'parseDice', 'rollParsed', 'diceExprStr',
-    'evalMath', 'formatMathResult',
+    'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'parseMarkov', 'walkMarkov', 'weightedPick',
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace',
     'collectVars', 'collectRules',

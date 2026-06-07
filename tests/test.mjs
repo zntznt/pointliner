@@ -366,3 +366,40 @@ test('math — conversion names need one argument', () => {
   assert.equal(c.evalMath('c2f'), null);
   assert.equal(c.evalMath('c2f()'), null);
 });
+
+// ── date math (evalMath) ────────────────────────────────────────────────────
+test('date — date(y,m,d) differences give day counts', () => {
+  assert.equal(c.evalMath('date(2026,12,25) - date(2026,12,18)'), 7);
+  assert.equal(c.evalMath('date(2027,1,1) - date(2026,12,31)'), 1);
+});
+test('date — component pullers', () => {
+  assert.equal(c.evalMath('year(date(2026,12,25))'), 2026);
+  assert.equal(c.evalMath('month(date(2026,12,25))'), 12);
+  assert.equal(c.evalMath('day(date(2026,12,25))'), 25);
+  assert.equal(c.evalMath('weekday(date(2026,12,25))'), 5); // Fri (0=Sun)
+  assert.equal(c.evalMath('weekday(date(2026,12,27))'), 0); // Sun
+});
+test('date — today is a finite integer; self-difference is 0', () => {
+  const t = c.evalMath('today');
+  assert.ok(Number.isInteger(t) && isFinite(t));
+  assert.equal(c.evalMath('today - today'), 0);
+  const wd = c.evalMath('weekday(today)'); assert.ok(wd >= 0 && wd <= 6);
+});
+test('date — asdate() is numeric identity, so it still composes', () => {
+  assert.equal(c.evalMath('asdate(date(2026,12,25))'), c.evalMath('date(2026,12,25)'));
+  assert.equal(c.evalMath('asdate(date(2026,12,25)) - asdate(date(2026,12,18))'), 7);
+});
+test('date — formatEpochDays renders ISO, including a leap day', () => {
+  assert.equal(c.formatEpochDays(c.evalMath('date(2026,12,25)')), '2026-12-25');
+  assert.equal(c.formatEpochDays(c.evalMath('date(2024,2,29)')), '2024-02-29');
+});
+test('date — makeMathResult tags + formats an asdate() expression', () => {
+  const r = c.makeMathResult('asdate(date(2026,12,25))');
+  assert.equal(r.result, '2026-12-25'); assert.equal(r.fmt, 'date');
+  const plain = c.makeMathResult('2+2');
+  assert.equal(plain.result, '4'); assert.equal(plain.fmt, undefined);
+});
+test('date — arity guard: date() needs exactly 3 args', () => {
+  assert.equal(c.evalMath('date(2026,12)'), null);
+  assert.equal(c.evalMath('date(2026,12,25,1)'), null);
+});

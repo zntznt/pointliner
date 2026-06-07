@@ -4354,7 +4354,9 @@ function evalMath(input, vars = {}) {
     return v;
   }
 
-  const CONSTS = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity };
+  const DAY_MS = 86400000;
+  const _today = (() => { const d = new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS); })();
+  const CONSTS = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity, today: _today };
   const FN1 = {
     sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
     round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
@@ -4370,8 +4372,16 @@ function evalMath(input, vars = {}) {
     kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
     kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
     l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
+    // date math — dates are integer epoch-days (date(y,m,d)/today); these pull
+    // components or pass through (asdate marks a value for ISO display)
+    year:    x => new Date(Math.round(x) * DAY_MS).getUTCFullYear(),
+    month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
+    day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
+    weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
+    asdate:  x => x,
   };
   const FN2 = { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot };
+  const FN3 = { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) };
 
   function ident() {
     let name = '';
@@ -4389,7 +4399,7 @@ function evalMath(input, vars = {}) {
       expect(')');
       return cond ? thenV : elseV;
     }
-    if (name in FN1 || name in FN2 || name === 'min' || name === 'max') {
+    if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max') {
       expect('(');
       const args = [];
       if (peek() !== ')') {
@@ -4399,6 +4409,7 @@ function evalMath(input, vars = {}) {
       expect(')');
       if (name in FN1) { if (args.length !== 1) throw 0; return FN1[name](args[0]); }
       if (name in FN2) { if (args.length !== 2) throw 0; return FN2[name](args[0], args[1]); }
+      if (name in FN3) { if (args.length !== 3) throw 0; return FN3[name](args[0], args[1], args[2]); }
       if (args.length < 2) throw 0;
       return name === 'min' ? Math.min(...args) : Math.max(...args);
     }
@@ -4481,6 +4492,16 @@ function evalMath(input, vars = {}) {
   } catch (_) { return null; }
 }
 
+function formatEpochDays(n) {
+  if (!isFinite(n)) return formatMathResult(n);
+  const d = new Date(Math.round(n) * 86400000);
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${m}-${day}`;
+}
+function isDateExpr(expr) { return /^\s*asdate\s*\(/i.test(expr || ''); }
+function formatMathDisplay(v, expr) { return isDateExpr(expr) ? formatEpochDays(v) : formatMathResult(v); }
+
 function formatMathResult(n) {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '-∞' : 'NaN';
   // Round to 10 significant figures to wash out floating-point noise
@@ -4496,14 +4517,14 @@ function mathKey() { return 'x' + Math.random().toString(36).slice(2, 9); }
 function makeMathResult(expr) {
   const v = evalMath(expr, collectVars());
   if (v === null) return null;
-  return { key: mathKey(), expr, result: formatMathResult(v) };
+  return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isDateExpr(expr) ? 'date' : undefined };
 }
 
 function renderMathPill(key, m) {
   if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}">🖩 ?</span>`;
   // Recompute with current vars so math stays live when variables change
   const fresh = evalMath(m.expr, globalVarMap);
-  const display = fresh !== null ? formatMathResult(fresh) : m.result;
+  const display = fresh !== null ? formatMathDisplay(fresh, m.expr) : m.result;
   return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to edit">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
@@ -4580,7 +4601,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, onResu
       {
         key: 'expr',
         label: 'Expression',
-        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), mi2km(5)',
+        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), asdate(today+90)',
         value: expr,
         chips: MATH_CHIPS,
         // live preview rendered right below the input as the user types
@@ -4589,7 +4610,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, onResu
           const vars = collectVars();
           const r = evalMath(v, vars);
           if (r === null) return `<span class="io-preview-bad">Invalid expression</span>`;
-          return renderMathPill('preview', { key:'preview', expr:v, result:formatMathResult(r) });
+          return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) });
         },
       },
     ],
