@@ -1724,14 +1724,14 @@ function mkCmdItem(icon, label, desc, onClick, active = false) {
 function zoomInto(id) { focusedId = id; render(); }
 function zoomTo(id)   { focusedId = id; render(); }
 
-// Copy a ready-to-paste link token for a node onto the clipboard. Includes the
-// node's title as a label when it has display text ([[#id|title]]), else [[#id]].
+// Copy a ready-to-paste link token for a node onto the clipboard. Always uses the
+// empty-label form ([[#id|]]) — the empty label renders the target's live title,
+// so nothing is lost, and we avoid dumping the node body into the label slot.
 // Pasting/typing such a token into any node creates the link — no picker needed.
 function copyNodeLink(id) {
   const node = nodeById(id);
   if (!node) return;
-  const title = (textForDisplay(node) || '').replace(/\n/g, ' ').trim();
-  const token = title ? `[[#${id}|${title}]]` : `[[#${id}]]`;
+  const token = `[[#${id}|]]`;
   const done = () => flashHint('Link copied');
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(token).then(done, () => fallbackCopy(token, done));
@@ -2786,7 +2786,19 @@ function handlePaste(e, node, content) {
   const text = e.clipboardData.getData('text/plain');
   const lines = text.split('\n').map(l => l.replace(/\r$/,''));
   while (lines.length > 1 && !lines[lines.length-1].trim()) lines.pop();
-  if (lines.length === 1) { document.execCommand('insertText', false, text); node.text = editableText(content); markDirty(); return; }
+  if (lines.length === 1) {
+    // A lone link token pastes its label slot ready for typing: drop the caret
+    // right after the | so the user can type a label immediately (empty → live title).
+    const linkOnly = text.match(/^\[\[#[a-z0-9]+\|([^\]\n]*)\]\]$/i);
+    document.execCommand('insertText', false, text);
+    node.text = editableText(content); markDirty();
+    if (linkOnly) {
+      // caret was left at the end of the inserted token; step back over the label + "]]"
+      const afterPipe = getCaretOffset(content) - linkOnly[1].length - 2;
+      setCaretByOffset(content, afterPipe);
+    }
+    return;
+  }
   const parsed = parseMLlines(lines);
   const parent = parentOf(node.id);
   if (!parent) { document.execCommand('insertText', false, text); return; }
