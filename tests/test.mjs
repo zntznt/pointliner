@@ -259,8 +259,10 @@ test('collectRules — a grammar pill registers its named rules document-wide', 
   assert.ok('color' in c.collectRules(root), 'named grammar rule should be registered');
 });
 
-// ── success-counting dice pools ─────────────────────────────────────────────
+// ── success-counting dice pools (with exploding) ────────────────────────────
 // A comparison suffix (>=,<=,>,<,=) turns the term into "count dice that match".
+// In a pool each rolled face is its own die — exploding adds independently-
+// counted dice rather than summing into one value.
 
 test('parseDice — success comparison is parsed onto the term', () => {
   assert.deepEqual(host(c.parseDice('6d10>=7')[0].success), { op: '>=', target: 7 });
@@ -278,10 +280,10 @@ test('parseDice — plain dice still parse unchanged (no regression)', () => {
 });
 
 test('parseDice — success pools reject mixing and bad combos', () => {
-  assert.equal(c.parseDice('6d10>=7+2'), null);   // no modifier mixing
+  assert.equal(c.parseDice('6d10>=7+2'), null);     // no modifier mixing
   assert.equal(c.parseDice('2d6>=4+1d8>=4'), null); // no second term
-  assert.equal(c.parseDice('6d6kh3>=4'), null);   // keep/drop + success disallowed
-  assert.equal(c.parseDice('4dF>=1'), null);      // Fate + success disallowed
+  assert.equal(c.parseDice('6d6kh3>=4'), null);     // keep/drop + success disallowed
+  assert.equal(c.parseDice('4dF>=1'), null);        // Fate + success disallowed
 });
 
 // Seed each d6 to a known face: rnd(6)=1+floor(r*6), so r=(face-1)/6.
@@ -303,20 +305,35 @@ test('rollParsed — comparison direction changes which dice count', () => {
   }
 });
 
-test('rollParsed — exposes per-die hits and the success count on the part', () => {
+test('rollParsed — exposes nested per-face hits and the success count', () => {
   seedFaces(1, 2, 3, 4, 5, 6);
   try {
     const part = c.rollParsed(c.parseDice('6d6>=5')).parts[0];
     assert.equal(part.successes, 2);
-    assert.deepEqual(host(part.hits), [false, false, false, false, true, true]);
+    // hits is parallel to rolls (one entry per chain; each chain a single face here)
+    assert.deepEqual(host(part.hits), [[false], [false], [false], [false], [true], [true]]);
     assert.equal(part.sum, undefined); // success parts carry a count, not a sum
   } finally { c.resetRandom(); }
 });
 
-test('makeDiceRoll — a success roll stores the count as its total', () => {
-  seedFaces(1, 2, 3, 4, 5, 6);
+test('rollParsed — exploding adds independently-counted dice to the pool', () => {
+  // 6d6!>=5: die 1 rolls 6 (explodes) → 5; both are ≥5, so that ONE die yields 2
+  // successes. The other five roll 1 (miss). Total = 2 (not 1 from summing 6+5=11).
+  seedFaces(6, 5, 1, 1, 1, 1, 1);
   try {
-    const roll = c.parseDice('6d6<=4') && c.rollParsed(c.parseDice('6d6<=4'));
-    assert.equal(roll.total, 4);
+    const r = c.rollParsed(c.parseDice('6d6!>=5'));
+    assert.equal(r.total, 2);
+    assert.equal(r.parts[0].successes, 2);
+    assert.deepEqual(host(r.parts[0].hits[0]), [true, true]); // the exploded chain
+  } finally { c.resetRandom(); }
+});
+
+test('rollParsed — one die can explode multiple times, each face counted', () => {
+  // 3d6!>=6: die 1 rolls 6 → 6 → 1; two 6s hit, the 1 misses → 2 successes.
+  seedFaces(6, 6, 1, 1, 1);
+  try {
+    const r = c.rollParsed(c.parseDice('3d6!>=6'));
+    assert.equal(r.total, 2);
+    assert.deepEqual(host(r.parts[0].hits[0]), [true, true, false]);
   } finally { c.resetRandom(); }
 });

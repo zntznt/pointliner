@@ -1151,10 +1151,14 @@ function rollParsed(terms) {
       const { op, target } = t.success;
       const ok = (v) => op === '>=' ? v >= target : op === '<=' ? v <= target
         : op === '>' ? v > target : op === '<' ? v < target : v === target;
-      const hits = dieVals.map(ok);
-      const successes = hits.reduce((n, h) => n + (h ? 1 : 0), 0);
+      // In a pool each rolled face is its own die — including faces produced by
+      // exploding — so test every face in every chain independently and count all
+      // hits (e.g. 6d6!>=5 where one die rolls 6→5 yields TWO successes). hits is
+      // nested parallel to rolls so the display can mark each face.
+      const hits = rolls.map(chain => chain.map(ok));
+      const successes = hits.reduce((n, ch) => n + ch.filter(Boolean).length, 0);
       total += t.sign * successes;
-      return { sign: t.sign, kind: 'dice', count, sides, exploding, success: t.success, rolls, dieVals, hits, successes };
+      return { sign: t.sign, kind: 'dice', count, sides, exploding, success: t.success, rolls, hits, successes };
     }
     // Determine which dice are kept
     let kept;
@@ -1205,14 +1209,18 @@ function diceBreakdownHTML(d) {
       if (p.success) {
         const SYM = { '>=': '≥', '<=': '≤', '>': '>', '<': '<', '=': '=' };
         const label = `${p.count}d${sides}${SYM[p.success.op] || p.success.op}${p.success.target}`;
-        const hits = p.hits || p.rolls.map(() => false);
-        const rollsHtml = p.rolls.map((raw, ri) => {
+        // hits is nested parallel to rolls: one chain per die, one bool per face.
+        // Each face is its own pool die — including exploded faces — so mark them
+        // individually and keep the → arrow between faces of an exploded chain.
+        const hits = p.hits || p.rolls.map(c => (Array.isArray(c) ? c : [c]).map(() => false));
+        const rollsHtml = p.rolls.map((raw, ci) => {
           const chain = Array.isArray(raw) ? raw : [raw];
-          const cls = hits[ri] ? ' dice-hit' : ' dice-dropped';
-          const inner = chain.length > 1
-            ? chain.map((v, ci) => (ci ? '<span class="dice-expl">→</span>' : '') + escHtml(String(v))).join('')
-            : escHtml(String(chain[0]));
-          return `<span class="dice-roll-v${cls}">${inner}</span>`;
+          const inner = chain.map((v, fi) => {
+            const cls = hits[ci]?.[fi] ? ' dice-hit' : ' dice-dropped';
+            return (fi ? '<span class="dice-expl">→</span>' : '')
+              + `<span class="dice-roll-v${cls}">${escHtml(String(v))}</span>`;
+          }).join('');
+          return inner;
         }).join('');
         return `${ops}<span class="dice-grp">${label}<span class="dice-rolls">${rollsHtml}</span></span>`;
       }
