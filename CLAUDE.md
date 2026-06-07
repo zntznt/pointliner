@@ -144,7 +144,8 @@ exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
 `mdInline`'s pill handlers need each node's sidecar data but take no arguments.
 `renderContentHTML` sets module-level globals (`diceRenderList`,
 `markovRenderList`, `rolltableRenderList`, `mathRenderList`, `varRenderList`,
-`globalVarMap`) immediately before calling `mdToHtml`, then clears them after.
+`grammarRenderList`, `globalVarMap`) immediately before calling
+`mdToHtml`, then clears them after.
 This is safe **only because `mdToHtml` is fully synchronous** — there is no
 re-entrance. Any change that makes rendering async would break this and must
 thread the data through arguments instead.
@@ -256,11 +257,19 @@ when proposing features:
   grammar.
 
 **Engine 2 — expression evaluator** (`evalMath`). A hand-written
-recursive-descent parser: `addSub → mulDiv → power → unary → atom`, with
-`number()`, `ident()`, constants (`pi`,`e`,`tau`), unary `√`, `^` (right-assoc),
-`%`, and functions (`sqrt`,`sin`,`log`,`min`,`max`,…). `ident()` resolves document
-variables via the `vars` map passed in. Returns `null` on any malformed input —
-callers treat `null` as "invalid".
+recursive-descent parser: `ternary → cmp → addSub → mulDiv → power → unary → atom`,
+with `number()`, `ident()`, comparisons (`>`,`>=`,`<`,`<=`,`==`,`!=` → 0/1),
+conditionals (`a>b ? x : y` and `if(cond,then,else)`), constants (`pi`,`e`,`tau`,
+**`today`**), unary `√`, `^` (right-assoc), `%`. Functions live in arity tables:
+`FN1` (unary), `FN2` (binary), `FN3` (ternary — `date(y,m,d)`), plus variadic
+`min`/`max`. `FN1` holds the math fns (`sqrt`,`sin`,`log`,…), the **unit
+conversions** (`c2f`, `km2mi`, … named `from2to`), and the **date component fns**
+(`year`/`month`/`day`/`weekday`). **Dates are epoch-day numbers** — `evalMath`
+*always returns a number*, so dates compose with arithmetic and variables; date
+*formatting* is a display-layer concern only (`asdate(...)` is a numeric identity,
+and the math pill renders the result as an ISO date via `formatEpochDays` /
+`isDateExpr` / `formatMathDisplay`). `ident()` resolves document variables via the
+`vars` map passed in. Returns `null` on any malformed input — callers branch on `null`.
 
 **Variables tie the engines together.** `collectVars()` walks the whole
 tree, gathers `[[var:KEY]]` declarations, and resolves them — variables may
@@ -270,7 +279,10 @@ handed to `evalMath`, and an active-resolution stack detects reference cycles
 overflowing. The resolved `{name: value}` map is cached per `markDirty()`
 generation and exposed as `globalVarMap` so math/var pills recompute live when a
 referenced variable changes. `parseDice` accepts variable identifiers as flat
-modifiers (`2d6+str_mod`).
+modifiers (`2d6+str_mod`). Both `collectVars(rootNode = root)` and
+`collectRules(rootNode = root)` take an optional root: no-arg = the live document
+with the per-generation cache (production); an explicit root walks that tree and
+bypasses the cache, making them pure functions of their argument (used by tests).
 
 ---
 
@@ -297,19 +309,34 @@ changes are additive (attributes + CSS), never a visual redesign.
 
 ## Feature status
 
-Implemented: Dice · Markov · Roll tables · Grammar · Math · Variables · Typed shorthand · Footnotes · Tables · Collapse-to-level. Details: `docs/features.md`
+Implemented: Dice (incl. success-counting pools) · Markov · Roll tables · Grammar ·
+Math (incl. unit conversion + date math) · Variables · Typed shorthand · Footnotes ·
+Tables · Collapse-to-level. Details: `docs/features.md`
 
-## Planned / ideas
+## Direction, roadmap & backlog
 
-Tiered feature ideas and open items are in `docs/roadmap.md`. Check there before
-proposing new work — Tier 1 items are a good fit, Tier 3 are explicitly out of
-scope.
+The product direction is now set. Read these before proposing or building:
+- `docs/roadmap.md` — locked decisions + the phased plan (multi-document Zettelkasten,
+  node links + backlinks, storage/durability, the lean↔guided UX modes), plus the
+  remaining generative-engine ideas.
+- `docs/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
+- `docs/ux.md` — the discoverability / verbosity-dial UX strategy. **Build discipline:**
+  ship a feature's bare interaction first, then add its helpers (chips, hints, menu
+  descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.
+
+Note: internal links + backlinks and a multi-document workspace — previously "out of
+scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
 
 ---
 
 ## Working notes
 
 - Dev branch: `claude/cool-cray-5OQcQ` on `zntznt/pointliner`.
-- Pure cores (e.g. `parseDice`, the var-resolution algorithm) are testable by
-  copying them into a plain Node script — no DOM needed. Do this for any
-  non-trivial parsing/eval change.
+- Tests live in `tests/`. `tests/load-cores.mjs` harvests the pure functions out of
+  `index.html` via a Node `vm` sandbox (no build step, no edits to `index.html`); it
+  exposes deterministic-RNG helpers (`seedSequence`/`setRandom`/`resetRandom`).
+  `tests/test.mjs` pins them. Run with `node --test tests/test.mjs`. **Workflow for any
+  parse/eval/index change:** write the pure core → add its function name to the `need`
+  array in `load-cores.mjs` → pin it with seeded assertions in `tests/test.mjs` → confirm
+  green → *then* wire the DOM. (Functions that read module-level `root` need an optional
+  `rootNode` param to be testable — see `collectVars`.)

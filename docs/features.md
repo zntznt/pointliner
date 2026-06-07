@@ -5,9 +5,16 @@
 Implemented:
 
 - **Dice** — `@dice`: `NdM`, `+/-` modifiers, `@var` modifiers, **exploding**
-  (`2d6!`), **keep/drop high/low** (`4d6kh3`/`kl`/`dl`/`dh`), **Fate** (`4dF`).
-  Rolls stored per-die as chains in `parts[].rolls` (array of arrays); old
-  flat-number saves still render via a compat branch in `diceBreakdownHTML`.
+  (`2d6!`), **keep/drop high/low** (`4d6kh3`/`kl`/`dl`/`dh`), **Fate** (`4dF`),
+  and **success-counting pools** — a comparison suffix (`>=`,`<=`,`>`,`<`,`=`)
+  turns the term into "count the dice that match" instead of summing pips
+  (`6d10>=7`, `4d6<=2`). Each rolled face is its own die, so **exploding composes**
+  with pools (`6d6!>=5` — an exploded `6→5` yields TWO successes). Success pools
+  stand alone (no modifier mixing, no keep/drop, no Fate — `parseDice` returns
+  `null`). Rolls stored per-die as chains in `parts[].rolls`; success parts carry
+  `parts[].success` (`{op,target}`), nested `parts[].hits` (parallel to `rolls`),
+  and `parts[].successes`. Old flat-number saves still render via a compat branch
+  in `diceBreakdownHTML`.
 - **Markov chains** — `@markov`: weighted transition rules, walk N steps from a
   start state; click to re-walk. An optional **name** registers the chain so
   `{name}` runs a fresh walk from any grammar or shorthand (joined with ` → `).
@@ -24,7 +31,15 @@ Implemented:
   Cycles/depth caught at expansion (`↻`/`…`). Freezes its expansion like dice;
   click to re-generate.
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
-  change.
+  change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
+  **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,
+  `km2mi`/`mi2km`, `m2ft`, `cm2in`, `kg2lb`, `kmh2mph`, `l2gal`, …). **Date math**:
+  `today` (a constant = epoch-days of the local date), `date(y,m,d)` (a 3-arg fn,
+  `FN3`), and `year`/`month`/`day`/`weekday` (`FN1`). Dates are **epoch-day
+  numbers**, so differences are days and everything composes; `asdate(...)` is a
+  numeric identity that the math pill *displays* as an ISO date — display-layer only,
+  via `formatEpochDays` / `isDateExpr` / `formatMathDisplay`, so `evalMath` still
+  always returns a number.
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
   and flagged (`↻`, `.var-cycle`).

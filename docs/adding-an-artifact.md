@@ -7,7 +7,10 @@ Every artifact follows the same path. To add one (say `@oracle`):
 1. **Token + sidecar.** Pick a token name `[[oracle:KEY]]` and a node array
    `node.oracle`. Add it to `mkNode()`, `toOpml` (`_oracle` attr), and `fromOpml`.
 2. **Pure core.** Write the parse/eval/roll as pure functions returning a record
-   `{key, ...}` or `null` on invalid input. Mirror `makeDiceRoll`.
+   `{key, ...}` or `null` on invalid input. Mirror `makeDiceRoll`. **Pin it before any
+   DOM:** add the function names to the `need` array in `tests/load-cores.mjs` and write
+   seeded assertions in `tests/test.mjs` (`node --test tests/test.mjs`). The dice
+   success-pool core was built this way and is a good worked example.
 3. **Pill renderer.** `renderOraclePill(key, record)` → returns the pill HTML;
    handle the missing-record case with a `…-bad` class.
 4. **Wire into `mdInline`** — one `.replace(/\[\[oracle:([a-z0-9]+)\]\]/gi, …)`
