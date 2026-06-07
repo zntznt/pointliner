@@ -341,7 +341,8 @@ changes are additive (attributes + CSS), never a visual redesign.
 
 Implemented: Dice (incl. success-counting pools) · Markov · Roll tables · Grammar ·
 Math (incl. unit conversion + date math) · Variables · Typed shorthand · Footnotes ·
-Tables · Collapse-to-level · Node links (same-doc, incl. live-title "mirror") ·
+Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
+Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit. Details: `docs/features.md`
 
 ## Direction, roadmap & backlog

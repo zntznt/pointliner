@@ -1595,6 +1595,176 @@ function starterTableText() {
   return '| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| | | |\n| | | |';
 }
 
+// ─── table formulas (Org-mode spreadsheet conventions) ───────────────────────
+// Formulas live on a TBLFM line beside the table (Org's `#+TBLFM:`), NOT inside the
+// cells: cells hold literal values, the formula recipe recomputes its targets.
+// References use Org's @ROW$COLUMN grammar (row @1 = header, @2 = first data row):
+//   @2$3 field   $3 column(current row)   @2 row(current col)   @-1 row above
+//   $+1 next col   @<,@> first/last row   $<,$> first/last col   @#,$# row/col number
+//   @2$1..@>$3 rectangular range → vector for vsum/vmean/vmax/vmin/vcount/vmedian
+// Assignments: $3=$1*$2 (column), @4$2=… (field), @5=… (row); separated by `::`.
+// After reference + range substitution the rest is handed to evalMath, so the FULL
+// math grammar (units, dates, conditionals, functions, variables) works inside table
+// formulas — Org's reference layer is translated onto the existing engine rather than
+// re-implemented. Pure: no DOM. Reuses evalMath + formatMathResult.
+
+const TBLFM_PART_R = '@(?:[<>#]|[+-]?\\d+)';
+const TBLFM_PART_C = '\\$(?:[<>#]|[+-]?\\d+)';
+// A reference is `@…` (with optional `$…`) or a bare `$…`; never the empty string.
+const TBLFM_REF = '(?:' + TBLFM_PART_R + '(?:' + TBLFM_PART_C + ')?|' + TBLFM_PART_C + ')';
+
+// Resolve one @row / $col component to a 0-indexed coordinate.
+// comp: inner token ('2', '-1', '<', '>'); cur: 0-indexed current; n: row/col count.
+function orgResolveComp(comp, cur, n) {
+  if (comp === '<') return 0;
+  if (comp === '>') return n - 1;
+  if (comp === '#' || comp === '0' || comp === '') return cur;
+  if (comp[0] === '+' || comp[0] === '-') return cur + parseInt(comp, 10);
+  return parseInt(comp, 10) - 1;            // absolute, Org is 1-based
+}
+
+// Parse a single field reference token ('@2$3', '$3', '@-1') into a 0-indexed
+// {row, col} given the current field ctx and table dims; null if it has no @/$ part.
+function parseOrgRef(tok, ctx, dims) {
+  const rm = tok.match(/@([<>#]|[+-]?\d+)/);
+  const cm = tok.match(/\$([<>#]|[+-]?\d+)/);
+  if (!rm && !cm) return null;
+  const row = rm ? orgResolveComp(rm[1], ctx.row, dims.nrows) : ctx.row;
+  const col = cm ? orgResolveComp(cm[1], ctx.col, dims.ncols) : ctx.col;
+  return { row, col };
+}
+
+// Parse a TBLFM string into [{target, expr}]; target ∈
+//   {kind:'col', col} · {kind:'row', row} · {kind:'field', row, col}  (0-indexed).
+function parseTblfm(str, dims) {
+  const out = [];
+  (str || '').split('::').forEach(part => {
+    const s = part.trim();
+    const eq = s.indexOf('=');
+    if (eq < 0) return;
+    const lhs = s.slice(0, eq).trim(), expr = s.slice(eq + 1).trim();
+    if (!expr) return;
+    let m;
+    if ((m = lhs.match(/^@([<>]|\d+)\$([<>]|\d+)$/)))
+      out.push({ target: { kind: 'field',
+        row: orgResolveComp(m[1], 0, dims.nrows),
+        col: orgResolveComp(m[2], 0, dims.ncols) }, expr });
+    else if ((m = lhs.match(/^\$([<>]|\d+)$/)))
+      out.push({ target: { kind: 'col', col: orgResolveComp(m[1], 0, dims.ncols) }, expr });
+    else if ((m = lhs.match(/^@([<>]|\d+)$/)))
+      out.push({ target: { kind: 'row', row: orgResolveComp(m[1], 0, dims.nrows) }, expr });
+  });
+  return out;
+}
+
+// Apply TBLFM formulas to a table model, returning a new rows grid with every
+// formula target replaced by its computed display value ('#ERR' on cycle/invalid).
+function computeTable(model, tblfm) {
+  const rows = (model.rows || []).map(r => r.slice());
+  const nrows = rows.length, ncols = rows[0] ? rows[0].length : 0;
+  const dims = { nrows, ncols };
+
+  // target cell "r,c" → expr. Column formulas skip the header (data rows = 1…).
+  const fmap = new Map();
+  for (const f of parseTblfm(tblfm, dims)) {
+    const t = f.target;
+    if (t.kind === 'field') fmap.set(t.row + ',' + t.col, f.expr);
+    else if (t.kind === 'col') { for (let r = 1; r < nrows; r++) fmap.set(r + ',' + t.col, f.expr); }
+    else if (t.kind === 'row') { for (let c = 0; c < ncols; c++) fmap.set(t.row + ',' + c, f.expr); }
+  }
+
+  const memo = new Map();      // "r,c" -> number | null (null = blank/non-numeric)
+  const stack = new Set();     // targets currently evaluating (cycle detection)
+  const literal = (r, c) => {
+    const cell = (rows[r] && rows[r][c] != null ? String(rows[r][c]) : '').trim();
+    if (cell === '') return null;
+    const n = parseFloat(cell);
+    return isNaN(n) ? null : n;
+  };
+  function valueAt(r, c) {
+    if (r < 0 || c < 0 || r >= nrows || c >= ncols) return null;
+    const key = r + ',' + c;
+    if (memo.has(key)) return memo.get(key);
+    if (!fmap.has(key)) { const v = literal(r, c); memo.set(key, v); return v; }
+    if (stack.has(key)) throw new Error('CYCLE');
+    stack.add(key);
+    let v;
+    try { v = evalOrgFormula(fmap.get(key), { row: r, col: c }); } finally { stack.delete(key); }
+    memo.set(key, v);
+    return v;
+  }
+
+  function rangeValues(rangeStr, ctx) {
+    const [aTok, bTok] = rangeStr.split('..');
+    const a = parseOrgRef(aTok, ctx, dims), b = parseOrgRef(bTok, ctx, dims);
+    if (!a || !b) return [];
+    const vals = [];
+    for (let r = Math.min(a.row, b.row); r <= Math.max(a.row, b.row); r++)
+      for (let c = Math.min(a.col, b.col); c <= Math.max(a.col, b.col); c++) {
+        const v = valueAt(r, c);
+        if (v !== null) vals.push(v);       // Org suppresses empty fields in ranges
+      }
+    return vals;
+  }
+
+  function aggregate(fn, vals) {
+    const sum = vals.reduce((a, b) => a + b, 0);
+    if (fn === 'vsum') return sum;
+    if (fn === 'vcount') return vals.length;
+    if (fn === 'vmean') return vals.length ? sum / vals.length : 0;
+    if (fn === 'vmax') return vals.length ? Math.max(...vals) : 0;
+    if (fn === 'vmin') return vals.length ? Math.min(...vals) : 0;
+    if (fn === 'vmedian') {
+      if (!vals.length) return 0;
+      const s = vals.slice().sort((a, b) => a - b), m = s.length >> 1;
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    }
+    return 0;
+  }
+
+  function evalOrgFormula(expr, ctx) {
+    // 1. @# / $# → current Org row/column NUMBER (1-based)
+    let e = expr.replace(/@#/g, '(' + (ctx.row + 1) + ')').replace(/\$#/g, '(' + (ctx.col + 1) + ')');
+    // 2. range aggregates vFN(@..$..) → number
+    const RANGE = TBLFM_REF + '\\.\\.' + TBLFM_REF;
+    e = e.replace(new RegExp('\\b(vsum|vmean|vmax|vmin|vcount|vmedian)\\s*\\(\\s*(' + RANGE + ')\\s*\\)', 'g'),
+      (_, fn, range) => '(' + aggregate(fn, rangeValues(range, ctx)) + ')');
+    // 3. scalar field references → number (blank → 0)
+    e = e.replace(new RegExp(TBLFM_REF, 'g'), (tok) => {
+      const ref = parseOrgRef(tok, ctx, dims);
+      if (!ref) return tok;
+      const v = valueAt(ref.row, ref.col);
+      return '(' + (v === null ? 0 : v) + ')';
+    });
+    return evalMath(e, {});
+  }
+
+  const out = rows.map(r => r.slice());
+  for (const key of fmap.keys()) {
+    const [r, c] = key.split(',').map(Number);
+    let disp;
+    try {
+      const v = valueAt(r, c);
+      disp = (v === null || !isFinite(v)) ? '#ERR' : formatMathResult(v);
+    } catch (_) { disp = '#ERR'; }
+    if (out[r]) out[r][c] = disp;
+  }
+  return out;
+}
+
+// Split a table node's text into the grid portion and its trailing `#+TBLFM:` recipe.
+// The formula line lives in node.text (Org-style) so it round-trips through every
+// serializer for free — parseTable already ignores pipe-less lines, so the grid parser
+// never sees it. extractTblfm → the formula string (or ''); stripTblfm → grid only.
+const TBLFM_LINE_RE = /^[ \t]*#\+TBLFM:(.*)$/im;
+function extractTblfm(text) {
+  const m = (text || '').match(TBLFM_LINE_RE);
+  return m ? m[1].trim() : '';
+}
+function stripTblfm(text) {
+  return (text || '').replace(TBLFM_LINE_RE, '').replace(/\n+$/, '');
+}
+
 // ─── OPML ─────────────────────────────────────────────────────────────────────
 
 function toOpml(r) {
@@ -2122,10 +2292,39 @@ let mtGlobalInit = false;
 
 function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${id}"]`); }
 function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splice(to, 0, x); }
-function mtModel(node) { return parseTable(node.text) || parseTable(starterTableText()); }
-function mtCommit(node, model) { node.text = serializeTable(model); markDirty(); }
+function mtModel(node) { return parseTable(stripTblfm(node.text)) || parseTable(starterTableText()); }
+// Serialize the grid back to node.text, preserving the trailing #+TBLFM: recipe (Org
+// keeps formulas beside the table; cells hold the literal/computed values). Without
+// this, any cell edit would drop the formula line.
+function mtCommit(node, model) {
+  const tblfm = extractTblfm(node.text);
+  node.text = serializeTable(model) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
+  markDirty();
+}
+// Re-run the table's formulas, baking computed display values into the target cells of
+// node.text ('#ERR' on cycle/invalid). No-op (returns false) when there is no recipe.
+function mtRecompute(node) {
+  const tblfm = extractTblfm(node.text);
+  if (!tblfm) return false;
+  const model = mtModel(node);
+  node.text = serializeTable({ aligns: model.aligns, rows: computeTable(model, tblfm) })
+    + '\n#+TBLFM: ' + tblfm;
+  markDirty();
+  return true;
+}
+// Repaint every computed (non-focused) cell from the current model without rebuilding
+// the widget — keeps DOM identity so cell-to-cell focus survives a recompute.
+function mtPatchCells(node, exceptCell) {
+  const host = mtHost(node.id); if (!host) return;
+  const m = mtModel(node);
+  host.querySelectorAll('.mt-cell').forEach(cell => {
+    if (cell === exceptCell || cell === document.activeElement) return; // leave the cell being edited
+    cell.innerHTML = mdInline(m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '');
+  });
+}
 
 function refreshTable(node) {
+  mtRecompute(node); // computed cells reflect the latest source values
   const host = mtHost(node.id);
   if (!host) { render(); return; }
   host.replaceWith(buildTableWidget(node));
@@ -2205,6 +2404,9 @@ function buildTableWidget(node, readOnly) {
     mtCommit(node, m);
     cell.innerHTML = mdInline(raw);
     forceIncludeId = null;
+    // A source-cell edit may feed a formula: recompute and repaint the target cells in
+    // place (rebuilding the widget here would steal focus from the next-clicked cell).
+    if (mtRecompute(node)) mtPatchCells(node, cell);
     scheduleReconcile();
   });
 
@@ -2802,11 +3004,13 @@ function exitEdit(content, node) {
     markDirty();
     if (activeContentId === node.id) activeContentId = null;
     recordTextEdit(node.id, prevText, node.text);
+    const tblfm = extractTblfm(node.text); // the user may have typed/edited a #+TBLFM: line
     const parsed = parseTable(node.text);
     if (parsed) {
       // Normalize: re-serialize so every row has pipe formatting (guards against
-      // rows typed without | in the markdown editor).
-      node.text = serializeTable(parsed);
+      // rows typed without | in the markdown editor), keeping the formula recipe beside it.
+      node.text = serializeTable(parsed) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
+      mtRecompute(node); // bake computed values into the formula's target cells
       content.textContent = '';
       content.appendChild(buildTableWidget(node, false));
       const btn = document.createElement('button');

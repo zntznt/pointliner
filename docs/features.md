@@ -53,6 +53,24 @@ Implemented:
   click re-rolls/re-generates in place and **stays rendered** (never enters edit
   mode), the pencil opens the dialog. To edit the surrounding text, click the text,
   not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
+- **Table formulas** — Org-mode `#+TBLFM:` spreadsheet conventions. The formula line
+  lives as a trailing `#+TBLFM:` line *inside* `node.text` (Org-style), so it round-trips
+  through OPML / Markdown / plain-text for free — no sidecar, no new attribute. **Cells hold
+  literal/computed values; the TBLFM line is the recipe** (the core invariant). References use
+  Org `@ROW$COLUMN` grammar (`@1` = header, `@2` = first data row): `@2$3` field · `$3`
+  column(current row) · `@2` row(current col) · relative `@-1`/`$+1` · `@<`/`@>` first/last
+  row · `$<`/`$>` first/last column · `@#`/`$#` current row/col *number*; rectangular ranges
+  `@2$1..@>$3` feed `vsum`/`vmean`/`vmax`/`vmin`/`vcount`/`vmedian`. Assignments separated by
+  `::`; column formulas (`$N=…`) fill data rows only (header skipped). Blank cells = 0 in
+  scalar context, suppressed inside ranges; cycles/invalid → `#ERR` (never hangs). The
+  reference layer (`orgResolveComp`/`parseOrgRef`/`parseTblfm`/`computeTable`) is **translated
+  onto the existing `evalMath` engine** — so the full math grammar (units, dates, conditionals,
+  functions, variables) works inside formulas. Edit affordance = plain editable text: the
+  "✏ markdown" button shows the whole node (grid + `#+TBLFM:` line) as raw text, like links.
+  Recompute fires on cell focusout and structural edits (`mtRecompute` → in-place
+  `mtPatchCells`, or full `refreshTable`). **Not supported** (future work): named columns
+  (`$name`), constants lines (`#+CONSTANTS:`), remote references (`remote(...)`), hline-relative
+  rows (`@I`/`@II`), Calc-mode flags, and `B3`-style notation (`@row$col` is the one true form).
 - **Collapse to level N** — `collapseToLevel(n)` / `expandAll()` set
   every node's `collapsed` flag by depth relative to the current viewport
   (`focusedId` or root). Toolbar segmented control `1·2·3·All`; keyboard

@@ -64,10 +64,14 @@ autocomplete, tag inheritance, and boolean queries (`A AND NOT B`).
 
 ## Tier 2 — contained, good value
 
-### ☐ Table formulas — *high synergy*
-Spreadsheet-style cell formulas in tables.
+### ✓ Table formulas — *high synergy* (shipped)
+Spreadsheet-style cell formulas in tables, via Org-mode `#+TBLFM:` conventions.
 - **Fit — medium, high synergy.** Reuses `evalMath` + variables: cell references feeding the
   evaluator give live table calc cheaply.
+- **Shipped:** `@ROW$COLUMN` references + ranges (`vsum`/`vmean`/`vmax`/`vmin`/`vcount`/
+  `vmedian`) translated onto `evalMath`; formula stored as a trailing `#+TBLFM:` line in
+  `node.text` (round-trips for free). See `docs/features.md` for the supported grammar and the
+  explicit not-yet list (named columns, `#+CONSTANTS:`, `remote()`, hline-relative `@I`, `B3`).
 
 ### ☐ Rich TODO states + priorities
 Custom task states (e.g. TODO → NEXT → WAITING → DONE) with cycling, plus A/B/C priorities.

@@ -83,8 +83,10 @@ testing.
 
 ### Phase 0 — Generative momentum (ship now, parallel, low risk)
 Independent of the storage refactor; keeps the "balance" promise while Phase 1 is designed.
-- **Table formulas** — cell references feeding `evalMath` for live table calc. Strong reuse
-  of the existing math engine; pure formula parse/eval is verifiable. *(backlog: Table formulas)*
+- **Table formulas** — ✓ **shipped.** Org-mode `#+TBLFM:` cell references + ranges feeding
+  `evalMath` for live table calc; the reference layer is translated onto the existing math
+  engine (pure, test-pinned). Formula rides in `node.text`, no new sidecar. See
+  `docs/features.md`. *(backlog: Table formulas)*
 - **TODO states + priorities** — extend the `todo` type with a state cycle
   (TODO→NEXT→WAITING→DONE) and `[#A]/[#B]/[#C]` priorities. Mostly model + small UI.
   *(backlog: Rich TODO states + priorities)*

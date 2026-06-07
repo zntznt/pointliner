@@ -471,3 +471,117 @@ import assert2 from 'node:assert/strict';
     assert2.deepEqual(host2(idx.broken), []);
   });
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Table formulas (Org-mode spreadsheet conventions)
+// Cores are pure (no DOM); they translate Org @ROW$COLUMN references + ranges
+// onto the existing evalMath engine, so the full math grammar works in formulas.
+// `host` (JSON-normalize across the vm realm) is defined above for the link tests.
+// ───────────────────────────────────────────────────────────────────────────
+const { orgResolveComp, parseOrgRef, parseTblfm, computeTable } = c;
+
+const tblModel = () => ({
+  aligns: [null, null, null],
+  rows: [
+    ['Item', 'Qty', 'Price'],   // @1 (header)
+    ['a', '2', '3'],            // @2
+    ['b', '5', '4'],            // @3
+    ['c', '10', '1'],           // @4
+  ],
+});
+const tblDims = { nrows: 4, ncols: 3 };
+
+test('table: orgResolveComp absolute/relative/special/current', () => {
+  assert.equal(orgResolveComp('2', 0, 4), 1);
+  assert.equal(orgResolveComp('<', 9, 4), 0);
+  assert.equal(orgResolveComp('>', 0, 4), 3);
+  assert.equal(orgResolveComp('-1', 2, 4), 1);
+  assert.equal(orgResolveComp('+1', 1, 4), 2);
+  assert.equal(orgResolveComp('0', 2, 4), 2);
+});
+
+test('table: parseOrgRef — omitted part implies current row/col', () => {
+  assert.deepEqual(host(parseOrgRef('@2$3', { row: 0, col: 0 }, tblDims)), { row: 1, col: 2 });
+  assert.deepEqual(host(parseOrgRef('$3',   { row: 2, col: 0 }, tblDims)), { row: 2, col: 2 });
+  assert.deepEqual(host(parseOrgRef('@2',   { row: 0, col: 1 }, tblDims)), { row: 1, col: 1 });
+  assert.deepEqual(host(parseOrgRef('@-1$-1', { row: 3, col: 2 }, tblDims)), { row: 2, col: 1 });
+  assert.equal(parseOrgRef('foo', { row: 0, col: 0 }, tblDims), null);
+});
+
+test('table: parseTblfm — column / field / row targets, :: separation', () => {
+  const fs = parseTblfm('$3=$1*$2 :: @4$1=99 :: @2=0', tblDims);
+  assert.deepEqual(host(fs[0].target), { kind: 'col', col: 2 });
+  assert.deepEqual(host(fs[1].target), { kind: 'field', row: 3, col: 0 });
+  assert.deepEqual(host(fs[2].target), { kind: 'row', row: 1 });
+  assert.equal(fs[0].expr, '$1*$2');
+});
+
+test('table: column formula $4=$2*$3 fills data rows, skips header', () => {
+  const m = { aligns: [null, null, null, null], rows: [
+    ['Item', 'Qty', 'Price', 'Total'],
+    ['a', '2', '3', ''], ['b', '5', '4', ''], ['c', '10', '1', ''],
+  ] };
+  const out = computeTable(m, '$4=$2*$3');
+  assert.equal(out[0][3], 'Total');
+  assert.equal(out[1][3], '6');
+  assert.equal(out[2][3], '20');
+  assert.equal(out[3][3], '10');
+});
+
+test('table: field formula with vsum range over a column', () => {
+  assert.equal(computeTable(tblModel(), '@4$3=vsum(@2$2..@4$2)')[3][2], '17');
+});
+
+test('table: range aggregates vmean/vmax/vmin/vcount/vmedian', () => {
+  const f = (e) => computeTable(tblModel(), '@4$1=' + e)[3][0];
+  assert.equal(f('vmean(@2$2..@4$2)'), parseFloat((17 / 3).toPrecision(8)).toString());
+  assert.equal(f('vmax(@2$2..@4$2)'), '10');
+  assert.equal(f('vmin(@2$2..@4$2)'), '2');
+  assert.equal(f('vcount(@2$2..@4$2)'), '3');
+  assert.equal(f('vmedian(@2$2..@4$2)'), '5');
+});
+
+test('table: relative @-1 chain produces a running total', () => {
+  const m = { aligns: [null, null], rows: [['n', 'run'], ['1', ''], ['2', ''], ['3', '']] };
+  const out = computeTable(m, '@2$2=@2$1 :: @3$2=@-1$2+$1 :: @4$2=@-1$2+$1');
+  assert.equal(out[1][1], '1');
+  assert.equal(out[2][1], '3');
+  assert.equal(out[3][1], '6');
+});
+
+test('table: blank = 0 scalar, suppressed in ranges', () => {
+  const m = { aligns: [null, null], rows: [['x', 'y'], ['', '4'], ['2', '6']] };
+  assert.equal(computeTable(m, '@2$2=@2$1+10')[1][1], '10');
+  assert.equal(computeTable(m, '@3$2=vmean(@2$1..@3$1)')[2][1], '2');
+});
+
+test('table: @# / $# substitute current row/column number', () => {
+  const out = computeTable(tblModel(), '$1=@#');
+  assert.equal(out[1][0], '2');
+  assert.equal(out[2][0], '3');
+  assert.equal(out[3][0], '4');
+});
+
+test('table: full math grammar inside formulas (conditional + fn)', () => {
+  const out = computeTable(tblModel(), '$1=if($2>4, sqrt($3), 0)');
+  assert.equal(out[1][0], '0');
+  assert.equal(out[2][0], '2');
+  assert.equal(out[3][0], '1');
+});
+
+test('table: $< / $> immutable first/last column references', () => {
+  const m = { aligns: [null, null, null], rows: [['first', 'mid', 'last'], ['10', '', '1']] };
+  assert.equal(computeTable(m, '@2$2=$<+$>')[1][1], '11');
+});
+
+test('table: cycle detection yields #ERR, not a hang', () => {
+  const out = computeTable(tblModel(), '@2$1=@2$2 :: @2$2=@2$1');
+  assert.equal(out[1][0], '#ERR');
+  assert.equal(out[1][1], '#ERR');
+});
+
+test('table: non-formula cells preserved verbatim', () => {
+  const out = computeTable(tblModel(), '$3=$1*$2');
+  assert.equal(out[1][0], 'a');
+  assert.equal(out[2][0], 'b');
+});
