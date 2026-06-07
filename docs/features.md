@@ -69,7 +69,7 @@ Implemented:
     re-roll the target and the mirror updates on next render. A missing target renders
     `.node-link-broken`.
   - **Re-entrancy-safe transclusion:** the mirror renders a node *inside* a link, which
-    happens during `renderContentHTML`, so the inline renderer must **save and restore**
+    happens during `renderContentHTML`, so `renderNodeInline` must **save and restore**
     the render-context globals (NOT clear them), and a depth guard caps nesting at 1
     (nested links inside a mirror render title-only) — this prevents corrupting the outer
     render and A↔B cycles.

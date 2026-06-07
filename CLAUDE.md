@@ -162,7 +162,7 @@ thread the data through arguments instead.
 
 The **one deliberate re-entrance** is the link *mirror* (`[[#id|]]` transcluding the
 target node's rendered content inside a link). Because that render happens *during*
-`renderContentHTML` of the source node, the inline node renderer must **save the
+`renderContentHTML` of the source node, `renderNodeInline` must **save the
 current globals, set them for the target, render, and then RESTORE them** (not clear
 to null — that would break the rest of the source render). A depth guard caps nesting
 at 1 (a link inside a mirror renders title-only) so `A↔B` links can't recurse. Any new
