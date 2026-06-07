@@ -2435,13 +2435,14 @@ function renderRow(r) {
       e.preventDefault();
       enterEdit(content, node);
       content.focus();
-      const r = caretFromPoint(e.clientX, e.clientY);
-      if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
-      else { // no caret point (clicked below/right of text) → caret at end
-        const s = window.getSelection(), rng = document.createRange();
-        rng.selectNodeContents(content); rng.collapse(false);
-        s.removeAllRanges(); s.addRange(rng);
-      }
+      // Do NOT call caretFromPoint here — it returns an unconstrained range anywhere in
+      // the document, and setting it as the selection while content is focused triggers
+      // the focus handler on the wrong node (the one whose DOM the range lands in).
+      // Instead, place the caret at the end of content, which is always the correct
+      // fallback for a click in empty space (right of / below the text).
+      const s = window.getSelection(), rng = document.createRange();
+      rng.selectNodeContents(content); rng.collapse(false);
+      s.removeAllRanges(); s.addRange(rng);
     });
   }
 
@@ -2636,8 +2637,12 @@ function attachContentEvents(content, node) {
     e.preventDefault();
     enterEdit(content, node);
     content.focus();
-    const r = caretFromPoint(e.clientX, e.clientY, content);
-    if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+    // enterEdit swaps innerHTML (display → edit mode), so the layout changes before
+    // caretFromPoint runs. Validate the returned range is inside THIS content element;
+    // if it's not (coordinates now land in a neighbour's DOM) discard it and leave
+    // the caret where focus() placed it rather than jumping to the wrong node.
+    const r = caretFromPoint(e.clientX, e.clientY);
+    if (r && content.contains(r.startContainer)) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
   });
   content.addEventListener('focus', () => {
     if (!content.dataset.editing) enterEdit(content, node);
