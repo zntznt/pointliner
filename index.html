@@ -584,6 +584,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── node links ── */
 .node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
 .node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:2px;padding:0 1px}
+.node-link-mirror{display:inline-block;border-left:2px solid var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent);border-radius:0 3px 3px 0;padding:2px 6px;margin:0 2px;max-height:4.5em;overflow:hidden;vertical-align:top;cursor:pointer;text-decoration:none;color:inherit}
 /* ── backlinks panel ── */
 #bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
 #bl-panel.on{transform:translateY(0)}
@@ -1020,12 +1021,44 @@ function mdEmph(s) {
   return s;
 }
 
+// Depth guard + save/restore wrapper for rendering a target node's HTML inside
+// another node's inline render pass. Prevents clobbering the caller's render-list
+// globals, and caps transclusion depth at 1 so A↔B cycles can't recurse.
+let _inlineDepth = 0;
+function renderNodeInline(node) {
+  const saved = { dice: diceRenderList, markov: markovRenderList,
+                  rolltable: rolltableRenderList, math: mathRenderList,
+                  vars: varRenderList, grammar: grammarRenderList };
+  _inlineDepth++;
+  diceRenderList = node.dice || null; markovRenderList = node.markov || null;
+  rolltableRenderList = node.rolltable || null; mathRenderList = node.math || null;
+  varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
+  // globalVarMap is document-wide — leave it.
+  const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
+  diceRenderList = saved.dice; markovRenderList = saved.markov;
+  rolltableRenderList = saved.rolltable; mathRenderList = saved.math;
+  varRenderList = saved.vars; grammarRenderList = saved.grammar;
+  _inlineDepth--;
+  return html;
+}
+
 // inline markdown within a single line (text is NOT yet escaped)
 function renderLinkPill(target, label) {
   const tn = nodeById(target);
   if (!tn) {
     const cap = escHtml(label || target);
     return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false">${cap}</span>`;
+  }
+  // Empty label → mirror (transclusion): embed the target's rendered content.
+  // When already inside a transclusion (_inlineDepth > 0) fall back to title-only
+  // so A↔B and longer cycles can't recurse; depth is capped at 1.
+  if (label === '') {
+    if (_inlineDepth > 0) {
+      const title = escHtml(textForDisplay(tn) || '(untitled)');
+      return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
+    }
+    const inner = renderNodeInline(tn);
+    return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${inner}</span>`;
   }
   const title = escHtml(label || textForDisplay(tn) || '(untitled)');
   return `<span class="node-link" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
@@ -2478,6 +2511,17 @@ function attachContentEvents(content, node) {
       toggleTaskInNode(node, +e.target.dataset.task);
       return;
     }
+    // node link (including mirrors): clicking anywhere inside a .node-link zooms to
+    // the target. This check runs BEFORE the pill checks so clicking a pill that is
+    // embedded inside a mirror zooms instead of rolling the transcluded pill.
+    // Applies in display mode only; in edit mode links are plain editable text.
+    const lnk = e.target.closest?.('.node-link');
+    if (lnk && !content.dataset.editing) {
+      e.preventDefault(); e.stopPropagation();
+      const tid = lnk.dataset.target;
+      if (tid && nodeById(tid)) zoomInto(tid);
+      return;
+    }
     // dice pill: pencil opens the editor, body re-rolls in place
     const pill = e.target.closest?.('.dice-roll');
     if (pill && !pill.classList.contains('dice-bad')) {
@@ -2548,14 +2592,6 @@ function attachContentEvents(content, node) {
       e.preventDefault(); e.stopPropagation();
       if (content.dataset.editing) exitEdit(content, node); // commit any in-progress edit first
       editVar(node, vp2.dataset.key); // opens a dialog; stays in display mode
-      return;
-    }
-    // node link: click zooms to the target (display mode only — in edit mode the pill is atomic)
-    const lnk = e.target.closest?.('.node-link');
-    if (lnk && !content.dataset.editing) {
-      e.preventDefault(); e.stopPropagation();
-      const tid = lnk.dataset.target;
-      if (tid && nodeById(tid)) zoomInto(tid);
       return;
     }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {
