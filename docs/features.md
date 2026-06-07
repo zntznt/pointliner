@@ -58,3 +58,31 @@ Implemented:
   (`focusedId` or root). Toolbar segmented control `1·2·3·All`; keyboard
   `Ctrl/Cmd+1..6` is a best-effort accelerator (browsers may claim those chords
   for tab switching, so the toolbar is the reliable path).
+- **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
+  (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
+  tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like
+  `collectVars`. **Same-document only** (cross-document is gated behind the future
+  multi-doc workspace).
+  - **Caption vs. mirror:** `[[#id|My text]]` shows a fixed caption; **`[[#id|]]`
+    (empty label) "mirrors"** the target — it renders the target's *live* content,
+    pills included, in their current state, **display-only and inline**. Rename or
+    re-roll the target and the mirror updates on next render. A missing target renders
+    `.node-link-broken`.
+  - **Re-entrancy-safe transclusion:** the mirror renders a node *inside* a link, which
+    happens during `renderContentHTML`, so the inline renderer must **save and restore**
+    the render-context globals (NOT clear them), and a depth guard caps nesting at 1
+    (nested links inside a mirror render title-only) — this prevents corrupting the outer
+    render and A↔B cycles.
+  - **Keyboard-first creation:** "Copy link to this node" (bullet menu + `Cmd/Ctrl+Shift+L`)
+    puts `[[#id|]]` on the clipboard; paste it and the caret lands right after the `|`,
+    ready for a label. Typing `[[#id]]` by hand works too. A `[[`-triggered node picker
+    exists but is **gated off** (`LINK_PICKER_ENABLED = false`) as a future opt-in
+    guidance overlay (per `docs/ux.md`).
+  - **Edit mode:** a link is **plain editable text** `[[#id|label]]`, not an atomic pill —
+    you edit the token as text (like a footnote ref `[^key]`). It renders as a link only in
+    display mode. Clicking a link → zoom to the target.
+- **Click-to-edit anywhere** — clicking any empty / non-interactive part of a node enters
+  edit mode (caret at the click point, or **end-of-text as fallback**); interactive elements
+  (bullet, links, pills, checkboxes, hashtags, footnote refs, table widgets) keep their own
+  behavior, and shift-click still range-selects. Navigating into a node places the caret at
+  the end.

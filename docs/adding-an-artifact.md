@@ -2,27 +2,32 @@
 
 ## Recipe: add a new inline artifact
 
-Every artifact follows the same path. To add one (say `@oracle`):
+Every artifact follows the same path. To add one (say `@weather`):
 
-1. **Token + sidecar.** Pick a token name `[[oracle:KEY]]` and a node array
-   `node.oracle`. Add it to `mkNode()`, `toOpml` (`_oracle` attr), and `fromOpml`.
+1. **Token + sidecar.** Pick a token name `[[weather:KEY]]` and a node array
+   `node.weather`. Add it to `mkNode()`, `toOpml` (`_weather` attr), and `fromOpml`.
 2. **Pure core.** Write the parse/eval/roll as pure functions returning a record
    `{key, ...}` or `null` on invalid input. Mirror `makeDiceRoll`. **Pin it before any
    DOM:** add the function names to the `need` array in `tests/load-cores.mjs` and write
    seeded assertions in `tests/test.mjs` (`node --test tests/test.mjs`). The dice
    success-pool core was built this way and is a good worked example.
-3. **Pill renderer.** `renderOraclePill(key, record)` → returns the pill HTML;
+3. **Pill renderer.** `renderWeatherPill(key, record)` → returns the pill HTML;
    handle the missing-record case with a `…-bad` class.
-4. **Wire into `mdInline`** — one `.replace(/\[\[oracle:([a-z0-9]+)\]\]/gi, …)`
-   line that calls `renderOraclePill` against the render-list global.
-5. **Render-list global** — add `oracleRenderList`, set/clear it in
+4. **Wire into `mdInline`** — one `.replace(/\[\[weather:([a-z0-9]+)\]\]/gi, …)`
+   line that calls `renderWeatherPill` against the render-list global.
+5. **Render-list global** — add `weatherRenderList`, set/clear it in
    `renderContentHTML`, set the node array source.
-6. **Edit mode** — add the `type === 'oracle'` branch in `editModeHTML`.
-7. **Dialog** — `openOracleDialog(...)` built on `openInsertDialog` (shared field
+6. **Edit mode** — add the `type === 'weather'` branch in `editModeHTML`. Pick the right
+   treatment (see CLAUDE.md → Conventions): an **atomic pill** (`contenteditable=false`
+   `data-token`) if the config is richer than the text; an **unfold to `{…}`** for an
+   inline-able artifact; or **plain editable text** if the token *is* the config — that's
+   how **node links** `[[#id|label]]` work (no atomic pill, edited as raw text like a
+   footnote ref, rendered as a widget only in display mode).
+7. **Dialog** — `openWeatherDialog(...)` built on `openInsertDialog` (shared field
    /chip/preview/validate harness).
 8. **Slash menu** — add an entry to `INSERT_CMDS` and a branch in
    `insertInlineArtifact` (which splices the token and pushes the record).
-9. **Click handler** — add a `closest('.oracle-pill')` branch to the
+9. **Click handler** — add a `closest('.weather-pill')` branch to the
    `mousedown` handler in `attachContentEvents`. Follow the existing convention
    (`e.preventDefault()` keeps focus off the node so it never enters edit mode):
    in **display mode** the pill is a live widget — a body click performs the action
@@ -33,9 +38,9 @@ Every artifact follows the same path. To add one (say `@oracle`):
    pencil exits edit mode then opens the dialog. (Note: inline-able artifacts are
    unfolded to `{…}` text in edit mode, so only complex pills — tables/markov — get
    edit-mode clicks; dice/math/grammar pills only exist in display mode.)
-10. **Prune + edit** — `pruneOracle(node)` (drop records with no token) called in
-    `exitEdit`; `editOracle(node, key)` opens the dialog prefilled.
-11. **CSS** — a `.oracle-pill` block near the other pill styles; reuse the
+10. **Prune + edit** — `pruneWeather(node)` (drop records with no token) called in
+    `exitEdit`; `editWeather(node, key)` opens the dialog prefilled.
+11. **CSS** — a `.weather-pill` block near the other pill styles; reuse the
     `--acc` / `--ring` / `--bdr` tokens so light/dark themes work automatically.
 12. **Font Awesome** — if you need a new icon, see the workflow below.
 

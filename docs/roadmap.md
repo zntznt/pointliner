@@ -108,13 +108,20 @@ assumptions into a workspace + current-document model.
 **Steps 1–4 are ungated** — they work in every browser on a single document (no folder backing,
 no Phase 1 dependency). **Only step 5 (cross-file) requires the gated workspace.** This means
 same-document Zettelkasten ships first and everywhere; the multi-file network rides on Phase 1.
-1. **Same-file link token** `[[#nodeId|label]]` + resolver (click → zoom/jump to target).
-   **Build and verify this first** — independent of Phase 1, proves the token + backlink UX
-   cheaply, and is the ungated feature available to all browsers.
-2. **In-memory link index** via tree-walk (generalize the `collectVars`/`collectRules` cache).
-3. **Backlink index + backlinks panel** for the current node.
-4. **Quick-switcher** — fuzzy jump to any node by title (reuses the search index). Near-
-   standalone; can land early. *(backlog: Node links & backlinks)*
+
+> **Status:** steps 1–3 + a bonus mirror are **shipped** (same-document). `collectLinks` index
+> + backlinks panel + `[[#id|label]]` token + copy-link + keyboard-first creation are in; the
+> **mirror** (`[[#id|]]` transcludes the target's live rendered content, display-only, inline) is
+> a real partial slice of the shelved "mirror" feature. Step 4 (picker) is built but **gated off**
+> as a future opt-in overlay; step 5 (cross-file) waits on Phase 1. See `docs/features.md`.
+
+1. ✅ **Same-file link token** `[[#nodeId|label]]` + resolver (click → zoom to target). Links are
+   plain editable text in edit mode (not atomic pills); render as a widget in display mode.
+2. ✅ **In-memory link index** — `collectLinks(rootNode)` tree-walk, cached on `_varsVer`
+   (generalizes the `collectVars`/`collectRules` pattern); returns `{outgoing, backlinks, broken}`.
+3. ✅ **Backlink index + backlinks panel** for the current node.
+4. ◐ **Quick-switcher / `[[` picker** — built but gated off (`LINK_PICKER_ENABLED = false`);
+   re-enable as an opt-in guidance overlay later. *(backlog: Node links & backlinks)*
 5. **Generalize to cross-file** — `[[docId#nodeId|label]]` once Phase 1 lands; the index now
    spans all docs in the folder. **(This step — and only this step — needs the gated
    workspace.)** *(backlog: Node links & backlinks)*

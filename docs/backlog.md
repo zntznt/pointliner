@@ -21,9 +21,13 @@ hashtag tags with click-to-filter; OPML / Markdown / plain-text export; theming 
 
 ## Tier 1 — high priority (recurring across tools, high value)
 
-### ☐ Node links & backlinks (the link layer)
+### ◐ Node links & backlinks (the link layer)
 Link any node to any other and see what links back. Anchors a whole cluster — quick-switcher,
 link-and-create, aliases, unlinked references, graph view.
+- **Shipped (same-document):** `[[#id|label]]` token + `collectLinks` index + backlinks panel
+  + copy-link + keyboard-first creation; plus a **live-title/content "mirror"** (`[[#id|]]`). The
+  `[[` picker is built but gated off. **Remaining:** cross-document (needs the workspace), and the
+  Org-roam cluster below (aliases, unlinked refs, graph). See `docs/features.md` / `docs/roadmap.md`.
 - **Why:** turns the tree into a navigable web — the core of PKM / Zettelkasten work.
 - **Foundation present:** every node already has a stable id that round-trips through OPML
   (`_id`), so addressable targets exist; only the link + index + backlink layer is missing.
@@ -113,10 +117,13 @@ Attach a URL/citation to a note so revisiting the source surfaces it (literature
 ### ☐ Board / Kanban view
 Render a level as columns. **Fit — hard** (an alternate view layer over the same tree).
 
-### ⊘ Mirrors / cloned items — *shelved*
+### ⊘ Mirrors / cloned items — *shelved (but a useful slice now exists)*
 The same node in multiple places with synced edits. Hardest item; conflicts with the strict
-one-parent tree model; node links cover much of the same need more cheaply. **Decision: shelved,
-revisit after linking exists.**
+one-parent tree model. **Decision: full version shelved.** But the link **mirror** (`[[#id|]]`)
+already covers the most-wanted slice: a display-only, one-way reflection of a node's live title
+*and* rendered content (pills + state). It's not edit-back or shared-identity, but it handles
+"I want this reference to always show that node's current state" — so the heavy mirror work stays
+shelved with a clearer conscience.
 
 ---
 
