@@ -4387,7 +4387,12 @@ function evalMath(input, vars = {}) {
     let name = '';
     while (/[a-z0-9_]/.test(peek())) name += eat();
     if (name in CONSTS) return CONSTS[name];
-    if (name in vars) return vars[name]; // document variable
+    // When followed by '(' treat as a function call — don't let a document variable
+    // named 'year'/'month'/'day'/etc. shadow a built-in function.
+    if (peek() !== '(') {
+      if (name in vars) return vars[name]; // document variable (no parens)
+      throw 0;
+    }
     if (name === 'if') {
       // if(cond, then, else) — function form of ternary
       expect('(');
