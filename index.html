@@ -5560,7 +5560,7 @@ function navigateToNext(id) {
     const el = document.querySelector(`.node-content[data-id="${nextId}"]`);
     if (!el) return;
     el.focus();
-    const r = document.createRange(); r.selectNodeContents(el); r.collapse(true);
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
     const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
   });
 }
