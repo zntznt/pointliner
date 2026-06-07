@@ -24,11 +24,21 @@ in a browser and it runs.
 ## Conventions & invariants (the stuff that bites if ignored)
 
 - **`node.text` is plain text, always.** Never store HTML in it.
-- **Complex pills stay atomic in edit mode** (`contenteditable=false`,
-  `data-token`); caret math counts them as their token length and depends on it.
-  Don't make a *pill's internals* editable. Inline-able artifacts instead *unfold*
-  to plain editable `{…}` text (a `.gr-src` span with no `data-token`, counted as
-  ordinary characters) — the whole pill becomes text, the atom is never split.
+- **Three edit-mode treatments for `[[…]]` tokens — pick the right one:**
+  (1) **Complex artifacts** (roll tables, markov, multi-rule grammar, *declaring* vars)
+  stay **atomic** in edit mode (`contenteditable=false`, `data-token`); caret math counts
+  them as their token length. Don't make a pill's internals editable.
+  (2) **Inline-able artifacts** (dice, math, display-only vars, single-line grammar)
+  *unfold* to plain editable `{…}` text (a `.gr-src` span, counted as ordinary characters).
+  (3) **Text-reference tokens** (node **links** `[[#id|label]]`, footnote refs `[^key]`)
+  are **plain editable text** in edit mode — the token carries everything, no sidecar, no
+  atomic pill; you type/edit it directly and it renders as a widget only in display mode.
+  When adding a token type, choose by whether its config is richer than the text (→ atomic
+  or unfold) or *is* the text (→ plain editable, like links).
+- **Click any empty / non-interactive part of a node to enter edit mode** (caret at the
+  click point, end-of-text as the fallback). Interactive elements — bullet, links, pills,
+  checkboxes, hashtags, footnote refs, table widgets — keep their own behavior; shift-click
+  still range-selects. Navigating into a node places the caret at the end.
 - **Pure cores return `null` on invalid input**; callers branch on `null`. Keep
   parsing/rolling free of DOM access so they stay testable in plain Node.
 - **`mdToHtml` must stay synchronous** (render-context globals depend on it).
@@ -149,6 +159,14 @@ exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
 This is safe **only because `mdToHtml` is fully synchronous** — there is no
 re-entrance. Any change that makes rendering async would break this and must
 thread the data through arguments instead.
+
+The **one deliberate re-entrance** is the link *mirror* (`[[#id|]]` transcluding the
+target node's rendered content inside a link). Because that render happens *during*
+`renderContentHTML` of the source node, the inline node renderer must **save the
+current globals, set them for the target, render, and then RESTORE them** (not clear
+to null — that would break the rest of the source render). A depth guard caps nesting
+at 1 (a link inside a mirror renders title-only) so `A↔B` links can't recurse. Any new
+"render a node inside another" path must follow the same save/restore + depth discipline.
 
 ### Edit-mode serialization and caret math (the subtle part)
 
@@ -284,6 +302,18 @@ modifiers (`2d6+str_mod`). Both `collectVars(rootNode = root)` and
 with the per-generation cache (production); an explicit root walks that tree and
 bypasses the cache, making them pure functions of their argument (used by tests).
 
+**Node links** are a third document-wide index, same shape as the above.
+`collectLinks(rootNode = root)` walks the tree for `[[#TARGETID|label]]` tokens and
+returns `{ outgoing, backlinks, broken }`, cached on `_varsVer`. A link is **token-in-
+text, not a sidecar artifact** — the target id lives directly in `node.text` (like a
+footnote ref `[^key]`), so it round-trips through OPML as plain text with no `_link`
+attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption for
+`[[#id|text]]`, the target's **live** title for `[[#id|]]`, or — when the label is empty
+— *mirrors* the target by transcluding its rendered content (display-only, inline; see
+the re-entrancy note above). Missing target → `.node-link-broken`. Same-document only
+(cross-document waits on the multi-doc workspace). The `[[` picker is gated off
+(`LINK_PICKER_ENABLED`); keyboard-first creation is "Copy link" → `[[#id|]]` + paste.
+
 ---
 
 ## Adding a new artifact or icon
@@ -311,7 +341,8 @@ changes are additive (attributes + CSS), never a visual redesign.
 
 Implemented: Dice (incl. success-counting pools) · Markov · Roll tables · Grammar ·
 Math (incl. unit conversion + date math) · Variables · Typed shorthand · Footnotes ·
-Tables · Collapse-to-level. Details: `docs/features.md`
+Tables · Collapse-to-level · Node links (same-doc, incl. live-title "mirror") ·
+Click-anywhere-to-edit. Details: `docs/features.md`
 
 ## Direction, roadmap & backlog
 
