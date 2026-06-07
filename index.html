@@ -582,9 +582,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 }
 
 /* ── node links ── */
-.node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
-.node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:2px;padding:0 1px}
-.node-link-mirror{display:inline-block;border-left:2px solid var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent);border-radius:0 3px 3px 0;padding:2px 6px;margin:0 2px;max-height:4.5em;overflow:hidden;vertical-align:top;cursor:pointer;text-decoration:none;color:inherit}
+.node-link{color:var(--acc);text-decoration:underline;cursor:text;border-radius:2px;padding:0 1px}
+.node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:text;border-radius:2px;padding:0 1px}
+.node-link-mirror{display:inline-block;border-left:2px solid var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent);border-radius:0 3px 3px 0;padding:2px 6px;margin:0 2px;vertical-align:top;cursor:text;text-decoration:none;color:inherit}
+/* the only navigation affordance on a link — clicking the body edits, this jumps */
+.node-link-go{cursor:pointer;color:var(--acc);text-decoration:none;font-size:.85em;padding:0 2px;opacity:.7;user-select:none}
+.node-link-go:hover{opacity:1}
 /* ── backlinks panel ── */
 #bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
 #bl-panel.on{transform:translateY(0)}
@@ -1043,11 +1046,14 @@ function renderNodeInline(node) {
 }
 
 // inline markdown within a single line (text is NOT yet escaped)
+// Every link ends with a .node-link-go "↗" affordance — clicking the link body
+// enters edit mode (a node must always be clickable to edit); only the ↗ navigates.
 function renderLinkPill(target, label) {
   const tn = nodeById(target);
+  const go = `<span class="node-link-go" data-target="${escQ(target)}" contenteditable="false" title="Go to target">↗</span>`;
   if (!tn) {
     const cap = escHtml(label || target);
-    return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false">${cap}</span>`;
+    return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false">${cap}${go}</span>`;
   }
   // Empty label → mirror (transclusion): embed the target's rendered content.
   // When already inside a transclusion (_inlineDepth > 0) fall back to title-only
@@ -1055,13 +1061,13 @@ function renderLinkPill(target, label) {
   if (label === '') {
     if (_inlineDepth > 0) {
       const title = escHtml(textForDisplay(tn) || '(untitled)');
-      return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
+      return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${title}${go}</span>`;
     }
     const inner = renderNodeInline(tn);
-    return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${inner}</span>`;
+    return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${inner}${go}</span>`;
   }
   const title = escHtml(label || textForDisplay(tn) || '(untitled)');
-  return `<span class="node-link" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
+  return `<span class="node-link" data-target="${escQ(target)}" contenteditable="false">${title}${go}</span>`;
 }
 
 function mdInline(s) {
@@ -2511,15 +2517,27 @@ function attachContentEvents(content, node) {
       toggleTaskInNode(node, +e.target.dataset.task);
       return;
     }
-    // node link (including mirrors): clicking anywhere inside a .node-link zooms to
-    // the target. This check runs BEFORE the pill checks so clicking a pill that is
-    // embedded inside a mirror zooms instead of rolling the transcluded pill.
-    // Applies in display mode only; in edit mode links are plain editable text.
-    const lnk = e.target.closest?.('.node-link');
-    if (lnk && !content.dataset.editing) {
+    // node-link ↗ affordance: ONLY the jump icon navigates to the target. Clicking
+    // the link/mirror body falls through to enter edit mode — a node must always be
+    // editable by clicking it (the whole node can be one link). This check runs
+    // before the pill checks so the ↗ on a mirror beats any embedded pill.
+    // Display mode only; in edit mode links are plain editable text.
+    const go = e.target.closest?.('.node-link-go');
+    if (go && !content.dataset.editing) {
       e.preventDefault(); e.stopPropagation();
-      const tid = lnk.dataset.target;
+      const tid = go.dataset.target;
       if (tid && nodeById(tid)) zoomInto(tid);
+      return;
+    }
+    // A click anywhere else inside a mirror (an embedded pill, or the body) must NOT
+    // roll the transcluded pill — fall through to edit mode. Swallow pill checks here.
+    const inMirror = e.target.closest?.('.node-link-mirror');
+    if (inMirror && !content.dataset.editing) {
+      e.preventDefault(); e.stopPropagation();
+      enterEdit(content, node);
+      content.focus();
+      const r = caretFromPoint(e.clientX, e.clientY, content);
+      if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
       return;
     }
     // dice pill: pencil opens the editor, body re-rolls in place
