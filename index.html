@@ -412,6 +412,16 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .ol-num{color:var(--muted);font-size:.88em;padding-right:5px;flex-shrink:0;user-select:none;line-height:var(--lh)}
 /* todo checked */
 .nt-todo.checked>.node-row>.node-content{text-decoration:line-through;opacity:.45}
+/* TODO state badges + priority chips (display-mode overlay; edit mode shows plain text) */
+.todo-state{display:inline-block;font-size:.68em;font-weight:700;letter-spacing:.04em;padding:0 5px;border-radius:3px;vertical-align:middle;margin-right:4px;line-height:1.6;cursor:pointer;user-select:none}
+.todo-state-todo{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
+.todo-state-next{background:color-mix(in srgb,#4caf50 18%,transparent);color:#4caf50}
+.todo-state-waiting{background:color-mix(in srgb,#ff9800 18%,transparent);color:#ff9800}
+.todo-state-done{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
+.todo-prio{display:inline-block;font-size:.68em;font-weight:700;padding:0 4px;border-radius:3px;vertical-align:middle;margin-right:4px;line-height:1.6;user-select:none}
+.todo-prio-a{background:color-mix(in srgb,#e53935 18%,transparent);color:#e53935}
+.todo-prio-b{background:color-mix(in srgb,#fb8c00 18%,transparent);color:#fb8c00}
+.todo-prio-c{background:color-mix(in srgb,#1e88e5 18%,transparent);color:#1e88e5}
 
 .children{padding-left:var(--ind)}
 .collapsed>.children{display:none}
@@ -804,6 +814,83 @@ function textForDisplay(node) {
   return node.text;
 }
 
+// ─── TODO states & priorities (Org-style) ────────────────────────────────────
+// A todo node's state keyword + priority live at the START of node.text, Org
+// headline style: `TODO [#A] body`. Keeping them in node.text means no new node
+// field and no OPML change — text stays the source of truth. The cycle runs
+// '' → TODO → NEXT → WAITING → DONE → '' (the empty state clears it); priority
+// cycles none → A → B → C → none. Done-ness (strikethrough / hide-done) derives
+// from the keyword being DONE, so the agent keeps `node.checked = todoIsDone(kw)`
+// as a derived convenience. Pure: no DOM.
+
+const TODO_STATES = ['TODO', 'NEXT', 'WAITING', 'DONE']; // ordered active→done
+const TODO_DONE = new Set(['DONE']);                     // keywords counted "done"
+const TODO_CYCLE = ['', ...TODO_STATES];                 // cycle incl. cleared state
+const TODO_PRIOS = ['A', 'B', 'C'];                      // highest → lowest
+const PRIO_CYCLE = [null, ...TODO_PRIOS];                // cycle incl. no-priority
+const TODO_KEYWORD_RE = /^(TODO|NEXT|WAITING|DONE)(?=\s|$)/;
+
+// Split a node's text into { keyword, priority, body }. No keyword → keyword '',
+// priority null, body = the whole text. Priority is only read after a keyword.
+function parseTodo(text) {
+  const s = text == null ? '' : String(text);
+  const km = s.match(TODO_KEYWORD_RE);
+  if (!km) return { keyword: '', priority: null, body: s };
+  let rest = s.slice(km[1].length).replace(/^\s+/, '');
+  let priority = null;
+  const pm = rest.match(/^\[#([A-Za-z])\]\s*/);
+  if (pm) { priority = pm[1].toUpperCase(); rest = rest.slice(pm[0].length); }
+  return { keyword: km[1], priority, body: rest };
+}
+
+function todoIsDone(keyword) { return TODO_DONE.has(keyword); }
+
+// Re-serialize a parsed todo to `keyword [#P] body`, trimming cleanly when the
+// keyword / priority are absent. Inverse of parseTodo (modulo whitespace).
+function formatTodo({ keyword, priority, body }) {
+  const head = [keyword || '', priority ? '[#' + priority + ']' : ''].filter(Boolean).join(' ');
+  body = body || '';
+  return head ? (body ? head + ' ' + body : head) : body;
+}
+
+// Step through an ordered cycle list with wraparound; unknown current → start.
+function cycleIn(list, current, dir) {
+  const i = list.indexOf(current);
+  const at = i < 0 ? 0 : i, n = list.length;
+  return list[((at + dir) % n + n) % n];
+}
+function cycleTodoKeyword(current, dir = 1) { return cycleIn(TODO_CYCLE, current || '', dir); }
+function cyclePriority(current, dir = 1) { return cycleIn(PRIO_CYCLE, current || null, dir); }
+
+// Text-level mutators the DOM calls. Clearing the keyword also drops the priority
+// (a bare [#A] without a state is meaningless); priority cycling is a no-op when
+// there's no keyword.
+function cycleTodoState(text, dir = 1) {
+  const t = parseTodo(text);
+  const keyword = cycleTodoKeyword(t.keyword, dir);
+  return formatTodo({ keyword, priority: keyword ? t.priority : null, body: t.body });
+}
+function cycleTodoPriority(text, dir = 1) {
+  const t = parseTodo(text);
+  if (!t.keyword) return text == null ? '' : String(text);
+  return formatTodo({ keyword: t.keyword, priority: cyclePriority(t.priority, dir), body: t.body });
+}
+
+// Sort key for ordering sibling todos: not-done before done, then priority
+// (A<B<C<none), then active-state order. Compare element-wise (see compareTodo).
+function todoSortKey(text) {
+  const t = parseTodo(text);
+  const done = todoIsDone(t.keyword) ? 1 : 0;
+  const prio = t.priority ? TODO_PRIOS.indexOf(t.priority) : TODO_PRIOS.length;
+  const state = t.keyword ? TODO_STATES.indexOf(t.keyword) : TODO_STATES.length;
+  return [done, prio, state];
+}
+function compareTodo(a, b) {
+  const ka = todoSortKey(a), kb = todoSortKey(b);
+  for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
+  return 0;
+}
+
 // Render a whole-node code block (node.type === 'code'). The text is `\`\`\`` +
 // content; this strips an optional language token on the opening line and an
 // optional closing `\`\`\`` fence, so a pasted ```lang … ``` block renders cleanly
@@ -833,7 +920,27 @@ function renderContentHTML(node) {
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
   // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
   // Whole-node code blocks get their own fence-aware renderer.
-  const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
+  // Todo nodes with a keyword: render keyword badge + priority chip as a display overlay,
+  // then render the body (without the keyword prefix) as normal markdown.
+  let html;
+  if (node.type === 'code') {
+    html = codeNodeHTML(node);
+  } else if (node.type === 'todo') {
+    const { keyword, priority, body } = parseTodo(node.text);
+    if (keyword) {
+      const kw = keyword.toLowerCase();
+      const badge = `<span class="todo-state todo-state-${kw}" data-todo-state="${keyword}">${keyword}</span>`;
+      const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}">[#${priority}]</span>` : '';
+      const bodyHtml = mdToHtml(body || '');
+      // inject badges inside the first block-open tag so they flow inline with the text
+      const m = bodyHtml.match(/^(<(?:p|li|h[1-6]|blockquote|div)[^>]*>)/);
+      html = m ? m[1] + badge + chip + bodyHtml.slice(m[1].length) : badge + chip + bodyHtml;
+    } else {
+      html = mdToHtml(node.text);
+    }
+  } else {
+    html = mdToHtml(node.text);
+  }
   diceRenderList    = null;
   markovRenderList  = null;
   rolltableRenderList = null;
@@ -2634,7 +2741,7 @@ function renderRow(r) {
     const INTERACTIVE = '.node-content,.bullet,.collapse-btn,.node-checkbox,'
       + '.md-task-check,.node-link,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,'
       + '.var-pill,.dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit,'
-      + '.hashtag,.fn-ref,.md-table-host';
+      + '.hashtag,.fn-ref,.md-table-host,.todo-state';
     row.addEventListener('mousedown', e => {
       if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       if (content.dataset.editing) return;
@@ -2746,6 +2853,14 @@ function attachContentEvents(content, node) {
     if (!content.dataset.editing && e.target.classList && e.target.classList.contains('md-task-check')) {
       e.preventDefault(); e.stopPropagation();
       toggleTaskInNode(node, +e.target.dataset.task);
+      return;
+    }
+    // todo state badge: click cycles the state forward (display mode only)
+    if (!content.dataset.editing && e.target.closest?.('.todo-state')) {
+      e.preventDefault(); e.stopPropagation();
+      node.text = cycleTodoState(node.text);
+      node.checked = todoIsDone(parseTodo(node.text).keyword);
+      markDirty(); render();
       return;
     }
     // node link (including mirrors): click zooms to the target. Runs before the pill
@@ -3037,6 +3152,8 @@ function exitEdit(content, node) {
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
+  // Derive checked from the keyword so strikethrough + hide-done stay in sync
+  if (node.type === 'todo') node.checked = todoIsDone(parseTodo(node.text).keyword);
   pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneFootnotes(node); // drop data for deleted tokens
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
@@ -3162,8 +3279,22 @@ function onKeyDown(e, id, content) {
     const node = nodeById(id);
     if (node && content.textContent==='' && node.children.length===0) { e.preventDefault(); deleteNode(id); }
   }
-  else if (e.key==='ArrowUp'   && e.altKey)  { e.preventDefault(); moveNode(id,-1); }
-  else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
+  else if (e.key==='ArrowUp'   && e.altKey && !e.shiftKey)  { e.preventDefault(); moveNode(id,-1); }
+  else if (e.key==='ArrowDown' && e.altKey && !e.shiftKey)  { e.preventDefault(); moveNode(id, 1); }
+  else if (e.key==='ArrowUp'   && e.altKey && e.shiftKey) {
+    const _nd = nodeById(id);
+    if (_nd?.type === 'todo' && parseTodo(_nd.text).keyword) {
+      e.preventDefault(); _nd.text = cycleTodoPriority(_nd.text, -1); markDirty();
+      content.innerHTML = content.dataset.editing ? editModeHTML(_nd) : renderContentHTML(_nd);
+    }
+  }
+  else if (e.key==='ArrowDown' && e.altKey && e.shiftKey) {
+    const _nd = nodeById(id);
+    if (_nd?.type === 'todo' && parseTodo(_nd.text).keyword) {
+      e.preventDefault(); _nd.text = cycleTodoPriority(_nd.text, 1); markDirty();
+      content.innerHTML = content.dataset.editing ? editModeHTML(_nd) : renderContentHTML(_nd);
+    }
+  }
   else if (e.key==='ArrowUp'   && ctrl) { e.preventDefault(); setCollapsed(id,true); }
   else if (e.key==='ArrowDown' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
   else if (e.key==='ArrowUp'   && !e.altKey && !ctrl && !e.shiftKey) {
@@ -3173,6 +3304,21 @@ function onKeyDown(e, id, content) {
     if (isAtLastLine(content)) { e.preventDefault(); navigateToNext(id); }
   }
   else if (e.key==='Escape') { e.preventDefault(); if (focusedId) zoomOut(); else content.blur(); }
+  else if (e.key==='s' && e.altKey && !ctrl) {
+    const _nd = nodeById(id);
+    if (_nd?.type === 'todo') {
+      e.preventDefault();
+      _nd.text = cycleTodoState(_nd.text);
+      _nd.checked = todoIsDone(parseTodo(_nd.text).keyword);
+      markDirty();
+      const _off = content.dataset.editing ? getCaretOffset(content) : -1;
+      content.innerHTML = content.dataset.editing ? editModeHTML(_nd) : renderContentHTML(_nd);
+      if (_off >= 0) { try { setCaretByOffset(content, _off); } catch(_) {} }
+      content.closest('.node')?.classList.toggle('checked', _nd.checked);
+      const _cb = content.closest('.node-row')?.querySelector('.node-checkbox');
+      if (_cb) _cb.checked = _nd.checked;
+    }
+  }
   else if (e.key==='s' && ctrl) { e.preventDefault(); saveFile(); }
   else if (e.key==='o' && ctrl) { e.preventDefault(); openFile(); }
 }
@@ -3475,6 +3621,13 @@ function showBulletPopup(nodeId, bulletEl) {
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',    fn: () => { deleteNode(nodeId); hideBpop(); }, danger:true },
   ];
+  if (node.children.length >= 2) {
+    actions.splice(actions.length - 1, 0, {
+      icon: { fa:'fa-solid fa-arrow-down-wide-short', fb:'⇅' },
+      label: 'Sort children by state/priority',
+      fn: () => { pushUndo(); node.children.sort((a,b) => compareTodo(a.text, b.text)); markDirty(); render(); hideBpop(); },
+    });
+  }
   actions.forEach(({ icon, label, fn, danger }) => {
     const item = mkCmdItem(icon, label, '', fn);
     if (danger) {
@@ -5469,7 +5622,20 @@ function setCaretByOffset(el, target) {
 function toggleChecked(id, checked) {
   const node = nodeById(id);
   if (!node) return;
-  node.checked = checked; markDirty();
+  const { keyword } = parseTodo(node.text);
+  if (keyword) {
+    // When a keyword is present: checkbox tick sets DONE, untick steps back one state
+    if (checked) {
+      const t = parseTodo(node.text);
+      node.text = formatTodo({ keyword: 'DONE', priority: t.priority, body: t.body });
+    } else {
+      node.text = cycleTodoState(node.text, -1); // DONE → WAITING
+    }
+    node.checked = todoIsDone(parseTodo(node.text).keyword);
+  } else {
+    node.checked = checked;
+  }
+  markDirty();
   render();
 }
 
@@ -6874,6 +7040,11 @@ const SHORTCUTS = [
     { keys: ['⇧+Enter'],         desc: 'Line break inside a point' },
     { keys: ['Tab', '⇧+Tab'],    desc: 'Indent / outdent' },
     { keys: ['Alt+↑', '↓'],      desc: 'Move point up / down' },
+  ]},
+  { sec: 'TODO state & priority', rows: [
+    { keys: ['Alt+S'],                desc: 'Cycle TODO state (todo → next → waiting → done → clear)' },
+    { keys: ['Alt+⇧+↑', 'Alt+⇧+↓'], desc: 'Cycle priority up / down (#A → #B → #C → none)' },
+    { keys: ['click badge'],          desc: 'Click state badge in display mode to cycle forward' },
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },

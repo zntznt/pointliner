@@ -599,3 +599,77 @@ test('table: non-formula cells preserved verbatim', () => {
   assert.equal(out[1][0], 'a');
   assert.equal(out[2][0], 'b');
 });
+
+// ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
+const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
+        cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo } = c;
+
+test('todo: parseTodo keyword + priority + body', () => {
+  assert.deepEqual(host(parseTodo('TODO [#A] Buy milk')), { keyword: 'TODO', priority: 'A', body: 'Buy milk' });
+  assert.deepEqual(host(parseTodo('NEXT Ship it')),       { keyword: 'NEXT', priority: null, body: 'Ship it' });
+  assert.deepEqual(host(parseTodo('DONE')),               { keyword: 'DONE', priority: null, body: '' });
+});
+
+test('todo: no keyword → empty keyword, whole text as body', () => {
+  assert.deepEqual(host(parseTodo('Buy milk')), { keyword: '', priority: null, body: 'Buy milk' });
+  assert.deepEqual(host(parseTodo('TODOlist cleanup')), { keyword: '', priority: null, body: 'TODOlist cleanup' });
+});
+
+test('todo: tolerant of extra whitespace + lowercase priority', () => {
+  assert.deepEqual(host(parseTodo('TODO   [#b]   tidy')), { keyword: 'TODO', priority: 'B', body: 'tidy' });
+});
+
+test('todo: formatTodo inverts parseTodo (normalized)', () => {
+  const round = (s) => formatTodo(parseTodo(s));
+  assert.equal(round('TODO [#A] Buy milk'), 'TODO [#A] Buy milk');
+  assert.equal(round('TODO   [#b]   tidy'), 'TODO [#B] tidy');
+  assert.equal(round('DONE'), 'DONE');
+  assert.equal(round('plain text'), 'plain text');
+});
+
+test('todo: todoIsDone', () => {
+  assert.equal(todoIsDone('DONE'), true);
+  assert.equal(todoIsDone('TODO'), false);
+  assert.equal(todoIsDone(''), false);
+});
+
+test('todo: cycleTodoKeyword full forward cycle incl. cleared state', () => {
+  assert.equal(cycleTodoKeyword(''), 'TODO');
+  assert.equal(cycleTodoKeyword('TODO'), 'NEXT');
+  assert.equal(cycleTodoKeyword('NEXT'), 'WAITING');
+  assert.equal(cycleTodoKeyword('WAITING'), 'DONE');
+  assert.equal(cycleTodoKeyword('DONE'), '');
+});
+
+test('todo: cycleTodoKeyword reverse direction', () => {
+  assert.equal(cycleTodoKeyword('', -1), 'DONE');
+  assert.equal(cycleTodoKeyword('TODO', -1), '');
+});
+
+test('todo: cyclePriority none → A → B → C → none, and reverse', () => {
+  assert.equal(cyclePriority(null), 'A');
+  assert.equal(cyclePriority('A'), 'B');
+  assert.equal(cyclePriority('C'), null);
+  assert.equal(cyclePriority(null, -1), 'C');
+});
+
+test('todo: cycleTodoState rewrites text keyword, preserving body + priority', () => {
+  assert.equal(cycleTodoState('TODO [#A] Buy milk'), 'NEXT [#A] Buy milk');
+  assert.equal(cycleTodoState('plain task'), 'TODO plain task');
+  assert.equal(cycleTodoState('DONE [#B] wrap up'), 'wrap up');   // clearing drops keyword + priority
+});
+
+test('todo: cycleTodoPriority no-op without a keyword', () => {
+  assert.equal(cycleTodoPriority('just a note'), 'just a note');
+  assert.equal(cycleTodoPriority('TODO write tests'), 'TODO [#A] write tests');
+  assert.equal(cycleTodoPriority('TODO [#C] write tests'), 'TODO write tests');
+});
+
+test('todo: todoSortKey + compareTodo (not-done before done, A<B<C<none)', () => {
+  assert.deepEqual(host(todoSortKey('TODO [#A] x')), [0, 0, 0]);
+  assert.deepEqual(host(todoSortKey('DONE x')),      [1, 3, 3]);
+  assert.deepEqual(host(todoSortKey('plain')),       [0, 3, 4]);
+  const items = ['DONE done it', 'TODO [#C] low', 'NEXT [#A] hot', 'plain note'];
+  assert.deepEqual(items.slice().sort(compareTodo),
+    ['NEXT [#A] hot', 'TODO [#C] low', 'plain note', 'DONE done it']);
+});

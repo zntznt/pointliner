@@ -143,6 +143,8 @@ export function loadCores() {
     'mkRoot', 'mkNode', 'toOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable',
+    'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
+    'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
   ];
   const cores = {};
   const missing = [];

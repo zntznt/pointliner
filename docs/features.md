@@ -107,3 +107,20 @@ Implemented:
   (bullet, links, pills, checkboxes, hashtags, footnote refs, table widgets) keep their own
   behavior, and shift-click still range-selects. Navigating into a node places the caret at
   the end.
+- **TODO states + priorities** — Org-style keyword + `[#A]` priority at the **start of
+  `node.text`** (headline style: `TODO [#A] body`). No new node field, no OPML attribute —
+  keyword + priority are plain text and round-trip for free. State cycle: `'' → TODO → NEXT →
+  WAITING → DONE → ''`; priority cycle: `none → A → B → C → none`.
+  - **Done-ness derived from keyword:** `node.checked = todoIsDone(keyword)`, so the existing
+    strikethrough (`.nt-todo.checked`) and hide-done filter keep working unchanged.
+  - **Checkbox ⇄ keyword:** when a keyword is present, ticking the checkbox sets `DONE`;
+    unticking steps back to `WAITING`. No keyword → legacy boolean behavior.
+  - **State badge click** — clicking the colored `TODO`/`NEXT`/`WAITING`/`DONE` badge in
+    display mode cycles the state forward. The badge is display-mode only; edit mode shows
+    the keyword as plain editable text.
+  - **Keyboard shortcuts:** `Alt+S` cycles state; `Alt+Shift+↑/↓` cycles priority up/down
+    (no-op when no keyword).
+  - **Sort children:** bullet menu → "Sort children by state/priority" sorts children using
+    `compareTodo` (not-done before done, then `A < B < C < none`, then active-state order).
+  - **Not included (future work):** user-configurable state sets, `CANCELLED`, logbook /
+    `CLOSED:` timestamps, per-file `#+TODO:` keyword declarations, agenda/scheduling.
