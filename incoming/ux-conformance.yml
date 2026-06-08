@@ -1,0 +1,67 @@
+# Repo path: .github/workflows/ux-conformance.yml
+#
+# Fails any PR whose description lacks a filled UX Conformance Statement
+# (or an explicit "UI: none"). This enforces presence + shape only — a human/agent
+# reviewer still checks the statement is TRUE against the diff (see the PR template's
+# reviewer checklist). Full process: guidance/ux-definition-of-done.md.
+
+name: UX Conformance Gate
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  ux-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a UX Conformance Statement in the PR body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = (pr && pr.body) ? pr.body : '';
+
+            const fail = (msg) => core.setFailed(
+              `UX Conformance gate failed.\n\n${msg}\n\n` +
+              `Every UI-touching PR must include a filled UX Conformance Statement ` +
+              `(guidance/ux-definition-of-done.md -> "How this gate is run"), or "UI: none" ` +
+              `if the change has no UI surface. No statement, no merge.`
+            );
+
+            // Escape hatch: pure logic / core-only change with no UI surface.
+            if (/(^|\n)\s*UI:\s*none\b/i.test(body)) {
+              core.info('UI: none declared — UX Conformance not required.');
+              return;
+            }
+
+            // 1. The block must exist.
+            if (!/UX Conformance/i.test(body)) {
+              return fail('No "UX Conformance" block found in the PR description.');
+            }
+
+            // 2. The skeleton must be filled (no leftover placeholders).
+            const placeholders = body.match(/<how>|<change>|<one-word reason>/gi);
+            if (placeholders) {
+              return fail(
+                `The statement still has ${placeholders.length} unfilled placeholder(s) ` +
+                `(e.g. "<how>"). Fill every principle line.`
+              );
+            }
+
+            // 3. Each principle must carry a verdict (✅ or N/A).
+            const verdict = /(✅|N\/?-?A)/i;
+            const lines = body.split('\n');
+            const missing = ['P1', 'P2', 'P3', 'P4', 'P5'].filter(p => {
+              const line = lines.find(l => new RegExp(`\\b${p}\\b`).test(l) && verdict.test(l));
+              return !line;
+            });
+            if (missing.length) {
+              return fail(`No ✅ / N/A verdict found for: ${missing.join(', ')}.`);
+            }
+
+            core.info('UX Conformance Statement present and filled. ✓');
