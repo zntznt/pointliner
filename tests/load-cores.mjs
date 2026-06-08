@@ -145,6 +145,7 @@ export function loadCores() {
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable',
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
+    'setTodoState','setTodoPriority',
   ];
   const cores = {};
   const missing = [];

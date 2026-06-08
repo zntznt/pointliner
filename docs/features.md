@@ -109,17 +109,28 @@ Implemented:
   the end.
 - **TODO states + priorities** — Org-style keyword + `[#A]` priority at the **start of
   `node.text`** (headline style: `TODO [#A] body`). No new node field, no OPML attribute —
-  keyword + priority are plain text and round-trip for free. State cycle: `'' → TODO → NEXT →
-  WAITING → DONE → ''`; priority cycle: `none → A → B → C → none`.
+  keyword + priority are plain text and round-trip for free. States: `TODO / NEXT / WAITING /
+  DONE` (done = `DONE`); priorities: `A / B / C`.
   - **Done-ness derived from keyword:** `node.checked = todoIsDone(keyword)`, so the existing
-    strikethrough (`.nt-todo.checked`) and hide-done filter keep working unchanged.
-  - **Checkbox ⇄ keyword:** when a keyword is present, ticking the checkbox sets `DONE`;
-    unticking steps back to `WAITING`. No keyword → legacy boolean behavior.
-  - **State badge click** — clicking the colored `TODO`/`NEXT`/`WAITING`/`DONE` badge in
-    display mode cycles the state forward. The badge is display-mode only; edit mode shows
-    the keyword as plain editable text.
-  - **Keyboard shortcuts:** `Alt+S` cycles state; `Alt+Shift+↑/↓` cycles priority up/down
-    (no-op when no keyword).
+    strikethrough (`.nt-todo.checked`) and the **hide-done filter (with the show-done toggle)
+    keep working unchanged** — completed items hiding is a deliberate, load-bearing feature.
+  - **Checkbox ⇄ keyword:** when a keyword is present, ticking the checkbox sets `DONE` (the
+    item then hides until show-done); unticking steps back to `WAITING`. No keyword → legacy
+    boolean behavior.
+  - **Changing state — two easy paths (no modifier chords):**
+    - **Click-choose:** clicking the colored state badge (or priority chip) opens a compact
+      popover picker (`— / TODO / NEXT / WAITING / DONE` and `— / A / B / C`); one click sets
+      it directly via `setTodoState` / `setTodoPriority` — *direct jump, not cycle*. For a
+      no-keyword todo the same picker is reachable from the bullet popup / long-press
+      ("Set state / priority…"), so it works on touch too. The picker reuses the `#bpop`
+      element.
+    - **Typing:** in edit mode the keyword is plain editable text at the line start, so just
+      type `TODO `/`NEXT `/`WAITING `/`DONE ` (or edit/delete it) — it renders as a badge on
+      exit and `checked` re-derives. Slash entries `/todo` `/next` `/waiting` `/done` make it
+      discoverable; they also convert a non-todo node to a todo with that keyword.
+  - **Display:** state badge (one accent for `TODO`/`NEXT`/`WAITING`, muted for `DONE`) +
+    `[#A]` priority chip, injected at the start of the rendered body; the body renders as
+    normal markdown. Edit mode shows keyword + priority as plain text (never atomic pills).
   - **Sort children:** bullet menu → "Sort children by state/priority" sorts children using
     `compareTodo` (not-done before done, then `A < B < C < none`, then active-state order).
   - **Not included (future work):** user-configurable state sets, `CANCELLED`, logbook /

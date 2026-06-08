@@ -602,7 +602,8 @@ test('table: non-formula cells preserved verbatim', () => {
 
 // ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
 const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
-        cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo } = c;
+        cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo,
+        setTodoState, setTodoPriority } = c;
 
 test('todo: parseTodo keyword + priority + body', () => {
   assert.deepEqual(host(parseTodo('TODO [#A] Buy milk')), { keyword: 'TODO', priority: 'A', body: 'Buy milk' });
@@ -663,6 +664,20 @@ test('todo: cycleTodoPriority no-op without a keyword', () => {
   assert.equal(cycleTodoPriority('just a note'), 'just a note');
   assert.equal(cycleTodoPriority('TODO write tests'), 'TODO [#A] write tests');
   assert.equal(cycleTodoPriority('TODO [#C] write tests'), 'TODO write tests');
+});
+
+test('todo: setTodoState direct jump to any state (picker), clamps garbage', () => {
+  assert.equal(setTodoState('TODO [#A] task', 'WAITING'), 'WAITING [#A] task');
+  assert.equal(setTodoState('plain task', 'DONE'), 'DONE plain task');
+  assert.equal(setTodoState('TODO [#B] task', ''), 'task');
+  assert.equal(setTodoState('TODO x', 'BOGUS'), 'x');
+});
+
+test('todo: setTodoPriority direct jump, no-op without keyword, clamps garbage', () => {
+  assert.equal(setTodoPriority('TODO task', 'C'), 'TODO [#C] task');
+  assert.equal(setTodoPriority('TODO [#A] task', null), 'TODO task');
+  assert.equal(setTodoPriority('plain task', 'A'), 'plain task');
+  assert.equal(setTodoPriority('TODO task', 'Z'), 'TODO task');
 });
 
 test('todo: todoSortKey + compareTodo (not-done before done, A<B<C<none)', () => {

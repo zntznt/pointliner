@@ -464,6 +464,15 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .bpop-type{width:26px;height:26px;border-radius:6px;background:var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);font-family:monospace;transition:background .1s,color .1s;flex-shrink:0}
 .bpop-type:hover{background:var(--acc);color:#fff}
 .bpop-type.cur{background:var(--acc);color:#fff}
+/* todo state/priority picker (reuses #bpop) */
+.tp-group{padding:4px 4px 6px}
+.tp-group+.tp-group{border-top:1px solid var(--bdr);margin-top:3px}
+.tp-label{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);opacity:.7;margin:0 0 4px 2px}
+.tp-chips{display:flex;gap:4px;flex-wrap:wrap}
+.tp-chip{padding:2px 9px;border-radius:6px;background:var(--bdr);cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);transition:background .1s,color .1s;user-select:none}
+.tp-chip:hover{background:var(--acc);color:#fff}
+.tp-chip.cur{background:var(--acc);color:#fff}
+.tp-chip.tp-none{font-weight:400;color:var(--muted)}
 
 /* slash menu */
 #slash-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:204px;overflow:hidden}
@@ -889,6 +898,21 @@ function compareTodo(a, b) {
   const ka = todoSortKey(a), kb = todoSortKey(b);
   for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
   return 0;
+}
+
+// Direct setters for a one-click state/priority picker (vs. the cycle helpers).
+// setTodoState('', …) clears the keyword (and its priority). Unknown keywords are
+// clamped to '' and unknown priorities to null, so a picker can't write garbage.
+function setTodoState(text, keyword) {
+  const t = parseTodo(text);
+  const kw = TODO_STATES.includes(keyword) ? keyword : '';
+  return formatTodo({ keyword: kw, priority: kw ? t.priority : null, body: t.body });
+}
+function setTodoPriority(text, priority) {
+  const t = parseTodo(text);
+  if (!t.keyword) return text == null ? '' : String(text);   // no priority without a state
+  const p = TODO_PRIOS.includes(priority) ? priority : null;
+  return formatTodo({ keyword: t.keyword, priority: p, body: t.body });
 }
 
 // Render a whole-node code block (node.type === 'code'). The text is `\`\`\`` +
@@ -1973,6 +1997,12 @@ const BLOCK_CMDS = [
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert an editable grid of cells.',       section:'Blocks' },
+  // To-do state — make a todo and set its Org-style keyword (also typeable: just
+  // write `TODO `/`NEXT `/`WAITING `/`DONE ` at the start of the line).
+  { id:'state:TODO',    icon:'☐', fa:'fa-regular fa-square',         label:'TODO',    desc:'Mark as an open task.',        ex:'TODO text',    section:'To-do state' },
+  { id:'state:NEXT',    icon:'→', fa:'fa-solid fa-angles-right',     label:'NEXT',    desc:'Mark as the next action.',     ex:'NEXT text',    section:'To-do state' },
+  { id:'state:WAITING', icon:'⏳', fa:'fa-solid fa-hourglass-half',  label:'WAITING', desc:'Blocked / waiting on something.', ex:'WAITING text', section:'To-do state' },
+  { id:'state:DONE',    icon:'✓', fa:'fa-solid fa-square-check',     label:'DONE',    desc:'Mark as complete (hides unless show-done).', ex:'DONE text', section:'To-do state' },
 ];
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
@@ -2855,12 +2885,11 @@ function attachContentEvents(content, node) {
       toggleTaskInNode(node, +e.target.dataset.task);
       return;
     }
-    // todo state badge: click cycles the state forward (display mode only)
-    if (!content.dataset.editing && e.target.closest?.('.todo-state')) {
+    // todo state badge: click opens the state/priority picker (display mode only)
+    const badge = e.target.closest?.('.todo-state, .todo-prio');
+    if (!content.dataset.editing && badge) {
       e.preventDefault(); e.stopPropagation();
-      node.text = cycleTodoState(node.text);
-      node.checked = todoIsDone(parseTodo(node.text).keyword);
-      markDirty(); render();
+      showTodoPicker(node.id, badge);
       return;
     }
     // node link (including mirrors): click zooms to the target. Runs before the pill
@@ -3279,22 +3308,8 @@ function onKeyDown(e, id, content) {
     const node = nodeById(id);
     if (node && content.textContent==='' && node.children.length===0) { e.preventDefault(); deleteNode(id); }
   }
-  else if (e.key==='ArrowUp'   && e.altKey && !e.shiftKey)  { e.preventDefault(); moveNode(id,-1); }
-  else if (e.key==='ArrowDown' && e.altKey && !e.shiftKey)  { e.preventDefault(); moveNode(id, 1); }
-  else if (e.key==='ArrowUp'   && e.altKey && e.shiftKey) {
-    const _nd = nodeById(id);
-    if (_nd?.type === 'todo' && parseTodo(_nd.text).keyword) {
-      e.preventDefault(); _nd.text = cycleTodoPriority(_nd.text, -1); markDirty();
-      content.innerHTML = content.dataset.editing ? editModeHTML(_nd) : renderContentHTML(_nd);
-    }
-  }
-  else if (e.key==='ArrowDown' && e.altKey && e.shiftKey) {
-    const _nd = nodeById(id);
-    if (_nd?.type === 'todo' && parseTodo(_nd.text).keyword) {
-      e.preventDefault(); _nd.text = cycleTodoPriority(_nd.text, 1); markDirty();
-      content.innerHTML = content.dataset.editing ? editModeHTML(_nd) : renderContentHTML(_nd);
-    }
-  }
+  else if (e.key==='ArrowUp'   && e.altKey)  { e.preventDefault(); moveNode(id,-1); }
+  else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
   else if (e.key==='ArrowUp'   && ctrl) { e.preventDefault(); setCollapsed(id,true); }
   else if (e.key==='ArrowDown' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
   else if (e.key==='ArrowUp'   && !e.altKey && !ctrl && !e.shiftKey) {
@@ -3304,21 +3319,6 @@ function onKeyDown(e, id, content) {
     if (isAtLastLine(content)) { e.preventDefault(); navigateToNext(id); }
   }
   else if (e.key==='Escape') { e.preventDefault(); if (focusedId) zoomOut(); else content.blur(); }
-  else if (e.key==='s' && e.altKey && !ctrl) {
-    const _nd = nodeById(id);
-    if (_nd?.type === 'todo') {
-      e.preventDefault();
-      _nd.text = cycleTodoState(_nd.text);
-      _nd.checked = todoIsDone(parseTodo(_nd.text).keyword);
-      markDirty();
-      const _off = content.dataset.editing ? getCaretOffset(content) : -1;
-      content.innerHTML = content.dataset.editing ? editModeHTML(_nd) : renderContentHTML(_nd);
-      if (_off >= 0) { try { setCaretByOffset(content, _off); } catch(_) {} }
-      content.closest('.node')?.classList.toggle('checked', _nd.checked);
-      const _cb = content.closest('.node-row')?.querySelector('.node-checkbox');
-      if (_cb) _cb.checked = _nd.checked;
-    }
-  }
   else if (e.key==='s' && ctrl) { e.preventDefault(); saveFile(); }
   else if (e.key==='o' && ctrl) { e.preventDefault(); openFile(); }
 }
@@ -3621,6 +3621,15 @@ function showBulletPopup(nodeId, bulletEl) {
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',    fn: () => { deleteNode(nodeId); hideBpop(); }, danger:true },
   ];
+  // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
+  // todo can become NEXT etc. — the badge target only exists once a keyword is set).
+  if (node.type === 'todo') {
+    actions.unshift({
+      icon: { fa:'fa-solid fa-circle-check', fb:'◔' },
+      label: 'Set state / priority…',
+      fn: () => { showTodoPicker(nodeId, bulletEl); },
+    });
+  }
   if (node.children.length >= 2) {
     actions.splice(actions.length - 1, 0, {
       icon: { fa:'fa-solid fa-arrow-down-wide-short', fb:'⇅' },
@@ -3649,7 +3658,74 @@ function showBulletPopup(nodeId, bulletEl) {
 }
 function scheduleBpopHide() { bpopTimer = setTimeout(hideBpop, 300); }
 function hideBpop() { bpop.classList.remove('on'); }
-document.addEventListener('click', e => { if (!e.target.closest('#bpop') && !e.target.closest('.bullet')) hideBpop(); });
+document.addEventListener('click', e => {
+  // .todo-state/.todo-prio open the picker on mousedown; ignore the trailing click
+  // so it doesn't immediately dismiss the popover it just opened.
+  if (!e.target.closest('#bpop') && !e.target.closest('.bullet') && !e.target.closest('.todo-state,.todo-prio')) hideBpop();
+});
+
+// Compact state + priority picker for a todo node. Reuses the #bpop element (so
+// touch + positioning + outside-click dismiss all come for free). One click sets
+// the value directly via the setTodoState/setTodoPriority cores — no cycling.
+function showTodoPicker(nodeId, anchorEl) {
+  clearTimeout(bpopTimer);
+  const node = nodeById(nodeId);
+  if (!node || node.type !== 'todo') return;
+  const { keyword, priority } = parseTodo(node.text);
+  bpop.innerHTML = '';
+
+  const apply = () => {
+    node.checked = todoIsDone(parseTodo(node.text).keyword);
+    markDirty(); render(); hideBpop();
+  };
+
+  // States: — / TODO / NEXT / WAITING / DONE
+  const stGroup = document.createElement('div');
+  stGroup.className = 'tp-group';
+  stGroup.innerHTML = '<div class="tp-label">State</div>';
+  const stChips = document.createElement('div');
+  stChips.className = 'tp-chips';
+  [['', '—'], ...TODO_STATES.map(s => [s, s])].forEach(([val, label]) => {
+    const chip = document.createElement('div');
+    chip.className = 'tp-chip' + (val === '' ? ' tp-none' : '') + (keyword === val ? ' cur' : '');
+    chip.textContent = label;
+    chip.addEventListener('mousedown', e => { e.preventDefault(); node.text = setTodoState(node.text, val); apply(); });
+    stChips.appendChild(chip);
+  });
+  stGroup.appendChild(stChips);
+  bpop.appendChild(stGroup);
+
+  // Priorities: — / A / B / C (only meaningful with a keyword; disabled-looking otherwise)
+  const prGroup = document.createElement('div');
+  prGroup.className = 'tp-group';
+  prGroup.innerHTML = '<div class="tp-label">Priority</div>';
+  const prChips = document.createElement('div');
+  prChips.className = 'tp-chips';
+  [[null, '—'], ...TODO_PRIOS.map(p => [p, p])].forEach(([val, label]) => {
+    const chip = document.createElement('div');
+    chip.className = 'tp-chip' + (val === null ? ' tp-none' : '') + (priority === val ? ' cur' : '');
+    chip.textContent = label;
+    chip.style.opacity = keyword ? '' : '.4';
+    chip.addEventListener('mousedown', e => {
+      e.preventDefault();
+      if (!keyword) return; // no priority without a state
+      node.text = setTodoPriority(node.text, val); apply();
+    });
+    prChips.appendChild(chip);
+  });
+  prGroup.appendChild(prChips);
+  bpop.appendChild(prGroup);
+
+  const rect = anchorEl.getBoundingClientRect();
+  bpop.style.left = rect.left + 'px';
+  bpop.style.top  = (rect.bottom + 4) + 'px';
+  bpop.classList.add('on');
+  requestAnimationFrame(() => {
+    const pr = bpop.getBoundingClientRect();
+    if (pr.right  > window.innerWidth  - 8) bpop.style.left = (window.innerWidth - pr.width - 8) + 'px';
+    if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (rect.top - pr.height - 4) + 'px';
+  });
+}
 
 // ─── slash commands ───────────────────────────────────────────────────────────
 
@@ -5517,6 +5593,23 @@ function checkMdBlockPrefix(content, node) {
 function applyBlockCmd(id, nodeId, node, content) {
   node = node || nodeById(nodeId);
   if (!node) return;
+  // to-do state keyword: make the node a todo (stripping any block prefix) and set
+  // the Org keyword directly. Equivalent to typing `NEXT ` at the line start.
+  if (id.startsWith('state:')) {
+    const kw = id.slice(6);
+    if (node.type !== 'todo') {
+      const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
+      if (oldPrefix && node.text.startsWith(oldPrefix)) node.text = node.text.slice(oldPrefix.length);
+      node.type = 'todo';
+    }
+    node.text = setTodoState(node.text, kw);
+    node.checked = todoIsDone(parseTodo(node.text).keyword);
+    const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (activeEl) activeEl.innerHTML = editModeHTML(node);
+    markDirty();
+    rerenderNode(nodeId);
+    return;
+  }
   // table: seed a starter table and switch the node into builder mode
   if (id === 'table') {
     if (activeContentId === nodeId) { const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`); if (el) el.blur(); }
@@ -7042,9 +7135,9 @@ const SHORTCUTS = [
     { keys: ['Alt+↑', '↓'],      desc: 'Move point up / down' },
   ]},
   { sec: 'TODO state & priority', rows: [
-    { keys: ['Alt+S'],                desc: 'Cycle TODO state (todo → next → waiting → done → clear)' },
-    { keys: ['Alt+⇧+↑', 'Alt+⇧+↓'], desc: 'Cycle priority up / down (#A → #B → #C → none)' },
-    { keys: ['click badge'],          desc: 'Click state badge in display mode to cycle forward' },
+    { keys: ['click badge'],            desc: 'Open the state / priority picker (set any state directly)' },
+    { keys: ['TODO', 'NEXT', 'WAITING', 'DONE'], desc: 'Just type the keyword at the start of a to-do line' },
+    { keys: ['/todo', '/next', '…'],   desc: 'Slash menu sets the to-do state too' },
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
