@@ -1,0 +1,22 @@
+
+
+UX Conformance
+P1:   P2:   P3:   P4:   P5:
+New non-conformances:
+Tests: green   Touch:    OPML:
+
+# ─────────────────────────────────────────────────────────────────────────
+# Line 1 (above the blank line) is your commit subject — imperative, ~50 chars.
+#
+# UX Conformance block (persists in the message — the lines WITHOUT a #):
+#   • One mark per principle: ✅ or N/A.  P5: if you added syntax, say what it RETIRES.
+#   • "New non-conformances": file each gap as UXP-NN in guidance/ux-remediation.md, or "none".
+#   • If this commit has NO UI surface, replace the whole block with:  UX: none
+#
+# Full process: guidance/ux-definition-of-done.md → "How this gate is run".
+# Rule: no Conformance Statement, no merge.
+#
+# Enable this template once (repo-local):
+#   git config commit.template .gitmessage
+# (place this file at the repo root as .gitmessage)
+# ─────────────────────────────────────────────────────────────────────────
