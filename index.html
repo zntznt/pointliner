@@ -142,7 +142,7 @@ body.full-width #outline{max-width:none}
 .zoom-title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;word-break:break-word;white-space:pre-wrap;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
-.zoom-title-table{cursor:default;white-space:normal;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
+.zoom-title-base{cursor:default;white-space:normal;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
 
 /* node base */
 .node{position:relative}
@@ -187,11 +187,11 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-hl{background:rgba(255,225,0,.45);color:inherit;border-radius:2px;padding:0 1px}
 @media(prefers-color-scheme:dark){.md-hl{background:rgba(220,180,0,.4)}}
 .node-content sub,.node-content sup{font-size:.72em;line-height:0}
-/* ── interactive table builder ── */
-.nt-table>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
-.nt-table>.node-row>.node-content[data-editing]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;white-space:pre-wrap;cursor:text}
+/* ── interactive base (its table view) ── */
+.nt-base>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
+.nt-base>.node-row>.node-content[data-editing]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;white-space:pre-wrap;cursor:text}
 .mt-editmd-btn{display:block;width:100%;padding:1px 2px;text-align:right;font-size:.68em;color:var(--muted);background:none;border:none;cursor:pointer;opacity:0;transition:opacity .12s;line-height:1.6;user-select:none}
-.nt-table>.node-row:hover .mt-editmd-btn{opacity:.55}
+.nt-base>.node-row:hover .mt-editmd-btn{opacity:.55}
 .mt-editmd-btn:hover{opacity:1!important;text-decoration:underline}
 .md-table-host,.md-table-static{min-width:0;padding:2px 0}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
@@ -511,6 +511,14 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #slash-menu-list::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 #slash-menu .cmd-item{padding:5px 8px}
 #slash-menu .cmd-desc{display:none}
+/* shared grid size picker (swapped into the slash-menu popup by /base and @table) */
+#slash-menu.sp-mode{width:auto}
+#size-picker{padding:10px 11px}
+.sp-grid{display:grid;gap:3px;width:max-content;margin:0 auto 7px}
+.sp-cell{width:15px;height:15px;border:1px solid var(--bdr);border-radius:3px;background:var(--bg);cursor:pointer}
+.sp-cell.on{background:var(--acc);border-color:var(--acc)}
+.sp-label{font-size:12px;font-weight:600;text-align:center;color:var(--fg)}
+.sp-hint{font-size:10px;color:var(--muted);text-align:center;margin-top:3px;white-space:nowrap}
 .slash-footer{display:flex;flex-direction:column;gap:3px;padding:6px 10px 8px;border-top:1px solid var(--bdr);min-height:24px}
 .sf-desc{font-size:11px;color:var(--muted);line-height:1.4}
 .sf-ex{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--acc);background:var(--cbg);border-radius:5px;padding:2px 6px;line-height:1.4;word-break:break-word}
@@ -667,7 +675,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .md-task{gap:.6em}
   /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
   .io-field input,.io-field textarea{font-size:16px}
-  .nt-table>.node-row>.node-content[data-editing]{font-size:16px}
+  .nt-base>.node-row>.node-content[data-editing]{font-size:16px}
   /* roomier action targets in menus / dialogs / bars */
   .io-btn{padding:10px 16px;font-size:15px}
   .nsb-btn{padding:8px 12px;font-size:14px}
@@ -826,7 +834,7 @@ function mkNode(text = '', type = 'ul') {
 function inheritedType(type) {
   // headings, dividers and tables don't propagate to a new sibling — a new
   // point under a table should be a plain bullet, not another table widget
-  return ['h1','h2','h3','h4','h5','h6','divider','table'].includes(type) ? 'ul' : type;
+  return ['h1','h2','h3','h4','h5','h6','divider','base'].includes(type) ? 'ul' : type;
 }
 
 // Block types that store their markdown prefix in node.text
@@ -1786,8 +1794,30 @@ function serializeTable(t) {
   return out.join('\n');
 }
 
-function starterTableText() {
-  return '| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| | | |\n| | | |';
+// Build a starter pipe-table markdown string: `rows` total rows (row 1 is the
+// header) × `cols` columns, with labelled header cells and empty body cells. Used
+// by both /base (interactive) and @table (static) via the shared size picker; the
+// no-arg default reproduces the original 3×3 starter.
+function starterTableText(rows = 3, cols = 3) {
+  rows = Math.max(1, Math.min(8, rows | 0));   // row 1 is the header; rows-1 body rows
+  cols = Math.max(1, Math.min(8, cols | 0));
+  const row = cells => '| ' + cells.join(' | ') + ' |';
+  const lines = [
+    row(Array.from({ length: cols }, (_, i) => 'Column ' + (i + 1))),
+    row(Array(cols).fill('---')),
+  ];
+  for (let r = 1; r < rows; r++) lines.push(row(Array(cols).fill('')));
+  return lines.join('\n');
+}
+
+// Pure decision behind the NON-DESTRUCTIVE /base convert (the data-loss fix). An
+// empty point becomes the base in place; a content-bearing point keeps its text and
+// the base is inserted as the next sibling — text is NEVER overwritten. createBaseAt
+// wires this to the tree; pinning it here guards the fix.
+function planBaseConvert(text, starter) {
+  return (text || '').trim() === ''
+    ? { mode: 'in-place', text: starter }
+    : { mode: 'after', insert: starter };
 }
 
 // ─── table formulas (Org-mode spreadsheet conventions) ───────────────────────
@@ -1969,7 +1999,7 @@ function stripTblfm(text) {
 // A pipe table written in ANY point renders the same way a `#` renders a heading:
 // `mdToHtml` detects it and emits a static <table>. This is purely a RENDER path —
 // node.text is never modified; edit mode still shows the raw markdown (recipe line
-// included). The interactive base widget (node.type==='table') is a separate object
+// included). The interactive base widget (node.type==='base') is a separate object
 // and is untouched by this.
 
 // GFM table delimiter row detector — the false-positive guard. Returns the cell
@@ -2118,7 +2148,7 @@ const BLOCK_CMDS = [
   { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced, unformatted code block.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert an editable grid of cells.',       section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
   // To-do state — make a todo and set its Org-style keyword (also typeable: just
   // write `TODO `/`NEXT `/`WAITING `/`DONE ` at the start of the line).
   { id:'state:TODO',    icon:'☐', fa:'fa-regular fa-square',         label:'TODO',    desc:'Mark as an open task.',        ex:'TODO text',    section:'To-do state' },
@@ -2133,6 +2163,7 @@ const INSERT_CMDS = [
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
+  { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
@@ -2267,9 +2298,9 @@ function render() {
   if (!vp) { focusedId = null; render(); return; }
 
   if (focusedId) {
-    if (vp.type === 'table') {
+    if (vp.type === 'base') {
       const wrap = document.createElement('div');
-      wrap.className = 'zoom-title zoom-title-table';
+      wrap.className = 'zoom-title zoom-title-base';
       wrap.appendChild(buildTableWidget(vp, false));
       container.appendChild(wrap);
     } else {
@@ -3083,7 +3114,7 @@ function renderRow(r) {
   const content = document.createElement('div');
   content.className = 'node-content';
   const isDivider = node.type === 'divider';
-  const isTable = node.type === 'table';
+  const isTable = node.type === 'base';
   // Tables manage their own cell-level edit; contenteditable is only enabled when
   // the user enters raw-markdown text-edit mode (toggled in enterEdit/exitEdit).
   content.contentEditable = (opts.searchCtx || isTable) ? 'false' : 'true';
@@ -3196,7 +3227,7 @@ let activeContentId = null;
 function attachContentEvents(content, node) {
   // Table nodes: clicking OUTSIDE the widget → raw-markdown text edit; clicking ON
   // the widget → cell editing handled internally by buildTableWidget.
-  if (node.type === 'table') {
+  if (node.type === 'base') {
     content.addEventListener('mousedown', e => {
       if (content.dataset.editing) return;
       if (e.target.closest('.md-table-host')) return; // let the widget handle it
@@ -3354,6 +3385,7 @@ function attachContentEvents(content, node) {
     scheduleFnHide();
     scheduleBlHide();
     hideLinkMenu();
+    if (isSizePickerOpen()) closeSizePicker(); // dismiss the grid sizer if focus left
     if (node.type === 'divider') {
       setTimeout(() => {
         const nodeEl = content.closest('.node');
@@ -3460,7 +3492,7 @@ function editModeHTML(node) {
 }
 
 function enterEdit(content, node) {
-  if (node.type === 'table') {
+  if (node.type === 'base') {
     if (content.dataset.editing) return;
     if (selectedIds.size > 0) clearSelection();
     selAnchorId = node.id;
@@ -3489,7 +3521,7 @@ function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
 
-  if (node.type === 'table') {
+  if (node.type === 'base') {
     // Re-read with block awareness: a #+TBLFM: line typed on a fresh Enter lands in a
     // <div> block, which editableText would glue onto the grid (no newline) and drop.
     node.text = editableTextBlocks(content);
@@ -3640,6 +3672,15 @@ function onKeyDown(e, id, content) {
     if (e.key==='ArrowUp')   { e.preventDefault(); lpMove(-1); return; }
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); lpApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideLinkMenu(); return; }
+  }
+  if (isSizePickerOpen()) {
+    if (e.key==='ArrowRight') { e.preventDefault(); sizePickerMove(0, 1); return; }
+    if (e.key==='ArrowLeft')  { e.preventDefault(); sizePickerMove(0,-1); return; }
+    if (e.key==='ArrowDown')  { e.preventDefault(); sizePickerMove(1, 0); return; }
+    if (e.key==='ArrowUp')    { e.preventDefault(); sizePickerMove(-1,0); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); sizePickerConfirm(); return; }
+    if (e.key==='Escape')     { e.preventDefault(); closeSizePicker(); return; }
+    e.preventDefault(); return; // swallow other keys while the picker owns the popup
   }
   if (slashState && isSlashMenuOpen()) {
     if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
@@ -4225,9 +4266,132 @@ function slashApply() {
   }
   // restore the caret where the trigger char was
   try { setCaretByOffset(content, slashOffset); } catch(_) {}
+  // /base and @table both open the SHARED grid size picker (swapped into this same
+  // popup) before creating anything; the confirm callback does the actual work.
+  if (trigger !== '@' && cmd.id === 'base') {
+    openSizePicker(content, slashOffset, (rows, cols) => createBaseAt(nodeId, rows, cols));
+    return;
+  }
+  if (trigger === '@' && cmd.id === 'table') {
+    openSizePicker(content, slashOffset, (rows, cols) => {
+      const n = nodeById(nodeId); if (!n) return;
+      // Read the caret, then LEAVE edit mode before mutating: applyInlineReplace
+      // re-renders, and a still-editing node's blur-during-render would otherwise
+      // exitEdit-clobber node.text back to the pre-insert buffer (mirrors createBaseAt).
+      const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+      const off = Math.min(ed ? getCaretOffset(ed) : n.text.length, n.text.length);
+      if (ed) ed.blur();
+      const cur = nodeById(nodeId); if (!cur) return;
+      // keep the table block on its own line(s) so PR 1's static path detects it
+      const before = cur.text.slice(0, off), after = cur.text.slice(off);
+      let ins = starterTableText(rows, cols);
+      if (before && !/\n$/.test(before)) ins = '\n' + ins;
+      if (after && !/^\n/.test(after)) ins = ins + '\n';
+      applyInlineInsertion(nodeId, off, ins);
+    });
+    return;
+  }
   if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
   else applyBlockCmd(cmd.id, nodeId, node, content);
   markDirty();
+}
+
+// ─── shared grid size picker (used by BOTH /base and @table) ─────────────────
+// Reuses the slash-menu popup element (no separate dialog): picking /base or
+// @table swaps the command list for an N×M grid sizer. Keyboard-first per the
+// §7.2 menu pattern — arrows size, Enter/Tab confirm, Esc cancels back to text;
+// immediate Enter takes the 3×3 default. N = total rows (row 1 is the header).
+let sizePickerState = null;
+const SIZE_PICKER_MAX = 8;
+function isSizePickerOpen() { return !!sizePickerState; }
+
+function openSizePicker(content, slashOffset, onConfirm) {
+  hideSlashMenu();
+  sizePickerState = { rows: 3, cols: 3, onConfirm, content, slashOffset };
+  renderSizePicker();
+  positionSlashMenu(content, slashOffset);
+}
+
+function renderSizePicker() {
+  if (!sizePickerState) return;
+  const { rows, cols } = sizePickerState;
+  slashMenu.innerHTML = '';
+  slashMenu.classList.add('sp-mode');
+  const wrap = document.createElement('div');
+  wrap.id = 'size-picker';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-label', 'Table size — arrow keys to size, Enter to create, Escape to cancel');
+  const grid = document.createElement('div');
+  grid.className = 'sp-grid';
+  grid.style.gridTemplateColumns = `repeat(${SIZE_PICKER_MAX}, 15px)`;
+  for (let r = 0; r < SIZE_PICKER_MAX; r++) for (let c = 0; c < SIZE_PICKER_MAX; c++) {
+    const cell = document.createElement('div');
+    cell.className = 'sp-cell' + (r < rows && c < cols ? ' on' : '');
+    cell.addEventListener('mouseenter', () => { sizePickerState.rows = r + 1; sizePickerState.cols = c + 1; renderSizePicker(); });
+    cell.addEventListener('mousedown', e => { e.preventDefault(); sizePickerState.rows = r + 1; sizePickerState.cols = c + 1; sizePickerConfirm(); });
+    grid.appendChild(cell);
+  }
+  wrap.appendChild(grid);
+  const label = document.createElement('div');
+  label.className = 'sp-label'; label.setAttribute('aria-live', 'polite');
+  label.textContent = `${rows} × ${cols}`;
+  wrap.appendChild(label);
+  const hint = document.createElement('div');
+  hint.className = 'sp-hint';
+  hint.textContent = '↑↓←→ size · Enter create · Esc cancel';
+  wrap.appendChild(hint);
+  slashMenu.appendChild(wrap);
+  slashMenu.classList.add('on');
+}
+
+function sizePickerMove(dRow, dCol) {
+  if (!sizePickerState) return;
+  sizePickerState.rows = Math.max(1, Math.min(SIZE_PICKER_MAX, sizePickerState.rows + dRow));
+  sizePickerState.cols = Math.max(1, Math.min(SIZE_PICKER_MAX, sizePickerState.cols + dCol));
+  renderSizePicker();
+}
+
+function sizePickerConfirm() {
+  if (!sizePickerState) return;
+  const { rows, cols, onConfirm } = sizePickerState;
+  closeSizePicker();
+  onConfirm(rows, cols);
+}
+
+function closeSizePicker() {
+  sizePickerState = null;
+  slashMenu.classList.remove('on', 'sp-mode');
+  slashMenu.innerHTML = '';
+}
+
+// Create a base (interactive grid) from /base — NON-DESTRUCTIVELY. This fixes the
+// old data-loss bug where converting a point overwrote its text with a starter grid.
+// An EMPTY point becomes the base in place; a CONTENT-bearing point keeps its text
+// and the base is inserted as the very next sibling. Reuses the node-insert pattern
+// (splice + nodeMap/parentMap registration) from insertSiblingAfter.
+function createBaseAt(nodeId, rows, cols) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  // leave text-edit on this point first; the widget manages its own cell editing.
+  if (activeContentId === nodeId) {
+    const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (el) el.blur();
+  }
+  const plan = planBaseConvert(node.text, starterTableText(rows, cols));
+  pushUndo();
+  if (plan.mode === 'in-place') {
+    node.text = plan.text; node.type = 'base'; node.checked = false;
+    markDirty(); render(); focusNode(nodeId);
+    return;
+  }
+  // content-bearing: preserve the text as its own point, drop the base right after it
+  const parent = parentOf(nodeId);
+  if (!parent) { markDirty(); render(); return; }
+  const idx = parent.children.findIndex(c => c.id === nodeId);
+  const base = mkNode(plan.insert, 'base');
+  parent.children.splice(idx + 1, 0, base);
+  nodeMap.set(base.id, base); parentMap.set(base.id, parent);
+  markDirty(); render(); focusNode(base.id);
 }
 
 // Insert an inline artifact at the current caret (used by the "@" menu).
@@ -5978,14 +6142,10 @@ function applyBlockCmd(id, nodeId, node, content) {
     rerenderNode(nodeId);
     return;
   }
-  // table: seed a starter table and switch the node into builder mode
-  if (id === 'table') {
-    if (activeContentId === nodeId) { const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`); if (el) el.blur(); }
-    if (!parseTable(node.text)) node.text = starterTableText();
-    node.type = 'table'; node.checked = false;
-    markDirty(); render();
-    return;
-  }
+  // base: create the interactive grid, NON-DESTRUCTIVELY (see createBaseAt). The
+  // /base slash verb routes through the shared size picker; this direct path (e.g.
+  // a future menu entry) uses the default size.
+  if (id === 'base') { createBaseAt(nodeId, 3, 3); return; }
   // block type — swap prefix in node.text to match the new type
   const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
   const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
@@ -6326,7 +6486,7 @@ function focusNode(id) {
     if (!el) return;
     const node = nodeById(id);
     // Table nodes manage their own cell focus; don't force text-edit mode on navigation.
-    if (node?.type === 'table') return;
+    if (node?.type === 'base') return;
     if (!el.dataset.editing && node) enterEdit(el, node);
     el.focus();
     const r = document.createRange();
@@ -6864,7 +7024,7 @@ function toMarkdown(rootNode) {
   const out = [];
   function emit(node, depth, ordinal) {
     const indent = '  '.repeat(depth);
-    if (node.type === 'table') {
+    if (node.type === 'base') {
       // a table node's text is already a markdown table — emit it as its own block
       const body = flattenArtifacts(node.text, node, varMap);
       body.split('\n').forEach(l => out.push(indent + l));
@@ -6906,7 +7066,7 @@ function toPlainText(rootNode) {
   const out = [];
   function emit(node, depth) {
     const indent = '\t'.repeat(depth);
-    if (node.type === 'table') {
+    if (node.type === 'base') {
       stripInlineMd(flattenArtifacts(node.text, node, varMap)).split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);

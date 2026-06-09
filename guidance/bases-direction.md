@@ -137,7 +137,9 @@ Binding terms for UI copy, `aria-label`s, docs, and this file:
 ## 9. How we ship it (PR arc)
 
 1. **PR 1 — static tables render anywhere. ✅ Shipped.** `mdToHtml` learns GFM pipe tables → static read-only `<table>` (`renderStaticTable`, reusing the table CSS); alignment from the delimiter, cells via `mdInline`, an optional `#+TBLFM:` computed + hidden. Render-layer only — `node.text` is untouched, edit mode shows the raw markdown (recipe line included). `tableDelimCells` is the GFM-strict false-positive guard. The markdown-first baseline; stands alone and fixes the original "convert the point and the table stops rendering" complaint.
-2. **PR 2 — base rename + base header + conversions.** Rename the interactive table → **base**; non-destructive `/base` convert; `@table` static insert; the base header bar with Copy-as-markdown / Copy-with-TBLFM; the header-row interaction model + menu shortcuts.
+2. **PR 2 — base rename + base header + conversions.**
+   - **PR 2a ✅ Shipped.** Internal rename of the interactive object `node.type` `table` → **base** (widget dispatch, edit mode, OPML `_type`, exports, `nt-base` CSS); the `/base` verb (label **Base**, retiring `/table`) and the `@table` insert verb (a static pipe-table starter); a **shared keyboard-first grid size picker** swapped into the slash-menu popup (arrows size, Enter creates, Esc cancels; default 3×3, max 8×8) feeding both verbs; and a **non-destructive convert** (`createBaseAt`) — an empty point becomes the base in place, a content-bearing point keeps its text with the base inserted as the next sibling (fixes the destroy-text-on-convert data-loss bug). No migration (pre-release).
+   - **PR 2b (open).** The base header bar (Copy-as-markdown / Copy-with-TBLFM), the §5 header-row interaction model (name pill vs Column menu), and the menu keyboard shortcuts.
 3. **PR 3 — promote.** "Convert to base" on a static table, with the §6 split logic.
 4. **Later (this doc's deferred list, §4):** views, typed fields, filters.
 

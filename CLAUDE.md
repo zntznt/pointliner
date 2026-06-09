@@ -106,7 +106,7 @@ canonical shape:
 
 ```js
 {
-  id, text, note, type,                 // type ∈ ul|ol|h1|h2|h3|quote|code|divider|table
+  id, text, note, type,                 // type ∈ ul|ol|h1|h2|h3|quote|code|divider|base
   italic, underline, checked, collapsed,
   children: [],                         // nested nodes
   footnotes: [],                        // [{key, text}]
@@ -138,9 +138,11 @@ canonical shape:
   via `computeTable` and **hidden** in the render. This is a **render-layer
   behavior only** — `node.text` is never modified, so edit mode shows the full raw
   markdown (recipe line included), the same edit-raw / render-pretty model as
-  headings. The **interactive base** (`node.type === 'table'`) is a *separate
+  headings. The **interactive base** (`node.type === 'base'`) is a *separate
   object* — `buildTableWidget`, dispatched in `render()`, **not** through
-  `mdToHtml` — and is untouched by the static path. (See `guidance/bases-direction.md`.)
+  `mdToHtml` — and is untouched by the static path. The `/base` verb creates one
+  (non-destructively — see `createBaseAt`); `@table` inserts the static form. (See
+  `guidance/bases-direction.md`.)
 - **`node.type` for headings/quote is now a derived hint, not the renderer.**
   Headings/quote/code still store their prefix in `node.text` (`"# Title"`) and
   `deriveTypeFromText()`/`checkMdBlockPrefix()` still set `node.type` (`'h1'`) for

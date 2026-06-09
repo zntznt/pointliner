@@ -698,6 +698,54 @@ test('renderStaticTable: marks formula cells read-only (Σ) and computes their v
   assert.ok(html.includes('<td class="mt-cell mt-computed">20</td>'));
 });
 
+// ── Bases PR 2a: starter grid · non-destructive convert · OPML base type ───
+const { starterTableText, planBaseConvert } = c;
+
+test('starterTableText: N×M emits valid pipe-table markdown (header + delimiter + body)', () => {
+  const md = starterTableText(3, 4);          // 3 total rows (1 header + 2 body) × 4 cols
+  const lines = md.split('\n');
+  assert.equal(lines.length, 4);              // header + delimiter + 2 body rows
+  assert.equal(tableDelimCells(lines[1]), 4); // delimiter row has 4 cells
+  const model = c.parseTable(md);
+  assert.equal(model.aligns.length, 4);       // 4 columns
+  assert.equal(model.rows.length, 3);         // header + 2 body (delimiter dropped by parseTable)
+  assert.equal(model.rows[0].join('|'), 'Column 1|Column 2|Column 3|Column 4');
+});
+
+test('starterTableText: the @table starter renders via PR 1 static path', () => {
+  const html = mdToHtml(starterTableText(2, 2));
+  assert.ok(html.includes('<table class="md-table">'));
+  assert.ok(html.includes('class="md-table-static"'));
+});
+
+test('starterTableText: clamps to sane bounds (min header, max 8×8)', () => {
+  assert.equal(starterTableText(1, 1).split('\n').length, 2); // header + delimiter, no body
+  const big = c.parseTable(starterTableText(99, 99));
+  assert.equal(big.aligns.length, 8);          // cols clamped to 8
+  assert.equal(big.rows.length, 8);            // 8 total rows (header + 7 body)
+});
+
+test('planBaseConvert: empty point converts IN PLACE (no data loss path needed)', () => {
+  const plan = planBaseConvert('   ', 'STARTER');
+  assert.equal(plan.mode, 'in-place');
+  assert.equal(plan.text, 'STARTER');
+});
+
+test('planBaseConvert: content-bearing point keeps text, base inserted AFTER (the data-loss fix)', () => {
+  const plan = planBaseConvert('My notes', 'STARTER');
+  assert.equal(plan.mode, 'after');
+  assert.equal(plan.insert, 'STARTER');
+  assert.equal(plan.text, undefined);          // original text is NOT overwritten
+});
+
+test('OPML: a base node serializes with _type="base"', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode(starterTableText(2, 2), 'base'));
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_type="base"'));     // rename reaches the storage format
+  assert.ok(!/_type="table"/.test(xml));       // no stray legacy type
+});
+
 // ── column aggregate formula builder (UXP-3) ──────────────────────────────
 const { mtBuildAggFormula, mtHasFooter, mtColAggKind } = c;
 
