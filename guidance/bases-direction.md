@@ -98,11 +98,11 @@ Inline rename stays reachable by keyboard via UXP-2 navigation + type.
 
 ### Base width
 
-A base always renders at the **full available viewport width** — it ignores the narrow/full-width document toggle. The left edge stays anchored at the indent (after the bullet); the right edge reaches the viewport edge. Horizontal scroll when a table overflows its container is inside the base widget, never the page.
+A base always renders at **true full viewport width, edge-to-edge on both sides** — it ignores the narrow/full-width document toggle AND the indent/nesting depth. The base host breaks out of the outline column entirely: its left edge reaches the viewport left, its right edge the viewport right (small side margins on mobile). Bullet and collapse controls remain visible above the base via z-index. Horizontal scroll when a table overflows its container is inside the base widget, never the page.
 
 The rationale: a base is a structured data object you interact with; dense columns need room. The narrow column toggle governs prose readability, not data density.
 
-A static table follows the toggle (it is inline prose markup and naturally fills the content column). Both anchor their left edge at the indent; neither causes a page-level horizontal scrollbar.
+A static table follows the toggle (it is inline prose markup and naturally fills the content column via `width: 100%`). Static tables do not break out of the column; they stretch to fill it. Neither causes a page-level horizontal scrollbar.
 
 ---
 
