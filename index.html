@@ -1987,7 +1987,7 @@ const BLOCK_CMDS = [
   { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point — the default block.', ex:'- text', section:'Lists', turn:true },
   { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Lists', turn:true },
   { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Lists', turn:true },
-  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Multi-line text block — use ⇧+Enter to add lines within the point.', ex:'text\nmore text', section:'Lists', turn:true },
+  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Prose block — Enter = line break, Shift+Enter = new point.', ex:'text\nmore text', section:'Lists', turn:true },
   // Headings
   { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Largest section heading.',                ex:'# text', section:'Headings', turn:true },
   { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium sub-section heading.',             ex:'## text', section:'Headings', turn:true },
@@ -2746,7 +2746,7 @@ function renderRow(r) {
   content.contentEditable = (opts.searchCtx || isTable) ? 'false' : 'true';
   content.spellcheck = !isTable;
   content.dataset.id = node.id;
-  content.dataset.ph = isDivider ? 'Section label…' : (depth === 0 && !focusedId ? 'Start writing…' : '');
+  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block — Enter = line break · ⇧+Enter = new point' : (depth === 0 && !focusedId ? 'Start writing…' : '');
   if (isTable) {
     content.appendChild(buildTableWidget(node, !!opts.searchCtx));
     if (!opts.searchCtx) {
@@ -3298,8 +3298,10 @@ function onKeyDown(e, id, content) {
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
   }
-  if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); insertLineBreak(content); }
-  else if (e.key==='Enter' && !ctrl) { e.preventDefault(); insertSiblingAfter(id); }
+  // Paragraph is the sanctioned prose-mode exception (P1-1): Enter = line break, Shift+Enter = new point.
+  const isPara = nodeById(id)?.type === 'para';
+  if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); isPara ? insertSiblingAfter(id) : insertLineBreak(content); }
+  else if (e.key==='Enter' && !ctrl) { e.preventDefault(); isPara ? insertLineBreak(content) : insertSiblingAfter(id); }
   else if (e.key==='Enter' && ctrl) { e.preventDefault(); zoomInto(id); }
   else if (e.key==='Tab' && !e.shiftKey) { e.preventDefault(); indentNode(id); }
   else if (e.key==='Tab' && e.shiftKey)  { e.preventDefault(); outdentNode(id); }
