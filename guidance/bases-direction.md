@@ -70,18 +70,21 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
 
 A base in table view is laid out as:
 
-1. **Base header bar** (top) — a **reserved strip** held for a future **view switcher** (`.mt-base-views`). It is **empty for now and collapses to nothing**; whole-base operations live on the base bullet's menu (see "The base bullet" above), not on a header opener.
+1. **Base header bar** (top) — a **reserved strip** held for a future **view switcher** (`.mt-base-views`). It is **empty for now and collapses to nothing**; whole-base operations live on the base's bullet menu (see "The base icon & menu" above), not on a header opener.
 2. **Header row** (the column-name row) — **the column-control surface** (see below).
 3. **Data rows** — editable cells with keyboard navigation (UXP-2) and read-only computed cells (§7).
 4. **Footer total row** — appears when a column has a Calculate aggregate; computed, read-only.
 
-### The base bullet — a base is a distinct object
+### The base icon & menu — a base is a distinct object, but a normal point
 
-Because a base is a special structured object (not prose), **its bullet is the `/base` grid icon** (`fa-table-cells`) rather than a plain dot — an at-a-glance signal that "this point is a base." Clicking the icon (or hovering on desktop / long-pressing on touch) opens the base's **consolidated menu**, which is the node menu *minus the type switcher* and *plus* the base ops, in order:
+A base is a **normal point in the outline** — same indent, same narrow/full toggle, same navigation as everything else (see "Base width"). The one tell is its **bullet: the `/base` grid icon** (`fa-table-cells`) instead of a dot. The icon behaves like any bullet:
 
-- **Copy as markdown** · **Copy with TBLFM** (the same two ops as the header `⋯` menu)
-- **Zoom into** · **Copy link** · **Move up** · **Move down**
-- **Delete** — opens an **in-app confirmation** (`openConfirmDialog`, styled with the app overlay — never a native `confirm()`), since destroying a grid of data is heavier than deleting a line of prose.
+- **Click the icon → zoom into the base** (exactly like clicking any other point's bullet). Zooming in is how you make a base **large** — see "Base width".
+- **Hover (desktop) / long-press (touch) → the base menu** (`showBulletPopup`), which is the node menu *minus the type switcher* and *plus* the base ops, in order:
+  - **Edit as markdown** — swaps the grid for its raw markdown (`enterEdit`); this is the old `✏ markdown` toggle, now folded into the menu (there is no separate button).
+  - **Copy as markdown** · **Copy with TBLFM**
+  - **Zoom into** · **Copy link** · **Move up** · **Move down**
+  - **Delete** — opens an **in-app confirmation** (`openConfirmDialog`, styled with the app overlay — never a native `confirm()`), since destroying a grid of data is heavier than deleting a line of prose.
 
 The deliberate omission is the **type switcher**: a base has no "turn into heading/bullet/…" row, because a base cannot be converted into another block type (see §6).
 
@@ -106,11 +109,15 @@ Base-context-scoped (do nothing outside a base); documented in `ux-discipline.md
 
 Inline rename stays reachable by keyboard via UXP-2 navigation + type.
 
-### Base width
+### Base width — normal in the outline, full-width when zoomed in
 
-A base always renders at **full editing-area width** — it ignores the narrow/full-width document toggle AND the indent/nesting depth, so a deeply-nested base is exactly as wide as a root-level one. The breakout moves the **whole base row** (bullet + collapse + grid), not just the grid: the row is pulled left to a small symmetric viewport gutter and stretched to `clientWidth − 2·gutter`, so the **bullet and collapse controls ride along to the left edge** instead of being stranded in the middle of a broken-out grid (the bug the host-only breakout caused). The grid then fills that width via `.md-table{width:100%}`; columns stretch to fill, and horizontal scroll only kicks in (inside `.mt-scroll`, never the page) once the columns hit their min-width floor. `clientWidth` (not `innerWidth`) is used so the row never spills under the scrollbar into a page-level h-scroll. `updateBaseWidths()` re-measures on every reconcile / window resize / width-toggle, and skips rows inside `.search-ctx` so search-result layout is left alone.
+A base does **not** break out of the column or get any special width in the outline. It behaves **exactly like every other point**: it fills its content column via `.md-table{width:100%}`, follows the **narrow/full-width toggle**, and **indents like everything else** (nesting is shown the ordinary way, no exceptions). A static markdown table behaves the same. There is no `updateBaseWidths`, no row breakout, no per-depth math — the outline stays a clean, uniform outliner.
 
-The rationale: a base is a structured data object you interact with; dense columns need room. The narrow column toggle governs prose readability, not data density. Bringing the bullet with the breakout keeps the row coherent — the control rail stays to the left of the data, where it belongs.
+To make a base **large**, you **zoom into it** (click its grid-icon bullet, like any point). A zoomed-in base is the whole view, so it renders **full-width**: `render()` sets `body.base-zoom` when `focusedId` is a base, and `body.base-zoom #outline{max-width:none}` lets the grid fill the editing area regardless of the toggle. (Normally, zooming into a point shows it as a header; a base instead shows its grid full-width — the "make it large" gesture.)
+
+*(This supersedes every earlier width rule — "ignore nesting, full width always", the row-breakout, the corner-icon-for-square-gutters, all of it. Those turned width into a pile of exceptions and broke the clean outliner navigation. The model now is dead simple: **a base is a normal point; zoom in to go large.**)*
+
+The rationale: dense data needs room, but the outline needs to stay navigable and uniform. Zoom is the existing, well-understood gesture for "focus on this one thing" — so it's also the gesture for "give this base the whole width."
 
 A static table follows the toggle (it is inline prose markup, so it lives in the content column and respects narrow↔full). It stretches to fill that column via the same `.md-table{width:100%}`; it does **not** break out of the column. Neither base nor static table causes a page-level horizontal scrollbar.
 
@@ -149,7 +156,7 @@ Binding terms for UI copy, `aria-label`s, docs, and this file:
 | A structured data object with its own dedicated point, currently showing in table view | **base** | dynamic table, widget, database |
 | The base's interactive grid display (its current default view) | **table view** | table (when referring specifically to the view a base shows) |
 | The whole-base top bar | **base header** | toolbar |
-| The base bullet's menu (whole-base ops + node ops) | **base menu** | table menu, ⋯ menu |
+| The base's bullet menu (whole-base ops + node ops) | **base menu** | table menu, ⋯ menu |
 | The per-column menu | **Column menu** | column panel (the panel is its content) |
 | Editable column-name chip | **name pill** | header chip |
 | One-click column aggregates | **Calculate** | summary |

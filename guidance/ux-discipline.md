@@ -67,7 +67,7 @@ A unified UX requires unified words. These terms are binding for **UI copy, the 
 | A static pipe table written in any point's text — a display/export form, not a view of a base | — | **table** | markdown table, grid |
 | A structured data object with its own dedicated point; its table view is the current (and default) view | `node.type === 'base'` (code) · `/base` verb | **base** | dynamic table, widget, database |
 | The whole-base top bar | — | **base header** | toolbar |
-| The base bullet's menu (whole-base ops + node ops) | base bullet → `showBulletPopup` | **base menu** | table menu, ⋯ menu |
+| The base's bullet menu (whole-base ops + node ops) | base bullet (grid icon) → `showBulletPopup` | **base menu** | table menu, ⋯ menu |
 | The per-column operations menu | — | **Column menu** | column panel |
 | The editable column-name chip in a base header cell | — | **name pill** | header chip |
 | One-click column aggregates | `mtApplyAggregate` | **Calculate** | summary |
