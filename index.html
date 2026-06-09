@@ -2549,10 +2549,15 @@ function mtApplyAggregate(node, colIdx, fn) {
   const tblfm = extractTblfm(node.text);
   const newTblfm = mtBuildAggFormula(tblfm, col1, fn);
   const model = mtModel(node);
-  if (!mtHasFooter(tblfm) && mtHasFooter(newTblfm))
+  if (!mtHasFooter(tblfm) && mtHasFooter(newTblfm)) {
     model.rows.push(Array(model.aligns.length).fill(''));
-  else if (mtHasFooter(tblfm) && !mtHasFooter(newTblfm) && model.rows.length > 2)
+  } else if (mtHasFooter(tblfm) && !mtHasFooter(newTblfm) && model.rows.length > 2) {
     model.rows.pop();
+  } else if (fn === 'none' && mtHasFooter(tblfm) && mtHasFooter(newTblfm)) {
+    // Footer row stays (other columns still have aggregates) — blank the cleared
+    // column's total cell so no stale computed value lingers as a literal.
+    model.rows[model.rows.length - 1][colIdx] = '';
+  }
   node.text = serializeTable(model) + (newTblfm ? '\n#+TBLFM: ' + newTblfm : '');
   markDirty();
   mtRecompute(node);

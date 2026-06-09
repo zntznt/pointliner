@@ -682,6 +682,42 @@ test('mtColAggKind: returns none for unrelated column', () => {
   assert.equal(mtColAggKind('', 1), 'none');
 });
 
+// mtApplyAggregate is DOM-adjacent but its DOM calls no-op through vm stubs,
+// so the node.text mutation is fully testable. We verify the stale-value fix:
+// setting a column to None must blank its total cell, not leave a stale literal.
+const { mtApplyAggregate } = c;
+// Helper: minimal node object matching what mtApplyAggregate expects.
+function makeTblNode(text) {
+  return { id: 'n1', text, dice:[], markov:[], rolltable:[], math:[], vars:[], grammar:[] };
+}
+// Table with two summed columns; footer row has computed values 8 and 10.
+const TWO_SUM_TEXT =
+  '| A | B |\n| --- | --- |\n| 3 | 4 |\n| 5 | 6 |\n| 8 | 10 |\n' +
+  '#+TBLFM: @>$1=vsum(@2$1..@-1$1) :: @>$2=vsum(@2$2..@-1$2)';
+
+test('mtApplyAggregate: None blanks total cell, footer row stays while other aggregate remains', () => {
+  const node = makeTblNode(TWO_SUM_TEXT);
+  mtApplyAggregate(node, 0, 'none');          // clear col A (0-based index 0 = col1 1)
+  const tblfm = c.extractTblfm(node.text);
+  const model = c.parseTable(c.stripTblfm(node.text));
+  const last  = model.rows[model.rows.length - 1];
+  assert.equal(last[0], '');                  // col A blanked — no stale '8'
+  assert.equal(last[1], '10');                // col B still computed
+  assert.equal(mtHasFooter(tblfm), true);     // footer row still present
+  assert.equal(mtColAggKind(tblfm, 1), 'none');
+  assert.equal(mtColAggKind(tblfm, 2), 'sum');
+});
+
+test('mtApplyAggregate: None on both columns removes the footer row entirely', () => {
+  const node = makeTblNode(TWO_SUM_TEXT);
+  mtApplyAggregate(node, 0, 'none');
+  mtApplyAggregate(node, 1, 'none');
+  const tblfm = c.extractTblfm(node.text);
+  assert.equal(mtHasFooter(tblfm), false);    // no formulas left → row gone
+  const model = c.parseTable(c.stripTblfm(node.text));
+  assert.equal(model.rows.length, 3);         // header + 2 data rows only
+});
+
 // ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
 const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
         cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo,
