@@ -107,7 +107,7 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 - **Violates:** P3-1. **Target:** `aria-label` on `#btn-done`, level buttons, pill pencils, table add buttons, search; decorative glyphs `aria-hidden`.
 
 ### UXP-14 ☐ Keyboard operability on `<div>`/`<span>` controls — *a11y Phase 1*
-- **Violates:** P3-2. **Target:** `role`/`tabindex` + `keydown` **beside** existing `mousedown` (caret invariant) on file-menu items, collapse button, bullet, breadcrumb, slash-menu items, `#sc-toggle`→`<button>`, table handles.
+- **Violates:** P3-2. **Target:** `role`/`tabindex` + `keydown` **beside** existing `mousedown` (caret invariant) on file-menu items, collapse button, bullet, breadcrumb, slash-menu items, `#sc-toggle`→`<button>`, table handles, and the static-table **`.mt-promote`** "Convert to base" button (already a `<button>` with `aria-label` + `keydown` + focus ring — it only needs the focus-reachability the bullet popup provides; its `#bpop` menu entry "Convert table to base" rides the same fix). The bullet-popup keyboard pass (`#bpop` → `role="menu"` + arrow nav, per `accessibility.md` Phase 1) is the door that makes every per-point action — zoom, move, delete, copy-link, convert-to-base — keyboard-reachable in one stroke.
 
 ### UXP-15 ☐ Pill labels + live announcements — *a11y Phase 2*
 - **Violates:** P3-5, P3-6 interim. **Target:** each pill `aria-label "{type}: {expr} = {result}"` updated on reroll; one `aria-live` region announces rerolls/changes. (Pill `tabindex` stays deferred.)

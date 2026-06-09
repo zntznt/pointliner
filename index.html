@@ -199,7 +199,15 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 /* ── interactive base (its table view) ── */
 .nt-base>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
 .nt-base>.node-row>.node-content[data-editing]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;white-space:pre-wrap;cursor:text}
-.md-table-static{min-width:0;padding:2px 0;width:100%;box-sizing:border-box}
+.md-table-static{min-width:0;padding:2px 0;width:100%;box-sizing:border-box;position:relative}
+/* §6 promote: hover-revealed "Convert to base" on a static table (always visible on touch).
+   Hidden where the action can't apply: search results, link mirrors (the table belongs to
+   another node), and the zoomed-title view. */
+.mt-promote{position:absolute;top:4px;right:2px;z-index:2;font-family:var(--font);font-size:.7em;line-height:1.4;padding:2px 9px;border:1px solid var(--bdr);border-radius:999px;background:var(--bg);color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,color .12s,border-color .12s}
+.md-table-static:hover .mt-promote,.mt-promote:focus-visible{opacity:1}
+.mt-promote:hover,.mt-promote:focus-visible{color:var(--acc);border-color:var(--acc);outline:none}
+@media(hover:none){.mt-promote{opacity:.7}}
+.search-ctx .mt-promote,.node-link-mirror .mt-promote,.zoom-title .mt-promote{display:none}
 .md-table-host{padding:2px 0;max-width:none}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
@@ -1714,7 +1722,7 @@ function mdToHtml(raw, isCode) {
       i += 2;                                                              // header + delimiter
       while (i < lines.length && lines[i].trim() !== '' && lines[i].includes('|')) i++;
       if (i < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[i])) i++;     // optional recipe
-      out.push(renderStaticTable(lines.slice(start, i).join('\n')));
+      out.push(renderStaticTable(lines.slice(start, i).join('\n'), start, i));
     } else if (isDefTerm) {
       flush();
       let dl = `<dt>${mdInline(line)}</dt>`; i++;
@@ -1829,6 +1837,23 @@ function planBaseConvert(text, starter) {
   return (text || '').trim() === ''
     ? { mode: 'in-place', text: starter }
     : { mode: 'after', insert: starter };
+}
+
+// Pure decision behind "Convert to base" on a static table (§6 promote). Given the
+// point's text and the table block's line range [l0, l1) — as stamped on the rendered
+// static table by mdToHtml — split the text into prose-before / table / prose-after.
+// Blank lines hugging the cut are trimmed so the split points don't start/end with
+// empty lines. Returns null when the range doesn't hold a valid pipe table (stale
+// indices, a mirrored table from another node, a malformed block) so callers bail
+// instead of corrupting text.
+function planTablePromote(text, l0, l1) {
+  const lines = (text || '').split('\n');
+  if (!(Number.isInteger(l0) && Number.isInteger(l1) && l0 >= 0 && l1 > l0 && l1 <= lines.length)) return null;
+  const table = lines.slice(l0, l1).join('\n');
+  if (!parseTable(stripTblfm(table))) return null;
+  const before = lines.slice(0, l0).join('\n').replace(/(?:\n[ \t]*)+$/, '');
+  const after  = lines.slice(l1).join('\n').replace(/^(?:[ \t]*\n)+/, '');
+  return { before, table, after };
 }
 
 // ─── table formulas (Org-mode spreadsheet conventions) ───────────────────────
@@ -2032,7 +2057,10 @@ function tableDelimCells(line) {
 // Cell content goes through mdInline (emphasis/links/code/emoji; artifact tokens
 // render as frozen read-only pills against the active render-context globals). No
 // new parse/formula logic: reuses parseTable / parseTblfm / computeTable / extractTblfm.
-function renderStaticTable(block) {
+// When the caller knows the block's line range in the source text (l0/l1, as mdToHtml
+// does), it's stamped as data-l0/data-l1 and a hover-revealed "Convert to base" button
+// is emitted — the §6 promote front door. Range-less calls render no promote chrome.
+function renderStaticTable(block, l0, l1) {
   const tblfm = extractTblfm(block);
   const model = parseTable(stripTblfm(block));
   if (!model) return '';
@@ -2051,7 +2079,10 @@ function renderStaticTable(block) {
   }
   const aCls = a => a === 'center' ? ' mt-a-center' : a === 'right' ? ' mt-a-right' : '';
   const cCls = key => computed.has(key) ? ' mt-computed' : '';
-  let h = '<div class="md-table-static"><div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
+  const ranged = Number.isInteger(l0) && Number.isInteger(l1);
+  let h = `<div class="md-table-static"${ranged ? ` data-l0="${l0}" data-l1="${l1}"` : ''}>`;
+  if (ranged) h += '<button class="mt-promote" contenteditable="false" title="Convert to base" aria-label="Convert to base">▦ base</button>';
+  h += '<div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
   for (let c = 0; c < nc; c++)
     h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${mdInline((rows[0] && rows[0][c]) || '')}</th>`;
   h += '</tr>';
@@ -3339,6 +3370,16 @@ function attachContentEvents(content, node) {
       if (tid && nodeById(tid)) zoomInto(tid);
       return;
     }
+    // static table "Convert to base" (§6 promote). Display mode only; the node-link
+    // check above already swallows clicks inside mirrors (whose tables belong to the
+    // mirrored node, not this one).
+    const promo = e.target.closest?.('.mt-promote');
+    if (promo && !content.dataset.editing) {
+      e.preventDefault(); e.stopPropagation();
+      const st = promo.closest('.md-table-static');
+      if (st) promoteStaticTable(node, +st.dataset.l0, +st.dataset.l1);
+      return;
+    }
     // dice pill: pencil opens the editor, body re-rolls in place
     const pill = e.target.closest?.('.dice-roll');
     if (pill && !pill.classList.contains('dice-bad')) {
@@ -3724,6 +3765,17 @@ function parseMLlines(lines) {
 
 function onKeyDown(e, id, content) {
   const ctrl = e.ctrlKey || e.metaKey;
+  // Static-table "Convert to base": keyboard activation of the focused ▦ button, the
+  // P3-2 keydown path beside its mousedown handler. (Tab-focus itself rides UXP-14.)
+  if ((e.key === 'Enter' || e.key === ' ') && !content.dataset.editing) {
+    const promo = e.target.closest?.('.mt-promote');
+    if (promo) {
+      e.preventDefault(); e.stopPropagation();
+      const st = promo.closest('.md-table-static');
+      if (st) { const node = nodeById(id); if (node) promoteStaticTable(node, +st.dataset.l0, +st.dataset.l1); }
+      return;
+    }
+  }
   // Copy a ready-to-paste link token for this node to the clipboard.
   if ((e.key === 'l' || e.key === 'L') && ctrl && e.shiftKey) { e.preventDefault(); copyNodeLink(id); return; }
   if (LINK_PICKER_ENABLED && lpState && isLpMenuOpen()) {
@@ -4121,6 +4173,16 @@ function showBulletPopup(nodeId, bulletEl) {
         fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
     );
   }
+  // A non-base point that contains a static markdown table gets the §6 promote door
+  // here too (the menu path, beside the table's hover "▦ base" button) so the action
+  // is discoverable and rides the bullet popup's keyboard plan (UXP-14).
+  if (!isBase) {
+    const tr = findFirstTableRange(node.text);
+    if (tr) actions.unshift({
+      icon: { fa:'fa-solid fa-table-cells', fb:'▦' }, label: 'Convert table to base',
+      fn: () => { hideBpop(); promoteStaticTable(node, tr.l0, tr.l1); },
+    });
+  }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
   // todo can become NEXT etc. — the badge target only exists once a keyword is set).
   if (node.type === 'todo') {
@@ -4497,6 +4559,64 @@ function createBaseAt(nodeId, rows, cols) {
   parent.children.splice(idx + 1, 0, base);
   nodeMap.set(base.id, base); parentMap.set(base.id, parent);
   markDirty(); render(); focusNode(base.id);
+}
+
+// "Convert to base" on a static table (§6 promote). Splits the point around the table
+// block: prose-before stays in the point, the table becomes a NEW base sibling, and
+// prose-after becomes its own point after the base — point · base · point. A point that
+// IS just the table converts in place (mirroring planBaseConvert's empty case); a
+// leading table converts in place with the trailing prose split off. Children always
+// stay attached to the node that keeps the original id. Non-destructive: every line of
+// the original text lands somewhere, and the whole move is one undo step.
+function promoteStaticTable(node, l0, l1) {
+  const plan = planTablePromote(node.text, l0, l1);
+  if (!plan) { flashHint('Couldn’t locate that table — edit the point and try again'); return; }
+  // normalize the grid + bake computed cells, exactly like the markdown-editor exit path
+  const tblfm = extractTblfm(plan.table);
+  const baseText = serializeTable(parseTable(stripTblfm(plan.table))) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
+  const parent = parentOf(node.id);
+  if (!parent) return;
+  pushUndo();
+  if (plan.before === '') {
+    // table leads the point → the point itself becomes the base (keeps id + children)
+    node.text = baseText; node.type = 'base'; node.checked = false;
+    mtRecompute(node);
+  }
+  const idx = parent.children.findIndex(c => c.id === node.id);
+  let focusId = node.id, at = idx + 1;
+  if (plan.before !== '') {
+    node.text = plan.before;               // prose keeps the original point
+    const base = mkNode(baseText, 'base');
+    mtRecompute(base);
+    parent.children.splice(at++, 0, base);
+    nodeMap.set(base.id, base); parentMap.set(base.id, parent);
+    focusId = base.id;
+  }
+  if (plan.after !== '') {
+    const tail = mkNode(plan.after, deriveTypeFromText(plan.after) || 'ul');
+    parent.children.splice(at, 0, tail);
+    nodeMap.set(tail.id, tail); parentMap.set(tail.id, parent);
+  }
+  markDirty(); render(); focusNode(focusId);
+}
+
+// Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)
+// line range (same shape mdToHtml stamps on the rendered table) or null if there is
+// none. Mirrors mdToHtml's detection (a non-list line whose next line is a matching
+// delimiter row) so the bullet-menu "Convert to base" door targets the same block the
+// hover button does. Pure; reuses mtSplitRow + tableDelimCells.
+function findFirstTableRange(text) {
+  const lines = (text || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '' || UL_RE.test(line) || OL_RE.test(line)) continue;
+    if (mtSplitRow(line).length !== tableDelimCells(lines[i + 1])) continue;
+    let j = i + 2;                                                    // header + delimiter
+    while (j < lines.length && lines[j].trim() !== '' && lines[j].includes('|')) j++;
+    if (j < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[j])) j++;  // optional recipe
+    return { l0: i, l1: j };
+  }
+  return null;
 }
 
 // Insert an inline artifact at the current caret (used by the "@" menu).
