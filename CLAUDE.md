@@ -422,6 +422,10 @@ The product direction is now set. Read these before proposing or building:
 - `guidance/roadmap.md` — locked decisions + the phased plan (multi-document Zettelkasten,
   node links + backlinks, storage/durability, the lean↔guided UX modes), plus the
   remaining generative-engine ideas.
+- `guidance/bases-direction.md` — locked direction for markdown-first rendering and
+  Bases (table-vs-base model, freeform-bases philosophy, base layout + header interaction,
+  and the scope fence: views/typed-fields/filters are deferred). Read before any
+  table/base work.
 - `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
 - `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu
