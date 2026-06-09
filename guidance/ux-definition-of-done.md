@@ -42,6 +42,12 @@ Acceptance tests: pass    Regression: tests green · touch · OPML
 ```
 Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a copy-only fix is `P1 N/A`). It is short by design — most boxes are one phrase. Its purpose is not ceremony: it makes a skipped gate or a false claim **visible and catchable against the diff**.
 
+> **Where it goes (so CI passes):** Put the Conformance Statement in the **PR description** —
+> not the commit message, not a comment. It must start with the literal words `UX Conformance`,
+> carry a ✅ or N/A on each of P1–P5, and contain no `< >` placeholders. For a non-UI change the
+> description is just `UI: none`. When creating the PR with `gh pr create`, pass all of this in
+> `--body` (it overrides the PR template).
+
 > **The rule in one line:** *no Conformance Statement, no merge.* A change is done when the statement is present, every box is honestly ✅ or N/A, and any gap it leaves is filed as a UXP.
 
 ---
