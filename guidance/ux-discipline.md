@@ -64,8 +64,8 @@ A unified UX requires unified words. These terms are binding for **UI copy, the 
 | Typed syntax that becomes a pill | `promoteInlineShorthand` | **shorthand** | macro, inline formula |
 | A keyboard-navigable overlay list | — | **menu** (`/`, `@`, link, state) | dropdown, popup, palette |
 | The TODO/NEXT/WAITING/DONE marker | keyword in `node.text` | **state badge** | tag, label |
-| A static pipe table written in any point's text | — | **table** | markdown table, grid |
-| A dedicated interactive data point | `node.type === 'base'` (code) · `/base` verb | **base** | dynamic table, widget, database |
+| A static pipe table written in any point's text — a display/export form, not a view of a base | — | **table** | markdown table, grid |
+| A structured data object with its own dedicated point; its table view is the current (and default) view | `node.type === 'base'` (code) · `/base` verb | **base** | dynamic table, widget, database |
 | The whole-base top bar | — | **base header** | toolbar |
 | The whole-base menu | — | **base menu** | table menu |
 | The per-column operations menu | — | **Column menu** | column panel |
