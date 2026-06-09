@@ -2492,6 +2492,22 @@ function mtApplySelection() {
   });
 }
 
+// Keyboard cell navigation (UXP-2). Focus a cell by logical (r,c) and select its
+// whole contents (type-to-overwrite). Re-queries the host so it works after a
+// formula recompute / rebuild; focusin (on the landed cell) commits the prior cell,
+// shows raw text, and collapses any drag-range selection to this single cell.
+function mtFocusCell(node, r, c) {
+  const host = mtHost(node.id); if (!host) return false;
+  const target = host.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
+  if (!target) return false;
+  target.focus();
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  const sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+  return true;
+}
+
 function buildTableWidget(node, readOnly) {
   const model = mtModel(node);
   const nc = model.aligns.length;
@@ -2612,6 +2628,40 @@ function buildTableWidget(node, readOnly) {
   host.addEventListener('mousedown', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
     mtDrag = { nodeId:node.id, r0:+cell.dataset.r, c0:+cell.dataset.c, started:false };
+  });
+
+  // keyboard cell navigation (UXP-2). Tab/Shift+Tab/Enter move between cells; the
+  // focusout/focusin handlers above do the commit + #+TBLFM recompute + repaint (the
+  // same path a mouse click between cells already exercises). Pipe-table cells are
+  // single-line — serializeTable collapses '\n' to a space — so an in-cell break can't
+  // round-trip; Shift+Enter therefore behaves like Enter (move down), never inserts one.
+  host.addEventListener('keydown', e => {
+    const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    if (e.key !== 'Tab' && e.key !== 'Enter') return;
+    e.preventDefault();
+    const m = mtModel(node);
+    const lastRow = m.rows.length - 1, lastCol = m.aligns.length - 1;
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    if (e.key === 'Tab' && !e.shiftKey) {
+      if (r === lastRow && c === lastCol) {        // bottom-right → add a row, land in its first cell
+        const mm = mtModel(node);
+        mm.rows[r][c] = cell.textContent;          // commit the cell we're leaving before rebuild
+        mm.rows.push(Array(mm.aligns.length).fill(''));
+        mtCommit(node, mm);
+        refreshTable(node);
+        mtFocusCell(node, mtModel(node).rows.length - 1, 0);
+      } else if (c === lastCol) {                  // row end → next row, first cell
+        mtFocusCell(node, r + 1, 0);
+      } else {                                     // → next cell right
+        mtFocusCell(node, r, c + 1);
+      }
+    } else if (e.key === 'Tab' && e.shiftKey) {
+      if (r === 0 && c === 0) return;              // very first cell → stop
+      if (c === 0) mtFocusCell(node, r - 1, lastCol); // row start → previous row, last cell
+      else mtFocusCell(node, r, c - 1);            // ← previous cell left
+    } else {                                       // Enter / Shift+Enter → down one row, same column; stop at last row
+      if (r < lastRow) mtFocusCell(node, r + 1, c);
+    }
   });
 
   mtInitGlobal();
