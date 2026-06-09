@@ -241,16 +241,14 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 @media(hover:none){.mt-addcol{opacity:1}}
 .mt-addcol:hover,.mt-addcol:focus-visible,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
 .mt-addrow-cell{padding-top:3px}
-/* column operations panel (the consolidated home for all column ops) and the
-   base menu (whole-base ops) — same popup chrome, distinct anchors/contents */
-#mt-colpanel,#mt-basemenu{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
-#mt-colpanel.on,#mt-basemenu.on{display:block}
-/* base header bar: a slim full-width strip atop the base for whole-base ops; the
-   left zone is reserved for a future view switcher, the opener sits at the right */
-.mt-baseheader{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 2px 4px;margin-bottom:4px;border-bottom:1px solid var(--bdr)}
-.mt-base-views{display:flex;align-items:center;gap:4px;min-height:20px;flex:1}
-.mt-base-btn{font:inherit;font-size:14px;line-height:1;color:var(--muted);background:none;border:1px solid transparent;border-radius:6px;padding:2px 9px;cursor:pointer}
-.mt-base-btn:hover,.mt-base-btn:focus{background:var(--bdr);color:var(--fg);outline:none}
+/* column operations panel (the consolidated home for all column ops) */
+#mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
+#mt-colpanel.on{display:block}
+/* base header bar: a reserved strip atop the base for future whole-base controls
+   (e.g. a view switcher in .mt-base-views). Empty for now — whole-base ops live on
+   the base bullet's menu — so it collapses to nothing until something is added. */
+.mt-baseheader{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mt-base-views{display:flex;align-items:center;gap:4px;flex:1}
 .mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:6px 10px 2px}
 .mt-col-section.mt-col-sep{border-top:1px solid var(--bdr);margin-top:4px;padding-top:6px}
 .mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;gap:12px;outline:none}
@@ -759,8 +757,6 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="bpop"></div>
 <!-- column operations panel -->
 <div id="mt-colpanel" role="menu" aria-label="Column options"></div>
-<!-- whole-base operations menu -->
-<div id="mt-basemenu" role="menu" aria-label="Base options"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
 <div id="lp-menu"></div>
@@ -2816,10 +2812,7 @@ function showColPanel(node, colIdx, anchorEl) {
   });
 }
 
-// ── base header bar + base menu (whole-base operations) ───────────────────────
-// The base menu is DISTINCT from the per-column menu: it carries whole-base ops.
-// Opened by the header opener button AND by Ctrl/⌘+Shift+M (base-context-scoped).
-// Same §7.2 menu machinery as the Column panel (role=menu/menuitem, arrow/Enter/Esc).
+// ── whole-base operations (surfaced on the base bullet's menu) ────────────────
 
 // Portable copy serializers (pure, text-in/text-out → unit-testable). "Frozen" bakes
 // the CURRENT computed values into the cells and DROPS the recipe — a static snapshot
@@ -2845,40 +2838,6 @@ function copyTextToClipboard(text, hint) {
     navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
   else
     fallbackCopy(text, done);
-}
-
-function hideBaseMenu() {
-  const p = document.getElementById('mt-basemenu');
-  if (p) p.classList.remove('on');
-}
-
-// Open the base menu anchored to `anchorEl` (the header opener). Reuses the Column
-// panel's item markup/classes so styling + keyboard nav are identical.
-function showBaseMenu(node, anchorEl) {
-  const panel = document.getElementById('mt-basemenu');
-  panel.innerHTML = '';
-  const addItem = (label, onApply) => {
-    const item = document.createElement('div');
-    item.className = 'mt-col-item';
-    item.setAttribute('role', 'menuitem');
-    item.setAttribute('tabindex', '-1');
-    item.innerHTML = '<span class="mt-col-item-label">' + label + '</span>';
-    item.addEventListener('mousedown', e => { e.preventDefault(); onApply(); hideBaseMenu(); });
-    panel.appendChild(item);
-  };
-  addItem('Copy as markdown', () => copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as markdown'));
-  addItem('Copy with TBLFM',  () => copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'));
-
-  const rect = anchorEl.getBoundingClientRect();
-  panel.style.left = rect.left + 'px';
-  panel.style.top  = (rect.bottom + 2) + 'px';
-  panel.classList.add('on');
-  requestAnimationFrame(() => {
-    const pr = panel.getBoundingClientRect();
-    if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
-    if (pr.bottom > window.innerHeight - 8) panel.style.top  = (rect.top - pr.height - 2) + 'px';
-    panel.querySelector('.mt-col-item')?.focus();
-  });
 }
 
 function mtClearSelection() {
@@ -2935,13 +2894,12 @@ function buildTableWidget(node, readOnly) {
       }
     }
   }
-  // Base header bar (interactive only): a slim full-width strip for whole-base ops.
-  // Built EXTENSIBLE — the left zone (.mt-base-views) is reserved for a future view
-  // switcher; the opener sits at the right. No base title for MVP.
+  // Base header bar (interactive only): a reserved strip atop the base. The left zone
+  // (.mt-base-views) is held for a future view switcher; whole-base ops now live on the
+  // base bullet's menu, so the bar is empty (and collapses to nothing) for now.
   let h = '';
   if (!readOnly)
-    h += '<div class="mt-baseheader"><div class="mt-base-views"></div>'
-       + '<button class="mt-base-btn" aria-label="Base options" title="Base options" aria-haspopup="menu">⋯</button></div>';
+    h += '<div class="mt-baseheader"><div class="mt-base-views"></div></div>';
   // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
   // the whole grid — a rowspan can't span the thead↔tbody boundary.
   h += '<div class="mt-scroll"><table class="md-table">';
@@ -3003,13 +2961,8 @@ function buildTableWidget(node, readOnly) {
     scheduleReconcile();
   });
 
-  // add / delete row & column; column panel toggle; base menu opener
+  // add / delete row & column; column panel toggle
   host.addEventListener('click', e => {
-    if (e.target.closest('.mt-base-btn')) {
-      e.stopPropagation();
-      showBaseMenu(node, e.target.closest('.mt-base-btn'));
-      return;
-    }
     if (e.target.closest('.mt-col-btn')) {
       e.stopPropagation();
       const btn = e.target.closest('.mt-col-btn');
@@ -3074,13 +3027,6 @@ function buildTableWidget(node, readOnly) {
   // round-trip; Enter = down a row, Shift+Enter = up a row (Excel/Sheets convention),
   // never inserts one.
   host.addEventListener('keydown', e => {
-    // Ctrl/⌘+Shift+M → base menu (base-context-scoped: only fires inside this base).
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
-      e.preventDefault();
-      const opener = host.querySelector('.mt-base-btn');
-      if (opener) showBaseMenu(node, opener);
-      return;
-    }
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
     if (e.key !== 'Tab' && e.key !== 'Enter') return;
     e.preventDefault();
@@ -4137,24 +4083,6 @@ _mtColPanel.addEventListener('keydown', e => {
 });
 document.addEventListener('click', e => {
   if (!e.target.closest('#mt-colpanel') && !e.target.closest('.mt-col-btn')) hideColPanel();
-});
-
-// ── base menu one-time init (mirrors the column panel: §7.2 menu pattern) ──
-const _mtBaseMenu = document.getElementById('mt-basemenu');
-_mtBaseMenu.addEventListener('mousedown', e => e.preventDefault());
-_mtBaseMenu.addEventListener('keydown', e => {
-  const items = [..._mtBaseMenu.querySelectorAll('.mt-col-item')];
-  if (!items.length) return;
-  const idx = items.indexOf(document.activeElement);
-  if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
-  else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
-  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus(); }
-  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
-  else if (e.key === 'Escape') { e.preventDefault(); hideBaseMenu(); }
-});
-document.addEventListener('click', e => {
-  if (!e.target.closest('#mt-basemenu') && !e.target.closest('.mt-base-btn')) hideBaseMenu();
 });
 
 function showBulletPopup(nodeId, bulletEl) {
