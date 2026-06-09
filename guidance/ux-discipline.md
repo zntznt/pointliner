@@ -266,7 +266,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Feature | P1 predictable | P2 discoverable | P3 reachable | P4 responsive |
 |---|---|---|---|---|
 | Outline nav / move / indent | ⚠️ (P1-2 collapse binding) | ✅ | ⚠️ (row labels; tree deferred) | ✅ |
-| Paragraph block | ❌ (P1-1 Enter inversion) | ✅ | ⚠️ | ✅ |
+| Paragraph block | ✅ | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
 | Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (P3-6 labels; focus deferred) | ⚠️ (P4-1 silent shorthand) |
