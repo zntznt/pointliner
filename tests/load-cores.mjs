@@ -143,7 +143,7 @@ export function loadCores() {
     'mkRoot', 'mkNode', 'toOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
-    'tableDelimCells', 'renderStaticTable',
+    'tableDelimCells', 'renderStaticTable', 'starterTableText', 'planBaseConvert',
     'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtApplyAggregate',
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
