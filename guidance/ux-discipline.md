@@ -247,6 +247,9 @@ Per §6 — the four channels, no bespoke feedback UI.
 ### 7.4 Affordance pattern
 Per §4 — the three doors, built in order.
 
+### 7.5 Column panel (consolidated table-column ops)
+A table column's operations live in **one** panel — the Column panel — opened by a single clearly-sized ▾ caret button (`aria-label="Column options"`) on the column header. It follows the §7.1 menu pattern (`role="menu"`/`menuitem`, `↑↓`/`Home`/`End`/`Enter`/`Esc`, reduced-motion respected) and grows by **section**, not by sprouting new header controls: today **Calculate · Alignment · Insert column · Move column · Delete column**; later formatting etc. slot in as further sections. The rule: a new per-column capability is a new panel section, **never** a new hidden header gesture (no double-click cycles, no tiny icon spans). Drag-to-reorder stays as the direct-manipulation path but always ships a **visible grip cue** and a keyboard-reachable twin in the panel (Move left/right), so nothing is drag- or double-click-only (P1/P2/P3).
+
 ---
 
 ## 8. Microcopy & terminology
@@ -273,6 +276,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Variables | ✅ | ❌ (P2-4 no overview) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ⚠️ | ⚠️ | ❌ (P4-1/P4-2) |
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
+| Table columns (ops) | ✅ (one Column panel: Calculate/Alignment/Insert/Move/Delete; no hidden double-click; UXP-21) | ✅ (one sized ▾ door; grip cue for drag; full-height "+") | ✅ (panel role=menu/menuitem keyboard-operable; sized targets + aria-labels) | ✅ (refresh reflects every op) |
 | Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; `#ERR` on invalid formula) |
 | Links (`[[ ]]`) | ✅ | ❌ (P2-1 picker gated off, no floor door) | ⚠️ | ✅ |
 | Footnotes / hashtags / emoji | ✅ | ⚠️ (tag index P2-4) | ⚠️ | ✅ |

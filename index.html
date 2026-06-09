@@ -207,36 +207,48 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell .md-img{max-height:120px}
 /* handle cells (row/col grips) */
 .mt-corner,.mt-colh,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
-.mt-colh{height:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-bottom:none}
+.mt-colh{height:18px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-bottom:none}
 .mt-rowh{width:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-right:none}
 .mt-colh:active,.mt-rowh:active{cursor:grabbing}
-.mt-grip{display:block;width:100%;height:100%;min-height:12px;opacity:.35}
-.mt-colh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) 0 center/5px 3px repeat-x}
+/* drag-reorder grip cue (visible dots + grab cursor make the handle discoverable) */
+.mt-grip{display:block;width:100%;height:100%;min-height:12px;opacity:.4}
+.mt-colh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center/5px 3px repeat-x}
 .mt-rowh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center 0/3px 5px repeat-y}
 .mt-colh:hover,.mt-rowh:hover{background:var(--hbg)}
-.mt-colh:hover .mt-grip,.mt-rowh:hover .mt-grip{opacity:.7}
+.mt-colh:hover .mt-grip,.mt-rowh:hover .mt-grip{opacity:.75}
 .mt-del{position:absolute;display:none;z-index:2;width:15px;height:15px;line-height:13px;text-align:center;font-size:12px;border-radius:50%;background:var(--del);color:#fff;cursor:pointer}
-.mt-colh:hover .mt-delcol{display:block;top:-7px;right:-7px}
 .mt-rowh:hover .mt-delrow{display:block;left:-7px;top:-7px}
 .mt-colh.mt-dragover{background:var(--acc)}
 .mt-rowh.mt-dragover{background:var(--acc)}
-.mt-addcol,.mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
-.mt-addcol{width:22px;height:100%;min-height:30px;padding:0;line-height:1}
-.mt-addcol:hover,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
-.mt-addcol-cell{vertical-align:middle;padding-left:3px}
+/* column-options opener: one clearly-sized caret button. Revealed on hover (always
+   on touch); kept in layout with opacity (not display:none) so it stays keyboard-
+   focusable / tab-reachable, then made visible on :focus-visible. */
+.mt-col-btn{position:absolute;top:0;right:0;height:100%;width:22px;display:flex;align-items:center;justify-content:center;border:none;border-radius:0 0 0 5px;background:var(--cbg);color:var(--muted);cursor:pointer;font-size:11px;line-height:1;z-index:3;opacity:0;transition:opacity .12s,background .12s,color .12s}
+.mt-colh:hover .mt-col-btn,.mt-col-btn:focus-visible{opacity:1}
+.mt-col-btn:hover,.mt-col-btn:focus-visible{background:var(--hbg);color:var(--fg)}
+@media(hover:none){.mt-col-btn{opacity:1}}
+@media(prefers-reduced-motion:reduce){.mt-col-btn{transition:none}}
+/* add-column: full-height "+" at the right edge (Notion-style, non-clipped, reveal on hover) */
+.mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
+.mt-addcol-cell{position:relative;padding:0;width:26px;border:none}
+.mt-addcol{position:absolute;top:1px;bottom:1px;left:4px;right:1px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:15px;border:1px dashed var(--bdr);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
+.md-table-host:hover .mt-addcol,.mt-addcol:focus-visible{opacity:1}
+@media(hover:none){.mt-addcol{opacity:1}}
+.mt-addcol:hover,.mt-addcol:focus-visible,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
 .mt-addrow-cell{padding-top:3px}
-/* column operations panel (▾ button on colh, per-column dropdown) */
-.mt-col-btn{position:absolute;bottom:0;left:50%;transform:translateX(-50%);display:none;border:none;background:none;padding:0;width:14px;height:100%;align-items:center;justify-content:center;font-size:9px;color:var(--muted);cursor:pointer;z-index:1;line-height:1}
-.mt-colh:hover .mt-col-btn{display:flex}
-@media(hover:none){.mt-colh .mt-col-btn{display:flex}}
-#mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:150px;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
+/* column operations panel (the consolidated home for all column ops) */
+#mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
 #mt-colpanel.on{display:block}
-.mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:4px 10px 2px}
-.mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;gap:12px;outline:none}
+.mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:6px 10px 2px}
+.mt-col-section.mt-col-sep{border-top:1px solid var(--bdr);margin-top:4px;padding-top:6px}
+.mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;gap:12px;outline:none}
 .mt-col-item:hover,.mt-col-item:focus{background:var(--bdr)}
 .mt-col-item.on{font-weight:600}
+.mt-col-item.mt-col-danger{color:var(--del)}
+.mt-col-item.mt-col-disabled{opacity:.4;cursor:default;pointer-events:none}
 .mt-col-item-check{color:var(--acc);font-size:11px;visibility:hidden}
 .mt-col-item.on .mt-col-item-check{visibility:visible}
+@media(prefers-reduced-motion:reduce){.mt-addcol{transition:none}}
 /* read-only formula-driven cells (non-color distinction required) */
 .mt-computed{font-style:italic;background:var(--cbg)!important;cursor:default}
 .mt-computed::before{content:'Σ\00a0';font-size:.72em;opacity:.5;font-style:normal}
@@ -2564,32 +2576,92 @@ function mtApplyAggregate(node, colIdx, fn) {
   refreshTable(node);
 }
 
+// ── column model ops (reuse the same model logic the header gestures used; now
+// exposed as explicit, keyboard-reachable panel actions) ───────────────────
+function mtSetAlign(node, colIdx, align) {
+  const m = mtModel(node);
+  m.aligns[colIdx] = align;            // 'left' is stored explicitly (:--- round-trips)
+  mtCommit(node, m); refreshTable(node);
+}
+function mtInsertCol(node, colIdx, side) {
+  const m = mtModel(node);
+  const at = side === 'left' ? colIdx : colIdx + 1;
+  m.aligns.splice(at, 0, null);
+  m.rows.forEach(r => r.splice(at, 0, ''));
+  mtCommit(node, m); refreshTable(node);
+}
+function mtMoveCol(node, colIdx, dir) {
+  const m = mtModel(node);
+  const to = colIdx + dir;
+  if (to < 0 || to >= m.aligns.length) return;
+  mtMoveItem(m.aligns, colIdx, to);
+  m.rows.forEach(r => mtMoveItem(r, colIdx, to));
+  mtCommit(node, m); refreshTable(node);
+}
+function mtDeleteCol(node, colIdx) {
+  const m = mtModel(node);
+  if (m.aligns.length <= 1) return;
+  m.aligns.splice(colIdx, 1);
+  m.rows.forEach(r => r.splice(colIdx, 1));
+  mtCommit(node, m); mtClearSelection(); refreshTable(node);
+}
+
 function hideColPanel() {
   const p = document.getElementById('mt-colpanel');
   if (p) p.classList.remove('on');
 }
 
+// The consolidated Column panel: Calculate · Alignment · Insert · Move · Delete.
+// One panel, growing by section (§7.1 menu pattern: role=menu/menuitem, arrow/
+// Enter/Esc nav, reduced-motion respected). Every column op lives here so the
+// header strip stays clean and nothing is drag/double-click-only.
 function showColPanel(node, colIdx, anchorEl) {
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const col1 = colIdx + 1;
+  const model = mtModel(node);
+  const ncols = model.aligns.length;
   const tblfm = extractTblfm(node.text);
-  const cur = mtColAggKind(tblfm, col1);
-  const sec = document.createElement('div');
-  sec.className = 'mt-col-section';
-  sec.textContent = 'Calculate';
-  panel.appendChild(sec);
+  const curAgg = mtColAggKind(tblfm, col1);
+  const curAlign = model.aligns[colIdx] || 'left';
+
+  const addSection = (label, sep) => {
+    const s = document.createElement('div');
+    s.className = 'mt-col-section' + (sep ? ' mt-col-sep' : '');
+    s.textContent = label;
+    panel.appendChild(s);
+  };
+  const addItem = (label, { active = false, disabled = false, danger = false, onApply } = {}) => {
+    const item = document.createElement('div');
+    item.className = 'mt-col-item' + (active ? ' on' : '') + (disabled ? ' mt-col-disabled' : '') + (danger ? ' mt-col-danger' : '');
+    item.setAttribute('role', 'menuitem');
+    item.setAttribute('tabindex', '-1');
+    if (disabled) item.setAttribute('aria-disabled', 'true');
+    item.innerHTML = '<span class="mt-col-item-label">' + label + '</span>' +
+                     '<span class="mt-col-item-check" aria-hidden="true">✓</span>';
+    if (!disabled) item.addEventListener('mousedown', e => { e.preventDefault(); onApply(); hideColPanel(); });
+    panel.appendChild(item);
+  };
+
+  addSection('Calculate');
   [['sum','Sum'],['avg','Average'],['count','Count'],['min','Min'],['max','Max'],['none','None']]
-    .forEach(([fn, label]) => {
-      const item = document.createElement('div');
-      item.className = 'mt-col-item' + (fn === cur ? ' on' : '');
-      item.setAttribute('role', 'menuitem');
-      item.setAttribute('tabindex', '-1');
-      item.innerHTML = '<span class="mt-col-item-label">' + label + '</span>' +
-                       '<span class="mt-col-item-check" aria-hidden="true">✓</span>';
-      item.addEventListener('mousedown', e => { e.preventDefault(); mtApplyAggregate(node, colIdx, fn); hideColPanel(); });
-      panel.appendChild(item);
-    });
+    .forEach(([fn, label]) => addItem(label, { active: fn === curAgg, onApply: () => mtApplyAggregate(node, colIdx, fn) }));
+
+  addSection('Alignment', true);
+  [['left','Left'],['center','Center'],['right','Right']]
+    .forEach(([al, label]) => addItem(label, { active: al === curAlign, onApply: () => mtSetAlign(node, colIdx, al) }));
+
+  addSection('Insert column', true);
+  addItem('Insert left',  { onApply: () => mtInsertCol(node, colIdx, 'left') });
+  addItem('Insert right', { onApply: () => mtInsertCol(node, colIdx, 'right') });
+
+  addSection('Move column', true);
+  addItem('Move left',  { disabled: colIdx === 0,         onApply: () => mtMoveCol(node, colIdx, -1) });
+  addItem('Move right', { disabled: colIdx === ncols - 1, onApply: () => mtMoveCol(node, colIdx,  1) });
+
+  addSection('Delete', true);
+  addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+
   const rect = anchorEl.getBoundingClientRect();
   panel.style.left = rect.left + 'px';
   panel.style.top  = (rect.bottom + 2) + 'px';
@@ -2598,7 +2670,7 @@ function showColPanel(node, colIdx, anchorEl) {
     const pr = panel.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
     if (pr.bottom > window.innerHeight - 8) panel.style.top  = (rect.top - pr.height - 2) + 'px';
-    (panel.querySelector('.mt-col-item.on') || panel.querySelector('.mt-col-item'))?.focus();
+    (panel.querySelector('.mt-col-item.on:not(.mt-col-disabled)') || panel.querySelector('.mt-col-item:not(.mt-col-disabled)'))?.focus();
   });
 }
 
@@ -2656,26 +2728,29 @@ function buildTableWidget(node, readOnly) {
       }
     }
   }
-  let h = '<div class="mt-scroll"><table class="md-table"><thead>';
+  // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
+  // the whole grid — a rowspan can't span the thead↔tbody boundary.
+  let h = '<div class="mt-scroll"><table class="md-table">';
   if (!readOnly) {
+    // The add-column cell spans the whole grid height (tophandles + header + data
+    // rows) so the "+" is a full-height, non-clipped right-edge affordance.
+    const addColSpan = model.rows.length + 1;
     h += '<tr class="mt-tophandles"><th class="mt-corner"></th>';
-    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder · double-click to cycle alignment"><span class="mt-grip"></span><span class="mt-del mt-delcol" data-c="${c}" title="Delete column">×</span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" aria-haspopup="menu">▾</button></th>`;
-    h += '<th class="mt-addcol-cell"><button class="mt-addcol" title="Add column">+</button></th></tr>';
+    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" title="Column options" aria-haspopup="menu">▾</button></th>`;
+    h += `<th class="mt-addcol-cell" rowspan="${addColSpan}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th></tr>`;
   }
   h += '<tr class="mt-headrow" data-r="0">';
   if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
   for (let c=0;c<nc;c++) { const ch0=computedCells.has('0,'+c); h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${ch0?' contenteditable="false" tabindex="0"':ro}>${mdInline(model.rows[0][c]||'')}</th>`; }
-  if (!readOnly) h += '<th class="mt-pad"></th>';
-  h += '</tr></thead><tbody>';
+  h += '</tr>';
   for (let r=1;r<model.rows.length;r++) {
     h += `<tr data-r="${r}">`;
     if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
     for (let c=0;c<nc;c++) { const cc=computedCells.has(r+','+c); h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${cc?' contenteditable="false" tabindex="0"':ro}>${mdInline(model.rows[r][c]||'')}</td>`; }
-    if (!readOnly) h += '<td class="mt-pad"></td>';
     h += '</tr>';
   }
   if (!readOnly) h += `<tr class="mt-addrow-row"><th></th><td class="mt-addrow-cell" colspan="${nc}"><button class="mt-addrow">+ Add row</button></td><td></td></tr>`;
-  h += '</tbody></table></div>';
+  h += '</table></div>';
 
   const host = document.createElement('div');
   host.className = 'md-table-host';
@@ -2726,23 +2801,12 @@ function buildTableWidget(node, readOnly) {
       const m = mtModel(node); m.aligns.push(null); m.rows.forEach(r => r.push('')); mtCommit(node,m); refreshTable(node);
     } else if (e.target.closest('.mt-addrow')) {
       const m = mtModel(node); m.rows.push(Array(m.aligns.length).fill('')); mtCommit(node,m); refreshTable(node);
-    } else if (e.target.closest('.mt-delcol')) {
-      const c = +e.target.closest('.mt-delcol').dataset.c; const m = mtModel(node);
-      if (m.aligns.length > 1) { m.aligns.splice(c,1); m.rows.forEach(r => r.splice(c,1)); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
     } else if (e.target.closest('.mt-delrow')) {
       const r = +e.target.closest('.mt-delrow').dataset.r; const m = mtModel(node);
       if (m.rows.length > 2 && r >= 1) { m.rows.splice(r,1); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
     }
   });
-  // double-click a column handle: cycle alignment (not via the ▾ button)
-  host.addEventListener('dblclick', e => {
-    const ch = e.target.closest('.mt-colh'); if (!ch) return;
-    if (e.target.closest('.mt-col-btn')) return;
-    const c = +ch.dataset.c; const m = mtModel(node);
-    const order = [null,'left','center','right'];
-    m.aligns[c] = order[(order.indexOf(m.aligns[c]) + 1) % order.length];
-    mtCommit(node,m); refreshTable(node);
-  });
+  // (alignment now lives in the Column panel — the hidden double-click cycle is gone)
   // drag-reorder rows / columns via handle drag (▾ button is not a drag handle)
   host.addEventListener('dragstart', e => {
     if (e.target.closest('.mt-col-btn')) { e.preventDefault(); return; }
@@ -3812,11 +3876,14 @@ bpop.addEventListener('mousedown', e => e.preventDefault());
 const _mtColPanel = document.getElementById('mt-colpanel');
 _mtColPanel.addEventListener('mousedown', e => e.preventDefault());
 _mtColPanel.addEventListener('keydown', e => {
-  const items = [..._mtColPanel.querySelectorAll('.mt-col-item')];
+  const items = [..._mtColPanel.querySelectorAll('.mt-col-item:not(.mt-col-disabled)')];
+  if (!items.length) return;
   const idx = items.indexOf(document.activeElement);
   if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
-  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.click(); }
+  else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
+  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
   else if (e.key === 'Escape') { e.preventDefault(); hideColPanel(); }
 });
 document.addEventListener('click', e => {
