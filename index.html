@@ -193,7 +193,8 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-editmd-btn{display:block;width:100%;padding:1px 2px;text-align:right;font-size:.68em;color:var(--muted);background:none;border:none;cursor:pointer;opacity:0;transition:opacity .12s;line-height:1.6;user-select:none}
 .nt-base>.node-row:hover .mt-editmd-btn{opacity:.55}
 .mt-editmd-btn:hover{opacity:1!important;text-decoration:underline}
-.md-table-host,.md-table-static{min-width:0;padding:2px 0}
+.md-table-static{min-width:0;padding:2px 0;width:100%;box-sizing:border-box}
+.md-table-host{padding:2px 0;max-width:none}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
@@ -2480,6 +2481,7 @@ function renderWindow(force) {
   vTop.style.height = (e >= s ? rowTops[s] : 0) + 'px';
   vBot.style.height = (e >= 0 ? totalHeight - rowTops[e + 1] : 0) + 'px';
   reconcileHeights();
+  updateBaseWidths();
 }
 
 // measure rendered rows; if real heights differ from estimates, fix offsets/spacers
@@ -2499,10 +2501,21 @@ function reconcileHeights() {
   }
 }
 
+// Measure each base's left offset and stretch it to the right viewport edge,
+// overriding the narrow-column max-width. Static tables are unaffected (natural flow).
+function updateBaseWidths() {
+  const rPad = window.innerWidth <= 560 ? 14 : 24;
+  document.querySelectorAll('.md-table-host').forEach(host => {
+    const rect = host.getBoundingClientRect();
+    const w = Math.max(120, Math.round(window.innerWidth - rect.left - rPad));
+    host.style.width = w + 'px';
+  });
+}
+
 let reconcileRaf = null;
 function scheduleReconcile() {
   if (reconcileRaf) return;
-  reconcileRaf = requestAnimationFrame(() => { reconcileRaf = null; reconcileHeights(); });
+  reconcileRaf = requestAnimationFrame(() => { reconcileRaf = null; reconcileHeights(); updateBaseWidths(); });
 }
 
 // scroll the page so a given row sits comfortably in view, then re-window

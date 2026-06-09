@@ -22,13 +22,15 @@ Read alongside: `ux-discipline.md` (the binding UX standard — vocabulary + pri
 
 ---
 
-## 2. Two things, clearly named: **table** vs **base**
+## 2. A base and its views — the object/view split
 
-The static render and the interactive widget are **different objects with different names.** This naming *is* the feature — it makes the widget's special-ness intentional instead of an invisible quirk.
+A **base** is a structured data object that lives in its own dedicated point. The **table view** is the base's default (and currently only) view — the interactive grid you see and edit. A **static markdown table** written inline in any point is a separate, independent thing: the portable, read-only rendered form of pipe-table markdown, not a view of a base.
+
+This naming matters: "table" is a display form (and a markdown primitive); "base" is the data object. When future views arrive (cards, board, list), "table view" becomes one named view of a base rather than the thing itself — the naming holds.
 
 | | **Table** (static) | **Base** (dynamic) |
 |---|---|---|
-| What it is | plain markdown (`\| a \| b \|`), rendered read-only | an interactive data object |
+| What it is | plain markdown (`\| a \| b \|`), rendered read-only | a structured data object displayed in table view |
 | Lives | inline, in **any** point | its own dedicated point |
 | How you get it | type markdown anywhere · `@table` inserts one | `/base` creates one |
 | Powers | renders; computes & shows `#+TBLFM` values read-only | editing, Calculate, the Column menu, formulas — and, later, more views |
@@ -94,6 +96,14 @@ Base-context-scoped (do nothing outside a base); documented in `ux-discipline.md
 
 Inline rename stays reachable by keyboard via UXP-2 navigation + type.
 
+### Base width
+
+A base always renders at the **full available viewport width** — it ignores the narrow/full-width document toggle. The left edge stays anchored at the indent (after the bullet); the right edge reaches the viewport edge. Horizontal scroll when a table overflows its container is inside the base widget, never the page.
+
+The rationale: a base is a structured data object you interact with; dense columns need room. The narrow column toggle governs prose readability, not data density.
+
+A static table follows the toggle (it is inline prose markup and naturally fills the content column). Both anchor their left edge at the indent; neither causes a page-level horizontal scrollbar.
+
 ---
 
 ## 6. Conversions
@@ -124,8 +134,9 @@ Binding terms for UI copy, `aria-label`s, docs, and this file:
 
 | Concept | Canonical term | Not |
 |---|---|---|
-| Static rendered markdown table | **table** | markdown table, grid |
-| Interactive data object | **base** | dynamic table, widget, database |
+| Static rendered markdown table (inline pipe table in any point — display form, not a view of a base) | **table** | markdown table, grid |
+| A structured data object with its own dedicated point, currently showing in table view | **base** | dynamic table, widget, database |
+| The base's interactive grid display (its current default view) | **table view** | table (when referring specifically to the view a base shows) |
 | The whole-base top bar | **base header** | toolbar |
 | The whole-base menu | **base menu** | table menu |
 | The per-column menu | **Column menu** | column panel (the panel is its content) |
