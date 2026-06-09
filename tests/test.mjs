@@ -845,6 +845,27 @@ test('mtApplyAggregate: None on both columns removes the footer row entirely', (
   assert.equal(model.rows.length, 3);         // header + 2 data rows only
 });
 
+// ── Bases PR 2b: portable copy serializers (frozen markdown vs live recipe) ────
+const { baseFrozenMarkdown, baseRecipeMarkdown } = c;
+// A base with a column formula computing Total = A*B; the target cells are stored
+// blank so the two flavors are clearly distinguishable.
+const BASE_COPY_TEXT =
+  '| A | B | Total |\n| --- | --- | --- |\n| 2 | 5 |  |\n| 3 | 4 |  |\n#+TBLFM: $3=$1*$2';
+
+test('base copy "as markdown": bakes computed values in, drops the #+TBLFM line', () => {
+  const out = baseFrozenMarkdown(BASE_COPY_TEXT);
+  assert.match(out, /\| 2 \| 5 \| 10 \|/);    // 2*5 computed into the cell
+  assert.match(out, /\| 3 \| 4 \| 12 \|/);    // 3*4 computed into the cell
+  assert.ok(!/#\+TBLFM/i.test(out));          // frozen snapshot — recipe removed
+});
+
+test('base copy "with TBLFM": keeps raw literals plus the #+TBLFM recipe', () => {
+  const out = baseRecipeMarkdown(BASE_COPY_TEXT);
+  assert.match(out, /#\+TBLFM: \$3=\$1\*\$2/); // the live recipe is preserved
+  assert.ok(!/\b10\b/.test(out));              // target cells stay raw (uncomputed)
+  assert.ok(!/\b12\b/.test(out));
+});
+
 // ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
 const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
         cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo,

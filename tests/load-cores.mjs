@@ -145,6 +145,7 @@ export function loadCores() {
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
     'tableDelimCells', 'renderStaticTable', 'starterTableText', 'planBaseConvert',
     'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtApplyAggregate',
+    'mtModelText', 'baseFrozenMarkdown', 'baseRecipeMarkdown',
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
     'setTodoState','setTodoPriority',
