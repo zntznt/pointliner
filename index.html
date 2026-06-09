@@ -196,7 +196,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-table-static{min-width:0;padding:2px 0;width:100%;box-sizing:border-box}
 .md-table-host{padding:2px 0;max-width:none}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
-.md-table{border-collapse:separate;border-spacing:0;font-size:.95em}
+.md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
 .mt-cell{padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
 .mt-cell:focus{box-shadow:inset 0 0 0 2px var(--ring)}
@@ -2510,17 +2510,23 @@ function reconcileHeights() {
   }
 }
 
-// Stretch each base to true full viewport width, breaking out of the indent column
-// on both sides. Static tables are unaffected (width:100% fills their content column).
+// A base is always full editing-area width, regardless of nesting depth or the
+// narrow/full toggle. We break out the WHOLE base row (bullet + collapse + grid),
+// not just the grid, so the bullet/collapse controls ride along to the left edge
+// instead of being stranded in the middle of a broken-out grid. The grid then
+// fills the row via `.md-table{width:100%}`. clientWidth (not innerWidth) excludes
+// the scrollbar, so the row never spills past the viewport into a page h-scroll.
 function updateBaseWidths() {
-  const vw = window.innerWidth;
-  const hPad = vw <= 560 ? 4 : 0;   // tiny side margin on mobile only
+  const vw = document.documentElement.clientWidth;
+  const gut = vw <= 560 ? 8 : 16;   // small symmetric viewport gutter
   document.querySelectorAll('.md-table-host').forEach(host => {
-    host.style.marginLeft = '';      // reset so getBoundingClientRect sees natural position
-    host.style.width = '';
-    const left = host.getBoundingClientRect().left;
-    host.style.marginLeft = (hPad - left) + 'px';
-    host.style.width = (vw - 2 * hPad) + 'px';
+    const row = host.closest('.node-row');
+    if (!row || row.closest('.search-ctx')) return;  // leave search-result layout alone
+    row.style.marginLeft = '';       // reset so getBoundingClientRect sees natural left
+    row.style.width = '';
+    const left = row.getBoundingClientRect().left;
+    row.style.marginLeft = (gut - left) + 'px';
+    row.style.width = (vw - 2 * gut) + 'px';
   });
 }
 

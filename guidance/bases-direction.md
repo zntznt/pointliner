@@ -98,11 +98,11 @@ Inline rename stays reachable by keyboard via UXP-2 navigation + type.
 
 ### Base width
 
-A base always renders at **true full viewport width, edge-to-edge on both sides** — it ignores the narrow/full-width document toggle AND the indent/nesting depth. The base host breaks out of the outline column entirely: its left edge reaches the viewport left, its right edge the viewport right (small side margins on mobile). Bullet and collapse controls remain visible above the base via z-index. Horizontal scroll when a table overflows its container is inside the base widget, never the page.
+A base always renders at **full editing-area width** — it ignores the narrow/full-width document toggle AND the indent/nesting depth, so a deeply-nested base is exactly as wide as a root-level one. The breakout moves the **whole base row** (bullet + collapse + grid), not just the grid: the row is pulled left to a small symmetric viewport gutter and stretched to `clientWidth − 2·gutter`, so the **bullet and collapse controls ride along to the left edge** instead of being stranded in the middle of a broken-out grid (the bug the host-only breakout caused). The grid then fills that width via `.md-table{width:100%}`; columns stretch to fill, and horizontal scroll only kicks in (inside `.mt-scroll`, never the page) once the columns hit their min-width floor. `clientWidth` (not `innerWidth`) is used so the row never spills under the scrollbar into a page-level h-scroll. `updateBaseWidths()` re-measures on every reconcile / window resize / width-toggle, and skips rows inside `.search-ctx` so search-result layout is left alone.
 
-The rationale: a base is a structured data object you interact with; dense columns need room. The narrow column toggle governs prose readability, not data density.
+The rationale: a base is a structured data object you interact with; dense columns need room. The narrow column toggle governs prose readability, not data density. Bringing the bullet with the breakout keeps the row coherent — the control rail stays to the left of the data, where it belongs.
 
-A static table follows the toggle (it is inline prose markup and naturally fills the content column via `width: 100%`). Static tables do not break out of the column; they stretch to fill it. Neither causes a page-level horizontal scrollbar.
+A static table follows the toggle (it is inline prose markup, so it lives in the content column and respects narrow↔full). It stretches to fill that column via the same `.md-table{width:100%}`; it does **not** break out of the column. Neither base nor static table causes a page-level horizontal scrollbar.
 
 ---
 
