@@ -120,13 +120,27 @@ canonical shape:
 - **Markdown rendering is per-line and element-driven.** `mdToHtml` is a full
   per-line block parser: every line is classified independently (fenced code,
   ATX heading `#`–`######`, thematic break `---`/`***`/`___`, blockquote `>`,
-  ul/ol/task list, definition list, else paragraph), so **markdown works on any
-  line of a node**, not just the first — a multi-line `para` node is effectively a
-  mini markdown document. Headings/quotes/hr/fenced-code render as real
-  `<h1>`…`<hr>`/`<blockquote>`/`<pre>` elements (styled via `.md-h`/`.md-bq`/
-  `.md-hr`/`.md-code`), **not** via whole-node CSS. `renderContentHTML` passes the
-  **raw** `node.text` (prefixes intact) to `mdToHtml` for this reason; `node.type
-  === 'code'` is the one whole-node exception, rendered by `codeNodeHTML`.
+  ul/ol/task list, **GFM pipe table**, definition list, else paragraph), so
+  **markdown works on any line of a node**, not just the first — a multi-line
+  `para` node is effectively a mini markdown document. Headings/quotes/hr/
+  fenced-code render as real `<h1>`…`<hr>`/`<blockquote>`/`<pre>` elements (styled
+  via `.md-h`/`.md-bq`/`.md-hr`/`.md-code`), **not** via whole-node CSS.
+  `renderContentHTML` passes the **raw** `node.text` (prefixes intact) to
+  `mdToHtml` for this reason; `node.type === 'code'` is the one whole-node
+  exception, rendered by `codeNodeHTML`.
+- **A markdown pipe table renders statically (read-only) in any point.** `mdToHtml`
+  detects a GFM table (a header row immediately followed by a *matching* delimiter
+  row — `tableDelimCells` is the false-positive guard, so prose with pipes and a
+  `---` thematic break are left alone) and emits a static `<table>` via
+  `renderStaticTable`, **reusing the table CSS** so it looks identical to a base:
+  alignment from the delimiter colons, cell content through `mdInline` (artifact
+  tokens render as frozen pills), and an optional trailing `#+TBLFM:` line computed
+  via `computeTable` and **hidden** in the render. This is a **render-layer
+  behavior only** — `node.text` is never modified, so edit mode shows the full raw
+  markdown (recipe line included), the same edit-raw / render-pretty model as
+  headings. The **interactive base** (`node.type === 'table'`) is a *separate
+  object* — `buildTableWidget`, dispatched in `render()`, **not** through
+  `mdToHtml` — and is untouched by the static path. (See `guidance/bases-direction.md`.)
 - **`node.type` for headings/quote is now a derived hint, not the renderer.**
   Headings/quote/code still store their prefix in `node.text` (`"# Title"`) and
   `deriveTypeFromText()`/`checkMdBlockPrefix()` still set `node.type` (`'h1'`) for

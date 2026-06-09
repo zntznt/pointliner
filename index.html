@@ -193,7 +193,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-editmd-btn{display:block;width:100%;padding:1px 2px;text-align:right;font-size:.68em;color:var(--muted);background:none;border:none;cursor:pointer;opacity:0;transition:opacity .12s;line-height:1.6;user-select:none}
 .nt-table>.node-row:hover .mt-editmd-btn{opacity:.55}
 .mt-editmd-btn:hover{opacity:1!important;text-decoration:underline}
-.md-table-host{min-width:0;padding:2px 0}
+.md-table-host,.md-table-static{min-width:0;padding:2px 0}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
@@ -1669,8 +1669,12 @@ function mdToHtml(raw, isCode) {
     }
     const isUl = UL_RE.test(line);
     const isOl = !isUl && OL_RE.test(line);
+    // GFM pipe table: a non-blank header line whose very next line is a delimiter row
+    // with the same cell count. List markers win (checked first), matching GFM.
+    const isTable = !isUl && !isOl && line.trim() !== ''
+      && mtSplitRow(line).length === tableDelimCells(lines[i + 1]);
     // definition list: a term line immediately followed by one or more ": def" lines
-    const isDefTerm = !isUl && !isOl && line.trim() !== '' && !DD_RE.test(line) && i+1 < lines.length && DD_RE.test(lines[i+1]);
+    const isDefTerm = !isUl && !isOl && !isTable && line.trim() !== '' && !DD_RE.test(line) && i+1 < lines.length && DD_RE.test(lines[i+1]);
     if (isUl || isOl) {
       flush();
       const re = isUl ? UL_RE : OL_RE, tag = isUl ? 'ul' : 'ol';
@@ -1682,6 +1686,16 @@ function mdToHtml(raw, isCode) {
         items.push(renderListItem(inner, taskNo)); i++;
       }
       out.push(`<${tag} class="md-list${hasTask?' md-tasklist':''}">${items.join('')}</${tag}>`);
+    } else if (isTable) {
+      // Consume the grid (header + delimiter + body rows) plus an optional trailing
+      // #+TBLFM: recipe line. The recipe is computed + hidden in renderStaticTable;
+      // node.text is never touched, so edit mode still shows the full raw markdown.
+      flush();
+      const start = i;
+      i += 2;                                                              // header + delimiter
+      while (i < lines.length && lines[i].trim() !== '' && lines[i].includes('|')) i++;
+      if (i < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[i])) i++;     // optional recipe
+      out.push(renderStaticTable(lines.slice(start, i).join('\n')));
     } else if (isDefTerm) {
       flush();
       let dl = `<dt>${mdInline(line)}</dt>`; i++;
@@ -1949,6 +1963,64 @@ function extractTblfm(text) {
 }
 function stripTblfm(text) {
   return (text || '').replace(TBLFM_LINE_RE, '').replace(/\n+$/, '');
+}
+
+// ─── static markdown tables (render-anywhere, read-only) ─────────────────────
+// A pipe table written in ANY point renders the same way a `#` renders a heading:
+// `mdToHtml` detects it and emits a static <table>. This is purely a RENDER path —
+// node.text is never modified; edit mode still shows the raw markdown (recipe line
+// included). The interactive base widget (node.type==='table') is a separate object
+// and is untouched by this.
+
+// GFM table delimiter row detector — the false-positive guard. Returns the cell
+// count when `line` is a valid delimiter (every cell is `:?-+:?` AND the row has at
+// least one pipe, so prose like a `---` thematic break is NOT swallowed), else -1.
+function tableDelimCells(line) {
+  if (line == null) return -1;
+  const t = String(line).trim();
+  if (!t.includes('|')) return -1;
+  const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+  if (!cells.length) return -1;
+  for (const c of cells) if (!/^:?-+:?$/.test(c)) return -1;
+  return cells.length;
+}
+
+// Render a detected pipe-table block (grid lines + an optional trailing #+TBLFM:
+// recipe) to a static, read-only <table>, REUSING the base widget's CSS so the two
+// look identical. The #+TBLFM line is COMPUTED and HIDDEN — never emitted as text.
+// Cell content goes through mdInline (emphasis/links/code/emoji; artifact tokens
+// render as frozen read-only pills against the active render-context globals). No
+// new parse/formula logic: reuses parseTable / parseTblfm / computeTable / extractTblfm.
+function renderStaticTable(block) {
+  const tblfm = extractTblfm(block);
+  const model = parseTable(stripTblfm(block));
+  if (!model) return '';
+  const nc = model.aligns.length;
+  let rows = model.rows;
+  const computed = new Set();          // "r,c" keys of formula-driven cells → Σ-tagged
+  if (tblfm) {
+    const dims = { nrows: model.rows.length, ncols: nc };
+    for (const f of parseTblfm(tblfm, dims)) {
+      const t = f.target;
+      if (t.kind === 'col')        { for (let r = 1; r < model.rows.length; r++) computed.add(r + ',' + t.col); }
+      else if (t.kind === 'row')   { for (let c = 0; c < nc; c++) computed.add(t.row + ',' + c); }
+      else if (t.kind === 'field') computed.add(t.row + ',' + t.col);
+    }
+    rows = computeTable(model, tblfm);    // literals + computed values (#ERR on cycle/invalid)
+  }
+  const aCls = a => a === 'center' ? ' mt-a-center' : a === 'right' ? ' mt-a-right' : '';
+  const cCls = key => computed.has(key) ? ' mt-computed' : '';
+  let h = '<div class="md-table-static"><div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
+  for (let c = 0; c < nc; c++)
+    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${mdInline((rows[0] && rows[0][c]) || '')}</th>`;
+  h += '</tr>';
+  for (let r = 1; r < rows.length; r++) {
+    h += '<tr>';
+    for (let c = 0; c < nc; c++)
+      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${mdInline((rows[r] && rows[r][c]) || '')}</td>`;
+    h += '</tr>';
+  }
+  return h + '</table></div></div>';
 }
 
 // ─── OPML ─────────────────────────────────────────────────────────────────────
