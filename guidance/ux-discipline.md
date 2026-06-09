@@ -181,7 +181,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
 | `Ctrl/⌘ + C / X / V` | Copy / cut / paste points | Multi-select context |
-| Table `Tab` / `Shift+Tab` / `Enter` | Next / previous cell (wraps across rows; `Tab` at the last cell adds a row) · `Enter` = cell below (stops at last row), `Shift+Enter` = cell above (stops at top row) | **P2-3** — lands selecting the cell's contents (type-to-overwrite). Cells are single-line, so `Shift+Enter` navigates (Excel/Sheets convention), never inserts a break |
+| Table `Tab` / `Shift+Tab` / `Enter` | Next / previous cell (wraps across rows; `Tab` at the last cell adds a row) · `Enter` = cell below (stops at last row), `Shift+Enter` = cell above (stops at top row) · computed (formula-driven) cells are read-only (`Σ`-tagged, Tab-navigable) | **P2-3** — lands selecting the cell's contents (type-to-overwrite). Cells are single-line, so `Shift+Enter` navigates (Excel/Sheets convention), never inserts a break. Column ▾ menu: `↑↓` navigate items, `Enter`/`Space` select, `Esc` closes |
 | `Ctrl/⌘ + 1…6` | Collapse to level (best-effort) | Toolbar is primary (P1-5) |
 
 **Modifier semantics (memorize these, not the table):** plain = text · `Tab` = depth · `Alt` = move · `Ctrl/⌘` = app command · `Esc` = back out · `Shift` = extend.
@@ -272,8 +272,8 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (P3-6 labels; focus deferred) | ⚠️ (P4-1 silent shorthand) |
 | Variables | ✅ | ❌ (P2-4 no overview) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ⚠️ | ⚠️ | ❌ (P4-1/P4-2) |
-| Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
-| Table formulas (`#+TBLFM:`) | n/a | ❌ (P2-3 no UI) | ❌ | ❌ (P4-2 bare `#ERR`) |
+| Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
+| Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; `#ERR` on invalid formula) |
 | Links (`[[ ]]`) | ✅ | ❌ (P2-1 picker gated off, no floor door) | ⚠️ | ✅ |
 | Footnotes / hashtags / emoji | ✅ | ⚠️ (tag index P2-4) | ⚠️ | ✅ |
 | Search | ✅ | ✅ | ⚠️ | ✅ |

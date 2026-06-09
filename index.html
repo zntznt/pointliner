@@ -225,6 +225,21 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-addcol:hover,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
 .mt-addcol-cell{vertical-align:middle;padding-left:3px}
 .mt-addrow-cell{padding-top:3px}
+/* column operations panel (▾ button on colh, per-column dropdown) */
+.mt-col-btn{position:absolute;bottom:0;left:50%;transform:translateX(-50%);display:none;border:none;background:none;padding:0;width:14px;height:100%;align-items:center;justify-content:center;font-size:9px;color:var(--muted);cursor:pointer;z-index:1;line-height:1}
+.mt-colh:hover .mt-col-btn{display:flex}
+@media(hover:none){.mt-colh .mt-col-btn{display:flex}}
+#mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:150px;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
+#mt-colpanel.on{display:block}
+.mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:4px 10px 2px}
+.mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;gap:12px;outline:none}
+.mt-col-item:hover,.mt-col-item:focus{background:var(--bdr)}
+.mt-col-item.on{font-weight:600}
+.mt-col-item-check{color:var(--acc);font-size:11px;visibility:hidden}
+.mt-col-item.on .mt-col-item-check{visibility:visible}
+/* read-only formula-driven cells (non-color distinction required) */
+.mt-computed{font-style:italic;background:var(--cbg)!important;cursor:default}
+.mt-computed::before{content:'Σ\00a0';font-size:.72em;opacity:.5;font-style:normal}
 .mt-align-bar{display:flex;gap:3px;align-items:center;margin:4px 0 2px;font-size:11px;color:var(--muted)}
 .mt-align-bar button{font-size:11px;padding:1px 6px}
 .mt-align-bar button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
@@ -710,6 +725,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="sel-tb"></div>
 <!-- bullet popup -->
 <div id="bpop"></div>
+<!-- column operations panel -->
+<div id="mt-colpanel" role="menu" aria-label="Column options"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
 <div id="lp-menu"></div>
@@ -2481,7 +2498,8 @@ function mtPatchCells(node, exceptCell) {
   const host = mtHost(node.id); if (!host) return;
   const m = mtModel(node);
   host.querySelectorAll('.mt-cell').forEach(cell => {
-    if (cell === exceptCell || cell === document.activeElement) return; // leave the cell being edited
+    if (cell === exceptCell) return;
+    if (cell === document.activeElement && !cell.classList.contains('mt-computed')) return;
     cell.innerHTML = mdInline(m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '');
   });
 }
@@ -2492,6 +2510,91 @@ function refreshTable(node) {
   if (!host) { render(); return; }
   host.replaceWith(buildTableWidget(node));
   scheduleReconcile();
+}
+
+// ── column aggregate helpers (pure, testable) ─────────────────────────────
+// Build (or patch) the TBLFM formula for one column's footer aggregate. fn ∈
+// 'sum'|'avg'|'count'|'min'|'max'|'none'. Replaces any existing @>$col1= for
+// that column; preserves all other parts; returns the full updated string.
+function mtBuildAggFormula(tblfm, col1, fn) {
+  const FN_MAP = { sum:'vsum', avg:'vmean', count:'vcount', min:'vmin', max:'vmax' };
+  const parts = (tblfm || '').split('::').map(s => s.trim()).filter(s => {
+    if (!s) return false;
+    const m = s.match(/^@>\$(\d+)=/);
+    return !(m && +m[1] === col1);
+  });
+  if (fn !== 'none' && FN_MAP[fn])
+    parts.push('@>$' + col1 + '=' + FN_MAP[fn] + '(@2$' + col1 + '..@-1$' + col1 + ')');
+  return parts.join(' :: ');
+}
+// True when the TBLFM contains at least one @>$N= footer-row formula.
+function mtHasFooter(tblfm) {
+  return (tblfm || '').split('::').some(s => /^@>\$[\d<>]+=/.test(s.trim()));
+}
+// Return the current aggregate kind ('sum'|'avg'|'count'|'min'|'max'|'none')
+// for a 1-based column, or 'none' if no formula targets it.
+function mtColAggKind(tblfm, col1) {
+  const REV = { vsum:'sum', vmean:'avg', vcount:'count', vmin:'min', vmax:'max' };
+  for (const part of (tblfm || '').split('::')) {
+    const m = part.trim().match(new RegExp('^@>\\$' + col1 + '=(vsum|vmean|vcount|vmin|vmax)\\b'));
+    if (m) return REV[m[1]] || 'none';
+  }
+  return 'none';
+}
+
+// Apply an aggregate function to colIdx (0-based). Adds/removes the footer row
+// as needed; calls mtRecompute + refreshTable to show computed values.
+function mtApplyAggregate(node, colIdx, fn) {
+  const col1 = colIdx + 1;
+  const tblfm = extractTblfm(node.text);
+  const newTblfm = mtBuildAggFormula(tblfm, col1, fn);
+  const model = mtModel(node);
+  if (!mtHasFooter(tblfm) && mtHasFooter(newTblfm))
+    model.rows.push(Array(model.aligns.length).fill(''));
+  else if (mtHasFooter(tblfm) && !mtHasFooter(newTblfm) && model.rows.length > 2)
+    model.rows.pop();
+  node.text = serializeTable(model) + (newTblfm ? '\n#+TBLFM: ' + newTblfm : '');
+  markDirty();
+  mtRecompute(node);
+  refreshTable(node);
+}
+
+function hideColPanel() {
+  const p = document.getElementById('mt-colpanel');
+  if (p) p.classList.remove('on');
+}
+
+function showColPanel(node, colIdx, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const col1 = colIdx + 1;
+  const tblfm = extractTblfm(node.text);
+  const cur = mtColAggKind(tblfm, col1);
+  const sec = document.createElement('div');
+  sec.className = 'mt-col-section';
+  sec.textContent = 'Calculate';
+  panel.appendChild(sec);
+  [['sum','Sum'],['avg','Average'],['count','Count'],['min','Min'],['max','Max'],['none','None']]
+    .forEach(([fn, label]) => {
+      const item = document.createElement('div');
+      item.className = 'mt-col-item' + (fn === cur ? ' on' : '');
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('tabindex', '-1');
+      item.innerHTML = '<span class="mt-col-item-label">' + label + '</span>' +
+                       '<span class="mt-col-item-check" aria-hidden="true">✓</span>';
+      item.addEventListener('mousedown', e => { e.preventDefault(); mtApplyAggregate(node, colIdx, fn); hideColPanel(); });
+      panel.appendChild(item);
+    });
+  const rect = anchorEl.getBoundingClientRect();
+  panel.style.left = rect.left + 'px';
+  panel.style.top  = (rect.bottom + 2) + 'px';
+  panel.classList.add('on');
+  requestAnimationFrame(() => {
+    const pr = panel.getBoundingClientRect();
+    if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
+    if (pr.bottom > window.innerHeight - 8) panel.style.top  = (rect.top - pr.height - 2) + 'px';
+    (panel.querySelector('.mt-col-item.on') || panel.querySelector('.mt-col-item'))?.focus();
+  });
 }
 
 function mtClearSelection() {
@@ -2534,21 +2637,35 @@ function buildTableWidget(node, readOnly) {
   const nc = model.aligns.length;
   const aCls = a => a==='center'?' mt-a-center':a==='right'?' mt-a-right':'';
   const ro = readOnly ? '' : ' contenteditable="true"';
+  // Pre-compute which cells are formula-driven so they render read-only + Σ-tagged.
+  const computedCells = new Set();
+  if (!readOnly) {
+    const tblfmStr = extractTblfm(node.text);
+    if (tblfmStr) {
+      const dims = { nrows: model.rows.length, ncols: nc };
+      for (const f of parseTblfm(tblfmStr, dims)) {
+        const t = f.target;
+        if (t.kind === 'col')   { for (let r=1;r<model.rows.length;r++) computedCells.add(r+','+t.col); }
+        else if (t.kind === 'row')   { for (let c=0;c<nc;c++) computedCells.add(t.row+','+c); }
+        else if (t.kind === 'field') computedCells.add(t.row+','+t.col);
+      }
+    }
+  }
   let h = '<div class="mt-scroll"><table class="md-table"><thead>';
   if (!readOnly) {
     h += '<tr class="mt-tophandles"><th class="mt-corner"></th>';
-    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder · double-click to cycle alignment"><span class="mt-grip"></span><span class="mt-del mt-delcol" data-c="${c}" title="Delete column">×</span></th>`;
+    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder · double-click to cycle alignment"><span class="mt-grip"></span><span class="mt-del mt-delcol" data-c="${c}" title="Delete column">×</span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" aria-haspopup="menu">▾</button></th>`;
     h += '<th class="mt-addcol-cell"><button class="mt-addcol" title="Add column">+</button></th></tr>';
   }
   h += '<tr class="mt-headrow" data-r="0">';
   if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
-  for (let c=0;c<nc;c++) h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${ro}>${mdInline(model.rows[0][c]||'')}</th>`;
+  for (let c=0;c<nc;c++) { const ch0=computedCells.has('0,'+c); h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${ch0?' contenteditable="false" tabindex="0"':ro}>${mdInline(model.rows[0][c]||'')}</th>`; }
   if (!readOnly) h += '<th class="mt-pad"></th>';
   h += '</tr></thead><tbody>';
   for (let r=1;r<model.rows.length;r++) {
     h += `<tr data-r="${r}">`;
     if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
-    for (let c=0;c<nc;c++) h += `<td class="mt-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${ro}>${mdInline(model.rows[r][c]||'')}</td>`;
+    for (let c=0;c<nc;c++) { const cc=computedCells.has(r+','+c); h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${cc?' contenteditable="false" tabindex="0"':ro}>${mdInline(model.rows[r][c]||'')}</td>`; }
     if (!readOnly) h += '<td class="mt-pad"></td>';
     h += '</tr>';
   }
@@ -2564,6 +2681,7 @@ function buildTableWidget(node, readOnly) {
   // cell editing: show raw text on focus, render markdown on blur
   host.addEventListener('focusin', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    if (cell.classList.contains('mt-computed')) return;
     mtClearSelection();
     forceIncludeId = node.id;
     const m = mtModel(node);
@@ -2571,12 +2689,14 @@ function buildTableWidget(node, readOnly) {
   });
   host.addEventListener('input', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    if (cell.classList.contains('mt-computed')) return;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = cell.textContent;
     mtCommit(node, m);
   });
   host.addEventListener('focusout', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    if (cell.classList.contains('mt-computed')) return;
     const raw = cell.textContent;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
@@ -2589,8 +2709,14 @@ function buildTableWidget(node, readOnly) {
     scheduleReconcile();
   });
 
-  // add / delete row & column
+  // add / delete row & column; column panel toggle
   host.addEventListener('click', e => {
+    if (e.target.closest('.mt-col-btn')) {
+      e.stopPropagation();
+      const btn = e.target.closest('.mt-col-btn');
+      showColPanel(node, +btn.dataset.c, btn);
+      return;
+    }
     if (e.target.closest('.mt-addcol')) {
       const m = mtModel(node); m.aligns.push(null); m.rows.forEach(r => r.push('')); mtCommit(node,m); refreshTable(node);
     } else if (e.target.closest('.mt-addrow')) {
@@ -2603,16 +2729,18 @@ function buildTableWidget(node, readOnly) {
       if (m.rows.length > 2 && r >= 1) { m.rows.splice(r,1); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
     }
   });
-  // double-click a column handle: cycle alignment
+  // double-click a column handle: cycle alignment (not via the ▾ button)
   host.addEventListener('dblclick', e => {
     const ch = e.target.closest('.mt-colh'); if (!ch) return;
+    if (e.target.closest('.mt-col-btn')) return;
     const c = +ch.dataset.c; const m = mtModel(node);
     const order = [null,'left','center','right'];
     m.aligns[c] = order[(order.indexOf(m.aligns[c]) + 1) % order.length];
     mtCommit(node,m); refreshTable(node);
   });
-  // drag-reorder rows / columns via handle drag
+  // drag-reorder rows / columns via handle drag (▾ button is not a drag handle)
   host.addEventListener('dragstart', e => {
+    if (e.target.closest('.mt-col-btn')) { e.preventDefault(); return; }
     const ch = e.target.closest('.mt-colh'), rh = e.target.closest('.mt-rowh');
     if (ch) mtReorder = { kind:'col', from:+ch.dataset.c };
     else if (rh && rh.dataset.r) mtReorder = { kind:'row', from:+rh.dataset.r };
@@ -3674,6 +3802,21 @@ let bpopTimer = null;
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
+
+// ── column panel one-time init ────────────────────────────────────────────
+const _mtColPanel = document.getElementById('mt-colpanel');
+_mtColPanel.addEventListener('mousedown', e => e.preventDefault());
+_mtColPanel.addEventListener('keydown', e => {
+  const items = [..._mtColPanel.querySelectorAll('.mt-col-item')];
+  const idx = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.click(); }
+  else if (e.key === 'Escape') { e.preventDefault(); hideColPanel(); }
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#mt-colpanel') && !e.target.closest('.mt-col-btn')) hideColPanel();
+});
 
 function showBulletPopup(nodeId, bulletEl) {
   clearTimeout(bpopTimer);

@@ -619,6 +619,69 @@ test('table: appended #+TBLFM line extracts, computes, and round-trips', () => {
   assert.ok(out.includes('| 2 | 5 | 10 |'));
 });
 
+// ── column aggregate formula builder (UXP-3) ──────────────────────────────
+const { mtBuildAggFormula, mtHasFooter, mtColAggKind } = c;
+
+test('mtBuildAggFormula: add sum for column 2', () => {
+  assert.equal(mtBuildAggFormula('', 2, 'sum'), '@>$2=vsum(@2$2..@-1$2)');
+});
+
+test('mtBuildAggFormula: avg maps to vmean', () => {
+  assert.equal(mtBuildAggFormula('', 3, 'avg'), '@>$3=vmean(@2$3..@-1$3)');
+});
+
+test('mtBuildAggFormula: count / min / max map correctly', () => {
+  assert.equal(mtBuildAggFormula('', 1, 'count'), '@>$1=vcount(@2$1..@-1$1)');
+  assert.equal(mtBuildAggFormula('', 1, 'min'),   '@>$1=vmin(@2$1..@-1$1)');
+  assert.equal(mtBuildAggFormula('', 1, 'max'),   '@>$1=vmax(@2$1..@-1$1)');
+});
+
+test('mtBuildAggFormula: replaces existing formula for the same column', () => {
+  assert.equal(
+    mtBuildAggFormula('@>$2=vsum(@2$2..@-1$2)', 2, 'avg'),
+    '@>$2=vmean(@2$2..@-1$2)',
+  );
+});
+
+test('mtBuildAggFormula: fn=none removes the formula', () => {
+  assert.equal(mtBuildAggFormula('@>$2=vsum(@2$2..@-1$2)', 2, 'none'), '');
+});
+
+test('mtBuildAggFormula: preserves unrelated column formulas', () => {
+  const existing = '@>$1=vsum(@2$1..@-1$1) :: @>$3=vmax(@2$3..@-1$3)';
+  const result = mtBuildAggFormula(existing, 2, 'count');
+  assert.ok(result.includes('@>$1=vsum(@2$1..@-1$1)'));
+  assert.ok(result.includes('@>$3=vmax(@2$3..@-1$3)'));
+  assert.ok(result.includes('@>$2=vcount(@2$2..@-1$2)'));
+});
+
+test('mtHasFooter: false when empty or null', () => {
+  assert.equal(mtHasFooter(''), false);
+  assert.equal(mtHasFooter(null), false);
+});
+
+test('mtHasFooter: true when @>$N= formula present', () => {
+  assert.equal(mtHasFooter('@>$2=vsum(@2$2..@-1$2)'), true);
+});
+
+test('mtHasFooter: false for non-footer formulas', () => {
+  assert.equal(mtHasFooter('$3=$1*$2'), false);
+  assert.equal(mtHasFooter('@2$3=@2$1*@2$2'), false);
+});
+
+test('mtColAggKind: returns correct fn for each kind', () => {
+  assert.equal(mtColAggKind('@>$2=vsum(@2$2..@-1$2)',   2), 'sum');
+  assert.equal(mtColAggKind('@>$2=vmean(@2$2..@-1$2)',  2), 'avg');
+  assert.equal(mtColAggKind('@>$2=vcount(@2$2..@-1$2)', 2), 'count');
+  assert.equal(mtColAggKind('@>$2=vmin(@2$2..@-1$2)',   2), 'min');
+  assert.equal(mtColAggKind('@>$2=vmax(@2$2..@-1$2)',   2), 'max');
+});
+
+test('mtColAggKind: returns none for unrelated column', () => {
+  assert.equal(mtColAggKind('@>$1=vsum(@2$1..@-1$1)', 2), 'none');
+  assert.equal(mtColAggKind('', 1), 'none');
+});
+
 // ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
 const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
         cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo,
