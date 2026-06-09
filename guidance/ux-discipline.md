@@ -79,7 +79,7 @@ Each carries: the **law**, **normative rules**, and an **acceptance test** the A
 
 > **Law:** A user who learns one interaction MUST be able to predict the rest. A key, gesture, or word resolves to the same conceptual action in every context.
 
-- **P1-1 (MUST):** No key inverts meaning by context. `Enter` = new point and `Shift+Enter` = line break in **every** block, including Paragraph. (Today `onKeyDown` swaps these for `para` nodes — the clearest existing violation.)
+- **P1-1 (MUST):** No key *silently* inverts meaning by context. `Enter` = new point and `Shift+Enter` = line break in every block — **one advertised exception: Paragraph (prose mode)** inverts these (`Enter` = line break, `Shift+Enter` = new point). This exception is conformant because it is explicit: the `/` menu description and the empty-state hint both advertise the inversion. Any undocumented per-block inversion is a violation.
 - **P1-2 (MUST):** A new shortcut MUST fit the keyboard grammar in §3. Introducing a new modifier meaning requires editing §3 first.
 - **P1-3 (MUST):** `Esc` always resolves *outward* in one fixed order: close menu → clear cell selection → clear point selection → zoom out → blur. No feature gives `Esc` a different direction.
 - **P1-4 (MUST):** Destructive keys are guarded (`Backspace` deletes a point only when empty **and** childless — codify the current behavior so it can't regress).
@@ -170,8 +170,8 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | Input | Reserved meaning | Notes |
 |---|---|---|
 | Plain keys / arrows | Act **within** text (type, move caret, select) | MUST NOT be hijacked for structure while editing |
-| `Enter` | New point | **All** blocks, incl. Paragraph (P1-1) |
-| `Shift + Enter` | Line break in the point | **All** blocks |
+| `Enter` | New point | **All** blocks — *Paragraph is the sanctioned exception — see P1-1* |
+| `Shift + Enter` | Line break in the point | **All** blocks — *Paragraph is the sanctioned exception — see P1-1* |
 | `Tab` / `Shift+Tab` | Indent / outdent | Points **and** table cells |
 | `Alt + ↑/↓` | Move the point (reorder) | The movement modifier — reserved for movement |
 | `Ctrl/⌘ + . / ,` | Collapse / expand | Replaces the `Ctrl+↑/↓` binding (which collides with caret-to-edges) |
@@ -266,7 +266,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Feature | P1 predictable | P2 discoverable | P3 reachable | P4 responsive |
 |---|---|---|---|---|
 | Outline nav / move / indent | ⚠️ (P1-2 collapse binding) | ✅ | ⚠️ (row labels; tree deferred) | ✅ |
-| Paragraph block | ✅ | ✅ | ⚠️ | ✅ |
+| Paragraph block | ✅ (documented prose-mode exception) | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
 | Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (P3-6 labels; focus deferred) | ⚠️ (P4-1 silent shorthand) |

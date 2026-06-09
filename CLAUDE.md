@@ -87,7 +87,7 @@ The project has strong architecture discipline and, historically, **no UX discip
 
 **UX invariants that bite (the most-violated rules — internalize these):**
 - **Keyboard is added *alongside* `mousedown`+`preventDefault`, never by converting to `click`/`<button>`** (the caret invariant — the single most load-bearing UX rule).
-- **A key never changes meaning by block type.** `Enter` = new point, `Shift+Enter` = line break, in *every* block including Paragraph. New shortcuts MUST fit the keyboard grammar in `ux-discipline.md` §3.
+- **A key never silently changes meaning by block type.** `Enter` = new point, `Shift+Enter` = line break in every block — **Paragraph is the one documented exception** (prose mode: Enter = line break, Shift+Enter = new point; advertised in the `/` menu and empty-state hint). New shortcuts MUST fit the keyboard grammar in `ux-discipline.md` §3.
 - **One authoring language.** New generative/computed content plugs into the `{…}` grammar engine or `evalMath` — **not** a new syntax. The §2/P5 syntax inventory is a **closed set**; growing it is an explicit, recorded decision, never a side effect of a feature. (This is the direct counterweight to "fits very well" above.)
 - **Built ≠ shipped-discoverable.** A capability reachable only by typed syntax, or gated entirely off with no front door at any verbosity, is non-conformant.
 

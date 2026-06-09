@@ -15,6 +15,8 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 ## Tier 1 — 🔴 Breaks the unified language (fix first)
 
+*Note: UXP-1 (Paragraph Enter inversion) was closed as a **documented exception** — Paragraph is now the sanctioned prose-mode block (Enter = line break, Shift+Enter = new point), advertised in the `/` menu and empty-state hint; see P1-1 in `ux-discipline.md`.*
+
 ### UXP-2 ☐ Tables have no cell keyboard navigation
 - **Problem:** cell movement is mouse-only; `Tab`/`Enter` do not move between cells, violating the deepest spreadsheet reflex.
 - **Violates:** P2-3, keyboard grammar §3.
@@ -114,7 +116,7 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 
 ## Closing order (recommended)
 
-1. **Tier 1** (UXP-1…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency.
+1. **Tier 1** (UXP-2…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency.
 2. **Tier 2** (UXP-6…12) — discoverability + feedback gaps.
 3. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
 
