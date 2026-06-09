@@ -11,7 +11,7 @@ Tests: green   Touch:    OPML:
 # UX Conformance block (persists in the message — the lines WITHOUT a #):
 #   • One mark per principle: ✅ or N/A.  P5: if you added syntax, say what it RETIRES.
 #   • "New non-conformances": file each gap as UXP-NN in guidance/ux-remediation.md, or "none".
-#   • If this commit has NO UI surface, replace the whole block with:  UX: none
+#   • If this commit has NO UI surface, replace the whole block with:  UI: none
 #
 # Full process: guidance/ux-definition-of-done.md → "How this gate is run".
 # Rule: no Conformance Statement, no merge.
