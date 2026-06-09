@@ -15,11 +15,6 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 ## Tier 1 — 🔴 Breaks the unified language (fix first)
 
-### UXP-1 ☐ Paragraph block inverts `Enter` / `Shift+Enter`
-- **Problem:** in `para` nodes, `onKeyDown` swaps the Enter/Shift+Enter branches relative to every other block, so the same key does opposite things depending on block type.
-- **Violates:** P1-1 (no context inversion).
-- **Target:** `Enter` = new point and `Shift+Enter` = line break in **every** block, Paragraph included; soft-wrap retained. Update the `?` panel and any test pins in the same change.
-
 ### UXP-2 ☐ Tables have no cell keyboard navigation
 - **Problem:** cell movement is mouse-only; `Tab`/`Enter` do not move between cells, violating the deepest spreadsheet reflex.
 - **Violates:** P2-3, keyboard grammar §3.
