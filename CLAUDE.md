@@ -91,6 +91,8 @@ The project has strong architecture discipline and, historically, **no UX discip
 - **One authoring language.** New generative/computed content plugs into the `{…}` grammar engine or `evalMath` — **not** a new syntax. The §2/P5 syntax inventory is a **closed set**; growing it is an explicit, recorded decision, never a side effect of a feature. (This is the direct counterweight to "fits very well" above.)
 - **Built ≠ shipped-discoverable.** A capability reachable only by typed syntax, or gated entirely off with no front door at any verbosity, is non-conformant.
 
+**Opening PRs (so the gate passes first try):** The CI gate reads the **PR description only** — not commit messages, not comments. Every UI-touching PR's description MUST contain the Conformance Statement: start with the literal words `UX Conformance`, a ✅ or N/A on each of P1–P5, and no `< >` placeholders. When creating a PR with `gh pr create`, put the full statement in `--body` (it overrides the PR template). For a non-UI change, the description is just: `UI: none`.
+
 **Canonical vocabulary split:** code keeps `node`/`artifact`; **user-facing copy says "point" and "pill."** Use the standard's §1 terms in every string and `aria-label`. Do not rename the internal identifiers.
 
 ---
