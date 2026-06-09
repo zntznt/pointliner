@@ -181,7 +181,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
 | `Ctrl/⌘ + C / X / V` | Copy / cut / paste points | Multi-select context |
-| Table `Tab` / `Shift+Tab` / `Enter` | Next / previous cell (wraps across rows; `Tab` at the last cell adds a row) · `Enter` = cell below, stops at last row | **P2-3** — lands selecting the cell's contents (type-to-overwrite). Cells are single-line, so `Shift+Enter` = `Enter` |
+| Table `Tab` / `Shift+Tab` / `Enter` | Next / previous cell (wraps across rows; `Tab` at the last cell adds a row) · `Enter` = cell below (stops at last row), `Shift+Enter` = cell above (stops at top row) | **P2-3** — lands selecting the cell's contents (type-to-overwrite). Cells are single-line, so `Shift+Enter` navigates (Excel/Sheets convention), never inserts a break |
 | `Ctrl/⌘ + 1…6` | Collapse to level (best-effort) | Toolbar is primary (P1-5) |
 
 **Modifier semantics (memorize these, not the table):** plain = text · `Tab` = depth · `Alt` = move · `Ctrl/⌘` = app command · `Esc` = back out · `Shift` = extend.

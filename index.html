@@ -2655,7 +2655,8 @@ function buildTableWidget(node, readOnly) {
   // focusout/focusin handlers above do the commit + #+TBLFM recompute + repaint (the
   // same path a mouse click between cells already exercises). Pipe-table cells are
   // single-line — serializeTable collapses '\n' to a space — so an in-cell break can't
-  // round-trip; Shift+Enter therefore behaves like Enter (move down), never inserts one.
+  // round-trip; Enter = down a row, Shift+Enter = up a row (Excel/Sheets convention),
+  // never inserts one.
   host.addEventListener('keydown', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
     if (e.key !== 'Tab' && e.key !== 'Enter') return;
@@ -2680,7 +2681,9 @@ function buildTableWidget(node, readOnly) {
       if (r === 0 && c === 0) return;              // very first cell → stop
       if (c === 0) mtFocusCell(node, r - 1, lastCol); // row start → previous row, last cell
       else mtFocusCell(node, r, c - 1);            // ← previous cell left
-    } else {                                       // Enter / Shift+Enter → down one row, same column; stop at last row
+    } else if (e.shiftKey) {                       // Shift+Enter → up one row, same column; stop at top row
+      if (r > 0) mtFocusCell(node, r - 1, c);
+    } else {                                        // Enter → down one row, same column; stop at last row
       if (r < lastRow) mtFocusCell(node, r + 1, c);
     }
   });
