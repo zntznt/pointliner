@@ -163,10 +163,10 @@ body.full-width #outline{max-width:none}
 .bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0;position:relative;z-index:2}
 .bullet-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;transition:background .12s,transform .12s}
 .bullet:hover .bullet-dot{background:var(--bullet-h);transform:scale(1.3)}
-/* base bullet: the /base grid icon stands in for the dot, signalling "this is a base"
-   and opening the base's own menu (copy ops + node ops) on click / hover / long-press */
-.bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:var(--muted);transition:color .12s,transform .12s}
-.bullet-base:hover .bullet-base-ic{color:var(--acc);transform:scale(1.12)}
+/* base: no left bullet (its icon/menu live in the grid's corner cell) and, when it has
+   no children, no collapse gutter either — so the grid sits flush at the indent. */
+.nt-base>.node-row>.bullet{display:none}
+.nt-base:not(.has-children)>.node-row>.collapse-btn{display:none}
 .node-checkbox{width:13px;height:13px;cursor:pointer;accent-color:var(--acc);flex-shrink:0}
 
 /* node content */
@@ -212,6 +212,11 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell .md-img{max-height:120px}
 /* handle cells (row/col grips) */
 .mt-corner,.mt-colh,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
+/* base identity icon, seated in the grid's top-left corner cell — opens the base menu */
+.mt-corner{padding:0;vertical-align:middle}
+.mt-base-ic{display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:16px;padding:0;border:none;background:none;color:var(--muted);cursor:pointer;font-size:11px;line-height:1;transition:color .12s,transform .12s}
+.mt-base-ic:hover,.mt-base-ic:focus-visible{color:var(--acc);transform:scale(1.12);outline:none}
+@media(hover:none){.mt-base-ic{min-width:26px;min-height:26px;font-size:13px;color:var(--acc)}}
 .mt-colh{height:18px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-bottom:none}
 .mt-rowh{width:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-right:none}
 .mt-colh:active,.mt-rowh:active{cursor:grabbing}
@@ -2510,23 +2515,29 @@ function reconcileHeights() {
   }
 }
 
-// A base is always full editing-area width, regardless of nesting depth or the
-// narrow/full toggle. We break out the WHOLE base row (bullet + collapse + grid),
-// not just the grid, so the bullet/collapse controls ride along to the left edge
-// instead of being stranded in the middle of a broken-out grid. The grid then
-// fills the row via `.md-table{width:100%}`. clientWidth (not innerWidth) excludes
-// the scrollbar, so the row never spills past the viewport into a page h-scroll.
+// A base fills the editing area to the RIGHT edge, but its LEFT edge keeps the node's
+// indent so nesting stays visible: a root base sits flush at the gutter (symmetric with
+// the right), a nested base is inset by its depth × indent. We pull every base row left
+// by the SAME constant (so depth-0 lands at the gutter while relative indents are
+// preserved) and stretch it to the right gutter. The grid then fills the row via
+// `.md-table{width:100%}`; the base's identity icon lives in the grid's corner cell, so
+// there's no left-bullet bump and the left/right gutters stay square. clientWidth (not
+// innerWidth) excludes the scrollbar, so the row never spills into a page h-scroll.
 function updateBaseWidths() {
+  if (!vlist) return;
   const vw = document.documentElement.clientWidth;
-  const gut = vw <= 560 ? 8 : 16;   // small symmetric viewport gutter
+  const gut = vw <= 560 ? 8 : 16;                       // viewport gutter (root base flush here)
+  const baseLeft = vlist.getBoundingClientRect().left;  // a depth-0 row's natural left
   document.querySelectorAll('.md-table-host').forEach(host => {
     const row = host.closest('.node-row');
-    if (!row || row.closest('.search-ctx')) return;  // leave search-result layout alone
-    row.style.marginLeft = '';       // reset so getBoundingClientRect sees natural left
+    if (!row || row.closest('.search-ctx')) return;     // leave search-result layout alone
+    row.style.marginLeft = '';      // reset so getBoundingClientRect sees the natural left
     row.style.width = '';
-    const left = row.getBoundingClientRect().left;
-    row.style.marginLeft = (gut - left) + 'px';
-    row.style.width = (vw - 2 * gut) + 'px';
+    const natLeft = row.getBoundingClientRect().left;
+    const inset = Math.max(0, Math.round(natLeft - baseLeft));  // depth × indent (0 at root)
+    const left = gut + inset;
+    row.style.marginLeft = (left - natLeft) + 'px';     // constant pull = gut − baseLeft
+    row.style.width = Math.max(120, vw - gut - left) + 'px';    // right edge at vw − gut
   });
 }
 
@@ -2907,7 +2918,7 @@ function buildTableWidget(node, readOnly) {
     // The add-column cell spans the whole grid height (tophandles + header + data
     // rows) so the "+" is a full-height, non-clipped right-edge affordance.
     const addColSpan = model.rows.length + 1;
-    h += '<tr class="mt-tophandles"><th class="mt-corner"></th>';
+    h += '<tr class="mt-tophandles"><th class="mt-corner"><button class="mt-base-ic" aria-label="Base options" title="Base options" aria-haspopup="menu"></button></th>';
     for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" title="Column options" aria-haspopup="menu">▾</button></th>`;
     h += `<th class="mt-addcol-cell" rowspan="${addColSpan}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th></tr>`;
   }
@@ -2929,6 +2940,10 @@ function buildTableWidget(node, readOnly) {
   host.dataset.id = node.id;
   host.innerHTML = h;
   if (readOnly) return host;
+  // the base's identity icon sits in the grid's top-left corner cell; clicking it
+  // opens the base's consolidated menu (the same one the bullet used to open)
+  const cornerIc = host.querySelector('.mt-base-ic');
+  if (cornerIc) setIcon(cornerIc, { fa:'fa-solid fa-table-cells', fb:'▦' });
 
   // cell editing: show raw text on focus, render markdown on blur
   host.addEventListener('focusin', e => {
@@ -2961,8 +2976,14 @@ function buildTableWidget(node, readOnly) {
     scheduleReconcile();
   });
 
-  // add / delete row & column; column panel toggle
+  // add / delete row & column; column panel toggle; base menu (corner icon)
   host.addEventListener('click', e => {
+    const bic = e.target.closest('.mt-base-ic');
+    if (bic) {
+      e.stopPropagation();
+      showBulletPopup(node.id, bic);
+      return;
+    }
     if (e.target.closest('.mt-col-btn')) {
       e.stopPropagation();
       const btn = e.target.closest('.mt-col-btn');
@@ -3151,16 +3172,13 @@ function renderRow(r) {
 
   // bullet area
   const bullet = document.createElement('span');
-  bullet.className = 'bullet' + (node.type === 'base' ? ' bullet-base' : '');
+  bullet.className = 'bullet';
 
   if (node.type === 'base') {
-    // A base is a special object: its bullet IS the /base grid icon, and clicking it
-    // opens the base's consolidated menu (no zoom-on-click — zoom lives in the menu).
-    const ic = document.createElement('span');
-    ic.className = 'bullet-base-ic';
-    ic.setAttribute('aria-label', 'Base options');
-    setIcon(ic, { fa:'fa-solid fa-table-cells', fb:'▦' });
-    bullet.appendChild(ic);
+    // A base has NO left bullet — its identity icon + menu live in the grid's top-left
+    // corner cell (buildTableWidget), so the grid sits flush at the gutter and the
+    // left edge stays square with the right. The bullet span is kept (row structure)
+    // but hidden via CSS (.nt-base > .node-row > .bullet).
   } else {
     const dot = document.createElement('span');
     dot.className = 'bullet-dot';
@@ -3178,8 +3196,9 @@ function renderRow(r) {
     bullet.addEventListener('click', e => {
       if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
       if (e.target.classList.contains('node-checkbox')) return;
-      // base: click the icon opens its menu (instead of zooming); everything else zooms
-      if (node.type === 'base') { e.stopPropagation(); showBulletPopup(node.id, bullet); return; }
+      // base has no visible bullet (its menu opens from the grid's corner icon); other
+      // nodes zoom on bullet click
+      if (node.type === 'base') return;
       if (node.type !== 'divider') zoomInto(node.id);
     });
     if (IS_TOUCH) {

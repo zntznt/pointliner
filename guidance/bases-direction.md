@@ -70,16 +70,16 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
 
 A base in table view is laid out as:
 
-1. **Base header bar** (top) — a **reserved strip** held for a future **view switcher** (`.mt-base-views`). It is **empty for now and collapses to nothing**; whole-base operations live on the base bullet's menu (see "The base bullet" above), not on a header opener.
+1. **Base header bar** (top) — a **reserved strip** held for a future **view switcher** (`.mt-base-views`). It is **empty for now and collapses to nothing**; whole-base operations live on the corner-icon menu (see "The base icon & menu" above), not on a header opener.
 2. **Header row** (the column-name row) — **the column-control surface** (see below).
 3. **Data rows** — editable cells with keyboard navigation (UXP-2) and read-only computed cells (§7).
 4. **Footer total row** — appears when a column has a Calculate aggregate; computed, read-only.
 
-### The base bullet — a base is a distinct object
+### The base icon & menu — a base is a distinct object
 
-Because a base is a special structured object (not prose), **its bullet is the `/base` grid icon** (`fa-table-cells`) rather than a plain dot — an at-a-glance signal that "this point is a base." Clicking the icon (or hovering on desktop / long-pressing on touch) opens the base's **consolidated menu**, which is the node menu *minus the type switcher* and *plus* the base ops, in order:
+Because a base is a special structured object (not prose), it has **no plain dot bullet**. Its identity is the **`/base` grid icon** (`fa-table-cells`), seated **inside the grid's top-left corner cell** (`.mt-corner`) rather than out in the bullet rail. This keeps the grid flush at its left edge (no bullet bump pushing the left gutter out of square with the right — see "Base width") and reads as "this point is a base." Clicking the corner icon opens the base's **consolidated menu**, which is the node menu *minus the type switcher* and *plus* the base ops, in order:
 
-- **Copy as markdown** · **Copy with TBLFM** (the same two ops as the header `⋯` menu)
+- **Copy as markdown** · **Copy with TBLFM**
 - **Zoom into** · **Copy link** · **Move up** · **Move down**
 - **Delete** — opens an **in-app confirmation** (`openConfirmDialog`, styled with the app overlay — never a native `confirm()`), since destroying a grid of data is heavier than deleting a line of prose.
 
@@ -108,7 +108,9 @@ Inline rename stays reachable by keyboard via UXP-2 navigation + type.
 
 ### Base width
 
-A base always renders at **full editing-area width** — it ignores the narrow/full-width document toggle AND the indent/nesting depth, so a deeply-nested base is exactly as wide as a root-level one. The breakout moves the **whole base row** (bullet + collapse + grid), not just the grid: the row is pulled left to a small symmetric viewport gutter and stretched to `clientWidth − 2·gutter`, so the **bullet and collapse controls ride along to the left edge** instead of being stranded in the middle of a broken-out grid (the bug the host-only breakout caused). The grid then fills that width via `.md-table{width:100%}`; columns stretch to fill, and horizontal scroll only kicks in (inside `.mt-scroll`, never the page) once the columns hit their min-width floor. `clientWidth` (not `innerWidth`) is used so the row never spills under the scrollbar into a page-level h-scroll. `updateBaseWidths()` re-measures on every reconcile / window resize / width-toggle, and skips rows inside `.search-ctx` so search-result layout is left alone.
+A base fills the editing area to the **right** edge (ignoring the narrow/full-width toggle), but its **left** edge keeps the node's indent so **nesting stays visible**: a root base sits flush at the gutter — symmetric with the right — while a nested base is inset by its `depth × indent`. `updateBaseWidths()` pulls every base row left by the **same constant** (`gutter − #vlist.left`), so depth-0 lands exactly at the gutter while the relative per-level indent is preserved; the width is then set so the right edge lands at `clientWidth − gutter`. The grid fills the row via `.md-table{width:100%}`; horizontal scroll only kicks in (inside `.mt-scroll`, never the page) once columns hit their min-width floor. Two things keep the left edge square: the base **icon lives in the grid's corner cell** (not the bullet rail), and the base's **bullet is hidden** (plus its collapse gutter when it has no children) — so the grid starts exactly at the indent, not after a bullet. `clientWidth` (not `innerWidth`) excludes the scrollbar so the row never spills into a page-level h-scroll. Re-measures on every reconcile / window resize / width-toggle; skips `.search-ctx` rows.
+
+*(This supersedes the earlier "ignore nesting, full width always" rule: when bases broke out to an identical left edge regardless of depth, nesting became invisible. Keeping the indent on the left — and the right edge full — restores the nesting cue while staying wide.)*
 
 The rationale: a base is a structured data object you interact with; dense columns need room. The narrow column toggle governs prose readability, not data density. Bringing the bullet with the breakout keeps the row coherent — the control rail stays to the left of the data, where it belongs.
 
@@ -149,7 +151,7 @@ Binding terms for UI copy, `aria-label`s, docs, and this file:
 | A structured data object with its own dedicated point, currently showing in table view | **base** | dynamic table, widget, database |
 | The base's interactive grid display (its current default view) | **table view** | table (when referring specifically to the view a base shows) |
 | The whole-base top bar | **base header** | toolbar |
-| The base bullet's menu (whole-base ops + node ops) | **base menu** | table menu, ⋯ menu |
+| The base corner-icon menu (whole-base ops + node ops) | **base menu** | table menu, ⋯ menu, base bullet menu |
 | The per-column menu | **Column menu** | column panel (the panel is its content) |
 | Editable column-name chip | **name pill** | header chip |
 | One-click column aggregates | **Calculate** | summary |
