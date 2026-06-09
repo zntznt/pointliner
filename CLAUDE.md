@@ -449,3 +449,10 @@ scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
   array in `load-cores.mjs` → pin it with seeded assertions in `tests/test.mjs` → confirm
   green → *then* wire the DOM. (Functions that read module-level `root` need an optional
   `rootNode` param to be testable — see `collectVars`.)
+- **Verification artifacts stay out of the repo.** Keep verifying changes with headless-browser
+  screenshots — that's good practice — but the output is THROWAWAY. Screenshots, Playwright/npm
+  installs, temp verification scripts, package.json / package-lock / node_modules: produce them to
+  verify, then delete them before committing. NEVER commit them. This is a single-file, no-build
+  repo; only source (index.html), tests (tests/), and docs (CLAUDE.md, guidance/) belong in git. If
+  a PR needs visual evidence, attach the image to the PR on GitHub (CDN-hosted) — do not commit it.
+  Before committing, confirm `git status` shows only intended source/test/doc changes.
