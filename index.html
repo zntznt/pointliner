@@ -163,6 +163,10 @@ body.full-width #outline{max-width:none}
 .bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0;position:relative;z-index:2}
 .bullet-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;transition:background .12s,transform .12s}
 .bullet:hover .bullet-dot{background:var(--bullet-h);transform:scale(1.3)}
+/* base bullet: the /base grid icon stands in for the dot, signalling "this is a base"
+   and opening the base's own menu (copy ops + node ops) on click / hover / long-press */
+.bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:var(--muted);transition:color .12s,transform .12s}
+.bullet-base:hover .bullet-base-ic{color:var(--acc);transform:scale(1.12)}
 .node-checkbox{width:13px;height:13px;cursor:pointer;accent-color:var(--acc);flex-shrink:0}
 
 /* node content */
@@ -3201,11 +3205,21 @@ function renderRow(r) {
 
   // bullet area
   const bullet = document.createElement('span');
-  bullet.className = 'bullet';
+  bullet.className = 'bullet' + (node.type === 'base' ? ' bullet-base' : '');
 
-  const dot = document.createElement('span');
-  dot.className = 'bullet-dot';
-  bullet.appendChild(dot);
+  if (node.type === 'base') {
+    // A base is a special object: its bullet IS the /base grid icon, and clicking it
+    // opens the base's consolidated menu (no zoom-on-click — zoom lives in the menu).
+    const ic = document.createElement('span');
+    ic.className = 'bullet-base-ic';
+    ic.setAttribute('aria-label', 'Base options');
+    setIcon(ic, { fa:'fa-solid fa-table-cells', fb:'▦' });
+    bullet.appendChild(ic);
+  } else {
+    const dot = document.createElement('span');
+    dot.className = 'bullet-dot';
+    bullet.appendChild(dot);
+  }
 
   if (node.type === 'todo') {
     const cb = document.createElement('input');
@@ -3217,7 +3231,10 @@ function renderRow(r) {
   if (!opts.searchCtx) {
     bullet.addEventListener('click', e => {
       if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
-      if (!e.target.classList.contains('node-checkbox') && node.type !== 'divider') zoomInto(node.id);
+      if (e.target.classList.contains('node-checkbox')) return;
+      // base: click the icon opens its menu (instead of zooming); everything else zooms
+      if (node.type === 'base') { e.stopPropagation(); showBulletPopup(node.id, bullet); return; }
+      if (node.type !== 'divider') zoomInto(node.id);
     });
     if (IS_TOUCH) {
       // No hover on touch: long-press the bullet to open the node menu (type/move/delete/zoom).
@@ -4146,18 +4163,25 @@ function showBulletPopup(nodeId, bulletEl) {
   if (!node) return;
   bpop.innerHTML = '';
 
-  // type switcher row
-  const typeRow = document.createElement('div');
-  typeRow.className = 'bpop-types';
-  BLOCK_CMDS.filter(c => c.turn).forEach(cmd => {
-    const btn = document.createElement('div');
-    btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
-    setIcon(btn, { fa:cmd.fa, fb:cmd.icon });
-    btn.title = cmd.label;
-    btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
-    typeRow.appendChild(btn);
-  });
-  bpop.appendChild(typeRow);
+  // A base is a special structured object: no type switcher (it can't be turned into
+  // another block type), and its menu leads with the base copy ops (mirroring the
+  // header ⋯ menu) before the shared node actions.
+  const isBase = node.type === 'base';
+
+  if (!isBase) {
+    // type switcher row
+    const typeRow = document.createElement('div');
+    typeRow.className = 'bpop-types';
+    BLOCK_CMDS.filter(c => c.turn).forEach(cmd => {
+      const btn = document.createElement('div');
+      btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
+      setIcon(btn, { fa:cmd.fa, fb:cmd.icon });
+      btn.title = cmd.label;
+      btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
+      typeRow.appendChild(btn);
+    });
+    bpop.appendChild(typeRow);
+  }
 
   // actions
   const actions = [
@@ -4165,8 +4189,27 @@ function showBulletPopup(nodeId, bulletEl) {
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
-    { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',    fn: () => { deleteNode(nodeId); hideBpop(); }, danger:true },
+    { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
+      fn: isBase
+        ? async () => {
+            hideBpop();
+            if (await openConfirmDialog({
+              title: 'Delete base?',
+              message: 'This base and all its cell data will be removed. You can undo with ' + MOD + '+Z.',
+              confirmLabel: 'Delete base',
+            })) deleteNode(nodeId);
+          }
+        : () => { deleteNode(nodeId); hideBpop(); },
+      danger:true },
   ];
+  if (isBase) {
+    actions.unshift(
+      { icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as markdown',
+        fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as markdown'); hideBpop(); } },
+      { icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with TBLFM',
+        fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
+    );
+  }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
   // todo can become NEXT etc. — the badge target only exists once a keyword is set).
   if (node.type === 'todo') {
@@ -6276,6 +6319,10 @@ function checkMdBlockPrefix(content, node) {
 function applyBlockCmd(id, nodeId, node, content) {
   node = node || nodeById(nodeId);
   if (!node) return;
+  // A base is a special structured object — it cannot be converted into another block
+  // type (its grid/cell data doesn't translate to prose). The only way "out" is the
+  // base menu's Copy-as-markdown + Delete. Nothing turns a base into anything else.
+  if (node.type === 'base' && id !== 'base') return;
   // to-do state keyword: make the node a todo (stripping any block prefix) and set
   // the Org keyword directly. Equivalent to typing `NEXT ` at the line start.
   if (id.startsWith('state:')) {

@@ -75,6 +75,16 @@ A base in table view is laid out as:
 3. **Data rows** — editable cells with keyboard navigation (UXP-2) and read-only computed cells (§7).
 4. **Footer total row** — appears when a column has a Calculate aggregate; computed, read-only.
 
+### The base bullet — a base is a distinct object
+
+Because a base is a special structured object (not prose), **its bullet is the `/base` grid icon** (`fa-table-cells`) rather than a plain dot — an at-a-glance signal that "this point is a base." Clicking the icon (or hovering on desktop / long-pressing on touch) opens the base's **consolidated menu**, which is the node menu *minus the type switcher* and *plus* the base ops, in order:
+
+- **Copy as markdown** · **Copy with TBLFM** (the same two ops as the header `⋯` menu)
+- **Zoom into** · **Copy link** · **Move up** · **Move down**
+- **Delete** — opens an **in-app confirmation** (`openConfirmDialog`, styled with the app overlay — never a native `confirm()`), since destroying a grid of data is heavier than deleting a line of prose.
+
+The deliberate omission is the **type switcher**: a base has no "turn into heading/bullet/…" row, because a base cannot be converted into another block type (see §6).
+
 ### Column-header interaction (the header row cells)
 
 The column name lives in an **editable name pill**; the surrounding header-cell area is the control zone. This resolves edit-vs-menu **spatially**, with no hidden gestures:
@@ -116,6 +126,7 @@ A static table follows the toggle (it is inline prose markup, so it lives in the
   - **Copy as markdown** — the current rendered values, ready to paste anywhere as a static table.
   - **Copy with TBLFM** — the values plus the `#+TBLFM:` recipe.
   - There is **no destructive "convert to static."** A base is not self-destructing.
+- **No type conversion (base → other block type).** A base cannot be turned into a bullet / heading / quote / etc. — its grid and cell data don't translate to a prose line, so allowing it would be lossy and surprising. The bullet menu omits the type switcher and `applyBlockCmd` hard-guards it (`node.type === 'base' && id !== 'base' → return`). The only ways "out" of a base are the copy ops (above) and Delete. Nothing turns *into* a base except the `/base` verb (via `createBaseAt`).
 
 ---
 
