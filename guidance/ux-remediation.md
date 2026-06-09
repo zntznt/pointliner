@@ -19,10 +19,11 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 *Note: UXP-2 (table cell keyboard navigation) shipped conformant — `Tab`/`Shift+Tab` wrap across rows, `Tab` at the last cell adds a row, `Enter` moves down and stops at the last row, landing cells select-on-entry; §3 grammar + §9 matrix updated.*
 
-### UXP-3 ☐ Org `#+TBLFM:` formulas have no front door
+### UXP-3 ☐ Org `#+TBLFM:` formulas have no front door  *(Part A shipped — column aggregate panel)*
 - **Problem:** table formulas are entered only by typing a raw `#+TBLFM:` line in markdown — no affordance, no menu path. Built but undiscoverable.
 - **Violates:** P2-1, P2-3.
-- **Target:** a formula affordance (a `=`/formula entry on a cell or a formula bar) **plus** a cell-reference picker that writes the `@row$col` syntax for the user. The Org syntax stays as the power path.
+- **Part A (done):** column ▾ button on each column handle opens a "Calculate" panel (Sum / Average / Count / Min / Max / None). Selecting a function writes `@>$N=vKIND(@2$N..@-1$N)` in `#+TBLFM:`, auto-adds/removes the footer row, and marks computed cells read-only with a Σ prefix. Keyboard: `↑↓` navigate, `Enter`/`Space` apply, `Esc` closes. Touch: ▾ always visible.
+- **Part B (open):** a cell-reference picker that writes the `@row$col` syntax for the user (for arbitrary field formulas). The Org syntax stays as the power path.
 
 ### UXP-4 ☐ `[[` link picker is gated entirely off
 - **Problem:** `LINK_PICKER_ENABLED = false` ships the most intuitive linking gesture with **no front door at any verbosity**.
