@@ -600,6 +600,25 @@ test('table: non-formula cells preserved verbatim', () => {
   assert.equal(out[2][0], 'b');
 });
 
+// Regression for the "✏ markdown" editor data-loss fix: a #+TBLFM: line appended on its
+// own line under the grid (the text the block-aware commit now produces) must be extracted,
+// computed, and survive a serialize round-trip — the downstream contract the DOM fix relies on.
+const { extractTblfm, stripTblfm } = c;
+test('table: appended #+TBLFM line extracts, computes, and round-trips', () => {
+  const text =
+    '| Qty | Price | Total |\n| --- | --- | --- |\n| 2 | 5 | |\n| 3 | 4 | |\n#+TBLFM: $3=$1*$2';
+  const tblfm = extractTblfm(text);
+  assert.equal(tblfm, '$3=$1*$2');                 // appended line is found, not dropped
+  const model = c.parseTable(stripTblfm(text));      // grid parses without the formula line
+  assert.equal(model.rows[0].join('|'), 'Qty|Price|Total');
+  const computed = computeTable(model, tblfm);       // rows: [header, 2|5, 3|4] (separator dropped)
+  assert.equal(computed[1][2], '10');                // 2*5
+  assert.equal(computed[2][2], '12');                // 3*4
+  const out = c.serializeTable({ aligns: model.aligns, rows: computed }) + '\n#+TBLFM: ' + tblfm;
+  assert.equal(extractTblfm(out), '$3=$1*$2');       // formula still present after re-serialize
+  assert.ok(out.includes('| 2 | 5 | 10 |'));
+});
+
 // ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
 const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
         cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo,

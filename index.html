@@ -1097,6 +1097,27 @@ function editableText(el) {
   return out;
 }
 
+// Block-aware serialization for the table "✏ markdown" editor. That editor is a plain
+// multi-line contenteditable (no pills/tokens), and pressing Enter makes the browser wrap
+// the new line in a <div>/<p> block. editableText (tuned for the pill/caret editor, which
+// never emits block wrappers) would glue a block onto the preceding text with no newline —
+// silently dropping an appended #+TBLFM: line. Here a block boundary counts as a line break
+// so appended/edited lines survive the commit. Kept separate so the caret-math suite that
+// pairs with editableText is untouched.
+function editableTextBlocks(el) {
+  let out = '';
+  function walk(node) {
+    if (node.nodeType === 3) { out += node.nodeValue.replace(/​/g, ''); return; }
+    if (node.nodeType !== 1) return;
+    if (node.nodeName === 'BR') { out += '\n'; return; }
+    const isBlock = node.nodeName === 'DIV' || node.nodeName === 'P';
+    if (isBlock && out && !out.endsWith('\n')) out += '\n'; // block starts a new line
+    for (const c of node.childNodes) walk(c);
+  }
+  for (const c of el.childNodes) walk(c);
+  return out;
+}
+
 // reject URLs that could execute script; allow data:image only for <img>
 function safeUrl(u, allowDataImage) {
   const t = (u || '').trim();
@@ -3197,6 +3218,9 @@ function exitEdit(content, node) {
   node.text = editableText(content);
 
   if (node.type === 'table') {
+    // Re-read with block awareness: a #+TBLFM: line typed on a fresh Enter lands in a
+    // <div> block, which editableText would glue onto the grid (no newline) and drop.
+    node.text = editableTextBlocks(content);
     delete content.dataset.editing;
     delete content.dataset.prevText;
     content.contentEditable = 'false';
@@ -3204,6 +3228,9 @@ function exitEdit(content, node) {
     if (activeContentId === node.id) activeContentId = null;
     recordTextEdit(node.id, prevText, node.text);
     const tblfm = extractTblfm(node.text); // the user may have typed/edited a #+TBLFM: line
+    // A #+TBLFM: fragment that didn't land on its own line can't be associated with the
+    // grid; surface it instead of silently dropping the formula (P4 feedback).
+    if (!tblfm && /#\+TBLFM:/i.test(node.text)) flashHint('Put #+TBLFM: on its own line under the table');
     const parsed = parseTable(node.text);
     if (parsed) {
       // Normalize: re-serialize so every row has pipe formatting (guards against
