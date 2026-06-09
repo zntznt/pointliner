@@ -189,6 +189,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
 | `Ctrl/⌘ + C / X / V` | Copy / cut / paste points | Multi-select context |
 | Table `Tab` / `Shift+Tab` / `Enter` | Next / previous cell (wraps across rows; `Tab` at the last cell adds a row) · `Enter` = cell below (stops at last row), `Shift+Enter` = cell above (stops at top row) · computed (formula-driven) cells are read-only (`Σ`-tagged, Tab-navigable) | **P2-3** — lands selecting the cell's contents (type-to-overwrite). Cells are single-line, so `Shift+Enter` navigates (Excel/Sheets convention), never inserts a break. Column ▾ menu: `↑↓` navigate items, `Enter`/`Space` select, `Esc` closes |
+| `Ctrl/⌘ + Shift + M` | Base menu (whole-base ops: Copy as markdown / Copy with TBLFM) | **Base-context-scoped** — only fires when focus is inside a base; no-op elsewhere, no collision. Also reachable via the base header opener (▾/⋯). Same menu nav as the Column menu (`↑↓`/`Enter`/`Esc`) |
 | `Ctrl/⌘ + 1…6` | Collapse to level (best-effort) | Toolbar is primary (P1-5) |
 
 **Modifier semantics (memorize these, not the table):** plain = text · `Tab` = depth · `Alt` = move · `Ctrl/⌘` = app command · `Esc` = back out · `Shift` = extend.
