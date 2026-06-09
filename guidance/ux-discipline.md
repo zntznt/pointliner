@@ -181,7 +181,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
 | `Ctrl/⌘ + C / X / V` | Copy / cut / paste points | Multi-select context |
-| Table `Tab` / `Shift+Tab` / `Enter` | Next / previous / next-row cell | **Required (P2-3)** — mouse-only cell movement is non-conformant |
+| Table `Tab` / `Shift+Tab` / `Enter` | Next / previous cell (wraps across rows; `Tab` at the last cell adds a row) · `Enter` = cell below, stops at last row | **P2-3** — lands selecting the cell's contents (type-to-overwrite). Cells are single-line, so `Shift+Enter` = `Enter` |
 | `Ctrl/⌘ + 1…6` | Collapse to level (best-effort) | Toolbar is primary (P1-5) |
 
 **Modifier semantics (memorize these, not the table):** plain = text · `Tab` = depth · `Alt` = move · `Ctrl/⌘` = app command · `Esc` = back out · `Shift` = extend.
@@ -272,7 +272,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (P3-6 labels; focus deferred) | ⚠️ (P4-1 silent shorthand) |
 | Variables | ✅ | ❌ (P2-4 no overview) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ⚠️ | ⚠️ | ❌ (P4-1/P4-2) |
-| Tables (cells) | ❌ (P2-3 no Tab nav) | ⚠️ | ⚠️ (grid deferred) | ✅ |
+| Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
 | Table formulas (`#+TBLFM:`) | n/a | ❌ (P2-3 no UI) | ❌ | ❌ (P4-2 bare `#ERR`) |
 | Links (`[[ ]]`) | ✅ | ❌ (P2-1 picker gated off, no floor door) | ⚠️ | ✅ |
 | Footnotes / hashtags / emoji | ✅ | ⚠️ (tag index P2-4) | ⚠️ | ✅ |

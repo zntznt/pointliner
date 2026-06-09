@@ -17,10 +17,7 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 *Note: UXP-1 (Paragraph Enter inversion) was closed as a **documented exception** — Paragraph is now the sanctioned prose-mode block (Enter = line break, Shift+Enter = new point), advertised in the `/` menu and empty-state hint; see P1-1 in `ux-discipline.md`.*
 
-### UXP-2 ☐ Tables have no cell keyboard navigation
-- **Problem:** cell movement is mouse-only; `Tab`/`Enter` do not move between cells, violating the deepest spreadsheet reflex.
-- **Violates:** P2-3, keyboard grammar §3.
-- **Target:** `Tab` / `Shift+Tab` = next / previous cell, `Enter` = next-row cell, within the table widget.
+*Note: UXP-2 (table cell keyboard navigation) shipped conformant — `Tab`/`Shift+Tab` wrap across rows, `Tab` at the last cell adds a row, `Enter` moves down and stops at the last row, landing cells select-on-entry; §3 grammar + §9 matrix updated.*
 
 ### UXP-3 ☐ Org `#+TBLFM:` formulas have no front door
 - **Problem:** table formulas are entered only by typing a raw `#+TBLFM:` line in markdown — no affordance, no menu path. Built but undiscoverable.
@@ -114,9 +111,15 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 
 ---
 
+## Enhancements (tracked, not defects)
+
+These are **not non-conformances** — the standard is satisfied — just nice-to-haves noted so they aren't lost.
+
+- 🟢 **Table arrow-key cell nav** — `↑/↓/←/→` to cross cells and `Shift+Arrow` to extend the selection (beyond the conformant `Tab`/`Enter` nav from UXP-2). Today arrows move the caret within the cell; P2-3 is met without this.
+
 ## Closing order (recommended)
 
-1. **Tier 1** (UXP-2…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency.
+1. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency.
 2. **Tier 2** (UXP-6…12) — discoverability + feedback gaps.
 3. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
 
