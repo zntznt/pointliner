@@ -4306,10 +4306,24 @@ const SIZE_PICKER_MAX = 8;
 function isSizePickerOpen() { return !!sizePickerState; }
 
 function openSizePicker(content, slashOffset, onConfirm) {
+  // Reuse the spawning slash/@ popup's caret anchor: the picker is the SAME element,
+  // already positioned at the caret by positionSlashMenu. Capture its left/top and
+  // re-apply after swapping in the grid. We must NOT re-run positionSlashMenu here —
+  // slashApply has already stripped the trigger text from `content`, so the DOM walk
+  // would find no node to measure and reset the popup to 0,0 (the top-left bug).
+  const left = slashMenu.style.left, top = slashMenu.style.top;
   hideSlashMenu();
   sizePickerState = { rows: 3, cols: 3, onConfirm, content, slashOffset };
   renderSizePicker();
-  positionSlashMenu(content, slashOffset);
+  slashMenu.style.left = left;
+  slashMenu.style.top = top;
+  // The grid popup is narrower than the command list, so the menu's right-edge
+  // overflow correction can only over-shift; nudge back on-screen if needed.
+  requestAnimationFrame(() => {
+    const mr = slashMenu.getBoundingClientRect();
+    if (mr.right  > window.innerWidth  - 8) slashMenu.style.left = (window.innerWidth  - mr.width  - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) slashMenu.style.top  = (window.innerHeight - mr.height - 8) + 'px';
+  });
 }
 
 function renderSizePicker() {
