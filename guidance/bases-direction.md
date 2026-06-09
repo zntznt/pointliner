@@ -70,10 +70,20 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
 
 A base in table view is laid out as:
 
-1. **Base header bar** (top) — whole-base operations: Copy as markdown · Copy with TBLFM (§6). The home for a future **view switcher**.
+1. **Base header bar** (top) — a **reserved strip** held for a future **view switcher** (`.mt-base-views`). It is **empty for now and collapses to nothing**; whole-base operations live on the base bullet's menu (see "The base bullet" above), not on a header opener.
 2. **Header row** (the column-name row) — **the column-control surface** (see below).
 3. **Data rows** — editable cells with keyboard navigation (UXP-2) and read-only computed cells (§7).
 4. **Footer total row** — appears when a column has a Calculate aggregate; computed, read-only.
+
+### The base bullet — a base is a distinct object
+
+Because a base is a special structured object (not prose), **its bullet is the `/base` grid icon** (`fa-table-cells`) rather than a plain dot — an at-a-glance signal that "this point is a base." Clicking the icon (or hovering on desktop / long-pressing on touch) opens the base's **consolidated menu**, which is the node menu *minus the type switcher* and *plus* the base ops, in order:
+
+- **Copy as markdown** · **Copy with TBLFM** (the same two ops as the header `⋯` menu)
+- **Zoom into** · **Copy link** · **Move up** · **Move down**
+- **Delete** — opens an **in-app confirmation** (`openConfirmDialog`, styled with the app overlay — never a native `confirm()`), since destroying a grid of data is heavier than deleting a line of prose.
+
+The deliberate omission is the **type switcher**: a base has no "turn into heading/bullet/…" row, because a base cannot be converted into another block type (see §6).
 
 ### Column-header interaction (the header row cells)
 
@@ -116,6 +126,7 @@ A static table follows the toggle (it is inline prose markup, so it lives in the
   - **Copy as markdown** — the current rendered values, ready to paste anywhere as a static table.
   - **Copy with TBLFM** — the values plus the `#+TBLFM:` recipe.
   - There is **no destructive "convert to static."** A base is not self-destructing.
+- **No type conversion (base → other block type).** A base cannot be turned into a bullet / heading / quote / etc. — its grid and cell data don't translate to a prose line, so allowing it would be lossy and surprising. The bullet menu omits the type switcher and `applyBlockCmd` hard-guards it (`node.type === 'base' && id !== 'base' → return`). The only ways "out" of a base are the copy ops (above) and Delete. Nothing turns *into* a base except the `/base` verb (via `createBaseAt`).
 
 ---
 
@@ -138,7 +149,7 @@ Binding terms for UI copy, `aria-label`s, docs, and this file:
 | A structured data object with its own dedicated point, currently showing in table view | **base** | dynamic table, widget, database |
 | The base's interactive grid display (its current default view) | **table view** | table (when referring specifically to the view a base shows) |
 | The whole-base top bar | **base header** | toolbar |
-| The whole-base menu | **base menu** | table menu |
+| The base bullet's menu (whole-base ops + node ops) | **base menu** | table menu, ⋯ menu |
 | The per-column menu | **Column menu** | column panel (the panel is its content) |
 | Editable column-name chip | **name pill** | header chip |
 | One-click column aggregates | **Calculate** | summary |
@@ -150,7 +161,7 @@ Binding terms for UI copy, `aria-label`s, docs, and this file:
 1. **PR 1 — static tables render anywhere. ✅ Shipped.** `mdToHtml` learns GFM pipe tables → static read-only `<table>` (`renderStaticTable`, reusing the table CSS); alignment from the delimiter, cells via `mdInline`, an optional `#+TBLFM:` computed + hidden. Render-layer only — `node.text` is untouched, edit mode shows the raw markdown (recipe line included). `tableDelimCells` is the GFM-strict false-positive guard. The markdown-first baseline; stands alone and fixes the original "convert the point and the table stops rendering" complaint.
 2. **PR 2 — base rename + base header + conversions.**
    - **PR 2a ✅ Shipped.** Internal rename of the interactive object `node.type` `table` → **base** (widget dispatch, edit mode, OPML `_type`, exports, `nt-base` CSS); the `/base` verb (label **Base**, retiring `/table`) and the `@table` insert verb (a static pipe-table starter); a **shared keyboard-first grid size picker** swapped into the slash-menu popup (arrows size, Enter creates, Esc cancels; default 3×3, max 8×8) feeding both verbs; and a **non-destructive convert** (`createBaseAt`) — an empty point becomes the base in place, a content-bearing point keeps its text with the base inserted as the next sibling (fixes the destroy-text-on-convert data-loss bug). No migration (pre-release).
-   - **PR 2b — base header bar + copy ops. ✅ Shipped.** A slim full-width **base header bar** atop the base (built extensible — left zone reserved for the future view switcher; no base title for MVP) hosting a **base-menu opener** (`aria-label` "Base options"). The **base menu** (distinct from the Column menu) carries **Copy as markdown** (the current displayed state — computed values baked into the cells, no `#+TBLFM` — a frozen static-table snapshot via `baseFrozenMarkdown`) and **Copy with TBLFM** (raw cell literals plus the `#+TBLFM` recipe via `baseRecipeMarkdown`, so a paste recomputes through PR 1's static render). Opened by the opener **and** by **Ctrl/⌘+Shift+M** (base-context-scoped); §7.2 menu pattern (`role=menu/menuitem`, `↑↓`/`Enter`/`Esc`, reduced-motion, ARIA). Each copy confirms with a `flashHint` toast. *Still scoped for a later pass: the §5 header-row interaction model (name pill vs Column menu) and `Ctrl/⌘+M` for the Column menu.*
+   - **PR 2b — base header bar + copy ops. ✅ Shipped.** A slim full-width **base header bar** atop the base (built extensible — left zone reserved for the future view switcher; no base title for MVP) hosting a **base-menu opener** (`aria-label` "Base options"). The **base menu** (distinct from the Column menu) carries **Copy as markdown** (the current displayed state — computed values baked into the cells, no `#+TBLFM` — a frozen static-table snapshot via `baseFrozenMarkdown`) and **Copy with TBLFM** (raw cell literals plus the `#+TBLFM` recipe via `baseRecipeMarkdown`, so a paste recomputes through PR 1's static render). Opened by the opener **and** by **Ctrl/⌘+Shift+M** (base-context-scoped); §7.2 menu pattern (`role=menu/menuitem`, `↑↓`/`Enter`/`Esc`, reduced-motion, ARIA). Each copy confirms with a `flashHint` toast. *Still scoped for a later pass: the §5 header-row interaction model (name pill vs Column menu) and `Ctrl/⌘+M` for the Column menu.* **Superseded:** the `⋯` opener, the `#mt-basemenu` dropdown and its `Ctrl/⌘+Shift+M` shortcut were later retired — the two copy ops (plus the node ops and a confirmed delete) now live on **the base bullet's menu** (§5 "The base bullet"). The header bar remains as an empty, collapsed reserved zone for the future view switcher.
 3. **PR 3 — promote.** "Convert to base" on a static table, with the §6 split logic.
 4. **Later (this doc's deferred list, §4):** views, typed fields, filters.
 
