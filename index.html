@@ -152,7 +152,7 @@ body.full-width #outline{max-width:none}
 .search-ctx .node-row:hover{background:transparent}
 .node-row:has(.node-content[data-editing]){background:rgba(74,144,217,.055)}
 @media(prefers-color-scheme:dark){.node-row:has(.node-content[data-editing]){background:rgba(91,163,232,.08)}}
-.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden}
+.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden;position:relative;z-index:2}
 .has-children>.node-row>.collapse-btn{visibility:visible}
 .collapse-btn:hover{color:var(--acc)}
 .col-chevron{display:inline-block;transition:transform .18s ease;line-height:1}
@@ -160,7 +160,7 @@ body.full-width #outline{max-width:none}
 .collapse-count{font-size:8px;font-weight:700;line-height:1;margin-top:1px;opacity:.6}
 
 /* bullet area — dot + optional checkbox */
-.bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0}
+.bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0;position:relative;z-index:2}
 .bullet-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;transition:background .12s,transform .12s}
 .bullet:hover .bullet-dot{background:var(--bullet-h);transform:scale(1.3)}
 .node-checkbox{width:13px;height:13px;cursor:pointer;accent-color:var(--acc);flex-shrink:0}
@@ -2510,14 +2510,17 @@ function reconcileHeights() {
   }
 }
 
-// Measure each base's left offset and stretch it to the right viewport edge,
-// overriding the narrow-column max-width. Static tables are unaffected (natural flow).
+// Stretch each base to true full viewport width, breaking out of the indent column
+// on both sides. Static tables are unaffected (width:100% fills their content column).
 function updateBaseWidths() {
-  const rPad = window.innerWidth <= 560 ? 14 : 24;
+  const vw = window.innerWidth;
+  const hPad = vw <= 560 ? 4 : 0;   // tiny side margin on mobile only
   document.querySelectorAll('.md-table-host').forEach(host => {
-    const rect = host.getBoundingClientRect();
-    const w = Math.max(120, Math.round(window.innerWidth - rect.left - rPad));
-    host.style.width = w + 'px';
+    host.style.marginLeft = '';      // reset so getBoundingClientRect sees natural position
+    host.style.width = '';
+    const left = host.getBoundingClientRect().left;
+    host.style.marginLeft = (hPad - left) + 'px';
+    host.style.width = (vw - 2 * hPad) + 'px';
   });
 }
 
