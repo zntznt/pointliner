@@ -741,6 +741,19 @@ test('planBaseConvert: content-bearing point keeps text, base inserted AFTER (th
 // ── PR 3 promote: planTablePromote splits a point around its static table ──────
 const PROMOTE_TEXT = 'Intro prose\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n#+TBLFM: $2=$1*2\n\nTrailing prose';
 
+test('findFirstTableRange: locates the table block (matches planTablePromote input)', () => {
+  const r = c.findFirstTableRange(PROMOTE_TEXT);
+  assert.deepEqual(host(r), { l0: 2, l1: 6 });             // same range the menu door feeds promote
+  const plan = c.planTablePromote(PROMOTE_TEXT, r.l0, r.l1);
+  assert.equal(plan.table, '| A | B |\n| --- | --- |\n| 1 | 2 |\n#+TBLFM: $2=$1*2');
+});
+
+test('findFirstTableRange: null when the point holds no table (menu item is hidden)', () => {
+  assert.equal(c.findFirstTableRange('just prose\nmore prose'), null);
+  assert.equal(c.findFirstTableRange('- a list item\n- another'), null);  // list markers win
+  assert.equal(c.findFirstTableRange(''), null);
+});
+
 test('planTablePromote: table-in-the-middle → before / table (incl. TBLFM) / after, blank lines trimmed', () => {
   const plan = c.planTablePromote(PROMOTE_TEXT, 2, 6);   // lines 2..5 = grid + recipe
   assert.equal(plan.before, 'Intro prose');              // trailing blank line trimmed

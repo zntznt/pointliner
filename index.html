@@ -3765,6 +3765,17 @@ function parseMLlines(lines) {
 
 function onKeyDown(e, id, content) {
   const ctrl = e.ctrlKey || e.metaKey;
+  // Static-table "Convert to base": keyboard activation of the focused ▦ button, the
+  // P3-2 keydown path beside its mousedown handler. (Tab-focus itself rides UXP-14.)
+  if ((e.key === 'Enter' || e.key === ' ') && !content.dataset.editing) {
+    const promo = e.target.closest?.('.mt-promote');
+    if (promo) {
+      e.preventDefault(); e.stopPropagation();
+      const st = promo.closest('.md-table-static');
+      if (st) { const node = nodeById(id); if (node) promoteStaticTable(node, +st.dataset.l0, +st.dataset.l1); }
+      return;
+    }
+  }
   // Copy a ready-to-paste link token for this node to the clipboard.
   if ((e.key === 'l' || e.key === 'L') && ctrl && e.shiftKey) { e.preventDefault(); copyNodeLink(id); return; }
   if (LINK_PICKER_ENABLED && lpState && isLpMenuOpen()) {
@@ -4161,6 +4172,16 @@ function showBulletPopup(nodeId, bulletEl) {
       { icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with TBLFM',
         fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
     );
+  }
+  // A non-base point that contains a static markdown table gets the §6 promote door
+  // here too (the menu path, beside the table's hover "▦ base" button) so the action
+  // is discoverable and rides the bullet popup's keyboard plan (UXP-14).
+  if (!isBase) {
+    const tr = findFirstTableRange(node.text);
+    if (tr) actions.unshift({
+      icon: { fa:'fa-solid fa-table-cells', fb:'▦' }, label: 'Convert table to base',
+      fn: () => { hideBpop(); promoteStaticTable(node, tr.l0, tr.l1); },
+    });
   }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
   // todo can become NEXT etc. — the badge target only exists once a keyword is set).
@@ -4577,6 +4598,25 @@ function promoteStaticTable(node, l0, l1) {
     nodeMap.set(tail.id, tail); parentMap.set(tail.id, parent);
   }
   markDirty(); render(); focusNode(focusId);
+}
+
+// Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)
+// line range (same shape mdToHtml stamps on the rendered table) or null if there is
+// none. Mirrors mdToHtml's detection (a non-list line whose next line is a matching
+// delimiter row) so the bullet-menu "Convert to base" door targets the same block the
+// hover button does. Pure; reuses mtSplitRow + tableDelimCells.
+function findFirstTableRange(text) {
+  const lines = (text || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '' || UL_RE.test(line) || OL_RE.test(line)) continue;
+    if (mtSplitRow(line).length !== tableDelimCells(lines[i + 1])) continue;
+    let j = i + 2;                                                    // header + delimiter
+    while (j < lines.length && lines[j].trim() !== '' && lines[j].includes('|')) j++;
+    if (j < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[j])) j++;  // optional recipe
+    return { l0: i, l1: j };
+  }
+  return null;
 }
 
 // Insert an inline artifact at the current caret (used by the "@" menu).

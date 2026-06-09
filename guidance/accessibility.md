@@ -93,6 +93,12 @@ Controls that need this treatment:
 - Table column/row handles (`.mt-colh`, `.mt-rowh`).
 - Table delete controls (`.mt-delcol`, `.mt-delrow`) — confirmed `<span>` elements
   inside the column/row handle `<th>`s, not buttons.
+- `.mt-promote` — the static-table "Convert to base" button. Already a real `<button>`
+  with an `aria-label`, a `:focus-visible` ring, and a `keydown` (Enter/Space) handler
+  beside its `mousedown` (the P3-2 pattern is in place). What it still needs from this
+  phase is *focus reachability*: it lives inside a `contenteditable` point where `Tab` =
+  indent, so it isn't a focus stop until the bullet-popup keyboard path lands — the same
+  door its menu entry ("Convert table to base" in `#bpop`) rides.
 
 **Menu ARIA pattern — file menu and slash menu:**
 
