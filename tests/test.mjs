@@ -619,6 +619,85 @@ test('table: appended #+TBLFM line extracts, computes, and round-trips', () => {
   assert.ok(out.includes('| 2 | 5 | 10 |'));
 });
 
+// ── static markdown tables: render anywhere (Bases PR 1) ───────────────────
+// mdToHtml learns GFM pipe tables → a static read-only <table>. The pins lock the
+// false-positive guard (the delimiter row), alignment, formula compute + #+TBLFM
+// HIDING, and the edit-raw / render-pretty contract (recipe consumed from RENDER
+// yet still present in the SOURCE text — mdToHtml never mutates node.text).
+const { tableDelimCells, renderStaticTable, mdToHtml } = c;
+
+test('tableDelimCells: valid delimiter rows return the cell count', () => {
+  assert.equal(tableDelimCells('| --- | --- |'), 2);   // outer pipes
+  assert.equal(tableDelimCells('--- | ---'), 2);        // outer pipes optional
+  assert.equal(tableDelimCells('| :-- | :-: | --: |'), 3); // alignment colons
+  assert.equal(tableDelimCells('|---|'), 1);
+});
+
+test('tableDelimCells: false-positive guard — non-delimiters return -1', () => {
+  assert.equal(tableDelimCells('---'), -1);             // no pipe → stays a thematic break
+  assert.equal(tableDelimCells('| a | b |'), -1);       // cells aren't dashes/colons
+  assert.equal(tableDelimCells('just prose'), -1);
+  assert.equal(tableDelimCells('| -- x -- |'), -1);     // junk inside a cell
+  assert.equal(tableDelimCells(''), -1);
+  assert.equal(tableDelimCells(null), -1);
+});
+
+test('mdToHtml: a pipe table with a matching delimiter renders a static <table>', () => {
+  const html = mdToHtml('| a | b |\n| --- | --- |\n| 1 | 2 |');
+  assert.ok(html.includes('class="md-table-static"'));         // reuses base CSS, distinct hook
+  assert.ok(html.includes('<table class="md-table">'));
+  assert.ok(html.includes('<th class="mt-cell mt-headcell">a</th>')); // header is <th>
+  assert.ok(html.includes('<td class="mt-cell">1</td>'));             // body is <td>
+});
+
+test('mdToHtml: delimiter colons drive per-column text-align', () => {
+  const html = mdToHtml('| L | C | R |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |');
+  assert.ok(html.includes('mt-a-center'));   // :-: → center
+  assert.ok(html.includes('mt-a-right'));    // --: → right
+  assert.ok(!html.includes('mt-a-left'));    // left is the default, no class emitted
+});
+
+test('mdToHtml: cell content renders inline markdown (not raw)', () => {
+  const html = mdToHtml('| h |\n| --- |\n| **bold** |');
+  assert.ok(html.includes('<strong>bold</strong>'));
+});
+
+test('mdToHtml: #+TBLFM computes the grid and is HIDDEN from the render, but stays in source', () => {
+  const src =
+    '| Qty | Price | Total |\n| --- | --- | --- |\n| 2 | 5 | |\n| 3 | 4 | |\n#+TBLFM: $3=$1*$2';
+  const html = mdToHtml(src);
+  assert.ok(html.includes('>10</td>'));    // 2*5 computed
+  assert.ok(html.includes('>12</td>'));    // 3*4 computed
+  assert.ok(html.includes('mt-computed')); // computed cells Σ-tagged read-only
+  assert.ok(!html.includes('TBLFM'));      // recipe line consumed from the RENDER
+  assert.ok(src.includes('#+TBLFM: $3=$1*$2')); // …yet untouched in the SOURCE (edit-raw model)
+});
+
+test('mdToHtml: false-positive guards — prose with pipes / a thematic break do NOT become tables', () => {
+  assert.ok(!mdToHtml('a | b\nc | d').includes('<table'));      // no delimiter row
+  const hr = mdToHtml('Summary\n---');
+  assert.ok(hr.includes('<hr'));                                 // `---` stays a thematic break
+  assert.ok(!hr.includes('<table'));
+});
+
+test('mdToHtml: list markers win over table detection (GFM precedence)', () => {
+  const html = mdToHtml('- a | b\n- c | d');
+  assert.ok(html.includes('<ul'));
+  assert.ok(!html.includes('<table'));
+});
+
+test('mdToHtml: a table renders mid-point (not just on line 1)', () => {
+  const html = mdToHtml('Intro paragraph\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nOutro');
+  assert.ok(html.includes('Intro paragraph'));
+  assert.ok(html.includes('<table class="md-table">'));
+  assert.ok(html.includes('Outro'));
+});
+
+test('renderStaticTable: marks formula cells read-only (Σ) and computes their value', () => {
+  const html = renderStaticTable('| A | B |\n| --- | --- |\n| 2 | |\n#+TBLFM: $2=$1*10');
+  assert.ok(html.includes('<td class="mt-cell mt-computed">20</td>'));
+});
+
 // ── column aggregate formula builder (UXP-3) ──────────────────────────────
 const { mtBuildAggFormula, mtHasFooter, mtColAggKind } = c;
 
