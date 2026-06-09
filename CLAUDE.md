@@ -13,6 +13,11 @@ in a browser and it runs.
 > Suggestions that require rich inline state, a virtual DOM, a framework, or a
 > build step do not fit this app. Suggestions that add a new token type, a new
 > pure function, or a new expression primitive fit very well.
+> **UX caveat (P5):** "fits very well" is an *engine* judgment, not a *user* one.
+> A new pure function or `{…}` branch is cheap for the engine and free to learn
+> (it reuses an existing syntax). A new **user-facing syntax / delimiter** is the
+> opposite — cheap to add, expensive to learn — and is governed by the UX
+> discipline below: reuse the authoring language, don't grow it.
 >
 > **Locating code:** symbols are referenced by name, not line number — grep for
 > the function name. Line numbers are intentionally omitted because they drift
@@ -62,6 +67,31 @@ in a browser and it runs.
   replacement) need persisted state; today everything re-rolls statelessly. This
   is an open design question, not an oversight (see below).
 - **Run `node --test tests/test.mjs` before and after changing any parsing/eval core.** (`node --test tests/` fails on Node 22.x — it resolves the directory as a module rather than discovering test files; use the explicit path.) All tests must stay green; if you intentionally change a behavior, update the pin in the same commit.
+
+---
+
+## UX discipline (read before any UI work)
+
+The project has strong architecture discipline and, historically, **no UX discipline** — interaction, discoverability, accessibility, and copy were decided ad hoc per feature, which is why similar things behave differently and why the app keeps sprouting new syntaxes. That is now governed. **UX is a first-class acceptance criterion: a change that passes its tests but violates the standard is not done.**
+
+- **Full standard:** `guidance/ux-discipline.md` — vocabulary, principles, keyboard grammar, the syntax inventory, patterns, conformance matrix.
+- **Merge gate:** `guidance/ux-definition-of-done.md` — run it on **every** UI-touching change (it is also step 13 of `guidance/adding-an-artifact.md`). Every such change MUST emit a **Conformance Statement** (the gate's "How this gate is run" section); **no statement, no merge.**
+- **Fix list:** `guidance/ux-remediation.md` — every current non-conformance, tracked as a defect to close.
+
+**The five principles** (P1 and P5 are the consistency pillars and win on conflict):
+1. **Predictable** — a key, gesture, or word means the same thing everywhere. No context-dependent inversions.
+2. **Discoverable** — every capability has a visible front door; never syntax-only at the floor. The menu teaches the syntax.
+3. **Reachable** — every interactive element is keyboard-operable, named, and focus-visible to assistive tech — added **additively**.
+4. **Responsive** — no silent success, no silent failure.
+5. **Coherent** — **one authoring language.** Reuse the existing syntax; do not mint a new delimiter, sigil, or grammar without sign-off and the retirement of what it overlaps.
+
+**UX invariants that bite (the most-violated rules — internalize these):**
+- **Keyboard is added *alongside* `mousedown`+`preventDefault`, never by converting to `click`/`<button>`** (the caret invariant — the single most load-bearing UX rule).
+- **A key never changes meaning by block type.** `Enter` = new point, `Shift+Enter` = line break, in *every* block including Paragraph. New shortcuts MUST fit the keyboard grammar in `ux-discipline.md` §3.
+- **One authoring language.** New generative/computed content plugs into the `{…}` grammar engine or `evalMath` — **not** a new syntax. The §2/P5 syntax inventory is a **closed set**; growing it is an explicit, recorded decision, never a side effect of a feature. (This is the direct counterweight to "fits very well" above.)
+- **Built ≠ shipped-discoverable.** A capability reachable only by typed syntax, or gated entirely off with no front door at any verbosity, is non-conformant.
+
+**Canonical vocabulary split:** code keeps `node`/`artifact`; **user-facing copy says "point" and "pill."** Use the standard's §1 terms in every string and `aria-label`. Do not rename the internal identifiers.
 
 ---
 
@@ -254,6 +284,12 @@ when proposing features:
   pill freezes its expansion like dice/rolltable; click re-generates. Pure and
   Node-testable.
 
+  > **UX note (P5):** this engine is also the *reason the UX standard can hold the
+  > line on syntax.* Because `{…}` already composes dice, math, rules, tables, and
+  > variables, virtually every "I need a new inline thing" can be a new
+  > `resolveBrace` branch or `evalMath` primitive — **inside the existing syntax** —
+  > rather than a new delimiter. Reach for that before proposing new notation.
+
   *Typed shorthand → pill promotion* (`promoteBraceBody`, `promoteInlineShorthand`):
   you can **write** an artifact instead of using a dialog. Typing a `{…}` whose body
   is a valid artifact promotes it to the matching pill — `{2d6}`→dice, `{= 2*r}`→
@@ -288,6 +324,8 @@ conversions** (`c2f`, `km2mi`, … named `from2to`), and the **date component fn
 and the math pill renders the result as an ISO date via `formatEpochDays` /
 `isDateExpr` / `formatMathDisplay`). `ident()` resolves document variables via the
 `vars` map passed in. Returns `null` on any malformed input — callers branch on `null`.
+*(Adding a function to `FN1`/`FN2`/`FN3` is the P5-preferred way to extend math —
+no new syntax, just a new name inside the existing grammar.)*
 
 **Variables tie the engines together.** `collectVars()` walks the whole
 tree, gathers `[[var:KEY]]` declarations, and resolves them — variables may
@@ -313,27 +351,37 @@ attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption fo
 the re-entrancy note above). Missing target → `.node-link-broken`. Same-document only
 (cross-document waits on the multi-doc workspace). The `[[` picker is gated off
 (`LINK_PICKER_ENABLED`); keyboard-first creation is "Copy link" → `[[#id|]]` + paste.
+**(UX: a built-but-fully-gated feature with no front door at any verbosity is a P2
+non-conformance — tracked as UXP-4 in `guidance/ux-remediation.md`.)**
 
 ---
 
 ## Adding a new artifact or icon
 
 When adding a new artifact type or a Font Awesome icon, see
-`docs/adding-an-artifact.md` — the 12-step recipe and the icon-rebuild workflow
-live there.
+`guidance/adding-an-artifact.md` — the 12-step recipe and the icon-rebuild workflow
+live there. **Step 13 is the UX conformance gate** (`guidance/ux-definition-of-done.md`):
+the recipe builds the pill; the gate ships it. Before reaching for a new artifact,
+check the P5 syntax inventory — most "new inline thing" needs are a `{…}` branch or
+an `evalMath` primitive, not a new artifact or syntax.
 
 ---
 
 ## Accessibility
 
-Remediation is tracked in `docs/accessibility.md` (phased plan, kept out of the
-always-loaded `CLAUDE.md` because it retires as the work ships). The one durable
-invariant: **keyboard operability is added *alongside* `mousedown`+`preventDefault`
-handlers, never by replacing them** — bullets, pill pencils, the collapse button
-and the breadcrumb rely on `mousedown` to keep focus off the active
-contenteditable, so converting them to `click` silently breaks the caret
-invariant. ARIA attributes are set per-row in the same `render()` pass; all a11y
-changes are additive (attributes + CSS), never a visual redesign.
+Remediation is tracked in `guidance/accessibility.md` (phased plan, kept out of the
+always-loaded `CLAUDE.md` because it retires as the work ships). Accessibility is
+now also a **per-feature requirement** under the UX standard (`guidance/ux-discipline.md`
+§5 / P3): every feature satisfies its accessible-name, keyboard-operability, and
+announcement obligations **in the same pass that builds it**, rather than as a
+separate later track — `accessibility.md` still owns the *sequencing* of the
+larger items. The one durable invariant: **keyboard operability is added
+*alongside* `mousedown`+`preventDefault` handlers, never by replacing them** —
+bullets, pill pencils, the collapse button and the breadcrumb rely on `mousedown`
+to keep focus off the active contenteditable, so converting them to `click`
+silently breaks the caret invariant. ARIA attributes are set per-row in the same
+`render()` pass; all a11y changes are additive (attributes + CSS), never a visual
+redesign.
 
 ---
 
@@ -345,18 +393,25 @@ Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit ·
 TODO states + priorities (Org headline style: `TODO [#A] body`, keyword in `node.text`).
-Details: `docs/features.md`
+Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog
 
 The product direction is now set. Read these before proposing or building:
-- `docs/roadmap.md` — locked decisions + the phased plan (multi-document Zettelkasten,
+- `guidance/ux-discipline.md` — **the binding UX standard** (vocabulary, the five principles,
+  keyboard grammar, the closed syntax inventory, patterns, conformance matrix). Read before
+  any UI work; clear `guidance/ux-definition-of-done.md` before merge.
+- `guidance/ux-remediation.md` — every current UX non-conformance, tracked as a defect to close
+  (including the standing syntax-sprawl guard).
+- `guidance/roadmap.md` — locked decisions + the phased plan (multi-document Zettelkasten,
   node links + backlinks, storage/durability, the lean↔guided UX modes), plus the
   remaining generative-engine ideas.
-- `docs/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
-- `docs/ux.md` — the discoverability / verbosity-dial UX strategy. **Build discipline:**
+- `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
+- `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu
   descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.
+  Where `ux.md` (vision) and `ux-discipline.md` (standard) ever differ, the standard governs
+  behavior; `ux.md` governs the staging of guidance overlays.
 
 Note: internal links + backlinks and a multi-document workspace — previously "out of
 scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
