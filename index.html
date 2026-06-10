@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Pointliner</title>
-<!-- favicon: FontAwesome circle-minus, inline SVG so it works offline; tinted
-     to the current accent at runtime by updateFavicon() -->
-<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Cpath%20fill%3D%22%234a90d9%22%20fill-rule%3D%22evenodd%22%20d%3D%22M256%20512A256%20256%200%201%200%20256%200a256%20256%200%201%200%200%20512zM184%20232H328c13.3%200%2024%2010.7%2024%2024s-10.7%2024-24%2024H184c-13.3%200-24-10.7-24-24s10.7-24%2024-24z%22%2F%3E%3C%2Fsvg%3E">
+<!-- favicon: FontAwesome circle-minus, inline SVG so it works offline; tinted to the
+     current accent at runtime by updateFavicon(), which also re-asserts the link and
+     rasterizes a PNG so a root-site /favicon.ico can't override the accent icon. -->
+<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Cpath%20fill%3D%22%234a90d9%22%20fill-rule%3D%22evenodd%22%20d%3D%22M256%20512A256%20256%200%201%200%20256%200a256%20256%200%201%200%200%20512zM184%20232H328c13.3%200%2024%2010.7%2024%2024s-10.7%2024-24%2024H184c-13.3%200-24-10.7-24-24s10.7-24%2024-24z%22%2F%3E%3C%2Fsvg%3E">
 <!-- Font Awesome Free 6.5.2 (subset) — fontawesome.com
      Icons: CC BY 4.0 | Fonts: SIL OFL 1.1 | Code: MIT
      Only the glyphs used by this app are embedded below. -->
@@ -8297,11 +8298,37 @@ function applyAccentCSS(dark) {
   });
 }
 
-// Repaint the circle-minus favicon in the given colour (inline SVG, offline).
+// Assert OUR favicon over any other (incl. a root-site /favicon.ico). Mutating an
+// existing link's .href doesn't reliably re-assert in Chrome, and a host page can
+// leave its own icon link behind — so we DROP every icon link and append a fresh one.
+function setFaviconHref(href, type) {
+  document.querySelectorAll("link[rel~='icon']").forEach(l => l.remove());
+  const link = document.createElement('link');
+  link.rel = 'icon';
+  link.id = 'favicon';
+  if (type) link.type = type;
+  link.href = href;
+  document.head.appendChild(link);
+}
+// Repaint the circle-minus favicon in the given colour (inline, offline). Sets an SVG
+// immediately, then upgrades to a rasterized PNG — SVG favicons are ignored by Safari /
+// PWA / home-screen contexts, which then fall back to the root site's /favicon.ico; a
+// PNG is honored everywhere and keeps the accent icon. All local (no network).
 function updateFavicon(hex) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="${hex}" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM184 232H328c13.3 0 24 10.7 24 24s-10.7 24-24 24H184c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg>`;
-  const link = document.getElementById('favicon');
-  if (link) link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  const svgHref = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  setFaviconHref(svgHref, 'image/svg+xml'); // immediate, for SVG-capable browsers
+  try {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+        cv.getContext('2d').drawImage(img, 0, 0, 64, 64);
+        setFaviconHref(cv.toDataURL('image/png'), 'image/png');
+      } catch (_) { /* canvas unavailable — keep the SVG link */ }
+    };
+    img.src = svgHref;
+  } catch (_) {}
 }
 
 function buildAccentSwatches(dark) {
