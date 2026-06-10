@@ -123,6 +123,13 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 - **Violates:** P2/P5 (formatting belongs in the one markdown language: `*…*`, etc.).
 - **Target:** retire the flags in favor of inline markdown (with an OPML migration), or document them as a sanctioned exception.
 
+### UXP-28 ☐ Style bleed after an editable `.gr-src` `{name}` span (re-filed; PR #45's fix reverted)
+- **Problem:** in edit mode, after a completed promotable `{name}`/`{…}` the browser can merge subsequently typed text *into* the trailing `.gr-src` span, so the space and following prose render grammar-styled. Worse on the **picker path**: after `braceApply` inserts `{name}`, `setCaretByOffset` descends into the span's text node, so continued typing bleeds from the first keystroke.
+- **Violates:** P4 (rendering correctness / misleading feedback — prose looks like grammar source).
+- **History:** PR #45 attempted a ZWSP caret-anchor after `.gr-src` spans + landing the caret inside it (`caretAfterGrSrc` offset 1). **Reverted:** verified only on manually-typed text, it broke the real flow — with the caret parked in the anchor, Backspace deleted the invisible ZWSP, `editableText` came back unchanged, and `checkInlineHighlight` re-rendered and **regenerated the anchor**: a no-op loop that made a picker-applied `{name}` reference **undeletable** (hard-baked). The sibling fix for **atomic pills** (contenteditable=false, anchor offset 0) does not have this loop and **stays** — pills aren't subject to `checkInlineHighlight` regeneration and Backspace deletes the whole pill.
+- **Target:** typed text after a completed `{…}` renders as plain prose, the reference stays deletable, and the caret behaves through apply→type→delete cycles. Likely needs `braceApply`/`checkInlineHighlight` to place the caret *outside* the span without introducing a regenerable anchor (or to suppress regeneration while deleting).
+- **Verification bar (mandatory for any future fix):** test the **picker-apply path** (`braceApply` via the `{` menu), not just manual typing — and test **Backspace/Delete** through the reference until it is fully removed. The #45 regression shipped precisely because verification covered synthetic typing only.
+
 ## Tier 3 — Accessibility conformance (additive; sequenced in `accessibility.md`)
 
 These are **not new tickets** — they are the standard's P3 requirements mapped onto the existing accessibility phases, listed here so a11y is visible as part of the *one* conformance picture rather than a separate track. **Do not front-run the deferred items**; do satisfy the interim labels now.
