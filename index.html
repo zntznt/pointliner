@@ -471,11 +471,23 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* todo checked */
 .nt-todo.checked>.node-row>.node-content{text-decoration:line-through;opacity:.45}
 /* TODO state badges + priority chips (display-mode overlay; edit mode shows plain text) */
-.todo-state{display:inline-block;font-size:.68em;font-weight:700;letter-spacing:.04em;padding:0 5px;border-radius:3px;vertical-align:middle;margin-right:4px;line-height:1.6;cursor:pointer;user-select:none}
+/* Base rule carries the accent tint so custom-sequence states render themed;
+   the four built-in classes override it, and any sequence's DONE-side state
+   gets the muted look via .todo-state-isdone (declared last so it wins). */
+.todo-state{display:inline-block;font-size:.68em;font-weight:700;letter-spacing:.04em;padding:0 5px;border-radius:3px;vertical-align:middle;margin-right:4px;line-height:1.6;cursor:pointer;user-select:none;background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
 .todo-state-todo{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc)}
 .todo-state-next{background:color-mix(in srgb,#4caf50 18%,transparent);color:#4caf50}
 .todo-state-waiting{background:color-mix(in srgb,#ff9800 18%,transparent);color:#ff9800}
 .todo-state-done{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
+.todo-state-isdone{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
+/* sequence declaration pill ([[seq:KEY]]) */
+.seq-pill{display:inline-flex;align-items:center;gap:4px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,box-shadow .12s}
+.seq-pill:hover{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.seq-pill .seq-ico{color:var(--acc);font-size:.82em;display:inline-flex}
+.seq-pill .seq-name{font-weight:600}
+.seq-pill .seq-states{color:var(--muted);font-size:.92em}
+.seq-pill .seq-pipe{color:var(--acc);font-weight:700;padding:0 1px}
+.seq-pill.seq-bad{color:var(--del);border-style:dashed;cursor:default}
 .todo-prio{display:inline-block;font-size:.68em;font-weight:700;padding:0 4px;border-radius:3px;vertical-align:middle;margin-right:4px;line-height:1.6;user-select:none}
 .todo-prio-a{background:color-mix(in srgb,#e53935 18%,transparent);color:#e53935}
 .todo-prio-b{background:color-mix(in srgb,#fb8c00 18%,transparent);color:#fb8c00}
@@ -886,7 +898,7 @@ function mkRoot() {
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
+  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [], seq: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -910,9 +922,10 @@ function deriveTypeFromText(text) {
   if (text.startsWith('# '))   return 'h1';
   if (text.startsWith('> '))   return 'quote';
   if (text.startsWith('```'))  return 'code';
-  // to-do: task form (`- [ ]` first line) or Org keyword form (TODO|NEXT|…).
+  // to-do: task form (`- [ ]` first line) or state-keyword form — any state of
+  // any sequence (default TODO/NEXT/… or user-declared), markdown-first.
   // The type is a derived hint here exactly like headings — the markdown renders.
-  if (TASK_FIRST_RE.test(text) || TODO_KEYWORD_RE.test(text)) return 'todo';
+  if (TASK_FIRST_RE.test(text) || parseTodo(text).keyword) return 'todo';
   return null;
 }
 
@@ -944,14 +957,96 @@ const TODO_DONE = new Set(['DONE']);                     // keywords counted "do
 const TODO_CYCLE = ['', ...TODO_STATES];                 // cycle incl. cleared state
 const TODO_PRIOS = ['A', 'B', 'C'];                      // highest → lowest
 const PRIO_CYCLE = [null, ...TODO_PRIOS];                // cycle incl. no-priority
-const TODO_KEYWORD_RE = /^(TODO|NEXT|WAITING|DONE)(?=\s|$)/;
+
+// ─── Sequences: user-definable state sets ─────────────────────────────────────
+// A sequence is an ordered set of state keywords with a done split: states left of
+// the | are active, right of it are done ("TODO NEXT WAITING | DONE"). The built-in
+// to-do set IS the default sequence; user sequences are declared with a [[seq:KEY]]
+// pill (@sequence) carried in node.seq sidecars, document-wide via collectSequences
+// (token-gated walk, cached on _varsVer — the collectVars pattern). ZERO new
+// authoring syntax: declare via @, apply via /, and the state keyword sits at the
+// start of node.text exactly like TODO always has.
+
+const DEFAULT_SEQUENCE = { key: 'default', name: 'To-do', states: TODO_STATES, doneFrom: TODO_STATES.indexOf('DONE') };
+
+const SEQ_STATE_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
+// "TODO NEXT | DONE CANCELLED" → { states: [...uppercased], doneFrom } or null.
+// Exactly one |, at least one state on each side, identifier-shaped tokens, no
+// duplicates. Pure; callers branch on null (the dialog validates with this too).
+function parseSequence(def) {
+  const s = def == null ? '' : String(def);
+  const parts = s.split('|');
+  if (parts.length !== 2) return null;
+  const lex = (p) => p.trim().split(/\s+/).filter(Boolean);
+  const left = lex(parts[0]), right = lex(parts[1]);
+  if (!left.length || !right.length) return null;
+  if ([...left, ...right].some(w => !SEQ_STATE_RE.test(w))) return null;
+  const states = [...left, ...right].map(w => w.toUpperCase());
+  if (new Set(states).size !== states.length) return null;
+  return { states, doneFrom: left.length };
+}
+
+// Document-wide declared sequences in document order (token-gated like the other
+// sidecar indexes). No-arg = the live document with the per-generation cache;
+// an explicit root bypasses the cache (pure function of its argument — tests).
+let _seqsCacheVer = -1, _seqsCached = [];
+function collectSequences(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _seqsCacheVer === _varsVer) return _seqsCached;
+  const out = [];
+  function gather(node) {
+    for (const sq of (node.seq || [])) {
+      if (!node.text.includes(`[[seq:${sq.key}]]`)) continue;
+      if (sq.name && Array.isArray(sq.states) && sq.states.length) out.push(sq);
+    }
+    for (const c of node.children) gather(c);
+  }
+  if (rootNode?.children) for (const c of rootNode.children) gather(c);
+  if (useCache) { _seqsCacheVer = _varsVer; _seqsCached = out; }
+  return out;
+}
+
+// Default first, then declared in document order — built-in keywords keep their
+// meaning even if a user sequence re-uses one (first-match, the MVP collision rule).
+function allSequences(rootNode) { return [DEFAULT_SEQUENCE, ...collectSequences(rootNode)]; }
+
+// The sequence a keyword belongs to (first match), or null — null also means
+// "this capitalized word is no state at all", which is what gates the badge.
+function sequenceForKeyword(keyword, seqs = allSequences()) {
+  if (!keyword) return null;
+  for (const sq of seqs) if (sq.states.includes(keyword)) return sq;
+  return null;
+}
+
+// Done-ness, generalized: the keyword sits at-or-right-of its sequence's | split.
+function keywordIsDone(keyword, seqs = allSequences()) {
+  const sq = sequenceForKeyword(keyword, seqs);
+  return !!sq && sq.states.indexOf(keyword) >= sq.doneFrom;
+}
+
+// Every recognized state keyword (default + declared), uppercase. Cached on
+// _varsVer; this is the dynamic replacement for the old hardcoded keyword regex.
+let _statesCacheVer = -1, _statesCached = null;
+function knownStates(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache && _statesCacheVer === _varsVer && _statesCached) return _statesCached;
+  const set = new Set(DEFAULT_SEQUENCE.states);
+  for (const sq of collectSequences(rootNode)) for (const st of sq.states) set.add(st);
+  if (useCache) { _statesCacheVer = _varsVer; _statesCached = set; }
+  return set;
+}
+
+// Leading ALL-CAPS word candidate; only a member of knownStates() is a keyword.
+const LEAD_WORD_RE = /^([A-Z][A-Z0-9_-]*)(?=\s|$)/;
 
 // Split a node's text into { keyword, priority, body }. No keyword → keyword '',
 // priority null, body = the whole text. Priority is only read after a keyword.
-function parseTodo(text) {
+// `states` is the recognized-keyword set (defaults to the document's, cached).
+function parseTodo(text, states = knownStates()) {
   const s = text == null ? '' : String(text);
-  const km = s.match(TODO_KEYWORD_RE);
-  if (!km) return { keyword: '', priority: null, body: s };
+  const km = s.match(LEAD_WORD_RE);
+  if (!km || !states.has(km[1])) return { keyword: '', priority: null, body: s };
   let rest = s.slice(km[1].length).replace(/^\s+/, '');
   let priority = null;
   const pm = rest.match(/^\[#([A-Za-z])\]\s*/);
@@ -996,9 +1091,10 @@ function cycleTodoPriority(text, dir = 1) {
 // (A<B<C<none), then active-state order. Compare element-wise (see compareTodo).
 function todoSortKey(text) {
   const t = parseTodo(text);
-  const done = todoIsDone(t.keyword) ? 1 : 0;
+  const sq = sequenceForKeyword(t.keyword);
+  const done = keywordIsDone(t.keyword) ? 1 : 0;
   const prio = t.priority ? TODO_PRIOS.indexOf(t.priority) : TODO_PRIOS.length;
-  const state = t.keyword ? TODO_STATES.indexOf(t.keyword) : TODO_STATES.length;
+  const state = sq ? sq.states.indexOf(t.keyword) : TODO_STATES.length;
   return [done, prio, state];
 }
 function compareTodo(a, b) {
@@ -1010,9 +1106,9 @@ function compareTodo(a, b) {
 // Direct setters for a one-click state/priority picker (vs. the cycle helpers).
 // setTodoState('', …) clears the keyword (and its priority). Unknown keywords are
 // clamped to '' and unknown priorities to null, so a picker can't write garbage.
-function setTodoState(text, keyword) {
-  const t = parseTodo(text);
-  const kw = TODO_STATES.includes(keyword) ? keyword : '';
+function setTodoState(text, keyword, states = knownStates()) {
+  const t = parseTodo(text, states);
+  const kw = states.has(keyword) ? keyword : '';
   return formatTodo({ keyword: kw, priority: kw ? t.priority : null, body: t.body });
 }
 function setTodoPriority(text, priority) {
@@ -1031,13 +1127,14 @@ function setTodoPriority(text, priority) {
 const TASK_FIRST_RE = /^[-*+]\s+\[[ xX]\](\s|$)/;   // first line is a task item
 function isTaskFirst(text) { return TASK_FIRST_RE.test(text == null ? '' : String(text)); }
 
-// Node-level done-ness from the text: keyword wins (DONE); otherwise a task-form
-// node is done when EVERY task marker in it is checked (a checklist completes as
-// a whole — a single `- [x]` is the common one-marker case).
-function todoDoneFromText(text) {
+// Node-level done-ness from the text: keyword wins — done iff it sits right of
+// its sequence's | split (generalizes the old keyword===DONE); otherwise a
+// task-form node is done when EVERY task marker in it is checked (a checklist
+// completes as a whole — a single `- [x]` is the common one-marker case).
+function todoDoneFromText(text, seqs = allSequences()) {
   const s = text == null ? '' : String(text);
-  const t = parseTodo(s);
-  if (t.keyword) return todoIsDone(t.keyword);
+  const km = s.match(LEAD_WORD_RE);
+  if (km && sequenceForKeyword(km[1], seqs)) return keywordIsDone(km[1], seqs);
   if (!TASK_FIRST_RE.test(s)) return false;
   const markers = s.match(/^\s*(?:[-*+]|\d+\.)\s+\[[ xX]\]/gm) || [];
   return markers.length > 0 && markers.every(m => /\[[xX]\]$/.test(m));
@@ -1047,10 +1144,14 @@ function todoDoneFromText(text) {
 // start with so the format continues (a new to-do gets its `- [ ]`, a new quote
 // its `> `). Keyword form continues with the same keyword; DONE restarts as TODO
 // (the new task isn't done). '' = no aid — plain text, type the markdown yourself.
-function continuationPrefix(text) {
+function continuationPrefix(text, seqs = allSequences()) {
   const s = text == null ? '' : String(text);
-  const t = parseTodo(s);
-  if (t.keyword) return (todoIsDone(t.keyword) ? 'TODO' : t.keyword) + ' ';
+  // resolve the keyword against the GIVEN sequences (not the doc-default set),
+  // so the explicit-seqs form is a pure function of its arguments
+  const km = s.match(LEAD_WORD_RE);
+  const sq = km ? sequenceForKeyword(km[1], seqs) : null;
+  // a done keyword restarts at its sequence's FIRST state (DONE → TODO)
+  if (sq) return (keywordIsDone(km[1], seqs) ? sq.states[0] : km[1]) + ' ';
   if (TASK_FIRST_RE.test(s)) return '- [ ] ';
   if (s.startsWith('> ')) return '> ';
   return '';
@@ -1090,6 +1191,7 @@ function renderContentHTML(node) {
   mathRenderList    = node.math    || null;
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
+  seqRenderList     = node.seq     || null;
   globalVarMap      = collectVars();
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
   // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
@@ -1103,7 +1205,9 @@ function renderContentHTML(node) {
     const { keyword, priority, body } = parseTodo(node.text);
     if (keyword) {
       const kw = keyword.toLowerCase();
-      const badge = `<span class="todo-state todo-state-${kw}" data-todo-state="${keyword}">${keyword}</span>`;
+      // done-states of ANY sequence get the muted "done" look (DONE keeps its own class)
+      const doneCls = keywordIsDone(keyword) ? ' todo-state-isdone' : '';
+      const badge = `<span class="todo-state todo-state-${kw}${doneCls}" data-todo-state="${keyword}">${keyword}</span>`;
       const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}">[#${priority}]</span>` : '';
       const bodyHtml = mdToHtml(body || '');
       // inject badges inside the first block-open tag so they flow inline with the text
@@ -1119,6 +1223,7 @@ function renderContentHTML(node) {
   mathRenderList    = null;
   varRenderList     = null;
   grammarRenderList = null;
+  seqRenderList     = null;
   return html;
 }
 
@@ -1335,16 +1440,18 @@ let _inlineDepth = 0;
 function renderNodeInline(node) {
   const saved = { dice: diceRenderList, markov: markovRenderList,
                   rolltable: rolltableRenderList, math: mathRenderList,
-                  vars: varRenderList, grammar: grammarRenderList };
+                  vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList };
   _inlineDepth++;
   diceRenderList = node.dice || null; markovRenderList = node.markov || null;
   rolltableRenderList = node.rolltable || null; mathRenderList = node.math || null;
   varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
+  seqRenderList = node.seq || null;
   // globalVarMap is document-wide — leave it.
   const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   diceRenderList = saved.dice; markovRenderList = saved.markov;
   rolltableRenderList = saved.rolltable; mathRenderList = saved.math;
   varRenderList = saved.vars; grammarRenderList = saved.grammar;
+  seqRenderList = saved.seq;
   _inlineDepth--;
   return html;
 }
@@ -1406,6 +1513,9 @@ function mdInline(s) {
     stash(renderVarPill(k, varRenderList?.find(v => v.key === k))));
   s = s.replace(/\[\[grammar:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderGrammarPill(k, grammarRenderList?.find(g => g.key === k))));
+  // sequence declarations — [[seq:KEY]] resolves against the node's stored sequences
+  s = s.replace(/\[\[seq:([a-z0-9]+)\]\]/gi, (_, k) =>
+    stash(renderSeqPill(k, seqRenderList?.find(q => q.key === k))));
   // node links — [[#TARGETID]] or [[#TARGETID|label]]
   s = s.replace(/\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, target, label) =>
     stash(renderLinkPill(target, label ?? '')));
@@ -1430,6 +1540,7 @@ let markovRenderList = null;
 let rolltableRenderList = null;
 let mathRenderList = null;
 let varRenderList    = null;
+let seqRenderList    = null;
 let grammarRenderList = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
@@ -2212,6 +2323,7 @@ function toOpml(r) {
       n.math?.length     ? `_math="${ex(JSON.stringify(n.math))}"` : '',
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
+      n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       `_id="${n.id}"`,
     ].filter(Boolean).join(' ');
@@ -2251,6 +2363,7 @@ function fromOpml(xml) {
       math:      (() => { try { return JSON.parse(el.getAttribute('_math')      || '[]'); } catch(_) { return []; } })(),
       vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
       grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
+      seq:       (() => { try { return JSON.parse(el.getAttribute('_seq')       || '[]'); } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
@@ -2293,13 +2406,45 @@ const BLOCK_CMDS = [
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
-  // To-do state — make a todo and set its Org-style keyword (also typeable: just
-  // write `TODO `/`NEXT `/`WAITING `/`DONE ` at the start of the line).
-  { id:'state:TODO',    icon:'☐', fa:'fa-regular fa-square',         label:'TODO',    desc:'Mark as an open task.',        ex:'TODO text',    section:'To-do state' },
-  { id:'state:NEXT',    icon:'→', fa:'fa-solid fa-angles-right',     label:'NEXT',    desc:'Mark as the next action.',     ex:'NEXT text',    section:'To-do state' },
-  { id:'state:WAITING', icon:'⏳', fa:'fa-solid fa-hourglass-half',  label:'WAITING', desc:'Blocked / waiting on something.', ex:'WAITING text', section:'To-do state' },
-  { id:'state:DONE',    icon:'✓', fa:'fa-solid fa-square-check',     label:'DONE',    desc:'Mark as complete (hides unless show-done).', ex:'DONE text', section:'To-do state' },
 ];
+
+// State entries for the / menu, generated per sequence (default + declared) so a
+// user-defined sequence's states are applied exactly like TODO/NEXT — one section
+// per sequence, sequence→state in a single §7.1 picker pass. Also typeable: just
+// write the keyword at the start of the line. The four built-in states keep their
+// distinctive icons; other states get active/done icons by their side of the |.
+// First sequence claiming a keyword owns it (the MVP collision rule), so entries
+// are deduped by keyword. Rebuilt on _varsVer (declaring a sequence is an edit).
+const DEFAULT_STATE_ICONS = {
+  TODO:    { icon:'☐', fa:'fa-regular fa-square' },
+  NEXT:    { icon:'→', fa:'fa-solid fa-angles-right' },
+  WAITING: { icon:'⏳', fa:'fa-solid fa-hourglass-half' },
+  DONE:    { icon:'✓', fa:'fa-solid fa-square-check' },
+};
+let _stateCmdsVer = -1, _stateCmdsCached = null;
+function stateCmds() {
+  if (_stateCmdsVer === _varsVer && _stateCmdsCached) return _stateCmdsCached;
+  const out = [], seen = new Set();
+  for (const sq of allSequences()) {
+    sq.states.forEach((st, i) => {
+      if (seen.has(st)) return; // first sequence claiming a keyword owns it
+      seen.add(st);
+      const done = i >= sq.doneFrom;
+      const ic = DEFAULT_STATE_ICONS[st] ||
+        (done ? { icon:'✓', fa:'fa-solid fa-square-check' } : { icon:'○', fa:'fa-regular fa-circle' });
+      out.push({
+        id: 'state:' + st, icon: ic.icon, fa: ic.fa, label: st,
+        desc: done ? 'Mark as done (hides unless show-done).' : `Set the ${sq.name} state.`,
+        ex: st + ' text',
+        section: sq.name + ' state',
+      });
+    });
+  }
+  _stateCmdsVer = _varsVer; _stateCmdsCached = out;
+  return out;
+}
+// The / pool: static block commands + the per-sequence state entries.
+function blockCmdsPool() { return [...BLOCK_CMDS, ...stateCmds()]; }
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
 const INSERT_CMDS = [
@@ -2316,6 +2461,8 @@ const INSERT_CMDS = [
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value, or display an existing one. Leave expression blank to reference only.', ex:'r = 5 · area = pi*r^2', section:'Math' },
+  // Organize — document-wide state sets
+  { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Apply states via /.', ex:'Flow: BACKLOG DOING | SHIPPED', section:'Organize' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -2759,9 +2906,10 @@ function mtInline(node, raw) {
   mathRenderList    = node.math    || null;
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
+  seqRenderList     = node.seq     || null;
   globalVarMap      = collectVars();
   const html = mdInline(raw || '');
-  diceRenderList = markovRenderList = rolltableRenderList = mathRenderList = varRenderList = grammarRenderList = null;
+  diceRenderList = markovRenderList = rolltableRenderList = mathRenderList = varRenderList = grammarRenderList = seqRenderList = null;
   return html;
 }
 // Select a cell's whole contents (type-to-overwrite) and remember the cell so the
@@ -3904,6 +4052,14 @@ function attachContentEvents(content, node) {
       editVar(node, vp2.dataset.key); // opens a dialog; stays in display mode
       return;
     }
+    // sequence pill: click anywhere opens the editor (parallels the var pill)
+    const sq2 = e.target.closest?.('.seq-pill');
+    if (sq2 && !sq2.classList.contains('seq-bad')) {
+      e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) exitEdit(content, node);
+      editSeq(node, sq2.dataset.key);
+      return;
+    }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {
       e.preventDefault();
       e.stopPropagation(); // prevent doc mousedown from immediately clearing the selection
@@ -4052,7 +4208,7 @@ function anchorEditInlines(html) {
 // form render as contenteditable=false pill spans (edited via the pencil/dialog);
 // inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar|seq):([a-z0-9]+)\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
   // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
   // the rule isn't currently defined in the document).
@@ -4069,6 +4225,7 @@ function editModeHTML(node) {
     else if (type === 'rolltable') pill = renderRolltablePill(key, node.rolltable?.find(d => d.key === key));
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
     else if (type === 'grammar')   pill = renderGrammarPill(key, node.grammar?.find(d => d.key === key));
+    else if (type === 'seq')       pill = renderSeqPill(key, node.seq?.find(d => d.key === key));
     else                           pill = renderVarPill(key, node.vars?.find(d => d.key === key));
     html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>${EDIT_ANCHOR}`;
     last = m.index + m[0].length;
@@ -4147,7 +4304,7 @@ function exitEdit(content, node) {
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
-  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneFootnotes(node); // drop data for deleted tokens
+  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); // drop data for deleted tokens
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
@@ -4852,13 +5009,15 @@ function showTodoPicker(nodeId, anchorEl) {
     markDirty(); render(); hideBpop();
   };
 
-  // States: — / TODO / NEXT / WAITING / DONE
+  // States — sequence-aware: offer the states of the node's keyword's sequence
+  // (a Flow node gets BACKLOG/DOING/…); no keyword → the default to-do set.
+  const seq = sequenceForKeyword(keyword) || DEFAULT_SEQUENCE;
   const stGroup = document.createElement('div');
   stGroup.className = 'tp-group';
-  stGroup.innerHTML = '<div class="tp-label">State</div>';
+  stGroup.innerHTML = `<div class="tp-label">${escHtml(seq === DEFAULT_SEQUENCE ? 'State' : seq.name + ' state')}</div>`;
   const stChips = document.createElement('div');
   stChips.className = 'tp-chips';
-  [['', '—'], ...TODO_STATES.map(s => [s, s])].forEach(([val, label]) => {
+  [['', '—'], ...seq.states.map(s => [s, s])].forEach(([val, label]) => {
     const chip = document.createElement('div');
     chip.className = 'tp-chip' + (val === '' ? ' tp-none' : '') + (keyword === val ? ' cur' : '');
     chip.textContent = label;
@@ -4916,7 +5075,7 @@ function checkSlash(content, nodeId) {
   const trigger = m[2];
   const query = m[3].toLowerCase();
   const slashOffset = pos - query.length - 1;
-  const pool = trigger === '@' ? INSERT_CMDS : BLOCK_CMDS;
+  const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
   const matches = pool.filter(c =>
     c.id.startsWith(query) || c.label.toLowerCase().includes(query)
   );
@@ -5316,6 +5475,17 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.vars ||= []).push(v);
         applyInlineInsertion(nodeId, offset, `[[var:${v.key}]]`);
+      },
+    });
+  } else if (id === 'sequence') {
+    openSeqDialog({
+      title: 'Declare sequence',
+      submitLabel: 'Insert',
+      onResult: r => {
+        const n = nodeById(nodeId); if (!n) return;
+        const rec = { key: seqKey(), ...r };
+        (n.seq ||= []).push(rec);
+        applyInlineInsertion(nodeId, offset, `[[seq:${rec.key}]]`);
       },
     });
   } else if (id === 'footnote') {
@@ -6767,6 +6937,76 @@ function pruneVars(node) {
   node.vars = node.vars.filter(v => node.text.includes(`[[var:${v.key}]]`));
 }
 
+// ─── sequence pill + dialog (declaring a state set; parallels @var) ───────────
+
+function seqKey() { return 'q' + Math.random().toString(36).slice(2, 9); }
+
+function pruneSeqs(node) {
+  if (!node.seq?.length) return;
+  node.seq = node.seq.filter(q => node.text.includes(`[[seq:${q.key}]]`));
+}
+
+// Re-serialize a sequence record's states back to the "A B | C" definition form
+// (the dialog's editable representation; doneFrom is the pipe position).
+function seqDefString(sq) {
+  return sq.states.slice(0, sq.doneFrom).join(' ') + ' | ' + sq.states.slice(sq.doneFrom).join(' ');
+}
+
+function renderSeqPill(key, sq) {
+  if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}">⇶ ?</span>`;
+  const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
+    + '<span class="seq-pipe">|</span>'
+    + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
+  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" title="Sequence ${escQ(sq.name)} — click to edit">`
+    + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
+    + `<span class="seq-name">${escHtml(sq.name)}</span>`
+    + `<span class="seq-states">${states}</span>`
+    + `</span>`;
+}
+
+// Declare/edit dialog on the shared openInsertDialog harness. Validation and the
+// live preview both run through parseSequence — the dialog can't write garbage.
+function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-list-check', fb: '⇶' },
+    title,
+    submitLabel,
+    fields: [
+      { key: 'name', label: 'Name', placeholder: 'e.g. Flow, Pipeline, Review', value: name, required: true,
+        hint: 'Shown in the / menu as this sequence\'s section.' },
+      { key: 'def', label: 'States (active | done)', placeholder: 'BACKLOG DOING | SHIPPED', value: def, required: true,
+        preview: (v) => {
+          const p = parseSequence(v);
+          if (!p) return '<span class="io-preview-bad">Need states on both sides of one “|” (e.g. BACKLOG DOING | SHIPPED)</span>';
+          return p.states.map((st, i) =>
+            `<span class="todo-state${i >= p.doneFrom ? ' todo-state-isdone' : ''}">${escHtml(st)}</span>`).join(' ');
+        },
+        hint: 'States left of the | are active; right of it count as done (strikethrough / hide-done).' },
+    ],
+    validate: (v) => !!v.name && !!parseSequence(v.def),
+    onSubmit: (v) => {
+      const p = parseSequence(v.def);
+      if (!p) return;
+      onResult({ name: v.name, states: p.states, doneFrom: p.doneFrom });
+    },
+  });
+}
+
+function editSeq(node, key) {
+  const sq = node?.seq?.find(x => x.key === key);
+  if (!sq) return;
+  openSeqDialog({
+    title: 'Edit sequence',
+    submitLabel: 'Save',
+    name: sq.name, def: seqDefString(sq),
+    onResult: (result) => {
+      Object.assign(sq, result);
+      markDirty();
+      repaintNodeContent(node);
+    },
+  });
+}
+
 // Math chips: constants + operators that are tedious to type, plus the most
 // common functions with a placeholder so the user types straight through.
 const MATH_CHIPS = [
@@ -8137,11 +8377,15 @@ async function writeH(h) {
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
 function flattenArtifacts(text, node, varMap) {
-  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var|grammar):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
     type = type.toLowerCase();
     if (type === 'grammar') {
       const g = node.grammar?.find(x => x.key === key); if (!g) return '';
       return g.result;
+    }
+    if (type === 'seq') {
+      const sq = node.seq?.find(x => x.key === key); if (!sq) return '';
+      return `${sq.name}: ${seqDefString(sq)}`;
     }
     if (type === 'dice') {
       const d = node.dice?.find(x => x.key === key); if (!d) return '';
