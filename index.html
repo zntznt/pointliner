@@ -243,6 +243,20 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-col-btn:hover,.mt-col-btn:focus-visible{background:var(--hbg);color:var(--fg)}
 @media(hover:none){.mt-col-btn{opacity:1}}
 @media(prefers-reduced-motion:reduce){.mt-col-btn{transition:none}}
+/* column resize grip: a thin strip straddling the column's right border. The 2px
+   visual cue shows on hover; the grab zone is wider for easy targeting. The Column
+   menu's Width presets are the keyboard/touch door (fine px control is mouse-only,
+   mirroring drag-reorder vs the menu's Move). */
+.mt-col-resize{position:absolute;top:0;right:-5px;width:11px;height:100%;z-index:4;cursor:col-resize;touch-action:none}
+.mt-col-resize::after{content:'';position:absolute;top:2px;bottom:2px;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .12s}
+.mt-colh:hover .mt-col-resize::after{background:var(--bdr)}
+.mt-col-resize:hover::after{background:var(--acc)}
+body.mt-resizing{cursor:col-resize}
+body.mt-resizing,body.mt-resizing *{user-select:none}
+/* touch has no hover/mouse-drag — the grip can't work there; route to the Column
+   menu's Width presets (always-visible on touch) instead of showing a dead handle. */
+@media(hover:none){.mt-col-resize{display:none}}
+@media(prefers-reduced-motion:reduce){.mt-col-resize::after{transition:none}}
 /* add-column: full-height "+" at the right edge (Notion-style, non-clipped, reveal on hover) */
 .mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
 .mt-addcol-cell{position:relative;padding:0;width:26px;border:none}
@@ -2118,6 +2132,7 @@ function toOpml(r) {
       n.math?.length     ? `_math="${ex(JSON.stringify(n.math))}"` : '',
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
+      n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       `_id="${n.id}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -2158,6 +2173,9 @@ function fromOpml(xml) {
       grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
+    // Base column widths (px|null): only attach when present, so non-bases stay clean.
+    const colwAttr = el.getAttribute('_colw');
+    if (colwAttr) { try { const a = JSON.parse(colwAttr); if (Array.isArray(a)) n.colW = a; } catch(_) {} }
     // Legacy migration: convert old [[varref:KEY]] tokens to display-only [[var:KEY]] records
     const legacyVarrefs = el.getAttribute('_varrefs');
     if (legacyVarrefs) {
@@ -2635,9 +2653,20 @@ function olNum(node, parent) {
 let mtSel = null;   // rectangular cell selection { nodeId, r0,c0, r1,c1 }
 let mtDrag = null;  // in-flight range-select gesture
 let mtReorder = null; // { kind:'col'|'row', from }
+let mtColResize = null; // in-flight column-resize gesture { nodeId, c, startX, startW }
 let mtGlobalInit = false;
 let mtNavSel = null;        // cell whose full selection came from navigation (suppresses the selection toolbar)
 let mtPointerFocus = false; // next cell focusin came from a pointer press (keep the click caret, no select-all)
+
+// Column width is a base view-property (node.colW: [px|null]) — markdown pipe-tables
+// have no width syntax, so it rides the node like the artifact sidecars, NOT node.text.
+// null/undefined = auto-size (the default). Pure so the bounds can be pinned in tests.
+const MIN_COL_W = 56, MAX_COL_W = 900;
+function clampColW(w) {
+  w = Math.round(+w);
+  if (!Number.isFinite(w)) return null;
+  return Math.max(MIN_COL_W, Math.min(MAX_COL_W, w));
+}
 
 function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${id}"]`); }
 // Cell-scope mdInline: set the node's artifact sidecars as the render context so
@@ -2816,6 +2845,7 @@ function mtInsertCol(node, colIdx, side) {
   const at = side === 'left' ? colIdx : colIdx + 1;
   m.aligns.splice(at, 0, null);
   m.rows.forEach(r => r.splice(at, 0, ''));
+  if (node.colW) node.colW.splice(at, 0, null); // keep widths aligned to columns
   mtCommit(node, m); refreshTable(node);
 }
 function mtMoveCol(node, colIdx, dir) {
@@ -2824,6 +2854,7 @@ function mtMoveCol(node, colIdx, dir) {
   if (to < 0 || to >= m.aligns.length) return;
   mtMoveItem(m.aligns, colIdx, to);
   m.rows.forEach(r => mtMoveItem(r, colIdx, to));
+  if (node.colW) mtMoveItem(node.colW, colIdx, to);
   mtCommit(node, m); refreshTable(node);
 }
 function mtDeleteCol(node, colIdx) {
@@ -2831,7 +2862,24 @@ function mtDeleteCol(node, colIdx) {
   if (m.aligns.length <= 1) return;
   m.aligns.splice(colIdx, 1);
   m.rows.forEach(r => r.splice(colIdx, 1));
+  if (node.colW) node.colW.splice(colIdx, 1);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
+}
+// Set (or clear, with w=null) a column's pinned width and re-render the grid.
+function mtSetColWidth(node, colIdx, w) {
+  const cw = (w == null) ? null : clampColW(w);
+  if (!node.colW) { if (cw == null) return; node.colW = []; }
+  node.colW[colIdx] = cw;
+  if (node.colW.every(x => x == null)) node.colW = undefined; // all auto → drop it
+  markDirty(); refreshTable(node);
+}
+// Live width during a drag: paint every cell in the column without a rebuild
+// (commit to node.colW + refresh happens on mouseup).
+function mtApplyColWidthLive(host, c, w) {
+  host.querySelectorAll(`.mt-cell[data-c="${c}"]`).forEach(cell => {
+    cell.style.boxSizing = 'border-box';
+    cell.style.width = cell.style.minWidth = cell.style.maxWidth = w + 'px';
+  });
 }
 
 function hideColPanel() {
@@ -2878,6 +2926,12 @@ function showColPanel(node, colIdx, anchorEl) {
   addSection('Alignment', true);
   [['left','Left'],['center','Center'],['right','Right']]
     .forEach(([al, label]) => addItem(label, { active: al === curAlign, onApply: () => mtSetAlign(node, colIdx, al) }));
+
+  addSection('Width', true);
+  const curW = node.colW && node.colW[colIdx];
+  addItem('Fit to content', { active: curW == null, onApply: () => mtSetColWidth(node, colIdx, null) });
+  [['Narrow',96],['Medium',160],['Wide',260]]
+    .forEach(([label, w]) => addItem(label, { active: curW === w, onApply: () => mtSetColWidth(node, colIdx, w) }));
 
   addSection('Insert column', true);
   addItem('Insert left',  { onApply: () => mtInsertCol(node, colIdx, 'left') });
@@ -2967,6 +3021,14 @@ function buildTableWidget(node, readOnly) {
   const nc = model.aligns.length;
   const aCls = a => a==='center'?' mt-a-center':a==='right'?' mt-a-right':'';
   const ro = readOnly ? '' : ' contenteditable="true"';
+  // Pin sized columns: width+min+max all = W overrides the default 64–340 auto range
+  // (applied to every cell in the column so the column holds its width in auto layout).
+  const colStyle = c => {
+    const w = node.colW && node.colW[c];
+    // border-box so the pinned px == measured (getBoundingClientRect) width — the
+    // drag measures border-box, so set border-box too or presets/drag drift by ~25px.
+    return (w > 0) ? ` style="box-sizing:border-box;width:${w}px;min-width:${w}px;max-width:${w}px"` : '';
+  };
   // Pre-compute which cells are formula-driven so they render read-only + Σ-tagged.
   const computedCells = new Set();
   if (!readOnly) {
@@ -2995,17 +3057,17 @@ function buildTableWidget(node, readOnly) {
     // rows) so the "+" is a full-height, non-clipped right-edge affordance.
     const addColSpan = model.rows.length + 1;
     h += '<tr class="mt-tophandles"><th class="mt-corner"></th>';
-    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" title="Column options" aria-haspopup="menu">▾</button></th>`;
+    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" title="Column options" aria-haspopup="menu">▾</button><span class="mt-col-resize" data-c="${c}" title="Drag to resize · double-click to auto-fit"></span></th>`;
     h += `<th class="mt-addcol-cell" rowspan="${addColSpan}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th></tr>`;
   }
   h += '<tr class="mt-headrow" data-r="0">';
   if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
-  for (let c=0;c<nc;c++) { const ch0=computedCells.has('0,'+c); h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${ch0?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[0][c]||'')}</th>`; }
+  for (let c=0;c<nc;c++) { const ch0=computedCells.has('0,'+c); h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${colStyle(c)}${ch0?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[0][c]||'')}</th>`; }
   h += '</tr>';
   for (let r=1;r<model.rows.length;r++) {
     h += `<tr data-r="${r}">`;
     if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
-    for (let c=0;c<nc;c++) { const cc=computedCells.has(r+','+c); h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`; }
+    for (let c=0;c<nc;c++) { const cc=computedCells.has(r+','+c); h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`; }
     h += '</tr>';
   }
   if (!readOnly) h += `<tr class="mt-addrow-row"><th></th><td class="mt-addrow-cell" colspan="${nc}"><button class="mt-addrow">+ Add row</button></td><td></td></tr>`;
@@ -3065,7 +3127,7 @@ function buildTableWidget(node, readOnly) {
       return;
     }
     if (e.target.closest('.mt-addcol')) {
-      const m = mtModel(node); m.aligns.push(null); m.rows.forEach(r => r.push('')); mtCommit(node,m); refreshTable(node);
+      const m = mtModel(node); m.aligns.push(null); m.rows.forEach(r => r.push('')); if (node.colW) node.colW.push(null); mtCommit(node,m); refreshTable(node);
     } else if (e.target.closest('.mt-addrow')) {
       const m = mtModel(node); m.rows.push(Array(m.aligns.length).fill('')); mtCommit(node,m); refreshTable(node);
     } else if (e.target.closest('.mt-delrow')) {
@@ -3073,10 +3135,25 @@ function buildTableWidget(node, readOnly) {
       if (m.rows.length > 2 && r >= 1) { m.rows.splice(r,1); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
     }
   });
+  // column resize: drag the right-edge grip; double-click it to auto-fit (clear width)
+  host.addEventListener('mousedown', e => {
+    const grip = e.target.closest('.mt-col-resize'); if (!grip) return;
+    e.preventDefault(); e.stopPropagation();
+    const c = +grip.dataset.c;
+    const headCell = host.querySelector(`.mt-cell[data-r="0"][data-c="${c}"]`);
+    const startW = Math.round(headCell?.getBoundingClientRect().width || node.colW?.[c] || 120);
+    mtColResize = { nodeId: node.id, c, startX: e.clientX, startW };
+    document.body.classList.add('mt-resizing');
+  });
+  host.addEventListener('dblclick', e => {
+    const grip = e.target.closest('.mt-col-resize'); if (!grip) return;
+    e.preventDefault(); e.stopPropagation();
+    mtSetColWidth(node, +grip.dataset.c, null); // auto-fit = clear the pinned width
+  });
   // (alignment now lives in the Column panel — the hidden double-click cycle is gone)
-  // drag-reorder rows / columns via handle drag (▾ button is not a drag handle)
+  // drag-reorder rows / columns via handle drag (▾ button + resize grip are not drag handles)
   host.addEventListener('dragstart', e => {
-    if (e.target.closest('.mt-col-btn')) { e.preventDefault(); return; }
+    if (e.target.closest('.mt-col-btn') || e.target.closest('.mt-col-resize')) { e.preventDefault(); return; }
     const ch = e.target.closest('.mt-colh'), rh = e.target.closest('.mt-rowh');
     if (ch) mtReorder = { kind:'col', from:+ch.dataset.c };
     else if (rh && rh.dataset.r) mtReorder = { kind:'row', from:+rh.dataset.r };
@@ -3098,7 +3175,7 @@ function buildTableWidget(node, readOnly) {
     const m = mtModel(node);
     if (mtReorder.kind==='col') {
       const ch = e.target.closest('.mt-colh');
-      if (ch) { const to=+ch.dataset.c; mtMoveItem(m.aligns, mtReorder.from, to); m.rows.forEach(r => mtMoveItem(r, mtReorder.from, to)); mtCommit(node,m); }
+      if (ch) { const to=+ch.dataset.c; mtMoveItem(m.aligns, mtReorder.from, to); m.rows.forEach(r => mtMoveItem(r, mtReorder.from, to)); if (node.colW) mtMoveItem(node.colW, mtReorder.from, to); mtCommit(node,m); }
     } else {
       const rh = e.target.closest('.mt-rowh');
       if (rh && rh.dataset.r) { mtMoveItem(m.rows, mtReorder.from, +rh.dataset.r); mtCommit(node,m); }
@@ -3208,6 +3285,14 @@ function buildTableWidget(node, readOnly) {
 function mtInitGlobal() {
   if (mtGlobalInit) return; mtGlobalInit = true;
   document.addEventListener('mousemove', e => {
+    if (mtColResize) {
+      const host = mtHost(mtColResize.nodeId); if (!host) return;
+      if (Math.abs(e.clientX - mtColResize.startX) > 1) mtColResize.moved = true;
+      const w = clampColW(mtColResize.startW + (e.clientX - mtColResize.startX));
+      mtApplyColWidthLive(host, mtColResize.c, w);
+      e.preventDefault();
+      return;
+    }
     if (!mtDrag) return;
     const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.mt-cell');
     if (!cell || cell.closest('.md-table-host')?.dataset.id !== mtDrag.nodeId) return;
@@ -3222,7 +3307,17 @@ function mtInitGlobal() {
     mtApplySelection();
     e.preventDefault();
   });
-  document.addEventListener('mouseup', () => { mtDrag = null; });
+  document.addEventListener('mouseup', e => {
+    if (mtColResize) {
+      const { nodeId, c, startX, startW, moved } = mtColResize;
+      mtColResize = null;
+      document.body.classList.remove('mt-resizing');
+      // Only commit (and rebuild) on an actual drag. A no-move press is a click —
+      // leaving the DOM intact lets a double-click (auto-fit) land on the same element.
+      if (moved) { const node = nodeById(nodeId); if (node) mtSetColWidth(node, c, clampColW(startW + (e.clientX - startX))); }
+    }
+    mtDrag = null;
+  });
   // clear selection when clicking outside any table
   document.addEventListener('mousedown', e => {
     if (mtSel && !e.target.closest('.md-table-host')) mtClearSelection();
