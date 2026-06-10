@@ -1081,3 +1081,75 @@ test('todo: todoSortKey + compareTodo (not-done before done, A<B<C<none)', () =>
   assert.deepEqual(items.slice().sort(compareTodo),
     ['NEXT [#A] hot', 'TODO [#C] low', 'plain note', 'DONE done it']);
 });
+
+// ── markdown-first to-dos: type/checked DERIVE from the text ───────────────────
+// (only `paragraph` and `base` are special node types; a to-do is its markdown)
+
+test('todo derive: deriveTypeFromText knows both to-do forms (and stays strict)', () => {
+  assert.equal(c.deriveTypeFromText('- [ ] buy milk'), 'todo');   // task form
+  assert.equal(c.deriveTypeFromText('- [x] done it'),  'todo');
+  assert.equal(c.deriveTypeFromText('- [ ] '),         'todo');   // Enter-continuation stub
+  assert.equal(c.deriveTypeFromText('TODO write'),     'todo');   // keyword form
+  assert.equal(c.deriveTypeFromText('WAITING [#A] x'), 'todo');
+  assert.equal(c.deriveTypeFromText('- plain item'),   null);     // plain list ≠ todo
+  assert.equal(c.deriveTypeFromText('TODOx not a kw'), null);     // keyword needs a boundary
+  assert.equal(c.deriveTypeFromText('# heading'),      'h1');     // existing derivations intact
+  assert.equal(c.deriveTypeFromText('> quote'),        'quote');
+});
+
+test('todo derive: todoDoneFromText — keyword wins; task form completes as a whole', () => {
+  assert.equal(c.todoDoneFromText('DONE shipped'), true);
+  assert.equal(c.todoDoneFromText('TODO open'),    false);
+  assert.equal(c.todoDoneFromText('- [x] single'), true);
+  assert.equal(c.todoDoneFromText('- [ ] single'), false);
+  assert.equal(c.todoDoneFromText('- [x] a\n- [ ] b'), false); // checklist not complete
+  assert.equal(c.todoDoneFromText('- [x] a\n- [x] b'), true);  // all checked → done
+  assert.equal(c.todoDoneFromText('plain text'),   false);
+  assert.equal(c.todoDoneFromText('DONE - [ ] composed'), true); // keyword wins over markers
+});
+
+test('todo: continuationPrefix — Enter continues the format by writing markdown', () => {
+  assert.equal(c.continuationPrefix('- [ ] buy milk'), '- [ ] ');
+  assert.equal(c.continuationPrefix('- [x] done it'),  '- [ ] '); // new task starts unchecked
+  assert.equal(c.continuationPrefix('TODO write'),     'TODO ');  // same keyword continues
+  assert.equal(c.continuationPrefix('WAITING [#A] x'), 'WAITING ');
+  assert.equal(c.continuationPrefix('DONE shipped'),   'TODO ');  // DONE restarts as TODO
+  assert.equal(c.continuationPrefix('> a quote'),      '> ');     // quotes continue too
+  assert.equal(c.continuationPrefix('plain text'),     '');       // no aid outside a format
+  assert.equal(c.continuationPrefix('# heading'),      '');       // headings don't continue
+});
+
+test('todo render: `- [ ]` text renders exactly ONE checkbox via mdToHtml (no rail twin)', () => {
+  const open = c.mdToHtml('- [ ] buy milk');
+  assert.equal((open.match(/md-task-check/g) || []).length, 1);
+  assert.ok(!open.includes('checked'));
+  const done = c.mdToHtml('- [x] done it');
+  assert.equal((done.match(/md-task-check/g) || []).length, 1);
+  assert.ok(done.includes('checked'));
+});
+
+test('todo: migrateTodoText — legacy type-only todos get the marker written in', () => {
+  assert.equal(c.migrateTodoText('buy milk', false), '- [ ] buy milk');
+  assert.equal(c.migrateTodoText('done it', true),   '- [x] done it');
+  assert.equal(c.migrateTodoText('- [ ] already', false), '- [ ] already'); // self-consistent → untouched
+  assert.equal(c.migrateTodoText('TODO already', true),   'TODO already');  // keyword form → untouched
+});
+
+test('todo: textForDisplay strips the task marker and keyword for breadcrumb/search', () => {
+  assert.equal(c.textForDisplay({ type: 'todo', text: '- [ ] buy milk' }), 'buy milk');
+  assert.equal(c.textForDisplay({ type: 'todo', text: 'WAITING [#A] call' }), 'call');
+  assert.equal(c.textForDisplay({ type: 'todo', text: '- [x] TODO composed' }), 'composed');
+  assert.equal(c.textForDisplay({ type: 'h1', text: '# Title' }), 'Title'); // block prefixes intact
+  assert.equal(c.textForDisplay({ type: 'ul', text: 'plain' }), 'plain');
+});
+
+test('todo OPML: derived type+checked round-trip through _type/_checked attributes', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('- [x] shipped', 'todo');
+  n.checked = c.todoDoneFromText(n.text);
+  root.children.push(n);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_type="todo"'));
+  assert.ok(xml.includes('_checked="true"'));
+  assert.ok(xml.includes('- [x] shipped')); // the markdown is the stored source of truth
+});

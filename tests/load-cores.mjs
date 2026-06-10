@@ -150,6 +150,8 @@ export function loadCores() {
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
     'setTodoState','setTodoPriority',
+    'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
+    'migrateTodoText','textForDisplay',
   ];
   const cores = {};
   const missing = [];

@@ -20,6 +20,8 @@ Read alongside: `ux-discipline.md` (the binding UX standard — vocabulary + pri
 - **MUST NOT:** add new special-case render paths that make a markdown construct depend on a node type to appear. If a construct is markdown, it renders from the markdown.
 - **Exception:** no markdown table renders *inside* a table cell (cells are single-line; nested tables are out).
 
+**The markdown-first node model (binding).** Only **`paragraph`** and **`base`** are special node types — paragraph for its Enter-behavior inversion, base for its structured grid object. **Everything else** — headings, quotes, code, lists, dividers, and **to-dos** — renders from the markdown in `node.text` via `mdToHtml`. `node.type` may remain a **derived hint** computed from the text (`deriveTypeFromText`) for bullet-dimming, the type-switcher, and OPML round-trip, but it is **not** the source of truth and **not** the renderer. To-dos conform since the UXP-24 fix: to-do-ness derives from the text (a `- [ ]` task marker or an Org `TODO|NEXT|WAITING|DONE` keyword), the checkbox/badge renders from that text, and the `/todo`–`/state:` commands and Enter-continuation are **helpers that write the markdown** — never type-setters. Slash commands format the whole node's markdown; pressing Enter inside a formatted node continues the format on the next node by writing its prefix (`- [ ] `, the keyword, `> `). The remaining type-driven stragglers (`ol` ordinals, `divider`, whole-node italic/underline flags) are tracked as UXP-25…27.
+
 ---
 
 ## 2. A base and its views — the object/view split
