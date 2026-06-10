@@ -150,15 +150,16 @@ canonical shape:
   bullet-dimming, OPML round-trip and the type-switcher — but the **visual comes
   from the markdown element `mdToHtml` emits**, so a `#`/`>` on line 2+ formats
   too. **To-dos derive the same way**: a node is a to-do because its text says so —
-  task form (first line `- [ ]`/`- [x]`, checkbox via the md-task path) or Org
-  keyword form (`TODO|NEXT|WAITING|DONE [#A]` at the start, badge + priority chip)
+  task form (first line `- [ ]`/`- [x]`, checkbox via the md-task path) or status
+  keyword form (`#TODO|#NEXT|#WAITING|#DONE [#A]` at the start — note the `#` prefix,
+  which reuses the hashtag sigil; bare `TODO` without `#` is plain text, never a badge)
   — and `node.checked` is a derived cache (`todoDoneFromText`: keyword DONE, or
   every task marker checked). `/todo` and `/state:KW` are **markdown-writing
   helpers**, and Enter inside a formatted node continues the format by writing the
-  prefix into the new sibling (`continuationPrefix`: `- [ ] `, the same keyword
-  with DONE→TODO, `> ` for quotes) — never by setting a type flag. Legacy
-  `_type="todo"` nodes are migrated on load (`migrateTodoText`, in
-  `migrateNodePrefixes`). `textForDisplay()` (prefix-, marker- and keyword-
+  prefix into the new sibling (`continuationPrefix`: `- [ ] `, `#KEYWORD` with
+  `#DONE→#TODO`, `> ` for quotes) — never by setting a type flag. Legacy
+  `_type="todo"` nodes and bare-keyword saves (`TODO body`) are migrated on load
+  (`migrateTodoText` / `migrateBareKeywords` pre-pass, both in `migrateNodePrefixes`). `textForDisplay()` (prefix-, marker- and keyword-
   stripped) is used for breadcrumb/search, not for the main render; to-do exports
   emit the raw text since it carries its own marker. Remaining type-driven
   stragglers (`ol` ordinals, `divider`, whole-node italic/underline) are tracked
@@ -423,12 +424,12 @@ Math (incl. unit conversion + date math) · Variables · Typed shorthand · Foot
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit ·
-TODO states + priorities (Org headline style: `TODO [#A] body`, keyword in `node.text`;
-to-do-ness fully derives from the text — task marker or keyword — see the node model above) ·
-Sequences (user-definable state sets generalizing the to-do keywords: the built-in
-`TODO NEXT WAITING | DONE` is the default sequence; `@sequence` declares a `[[seq:key]]`
-pill + `node.seq` sidecar, `collectSequences` indexes them document-wide, `/` applies a
-state, and done-ness = the keyword sits right of its sequence's `|`).
+Status states + priorities (`#TODO [#A] body` — the `#` prefix reuses the hashtag sigil;
+bare `TODO` without `#` is plain text; to-do-ness fully derives from the text — task marker
+or `#keyword` — see the node model above) ·
+Sequences (user-definable state sets: the built-in `TODO NEXT WAITING | DONE` is the default;
+`@sequence` declares a `[[seq:key]]` pill + `node.seq` sidecar; `/` applies any state as
+`#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

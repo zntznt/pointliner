@@ -110,15 +110,18 @@ Implemented:
   (bullet, links, pills, checkboxes, hashtags, footnote refs, table widgets) keep their own
   behavior, and shift-click still range-selects. Navigating into a node places the caret at
   the end.
-- **TODO states + priorities** — Org-style keyword + `[#A]` priority at the **start of
-  `node.text`** (headline style: `TODO [#A] body`). No new node field, no OPML attribute —
-  keyword + priority are plain text and round-trip for free. States: `TODO / NEXT / WAITING /
-  DONE` (done = `DONE`); priorities: `A / B / C`.
+- **Status states + priorities** — `#STATUS` keyword + `[#A]` priority at the **start of
+  `node.text`** (headline style: `#TODO [#A] body`). The `#` reuses the existing hashtag
+  sigil — no new delimiter. Bare `TODO` without `#` is plain text, never a badge. `#word`
+  that is not a known state is a normal clickable hashtag. No new node field, no OPML
+  attribute — keyword + priority are plain text and round-trip for free. States:
+  `#TODO / #NEXT / #WAITING / #DONE` (done = `#DONE`); priorities: `A / B / C`.
+  Old saves (bare `TODO body` form) are migrated to `#TODO body` on load.
   - **Done-ness derived from keyword:** `node.checked = todoIsDone(keyword)`, so the existing
     strikethrough (`.nt-todo.checked`) and the **hide-done filter (with the show-done toggle)
     keep working unchanged** — completed items hiding is a deliberate, load-bearing feature.
-  - **Checkbox ⇄ keyword:** when a keyword is present, ticking the checkbox sets `DONE` (the
-    item then hides until show-done); unticking steps back to `WAITING`. No keyword → legacy
+  - **Checkbox ⇄ keyword:** when a keyword is present, ticking the checkbox sets `#DONE` (the
+    item then hides until show-done); unticking steps back to `#WAITING`. No keyword → legacy
     boolean behavior.
   - **Changing state — two easy paths (no modifier chords):**
     - **Click-choose:** clicking the colored state badge (or priority chip) opens a compact
@@ -128,10 +131,10 @@ Implemented:
       ("Set state / priority…"), so it works on touch too. The picker reuses the `#bpop`
       element.
     - **Typing:** in edit mode the keyword is plain editable text at the line start, so just
-      type `TODO `/`NEXT `/`WAITING `/`DONE ` (or edit/delete it) — it renders as a badge on
-      exit and `checked` re-derives. Slash entries `/todo` `/next` `/waiting` `/done` make it
-      discoverable; they also convert a non-todo node to a todo with that keyword.
-  - **Display:** state badge (one accent for `TODO`/`NEXT`/`WAITING`, muted for `DONE`) +
+      type `#TODO `/`#NEXT `/`#WAITING `/`#DONE ` (or edit/delete it) — it renders as a badge
+      on exit and `checked` re-derives. Slash entries `/todo` `/next` `/waiting` `/done` make
+      it discoverable; they also convert a non-todo node to a todo with that keyword.
+  - **Display:** state badge (one accent for `#TODO`/`#NEXT`/`#WAITING`, muted for `#DONE`) +
     `[#A]` priority chip, injected at the start of the rendered body; the body renders as
     normal markdown. Edit mode shows keyword + priority as plain text (never atomic pills).
   - **Sort children:** bullet menu → "Sort children by state/priority" sorts children using
@@ -140,12 +143,12 @@ Implemented:
     `TODO NEXT WAITING | DONE` is now the *default sequence*; declare your own with
     `@sequence` (name + states, e.g. `Flow: BACKLOG DOING | SHIPPED`) — a `[[seq:key]]`
     pill + `node.seq` sidecar, document-wide via `collectSequences` (cached on `_varsVer`),
-    OPML `_seq`. Apply states via `/` (one menu section per sequence) or by typing the
-    keyword; the badge renders for any state of any sequence, the badge→picker offers the
-    node's sequence's states, and done-ness derives from the keyword's side of the `|`
-    (right = done — strikethrough / hide-done / sort all honor it). Keyword collisions:
-    first sequence wins (default first). NO new syntax: `@` declares, `/` applies, the
-    keyword sits in `node.text` exactly like `TODO`.
+    OPML `_seq`. Apply states via `/` (one menu section per sequence) or by typing `#KEYWORD`;
+    the badge renders for any state of any sequence, the badge→picker offers the node's
+    sequence's states, and done-ness derives from the keyword's side of the `|` (right = done
+    — strikethrough / hide-done / sort all honor it). Keyword collisions: first sequence wins
+    (default first). The `#` prefix is the only syntax addition: `@` declares, `/` applies,
+    `#KEYWORD` sits in `node.text`.
   - **Not included (future work):** state *cycling* (advance-to-next) for custom sequences,
     per-item sequence switching beyond `/`+typing, priority `[#A]` semantics per sequence,
     inline `{}` reference of a sequence, `CANCELLED` in the default set, logbook /
