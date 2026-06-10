@@ -100,6 +100,26 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 - **Violated:** P4 (no silent failure — a destructive action must never quietly discard the user's content).
 - **Resolved (this PR, Bases PR 2a):** the rename `table` → **base** replaces that branch with `createBaseAt`, which is **non-destructive** via the pure `planBaseConvert`: an **empty** point becomes the base in place; a **content-bearing** point keeps its text as its own point and the base is inserted as the **next sibling** — text is *never* overwritten. The op is wrapped in `pushUndo()`. Pinned by `planBaseConvert` tests and confirmed by ephemeral browser verification (content preserved on convert).
 
+### UXP-24 ✓ To-do rendered from the type flag, not the markdown (markdown-first) — **RESOLVED**
+- **Problem:** `node.type === 'todo'` was an independent renderer: the checkbox came from the type (a rail `<input>` in the bullet), not from the text. Enter-inheriting a to-do produced `type='todo'` with **no `- [ ]` in the text** — a checkbox with no source, nothing to edit; typing `- [ ]` then **double-rendered** (rail checkbox + md-task checkbox); a `TODO`/`WAITING` keyword typed in a *plain* node rendered **no badge** because the badge was type-gated. Identical text rendered differently depending on an invisible flag.
+- **Violated:** P1 (same text, different render), P2 (the markdown-first baseline, `bases-direction.md` §1 — same family as UXP-22).
+- **Resolved (this PR):** to-do-ness now **derives from the text** — task form (first line `- [ ]`/`- [x]`) or Org keyword form (`TODO|NEXT|WAITING|DONE [#A]`). The rail checkbox is **removed**; the checkbox renders from the markdown via the existing md-task path, and the keyword badge renders for **any** node whose text starts with a keyword. `node.type='todo'` and `node.checked` are **derived hints** (`deriveTypeFromText`, `todoDoneFromText`) like headings. `/todo` and `/state:KW` are **markdown-writing helpers**; Enter is a **format-continuation aid** (`continuationPrefix` writes `- [ ] ` / the same keyword, DONE→TODO / `> ` for quotes). Legacy `_type="todo"` nodes are migrated on load (`migrateTodoText`). Pinned in `tests/test.mjs`.
+
+### UXP-25 ☐ `ol` ordinals render from the type, not the text (markdown-first)
+- **Problem:** a numbered point's ordinal comes from `node.type === 'ol'` + sibling position; the text carries no `1.` — the same type-as-renderer pattern UXP-24 just retired for to-dos.
+- **Violates:** P1/P2 (markdown-first node model — only `paragraph` and `base` are special types).
+- **Target:** list-ness derives from the text; the type stays a derived hint. (Auto-renumbering is the design question to solve first.)
+
+### UXP-26 ☐ `divider` is type-only and destroys its text
+- **Problem:** typing `---` converts immediately (`checkMdBlockPrefix`) and **clears `node.text`** — the one block whose markdown trace is erased; the render then depends wholly on the type flag.
+- **Violates:** P1/P2 (markdown-first), P4-adjacent (the typed source is silently discarded).
+- **Target:** `---` stays in the text (mdToHtml already renders `<hr>` from it); the type stays a derived hint.
+
+### UXP-27 ☐ Whole-node `italic`/`underline` flags live outside the text
+- **Problem:** `node.italic`/`node.underline` are per-node formatting booleans (`nc-italic`/`nc-underline` CSS) with no markdown trace — formatting state the text can't express or round-trip.
+- **Violates:** P2/P5 (formatting belongs in the one markdown language: `*…*`, etc.).
+- **Target:** retire the flags in favor of inline markdown (with an OPML migration), or document them as a sanctioned exception.
+
 ## Tier 3 — Accessibility conformance (additive; sequenced in `accessibility.md`)
 
 These are **not new tickets** — they are the standard's P3 requirements mapped onto the existing accessibility phases, listed here so a11y is visible as part of the *one* conformance picture rather than a separate track. **Do not front-run the deferred items**; do satisfy the interim labels now.

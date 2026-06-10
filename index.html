@@ -173,7 +173,6 @@ body.base-zoom #outline{max-width:none}
    into — see `body.base-zoom`.) */
 .bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:var(--muted);transition:color .12s,transform .12s}
 .bullet-base:hover .bullet-base-ic{color:var(--acc);transform:scale(1.12)}
-.node-checkbox{width:13px;height:13px;cursor:pointer;accent-color:var(--acc);flex-shrink:0}
 
 /* node content */
 .node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
@@ -702,7 +701,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .collapse-btn{width:24px;height:30px;font-size:11px}
   .bullet{height:30px;padding:0 7px;gap:6px}
   .bullet-dot{width:8px;height:8px}
-  .node-checkbox,.md-task-check{width:20px;height:20px}
+  .md-task-check{width:20px;height:20px}
   .md-task{gap:.6em}
   /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
   .io-field input,.io-field textarea{font-size:16px}
@@ -864,8 +863,10 @@ function mkNode(text = '', type = 'ul') {
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
   // headings, dividers and tables don't propagate to a new sibling — a new
-  // point under a table should be a plain bullet, not another table widget
-  return ['h1','h2','h3','h4','h5','h6','divider','base'].includes(type) ? 'ul' : type;
+  // point under a table should be a plain bullet, not another table widget.
+  // To-dos and quotes don't propagate BY TYPE either: their continuation is
+  // text-driven (continuationPrefix writes the markdown; the type then derives).
+  return ['h1','h2','h3','h4','h5','h6','divider','base','todo','quote'].includes(type) ? 'ul' : type;
 }
 
 // Block types that store their markdown prefix in node.text
@@ -881,14 +882,24 @@ function deriveTypeFromText(text) {
   if (text.startsWith('# '))   return 'h1';
   if (text.startsWith('> '))   return 'quote';
   if (text.startsWith('```'))  return 'code';
+  // to-do: task form (`- [ ]` first line) or Org keyword form (TODO|NEXT|…).
+  // The type is a derived hint here exactly like headings — the markdown renders.
+  if (TASK_FIRST_RE.test(text) || TODO_KEYWORD_RE.test(text)) return 'todo';
   return null;
 }
 
-// Text shown in rendered (non-edit) view — block prefix stripped
+// Text shown in rendered (non-edit) view — block prefix stripped. Also strips a
+// leading task marker (`- [ ] `) and/or Org keyword (`TODO [#A] `) so breadcrumbs
+// and search show clean text. NOT used by the main render (mdToHtml gets raw text)
+// nor by todo exports (toMarkdown/toPlainText keep the marker from node.text).
 function textForDisplay(node) {
+  let t = node.text;
   const prefix = BLOCK_PREFIX_MAP[node.type];
-  if (prefix && node.text.startsWith(prefix)) return node.text.slice(prefix.length);
-  return node.text;
+  if (prefix && t.startsWith(prefix)) return t.slice(prefix.length);
+  t = t.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
+  const pt = parseTodo(t);
+  if (pt.keyword) t = pt.body;
+  return t;
 }
 
 // ─── TODO states & priorities (Org-style) ────────────────────────────────────
@@ -983,6 +994,49 @@ function setTodoPriority(text, priority) {
   return formatTodo({ keyword: t.keyword, priority: p, body: t.body });
 }
 
+// ── markdown-first to-do derivation (text is the source of truth) ────────────
+// A node IS a to-do when its TEXT says so, in one of two markdown forms:
+//   task form:    first line starts `- [ ]` / `- [x]` (GFM task item)
+//   keyword form: text starts `TODO|NEXT|WAITING|DONE` (+ optional `[#A]`)
+// node.type==='todo' and node.checked are DERIVED HINTS computed from these,
+// never independent state. Pure: no DOM.
+const TASK_FIRST_RE = /^[-*+]\s+\[[ xX]\](\s|$)/;   // first line is a task item
+function isTaskFirst(text) { return TASK_FIRST_RE.test(text == null ? '' : String(text)); }
+
+// Node-level done-ness from the text: keyword wins (DONE); otherwise a task-form
+// node is done when EVERY task marker in it is checked (a checklist completes as
+// a whole — a single `- [x]` is the common one-marker case).
+function todoDoneFromText(text) {
+  const s = text == null ? '' : String(text);
+  const t = parseTodo(s);
+  if (t.keyword) return todoIsDone(t.keyword);
+  if (!TASK_FIRST_RE.test(s)) return false;
+  const markers = s.match(/^\s*(?:[-*+]|\d+\.)\s+\[[ xX]\]/gm) || [];
+  return markers.length > 0 && markers.every(m => /\[[xX]\]$/.test(m));
+}
+
+// Format-continuation aid for Enter: the markdown PREFIX a new sibling should
+// start with so the format continues (a new to-do gets its `- [ ]`, a new quote
+// its `> `). Keyword form continues with the same keyword; DONE restarts as TODO
+// (the new task isn't done). '' = no aid — plain text, type the markdown yourself.
+function continuationPrefix(text) {
+  const s = text == null ? '' : String(text);
+  const t = parseTodo(s);
+  if (t.keyword) return (todoIsDone(t.keyword) ? 'TODO' : t.keyword) + ' ';
+  if (TASK_FIRST_RE.test(s)) return '- [ ] ';
+  if (s.startsWith('> ')) return '> ';
+  return '';
+}
+
+// Legacy migration: a `_type="todo"` node from before the markdown-first refactor
+// carried its to-do-ness in the type flag alone. Write the task marker into the
+// text so the node is self-consistent (runs once per load via migrateNodePrefixes).
+function migrateTodoText(text, checked) {
+  const s = text == null ? '' : String(text);
+  if (parseTodo(s).keyword || TASK_FIRST_RE.test(s)) return s;
+  return (checked ? '- [x] ' : '- [ ] ') + s;
+}
+
 // Render a whole-node code block (node.type === 'code'). The text is `\`\`\`` +
 // content; this strips an optional language token on the opening line and an
 // optional closing `\`\`\`` fence, so a pasted ```lang … ``` block renders cleanly
@@ -1012,12 +1066,12 @@ function renderContentHTML(node) {
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
   // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
   // Whole-node code blocks get their own fence-aware renderer.
-  // Todo nodes with a keyword: render keyword badge + priority chip as a display overlay,
-  // then render the body (without the keyword prefix) as normal markdown.
+  // An Org keyword at the start of the TEXT (markdown-first — no type gate): render
+  // keyword badge + priority chip, then the body (sans keyword) as normal markdown.
   let html;
   if (node.type === 'code') {
     html = codeNodeHTML(node);
-  } else if (node.type === 'todo') {
+  } else {
     const { keyword, priority, body } = parseTodo(node.text);
     if (keyword) {
       const kw = keyword.toLowerCase();
@@ -1030,8 +1084,6 @@ function renderContentHTML(node) {
     } else {
       html = mdToHtml(node.text);
     }
-  } else {
-    html = mdToHtml(node.text);
   }
   diceRenderList    = null;
   markovRenderList  = null;
@@ -1121,6 +1173,12 @@ function collectVars(rootNode) {
 function migrateNodePrefixes(n) {
   const prefix = BLOCK_PREFIX_MAP[n.type];
   if (prefix && !n.text.startsWith(prefix)) n.text = prefix + n.text;
+  // legacy `_type="todo"` carried to-do-ness in the type alone — write the marker
+  // into the text so the node is self-consistent, then re-derive the checked cache
+  if (n.type === 'todo') {
+    n.text = migrateTodoText(n.text, n.checked);
+    n.checked = todoDoneFromText(n.text);
+  }
   n.children.forEach(migrateNodePrefixes);
 }
 
@@ -3518,12 +3576,8 @@ function renderRow(r) {
     bullet.appendChild(dot);
   }
 
-  if (node.type === 'todo') {
-    const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.className = 'node-checkbox'; cb.checked = node.checked;
-    cb.addEventListener('change', () => toggleChecked(node.id, cb.checked));
-    bullet.appendChild(cb);
-  }
+  // (No rail checkbox — a to-do's checkbox renders from its `- [ ]` markdown in
+  // the content, via the same md-task path every task list already uses.)
 
   if (!opts.searchCtx) {
     // Bullet is a button that opens the point-actions menu (UXP-14). tabindex=-1 keeps
@@ -3535,7 +3589,6 @@ function renderRow(r) {
     bullet.setAttribute('aria-label', node.type === 'base' ? 'Base actions' : 'Point actions');
     bullet.addEventListener('click', e => {
       if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
-      if (e.target.classList.contains('node-checkbox')) return;
       // every point (incl. a base) zooms in on a bullet click; the hover/long-press menu
       // carries the per-node ops (dismiss it so it doesn't linger over the zoomed view)
       if (node.type !== 'divider') { hideBpop(); zoomInto(node.id); }
@@ -3585,7 +3638,7 @@ function renderRow(r) {
   // listed interactive elements keep their own behavior; modifier clicks (shift =
   // range select) are left untouched so multi-select still works.
   if (!opts.searchCtx && !isDivider && !isTable) {
-    const INTERACTIVE = '.node-content,.bullet,.collapse-btn,.node-checkbox,'
+    const INTERACTIVE = '.node-content,.bullet,.collapse-btn,'
       + '.md-task-check,.node-link,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,'
       + '.var-pill,.dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit,'
       + '.hashtag,.fn-ref,.md-table-host,.todo-state';
@@ -4032,9 +4085,10 @@ function exitEdit(content, node) {
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
-  else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
-  // Derive checked from the keyword so strikethrough + hide-done stay in sync
-  if (node.type === 'todo') node.checked = todoIsDone(parseTodo(node.text).keyword);
+  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo') node.type = 'ul';
+  // Derive checked from the text (keyword DONE / all task markers checked) so
+  // strikethrough + hide-done stay in sync — text is the source of truth
+  node.checked = todoDoneFromText(node.text);
   pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneFootnotes(node); // drop data for deleted tokens
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
@@ -4723,12 +4777,14 @@ document.addEventListener('click', e => {
 function showTodoPicker(nodeId, anchorEl) {
   clearTimeout(bpopTimer);
   const node = nodeById(nodeId);
-  if (!node || node.type !== 'todo') return;
+  if (!node || node.type === 'base') return; // any text point can take a state keyword
   const { keyword, priority } = parseTodo(node.text);
   bpop.innerHTML = '';
 
   const apply = () => {
-    node.checked = todoIsDone(parseTodo(node.text).keyword);
+    // type + checked are derived hints — re-derive from the text the picker wrote
+    node.type = deriveTypeFromText(node.text) || (node.type === 'todo' ? 'ul' : node.type);
+    node.checked = todoDoneFromText(node.text);
     markDirty(); render(); hideBpop();
   };
 
@@ -6914,7 +6970,7 @@ function checkMdBlockPrefix(content, node) {
   }
   // For all other block types: prefix stays in text, just update type + CSS live
   const newType = deriveTypeFromText(text)
-    ?? (node.type in BLOCK_PREFIX_MAP ? 'ul' : node.type);
+    ?? (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' ? 'ul' : node.type);
   if (newType !== node.type) {
     const nodeEl = content.closest('.node');
     if (nodeEl) { nodeEl.classList.remove(`nt-${node.type}`); nodeEl.classList.add(`nt-${newType}`); }
@@ -6933,17 +6989,31 @@ function applyBlockCmd(id, nodeId, node, content) {
   // type (its grid/cell data doesn't translate to prose). The only way "out" is the
   // base menu's Copy-as-markdown + Delete. Nothing turns a base into anything else.
   if (node.type === 'base' && id !== 'base') return;
-  // to-do state keyword: make the node a todo (stripping any block prefix) and set
-  // the Org keyword directly. Equivalent to typing `NEXT ` at the line start.
+  // to-do state keyword: WRITE the Org keyword into the text (stripping any block
+  // prefix first) — equivalent to typing `NEXT ` at the line start. The type and
+  // checked flags then DERIVE from the text (markdown-first; no type forcing).
   if (id.startsWith('state:')) {
     const kw = id.slice(6);
-    if (node.type !== 'todo') {
-      const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
-      if (oldPrefix && node.text.startsWith(oldPrefix)) node.text = node.text.slice(oldPrefix.length);
-      node.type = 'todo';
-    }
+    const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
+    if (oldPrefix && node.text.startsWith(oldPrefix)) node.text = node.text.slice(oldPrefix.length);
     node.text = setTodoState(node.text, kw);
-    node.checked = todoIsDone(parseTodo(node.text).keyword);
+    node.type = deriveTypeFromText(node.text) || 'ul';
+    node.checked = todoDoneFromText(node.text);
+    const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (activeEl) activeEl.innerHTML = editModeHTML(node);
+    markDirty();
+    rerenderNode(nodeId);
+    return;
+  }
+  // /todo: a markdown-writing helper, not a type. Ensure the node's text starts
+  // with the task marker (unless it's already a to-do in either form).
+  if (id === 'todo') {
+    const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
+    let t = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
+    if (!isTaskFirst(t) && !parseTodo(t).keyword) t = '- [ ] ' + t;
+    node.text = t;
+    node.type = 'todo';
+    node.checked = todoDoneFromText(t);
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
     markDirty();
@@ -6954,13 +7024,18 @@ function applyBlockCmd(id, nodeId, node, content) {
   // /base slash verb routes through the shared size picker; this direct path (e.g.
   // a future menu entry) uses the default size.
   if (id === 'base') { createBaseAt(nodeId, 3, 3); return; }
-  // block type — swap prefix in node.text to match the new type
+  // block type — swap prefix in node.text to match the new type. Converting away
+  // from a to-do also strips its task marker / keyword (otherwise the node would
+  // just derive back to 'todo' on the next edit).
   const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
   const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
-  const cleanText = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
+  let cleanText = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
+  cleanText = cleanText.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
+  const pt = parseTodo(cleanText);
+  if (pt.keyword) cleanText = pt.body;
   node.text = id === 'divider' ? '' : newPrefix + cleanText;
   node.type = id;
-  if (id !== 'todo') node.checked = false;
+  node.checked = false;
   // if currently editing this node, sync the live contenteditable
   const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
   if (activeEl) activeEl.innerHTML = editModeHTML(node);
@@ -7048,28 +7123,10 @@ function setCaretByOffset(el, target) {
 
 // ─── node type / checked ─────────────────────────────────────────────────────
 
-function toggleChecked(id, checked) {
-  const node = nodeById(id);
-  if (!node) return;
-  const { keyword } = parseTodo(node.text);
-  if (keyword) {
-    // When a keyword is present: checkbox tick sets DONE, untick steps back one state
-    if (checked) {
-      const t = parseTodo(node.text);
-      node.text = formatTodo({ keyword: 'DONE', priority: t.priority, body: t.body });
-    } else {
-      node.text = cycleTodoState(node.text, -1); // DONE → WAITING
-    }
-    node.checked = todoIsDone(parseTodo(node.text).keyword);
-  } else {
-    node.checked = checked;
-  }
-  markDirty();
-  render();
-}
-
 // Flip the Nth task-list checkbox (- [ ] / - [x]) in a node's text, then refresh
 // just that node's rendered content in place (no edit-mode, no full re-render).
+// node.checked is re-derived from the text; a node-level done-state change needs
+// a full render (strikethrough class on the row, hide-done filter).
 function toggleTaskInNode(node, taskIndex) {
   if (!node) return;
   let n = 0;
@@ -7084,8 +7141,11 @@ function toggleTaskInNode(node, taskIndex) {
     }
     n++;
   }
+  const wasDone = node.checked;
   node.text = lines.join('\n');
+  node.checked = todoDoneFromText(node.text);
   markDirty();
+  if (node.checked !== wasDone) { render(); return; }
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
 }
@@ -7176,7 +7236,14 @@ function insertSiblingAfter(id) {
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
   const srcNode = nodeById(id);
-  const nn = mkNode('', srcNode ? inheritedType(srcNode.type) : 'ul');
+  // Format-continuation aid: inside a formatted node the next point continues the
+  // format BY TEXT — a new to-do gets its `- [ ]` (keyword form continues the same
+  // keyword, DONE restarts as TODO), a new quote its `> `. The type then derives
+  // from that markdown. Elsewhere, type inheritance covers ul/ol/para as before.
+  const cont = srcNode ? continuationPrefix(srcNode.text) : '';
+  const nn = cont
+    ? mkNode(cont, deriveTypeFromText(cont) || 'ul')
+    : mkNode('', srcNode ? inheritedType(srcNode.type) : 'ul');
   pushUndo();
   parent.children.splice(idx+1, 0, nn);
   nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
@@ -7853,7 +7920,10 @@ function toMarkdown(rootNode) {
     } else if (node.type === 'divider') {
       out.push(`${indent}- ---`);
     } else {
-      let body = flattenArtifacts(textForDisplay(node), node, varMap);
+      // To-dos carry their own markdown (`- [ ]` marker / Org keyword) in node.text —
+      // export it verbatim instead of synthesizing a marker from type+checked.
+      const isTodo = node.type === 'todo';
+      let body = flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap);
       const hLvl = { h1:1, h2:2, h3:3, h4:4, h5:5, h6:6 }[node.type];
       if (node.type === 'quote') body = `> ${body}`;
       else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
@@ -7864,8 +7934,9 @@ function toMarkdown(rootNode) {
         out.push(`${indent}${prefix}${lines[0]}`);
         for (let i = 1; i < lines.length; i++) out.push(`${indent}${lines[i]}`);
       } else {
-        const marker = node.type === 'ol' ? `${ordinal}.` : node.type === 'todo' ? (node.checked ? '- [x]' : '- [ ]') : '-';
-        out.push(`${indent}${marker} ${lines[0]}`);
+        const ownMarker = isTodo && isTaskFirst(body); // task form: the text IS the list item
+        const marker = node.type === 'ol' ? `${ordinal}.` : '-';
+        out.push(ownMarker ? `${indent}${lines[0]}` : `${indent}${marker} ${lines[0]}`);
         for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}`);
       }
     }
@@ -7893,8 +7964,10 @@ function toPlainText(rootNode) {
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
     } else {
-      let body = stripInlineMd(flattenArtifacts(textForDisplay(node), node, varMap));
-      if (node.type === 'todo') body = (node.checked ? '[x] ' : '[ ] ') + body;
+      // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
+      // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
+      let body = stripInlineMd(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap));
+      if (node.type === 'todo') body = body.replace(/^[-*+]\s+(\[[ xX]\])\s*/, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
       for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);

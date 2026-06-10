@@ -106,8 +106,8 @@ canonical shape:
 
 ```js
 {
-  id, text, note, type,                 // type ∈ ul|ol|h1|h2|h3|quote|code|divider|base
-  italic, underline, checked, collapsed,
+  id, text, note, type,                 // type ∈ ul|ol|todo|h1..h6|quote|code|divider|para|base — only para+base special; rest derived hints
+  italic, underline, checked, collapsed, // checked is a derived cache (todoDoneFromText)
   children: [],                         // nested nodes
   footnotes: [],                        // [{key, text}]
   dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: []  // artifact sidecars
@@ -143,15 +143,28 @@ canonical shape:
   `mdToHtml` — and is untouched by the static path. The `/base` verb creates one
   (non-destructively — see `createBaseAt`); `@table` inserts the static form. (See
   `guidance/bases-direction.md`.)
-- **`node.type` for headings/quote is now a derived hint, not the renderer.**
+- **The markdown-first node model: only `para` and `base` are special types.**
+  `node.type` for headings/quote/**to-dos** is a derived hint, not the renderer.
   Headings/quote/code still store their prefix in `node.text` (`"# Title"`) and
   `deriveTypeFromText()`/`checkMdBlockPrefix()` still set `node.type` (`'h1'`) for
   bullet-dimming, OPML round-trip and the type-switcher — but the **visual comes
   from the markdown element `mdToHtml` emits**, so a `#`/`>` on line 2+ formats
-  too. `textForDisplay()` (prefix-stripped) is used for breadcrumb/search/export,
-  not for the main render. Inline emphasis supports both `**`/`__` (bold),
-  `*`/`_` (italic), `***`/`___` (both); underscore forms are word-boundary-guarded
-  so `snake_case` stays literal.
+  too. **To-dos derive the same way**: a node is a to-do because its text says so —
+  task form (first line `- [ ]`/`- [x]`, checkbox via the md-task path) or Org
+  keyword form (`TODO|NEXT|WAITING|DONE [#A]` at the start, badge + priority chip)
+  — and `node.checked` is a derived cache (`todoDoneFromText`: keyword DONE, or
+  every task marker checked). `/todo` and `/state:KW` are **markdown-writing
+  helpers**, and Enter inside a formatted node continues the format by writing the
+  prefix into the new sibling (`continuationPrefix`: `- [ ] `, the same keyword
+  with DONE→TODO, `> ` for quotes) — never by setting a type flag. Legacy
+  `_type="todo"` nodes are migrated on load (`migrateTodoText`, in
+  `migrateNodePrefixes`). `textForDisplay()` (prefix-, marker- and keyword-
+  stripped) is used for breadcrumb/search, not for the main render; to-do exports
+  emit the raw text since it carries its own marker. Remaining type-driven
+  stragglers (`ol` ordinals, `divider`, whole-node italic/underline) are tracked
+  as UXP-25…27 in `guidance/ux-remediation.md`. Inline emphasis supports both
+  `**`/`__` (bold), `*`/`_` (italic), `***`/`___` (both); underscore forms are
+  word-boundary-guarded so `snake_case` stays literal.
 - **Artifact sidecars** (`dice`, `markov`, etc.) are arrays of records keyed by a
   random `key`. The token `[[dice:KEY]]` in the text is the only inline trace;
   the record `{key, ...config, ...rolledState}` holds everything else. A record
@@ -410,7 +423,8 @@ Math (incl. unit conversion + date math) · Variables · Typed shorthand · Foot
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit ·
-TODO states + priorities (Org headline style: `TODO [#A] body`, keyword in `node.text`).
+TODO states + priorities (Org headline style: `TODO [#A] body`, keyword in `node.text`;
+to-do-ness fully derives from the text — task marker or keyword — see the node model above).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog
