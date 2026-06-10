@@ -1228,12 +1228,13 @@ test('filterBraceCandidates: narrowing is monotone as the prefix grows', () => {
   assert.equal(host(c.filterBraceCandidates(all, 'zzz')).length, 0);
 });
 
-// ── edit-mode caret anchors + grammar-span bounding (var-pill caret / style-bleed) ──
-// anchorEditInlines turns the post-inline sentinel (U+0000, emitted after each pill /
-// .gr-src span) into a ZWSP caret anchor ONLY when no text node follows (next char is
-// another element or end-of-string); otherwise it drops the sentinel. The anchor gives
-// the caret a text node to render in after a trailing atomic pill, and stops typing
-// from bleeding into a trailing .gr-src span. ZWSP = U+200B (stripped by all caret math).
+// ── edit-mode caret anchors + grammar-span bounding (atomic-pill caret) ──
+// anchorEditInlines turns the post-inline sentinel (U+0000, emitted after each ATOMIC
+// pill span — and ONLY pills, never editable .gr-src spans: an anchor there made
+// picker-applied {name} references undeletable, see UXP-28) into a ZWSP caret anchor
+// ONLY when no text node follows (next char is another element or end-of-string);
+// otherwise it drops the sentinel. The anchor gives the caret a text node to render
+// in after a trailing atomic pill. ZWSP = U+200B (stripped by all caret math).
 const ZWSP = '​';
 const SENT = ' ';
 
@@ -1256,14 +1257,18 @@ test('anchorEditInlines: no sentinels -> unchanged', () => {
   assert.equal(c.anchorEditInlines('plain <b>text</b>'), 'plain <b>text</b>');
 });
 
-test('highlightGrammarText: a promotable {…} is bounded exactly at its closing brace', () => {
-  // {a|b} promotes (alternation) without needing document vars; following text stays
-  // OUTSIDE the .gr-src span (the style-bleed fix: span ends at }).
+test('highlightGrammarText: a promotable {…} is bounded at }, with NO sentinel/anchor', () => {
+  // {a|b} promotes (alternation) without needing document vars; the span ends at }
+  // and is followed by NOTHING extra — no U+0000 sentinel, no ZWSP anchor. The #45
+  // gr-src anchor is reverted (it made picker-applied refs undeletable, UXP-28);
+  // anchors are for atomic pills only (emitted by editModeHTML, not here).
   const out = c.highlightGrammarText('{a|b} hello');
-  const clean = out.split(SENT).join('').split(ZWSP).join(''); // drop sentinel/anchor
-  assert.equal(clean, '<span class="gr-src">{a|b}</span> hello');
-  const m = clean.match(/<span class="gr-src">([^<]*)<\/span>/);
-  assert.ok(m, 'one gr-src span'); assert.equal(m[1], '{a|b}');
+  assert.equal(out, '<span class="gr-src">{a|b}</span> hello');
+  assert.ok(!out.includes(SENT), 'no U+0000 sentinel after a gr-src span');
+  assert.ok(!out.includes(ZWSP), 'no ZWSP anchor after a gr-src span');
+  // trailing-span form: still no sentinel/anchor even at end-of-string
+  const tail = c.highlightGrammarText('say {a|b}');
+  assert.equal(tail, 'say <span class="gr-src">{a|b}</span>');
 });
 
 test('highlightGrammarText: a non-promotable {…} stays literal (no span, no bleed)', () => {

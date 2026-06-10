@@ -4007,10 +4007,12 @@ function highlightGrammarText(str, unfoldedSet) {
         const brace = str.slice(i, j + 1);
         if ((unfoldedSet && unfoldedSet.has(brace)) || braceWouldPromote(str.slice(i + 1, j))) {
           flush();
-          // EDIT_ANCHOR sentinel after the span: anchorEditInlines turns it into a
-          // ZWSP caret anchor iff no text follows (so typing past a trailing {…}
-          // lands as plain prose, never bleeding into the .gr-src styling).
-          out += `<span class="gr-src">${escHtml(brace)}</span>${EDIT_ANCHOR}`;
+          // NO caret anchor after a .gr-src span (unlike atomic pills below). The span
+          // is editable text; an anchor here interacts with checkInlineHighlight's
+          // re-render to make the reference UNDELETABLE on the picker-apply path
+          // (Backspace eats the ZWSP, the re-render regenerates it — a no-op loop).
+          // The style-bleed this leaves unsolved is tracked as UXP-28.
+          out += `<span class="gr-src">${escHtml(brace)}</span>`;
           i = j + 1; continue;
         }
       }
@@ -4021,13 +4023,14 @@ function highlightGrammarText(str, unfoldedSet) {
   return out;
 }
 
-// A sentinel placed right after each edit-mode inline element (atomic pill span or
-// .gr-src grammar span). anchorEditInlines() then resolves each one: when the next
-// thing is another element or the end of the content (i.e. NO following text node),
-// it becomes a ZWSP caret anchor — a text node the caret can render inside, so the
-// caret is visible right after a trailing atomic pill and typing past a trailing
-// {…} stays plain prose. When a text node already follows, the sentinel is dropped
-// (that text node is the caret's landing spot; no extra dead arrow-stop). Pure.
+// A sentinel placed right after each ATOMIC pill span (contenteditable=false) in
+// edit mode — and only those; see the .gr-src note in highlightGrammarText for why
+// editable spans must NOT get one. anchorEditInlines() resolves each sentinel: when
+// the next thing is another element or the end of the content (i.e. NO following
+// text node), it becomes a ZWSP caret anchor — a text node the caret can render
+// inside, so the caret is visible right after a trailing atomic pill. When a text
+// node already follows, the sentinel is dropped (that text node is the caret's
+// landing spot; no extra dead arrow-stop). Pure.
 const EDIT_ANCHOR = '\x00';
 function anchorEditInlines(html) {
   return html.replace(/\x00(?=<|$)/g, ZWSP).replace(/\x00/g, '');
@@ -6418,14 +6421,7 @@ function caretAfterGrSrc(el, target) {
     if (node.classList?.contains('gr-src')) {
       const before = count; count += textLen(node);
       if (before < target && count === target) {
-        // Land inside the following text node (ZWSP anchor) so typing lands as plain
-        // prose outside the span — a boundary position would let the browser merge
-        // the next character into the trailing .gr-src styling.
-        const nxt = node.nextSibling;
-        const r = document.createRange();
-        if (nxt && nxt.nodeType === 3) r.setStart(nxt, nxt.nodeValue[0] === '​' ? 1 : 0);
-        else r.setStartAfter(node);
-        r.collapse(true);
+        const r = document.createRange(); r.setStartAfter(node); r.collapse(true);
         const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); done = true;
       }
       return;
