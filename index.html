@@ -291,6 +291,13 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* read-only formula-driven cells (non-color distinction required) */
 .mt-computed{font-style:italic;background:var(--cbg)!important;cursor:default}
 .mt-computed::before{content:'Σ\00a0';font-size:.72em;opacity:.5;font-style:normal}
+/* Calculate footer (total) row: a distinct, tighter summary strip with a subtle top
+   separator; each aggregated cell labels its op by name (data-agg) instead of Σ, with
+   the value bold. Theme-aware via the shared custom properties. */
+.mt-total-row > .mt-cell,.mt-total-row > .mt-rowh{background:var(--cbg);border-top:2px solid var(--bdr)}
+.mt-total-row > .mt-cell{padding-top:2px;padding-bottom:2px}
+.mt-total-cell{font-style:normal!important;font-weight:700;color:var(--fg)}
+.mt-total-cell::before{content:attr(data-agg) '\00a0';font-size:.72em;font-weight:600;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .mt-align-bar{display:flex;gap:3px;align-items:center;margin:4px 0 2px;font-size:11px;color:var(--muted)}
 .mt-align-bar button{font-size:11px;padding:1px 6px}
 .mt-align-bar button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
@@ -2815,6 +2822,11 @@ function mtColAggKind(tblfm, col1) {
   }
   return 'none';
 }
+// Display label for an aggregate kind — what the Calculate footer shows beside the
+// value instead of a generic Σ (vsum→"Sum", vmean→"Average", …). Pure; '' for none.
+function aggKindLabel(kind) {
+  return { sum:'Sum', avg:'Average', count:'Count', min:'Min', max:'Max' }[kind] || '';
+}
 
 // Apply an aggregate function to colIdx (0-based). Adds/removes the footer row
 // as needed; calls mtRecompute + refreshTable to show computed values.
@@ -3037,19 +3049,21 @@ function buildTableWidget(node, readOnly) {
     return (w > 0) ? ` style="box-sizing:border-box;width:${w}px;min-width:${w}px;max-width:${w}px"` : '';
   };
   // Pre-compute which cells are formula-driven so they render read-only + Σ-tagged.
+  const tblfmStr = readOnly ? '' : extractTblfm(node.text);
   const computedCells = new Set();
-  if (!readOnly) {
-    const tblfmStr = extractTblfm(node.text);
-    if (tblfmStr) {
-      const dims = { nrows: model.rows.length, ncols: nc };
-      for (const f of parseTblfm(tblfmStr, dims)) {
-        const t = f.target;
-        if (t.kind === 'col')   { for (let r=1;r<model.rows.length;r++) computedCells.add(r+','+t.col); }
-        else if (t.kind === 'row')   { for (let c=0;c<nc;c++) computedCells.add(t.row+','+c); }
-        else if (t.kind === 'field') computedCells.add(t.row+','+t.col);
-      }
+  if (tblfmStr) {
+    const dims = { nrows: model.rows.length, ncols: nc };
+    for (const f of parseTblfm(tblfmStr, dims)) {
+      const t = f.target;
+      if (t.kind === 'col')   { for (let r=1;r<model.rows.length;r++) computedCells.add(r+','+t.col); }
+      else if (t.kind === 'row')   { for (let c=0;c<nc;c++) computedCells.add(t.row+','+c); }
+      else if (t.kind === 'field') computedCells.add(t.row+','+t.col);
     }
   }
+  // The Calculate "footer" is the last row when a @>$N= aggregate exists (there is no
+  // separate footer construct — see mtApplyAggregate). Tag that row + its aggregate
+  // cells so they style as a distinct summary footer and label each op by name.
+  const totalRowIdx = mtHasFooter(tblfmStr) ? model.rows.length - 1 : -1;
   // Base header bar (interactive only): a reserved strip atop the base. The left zone
   // (.mt-base-views) is held for a future view switcher; whole-base ops now live on the
   // base bullet's menu, so the bar is empty (and collapses to nothing) for now.
@@ -3085,9 +3099,21 @@ function buildTableWidget(node, readOnly) {
   if (!readOnly) h += `<th class="mt-addcol-cell" rowspan="${model.rows.length}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th>`;
   h += '</tr>';
   for (let r=1;r<model.rows.length;r++) {
-    h += `<tr data-r="${r}">`;
+    const isTotal = r === totalRowIdx;
+    h += `<tr data-r="${r}"${isTotal ? ' class="mt-total-row"' : ''}>`;
     if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
-    for (let c=0;c<nc;c++) { const cc=computedCells.has(r+','+c); h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`; }
+    for (let c=0;c<nc;c++) {
+      const cc = computedCells.has(r+','+c);
+      // In the total row, an aggregated column's cell shows "<OpName> <value>" (the op
+      // name via data-agg/CSS, value bold) instead of Σ; non-aggregated columns stay a
+      // normal (blank) cell. Read-only is unchanged (it's still .mt-computed).
+      const label = isTotal ? aggKindLabel(mtColAggKind(tblfmStr, c+1)) : '';
+      if (label) {
+        h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" data-agg="${label}">${mtInline(node, model.rows[r][c]||'')}</td>`;
+      } else {
+        h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
+      }
+    }
     h += '</tr>';
   }
   if (!readOnly) h += `<tr class="mt-addrow-row"><th></th><td class="mt-addrow-cell" colspan="${nc}"><button class="mt-addrow">+ Add row</button></td><td></td></tr>`;

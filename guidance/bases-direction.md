@@ -73,7 +73,7 @@ A base in table view is laid out as:
 1. **Base header bar** (top) — a **reserved strip** held for a future **view switcher** (`.mt-base-views`). It is **empty for now and collapses to nothing**; whole-base operations live on the base's bullet menu (see "The base icon & menu" above), not on a header opener.
 2. **Header row** (the column-name row) — **the column-control surface** (see below).
 3. **Data rows** — editable cells with keyboard navigation (UXP-2) and read-only computed cells (§7).
-4. **Footer total row** — appears when a column has a Calculate aggregate; computed, read-only.
+4. **Footer total row** — appears when a column has a Calculate aggregate; computed, read-only. It is the **last data row** (no separate construct — `mtApplyAggregate` adds/removes it; detect it via `mtHasFooter` + `@>$N=`), but rendered as a **distinct summary strip**: tagged `.mt-total-row` (tighter height, a subtle top separator, `--cbg` fill — theme-aware), and each aggregated cell shows its **op name** (`aggKindLabel`: Sum/Average/Count/Min/Max, small/muted) beside a **bold value** instead of a generic `Σ`. Non-aggregated columns stay blank; "None" removes the row.
 
 ### The base icon & menu — a base is a distinct object, but a normal point
 

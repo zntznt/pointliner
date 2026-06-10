@@ -817,7 +817,7 @@ test('OPML: a base node serializes with _type="base"', () => {
 });
 
 // ── column aggregate formula builder (UXP-3) ──────────────────────────────
-const { mtBuildAggFormula, mtHasFooter, mtColAggKind } = c;
+const { mtBuildAggFormula, mtHasFooter, mtColAggKind, aggKindLabel } = c;
 
 test('mtBuildAggFormula: add sum for column 2', () => {
   assert.equal(mtBuildAggFormula('', 2, 'sum'), '@>$2=vsum(@2$2..@-1$2)');
@@ -877,6 +877,18 @@ test('mtColAggKind: returns correct fn for each kind', () => {
 test('mtColAggKind: returns none for unrelated column', () => {
   assert.equal(mtColAggKind('@>$1=vsum(@2$1..@-1$1)', 2), 'none');
   assert.equal(mtColAggKind('', 1), 'none');
+});
+
+test('aggKindLabel: maps each aggregate kind to its footer label', () => {
+  assert.equal(aggKindLabel('sum'),   'Sum');
+  assert.equal(aggKindLabel('avg'),   'Average');
+  assert.equal(aggKindLabel('count'), 'Count');
+  assert.equal(aggKindLabel('min'),   'Min');
+  assert.equal(aggKindLabel('max'),   'Max');
+  assert.equal(aggKindLabel('none'),  '');     // no aggregate → no label
+  assert.equal(aggKindLabel(undefined), '');   // defensive
+  // composes with mtColAggKind to label a column's footer cell straight from the TBLFM
+  assert.equal(aggKindLabel(mtColAggKind('@>$2=vmean(@2$2..@-1$2)', 2)), 'Average');
 });
 
 // mtApplyAggregate is DOM-adjacent but its DOM calls no-op through vm stubs,
