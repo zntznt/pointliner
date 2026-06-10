@@ -1,8 +1,8 @@
 # Pointliner — Roadmap & Plan
 
 Derived from the feature-gap backlog and the direction decisions below. This is the
-"how we proceed" document; the gap analysis lives in `docs/backlog.md`, and the
-discoverability / UX strategy in `docs/ux.md`.
+"how we proceed" document; the gap analysis lives in `guidance/backlog.md`, and the
+discoverability / UX strategy in `guidance/ux.md`.
 
 ## Decisions locked
 1. **Direction: balance both** — interleave PKM/networked-notes features with generative
@@ -86,7 +86,7 @@ Independent of the storage refactor; keeps the "balance" promise while Phase 1 i
 - **Table formulas** — ✓ **shipped.** Org-mode `#+TBLFM:` cell references + ranges feeding
   `evalMath` for live table calc; the reference layer is translated onto the existing math
   engine (pure, test-pinned). Formula rides in `node.text`, no new sidecar. See
-  `docs/features.md`. *(backlog: Table formulas)*
+  `guidance/features.md`. *(backlog: Table formulas)*
 - **TODO states + priorities** — extend the `todo` type with a state cycle
   (TODO→NEXT→WAITING→DONE) and `[#A]/[#B]/[#C]` priorities. Mostly model + small UI.
   *(backlog: Rich TODO states + priorities)*
@@ -115,7 +115,7 @@ same-document Zettelkasten ships first and everywhere; the multi-file network ri
 > + backlinks panel + `[[#id|label]]` token + copy-link + keyboard-first creation are in; the
 > **mirror** (`[[#id|]]` transcludes the target's live rendered content, display-only, inline) is
 > a real partial slice of the shelved "mirror" feature. Step 4 (picker) is built but **gated off**
-> as a future opt-in overlay; step 5 (cross-file) waits on Phase 1. See `docs/features.md`.
+> as a future opt-in overlay; step 5 (cross-file) waits on Phase 1. See `guidance/features.md`.
 
 1. ✅ **Same-file link token** `[[#nodeId|label]]` + resolver (click → zoom to target). Links are
    plain editable text in edit mode (not atomic pills); render as a widget in display mode.
@@ -123,7 +123,10 @@ same-document Zettelkasten ships first and everywhere; the multi-file network ri
    (generalizes the `collectVars`/`collectRules` pattern); returns `{outgoing, backlinks, broken}`.
 3. ✅ **Backlink index + backlinks panel** for the current node.
 4. ◐ **Quick-switcher / `[[` picker** — built but gated off (`LINK_PICKER_ENABLED = false`);
-   re-enable as an opt-in guidance overlay later. *(backlog: Node links & backlinks)*
+   re-enable as an opt-in guidance overlay later. **UX status:** tracked as a discoverability
+   non-conformance (`guidance/ux-remediation.md` UXP-4) — the *staging* is this roadmap's call,
+   but it must reach at least the Guided floor; "gated off with no front door" is not a
+   conformant end state. *(backlog: Node links & backlinks)*
 5. **Generalize to cross-file** — `[[docId#nodeId|label]]` once Phase 1 lands; the index now
    spans all docs in the folder. **(This step — and only this step — needs the gated
    workspace.)** *(backlog: Node links & backlinks)*
@@ -156,7 +159,7 @@ Phase 1's weight is broken up.
 ## Generative / internal-engine ideas (the "balance" side)
 Self-contained, additive ideas for the generative engine — good interleaving material
 between the heavy PKM phases. (Shipped items removed: dice success pools, date math,
-and unit conversion are **done** — see `docs/features.md`. The oracle was reverted and
+and unit conversion are **done** — see `guidance/features.md`. The oracle was reverted and
 is listed below as pending.)
 - **Oracle (tunable yes/no) — pending:** a configurable odds-based oracle pill — pick a
   likelihood, get a yes/no (optionally with degrees of yes/no and a random-event nudge),

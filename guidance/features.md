@@ -98,7 +98,10 @@ Implemented:
     puts `[[#id|]]` on the clipboard; paste it and the caret lands right after the `|`,
     ready for a label. Typing `[[#id]]` by hand works too. A `[[`-triggered node picker
     exists but is **gated off** (`LINK_PICKER_ENABLED = false`) as a future opt-in
-    guidance overlay (per `docs/ux.md`).
+    guidance overlay (per `guidance/ux.md`). **UX status:** this is a tracked
+    discoverability non-conformance — `guidance/ux-remediation.md` UXP-4. The overlay
+    *staging* stays a roadmap call, but "no front door at any verbosity" is not a
+    conformant end state: it must eventually surface at least at the Guided floor.
   - **Edit mode:** a link is **plain editable text** `[[#id|label]]`, not an atomic pill —
     you edit the token as text (like a footnote ref `[^key]`). It renders as a link only in
     display mode. Clicking a link → zoom to the target.

@@ -135,6 +135,9 @@ button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 /* outline */
 #outline{max-width:760px;margin:0 auto;padding:28px 24px 120px}
 body.full-width #outline{max-width:none}
+/* zoomed INTO a base: the base is the whole view, so it goes full-width regardless of the
+   narrow/full toggle (the "make it large" gesture is zooming in). */
+body.base-zoom #outline{max-width:none}
 /* virtual list: only a window of rows is in the DOM; spacers reserve the rest */
 #vlist{position:relative}
 .vspacer{flex:none;width:100%}
@@ -142,7 +145,7 @@ body.full-width #outline{max-width:none}
 .zoom-title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;word-break:break-word;white-space:pre-wrap;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
-.zoom-title-table{cursor:default;white-space:normal;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
+.zoom-title-base{cursor:default;white-space:normal;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
 
 /* node base */
 .node{position:relative}
@@ -152,7 +155,7 @@ body.full-width #outline{max-width:none}
 .search-ctx .node-row:hover{background:transparent}
 .node-row:has(.node-content[data-editing]){background:rgba(74,144,217,.055)}
 @media(prefers-color-scheme:dark){.node-row:has(.node-content[data-editing]){background:rgba(91,163,232,.08)}}
-.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden}
+.collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden;position:relative;z-index:2}
 .has-children>.node-row>.collapse-btn{visibility:visible}
 .collapse-btn:hover{color:var(--acc)}
 .col-chevron{display:inline-block;transition:transform .18s ease;line-height:1}
@@ -160,9 +163,15 @@ body.full-width #outline{max-width:none}
 .collapse-count{font-size:8px;font-weight:700;line-height:1;margin-top:1px;opacity:.6}
 
 /* bullet area — dot + optional checkbox */
-.bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0}
+.bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0;position:relative;z-index:2}
 .bullet-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;transition:background .12s,transform .12s}
 .bullet:hover .bullet-dot{background:var(--bullet-h);transform:scale(1.3)}
+/* base bullet: the /base grid icon stands in for the dot — an at-a-glance "this point is
+   a base" signal. It behaves like any bullet: click zooms in, hover/long-press opens the
+   base menu. (A base is a normal point in the outline; it only goes full-width when zoomed
+   into — see `body.base-zoom`.) */
+.bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:var(--muted);transition:color .12s,transform .12s}
+.bullet-base:hover .bullet-base-ic{color:var(--acc);transform:scale(1.12)}
 .node-checkbox{width:13px;height:13px;cursor:pointer;accent-color:var(--acc);flex-shrink:0}
 
 /* node content */
@@ -187,15 +196,21 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-hl{background:rgba(255,225,0,.45);color:inherit;border-radius:2px;padding:0 1px}
 @media(prefers-color-scheme:dark){.md-hl{background:rgba(220,180,0,.4)}}
 .node-content sub,.node-content sup{font-size:.72em;line-height:0}
-/* ── interactive table builder ── */
-.nt-table>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
-.nt-table>.node-row>.node-content[data-editing]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;white-space:pre-wrap;cursor:text}
-.mt-editmd-btn{display:block;width:100%;padding:1px 2px;text-align:right;font-size:.68em;color:var(--muted);background:none;border:none;cursor:pointer;opacity:0;transition:opacity .12s;line-height:1.6;user-select:none}
-.nt-table>.node-row:hover .mt-editmd-btn{opacity:.55}
-.mt-editmd-btn:hover{opacity:1!important;text-decoration:underline}
-.md-table-host{min-width:0;padding:2px 0}
+/* ── interactive base (its table view) ── */
+.nt-base>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
+.nt-base>.node-row>.node-content[data-editing]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;white-space:pre-wrap;cursor:text}
+.md-table-static{min-width:0;padding:2px 0;width:100%;box-sizing:border-box;position:relative}
+/* §6 promote: hover-revealed "Convert to base" on a static table (always visible on touch).
+   Hidden where the action can't apply: search results, link mirrors (the table belongs to
+   another node), and the zoomed-title view. */
+.mt-promote{position:absolute;top:4px;right:2px;z-index:2;font-family:var(--font);font-size:.7em;line-height:1.4;padding:2px 9px;border:1px solid var(--bdr);border-radius:999px;background:var(--bg);color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,color .12s,border-color .12s}
+.md-table-static:hover .mt-promote,.mt-promote:focus-visible{opacity:1}
+.mt-promote:hover,.mt-promote:focus-visible{color:var(--acc);border-color:var(--acc);outline:none}
+@media(hover:none){.mt-promote{opacity:.7}}
+.search-ctx .mt-promote,.node-link-mirror .mt-promote,.zoom-title .mt-promote{display:none}
+.md-table-host{padding:2px 0;max-width:none}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
-.md-table{border-collapse:separate;border-spacing:0;font-size:.95em}
+.md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
 .mt-cell{padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
 .mt-cell:focus{box-shadow:inset 0 0 0 2px var(--ring)}
@@ -207,24 +222,56 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell .md-img{max-height:120px}
 /* handle cells (row/col grips) */
 .mt-corner,.mt-colh,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
-.mt-colh{height:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-bottom:none}
+.mt-colh{height:18px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-bottom:none}
 .mt-rowh{width:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-right:none}
 .mt-colh:active,.mt-rowh:active{cursor:grabbing}
-.mt-grip{display:block;width:100%;height:100%;min-height:12px;opacity:.35}
-.mt-colh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) 0 center/5px 3px repeat-x}
+/* drag-reorder grip cue (visible dots + grab cursor make the handle discoverable) */
+.mt-grip{display:block;width:100%;height:100%;min-height:12px;opacity:.4}
+.mt-colh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center/5px 3px repeat-x}
 .mt-rowh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center 0/3px 5px repeat-y}
 .mt-colh:hover,.mt-rowh:hover{background:var(--hbg)}
-.mt-colh:hover .mt-grip,.mt-rowh:hover .mt-grip{opacity:.7}
+.mt-colh:hover .mt-grip,.mt-rowh:hover .mt-grip{opacity:.75}
 .mt-del{position:absolute;display:none;z-index:2;width:15px;height:15px;line-height:13px;text-align:center;font-size:12px;border-radius:50%;background:var(--del);color:#fff;cursor:pointer}
-.mt-colh:hover .mt-delcol{display:block;top:-7px;right:-7px}
 .mt-rowh:hover .mt-delrow{display:block;left:-7px;top:-7px}
 .mt-colh.mt-dragover{background:var(--acc)}
 .mt-rowh.mt-dragover{background:var(--acc)}
-.mt-addcol,.mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
-.mt-addcol{width:22px;height:100%;min-height:30px;padding:0;line-height:1}
-.mt-addcol:hover,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
-.mt-addcol-cell{vertical-align:middle;padding-left:3px}
+/* column-options opener: one clearly-sized caret button. Revealed on hover (always
+   on touch); kept in layout with opacity (not display:none) so it stays keyboard-
+   focusable / tab-reachable, then made visible on :focus-visible. */
+.mt-col-btn{position:absolute;top:0;right:0;height:100%;width:22px;display:flex;align-items:center;justify-content:center;border:none;border-radius:0 0 0 5px;background:var(--cbg);color:var(--muted);cursor:pointer;font-size:11px;line-height:1;z-index:3;opacity:0;transition:opacity .12s,background .12s,color .12s}
+.mt-colh:hover .mt-col-btn,.mt-col-btn:focus-visible{opacity:1}
+.mt-col-btn:hover,.mt-col-btn:focus-visible{background:var(--hbg);color:var(--fg)}
+@media(hover:none){.mt-col-btn{opacity:1}}
+@media(prefers-reduced-motion:reduce){.mt-col-btn{transition:none}}
+/* add-column: full-height "+" at the right edge (Notion-style, non-clipped, reveal on hover) */
+.mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
+.mt-addcol-cell{position:relative;padding:0;width:26px;border:none}
+.mt-addcol{position:absolute;top:1px;bottom:1px;left:4px;right:1px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:15px;border:1px dashed var(--bdr);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
+.md-table-host:hover .mt-addcol,.mt-addcol:focus-visible{opacity:1}
+@media(hover:none){.mt-addcol{opacity:1}}
+.mt-addcol:hover,.mt-addcol:focus-visible,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
 .mt-addrow-cell{padding-top:3px}
+/* column operations panel (the consolidated home for all column ops) */
+#mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
+#mt-colpanel.on{display:block}
+/* base header bar: a reserved strip atop the base for future whole-base controls
+   (e.g. a view switcher in .mt-base-views). Empty for now — whole-base ops live on
+   the base bullet's menu — so it collapses to nothing until something is added. */
+.mt-baseheader{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mt-base-views{display:flex;align-items:center;gap:4px;flex:1}
+.mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:6px 10px 2px}
+.mt-col-section.mt-col-sep{border-top:1px solid var(--bdr);margin-top:4px;padding-top:6px}
+.mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;gap:12px;outline:none}
+.mt-col-item:hover,.mt-col-item:focus{background:var(--bdr)}
+.mt-col-item.on{font-weight:600}
+.mt-col-item.mt-col-danger{color:var(--del)}
+.mt-col-item.mt-col-disabled{opacity:.4;cursor:default;pointer-events:none}
+.mt-col-item-check{color:var(--acc);font-size:11px;visibility:hidden}
+.mt-col-item.on .mt-col-item-check{visibility:visible}
+@media(prefers-reduced-motion:reduce){.mt-addcol{transition:none}}
+/* read-only formula-driven cells (non-color distinction required) */
+.mt-computed{font-style:italic;background:var(--cbg)!important;cursor:default}
+.mt-computed::before{content:'Σ\00a0';font-size:.72em;opacity:.5;font-style:normal}
 .mt-align-bar{display:flex;gap:3px;align-items:center;margin:4px 0 2px;font-size:11px;color:var(--muted)}
 .mt-align-bar button{font-size:11px;padding:1px 6px}
 .mt-align-bar button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
@@ -443,6 +490,9 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* unified command item */
 .cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;cursor:pointer}
 .cmd-item:hover,.cmd-item.hi{background:var(--bdr)}
+/* keyboard focus rings inside the point-actions menu (UXP-14) */
+#bpop .cmd-item:focus,#bpop .cmd-item:focus-visible{background:var(--bdr);outline:2px solid var(--acc);outline-offset:-2px}
+#bpop .bpop-type:focus,#bpop .bpop-type:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cmd-icon{width:26px;height:26px;border-radius:6px;background:var(--bdr);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;color:var(--fg);font-family:monospace}
 .cmd-icon.accent{background:var(--acc);color:#fff}
 .cmd-info{display:flex;flex-direction:column;gap:1px;min-width:0}
@@ -485,6 +535,14 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #slash-menu-list::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 #slash-menu .cmd-item{padding:5px 8px}
 #slash-menu .cmd-desc{display:none}
+/* shared grid size picker (swapped into the slash-menu popup by /base and @table) */
+#slash-menu.sp-mode{width:auto}
+#size-picker{padding:10px 11px}
+.sp-grid{display:grid;gap:3px;width:max-content;margin:0 auto 7px}
+.sp-cell{width:15px;height:15px;border:1px solid var(--bdr);border-radius:3px;background:var(--bg);cursor:pointer}
+.sp-cell.on{background:var(--acc);border-color:var(--acc)}
+.sp-label{font-size:12px;font-weight:600;text-align:center;color:var(--fg)}
+.sp-hint{font-size:10px;color:var(--muted);text-align:center;margin-top:3px;white-space:nowrap}
 .slash-footer{display:flex;flex-direction:column;gap:3px;padding:6px 10px 8px;border-top:1px solid var(--bdr);min-height:24px}
 .sf-desc{font-size:11px;color:var(--muted);line-height:1.4}
 .sf-ex{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--acc);background:var(--cbg);border-radius:5px;padding:2px 6px;line-height:1.4;word-break:break-word}
@@ -632,7 +690,6 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .mt-colh .mt-delcol{top:-8px;right:-8px}
   .mt-rowh .mt-delrow{left:-8px;top:-8px}
   .mt-addcol{min-height:38px}
-  .mt-editmd-btn{opacity:.6;font-size:.78em;padding:5px 4px}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
   .bullet{height:30px;padding:0 7px;gap:6px}
@@ -641,7 +698,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .md-task{gap:.6em}
   /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
   .io-field input,.io-field textarea{font-size:16px}
-  .nt-table>.node-row>.node-content[data-editing]{font-size:16px}
+  .nt-base>.node-row>.node-content[data-editing]{font-size:16px}
   /* roomier action targets in menus / dialogs / bars */
   .io-btn{padding:10px 16px;font-size:15px}
   .nsb-btn{padding:8px 12px;font-size:14px}
@@ -710,7 +767,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <!-- selection toolbar (dark) -->
 <div id="sel-tb"></div>
 <!-- bullet popup -->
-<div id="bpop"></div>
+<div id="bpop" role="menu" aria-label="Point actions"></div>
+<!-- column operations panel -->
+<div id="mt-colpanel" role="menu" aria-label="Column options"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
 <div id="lp-menu"></div>
@@ -798,7 +857,7 @@ function mkNode(text = '', type = 'ul') {
 function inheritedType(type) {
   // headings, dividers and tables don't propagate to a new sibling — a new
   // point under a table should be a plain bullet, not another table widget
-  return ['h1','h2','h3','h4','h5','h6','divider','table'].includes(type) ? 'ul' : type;
+  return ['h1','h2','h3','h4','h5','h6','divider','base'].includes(type) ? 'ul' : type;
 }
 
 // Block types that store their markdown prefix in node.text
@@ -1092,6 +1151,27 @@ function editableText(el) {
     if (node.nodeType !== 1) return;
     if (node.dataset && node.dataset.token) { out += node.dataset.token; return; }
     if (node.nodeName === 'BR') { out += '\n'; return; }
+    for (const c of node.childNodes) walk(c);
+  }
+  for (const c of el.childNodes) walk(c);
+  return out;
+}
+
+// Block-aware serialization for the table "✏ markdown" editor. That editor is a plain
+// multi-line contenteditable (no pills/tokens), and pressing Enter makes the browser wrap
+// the new line in a <div>/<p> block. editableText (tuned for the pill/caret editor, which
+// never emits block wrappers) would glue a block onto the preceding text with no newline —
+// silently dropping an appended #+TBLFM: line. Here a block boundary counts as a line break
+// so appended/edited lines survive the commit. Kept separate so the caret-math suite that
+// pairs with editableText is untouched.
+function editableTextBlocks(el) {
+  let out = '';
+  function walk(node) {
+    if (node.nodeType === 3) { out += node.nodeValue.replace(/​/g, ''); return; }
+    if (node.nodeType !== 1) return;
+    if (node.nodeName === 'BR') { out += '\n'; return; }
+    const isBlock = node.nodeName === 'DIV' || node.nodeName === 'P';
+    if (isBlock && out && !out.endsWith('\n')) out += '\n'; // block starts a new line
     for (const c of node.childNodes) walk(c);
   }
   for (const c of el.childNodes) walk(c);
@@ -1620,8 +1700,12 @@ function mdToHtml(raw, isCode) {
     }
     const isUl = UL_RE.test(line);
     const isOl = !isUl && OL_RE.test(line);
+    // GFM pipe table: a non-blank header line whose very next line is a delimiter row
+    // with the same cell count. List markers win (checked first), matching GFM.
+    const isTable = !isUl && !isOl && line.trim() !== ''
+      && mtSplitRow(line).length === tableDelimCells(lines[i + 1]);
     // definition list: a term line immediately followed by one or more ": def" lines
-    const isDefTerm = !isUl && !isOl && line.trim() !== '' && !DD_RE.test(line) && i+1 < lines.length && DD_RE.test(lines[i+1]);
+    const isDefTerm = !isUl && !isOl && !isTable && line.trim() !== '' && !DD_RE.test(line) && i+1 < lines.length && DD_RE.test(lines[i+1]);
     if (isUl || isOl) {
       flush();
       const re = isUl ? UL_RE : OL_RE, tag = isUl ? 'ul' : 'ol';
@@ -1633,6 +1717,16 @@ function mdToHtml(raw, isCode) {
         items.push(renderListItem(inner, taskNo)); i++;
       }
       out.push(`<${tag} class="md-list${hasTask?' md-tasklist':''}">${items.join('')}</${tag}>`);
+    } else if (isTable) {
+      // Consume the grid (header + delimiter + body rows) plus an optional trailing
+      // #+TBLFM: recipe line. The recipe is computed + hidden in renderStaticTable;
+      // node.text is never touched, so edit mode still shows the full raw markdown.
+      flush();
+      const start = i;
+      i += 2;                                                              // header + delimiter
+      while (i < lines.length && lines[i].trim() !== '' && lines[i].includes('|')) i++;
+      if (i < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[i])) i++;     // optional recipe
+      out.push(renderStaticTable(lines.slice(start, i).join('\n'), start, i));
     } else if (isDefTerm) {
       flush();
       let dl = `<dt>${mdInline(line)}</dt>`; i++;
@@ -1723,8 +1817,47 @@ function serializeTable(t) {
   return out.join('\n');
 }
 
-function starterTableText() {
-  return '| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| | | |\n| | | |';
+// Build a starter pipe-table markdown string: `rows` total rows (row 1 is the
+// header) × `cols` columns, with labelled header cells and empty body cells. Used
+// by both /base (interactive) and @table (static) via the shared size picker; the
+// no-arg default reproduces the original 3×3 starter.
+function starterTableText(rows = 3, cols = 3) {
+  rows = Math.max(1, Math.min(8, rows | 0));   // row 1 is the header; rows-1 body rows
+  cols = Math.max(1, Math.min(8, cols | 0));
+  const row = cells => '| ' + cells.join(' | ') + ' |';
+  const lines = [
+    row(Array.from({ length: cols }, (_, i) => 'Column ' + (i + 1))),
+    row(Array(cols).fill('---')),
+  ];
+  for (let r = 1; r < rows; r++) lines.push(row(Array(cols).fill('')));
+  return lines.join('\n');
+}
+
+// Pure decision behind the NON-DESTRUCTIVE /base convert (the data-loss fix). An
+// empty point becomes the base in place; a content-bearing point keeps its text and
+// the base is inserted as the next sibling — text is NEVER overwritten. createBaseAt
+// wires this to the tree; pinning it here guards the fix.
+function planBaseConvert(text, starter) {
+  return (text || '').trim() === ''
+    ? { mode: 'in-place', text: starter }
+    : { mode: 'after', insert: starter };
+}
+
+// Pure decision behind "Convert to base" on a static table (§6 promote). Given the
+// point's text and the table block's line range [l0, l1) — as stamped on the rendered
+// static table by mdToHtml — split the text into prose-before / table / prose-after.
+// Blank lines hugging the cut are trimmed so the split points don't start/end with
+// empty lines. Returns null when the range doesn't hold a valid pipe table (stale
+// indices, a mirrored table from another node, a malformed block) so callers bail
+// instead of corrupting text.
+function planTablePromote(text, l0, l1) {
+  const lines = (text || '').split('\n');
+  if (!(Number.isInteger(l0) && Number.isInteger(l1) && l0 >= 0 && l1 > l0 && l1 <= lines.length)) return null;
+  const table = lines.slice(l0, l1).join('\n');
+  if (!parseTable(stripTblfm(table))) return null;
+  const before = lines.slice(0, l0).join('\n').replace(/(?:\n[ \t]*)+$/, '');
+  const after  = lines.slice(l1).join('\n').replace(/^(?:[ \t]*\n)+/, '');
+  return { before, table, after };
 }
 
 // ─── table formulas (Org-mode spreadsheet conventions) ───────────────────────
@@ -1902,6 +2035,70 @@ function stripTblfm(text) {
   return (text || '').replace(TBLFM_LINE_RE, '').replace(/\n+$/, '');
 }
 
+// ─── static markdown tables (render-anywhere, read-only) ─────────────────────
+// A pipe table written in ANY point renders the same way a `#` renders a heading:
+// `mdToHtml` detects it and emits a static <table>. This is purely a RENDER path —
+// node.text is never modified; edit mode still shows the raw markdown (recipe line
+// included). The interactive base widget (node.type==='base') is a separate object
+// and is untouched by this.
+
+// GFM table delimiter row detector — the false-positive guard. Returns the cell
+// count when `line` is a valid delimiter (every cell is `:?-+:?` AND the row has at
+// least one pipe, so prose like a `---` thematic break is NOT swallowed), else -1.
+function tableDelimCells(line) {
+  if (line == null) return -1;
+  const t = String(line).trim();
+  if (!t.includes('|')) return -1;
+  const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+  if (!cells.length) return -1;
+  for (const c of cells) if (!/^:?-+:?$/.test(c)) return -1;
+  return cells.length;
+}
+
+// Render a detected pipe-table block (grid lines + an optional trailing #+TBLFM:
+// recipe) to a static, read-only <table>, REUSING the base widget's CSS so the two
+// look identical. The #+TBLFM line is COMPUTED and HIDDEN — never emitted as text.
+// Cell content goes through mdInline (emphasis/links/code/emoji; artifact tokens
+// render as frozen read-only pills against the active render-context globals). No
+// new parse/formula logic: reuses parseTable / parseTblfm / computeTable / extractTblfm.
+// When the caller knows the block's line range in the source text (l0/l1, as mdToHtml
+// does), it's stamped as data-l0/data-l1 and a hover-revealed "Convert to base" button
+// is emitted — the §6 promote front door. Range-less calls render no promote chrome.
+function renderStaticTable(block, l0, l1) {
+  const tblfm = extractTblfm(block);
+  const model = parseTable(stripTblfm(block));
+  if (!model) return '';
+  const nc = model.aligns.length;
+  let rows = model.rows;
+  const computed = new Set();          // "r,c" keys of formula-driven cells → Σ-tagged
+  if (tblfm) {
+    const dims = { nrows: model.rows.length, ncols: nc };
+    for (const f of parseTblfm(tblfm, dims)) {
+      const t = f.target;
+      if (t.kind === 'col')        { for (let r = 1; r < model.rows.length; r++) computed.add(r + ',' + t.col); }
+      else if (t.kind === 'row')   { for (let c = 0; c < nc; c++) computed.add(t.row + ',' + c); }
+      else if (t.kind === 'field') computed.add(t.row + ',' + t.col);
+    }
+    rows = computeTable(model, tblfm);    // literals + computed values (#ERR on cycle/invalid)
+  }
+  const aCls = a => a === 'center' ? ' mt-a-center' : a === 'right' ? ' mt-a-right' : '';
+  const cCls = key => computed.has(key) ? ' mt-computed' : '';
+  const ranged = Number.isInteger(l0) && Number.isInteger(l1);
+  let h = `<div class="md-table-static"${ranged ? ` data-l0="${l0}" data-l1="${l1}"` : ''}>`;
+  if (ranged) h += '<button class="mt-promote" contenteditable="false" title="Convert to base" aria-label="Convert to base">▦ base</button>';
+  h += '<div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
+  for (let c = 0; c < nc; c++)
+    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${mdInline((rows[0] && rows[0][c]) || '')}</th>`;
+  h += '</tr>';
+  for (let r = 1; r < rows.length; r++) {
+    h += '<tr>';
+    for (let c = 0; c < nc; c++)
+      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${mdInline((rows[r] && rows[r][c]) || '')}</td>`;
+    h += '</tr>';
+  }
+  return h + '</table></div></div>';
+}
+
 // ─── OPML ─────────────────────────────────────────────────────────────────────
 
 function toOpml(r) {
@@ -1988,7 +2185,7 @@ const BLOCK_CMDS = [
   { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point — the default block.', ex:'- text', section:'Lists', turn:true },
   { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Lists', turn:true },
   { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Lists', turn:true },
-  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Multi-line text block — Enter inserts a line break; Shift+Enter creates a new node.', ex:'text\nmore text', section:'Lists', turn:true },
+  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Prose block — Enter = line break, Shift+Enter = new point.', ex:'text\nmore text', section:'Lists', turn:true },
   // Headings
   { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Largest section heading.',                ex:'# text', section:'Headings', turn:true },
   { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium sub-section heading.',             ex:'## text', section:'Headings', turn:true },
@@ -1997,7 +2194,7 @@ const BLOCK_CMDS = [
   { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced, unformatted code block.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'table',   icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Table',      desc:'Insert an editable grid of cells.',       section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
   // To-do state — make a todo and set its Org-style keyword (also typeable: just
   // write `TODO `/`NEXT `/`WAITING `/`DONE ` at the start of the line).
   { id:'state:TODO',    icon:'☐', fa:'fa-regular fa-square',         label:'TODO',    desc:'Mark as an open task.',        ex:'TODO text',    section:'To-do state' },
@@ -2012,6 +2209,7 @@ const INSERT_CMDS = [
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
+  { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
@@ -2128,11 +2326,14 @@ function renderBreadcrumb() {
   bar.innerHTML = ''; bar.classList.add('visible');
   const home = mkCrumb('Home', () => zoomTo(null));
   bar.appendChild(home);
-  path.slice(1,-1).forEach(a => { bar.appendChild(mkSep()); bar.appendChild(mkCrumb(textForDisplay(a)||'(untitled)', () => zoomTo(a.id))); });
+  path.slice(1,-1).forEach(a => { bar.appendChild(mkSep()); bar.appendChild(mkCrumb(crumbLabel(a), () => zoomTo(a.id))); });
   const cur = path[path.length-1];
   bar.appendChild(mkSep());
-  const ce = mkCrumb(cur ? (textForDisplay(cur)||'(untitled)') : '(untitled)', null); ce.classList.add('current'); bar.appendChild(ce);
+  const ce = mkCrumb(crumbLabel(cur), null); ce.classList.add('current'); bar.appendChild(ce);
 }
+// A base has no prose title (its text is the table markdown), so show a clean label
+// rather than a row of pipes in the breadcrumb.
+function crumbLabel(n) { return n && n.type === 'base' ? '▦ Base' : ((n && textForDisplay(n)) || '(untitled)'); }
 function mkCrumb(t, fn) { const s=document.createElement('span'); s.className='crumb'; s.textContent=t; s.title=t; if(fn) s.addEventListener('click',fn); return s; }
 function mkSep() { const s=document.createElement('span'); s.className='crumb-sep'; s.textContent='›'; return s; }
 
@@ -2145,10 +2346,13 @@ function render() {
   const vp = focusedId ? nodeById(focusedId) : root;
   if (!vp) { focusedId = null; render(); return; }
 
+  // zoomed INTO a base → the base is the whole view and renders full-width (see CSS)
+  document.body.classList.toggle('base-zoom', !!(focusedId && vp.type === 'base'));
+
   if (focusedId) {
-    if (vp.type === 'table') {
+    if (vp.type === 'base') {
       const wrap = document.createElement('div');
-      wrap.className = 'zoom-title zoom-title-table';
+      wrap.className = 'zoom-title zoom-title-base';
       wrap.appendChild(buildTableWidget(vp, false));
       container.appendChild(wrap);
     } else {
@@ -2451,19 +2655,13 @@ function mtInline(node, raw) {
   diceRenderList = markovRenderList = rolltableRenderList = mathRenderList = varRenderList = grammarRenderList = null;
   return html;
 }
+// Select a cell's whole contents (type-to-overwrite) and remember the cell so the
+// selection toolbar knows this selection was navigation-placed, not intentional.
 function mtSelectCellContents(cell) {
   const range = document.createRange();
   range.selectNodeContents(cell);
   const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
   mtNavSel = cell;
-}
-function mtFocusCell(node, r, c) {
-  const host = mtHost(node.id); if (!host) return false;
-  const target = host.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
-  if (!target) return false;
-  target.focus(); // focusin handler swaps to raw text and selects it for type-to-overwrite
-  if (mtNavSel !== target) mtSelectCellContents(target); // cell was already focused: no focusin fired
-  return true;
 }
 // Replace the [start,end) span of one cell's raw text, then repaint that cell.
 function mtSpliceCell(nodeId, r, c, start, end, str) {
@@ -2481,7 +2679,11 @@ function mtSpliceCell(nodeId, r, c, start, end, str) {
   scheduleReconcile();
 }
 function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splice(to, 0, x); }
-function mtModel(node) { return parseTable(stripTblfm(node.text)) || parseTable(starterTableText()); }
+// Parse a base's stored text into its {aligns, rows} grid model (sans the #+TBLFM
+// recipe). Split text-pure (mtModelText) so the portable-copy serializers stay
+// DOM-free and unit-testable; mtModel is the node-taking convenience wrapper.
+function mtModelText(text) { return parseTable(stripTblfm(text)) || parseTable(starterTableText()); }
+function mtModel(node) { return mtModelText(node.text); }
 // Serialize the grid back to node.text, preserving the trailing #+TBLFM: recipe (Org
 // keeps formulas beside the table; cells hold the literal/computed values). Without
 // this, any cell edit would drop the formula line.
@@ -2507,7 +2709,8 @@ function mtPatchCells(node, exceptCell) {
   const host = mtHost(node.id); if (!host) return;
   const m = mtModel(node);
   host.querySelectorAll('.mt-cell').forEach(cell => {
-    if (cell === exceptCell || cell === document.activeElement) return; // leave the cell being edited
+    if (cell === exceptCell) return;
+    if (cell === document.activeElement && !cell.classList.contains('mt-computed')) return;
     cell.innerHTML = mtInline(node, m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '');
   });
 }
@@ -2520,17 +2723,17 @@ function refreshTable(node) {
   scheduleReconcile();
 }
 
-// Repaint a node's display after an artifact record changed. Table nodes hold a
+// Repaint a node's display after an artifact record changed. Base nodes hold a
 // widget, not renderContentHTML output, so they rebuild the grid instead.
 function repaintNodeContent(node) {
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (!el || el.dataset.editing) return null;
-  if (node.type === 'table') { refreshTable(node); return el; }
+  if (node.type === 'base') { refreshTable(node); return el; }
   el.innerHTML = renderContentHTML(node);
   return el;
 }
 
-// Display-mode pill click inside a table cell: pencil opens the editor, body
+// Display-mode pill click inside a base cell: pencil opens the editor, body
 // re-rolls in place (same semantics as pills in regular node content).
 function handleCellPill(node, pill, target) {
   const key = pill.dataset.key;
@@ -2547,6 +2750,184 @@ function handleCellPill(node, pill, target) {
   } else if (pill.classList.contains('var-pill') && !pill.classList.contains('var-bad')) {
     editVar(node, key);
   }
+}
+
+// ── column aggregate helpers (pure, testable) ─────────────────────────────
+// Build (or patch) the TBLFM formula for one column's footer aggregate. fn ∈
+// 'sum'|'avg'|'count'|'min'|'max'|'none'. Replaces any existing @>$col1= for
+// that column; preserves all other parts; returns the full updated string.
+function mtBuildAggFormula(tblfm, col1, fn) {
+  const FN_MAP = { sum:'vsum', avg:'vmean', count:'vcount', min:'vmin', max:'vmax' };
+  const parts = (tblfm || '').split('::').map(s => s.trim()).filter(s => {
+    if (!s) return false;
+    const m = s.match(/^@>\$(\d+)=/);
+    return !(m && +m[1] === col1);
+  });
+  if (fn !== 'none' && FN_MAP[fn])
+    parts.push('@>$' + col1 + '=' + FN_MAP[fn] + '(@2$' + col1 + '..@-1$' + col1 + ')');
+  return parts.join(' :: ');
+}
+// True when the TBLFM contains at least one @>$N= footer-row formula.
+function mtHasFooter(tblfm) {
+  return (tblfm || '').split('::').some(s => /^@>\$[\d<>]+=/.test(s.trim()));
+}
+// Return the current aggregate kind ('sum'|'avg'|'count'|'min'|'max'|'none')
+// for a 1-based column, or 'none' if no formula targets it.
+function mtColAggKind(tblfm, col1) {
+  const REV = { vsum:'sum', vmean:'avg', vcount:'count', vmin:'min', vmax:'max' };
+  for (const part of (tblfm || '').split('::')) {
+    const m = part.trim().match(new RegExp('^@>\\$' + col1 + '=(vsum|vmean|vcount|vmin|vmax)\\b'));
+    if (m) return REV[m[1]] || 'none';
+  }
+  return 'none';
+}
+
+// Apply an aggregate function to colIdx (0-based). Adds/removes the footer row
+// as needed; calls mtRecompute + refreshTable to show computed values.
+function mtApplyAggregate(node, colIdx, fn) {
+  const col1 = colIdx + 1;
+  const tblfm = extractTblfm(node.text);
+  const newTblfm = mtBuildAggFormula(tblfm, col1, fn);
+  const model = mtModel(node);
+  if (!mtHasFooter(tblfm) && mtHasFooter(newTblfm)) {
+    model.rows.push(Array(model.aligns.length).fill(''));
+  } else if (mtHasFooter(tblfm) && !mtHasFooter(newTblfm) && model.rows.length > 2) {
+    model.rows.pop();
+  } else if (fn === 'none' && mtHasFooter(tblfm) && mtHasFooter(newTblfm)) {
+    // Footer row stays (other columns still have aggregates) — blank the cleared
+    // column's total cell so no stale computed value lingers as a literal.
+    model.rows[model.rows.length - 1][colIdx] = '';
+  }
+  node.text = serializeTable(model) + (newTblfm ? '\n#+TBLFM: ' + newTblfm : '');
+  markDirty();
+  mtRecompute(node);
+  refreshTable(node);
+}
+
+// ── column model ops (reuse the same model logic the header gestures used; now
+// exposed as explicit, keyboard-reachable panel actions) ───────────────────
+function mtSetAlign(node, colIdx, align) {
+  const m = mtModel(node);
+  m.aligns[colIdx] = align;            // 'left' is stored explicitly (:--- round-trips)
+  mtCommit(node, m); refreshTable(node);
+}
+function mtInsertCol(node, colIdx, side) {
+  const m = mtModel(node);
+  const at = side === 'left' ? colIdx : colIdx + 1;
+  m.aligns.splice(at, 0, null);
+  m.rows.forEach(r => r.splice(at, 0, ''));
+  mtCommit(node, m); refreshTable(node);
+}
+function mtMoveCol(node, colIdx, dir) {
+  const m = mtModel(node);
+  const to = colIdx + dir;
+  if (to < 0 || to >= m.aligns.length) return;
+  mtMoveItem(m.aligns, colIdx, to);
+  m.rows.forEach(r => mtMoveItem(r, colIdx, to));
+  mtCommit(node, m); refreshTable(node);
+}
+function mtDeleteCol(node, colIdx) {
+  const m = mtModel(node);
+  if (m.aligns.length <= 1) return;
+  m.aligns.splice(colIdx, 1);
+  m.rows.forEach(r => r.splice(colIdx, 1));
+  mtCommit(node, m); mtClearSelection(); refreshTable(node);
+}
+
+function hideColPanel() {
+  const p = document.getElementById('mt-colpanel');
+  if (p) p.classList.remove('on');
+}
+
+// The consolidated Column panel: Calculate · Alignment · Insert · Move · Delete.
+// One panel, growing by section (§7.1 menu pattern: role=menu/menuitem, arrow/
+// Enter/Esc nav, reduced-motion respected). Every column op lives here so the
+// header strip stays clean and nothing is drag/double-click-only.
+function showColPanel(node, colIdx, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const col1 = colIdx + 1;
+  const model = mtModel(node);
+  const ncols = model.aligns.length;
+  const tblfm = extractTblfm(node.text);
+  const curAgg = mtColAggKind(tblfm, col1);
+  const curAlign = model.aligns[colIdx] || 'left';
+
+  const addSection = (label, sep) => {
+    const s = document.createElement('div');
+    s.className = 'mt-col-section' + (sep ? ' mt-col-sep' : '');
+    s.textContent = label;
+    panel.appendChild(s);
+  };
+  const addItem = (label, { active = false, disabled = false, danger = false, onApply } = {}) => {
+    const item = document.createElement('div');
+    item.className = 'mt-col-item' + (active ? ' on' : '') + (disabled ? ' mt-col-disabled' : '') + (danger ? ' mt-col-danger' : '');
+    item.setAttribute('role', 'menuitem');
+    item.setAttribute('tabindex', '-1');
+    if (disabled) item.setAttribute('aria-disabled', 'true');
+    item.innerHTML = '<span class="mt-col-item-label">' + label + '</span>' +
+                     '<span class="mt-col-item-check" aria-hidden="true">✓</span>';
+    if (!disabled) item.addEventListener('mousedown', e => { e.preventDefault(); onApply(); hideColPanel(); });
+    panel.appendChild(item);
+  };
+
+  addSection('Calculate');
+  [['sum','Sum'],['avg','Average'],['count','Count'],['min','Min'],['max','Max'],['none','None']]
+    .forEach(([fn, label]) => addItem(label, { active: fn === curAgg, onApply: () => mtApplyAggregate(node, colIdx, fn) }));
+
+  addSection('Alignment', true);
+  [['left','Left'],['center','Center'],['right','Right']]
+    .forEach(([al, label]) => addItem(label, { active: al === curAlign, onApply: () => mtSetAlign(node, colIdx, al) }));
+
+  addSection('Insert column', true);
+  addItem('Insert left',  { onApply: () => mtInsertCol(node, colIdx, 'left') });
+  addItem('Insert right', { onApply: () => mtInsertCol(node, colIdx, 'right') });
+
+  addSection('Move column', true);
+  addItem('Move left',  { disabled: colIdx === 0,         onApply: () => mtMoveCol(node, colIdx, -1) });
+  addItem('Move right', { disabled: colIdx === ncols - 1, onApply: () => mtMoveCol(node, colIdx,  1) });
+
+  addSection('Delete', true);
+  addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+
+  const rect = anchorEl.getBoundingClientRect();
+  panel.style.left = rect.left + 'px';
+  panel.style.top  = (rect.bottom + 2) + 'px';
+  panel.classList.add('on');
+  requestAnimationFrame(() => {
+    const pr = panel.getBoundingClientRect();
+    if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
+    if (pr.bottom > window.innerHeight - 8) panel.style.top  = (rect.top - pr.height - 2) + 'px';
+    (panel.querySelector('.mt-col-item.on:not(.mt-col-disabled)') || panel.querySelector('.mt-col-item:not(.mt-col-disabled)'))?.focus();
+  });
+}
+
+// ── whole-base operations (surfaced on the base bullet's menu) ────────────────
+
+// Portable copy serializers (pure, text-in/text-out → unit-testable). "Frozen" bakes
+// the CURRENT computed values into the cells and DROPS the recipe — a static snapshot
+// that renders read-only via PR 1's static path. "Recipe" keeps the raw cell literals
+// AND the #+TBLFM line, so a paste recomputes through that same static render.
+function baseFrozenMarkdown(text) {
+  const model = mtModelText(text);
+  const tblfm = extractTblfm(text);
+  const rows  = tblfm ? computeTable(model, tblfm) : model.rows;
+  return serializeTable({ aligns: model.aligns, rows });
+}
+function baseRecipeMarkdown(text) {
+  const model = mtModelText(text);
+  const tblfm = extractTblfm(text);
+  return serializeTable(model) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
+}
+
+// Generic clipboard write + confirmation toast (navigator.clipboard with the same
+// execCommand fallback copyNodeLink uses when the async API is unavailable).
+function copyTextToClipboard(text, hint) {
+  const done = () => flashHint(hint);
+  if (navigator.clipboard?.writeText)
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  else
+    fallbackCopy(text, done);
 }
 
 function mtClearSelection() {
@@ -2568,31 +2949,67 @@ function mtApplySelection() {
   });
 }
 
+// Keyboard cell navigation (UXP-2). Focus a cell by logical (r,c) and select its
+// whole contents (type-to-overwrite). Re-queries the host so it works after a
+// formula recompute / rebuild; focusin (on the landed cell) commits the prior cell,
+// shows raw text, and collapses any drag-range selection to this single cell.
+function mtFocusCell(node, r, c) {
+  const host = mtHost(node.id); if (!host) return false;
+  const target = host.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
+  if (!target) return false;
+  target.focus();
+  mtSelectCellContents(target); // marks the selection navigation-placed (no toolbar)
+  return true;
+}
+
 function buildTableWidget(node, readOnly) {
   const model = mtModel(node);
   const nc = model.aligns.length;
   const aCls = a => a==='center'?' mt-a-center':a==='right'?' mt-a-right':'';
   const ro = readOnly ? '' : ' contenteditable="true"';
-  let h = '<div class="mt-scroll"><table class="md-table"><thead>';
+  // Pre-compute which cells are formula-driven so they render read-only + Σ-tagged.
+  const computedCells = new Set();
   if (!readOnly) {
+    const tblfmStr = extractTblfm(node.text);
+    if (tblfmStr) {
+      const dims = { nrows: model.rows.length, ncols: nc };
+      for (const f of parseTblfm(tblfmStr, dims)) {
+        const t = f.target;
+        if (t.kind === 'col')   { for (let r=1;r<model.rows.length;r++) computedCells.add(r+','+t.col); }
+        else if (t.kind === 'row')   { for (let c=0;c<nc;c++) computedCells.add(t.row+','+c); }
+        else if (t.kind === 'field') computedCells.add(t.row+','+t.col);
+      }
+    }
+  }
+  // Base header bar (interactive only): a reserved strip atop the base. The left zone
+  // (.mt-base-views) is held for a future view switcher; whole-base ops now live on the
+  // base bullet's menu, so the bar is empty (and collapses to nothing) for now.
+  let h = '';
+  if (!readOnly)
+    h += '<div class="mt-baseheader"><div class="mt-base-views"></div></div>';
+  // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
+  // the whole grid — a rowspan can't span the thead↔tbody boundary.
+  h += '<div class="mt-scroll"><table class="md-table">';
+  if (!readOnly) {
+    // The add-column cell spans the whole grid height (tophandles + header + data
+    // rows) so the "+" is a full-height, non-clipped right-edge affordance.
+    const addColSpan = model.rows.length + 1;
     h += '<tr class="mt-tophandles"><th class="mt-corner"></th>';
-    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder · double-click to cycle alignment"><span class="mt-grip"></span><span class="mt-del mt-delcol" data-c="${c}" title="Delete column">×</span></th>`;
-    h += '<th class="mt-addcol-cell"><button class="mt-addcol" title="Add column">+</button></th></tr>';
+    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" title="Column options" aria-haspopup="menu">▾</button></th>`;
+    h += `<th class="mt-addcol-cell" rowspan="${addColSpan}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th></tr>`;
   }
   h += '<tr class="mt-headrow" data-r="0">';
   if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
-  for (let c=0;c<nc;c++) h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${ro}>${mtInline(node, model.rows[0][c]||'')}</th>`;
-  if (!readOnly) h += '<th class="mt-pad"></th>';
-  h += '</tr></thead><tbody>';
+  for (let c=0;c<nc;c++) { const ch0=computedCells.has('0,'+c); h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${ch0?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[0][c]||'')}</th>`; }
+  h += '</tr>';
   for (let r=1;r<model.rows.length;r++) {
     h += `<tr data-r="${r}">`;
     if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
-    for (let c=0;c<nc;c++) h += `<td class="mt-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
-    if (!readOnly) h += '<td class="mt-pad"></td>';
+    for (let c=0;c<nc;c++) { const cc=computedCells.has(r+','+c); h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`; }
     h += '</tr>';
   }
   if (!readOnly) h += `<tr class="mt-addrow-row"><th></th><td class="mt-addrow-cell" colspan="${nc}"><button class="mt-addrow">+ Add row</button></td><td></td></tr>`;
-  h += '</tbody></table></div>';
+  h += '</table></div>';
 
   const host = document.createElement('div');
   host.className = 'md-table-host';
@@ -2603,17 +3020,19 @@ function buildTableWidget(node, readOnly) {
   // cell editing: show raw text on focus, render markdown on blur
   host.addEventListener('focusin', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    if (cell.classList.contains('mt-computed')) { mtPointerFocus = false; return; }
     mtClearSelection();
     forceIncludeId = node.id;
     const m = mtModel(node);
     cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
-    // Keyboard-driven focus (Tab / arrow navigation): select the whole cell for
-    // type-to-overwrite. Pointer focus keeps the browser's click-placed caret.
+    // Keyboard-driven focus (Tab into the grid, arrow/Tab/Enter cell nav): select the
+    // whole cell for type-to-overwrite. Pointer focus keeps the browser's click caret.
     if (!mtPointerFocus) mtSelectCellContents(cell);
     mtPointerFocus = false;
   });
   host.addEventListener('input', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    if (cell.classList.contains('mt-computed')) return;
     mtNavSel = null;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = cell.textContent;
@@ -2624,6 +3043,7 @@ function buildTableWidget(node, readOnly) {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
     if (mtNavSel === cell) mtNavSel = null;
     if (slashState?.cell && slashState.content === cell) hideSlashMenu();
+    if (cell.classList.contains('mt-computed')) return;
     const raw = cell.textContent;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
@@ -2636,30 +3056,27 @@ function buildTableWidget(node, readOnly) {
     scheduleReconcile();
   });
 
-  // add / delete row & column
+  // add / delete row & column; column panel toggle
   host.addEventListener('click', e => {
+    if (e.target.closest('.mt-col-btn')) {
+      e.stopPropagation();
+      const btn = e.target.closest('.mt-col-btn');
+      showColPanel(node, +btn.dataset.c, btn);
+      return;
+    }
     if (e.target.closest('.mt-addcol')) {
       const m = mtModel(node); m.aligns.push(null); m.rows.forEach(r => r.push('')); mtCommit(node,m); refreshTable(node);
     } else if (e.target.closest('.mt-addrow')) {
       const m = mtModel(node); m.rows.push(Array(m.aligns.length).fill('')); mtCommit(node,m); refreshTable(node);
-    } else if (e.target.closest('.mt-delcol')) {
-      const c = +e.target.closest('.mt-delcol').dataset.c; const m = mtModel(node);
-      if (m.aligns.length > 1) { m.aligns.splice(c,1); m.rows.forEach(r => r.splice(c,1)); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
     } else if (e.target.closest('.mt-delrow')) {
       const r = +e.target.closest('.mt-delrow').dataset.r; const m = mtModel(node);
       if (m.rows.length > 2 && r >= 1) { m.rows.splice(r,1); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
     }
   });
-  // double-click a column handle: cycle alignment
-  host.addEventListener('dblclick', e => {
-    const ch = e.target.closest('.mt-colh'); if (!ch) return;
-    const c = +ch.dataset.c; const m = mtModel(node);
-    const order = [null,'left','center','right'];
-    m.aligns[c] = order[(order.indexOf(m.aligns[c]) + 1) % order.length];
-    mtCommit(node,m); refreshTable(node);
-  });
-  // drag-reorder rows / columns via handle drag
+  // (alignment now lives in the Column panel — the hidden double-click cycle is gone)
+  // drag-reorder rows / columns via handle drag (▾ button is not a drag handle)
   host.addEventListener('dragstart', e => {
+    if (e.target.closest('.mt-col-btn')) { e.preventDefault(); return; }
     const ch = e.target.closest('.mt-colh'), rh = e.target.closest('.mt-rowh');
     if (ch) mtReorder = { kind:'col', from:+ch.dataset.c };
     else if (rh && rh.dataset.r) mtReorder = { kind:'row', from:+rh.dataset.r };
@@ -2701,35 +3118,72 @@ function buildTableWidget(node, readOnly) {
   });
   host.addEventListener('mouseup', () => { mtPointerFocus = false; });
 
-  // arrow-key navigation: ↑/↓ moves between rows; at the edge, exits to the adjacent point
+  // keyboard cell navigation (UXP-2). Tab/Shift+Tab/Enter move between cells; the
+  // focusout/focusin handlers above do the commit + #+TBLFM recompute + repaint (the
+  // same path a mouse click between cells already exercises). Pipe-table cells are
+  // single-line — serializeTable collapses '\n' to a space — so an in-cell break can't
+  // round-trip; Enter = down a row, Shift+Enter = up a row (Excel/Sheets convention),
+  // never inserts one. ↑/↓ move a row too, and at the top/bottom edge they EXIT the
+  // base to the adjacent outline point (Tab/Enter stay inside — they edit; arrows
+  // navigate). While the "@" insert menu is open on a cell, keys drive the menu.
   host.addEventListener('keydown', e => {
     mtPointerFocus = false; // typing means any pointer-press gesture is over
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
-    // "@" insert menu open on this cell: arrows/Enter/Tab/Esc drive the menu
     if (slashState?.cell && slashState.content === cell && isSlashMenuOpen()) {
       if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
       if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
       if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
       if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { mtNavSel = null; return; } // intentional select-all
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
-    if (e.shiftKey) { if (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End') mtNavSel = null; return; } // intentional selection
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    const r = +cell.dataset.r, c = +cell.dataset.c;
+    // intentional selection keys: lift the nav-selection flag so the toolbar may show
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { mtNavSel = null; return; }
+    if (e.shiftKey && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) { mtNavSel = null; return; }
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      const r = +cell.dataset.r, c = +cell.dataset.c;
+      const m = mtModel(node);
+      // a navigation-placed full selection acts like a spreadsheet cursor: arrows move
+      // cells directly; computed cells (no caret) always navigate
+      const navState = (mtNavSel === cell && !window.getSelection()?.isCollapsed)
+        || cell.classList.contains('mt-computed');
+      if (e.key === 'ArrowDown') {
+        if (!navState && !isAtLastLine(cell)) return;
+        e.preventDefault();
+        if (r < m.rows.length - 1) { mtFocusCell(node, r + 1, c); }
+        else                        { navigateToNext(node.id); }
+      } else {
+        if (!navState && !isAtFirstLine(cell)) return;
+        e.preventDefault();
+        if (r > 0) { mtFocusCell(node, r - 1, c); }
+        else       { navigateToPrev(node.id); }
+      }
+      return;
+    }
+    if (e.key !== 'Tab' && e.key !== 'Enter') return;
+    e.preventDefault();
     const m = mtModel(node);
-    // a navigation-placed full selection acts like a spreadsheet cursor: arrows move cells
-    const navState = mtNavSel === cell && !window.getSelection()?.isCollapsed;
-    if (e.key === 'ArrowDown') {
-      if (!navState && !isAtLastLine(cell)) return;
-      e.preventDefault();
-      if (r < m.rows.length - 1) { mtFocusCell(node, r + 1, c); }
-      else                        { navigateToNext(node.id); }
-    } else {
-      if (!navState && !isAtFirstLine(cell)) return;
-      e.preventDefault();
-      if (r > 0) { mtFocusCell(node, r - 1, c); }
-      else       { navigateToPrev(node.id); }
+    const lastRow = m.rows.length - 1, lastCol = m.aligns.length - 1;
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    if (e.key === 'Tab' && !e.shiftKey) {
+      if (r === lastRow && c === lastCol) {        // bottom-right → add a row, land in its first cell
+        const mm = mtModel(node);
+        mm.rows[r][c] = cell.textContent;          // commit the cell we're leaving before rebuild
+        mm.rows.push(Array(mm.aligns.length).fill(''));
+        mtCommit(node, mm);
+        refreshTable(node);
+        mtFocusCell(node, mtModel(node).rows.length - 1, 0);
+      } else if (c === lastCol) {                  // row end → next row, first cell
+        mtFocusCell(node, r + 1, 0);
+      } else {                                     // → next cell right
+        mtFocusCell(node, r, c + 1);
+      }
+    } else if (e.key === 'Tab' && e.shiftKey) {
+      if (r === 0 && c === 0) return;              // very first cell → stop
+      if (c === 0) mtFocusCell(node, r - 1, lastCol); // row start → previous row, last cell
+      else mtFocusCell(node, r, c - 1);            // ← previous cell left
+    } else if (e.shiftKey) {                       // Shift+Enter → up one row, same column; stop at top row
+      if (r > 0) mtFocusCell(node, r - 1, c);
+    } else {                                        // Enter → down one row, same column; stop at last row
+      if (r < lastRow) mtFocusCell(node, r + 1, c);
     }
   });
 
@@ -2827,11 +3281,20 @@ function renderRow(r) {
 
   // bullet area
   const bullet = document.createElement('span');
-  bullet.className = 'bullet';
+  bullet.className = 'bullet' + (node.type === 'base' ? ' bullet-base' : '');
 
-  const dot = document.createElement('span');
-  dot.className = 'bullet-dot';
-  bullet.appendChild(dot);
+  if (node.type === 'base') {
+    // A base's bullet is the /base grid icon (signals "this point is a base"). It still
+    // behaves like any bullet — click zooms in, hover/long-press opens the base menu.
+    const ic = document.createElement('span');
+    ic.className = 'bullet-base-ic';
+    setIcon(ic, { fa:'fa-solid fa-table-cells', fb:'▦' });
+    bullet.appendChild(ic);
+  } else {
+    const dot = document.createElement('span');
+    dot.className = 'bullet-dot';
+    bullet.appendChild(dot);
+  }
 
   if (node.type === 'todo') {
     const cb = document.createElement('input');
@@ -2841,9 +3304,26 @@ function renderRow(r) {
   }
 
   if (!opts.searchCtx) {
+    // Bullet is a button that opens the point-actions menu (UXP-14). tabindex=-1 keeps
+    // it out of the Tab order (it'd flood the virtual list); it's reached by Shift+F10 /
+    // the Menu key from the focused point (onKeyDown), then operated from the keyboard.
+    bullet.setAttribute('role', 'button');
+    bullet.setAttribute('tabindex', '-1');
+    bullet.setAttribute('aria-haspopup', 'menu');
+    bullet.setAttribute('aria-label', node.type === 'base' ? 'Base actions' : 'Point actions');
     bullet.addEventListener('click', e => {
       if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
-      if (!e.target.classList.contains('node-checkbox') && node.type !== 'divider') zoomInto(node.id);
+      if (e.target.classList.contains('node-checkbox')) return;
+      // every point (incl. a base) zooms in on a bullet click; the hover/long-press menu
+      // carries the per-node ops (dismiss it so it doesn't linger over the zoomed view)
+      if (node.type !== 'divider') { hideBpop(); zoomInto(node.id); }
+    });
+    // Keyboard: Enter/Space on the focused bullet opens its menu (beside mousedown/hover).
+    bullet.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        showBulletPopup(node.id, bullet, { keyboard: true });
+      }
     });
     if (IS_TOUCH) {
       // No hover on touch: long-press the bullet to open the node menu (type/move/delete/zoom).
@@ -2859,21 +3339,17 @@ function renderRow(r) {
   const content = document.createElement('div');
   content.className = 'node-content';
   const isDivider = node.type === 'divider';
-  const isTable = node.type === 'table';
+  const isTable = node.type === 'base';
   // Tables manage their own cell-level edit; contenteditable is only enabled when
   // the user enters raw-markdown text-edit mode (toggled in enterEdit/exitEdit).
   content.contentEditable = (opts.searchCtx || isTable) ? 'false' : 'true';
   content.spellcheck = !isTable;
   content.dataset.id = node.id;
-  content.dataset.ph = isDivider ? 'Section label…' : (depth === 0 && !focusedId ? 'Start writing…' : '');
+  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block — Enter = line break · ⇧+Enter = new point' : (depth === 0 && !focusedId ? 'Start writing…' : '');
   if (isTable) {
+    // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
+    // not as a separate button under the grid.
     content.appendChild(buildTableWidget(node, !!opts.searchCtx));
-    if (!opts.searchCtx) {
-      const editBtn = document.createElement('button');
-      editBtn.className = 'mt-editmd-btn'; editBtn.title = 'Edit table as Markdown';
-      editBtn.textContent = '✏ markdown';
-      content.appendChild(editBtn);
-    }
   } else {
     content.innerHTML = renderContentHTML(node);
   }
@@ -2972,7 +3448,7 @@ let activeContentId = null;
 function attachContentEvents(content, node) {
   // Table nodes: clicking OUTSIDE the widget → raw-markdown text edit; clicking ON
   // the widget → cell editing handled internally by buildTableWidget.
-  if (node.type === 'table') {
+  if (node.type === 'base') {
     content.addEventListener('mousedown', e => {
       if (content.dataset.editing) return;
       // artifact pills inside rendered cells stay live (reroll in place / open editor)
@@ -3041,6 +3517,16 @@ function attachContentEvents(content, node) {
       e.preventDefault(); e.stopPropagation();
       const tid = lnk.dataset.target;
       if (tid && nodeById(tid)) zoomInto(tid);
+      return;
+    }
+    // static table "Convert to base" (§6 promote). Display mode only; the node-link
+    // check above already swallows clicks inside mirrors (whose tables belong to the
+    // mirrored node, not this one).
+    const promo = e.target.closest?.('.mt-promote');
+    if (promo && !content.dataset.editing) {
+      e.preventDefault(); e.stopPropagation();
+      const st = promo.closest('.md-table-static');
+      if (st) promoteStaticTable(node, +st.dataset.l0, +st.dataset.l1);
       return;
     }
     // dice pill: pencil opens the editor, body re-rolls in place
@@ -3152,6 +3638,7 @@ function attachContentEvents(content, node) {
     scheduleFnHide();
     scheduleBlHide();
     hideLinkMenu();
+    if (isSizePickerOpen()) closeSizePicker(); // dismiss the grid sizer if focus left
     if (node.type === 'divider') {
       setTimeout(() => {
         const nodeEl = content.closest('.node');
@@ -3258,7 +3745,7 @@ function editModeHTML(node) {
 }
 
 function enterEdit(content, node) {
-  if (node.type === 'table') {
+  if (node.type === 'base') {
     if (content.dataset.editing) return;
     if (selectedIds.size > 0) clearSelection();
     selAnchorId = node.id;
@@ -3287,7 +3774,10 @@ function exitEdit(content, node) {
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
 
-  if (node.type === 'table') {
+  if (node.type === 'base') {
+    // Re-read with block awareness: a #+TBLFM: line typed on a fresh Enter lands in a
+    // <div> block, which editableText would glue onto the grid (no newline) and drop.
+    node.text = editableTextBlocks(content);
     delete content.dataset.editing;
     delete content.dataset.prevText;
     content.contentEditable = 'false';
@@ -3295,6 +3785,9 @@ function exitEdit(content, node) {
     if (activeContentId === node.id) activeContentId = null;
     recordTextEdit(node.id, prevText, node.text);
     const tblfm = extractTblfm(node.text); // the user may have typed/edited a #+TBLFM: line
+    // A #+TBLFM: fragment that didn't land on its own line can't be associated with the
+    // grid; surface it instead of silently dropping the formula (P4 feedback).
+    if (!tblfm && /#\+TBLFM:/i.test(node.text)) flashHint('Put #+TBLFM: on its own line under the table');
     const parsed = parseTable(node.text);
     if (parsed) {
       // Normalize: re-serialize so every row has pipe formatting (guards against
@@ -3303,10 +3796,6 @@ function exitEdit(content, node) {
       mtRecompute(node); // bake computed values into the formula's target cells
       content.textContent = '';
       content.appendChild(buildTableWidget(node, false));
-      const btn = document.createElement('button');
-      btn.className = 'mt-editmd-btn'; btn.title = 'Edit table as Markdown';
-      btn.textContent = '✏ markdown';
-      content.appendChild(btn);
     } else {
       // User removed the table structure — re-derive type and full re-render.
       const et = deriveTypeFromText(node.text);
@@ -3425,6 +3914,26 @@ function parseMLlines(lines) {
 
 function onKeyDown(e, id, content) {
   const ctrl = e.ctrlKey || e.metaKey;
+  // Static-table "Convert to base": keyboard activation of the focused ▦ button, the
+  // P3-2 keydown path beside its mousedown handler. (Tab-focus itself rides UXP-14.)
+  if ((e.key === 'Enter' || e.key === ' ') && !content.dataset.editing) {
+    const promo = e.target.closest?.('.mt-promote');
+    if (promo) {
+      e.preventDefault(); e.stopPropagation();
+      const st = promo.closest('.md-table-static');
+      if (st) { const node = nodeById(id); if (node) promoteStaticTable(node, +st.dataset.l0, +st.dataset.l1); }
+      return;
+    }
+  }
+  // Point-actions menu: the OS-standard "context menu of the focused element" gesture
+  // (Shift+F10 or the Menu/ContextMenu key) opens this point's bullet popup with the
+  // keyboard and moves focus into it — the keyboard door for every per-point action
+  // (zoom, move, copy link, delete, convert…). Escape in the menu returns focus here.
+  if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+    const bullet = content.closest('.node-row')?.querySelector('.bullet');
+    if (bullet) { e.preventDefault(); showBulletPopup(id, bullet, { keyboard: true }); }
+    return;
+  }
   // Copy a ready-to-paste link token for this node to the clipboard.
   if ((e.key === 'l' || e.key === 'L') && ctrl && e.shiftKey) { e.preventDefault(); copyNodeLink(id); return; }
   if (LINK_PICKER_ENABLED && lpState && isLpMenuOpen()) {
@@ -3433,12 +3942,22 @@ function onKeyDown(e, id, content) {
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); lpApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideLinkMenu(); return; }
   }
+  if (isSizePickerOpen()) {
+    if (e.key==='ArrowRight') { e.preventDefault(); sizePickerMove(0, 1); return; }
+    if (e.key==='ArrowLeft')  { e.preventDefault(); sizePickerMove(0,-1); return; }
+    if (e.key==='ArrowDown')  { e.preventDefault(); sizePickerMove(1, 0); return; }
+    if (e.key==='ArrowUp')    { e.preventDefault(); sizePickerMove(-1,0); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); sizePickerConfirm(); return; }
+    if (e.key==='Escape')     { e.preventDefault(); closeSizePicker(); return; }
+    e.preventDefault(); return; // swallow other keys while the picker owns the popup
+  }
   if (slashState && isSlashMenuOpen()) {
     if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
     if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
   }
+  // Paragraph is the sanctioned prose-mode exception (P1-1): Enter = line break, Shift+Enter = new point.
   const isPara = nodeById(id)?.type === 'para';
   if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); isPara ? insertSiblingAfter(id) : insertLineBreak(content); }
   else if (e.key==='Enter' && !ctrl) { e.preventDefault(); isPara ? insertLineBreak(content) : insertSiblingAfter(id); }
@@ -3674,8 +4193,8 @@ function updateSelToolbar() {
     const anchor = range.commonAncestorContainer;
     const anchorEl = anchor.nodeType===1 ? anchor : anchor.parentElement;
     const cnt = anchorEl?.closest?.('.node-content');
-    // table cell: show for intentional selections in the focused (raw text) cell,
-    // but not for the full-cell selection placed by Tab/arrow navigation
+    // base cell: show for intentional selections in the focused (raw text) cell,
+    // but not for the full-cell selection placed by Tab/Enter/arrow navigation
     const cell = anchorEl?.closest?.('.mt-cell');
     const cellOk = cell && document.activeElement === cell && mtNavSel !== cell;
     if (!cellOk && (!cnt || !cnt.dataset.editing)) { hideSelTb(); return; }
@@ -3711,7 +4230,7 @@ function applyInlineFormat(fmt) {
   // Link needs a URL — collect it in the dialog rather than wrapping inline.
   if (fmt === 'link') {
     if (cell) {
-      // cell selection: splice into the cell's raw text via the table model
+      // cell selection: splice into the cell's raw text via the base model
       const nodeId = cell.closest('.md-table-host')?.dataset.id; if (!nodeId) return;
       const r = +cell.dataset.r, c = +cell.dataset.c;
       const start = rangeOffset(cell, range.startContainer, range.startOffset);
@@ -3751,7 +4270,7 @@ function applyInlineFormat(fmt) {
   if (!wrapped) return;
   document.execCommand('insertText', false, wrapped);
   // Cell selections need no manual sync — the insertText fires 'input' on the cell
-  // and the table host's input handler commits the model.
+  // and the base host's input handler commits the model.
   if (!cell && cnt) { const nd = nodeById(cnt.dataset.id); if (nd) { nd.text = editableText(cnt); markDirty(); } }
   hideSelTb();
 }
@@ -3763,25 +4282,76 @@ let bpopTimer = null;
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
+// Keyboard nav (UXP-14): same §7 menu pattern as the Column panel. Items are the
+// type-switcher buttons + the action rows; Enter/Space fire their mousedown handler.
+bpop.addEventListener('keydown', e => {
+  const items = [...bpop.querySelectorAll('.bpop-type, .cmd-item')];
+  if (!items.length) return;
+  const idx = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
+  else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
+  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
+  else if (e.key === 'Escape') {
+    e.preventDefault(); e.stopPropagation();
+    const id = bpopReturnFocus; hideBpop();
+    // refocus by id (the row may have been rebuilt while the menu was open)
+    if (id) document.querySelector(`.node-content[data-id="${id}"]`)?.focus();
+  }
+});
+// The node id to restore focus to when the popup is closed by keyboard (Escape).
+let bpopReturnFocus = null;
 
-function showBulletPopup(nodeId, bulletEl) {
+// ── column panel one-time init ────────────────────────────────────────────
+const _mtColPanel = document.getElementById('mt-colpanel');
+_mtColPanel.addEventListener('mousedown', e => e.preventDefault());
+_mtColPanel.addEventListener('keydown', e => {
+  const items = [..._mtColPanel.querySelectorAll('.mt-col-item:not(.mt-col-disabled)')];
+  if (!items.length) return;
+  const idx = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
+  else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
+  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
+  else if (e.key === 'Escape') { e.preventDefault(); hideColPanel(); }
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#mt-colpanel') && !e.target.closest('.mt-col-btn')) hideColPanel();
+});
+
+function showBulletPopup(nodeId, bulletEl, opts = {}) {
   clearTimeout(bpopTimer);
   const node = nodeById(nodeId);
   if (!node) return;
   bpop.innerHTML = '';
+  // Which point to send focus back to when the menu is closed by keyboard (Escape).
+  // Only set when opened from the keyboard — mouse hover must not steal focus.
+  bpopReturnFocus = opts.keyboard ? nodeId : null;
 
-  // type switcher row
-  const typeRow = document.createElement('div');
-  typeRow.className = 'bpop-types';
-  BLOCK_CMDS.filter(c => c.turn).forEach(cmd => {
-    const btn = document.createElement('div');
-    btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
-    setIcon(btn, { fa:cmd.fa, fb:cmd.icon });
-    btn.title = cmd.label;
-    btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
-    typeRow.appendChild(btn);
-  });
-  bpop.appendChild(typeRow);
+  // A base is a special structured object: no type switcher (it can't be turned into
+  // another block type), and its menu leads with the base copy ops (mirroring the
+  // header ⋯ menu) before the shared node actions.
+  const isBase = node.type === 'base';
+
+  if (!isBase) {
+    // type switcher row
+    const typeRow = document.createElement('div');
+    typeRow.className = 'bpop-types';
+    BLOCK_CMDS.filter(c => c.turn).forEach(cmd => {
+      const btn = document.createElement('div');
+      btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
+      setIcon(btn, { fa:cmd.fa, fb:cmd.icon });
+      btn.title = cmd.label;
+      btn.setAttribute('role', 'menuitem');
+      btn.setAttribute('tabindex', '-1');
+      btn.setAttribute('aria-label', 'Turn into ' + cmd.label);
+      btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
+      typeRow.appendChild(btn);
+    });
+    bpop.appendChild(typeRow);
+  }
 
   // actions
   const actions = [
@@ -3789,8 +4359,43 @@ function showBulletPopup(nodeId, bulletEl) {
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
-    { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',    fn: () => { deleteNode(nodeId); hideBpop(); }, danger:true },
+    { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
+      fn: isBase
+        ? async () => {
+            hideBpop();
+            if (await openConfirmDialog({
+              title: 'Delete base?',
+              message: 'This base and all its cell data will be removed. You can undo with ' + MOD + '+Z.',
+              confirmLabel: 'Delete base',
+            })) deleteNode(nodeId);
+          }
+        : () => { deleteNode(nodeId); hideBpop(); },
+      danger:true },
   ];
+  if (isBase) {
+    actions.unshift(
+      { icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as markdown',
+        fn: () => {
+          hideBpop();
+          const content = document.querySelector(`.node-content[data-id="${nodeId}"]`);
+          if (content) { enterEdit(content, node); content.focus(); }
+        } },
+      { icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as markdown',
+        fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as markdown'); hideBpop(); } },
+      { icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with TBLFM',
+        fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
+    );
+  }
+  // A non-base point that contains a static markdown table gets the §6 promote door
+  // here too (the menu path, beside the table's hover "▦ base" button) so the action
+  // is discoverable and rides the bullet popup's keyboard plan (UXP-14).
+  if (!isBase) {
+    const tr = findFirstTableRange(node.text);
+    if (tr) actions.unshift({
+      icon: { fa:'fa-solid fa-table-cells', fb:'▦' }, label: 'Convert table to base',
+      fn: () => { hideBpop(); promoteStaticTable(node, tr.l0, tr.l1); },
+    });
+  }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
   // todo can become NEXT etc. — the badge target only exists once a keyword is set).
   if (node.type === 'todo') {
@@ -3809,6 +4414,8 @@ function showBulletPopup(nodeId, bulletEl) {
   }
   actions.forEach(({ icon, label, fn, danger }) => {
     const item = mkCmdItem(icon, label, '', fn);
+    item.setAttribute('role', 'menuitem');
+    item.setAttribute('tabindex', '-1');
     if (danger) {
       item.querySelector('.cmd-label').style.color = '#e55';
       item.querySelector('.cmd-icon').style.color = '#e55';
@@ -3824,6 +4431,8 @@ function showBulletPopup(nodeId, bulletEl) {
     const pr = bpop.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
     if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (window.innerHeight - pr.height - 8) + 'px';
+    // Keyboard open: move focus into the menu (first item). Hover open never steals focus.
+    if (opts.keyboard) bpop.querySelector('.bpop-type, .cmd-item')?.focus();
   });
 }
 function scheduleBpopHide() { bpopTimer = setTimeout(hideBpop, 300); }
@@ -4028,9 +4637,204 @@ function slashApply() {
   }
   // restore the caret where the trigger char was
   try { setCaretByOffset(content, slashOffset); } catch(_) {}
+  // /base and @table both open the SHARED grid size picker (swapped into this same
+  // popup) before creating anything; the confirm callback does the actual work.
+  if (trigger !== '@' && cmd.id === 'base') {
+    openSizePicker(content, slashOffset, (rows, cols) => createBaseAt(nodeId, rows, cols));
+    return;
+  }
+  if (trigger === '@' && cmd.id === 'table') {
+    openSizePicker(content, slashOffset, (rows, cols) => {
+      const n = nodeById(nodeId); if (!n) return;
+      // Read the caret, then LEAVE edit mode before mutating: applyInlineReplace
+      // re-renders, and a still-editing node's blur-during-render would otherwise
+      // exitEdit-clobber node.text back to the pre-insert buffer (mirrors createBaseAt).
+      const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+      const off = Math.min(ed ? getCaretOffset(ed) : n.text.length, n.text.length);
+      if (ed) ed.blur();
+      const cur = nodeById(nodeId); if (!cur) return;
+      // keep the table block on its own line(s) so PR 1's static path detects it
+      const before = cur.text.slice(0, off), after = cur.text.slice(off);
+      let ins = starterTableText(rows, cols);
+      if (before && !/\n$/.test(before)) ins = '\n' + ins;
+      if (after && !/^\n/.test(after)) ins = ins + '\n';
+      applyInlineInsertion(nodeId, off, ins);
+    });
+    return;
+  }
   if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
   else applyBlockCmd(cmd.id, nodeId, node, content);
   markDirty();
+}
+
+// ─── shared grid size picker (used by BOTH /base and @table) ─────────────────
+// Reuses the slash-menu popup element (no separate dialog): picking /base or
+// @table swaps the command list for an N×M grid sizer. Keyboard-first per the
+// §7.2 menu pattern — arrows size, Enter/Tab confirm, Esc cancels back to text;
+// immediate Enter takes the 3×3 default. N = total rows (row 1 is the header).
+let sizePickerState = null;
+const SIZE_PICKER_MAX = 8;
+function isSizePickerOpen() { return !!sizePickerState; }
+
+function openSizePicker(content, slashOffset, onConfirm) {
+  // Reuse the spawning slash/@ popup's caret anchor: the picker is the SAME element,
+  // already positioned at the caret by positionSlashMenu. Capture its left/top and
+  // re-apply after swapping in the grid. We must NOT re-run positionSlashMenu here —
+  // slashApply has already stripped the trigger text from `content`, so the DOM walk
+  // would find no node to measure and reset the popup to 0,0 (the top-left bug).
+  const left = slashMenu.style.left, top = slashMenu.style.top;
+  hideSlashMenu();
+  sizePickerState = { rows: 3, cols: 3, onConfirm, content, slashOffset };
+  renderSizePicker();
+  slashMenu.style.left = left;
+  slashMenu.style.top = top;
+  // The grid popup is narrower than the command list, so the menu's right-edge
+  // overflow correction can only over-shift; nudge back on-screen if needed.
+  requestAnimationFrame(() => {
+    const mr = slashMenu.getBoundingClientRect();
+    if (mr.right  > window.innerWidth  - 8) slashMenu.style.left = (window.innerWidth  - mr.width  - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) slashMenu.style.top  = (window.innerHeight - mr.height - 8) + 'px';
+  });
+}
+
+function renderSizePicker() {
+  if (!sizePickerState) return;
+  const { rows, cols } = sizePickerState;
+  slashMenu.innerHTML = '';
+  slashMenu.classList.add('sp-mode');
+  const wrap = document.createElement('div');
+  wrap.id = 'size-picker';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-label', 'Table size — arrow keys to size, Enter to create, Escape to cancel');
+  const grid = document.createElement('div');
+  grid.className = 'sp-grid';
+  grid.style.gridTemplateColumns = `repeat(${SIZE_PICKER_MAX}, 15px)`;
+  for (let r = 0; r < SIZE_PICKER_MAX; r++) for (let c = 0; c < SIZE_PICKER_MAX; c++) {
+    const cell = document.createElement('div');
+    cell.className = 'sp-cell' + (r < rows && c < cols ? ' on' : '');
+    cell.addEventListener('mouseenter', () => { sizePickerState.rows = r + 1; sizePickerState.cols = c + 1; renderSizePicker(); });
+    cell.addEventListener('mousedown', e => { e.preventDefault(); sizePickerState.rows = r + 1; sizePickerState.cols = c + 1; sizePickerConfirm(); });
+    grid.appendChild(cell);
+  }
+  wrap.appendChild(grid);
+  const label = document.createElement('div');
+  label.className = 'sp-label'; label.setAttribute('aria-live', 'polite');
+  label.textContent = `${rows} × ${cols}`;
+  wrap.appendChild(label);
+  const hint = document.createElement('div');
+  hint.className = 'sp-hint';
+  hint.textContent = '↑↓←→ size · Enter create · Esc cancel';
+  wrap.appendChild(hint);
+  slashMenu.appendChild(wrap);
+  slashMenu.classList.add('on');
+}
+
+function sizePickerMove(dRow, dCol) {
+  if (!sizePickerState) return;
+  sizePickerState.rows = Math.max(1, Math.min(SIZE_PICKER_MAX, sizePickerState.rows + dRow));
+  sizePickerState.cols = Math.max(1, Math.min(SIZE_PICKER_MAX, sizePickerState.cols + dCol));
+  renderSizePicker();
+}
+
+function sizePickerConfirm() {
+  if (!sizePickerState) return;
+  const { rows, cols, onConfirm } = sizePickerState;
+  closeSizePicker();
+  onConfirm(rows, cols);
+}
+
+function closeSizePicker() {
+  sizePickerState = null;
+  slashMenu.classList.remove('on', 'sp-mode');
+  slashMenu.innerHTML = '';
+}
+
+// Create a base (interactive grid) from /base — NON-DESTRUCTIVELY. This fixes the
+// old data-loss bug where converting a point overwrote its text with a starter grid.
+// An EMPTY point becomes the base in place; a CONTENT-bearing point keeps its text
+// and the base is inserted as the very next sibling. Reuses the node-insert pattern
+// (splice + nodeMap/parentMap registration) from insertSiblingAfter.
+function createBaseAt(nodeId, rows, cols) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  // leave text-edit on this point first; the widget manages its own cell editing.
+  if (activeContentId === nodeId) {
+    const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (el) el.blur();
+  }
+  const plan = planBaseConvert(node.text, starterTableText(rows, cols));
+  pushUndo();
+  if (plan.mode === 'in-place') {
+    node.text = plan.text; node.type = 'base'; node.checked = false;
+    markDirty(); render(); focusNode(nodeId);
+    return;
+  }
+  // content-bearing: preserve the text as its own point, drop the base right after it
+  const parent = parentOf(nodeId);
+  if (!parent) { markDirty(); render(); return; }
+  const idx = parent.children.findIndex(c => c.id === nodeId);
+  const base = mkNode(plan.insert, 'base');
+  parent.children.splice(idx + 1, 0, base);
+  nodeMap.set(base.id, base); parentMap.set(base.id, parent);
+  markDirty(); render(); focusNode(base.id);
+}
+
+// "Convert to base" on a static table (§6 promote). Splits the point around the table
+// block: prose-before stays in the point, the table becomes a NEW base sibling, and
+// prose-after becomes its own point after the base — point · base · point. A point that
+// IS just the table converts in place (mirroring planBaseConvert's empty case); a
+// leading table converts in place with the trailing prose split off. Children always
+// stay attached to the node that keeps the original id. Non-destructive: every line of
+// the original text lands somewhere, and the whole move is one undo step.
+function promoteStaticTable(node, l0, l1) {
+  const plan = planTablePromote(node.text, l0, l1);
+  if (!plan) { flashHint('Couldn’t locate that table — edit the point and try again'); return; }
+  // normalize the grid + bake computed cells, exactly like the markdown-editor exit path
+  const tblfm = extractTblfm(plan.table);
+  const baseText = serializeTable(parseTable(stripTblfm(plan.table))) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
+  const parent = parentOf(node.id);
+  if (!parent) return;
+  pushUndo();
+  if (plan.before === '') {
+    // table leads the point → the point itself becomes the base (keeps id + children)
+    node.text = baseText; node.type = 'base'; node.checked = false;
+    mtRecompute(node);
+  }
+  const idx = parent.children.findIndex(c => c.id === node.id);
+  let focusId = node.id, at = idx + 1;
+  if (plan.before !== '') {
+    node.text = plan.before;               // prose keeps the original point
+    const base = mkNode(baseText, 'base');
+    mtRecompute(base);
+    parent.children.splice(at++, 0, base);
+    nodeMap.set(base.id, base); parentMap.set(base.id, parent);
+    focusId = base.id;
+  }
+  if (plan.after !== '') {
+    const tail = mkNode(plan.after, deriveTypeFromText(plan.after) || 'ul');
+    parent.children.splice(at, 0, tail);
+    nodeMap.set(tail.id, tail); parentMap.set(tail.id, parent);
+  }
+  markDirty(); render(); focusNode(focusId);
+}
+
+// Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)
+// line range (same shape mdToHtml stamps on the rendered table) or null if there is
+// none. Mirrors mdToHtml's detection (a non-list line whose next line is a matching
+// delimiter row) so the bullet-menu "Convert to base" door targets the same block the
+// hover button does. Pure; reuses mtSplitRow + tableDelimCells.
+function findFirstTableRange(text) {
+  const lines = (text || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '' || UL_RE.test(line) || OL_RE.test(line)) continue;
+    if (mtSplitRow(line).length !== tableDelimCells(lines[i + 1])) continue;
+    let j = i + 2;                                                    // header + delimiter
+    while (j < lines.length && lines[j].trim() !== '' && lines[j].includes('|')) j++;
+    if (j < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[j])) j++;  // optional recipe
+    return { l0: i, l1: j };
+  }
+  return null;
 }
 
 // Insert an inline artifact at the current caret (used by the "@" menu).
@@ -4140,9 +4944,10 @@ function insertInlineArtifact(id, nodeId, content) {
   }
 }
 
-// ─── "@" insert menu inside table cells ──────────────────────────────────────
-// Same INSERT_CMDS pool minus footnote (footnotes are node-level, not per-cell);
-// block commands ("/") stay node-only — there is no table-in-table.
+// ─── "@" insert menu inside base cells ───────────────────────────────────────
+// Same INSERT_CMDS pool minus table (no table-in-base) and footnote (footnotes
+// are node-level, not per-cell); block commands ("/") stay node-only.
+const CELL_INSERT_EXCLUDE = new Set(['table', 'footnote']);
 function checkCellSlash(cell, node) {
   const pos = getCaretOffset(cell);
   const before = (cell.textContent || '').slice(0, pos);
@@ -4150,7 +4955,7 @@ function checkCellSlash(cell, node) {
   if (!m) { if (slashState?.cell) hideSlashMenu(); return; }
   const query = m[2].toLowerCase();
   const slashOffset = pos - query.length - 1;
-  const matches = INSERT_CMDS.filter(c => c.id !== 'footnote').filter(c =>
+  const matches = INSERT_CMDS.filter(c => !CELL_INSERT_EXCLUDE.has(c.id)).filter(c =>
     c.id.startsWith(query) || c.label.toLowerCase().includes(query)
   );
   if (!matches.length) { hideSlashMenu(); return; }
@@ -4178,7 +4983,7 @@ function cellSlashApply() {
 }
 
 // Cell flavor of insertInlineArtifact: records go on the node's sidecars as
-// usual, but the token/markdown is spliced into one cell of the table model.
+// usual, but the token/markdown is spliced into one cell of the base model.
 function insertCellArtifact(id, node, r, c, offset) {
   const nodeId = node.id;
   const splice = str => mtSpliceCell(nodeId, r, c, offset, offset, str);
@@ -5855,6 +6660,10 @@ function checkMdBlockPrefix(content, node) {
 function applyBlockCmd(id, nodeId, node, content) {
   node = node || nodeById(nodeId);
   if (!node) return;
+  // A base is a special structured object — it cannot be converted into another block
+  // type (its grid/cell data doesn't translate to prose). The only way "out" is the
+  // base menu's Copy-as-markdown + Delete. Nothing turns a base into anything else.
+  if (node.type === 'base' && id !== 'base') return;
   // to-do state keyword: make the node a todo (stripping any block prefix) and set
   // the Org keyword directly. Equivalent to typing `NEXT ` at the line start.
   if (id.startsWith('state:')) {
@@ -5872,14 +6681,10 @@ function applyBlockCmd(id, nodeId, node, content) {
     rerenderNode(nodeId);
     return;
   }
-  // table: seed a starter table and switch the node into builder mode
-  if (id === 'table') {
-    if (activeContentId === nodeId) { const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`); if (el) el.blur(); }
-    if (!parseTable(node.text)) node.text = starterTableText();
-    node.type = 'table'; node.checked = false;
-    markDirty(); render();
-    return;
-  }
+  // base: create the interactive grid, NON-DESTRUCTIVELY (see createBaseAt). The
+  // /base slash verb routes through the shared size picker; this direct path (e.g.
+  // a future menu entry) uses the default size.
+  if (id === 'base') { createBaseAt(nodeId, 3, 3); return; }
   // block type — swap prefix in node.text to match the new type
   const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
   const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
@@ -6212,7 +7017,7 @@ function focusNode(id) {
     if (!el) return;
     const node = nodeById(id);
     // Table nodes manage their own cell focus; don't force text-edit mode on navigation.
-    if (node?.type === 'table') return;
+    if (node?.type === 'base') return;
     if (!el.dataset.editing && node) enterEdit(el, node);
     el.focus();
     const r = document.createRange();
@@ -6267,11 +7072,11 @@ function navigateToPrev(id) {
   if (fi == null || fi === 0) return;
   const prevNode = flatRows[fi - 1].node;
   ensureRowVisible(prevNode.id);
-  if (prevNode.type === 'table') {
+  if (prevNode.type === 'base') {
+    // arrow into a base from below: land in its last cell
     requestAnimationFrame(() => {
       const m = mtModel(prevNode);
-      const lastR = m.rows.length - 1, lastC = m.aligns.length - 1;
-      if (!mtFocusCell(prevNode, lastR, lastC)) {
+      if (!mtFocusCell(prevNode, m.rows.length - 1, m.aligns.length - 1)) {
         document.querySelector(`.node-content[data-id="${prevNode.id}"]`)?.focus();
       }
     });
@@ -6290,11 +7095,11 @@ function navigateToNext(id) {
   if (fi == null || fi >= flatRows.length - 1) return;
   const nextNode = flatRows[fi + 1].node;
   ensureRowVisible(nextNode.id);
-  if (nextNode.type === 'table') {
+  if (nextNode.type === 'base') {
+    // arrow into a base from above: land in its first data cell (header if no rows)
     requestAnimationFrame(() => {
       const m = mtModel(nextNode);
-      const firstR = m.rows.length > 1 ? 1 : 0;
-      if (!mtFocusCell(nextNode, firstR, 0)) {
+      if (!mtFocusCell(nextNode, m.rows.length > 1 ? 1 : 0, 0)) {
         document.querySelector(`.node-content[data-id="${nextNode.id}"]`)?.focus();
       }
     });
@@ -6772,7 +7577,7 @@ function toMarkdown(rootNode) {
   const out = [];
   function emit(node, depth, ordinal) {
     const indent = '  '.repeat(depth);
-    if (node.type === 'table') {
+    if (node.type === 'base') {
       // a table node's text is already a markdown table — emit it as its own block
       const body = flattenArtifacts(node.text, node, varMap);
       body.split('\n').forEach(l => out.push(indent + l));
@@ -6814,7 +7619,7 @@ function toPlainText(rootNode) {
   const out = [];
   function emit(node, depth) {
     const indent = '\t'.repeat(depth);
-    if (node.type === 'table') {
+    if (node.type === 'base') {
       stripInlineMd(flattenArtifacts(node.text, node, varMap)).split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
@@ -7430,6 +8235,9 @@ const SHORTCUTS = [
     { keys: ['~~s~~', '`c`'],     desc: 'Strikethrough / inline code' },
     { keys: ['==hi=='],           desc: 'Highlight' },
     { keys: ['[t](url)', ':emoji:'], desc: 'Link / emoji shortcode' },
+  ]},
+  { sec: 'Bases', rows: [
+    { keys: [`${MOD}+⇧+M`], desc: 'Base menu — copy as markdown / with formulas (inside a base)' },
   ]},
   { sec: 'File & history', rows: [
     { keys: [`${MOD}+S`, `${MOD}+O`], desc: 'Save / open' },

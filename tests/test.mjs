@@ -600,6 +600,317 @@ test('table: non-formula cells preserved verbatim', () => {
   assert.equal(out[2][0], 'b');
 });
 
+// Regression for the "✏ markdown" editor data-loss fix: a #+TBLFM: line appended on its
+// own line under the grid (the text the block-aware commit now produces) must be extracted,
+// computed, and survive a serialize round-trip — the downstream contract the DOM fix relies on.
+const { extractTblfm, stripTblfm } = c;
+test('table: appended #+TBLFM line extracts, computes, and round-trips', () => {
+  const text =
+    '| Qty | Price | Total |\n| --- | --- | --- |\n| 2 | 5 | |\n| 3 | 4 | |\n#+TBLFM: $3=$1*$2';
+  const tblfm = extractTblfm(text);
+  assert.equal(tblfm, '$3=$1*$2');                 // appended line is found, not dropped
+  const model = c.parseTable(stripTblfm(text));      // grid parses without the formula line
+  assert.equal(model.rows[0].join('|'), 'Qty|Price|Total');
+  const computed = computeTable(model, tblfm);       // rows: [header, 2|5, 3|4] (separator dropped)
+  assert.equal(computed[1][2], '10');                // 2*5
+  assert.equal(computed[2][2], '12');                // 3*4
+  const out = c.serializeTable({ aligns: model.aligns, rows: computed }) + '\n#+TBLFM: ' + tblfm;
+  assert.equal(extractTblfm(out), '$3=$1*$2');       // formula still present after re-serialize
+  assert.ok(out.includes('| 2 | 5 | 10 |'));
+});
+
+// ── static markdown tables: render anywhere (Bases PR 1) ───────────────────
+// mdToHtml learns GFM pipe tables → a static read-only <table>. The pins lock the
+// false-positive guard (the delimiter row), alignment, formula compute + #+TBLFM
+// HIDING, and the edit-raw / render-pretty contract (recipe consumed from RENDER
+// yet still present in the SOURCE text — mdToHtml never mutates node.text).
+const { tableDelimCells, renderStaticTable, mdToHtml } = c;
+
+test('tableDelimCells: valid delimiter rows return the cell count', () => {
+  assert.equal(tableDelimCells('| --- | --- |'), 2);   // outer pipes
+  assert.equal(tableDelimCells('--- | ---'), 2);        // outer pipes optional
+  assert.equal(tableDelimCells('| :-- | :-: | --: |'), 3); // alignment colons
+  assert.equal(tableDelimCells('|---|'), 1);
+});
+
+test('tableDelimCells: false-positive guard — non-delimiters return -1', () => {
+  assert.equal(tableDelimCells('---'), -1);             // no pipe → stays a thematic break
+  assert.equal(tableDelimCells('| a | b |'), -1);       // cells aren't dashes/colons
+  assert.equal(tableDelimCells('just prose'), -1);
+  assert.equal(tableDelimCells('| -- x -- |'), -1);     // junk inside a cell
+  assert.equal(tableDelimCells(''), -1);
+  assert.equal(tableDelimCells(null), -1);
+});
+
+test('mdToHtml: a pipe table with a matching delimiter renders a static <table>', () => {
+  const html = mdToHtml('| a | b |\n| --- | --- |\n| 1 | 2 |');
+  assert.ok(html.includes('class="md-table-static"'));         // reuses base CSS, distinct hook
+  assert.ok(html.includes('<table class="md-table">'));
+  assert.ok(html.includes('<th class="mt-cell mt-headcell">a</th>')); // header is <th>
+  assert.ok(html.includes('<td class="mt-cell">1</td>'));             // body is <td>
+});
+
+test('mdToHtml: delimiter colons drive per-column text-align', () => {
+  const html = mdToHtml('| L | C | R |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |');
+  assert.ok(html.includes('mt-a-center'));   // :-: → center
+  assert.ok(html.includes('mt-a-right'));    // --: → right
+  assert.ok(!html.includes('mt-a-left'));    // left is the default, no class emitted
+});
+
+test('mdToHtml: cell content renders inline markdown (not raw)', () => {
+  const html = mdToHtml('| h |\n| --- |\n| **bold** |');
+  assert.ok(html.includes('<strong>bold</strong>'));
+});
+
+test('mdToHtml: #+TBLFM computes the grid and is HIDDEN from the render, but stays in source', () => {
+  const src =
+    '| Qty | Price | Total |\n| --- | --- | --- |\n| 2 | 5 | |\n| 3 | 4 | |\n#+TBLFM: $3=$1*$2';
+  const html = mdToHtml(src);
+  assert.ok(html.includes('>10</td>'));    // 2*5 computed
+  assert.ok(html.includes('>12</td>'));    // 3*4 computed
+  assert.ok(html.includes('mt-computed')); // computed cells Σ-tagged read-only
+  assert.ok(!html.includes('TBLFM'));      // recipe line consumed from the RENDER
+  assert.ok(src.includes('#+TBLFM: $3=$1*$2')); // …yet untouched in the SOURCE (edit-raw model)
+});
+
+test('mdToHtml: false-positive guards — prose with pipes / a thematic break do NOT become tables', () => {
+  assert.ok(!mdToHtml('a | b\nc | d').includes('<table'));      // no delimiter row
+  const hr = mdToHtml('Summary\n---');
+  assert.ok(hr.includes('<hr'));                                 // `---` stays a thematic break
+  assert.ok(!hr.includes('<table'));
+});
+
+test('mdToHtml: list markers win over table detection (GFM precedence)', () => {
+  const html = mdToHtml('- a | b\n- c | d');
+  assert.ok(html.includes('<ul'));
+  assert.ok(!html.includes('<table'));
+});
+
+test('mdToHtml: a table renders mid-point (not just on line 1)', () => {
+  const html = mdToHtml('Intro paragraph\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nOutro');
+  assert.ok(html.includes('Intro paragraph'));
+  assert.ok(html.includes('<table class="md-table">'));
+  assert.ok(html.includes('Outro'));
+});
+
+test('renderStaticTable: marks formula cells read-only (Σ) and computes their value', () => {
+  const html = renderStaticTable('| A | B |\n| --- | --- |\n| 2 | |\n#+TBLFM: $2=$1*10');
+  assert.ok(html.includes('<td class="mt-cell mt-computed">20</td>'));
+});
+
+// ── Bases PR 2a: starter grid · non-destructive convert · OPML base type ───
+const { starterTableText, planBaseConvert } = c;
+
+test('starterTableText: N×M emits valid pipe-table markdown (header + delimiter + body)', () => {
+  const md = starterTableText(3, 4);          // 3 total rows (1 header + 2 body) × 4 cols
+  const lines = md.split('\n');
+  assert.equal(lines.length, 4);              // header + delimiter + 2 body rows
+  assert.equal(tableDelimCells(lines[1]), 4); // delimiter row has 4 cells
+  const model = c.parseTable(md);
+  assert.equal(model.aligns.length, 4);       // 4 columns
+  assert.equal(model.rows.length, 3);         // header + 2 body (delimiter dropped by parseTable)
+  assert.equal(model.rows[0].join('|'), 'Column 1|Column 2|Column 3|Column 4');
+});
+
+test('starterTableText: the @table starter renders via PR 1 static path', () => {
+  const html = mdToHtml(starterTableText(2, 2));
+  assert.ok(html.includes('<table class="md-table">'));
+  assert.ok(html.includes('class="md-table-static"'));
+});
+
+test('starterTableText: clamps to sane bounds (min header, max 8×8)', () => {
+  assert.equal(starterTableText(1, 1).split('\n').length, 2); // header + delimiter, no body
+  const big = c.parseTable(starterTableText(99, 99));
+  assert.equal(big.aligns.length, 8);          // cols clamped to 8
+  assert.equal(big.rows.length, 8);            // 8 total rows (header + 7 body)
+});
+
+test('planBaseConvert: empty point converts IN PLACE (no data loss path needed)', () => {
+  const plan = planBaseConvert('   ', 'STARTER');
+  assert.equal(plan.mode, 'in-place');
+  assert.equal(plan.text, 'STARTER');
+});
+
+test('planBaseConvert: content-bearing point keeps text, base inserted AFTER (the data-loss fix)', () => {
+  const plan = planBaseConvert('My notes', 'STARTER');
+  assert.equal(plan.mode, 'after');
+  assert.equal(plan.insert, 'STARTER');
+  assert.equal(plan.text, undefined);          // original text is NOT overwritten
+});
+
+// ── PR 3 promote: planTablePromote splits a point around its static table ──────
+const PROMOTE_TEXT = 'Intro prose\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n#+TBLFM: $2=$1*2\n\nTrailing prose';
+
+test('findFirstTableRange: locates the table block (matches planTablePromote input)', () => {
+  const r = c.findFirstTableRange(PROMOTE_TEXT);
+  assert.deepEqual(host(r), { l0: 2, l1: 6 });             // same range the menu door feeds promote
+  const plan = c.planTablePromote(PROMOTE_TEXT, r.l0, r.l1);
+  assert.equal(plan.table, '| A | B |\n| --- | --- |\n| 1 | 2 |\n#+TBLFM: $2=$1*2');
+});
+
+test('findFirstTableRange: null when the point holds no table (menu item is hidden)', () => {
+  assert.equal(c.findFirstTableRange('just prose\nmore prose'), null);
+  assert.equal(c.findFirstTableRange('- a list item\n- another'), null);  // list markers win
+  assert.equal(c.findFirstTableRange(''), null);
+});
+
+test('planTablePromote: table-in-the-middle → before / table (incl. TBLFM) / after, blank lines trimmed', () => {
+  const plan = c.planTablePromote(PROMOTE_TEXT, 2, 6);   // lines 2..5 = grid + recipe
+  assert.equal(plan.before, 'Intro prose');              // trailing blank line trimmed
+  assert.equal(plan.table, '| A | B |\n| --- | --- |\n| 1 | 2 |\n#+TBLFM: $2=$1*2');
+  assert.equal(plan.after, 'Trailing prose');            // leading blank line trimmed
+});
+
+test('planTablePromote: table-at-the-end → before / table, empty after', () => {
+  const text = 'Notes\n| A |\n| --- |\n| 1 |';
+  const plan = c.planTablePromote(text, 1, 4);
+  assert.equal(plan.before, 'Notes');
+  assert.equal(plan.after, '');
+});
+
+test('planTablePromote: point that IS the table → empty before and after', () => {
+  const text = '| A |\n| --- |\n| 1 |';
+  const plan = c.planTablePromote(text, 0, 3);
+  assert.equal(plan.before, '');
+  assert.equal(plan.table, text);
+  assert.equal(plan.after, '');
+});
+
+test('planTablePromote: invalid range or non-table block → null (caller bails, no corruption)', () => {
+  assert.equal(c.planTablePromote(PROMOTE_TEXT, 0, 2), null);   // prose lines, not a table
+  assert.equal(c.planTablePromote(PROMOTE_TEXT, 2, 99), null);  // range past the end
+  assert.equal(c.planTablePromote(PROMOTE_TEXT, 6, 2), null);   // inverted range
+  assert.equal(c.planTablePromote('', 0, 1), null);             // empty text
+});
+
+test('OPML: a base node serializes with _type="base"', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode(starterTableText(2, 2), 'base'));
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_type="base"'));     // rename reaches the storage format
+  assert.ok(!/_type="table"/.test(xml));       // no stray legacy type
+});
+
+// ── column aggregate formula builder (UXP-3) ──────────────────────────────
+const { mtBuildAggFormula, mtHasFooter, mtColAggKind } = c;
+
+test('mtBuildAggFormula: add sum for column 2', () => {
+  assert.equal(mtBuildAggFormula('', 2, 'sum'), '@>$2=vsum(@2$2..@-1$2)');
+});
+
+test('mtBuildAggFormula: avg maps to vmean', () => {
+  assert.equal(mtBuildAggFormula('', 3, 'avg'), '@>$3=vmean(@2$3..@-1$3)');
+});
+
+test('mtBuildAggFormula: count / min / max map correctly', () => {
+  assert.equal(mtBuildAggFormula('', 1, 'count'), '@>$1=vcount(@2$1..@-1$1)');
+  assert.equal(mtBuildAggFormula('', 1, 'min'),   '@>$1=vmin(@2$1..@-1$1)');
+  assert.equal(mtBuildAggFormula('', 1, 'max'),   '@>$1=vmax(@2$1..@-1$1)');
+});
+
+test('mtBuildAggFormula: replaces existing formula for the same column', () => {
+  assert.equal(
+    mtBuildAggFormula('@>$2=vsum(@2$2..@-1$2)', 2, 'avg'),
+    '@>$2=vmean(@2$2..@-1$2)',
+  );
+});
+
+test('mtBuildAggFormula: fn=none removes the formula', () => {
+  assert.equal(mtBuildAggFormula('@>$2=vsum(@2$2..@-1$2)', 2, 'none'), '');
+});
+
+test('mtBuildAggFormula: preserves unrelated column formulas', () => {
+  const existing = '@>$1=vsum(@2$1..@-1$1) :: @>$3=vmax(@2$3..@-1$3)';
+  const result = mtBuildAggFormula(existing, 2, 'count');
+  assert.ok(result.includes('@>$1=vsum(@2$1..@-1$1)'));
+  assert.ok(result.includes('@>$3=vmax(@2$3..@-1$3)'));
+  assert.ok(result.includes('@>$2=vcount(@2$2..@-1$2)'));
+});
+
+test('mtHasFooter: false when empty or null', () => {
+  assert.equal(mtHasFooter(''), false);
+  assert.equal(mtHasFooter(null), false);
+});
+
+test('mtHasFooter: true when @>$N= formula present', () => {
+  assert.equal(mtHasFooter('@>$2=vsum(@2$2..@-1$2)'), true);
+});
+
+test('mtHasFooter: false for non-footer formulas', () => {
+  assert.equal(mtHasFooter('$3=$1*$2'), false);
+  assert.equal(mtHasFooter('@2$3=@2$1*@2$2'), false);
+});
+
+test('mtColAggKind: returns correct fn for each kind', () => {
+  assert.equal(mtColAggKind('@>$2=vsum(@2$2..@-1$2)',   2), 'sum');
+  assert.equal(mtColAggKind('@>$2=vmean(@2$2..@-1$2)',  2), 'avg');
+  assert.equal(mtColAggKind('@>$2=vcount(@2$2..@-1$2)', 2), 'count');
+  assert.equal(mtColAggKind('@>$2=vmin(@2$2..@-1$2)',   2), 'min');
+  assert.equal(mtColAggKind('@>$2=vmax(@2$2..@-1$2)',   2), 'max');
+});
+
+test('mtColAggKind: returns none for unrelated column', () => {
+  assert.equal(mtColAggKind('@>$1=vsum(@2$1..@-1$1)', 2), 'none');
+  assert.equal(mtColAggKind('', 1), 'none');
+});
+
+// mtApplyAggregate is DOM-adjacent but its DOM calls no-op through vm stubs,
+// so the node.text mutation is fully testable. We verify the stale-value fix:
+// setting a column to None must blank its total cell, not leave a stale literal.
+const { mtApplyAggregate } = c;
+// Helper: minimal node object matching what mtApplyAggregate expects.
+function makeTblNode(text) {
+  return { id: 'n1', text, dice:[], markov:[], rolltable:[], math:[], vars:[], grammar:[] };
+}
+// Table with two summed columns; footer row has computed values 8 and 10.
+const TWO_SUM_TEXT =
+  '| A | B |\n| --- | --- |\n| 3 | 4 |\n| 5 | 6 |\n| 8 | 10 |\n' +
+  '#+TBLFM: @>$1=vsum(@2$1..@-1$1) :: @>$2=vsum(@2$2..@-1$2)';
+
+test('mtApplyAggregate: None blanks total cell, footer row stays while other aggregate remains', () => {
+  const node = makeTblNode(TWO_SUM_TEXT);
+  mtApplyAggregate(node, 0, 'none');          // clear col A (0-based index 0 = col1 1)
+  const tblfm = c.extractTblfm(node.text);
+  const model = c.parseTable(c.stripTblfm(node.text));
+  const last  = model.rows[model.rows.length - 1];
+  assert.equal(last[0], '');                  // col A blanked — no stale '8'
+  assert.equal(last[1], '10');                // col B still computed
+  assert.equal(mtHasFooter(tblfm), true);     // footer row still present
+  assert.equal(mtColAggKind(tblfm, 1), 'none');
+  assert.equal(mtColAggKind(tblfm, 2), 'sum');
+});
+
+test('mtApplyAggregate: None on both columns removes the footer row entirely', () => {
+  const node = makeTblNode(TWO_SUM_TEXT);
+  mtApplyAggregate(node, 0, 'none');
+  mtApplyAggregate(node, 1, 'none');
+  const tblfm = c.extractTblfm(node.text);
+  assert.equal(mtHasFooter(tblfm), false);    // no formulas left → row gone
+  const model = c.parseTable(c.stripTblfm(node.text));
+  assert.equal(model.rows.length, 3);         // header + 2 data rows only
+});
+
+// ── Bases PR 2b: portable copy serializers (frozen markdown vs live recipe) ────
+const { baseFrozenMarkdown, baseRecipeMarkdown } = c;
+// A base with a column formula computing Total = A*B; the target cells are stored
+// blank so the two flavors are clearly distinguishable.
+const BASE_COPY_TEXT =
+  '| A | B | Total |\n| --- | --- | --- |\n| 2 | 5 |  |\n| 3 | 4 |  |\n#+TBLFM: $3=$1*$2';
+
+test('base copy "as markdown": bakes computed values in, drops the #+TBLFM line', () => {
+  const out = baseFrozenMarkdown(BASE_COPY_TEXT);
+  assert.match(out, /\| 2 \| 5 \| 10 \|/);    // 2*5 computed into the cell
+  assert.match(out, /\| 3 \| 4 \| 12 \|/);    // 3*4 computed into the cell
+  assert.ok(!/#\+TBLFM/i.test(out));          // frozen snapshot — recipe removed
+});
+
+test('base copy "with TBLFM": keeps raw literals plus the #+TBLFM recipe', () => {
+  const out = baseRecipeMarkdown(BASE_COPY_TEXT);
+  assert.match(out, /#\+TBLFM: \$3=\$1\*\$2/); // the live recipe is preserved
+  assert.ok(!/\b10\b/.test(out));              // target cells stay raw (uncomputed)
+  assert.ok(!/\b12\b/.test(out));
+});
+
 // ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
 const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
         cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo,

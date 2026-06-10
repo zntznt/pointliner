@@ -3,7 +3,7 @@
 A consolidated, prioritized list of features Pointliner lacks, distilled from comparing it
 against leading outliner / PKM / networked-notes tools. Overlapping gaps are merged into one
 entry. **Sync and real-time collaboration are out of scope** — this tracks single-user features.
-Roadmap, sequencing, and storage decisions live in `docs/roadmap.md`.
+Roadmap, sequencing, and storage decisions live in `guidance/roadmap.md`.
 
 **Status:** ☐ not started · ◐ partially present · ✓ done · ⊘ shelved
 **Fit:** rough difficulty + how it slots into the architecture (plain-text `node.text` source of
@@ -27,7 +27,7 @@ link-and-create, aliases, unlinked references, graph view.
 - **Shipped (same-document):** `[[#id|label]]` token + `collectLinks` index + backlinks panel
   + copy-link + keyboard-first creation; plus a **live-title/content "mirror"** (`[[#id|]]`). The
   `[[` picker is built but gated off. **Remaining:** cross-document (needs the workspace), and the
-  Org-roam cluster below (aliases, unlinked refs, graph). See `docs/features.md` / `docs/roadmap.md`.
+  Org-roam cluster below (aliases, unlinked refs, graph). See `guidance/features.md` / `guidance/roadmap.md`.
 - **Why:** turns the tree into a navigable web — the core of PKM / Zettelkasten work.
 - **Foundation present:** every node already has a stable id that round-trips through OPML
   (`_id`), so addressable targets exist; only the link + index + backlink layer is missing.
@@ -45,7 +45,7 @@ A workspace of many docs instead of one file at a time.
 - **Why:** organization at scale + the substrate for cross-file linking; also relieves
   single-file scale pressures (localStorage autosave cap, whole-tree per-edit work).
 - **Fit — hard.** The core storage refactor; gated power tier. Storage + durability decisions
-  are settled in `docs/roadmap.md`.
+  are settled in `guidance/roadmap.md`.
 
 ### ☐ Dates on items + agenda / calendar view
 Give a node a due/scheduled date; aggregate dated items into an agenda or calendar. Merges
@@ -70,7 +70,7 @@ Spreadsheet-style cell formulas in tables, via Org-mode `#+TBLFM:` conventions.
   evaluator give live table calc cheaply.
 - **Shipped:** `@ROW$COLUMN` references + ranges (`vsum`/`vmean`/`vmax`/`vmin`/`vcount`/
   `vmedian`) translated onto `evalMath`; formula stored as a trailing `#+TBLFM:` line in
-  `node.text` (round-trips for free). See `docs/features.md` for the supported grammar and the
+  `node.text` (round-trips for free). See `guidance/features.md` for the supported grammar and the
   explicit not-yet list (named columns, `#+CONSTANTS:`, `remote()`, hline-relative `@I`, `B3`).
 
 ### ☐ Rich TODO states + priorities

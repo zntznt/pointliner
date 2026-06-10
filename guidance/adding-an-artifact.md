@@ -1,5 +1,20 @@
 > On-demand reference — read this only when adding a new artifact type or icon. Not loaded by default.
 
+## Before you add anything — the P5 check
+
+**Stop and ask: does this need to be a new artifact at all?** Most "new inline thing"
+needs are already expressible in the existing authoring language and should be, per the
+UX standard's one-language principle (`guidance/ux-discipline.md` §2/P5):
+
+- A new **computed** value → a new `evalMath` primitive (`FN1`/`FN2`/`FN3`), used as `{= …}`.
+- A new **generative** behavior → a new `resolveBrace` branch in the `{…}` grammar engine.
+- A new **named** generator → register it in `collectRules` so `{name}` calls it.
+
+A genuinely new artifact (its own token, sidecar, pill, dialog) is justified only when the
+config is **richer than text and stateful** in a way the grammar engine can't carry. If you
+proceed, you are adding to the **closed syntax inventory** — that is a recorded, signed-off
+decision, not a side effect. Then follow the recipe.
+
 ## Recipe: add a new inline artifact
 
 Every artifact follows the same path. To add one (say `@weather`):
@@ -26,7 +41,8 @@ Every artifact follows the same path. To add one (say `@weather`):
 7. **Dialog** — `openWeatherDialog(...)` built on `openInsertDialog` (shared field
    /chip/preview/validate harness).
 8. **Slash menu** — add an entry to `INSERT_CMDS` and a branch in
-   `insertInlineArtifact` (which splices the token and pushes the record).
+   `insertInlineArtifact` (which splices the token and pushes the record). The entry
+   MUST carry `label` + `desc` + the typed syntax, so the menu teaches it (P2-2).
 9. **Click handler** — add a `closest('.weather-pill')` branch to the
    `mousedown` handler in `attachContentEvents`. Follow the existing convention
    (`e.preventDefault()` keeps focus off the node so it never enters edit mode):
@@ -43,6 +59,25 @@ Every artifact follows the same path. To add one (say `@weather`):
 11. **CSS** — a `.weather-pill` block near the other pill styles; reuse the
     `--acc` / `--ring` / `--bdr` tokens so light/dark themes work automatically.
 12. **Font Awesome** — if you need a new icon, see the workflow below.
+13. **UX conformance gate — the artifact is not done until it passes.** Run
+    `guidance/ux-definition-of-done.md`. The recipe builds the pill; the gate ships it.
+    For an artifact, pay special attention to:
+    - **Pill pattern (P5/§7.2):** body-click rerolls **in place and stays in display
+      mode**; the pencil opens the dialog. Do not invent a different interaction.
+    - **No new syntax (P5):** if this pill introduced a new typeable notation rather than
+      riding `{…}` / a token, justify it and update the syntax inventory + `?` panel.
+    - **Discoverable (P2):** the `@`-menu entry prints its typed shorthand; if the pill is
+      inline-able, a `{…}` shorthand path exists alongside the dialog.
+    - **Reachable (P3, interim):** the pill carries an `aria-label` of the form
+      `"Weather: <result>"`, updated after every reroll; the reroll writes to the
+      `aria-live` region. (Pill `tabindex`/`role=tree` stay deferred per `accessibility.md`.)
+    - **Responsive (P4):** invalid authoring in the dialog/shorthand explains *why*, never
+      fails silently.
+    - **Vocabulary (§1):** any user-facing copy calls it by its user-facing noun and the
+      surrounding line a "point," never "node/item."
+
+    Finish by **emitting the Conformance Statement** (the gate's "How this gate is run"
+    section) in the PR/commit. No statement, no merge — the artifact is not done.
 
 ---
 

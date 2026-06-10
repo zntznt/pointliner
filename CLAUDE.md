@@ -13,6 +13,11 @@ in a browser and it runs.
 > Suggestions that require rich inline state, a virtual DOM, a framework, or a
 > build step do not fit this app. Suggestions that add a new token type, a new
 > pure function, or a new expression primitive fit very well.
+> **UX caveat (P5):** "fits very well" is an *engine* judgment, not a *user* one.
+> A new pure function or `{…}` branch is cheap for the engine and free to learn
+> (it reuses an existing syntax). A new **user-facing syntax / delimiter** is the
+> opposite — cheap to add, expensive to learn — and is governed by the UX
+> discipline below: reuse the authoring language, don't grow it.
 >
 > **Locating code:** symbols are referenced by name, not line number — grep for
 > the function name. Line numbers are intentionally omitted because they drift
@@ -65,6 +70,33 @@ in a browser and it runs.
 
 ---
 
+## UX discipline (read before any UI work)
+
+The project has strong architecture discipline and, historically, **no UX discipline** — interaction, discoverability, accessibility, and copy were decided ad hoc per feature, which is why similar things behave differently and why the app keeps sprouting new syntaxes. That is now governed. **UX is a first-class acceptance criterion: a change that passes its tests but violates the standard is not done.**
+
+- **Full standard:** `guidance/ux-discipline.md` — vocabulary, principles, keyboard grammar, the syntax inventory, patterns, conformance matrix.
+- **Merge gate:** `guidance/ux-definition-of-done.md` — run it on **every** UI-touching change (it is also step 13 of `guidance/adding-an-artifact.md`). Every such change MUST emit a **Conformance Statement** (the gate's "How this gate is run" section); **no statement, no merge.**
+- **Fix list:** `guidance/ux-remediation.md` — every current non-conformance, tracked as a defect to close.
+
+**The five principles** (P1 and P5 are the consistency pillars and win on conflict):
+1. **Predictable** — a key, gesture, or word means the same thing everywhere. No context-dependent inversions.
+2. **Discoverable** — every capability has a visible front door; never syntax-only at the floor. The menu teaches the syntax.
+3. **Reachable** — every interactive element is keyboard-operable, named, and focus-visible to assistive tech — added **additively**.
+4. **Responsive** — no silent success, no silent failure.
+5. **Coherent** — **one authoring language.** Reuse the existing syntax; do not mint a new delimiter, sigil, or grammar without sign-off and the retirement of what it overlaps.
+
+**UX invariants that bite (the most-violated rules — internalize these):**
+- **Keyboard is added *alongside* `mousedown`+`preventDefault`, never by converting to `click`/`<button>`** (the caret invariant — the single most load-bearing UX rule).
+- **A key never silently changes meaning by block type.** `Enter` = new point, `Shift+Enter` = line break in every block — **Paragraph is the one documented exception** (prose mode: Enter = line break, Shift+Enter = new point; advertised in the `/` menu and empty-state hint). New shortcuts MUST fit the keyboard grammar in `ux-discipline.md` §3.
+- **One authoring language.** New generative/computed content plugs into the `{…}` grammar engine or `evalMath` — **not** a new syntax. The §2/P5 syntax inventory is a **closed set**; growing it is an explicit, recorded decision, never a side effect of a feature. (This is the direct counterweight to "fits very well" above.)
+- **Built ≠ shipped-discoverable.** A capability reachable only by typed syntax, or gated entirely off with no front door at any verbosity, is non-conformant.
+
+**Opening PRs (so the gate passes first try):** The CI gate reads the **PR description only** — not commit messages, not comments. Every UI-touching PR's description MUST contain the Conformance Statement: start with the literal words `UX Conformance`, a ✅ or N/A on each of P1–P5, and no `< >` placeholders. When creating a PR with `gh pr create`, put the full statement in `--body` (it overrides the PR template). For a non-UI change, the description is just: `UI: none`.
+
+**Canonical vocabulary split:** code keeps `node`/`artifact`; **user-facing copy says "point" and "pill."** Use the standard's §1 terms in every string and `aria-label`. Do not rename the internal identifiers.
+
+---
+
 ## Core architecture
 
 ### Data model
@@ -74,7 +106,7 @@ canonical shape:
 
 ```js
 {
-  id, text, note, type,                 // type ∈ ul|ol|h1|h2|h3|quote|code|divider|table
+  id, text, note, type,                 // type ∈ ul|ol|h1|h2|h3|quote|code|divider|base
   italic, underline, checked, collapsed,
   children: [],                         // nested nodes
   footnotes: [],                        // [{key, text}]
@@ -88,13 +120,29 @@ canonical shape:
 - **Markdown rendering is per-line and element-driven.** `mdToHtml` is a full
   per-line block parser: every line is classified independently (fenced code,
   ATX heading `#`–`######`, thematic break `---`/`***`/`___`, blockquote `>`,
-  ul/ol/task list, definition list, else paragraph), so **markdown works on any
-  line of a node**, not just the first — a multi-line `para` node is effectively a
-  mini markdown document. Headings/quotes/hr/fenced-code render as real
-  `<h1>`…`<hr>`/`<blockquote>`/`<pre>` elements (styled via `.md-h`/`.md-bq`/
-  `.md-hr`/`.md-code`), **not** via whole-node CSS. `renderContentHTML` passes the
-  **raw** `node.text` (prefixes intact) to `mdToHtml` for this reason; `node.type
-  === 'code'` is the one whole-node exception, rendered by `codeNodeHTML`.
+  ul/ol/task list, **GFM pipe table**, definition list, else paragraph), so
+  **markdown works on any line of a node**, not just the first — a multi-line
+  `para` node is effectively a mini markdown document. Headings/quotes/hr/
+  fenced-code render as real `<h1>`…`<hr>`/`<blockquote>`/`<pre>` elements (styled
+  via `.md-h`/`.md-bq`/`.md-hr`/`.md-code`), **not** via whole-node CSS.
+  `renderContentHTML` passes the **raw** `node.text` (prefixes intact) to
+  `mdToHtml` for this reason; `node.type === 'code'` is the one whole-node
+  exception, rendered by `codeNodeHTML`.
+- **A markdown pipe table renders statically (read-only) in any point.** `mdToHtml`
+  detects a GFM table (a header row immediately followed by a *matching* delimiter
+  row — `tableDelimCells` is the false-positive guard, so prose with pipes and a
+  `---` thematic break are left alone) and emits a static `<table>` via
+  `renderStaticTable`, **reusing the table CSS** so it looks identical to a base:
+  alignment from the delimiter colons, cell content through `mdInline` (artifact
+  tokens render as frozen pills), and an optional trailing `#+TBLFM:` line computed
+  via `computeTable` and **hidden** in the render. This is a **render-layer
+  behavior only** — `node.text` is never modified, so edit mode shows the full raw
+  markdown (recipe line included), the same edit-raw / render-pretty model as
+  headings. The **interactive base** (`node.type === 'base'`) is a *separate
+  object* — `buildTableWidget`, dispatched in `render()`, **not** through
+  `mdToHtml` — and is untouched by the static path. The `/base` verb creates one
+  (non-destructively — see `createBaseAt`); `@table` inserts the static form. (See
+  `guidance/bases-direction.md`.)
 - **`node.type` for headings/quote is now a derived hint, not the renderer.**
   Headings/quote/code still store their prefix in `node.text` (`"# Title"`) and
   `deriveTypeFromText()`/`checkMdBlockPrefix()` still set `node.type` (`'h1'`) for
@@ -254,6 +302,12 @@ when proposing features:
   pill freezes its expansion like dice/rolltable; click re-generates. Pure and
   Node-testable.
 
+  > **UX note (P5):** this engine is also the *reason the UX standard can hold the
+  > line on syntax.* Because `{…}` already composes dice, math, rules, tables, and
+  > variables, virtually every "I need a new inline thing" can be a new
+  > `resolveBrace` branch or `evalMath` primitive — **inside the existing syntax** —
+  > rather than a new delimiter. Reach for that before proposing new notation.
+
   *Typed shorthand → pill promotion* (`promoteBraceBody`, `promoteInlineShorthand`):
   you can **write** an artifact instead of using a dialog. Typing a `{…}` whose body
   is a valid artifact promotes it to the matching pill — `{2d6}`→dice, `{= 2*r}`→
@@ -288,6 +342,8 @@ conversions** (`c2f`, `km2mi`, … named `from2to`), and the **date component fn
 and the math pill renders the result as an ISO date via `formatEpochDays` /
 `isDateExpr` / `formatMathDisplay`). `ident()` resolves document variables via the
 `vars` map passed in. Returns `null` on any malformed input — callers branch on `null`.
+*(Adding a function to `FN1`/`FN2`/`FN3` is the P5-preferred way to extend math —
+no new syntax, just a new name inside the existing grammar.)*
 
 **Variables tie the engines together.** `collectVars()` walks the whole
 tree, gathers `[[var:KEY]]` declarations, and resolves them — variables may
@@ -313,27 +369,37 @@ attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption fo
 the re-entrancy note above). Missing target → `.node-link-broken`. Same-document only
 (cross-document waits on the multi-doc workspace). The `[[` picker is gated off
 (`LINK_PICKER_ENABLED`); keyboard-first creation is "Copy link" → `[[#id|]]` + paste.
+**(UX: a built-but-fully-gated feature with no front door at any verbosity is a P2
+non-conformance — tracked as UXP-4 in `guidance/ux-remediation.md`.)**
 
 ---
 
 ## Adding a new artifact or icon
 
 When adding a new artifact type or a Font Awesome icon, see
-`docs/adding-an-artifact.md` — the 12-step recipe and the icon-rebuild workflow
-live there.
+`guidance/adding-an-artifact.md` — the 12-step recipe and the icon-rebuild workflow
+live there. **Step 13 is the UX conformance gate** (`guidance/ux-definition-of-done.md`):
+the recipe builds the pill; the gate ships it. Before reaching for a new artifact,
+check the P5 syntax inventory — most "new inline thing" needs are a `{…}` branch or
+an `evalMath` primitive, not a new artifact or syntax.
 
 ---
 
 ## Accessibility
 
-Remediation is tracked in `docs/accessibility.md` (phased plan, kept out of the
-always-loaded `CLAUDE.md` because it retires as the work ships). The one durable
-invariant: **keyboard operability is added *alongside* `mousedown`+`preventDefault`
-handlers, never by replacing them** — bullets, pill pencils, the collapse button
-and the breadcrumb rely on `mousedown` to keep focus off the active
-contenteditable, so converting them to `click` silently breaks the caret
-invariant. ARIA attributes are set per-row in the same `render()` pass; all a11y
-changes are additive (attributes + CSS), never a visual redesign.
+Remediation is tracked in `guidance/accessibility.md` (phased plan, kept out of the
+always-loaded `CLAUDE.md` because it retires as the work ships). Accessibility is
+now also a **per-feature requirement** under the UX standard (`guidance/ux-discipline.md`
+§5 / P3): every feature satisfies its accessible-name, keyboard-operability, and
+announcement obligations **in the same pass that builds it**, rather than as a
+separate later track — `accessibility.md` still owns the *sequencing* of the
+larger items. The one durable invariant: **keyboard operability is added
+*alongside* `mousedown`+`preventDefault` handlers, never by replacing them** —
+bullets, pill pencils, the collapse button and the breadcrumb rely on `mousedown`
+to keep focus off the active contenteditable, so converting them to `click`
+silently breaks the caret invariant. ARIA attributes are set per-row in the same
+`render()` pass; all a11y changes are additive (attributes + CSS), never a visual
+redesign.
 
 ---
 
@@ -345,18 +411,29 @@ Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit ·
 TODO states + priorities (Org headline style: `TODO [#A] body`, keyword in `node.text`).
-Details: `docs/features.md`
+Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog
 
 The product direction is now set. Read these before proposing or building:
-- `docs/roadmap.md` — locked decisions + the phased plan (multi-document Zettelkasten,
+- `guidance/ux-discipline.md` — **the binding UX standard** (vocabulary, the five principles,
+  keyboard grammar, the closed syntax inventory, patterns, conformance matrix). Read before
+  any UI work; clear `guidance/ux-definition-of-done.md` before merge.
+- `guidance/ux-remediation.md` — every current UX non-conformance, tracked as a defect to close
+  (including the standing syntax-sprawl guard).
+- `guidance/roadmap.md` — locked decisions + the phased plan (multi-document Zettelkasten,
   node links + backlinks, storage/durability, the lean↔guided UX modes), plus the
   remaining generative-engine ideas.
-- `docs/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
-- `docs/ux.md` — the discoverability / verbosity-dial UX strategy. **Build discipline:**
+- `guidance/bases-direction.md` — locked direction for markdown-first rendering and
+  Bases (table-vs-base model, freeform-bases philosophy, base layout + header interaction,
+  and the scope fence: views/typed-fields/filters are deferred). Read before any
+  table/base work.
+- `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
+- `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu
   descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.
+  Where `ux.md` (vision) and `ux-discipline.md` (standard) ever differ, the standard governs
+  behavior; `ux.md` governs the staging of guidance overlays.
 
 Note: internal links + backlinks and a multi-document workspace — previously "out of
 scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
@@ -374,3 +451,29 @@ scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
   array in `load-cores.mjs` → pin it with seeded assertions in `tests/test.mjs` → confirm
   green → *then* wire the DOM. (Functions that read module-level `root` need an optional
   `rootNode` param to be testable — see `collectVars`.)
+- **Verification artifacts stay out of the repo.** Keep verifying changes with headless-browser
+  screenshots — that's good practice — but the output is THROWAWAY. Screenshots, Playwright/npm
+  installs, temp verification scripts, package.json / package-lock / node_modules: produce them to
+  verify, then delete them before committing. NEVER commit them. This is a single-file, no-build
+  repo; only source (index.html), tests (tests/), and docs (CLAUDE.md, guidance/) belong in git. If
+  a PR needs visual evidence, attach the image to the PR on GitHub (CDN-hosted) — do not commit it.
+  Before committing, confirm `git status` shows only intended source/test/doc changes.
+- **PR/commit hygiene (public repo).**
+  - **No agent attribution or session links.** Never add "Generated by/with Claude Code",
+    "Co-Authored-By" agent lines, or `claude.ai/code` session URLs to PR descriptions or commit
+    messages. This repo is open — only code and its rationale belong in history, never links to
+    private sessions or chats.
+  - **PR descriptions follow the exact format.** A short Summary + the UX Conformance Statement
+    in the literal required format: start with `UX Conformance`, a ✅ or N/A on each of P1–P5,
+    no `< >` placeholders. Do NOT substitute a custom conformance checklist — the CI gate reads
+    the PR description and requires the standard form. For a non-UI change the description is
+    just: `UI: none`.
+  - **Strip the auto-appended session link on EVERY PR — it's a required step, not cleanup.**
+    After `gh pr create` (or the GitHub MCP create-PR tool), the integration auto-appends a
+    "Generated by Claude Code" `claude.ai/code` session link to the PR body that you don't
+    control. Immediately overwrite the body to strip it:
+    `gh pr edit <PR_NUMBER> --body "<the exact Summary + UX Conformance Statement, nothing else>"`.
+    Then **verify with `gh pr view <PR_NUMBER>`** that no `claude.ai` session link remains —
+    reading the created PR back is part of declaring it done. If the link **re-appears after the
+    edit**, stop: it's a platform behavior you can't strip from this side; report it so it can be
+    handled at the integration/settings level instead of silently shipping the link.
