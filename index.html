@@ -3123,8 +3123,10 @@ function buildTableWidget(node, readOnly) {
   // same path a mouse click between cells already exercises). Pipe-table cells are
   // single-line — serializeTable collapses '\n' to a space — so an in-cell break can't
   // round-trip; Enter = down a row, Shift+Enter = up a row (Excel/Sheets convention),
-  // never inserts one. ↑/↓ move a row too, and at the top/bottom edge they EXIT the
-  // base to the adjacent outline point (Tab/Enter stay inside — they edit; arrows
+  // never inserts one. Arrows also navigate: ↑/↓ move a row (exiting the base to the
+  // adjacent outline point at the top/bottom edge), ←/→ move a column (stopping at the
+  // left/right edge). Like ↑/↓, ←/→ move the caret within the cell text first and only
+  // jump cells at the text boundary (Tab/Enter stay inside — they edit; arrows
   // navigate). While the "@" insert menu is open on a cell, keys drive the menu.
   host.addEventListener('keydown', e => {
     mtPointerFocus = false; // typing means any pointer-press gesture is over
@@ -3138,23 +3140,34 @@ function buildTableWidget(node, readOnly) {
     // intentional selection keys: lift the nav-selection flag so the toolbar may show
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { mtNavSel = null; return; }
     if (e.shiftKey && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) { mtNavSel = null; return; }
-    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    if (e.key.startsWith('Arrow') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       const r = +cell.dataset.r, c = +cell.dataset.c;
       const m = mtModel(node);
       // a navigation-placed full selection acts like a spreadsheet cursor: arrows move
       // cells directly; computed cells (no caret) always navigate
       const navState = (mtNavSel === cell && !window.getSelection()?.isCollapsed)
         || cell.classList.contains('mt-computed');
+      const sel = window.getSelection();
       if (e.key === 'ArrowDown') {
         if (!navState && !isAtLastLine(cell)) return;
         e.preventDefault();
         if (r < m.rows.length - 1) { mtFocusCell(node, r + 1, c); }
         else                        { navigateToNext(node.id); }
-      } else {
+      } else if (e.key === 'ArrowUp') {
         if (!navState && !isAtFirstLine(cell)) return;
         e.preventDefault();
         if (r > 0) { mtFocusCell(node, r - 1, c); }
         else       { navigateToPrev(node.id); }
+      } else if (e.key === 'ArrowRight') {
+        const atEnd = navState || (sel?.isCollapsed && getCaretOffset(cell) >= (cell.textContent?.length ?? 0));
+        if (!atEnd) return;           // move the caret within the cell text first
+        e.preventDefault();
+        if (c < m.aligns.length - 1) mtFocusCell(node, r, c + 1); // else stop at the right edge
+      } else if (e.key === 'ArrowLeft') {
+        const atStart = navState || (sel?.isCollapsed && getCaretOffset(cell) === 0);
+        if (!atStart) return;         // move the caret within the cell text first
+        e.preventDefault();
+        if (c > 0) mtFocusCell(node, r, c - 1); // else stop at the left edge
       }
       return;
     }
