@@ -2433,6 +2433,17 @@ let mtReorder = null; // { kind:'col'|'row', from }
 let mtGlobalInit = false;
 
 function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${id}"]`); }
+function mtFocusCell(node, r, c, collapseToEnd) {
+  const host = mtHost(node.id); if (!host) return false;
+  const target = host.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
+  if (!target) return false;
+  target.focus();
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(!!collapseToEnd);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  return true;
+}
 function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splice(to, 0, x); }
 function mtModel(node) { return parseTable(stripTblfm(node.text)) || parseTable(starterTableText()); }
 // Serialize the grid back to node.text, preserving the trailing #+TBLFM: recipe (Org
@@ -2612,6 +2623,26 @@ function buildTableWidget(node, readOnly) {
   host.addEventListener('mousedown', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
     mtDrag = { nodeId:node.id, r0:+cell.dataset.r, c0:+cell.dataset.c, started:false };
+  });
+
+  // arrow-key navigation: ↑/↓ moves between rows; at the edge, exits to the adjacent point
+  host.addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    const m = mtModel(node);
+    if (e.key === 'ArrowDown') {
+      if (!isAtLastLine(cell)) return;
+      e.preventDefault();
+      if (r < m.rows.length - 1) { mtFocusCell(node, r + 1, c, false); }
+      else                        { navigateToNext(node.id); }
+    } else {
+      if (!isAtFirstLine(cell)) return;
+      e.preventDefault();
+      if (r > 0) { mtFocusCell(node, r - 1, c, true); }
+      else       { navigateToPrev(node.id); }
+    }
   });
 
   mtInitGlobal();
@@ -2865,14 +2896,28 @@ function attachContentEvents(content, node) {
       if (content.dataset.editing) exitEdit(content, node);
     });
     content.addEventListener('keydown', e => {
-      if (!content.dataset.editing) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        content.textContent = content.dataset.prevText ?? node.text;
-        content.blur();
+      if (content.dataset.editing) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          content.textContent = content.dataset.prevText ?? node.text;
+          content.blur();
+        }
+        if ((e.key === 'Enter') && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault(); content.blur();
+        }
+        return;
       }
-      if ((e.key === 'Enter') && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault(); content.blur();
+      // display mode: ↓ enters first cell, ↑ exits to the point above
+      if (!e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const m = mtModel(node);
+          const firstR = m.rows.length > 1 ? 1 : 0;
+          mtFocusCell(node, firstR, 0, false);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          navigateToPrev(node.id);
+        }
       }
     });
     return;
@@ -5997,22 +6042,34 @@ function isAtFirstLine(el) {
   if (!sel.rangeCount || !sel.isCollapsed) return false;
   const rects = sel.getRangeAt(0).getClientRects();
   if (!rects.length) return true;
-  return rects[0].bottom <= el.getBoundingClientRect().top + lineH(el);
+  const pt = parseFloat(getComputedStyle(el).paddingTop) || 0;
+  return rects[0].bottom <= el.getBoundingClientRect().top + pt + lineH(el);
 }
 function isAtLastLine(el) {
   const sel = window.getSelection();
   if (!sel.rangeCount || !sel.isCollapsed) return false;
   const rects = sel.getRangeAt(0).getClientRects();
   if (!rects.length) return true;
-  return rects[0].top >= el.getBoundingClientRect().bottom - lineH(el);
+  const pb = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+  return rects[0].top >= el.getBoundingClientRect().bottom - pb - lineH(el);
 }
 function navigateToPrev(id) {
   const fi = flatIndex.get(id);
   if (fi == null || fi === 0) return;
-  const prevId = flatRows[fi - 1].node.id;
-  ensureRowVisible(prevId);
+  const prevNode = flatRows[fi - 1].node;
+  ensureRowVisible(prevNode.id);
+  if (prevNode.type === 'table') {
+    requestAnimationFrame(() => {
+      const m = mtModel(prevNode);
+      const lastR = m.rows.length - 1, lastC = m.aligns.length - 1;
+      if (!mtFocusCell(prevNode, lastR, lastC, true)) {
+        document.querySelector(`.node-content[data-id="${prevNode.id}"]`)?.focus();
+      }
+    });
+    return;
+  }
   requestAnimationFrame(() => {
-    const el = document.querySelector(`.node-content[data-id="${prevId}"]`);
+    const el = document.querySelector(`.node-content[data-id="${prevNode.id}"]`);
     if (!el) return;
     el.focus();
     const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
@@ -6022,10 +6079,20 @@ function navigateToPrev(id) {
 function navigateToNext(id) {
   const fi = flatIndex.get(id);
   if (fi == null || fi >= flatRows.length - 1) return;
-  const nextId = flatRows[fi + 1].node.id;
-  ensureRowVisible(nextId);
+  const nextNode = flatRows[fi + 1].node;
+  ensureRowVisible(nextNode.id);
+  if (nextNode.type === 'table') {
+    requestAnimationFrame(() => {
+      const m = mtModel(nextNode);
+      const firstR = m.rows.length > 1 ? 1 : 0;
+      if (!mtFocusCell(nextNode, firstR, 0, false)) {
+        document.querySelector(`.node-content[data-id="${nextNode.id}"]`)?.focus();
+      }
+    });
+    return;
+  }
   requestAnimationFrame(() => {
-    const el = document.querySelector(`.node-content[data-id="${nextId}"]`);
+    const el = document.querySelector(`.node-content[data-id="${nextNode.id}"]`);
     if (!el) return;
     el.focus();
     const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
