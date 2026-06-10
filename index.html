@@ -228,6 +228,9 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-rowh:hover{background:var(--hbg)}
 .mt-rowh:hover::before{content:'';display:block;width:3px;height:60%;min-height:8px;margin:auto;background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center/3px 5px repeat-y;opacity:.6}
 .mt-rowh.mt-dragover{background:var(--acc)}
+/* corner + footer-row handle stubs: not reorderable — inert (no grip, no grab cursor) */
+.mt-rowh-head,.mt-rowh-foot{cursor:default}
+.mt-rowh-head:hover::before,.mt-rowh-foot:hover::before{content:none}
 /* ── name-pill column header (Bases PR 2c) ──────────────────────────────────
    The <th> is the column-control surface: click AROUND the pill → Column menu,
    drag → reorder, resize grip on the right border. The pill inside is the
@@ -279,6 +282,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-total-row > .mt-cell,.mt-total-row > .mt-rowh{background:var(--cbg);border-top:2px solid var(--bdr)}
 .mt-total-row > .mt-cell{padding-top:2px;padding-bottom:2px}
 .mt-total-cell{font-style:normal!important;font-weight:700;color:var(--fg)}
+.mt-total-blank::before{content:none!important}
 .mt-total-cell::before{content:attr(data-agg) '\00a0';font-size:.72em;font-weight:600;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .mt-align-bar{display:flex;gap:3px;align-items:center;margin:4px 0 2px;font-size:11px;color:var(--muted)}
 .mt-align-bar button{font-size:11px;padding:1px 6px}
@@ -2880,22 +2884,29 @@ function mtApplyColWidthLive(host, c, w) {
 }
 
 // ── row model ops (mirror the column ops; surfaced in the Row menu) ──────────
+// All are footer-aware: the Calculate footer (when present) is the data-only last row,
+// so data rows never move into / past it, inserts land above it, and it's never deleted.
+function mtLastDataRow(node, m) {
+  return mtHasFooter(extractTblfm(node.text)) ? m.rows.length - 2 : m.rows.length - 1;
+}
 function mtMoveRow(node, rowIdx, dir) {
   const m = mtModel(node);
   const to = rowIdx + dir;
-  if (to < 1 || to >= m.rows.length) return; // row 0 is the header — can't move into / past it
+  if (to < 1 || to > mtLastDataRow(node, m)) return; // row 0 is the header; the footer stays pinned last
   mtMoveItem(m.rows, rowIdx, to);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
 function mtInsertRow(node, rowIdx, side) {
   const m = mtModel(node);
-  const at = side === 'above' ? rowIdx : rowIdx + 1;
+  // clamp 'below' so a new row never lands after the footer (rowIdx is always a data row)
+  const at = side === 'above' ? rowIdx : Math.min(rowIdx + 1, mtLastDataRow(node, m) + 1);
   m.rows.splice(at, 0, Array(m.aligns.length).fill(''));
   mtCommit(node, m); refreshTable(node);
 }
 function mtDeleteRow(node, rowIdx) {
   const m = mtModel(node);
-  if (m.rows.length <= 2 || rowIdx < 1) return; // keep the header + at least one data row
+  const minRows = mtHasFooter(extractTblfm(node.text)) ? 3 : 2; // keep header + ≥1 data (+ footer)
+  if (m.rows.length <= minRows || rowIdx < 1) return;
   m.rows.splice(rowIdx, 1);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
@@ -2948,7 +2959,8 @@ function showRowPanel(node, rowIdx, anchorEl) {
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const model = mtModel(node);
-  const lastRow = model.rows.length - 1;
+  const lastDataRow = mtLastDataRow(node, model);
+  const minRows = mtHasFooter(extractTblfm(node.text)) ? 3 : 2;
   const { addSection, addItem } = mtMenuBuilder(panel);
 
   addSection('Insert row');
@@ -2956,11 +2968,11 @@ function showRowPanel(node, rowIdx, anchorEl) {
   addItem('Insert below', { onApply: () => mtInsertRow(node, rowIdx, 'below') });
 
   addSection('Move row', true);
-  addItem('Move up',   { disabled: rowIdx <= 1,       onApply: () => mtMoveRow(node, rowIdx, -1) });
-  addItem('Move down', { disabled: rowIdx >= lastRow, onApply: () => mtMoveRow(node, rowIdx,  1) });
+  addItem('Move up',   { disabled: rowIdx <= 1,           onApply: () => mtMoveRow(node, rowIdx, -1) });
+  addItem('Move down', { disabled: rowIdx >= lastDataRow, onApply: () => mtMoveRow(node, rowIdx,  1) });
 
   addSection('Delete', true);
-  addItem('Delete row', { danger: true, disabled: model.rows.length <= 2, onApply: () => mtDeleteRow(node, rowIdx) });
+  addItem('Delete row', { danger: true, disabled: model.rows.length <= minRows, onApply: () => mtDeleteRow(node, rowIdx) });
 
   mtOpenMenu(panel, anchorEl);
 }
@@ -3131,7 +3143,11 @@ function buildTableWidget(node, readOnly) {
   for (let r=1;r<model.rows.length;r++) {
     const isTotal = r === totalRowIdx;
     h += `<tr data-r="${r}"${isTotal ? ' class="mt-total-row"' : ''}>`;
-    if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options"></th>`;
+    // The Calculate footer row is data-only (computed) and stays pinned last — no
+    // reorder/menu handle; a plain inert stub keeps the column count aligned.
+    if (!readOnly) h += isTotal
+      ? '<th class="mt-rowh mt-rowh-foot"></th>'
+      : `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options"></th>`;
     for (let c=0;c<nc;c++) {
       const cc = computedCells.has(r+','+c);
       // In the total row, an aggregated column's cell shows "<OpName> <value>" (the op
@@ -3140,6 +3156,10 @@ function buildTableWidget(node, readOnly) {
       const label = isTotal ? aggKindLabel(mtColAggKind(tblfmStr, c+1)) : '';
       if (label) {
         h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" data-agg="${label}">${mtInline(node, model.rows[r][c]||'')}</td>`;
+      } else if (isTotal) {
+        // Footer row, non-aggregated column: data-only, never editable. Read-only like a
+        // computed cell (so all the edit guards skip it) but blank and Σ-less.
+        h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0"></td>`;
       } else {
         h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
       }
@@ -3341,15 +3361,20 @@ function buildTableWidget(node, readOnly) {
     e.preventDefault();
     const m = mtModel(node);
     const lastRow = m.rows.length - 1, lastCol = m.aligns.length - 1;
+    // The Calculate footer (when present) is the last row and is data-only: new rows go
+    // ABOVE it, and the "add a row" boundary is the last DATA row, not the footer.
+    const hasFooter = mtHasFooter(extractTblfm(node.text));
+    const dataLastRow = hasFooter ? lastRow - 1 : lastRow;
     const r = +cell.dataset.r, c = +cell.dataset.c;
     if (e.key === 'Tab' && !e.shiftKey) {
-      if (r === lastRow && c === lastCol) {        // bottom-right → add a row, land in its first cell
+      if (r === dataLastRow && c === lastCol) {    // last data row bottom-right → add a row, land in its first cell
         const mm = mtModel(node);
         mm.rows[r][c] = cell.textContent;          // commit the cell we're leaving before rebuild
-        mm.rows.push(Array(mm.aligns.length).fill(''));
+        const insertAt = hasFooter ? mm.rows.length - 1 : mm.rows.length; // before the footer
+        mm.rows.splice(insertAt, 0, Array(mm.aligns.length).fill(''));
         mtCommit(node, mm);
         refreshTable(node);
-        mtFocusCell(node, mtModel(node).rows.length - 1, 0);
+        mtFocusCell(node, insertAt, 0);
       } else if (c === lastCol) {                  // row end → next row, first cell
         mtFocusCell(node, r + 1, 0);
       } else {                                     // → next cell right
@@ -3361,8 +3386,8 @@ function buildTableWidget(node, readOnly) {
       else mtFocusCell(node, r, c - 1);            // ← previous cell left
     } else if (e.shiftKey) {                       // Shift+Enter → up one row, same column; stop at top row
       if (r > 0) mtFocusCell(node, r - 1, c);
-    } else {                                        // Enter → down one row, same column; stop at last row
-      if (r < lastRow) mtFocusCell(node, r + 1, c);
+    } else {                                        // Enter → down one row, same column; stop at last DATA row (not the footer)
+      if (r < dataLastRow) mtFocusCell(node, r + 1, c);
     }
   });
 
