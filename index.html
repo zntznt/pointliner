@@ -1306,25 +1306,12 @@ function collectVars(rootNode) {
 }
 
 // Add block prefix to nodes that have a type but no prefix in text (migration)
-// One-time migration: bare ALL-CAPS keywords from pre-hash saves (e.g. `TODO body`)
-// are rewritten to the `#STATUS` form (`#TODO body`). Runs once at the root call
-// level (depth=0) as a two-pass walk: collect all known states first (including any
-// declared sequences), then rewrite. Idempotent — already-migrated `#TODO` won't
-// match the bare-caps pattern.
-const BARE_STATE_RE = /^([A-Z][A-Z0-9_-]*)(?=\s|$)/;
-function migrateNodePrefixes(n, _depth = 0) {
-  if (_depth === 0) {
-    const states = new Set(TODO_STATES);
-    (function collectStates(node) {
-      for (const sq of (node.seq || [])) if (Array.isArray(sq.states)) for (const st of sq.states) states.add(st);
-      for (const c of node.children) collectStates(c);
-    })(n);
-    (function rewriteBare(node) {
-      const km = node.text.match(BARE_STATE_RE);
-      if (km && states.has(km[1])) node.text = '#' + node.text;
-      for (const c of node.children) rewriteBare(c);
-    })(n);
-  }
+// NOTE: bare keywords from pre-`#STATUS` saves (`TODO body`) are NOT migrated —
+// a load-time rewrite would also capture plain prose typed after the change
+// (re-introducing the bare-word false-positive this syntax removes). Pre-release,
+// old bare-keyword to-dos simply become plain text; retype as `#KEYWORD` if meant
+// as statuses.
+function migrateNodePrefixes(n) {
   const prefix = BLOCK_PREFIX_MAP[n.type];
   if (prefix && !n.text.startsWith(prefix)) n.text = prefix + n.text;
   // legacy `_type="todo"` carried to-do-ness in the type alone — write the marker
@@ -1333,7 +1320,7 @@ function migrateNodePrefixes(n, _depth = 0) {
     n.text = migrateTodoText(n.text, n.checked);
     n.checked = todoDoneFromText(n.text);
   }
-  n.children.forEach(c => migrateNodePrefixes(c, _depth + 1));
+  n.children.forEach(migrateNodePrefixes);
 }
 
 function buildIndex(n, parent = null) {

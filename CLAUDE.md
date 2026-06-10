@@ -158,8 +158,10 @@ canonical shape:
   helpers**, and Enter inside a formatted node continues the format by writing the
   prefix into the new sibling (`continuationPrefix`: `- [ ] `, `#KEYWORD` with
   `#DONE→#TODO`, `> ` for quotes) — never by setting a type flag. Legacy
-  `_type="todo"` nodes and bare-keyword saves (`TODO body`) are migrated on load
-  (`migrateTodoText` / `migrateBareKeywords` pre-pass, both in `migrateNodePrefixes`). `textForDisplay()` (prefix-, marker- and keyword-
+  `_type="todo"` nodes are migrated on load (`migrateTodoText`, in
+  `migrateNodePrefixes`); bare-keyword saves (`TODO body`) are deliberately NOT
+  migrated — a load-time rewrite would also capture plain prose typed after the
+  change, re-introducing the bare-word false-positive the `#` form removes. `textForDisplay()` (prefix-, marker- and keyword-
   stripped) is used for breadcrumb/search, not for the main render; to-do exports
   emit the raw text since it carries its own marker. Remaining type-driven
   stragglers (`ol` ordinals, `divider`, whole-node italic/underline) are tracked
