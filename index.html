@@ -261,14 +261,19 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    menu's Width presets (always-visible on touch) instead of showing a dead handle. */
 @media(hover:none){.mt-col-resize{display:none}}
 @media(prefers-reduced-motion:reduce){.mt-col-resize::after{transition:none}}
-/* add-column: full-height "+" at the right edge (Notion-style, non-clipped, reveal on hover) */
+/* add-row / add-column affordances. The column one is a full-height "+" button at the
+   right edge (Notion-style, non-clipped). It must READ AS A BUTTON, not a stray dashed
+   line: revealed on table hover with a solid border, a subtle fill, and a bold legible
+   "+", then an accent state on direct hover/keyboard focus. Its `title`/`aria-label`
+   spell out "Insert column" on hover. */
 .mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
-.mt-addcol-cell{position:relative;padding:0;width:32px;border:none}
-.mt-addcol{position:absolute;top:1px;bottom:1px;left:4px;right:1px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:16px;border:1px dashed var(--bdr);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
-.md-table-host:hover .mt-addcol,.mt-addcol:focus-visible{opacity:1}
-@media(hover:none){.mt-addcol{opacity:1}}
-.mt-addcol:hover,.mt-addcol:focus-visible,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
+.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
 .mt-addrow-cell{padding-top:3px}
+.mt-addcol-cell{position:relative;padding:0;width:34px;border:none}
+.mt-addcol{position:absolute;top:2px;bottom:2px;left:4px;right:2px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:20px;font-weight:600;border:1px solid var(--bdr);border-radius:6px;background:var(--cbg);color:var(--fg);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
+.md-table-host:hover .mt-addcol{opacity:.85}
+.mt-addcol:hover,.mt-addcol:focus-visible{opacity:1;background:var(--acc);color:#fff;border-color:var(--acc)}
+@media(hover:none){.mt-addcol{opacity:.85}}
 /* column operations panel (the consolidated home for all column ops) */
 #mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
 #mt-colpanel.on{display:block}
