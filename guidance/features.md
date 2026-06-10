@@ -136,5 +136,17 @@ Implemented:
     normal markdown. Edit mode shows keyword + priority as plain text (never atomic pills).
   - **Sort children:** bullet menu → "Sort children by state/priority" sorts children using
     `compareTodo` (not-done before done, then `A < B < C < none`, then active-state order).
-  - **Not included (future work):** user-configurable state sets, `CANCELLED`, logbook /
-    `CLOSED:` timestamps, per-file `#+TODO:` keyword declarations, agenda/scheduling.
+  - **Sequences (user-definable state sets) — SHIPPED (MVP):** the built-in
+    `TODO NEXT WAITING | DONE` is now the *default sequence*; declare your own with
+    `@sequence` (name + states, e.g. `Flow: BACKLOG DOING | SHIPPED`) — a `[[seq:key]]`
+    pill + `node.seq` sidecar, document-wide via `collectSequences` (cached on `_varsVer`),
+    OPML `_seq`. Apply states via `/` (one menu section per sequence) or by typing the
+    keyword; the badge renders for any state of any sequence, the badge→picker offers the
+    node's sequence's states, and done-ness derives from the keyword's side of the `|`
+    (right = done — strikethrough / hide-done / sort all honor it). Keyword collisions:
+    first sequence wins (default first). NO new syntax: `@` declares, `/` applies, the
+    keyword sits in `node.text` exactly like `TODO`.
+  - **Not included (future work):** state *cycling* (advance-to-next) for custom sequences,
+    per-item sequence switching beyond `/`+typing, priority `[#A]` semantics per sequence,
+    inline `{}` reference of a sequence, `CANCELLED` in the default set, logbook /
+    `CLOSED:` timestamps, per-file `#+TODO:` declarations, agenda/scheduling.

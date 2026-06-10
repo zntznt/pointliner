@@ -154,6 +154,7 @@ export function loadCores() {
     'migrateTodoText','textForDisplay',
     'collectCallables','filterBraceCandidates',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
+    'parseSequence','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
   ];
   const cores = {};
   const missing = [];

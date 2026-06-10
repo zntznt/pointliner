@@ -1301,3 +1301,98 @@ test('grSrcSpanClean: broken or misplaced brace is dirty', () => {
   assert.equal(c.grSrcSpanClean(''), false);
   assert.equal(c.grSrcSpanClean('plain'), false);
 });
+
+// ── Sequences: user-definable state sets (declare via @, apply via /) ────────
+// A sequence is { name, states[], doneFrom }: states left of the | are active,
+// right of it are done. The built-in TODO/NEXT/WAITING/DONE is the DEFAULT
+// sequence; done-ness generalizes from keyword===DONE to "right of the |".
+
+const FLOW = { key: 'q1', name: 'Flow', states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2 };
+const DEFAULT_SEQ = { key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3 };
+
+test('parseSequence: pipe splits active from done; states uppercased', () => {
+  assert.deepEqual(host(c.parseSequence('TODO NEXT WAITING | DONE CANCELLED')),
+    { states: ['TODO', 'NEXT', 'WAITING', 'DONE', 'CANCELLED'], doneFrom: 3 });
+  assert.deepEqual(host(c.parseSequence('backlog doing | shipped')),
+    { states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2 });
+});
+
+test('parseSequence: invalid forms return null (callers branch on null)', () => {
+  assert.equal(c.parseSequence('TODO DONE'), null);          // no pipe
+  assert.equal(c.parseSequence('A | B | C'), null);          // two pipes
+  assert.equal(c.parseSequence(' | DONE'), null);            // empty active side
+  assert.equal(c.parseSequence('TODO | '), null);            // empty done side
+  assert.equal(c.parseSequence('TO DO! | DONE'), null);      // bad token
+  assert.equal(c.parseSequence('A B | A'), null);            // duplicate state
+  assert.equal(c.parseSequence(''), null);
+});
+
+test('sequenceForKeyword: first-match across default + declared; default wins collisions', () => {
+  const seqs = [DEFAULT_SEQ, FLOW, { key: 'q2', name: 'Clash', states: ['DONE', 'DOING2'], doneFrom: 1 }];
+  assert.equal(c.sequenceForKeyword('DOING', seqs).name, 'Flow');
+  assert.equal(c.sequenceForKeyword('DONE', seqs).name, 'To-do');  // default first
+  assert.equal(c.sequenceForKeyword('NOPE', seqs), null);
+  assert.equal(c.sequenceForKeyword('', seqs), null);
+});
+
+test('keywordIsDone: done = at-or-right-of the | split, in ANY sequence', () => {
+  const seqs = [DEFAULT_SEQ, FLOW];
+  assert.equal(c.keywordIsDone('SHIPPED', seqs), true);
+  assert.equal(c.keywordIsDone('DOING', seqs), false);
+  assert.equal(c.keywordIsDone('BACKLOG', seqs), false);
+  assert.equal(c.keywordIsDone('DONE', seqs), true);          // default still works
+  assert.equal(c.keywordIsDone('TODO', seqs), false);
+  assert.equal(c.keywordIsDone('NOPE', seqs), false);         // non-state is never done
+});
+
+test('collectSequences: token-gated walk over node.seq, document order', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('[[seq:q1]]');
+  a.seq = [FLOW];
+  const b = c.mkNode('no token here');                        // record without token → dropped
+  b.seq = [{ key: 'q9', name: 'Ghost', states: ['X', 'Y'], doneFrom: 1 }];
+  root.children.push(a, b);
+  const got = host(c.collectSequences(root));
+  assert.equal(got.length, 1);
+  assert.equal(got[0].name, 'Flow');
+});
+
+test('parseTodo: custom states recognized via an explicit states set', () => {
+  const states = new Set(['TODO', 'NEXT', 'WAITING', 'DONE', 'BACKLOG', 'DOING', 'SHIPPED']);
+  assert.deepEqual(host(c.parseTodo('DOING [#A] ship it', states)),
+    { keyword: 'DOING', priority: 'A', body: 'ship it' });
+  // a capitalized word that is NO state in any sequence is not a keyword
+  assert.deepEqual(host(c.parseTodo('URGENT call mom', states)),
+    { keyword: '', priority: null, body: 'URGENT call mom' });
+});
+
+test('todoDoneFromText: generalized — custom done-state via explicit sequences', () => {
+  const seqs = [DEFAULT_SEQ, FLOW];
+  assert.equal(c.todoDoneFromText('SHIPPED v1 release', seqs), true);
+  assert.equal(c.todoDoneFromText('DOING v1 release', seqs), false);
+  assert.equal(c.todoDoneFromText('DONE old way', seqs), true);    // default unchanged
+  assert.equal(c.todoDoneFromText('- [x] task', seqs), true);      // task form unchanged
+});
+
+test('continuationPrefix: a done custom state restarts at its sequence FIRST state', () => {
+  const seqs = [DEFAULT_SEQ, FLOW];
+  assert.equal(c.continuationPrefix('SHIPPED v1', seqs), 'BACKLOG ');
+  assert.equal(c.continuationPrefix('DOING v1', seqs), 'DOING ');
+  assert.equal(c.continuationPrefix('DONE x', seqs), 'TODO ');     // default pin intact
+});
+
+test('seqDefString: inverse of parseSequence (modulo spacing)', () => {
+  assert.equal(c.seqDefString(FLOW), 'BACKLOG DOING | SHIPPED');
+  assert.deepEqual(host(c.parseSequence(c.seqDefString(FLOW))),
+    { states: FLOW.states, doneFrom: FLOW.doneFrom });
+});
+
+test('OPML: a [[seq:KEY]] record serializes into the _seq attribute', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('My flow [[seq:q1]]');
+  n.seq = [FLOW];
+  root.children.push(n);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_seq='), 'seq sidecar should serialize');
+  assert.ok(xml.includes('BACKLOG'), 'states should appear in the attribute');
+});

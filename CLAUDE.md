@@ -424,7 +424,11 @@ Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit ·
 TODO states + priorities (Org headline style: `TODO [#A] body`, keyword in `node.text`;
-to-do-ness fully derives from the text — task marker or keyword — see the node model above).
+to-do-ness fully derives from the text — task marker or keyword — see the node model above) ·
+Sequences (user-definable state sets generalizing the to-do keywords: the built-in
+`TODO NEXT WAITING | DONE` is the default sequence; `@sequence` declares a `[[seq:key]]`
+pill + `node.seq` sidecar, `collectSequences` indexes them document-wide, `/` applies a
+state, and done-ness = the keyword sits right of its sequence's `|`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog
