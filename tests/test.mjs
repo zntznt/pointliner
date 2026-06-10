@@ -808,6 +808,51 @@ test('planTablePromote: invalid range or non-table block → null (caller bails,
   assert.equal(c.planTablePromote('', 0, 1), null);             // empty text
 });
 
+// ── table-aware paste: a pasted markdown table lands as ONE point ─────────────
+const { splitPastedPoints, tableBlockEnd } = c;
+
+test('splitPastedPoints: a pure table paste → ONE point (grid + trailing #+TBLFM intact)', () => {
+  const text = '| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n#+TBLFM: $2=$1*2';
+  assert.deepEqual(host(splitPastedPoints(text)), [text]); // single grouped entry, recipe line included
+});
+
+test('splitPastedPoints: a base "Copy as markdown" block → one static-table point', () => {
+  const text = '| Name | Qty |\n| --- | --- |\n| Apple | 3 |';
+  assert.deepEqual(host(splitPastedPoints(text)), [text]);
+});
+
+test('splitPastedPoints: prose + table + prose → prose split into points, table grouped as one', () => {
+  const text = 'Intro line\nSecond line\n| A | B |\n| --- | --- |\n| 1 | 2 |\nAfter line';
+  assert.deepEqual(host(splitPastedPoints(text)), [
+    'Intro line',
+    'Second line',
+    '| A | B |\n| --- | --- |\n| 1 | 2 |',
+    'After line',
+  ]);
+});
+
+test('splitPastedPoints: two blank-separated tables → two grouped entries (blank is not a point)', () => {
+  const t1 = '| A |\n| --- |\n| 1 |';
+  const t2 = '| X | Y |\n| --- | --- |\n| 9 | 8 |';
+  assert.deepEqual(host(splitPastedPoints(t1 + '\n\n' + t2)), [t1, t2]); // blank line ends the first block
+});
+
+test('splitPastedPoints: plain multi-line non-table text → one entry per line (unchanged)', () => {
+  assert.deepEqual(host(splitPastedPoints('alpha\nbeta\ngamma')), ['alpha', 'beta', 'gamma']);
+});
+
+test('splitPastedPoints: prose-with-pipes is NOT a table (GFM-strict, no delimiter row)', () => {
+  const text = 'a | b | c\nd | e | f'; // looks tabular but the 2nd line is not a :?-+:? delimiter
+  assert.deepEqual(host(splitPastedPoints(text)), ['a | b | c', 'd | e | f']);
+});
+
+test('tableBlockEnd: returns the block end (with #+TBLFM); -1 when no table starts at i', () => {
+  const lines = 'pre\n| A |\n| --- |\n| 1 |\n#+TBLFM: $1=1\npost'.split('\n');
+  assert.equal(tableBlockEnd(lines, 0), -1); // "pre" is not a table start
+  assert.equal(tableBlockEnd(lines, 1), 5);  // header(1)+delim(2)+row(3)+TBLFM(4) → end 5
+  assert.equal(tableBlockEnd(lines, 5), -1); // "post" is not a table start
+});
+
 test('OPML: a base node serializes with _type="base"', () => {
   const root = c.mkRoot();
   root.children.push(c.mkNode(starterTableText(2, 2), 'base'));

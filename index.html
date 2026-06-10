@@ -4063,6 +4063,13 @@ function caretFromPoint(x, y) {
 function handlePaste(e, node, content) {
   e.preventDefault();
   const text = e.clipboardData.getData('text/plain');
+  // Pasting INTO A BASE CELL (the grid bubbles paste up to this same listener): the text
+  // goes into the cell only — never split into points or grouped into a table block. The
+  // cell's own input handler commits it via mtCommit. This keeps outline-only behavior here.
+  if (e.target.closest && e.target.closest('.mt-cell')) {
+    document.execCommand('insertText', false, text);
+    return;
+  }
   const lines = text.split('\n').map(l => l.replace(/\r$/,''));
   while (lines.length > 1 && !lines[lines.length-1].trim()) lines.pop();
   if (lines.length === 1) {
@@ -4103,10 +4110,53 @@ function handlePaste(e, node, content) {
   if (newNodes.length) focusNode(newNodes[newNodes.length-1].id);
 }
 
+// Shared GFM table-block detector (the ONE detector — reused by findFirstTableRange,
+// splitPastedPoints and parseMLlines; mirrors mdToHtml's inline detection). Given the
+// line index `i`, returns the EXCLUSIVE end line of a table block that begins exactly at
+// `i` (header + delimiter + body rows + an optional trailing #+TBLFM: line), or -1 when
+// no table starts there. GFM-strict via tableDelimCells, so prose-with-pipes is ignored.
+function tableBlockEnd(lines, i) {
+  const line = lines[i];
+  if (line == null || line.trim() === '' || UL_RE.test(line) || OL_RE.test(line)) return -1;
+  if (mtSplitRow(line).length !== tableDelimCells(lines[i + 1])) return -1;
+  let j = i + 2;                                                    // header + delimiter
+  while (j < lines.length && lines[j].trim() !== '' && lines[j].includes('|')) j++;
+  if (j < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[j])) j++;  // optional recipe
+  return j;
+}
+
+// Split pasted text into point-strings, grouping each GFM table block into ONE entry so
+// it lands as a single static-table point (PR 1 renders it) instead of one point per row.
+// Every non-table line stays its own entry. Pure; reuses tableBlockEnd. (parseMLlines
+// adds the outline's indentation/list nesting on top of this for real pastes.)
+function splitPastedPoints(text) {
+  const lines = (text || '').split('\n').map(l => l.replace(/\r$/, ''));
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const end = tableBlockEnd(lines, i);                  // detect with blanks intact (they end a block)
+    if (end !== -1) { out.push(lines.slice(i, end).join('\n')); i = end - 1; continue; }
+    if (lines[i].trim() === '') continue;                 // blank lines aren't points (matches parseMLlines)
+    out.push(lines[i]);
+  }
+  return out;
+}
+
 function parseMLlines(lines) {
   const result = [];
   const stack = [{ indent:-1, item:{ text:'', children:result } }];
-  for (const line of lines) {
+  for (let li = 0; li < lines.length; li++) {
+    // A GFM table block groups into ONE atomic point (renders as a static table via PR 1)
+    // instead of one point per row. Same shared detector as everywhere else.
+    const tend = tableBlockEnd(lines, li);
+    if (tend !== -1) {
+      const item = { text: lines.slice(li, tend).join('\n'), children:[] };
+      result.push(item);
+      stack.length = 1;
+      stack.push({ indent:0, item });
+      li = tend - 1;
+      continue;
+    }
+    const line = lines[li];
     const listM = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)/);
     if (listM) {
       const indent = listM[1].length, text = listM[3], item = { text, children:[] };
@@ -5050,13 +5100,8 @@ function promoteStaticTable(node, l0, l1) {
 function findFirstTableRange(text) {
   const lines = (text || '').split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trim() === '' || UL_RE.test(line) || OL_RE.test(line)) continue;
-    if (mtSplitRow(line).length !== tableDelimCells(lines[i + 1])) continue;
-    let j = i + 2;                                                    // header + delimiter
-    while (j < lines.length && lines[j].trim() !== '' && lines[j].includes('|')) j++;
-    if (j < lines.length && /^[ \t]*#\+TBLFM:/i.test(lines[j])) j++;  // optional recipe
-    return { l0: i, l1: j };
+    const end = tableBlockEnd(lines, i); // shared GFM detector
+    if (end !== -1) return { l0: i, l1: end };
   }
   return null;
 }

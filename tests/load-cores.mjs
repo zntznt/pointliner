@@ -144,6 +144,7 @@ export function loadCores() {
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
     'tableDelimCells', 'renderStaticTable', 'starterTableText', 'planBaseConvert', 'planTablePromote', 'findFirstTableRange',
+    'tableBlockEnd', 'splitPastedPoints',
     'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtApplyAggregate', 'aggKindLabel',
     'mtModelText', 'baseFrozenMarkdown', 'baseRecipeMarkdown',
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
