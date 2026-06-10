@@ -457,6 +457,12 @@ scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
 ## Working notes
 
 - Dev branch: `claude/cool-cray-5OQcQ` on `zntznt/pointliner`.
+- **Always branch off freshly-fetched `origin/main`.** Before starting any task, run
+  `git fetch origin` and cut your branch from `origin/main` — **not** local `main`. A stale local
+  clone can leave `main` pointing at an old snapshot, and you won't notice: your branch will pass
+  its own outdated tests. Sanity-check you're current — the test count and recently-merged
+  files/dirs (e.g. `guidance/`, the latest UXP entries) should match the latest work. If the count
+  is lower than the last merge, **STOP**: you're on a stale base.
 - Tests live in `tests/`. `tests/load-cores.mjs` harvests the pure functions out of
   `index.html` via a Node `vm` sandbox (no build step, no edits to `index.html`); it
   exposes deterministic-RNG helpers (`seedSequence`/`setRandom`/`resetRandom`).
