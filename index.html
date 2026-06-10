@@ -221,17 +221,12 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell.mt-a-center{text-align:center}
 .mt-cell.mt-a-right{text-align:right}
 .mt-cell .md-img{max-height:120px}
-/* handle cells (row grips) + the name-pill column header */
-.mt-colhead,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
-.mt-rowh{width:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-right:none}
+/* row handle + column header: no border/bg by default; handle revealed on hover */
+.mt-colhead,.mt-rowh,.mt-pad{border:1px solid transparent;background:transparent}
+.mt-rowh{width:10px;padding:0;position:relative;cursor:grab;box-sizing:border-box}
 .mt-rowh:active{cursor:grabbing}
-/* drag-reorder grip cue for ROWS (visible dots + grab cursor make the handle discoverable) */
-.mt-grip{display:block;width:100%;height:100%;min-height:12px;opacity:.4}
-.mt-rowh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center 0/3px 5px repeat-y}
 .mt-rowh:hover{background:var(--hbg)}
-.mt-rowh:hover .mt-grip{opacity:.75}
-.mt-del{position:absolute;display:none;z-index:2;width:15px;height:15px;line-height:13px;text-align:center;font-size:12px;border-radius:50%;background:var(--del);color:#fff;cursor:pointer}
-.mt-rowh:hover .mt-delrow{display:block;left:-7px;top:-7px}
+.mt-rowh:hover::before{content:'';display:block;width:3px;height:60%;min-height:8px;margin:auto;background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center/3px 5px repeat-y;opacity:.6}
 .mt-rowh.mt-dragover{background:var(--acc)}
 /* ── name-pill column header (Bases PR 2c) ──────────────────────────────────
    The <th> is the column-control surface: click AROUND the pill → Column menu,
@@ -258,19 +253,6 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* touch has no hover/mouse-drag — the grab zone can't work there; route to the Column
    menu's Width presets (always-visible on touch) instead of keeping a dead zone. */
 @media(hover:none){.mt-col-resize{display:none}}
-/* add-row / add-column affordances. The column one is a full-height "+" button at the
-   right edge (Notion-style, non-clipped). It must READ AS A BUTTON, not a stray dashed
-   line: revealed on table hover with a solid border, a subtle fill, and a bold legible
-   "+", then an accent state on direct hover/keyboard focus. Its `title`/`aria-label`
-   spell out "Insert column" on hover. */
-.mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
-.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
-.mt-addrow-cell{padding-top:3px}
-.mt-addcol-cell{position:relative;padding:0;width:34px;border:none}
-.mt-addcol{position:absolute;top:2px;bottom:2px;left:4px;right:2px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:20px;font-weight:600;border:1px solid var(--bdr);border-radius:6px;background:var(--cbg);color:var(--fg);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
-.md-table-host:hover .mt-addcol{opacity:.85}
-.mt-addcol:hover,.mt-addcol:focus-visible{opacity:1;background:var(--acc);color:#fff;border-color:var(--acc)}
-@media(hover:none){.mt-addcol{opacity:.85}}
 /* column operations panel (the consolidated home for all column ops) */
 #mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
 #mt-colpanel.on{display:block}
@@ -288,7 +270,6 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-col-item.mt-col-disabled{opacity:.4;cursor:default;pointer-events:none}
 .mt-col-item-check{color:var(--acc);font-size:11px;visibility:hidden}
 .mt-col-item.on .mt-col-item-check{visibility:visible}
-@media(prefers-reduced-motion:reduce){.mt-addcol{transition:none}}
 /* read-only formula-driven cells (non-color distinction required) */
 .mt-computed{font-style:italic;background:var(--cbg)!important;cursor:default}
 .mt-computed::before{content:'Σ\00a0';font-size:.72em;opacity:.5;font-style:normal}
@@ -708,15 +689,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* edit pencils on pills are hover-revealed on desktop — always show on touch */
   .dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit{
     opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr)}
-  /* table row handles + delete buttons: always visible, bigger */
+  /* table row handle: wider tap target on touch, always show the grip cue */
   .mt-rowh{width:22px}
-  .mt-grip{opacity:.5}
-  .mt-del{display:block;width:19px;height:19px;line-height:17px;font-size:12px;opacity:.5}
-  .mt-del:active{opacity:1}
-  .mt-rowh .mt-delrow{left:-8px;top:-8px}
+  .mt-rowh::before{opacity:.5}
   /* name-pill header: keep a comfortable tap height (tap around the pill = Column menu) */
   .mt-colhead{padding-top:5px;padding-bottom:5px}
-  .mt-addcol{min-height:38px}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
   .bullet{height:30px;padding:0 7px;gap:6px}
@@ -2902,25 +2879,36 @@ function mtApplyColWidthLive(host, c, w) {
   });
 }
 
+// ── row model ops (mirror the column ops; surfaced in the Row menu) ──────────
+function mtMoveRow(node, rowIdx, dir) {
+  const m = mtModel(node);
+  const to = rowIdx + dir;
+  if (to < 1 || to >= m.rows.length) return; // row 0 is the header — can't move into / past it
+  mtMoveItem(m.rows, rowIdx, to);
+  mtCommit(node, m); mtClearSelection(); refreshTable(node);
+}
+function mtInsertRow(node, rowIdx, side) {
+  const m = mtModel(node);
+  const at = side === 'above' ? rowIdx : rowIdx + 1;
+  m.rows.splice(at, 0, Array(m.aligns.length).fill(''));
+  mtCommit(node, m); refreshTable(node);
+}
+function mtDeleteRow(node, rowIdx) {
+  const m = mtModel(node);
+  if (m.rows.length <= 2 || rowIdx < 1) return; // keep the header + at least one data row
+  m.rows.splice(rowIdx, 1);
+  mtCommit(node, m); mtClearSelection(); refreshTable(node);
+}
+
 function hideColPanel() {
   const p = document.getElementById('mt-colpanel');
   if (p) p.classList.remove('on');
 }
 
-// The consolidated Column panel: Calculate · Alignment · Insert · Move · Delete.
-// One panel, growing by section (§7.1 menu pattern: role=menu/menuitem, arrow/
-// Enter/Esc nav, reduced-motion respected). Every column op lives here so the
-// header strip stays clean and nothing is drag/double-click-only.
-function showColPanel(node, colIdx, anchorEl) {
-  const panel = document.getElementById('mt-colpanel');
-  panel.innerHTML = '';
-  const col1 = colIdx + 1;
-  const model = mtModel(node);
-  const ncols = model.aligns.length;
-  const tblfm = extractTblfm(node.text);
-  const curAgg = mtColAggKind(tblfm, col1);
-  const curAlign = model.aligns[colIdx] || 'left';
-
+// Shared builders for the column/row dropdown menus (§7.1 menu pattern: role=menu/
+// menuitem, arrow/Enter/Esc nav, reduced-motion). Both reuse the one #mt-colpanel
+// element (only one menu is open at a time).
+function mtMenuBuilder(panel) {
   const addSection = (label, sep) => {
     const s = document.createElement('div');
     s.className = 'mt-col-section' + (sep ? ' mt-col-sep' : '');
@@ -2938,6 +2926,58 @@ function showColPanel(node, colIdx, anchorEl) {
     if (!disabled) item.addEventListener('mousedown', e => { e.preventDefault(); onApply(); hideColPanel(); });
     panel.appendChild(item);
   };
+  return { addSection, addItem };
+}
+function mtOpenMenu(panel, anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  panel.style.left = rect.left + 'px';
+  panel.style.top  = (rect.bottom + 2) + 'px';
+  panel.classList.add('on');
+  requestAnimationFrame(() => {
+    const pr = panel.getBoundingClientRect();
+    if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
+    if (pr.bottom > window.innerHeight - 8) panel.style.top  = (rect.top - pr.height - 2) + 'px';
+    (panel.querySelector('.mt-col-item.on:not(.mt-col-disabled)') || panel.querySelector('.mt-col-item:not(.mt-col-disabled)'))?.focus();
+  });
+}
+
+// The consolidated Row menu: Insert · Move · Delete — the lean replacement for the
+// per-row drag/delete gutter. Opened by clicking the row's hover handle (drag still
+// reorders); Alt+↑/↓ on a focused cell is the keyboard twin for Move.
+function showRowPanel(node, rowIdx, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const model = mtModel(node);
+  const lastRow = model.rows.length - 1;
+  const { addSection, addItem } = mtMenuBuilder(panel);
+
+  addSection('Insert row');
+  addItem('Insert above', { onApply: () => mtInsertRow(node, rowIdx, 'above') });
+  addItem('Insert below', { onApply: () => mtInsertRow(node, rowIdx, 'below') });
+
+  addSection('Move row', true);
+  addItem('Move up',   { disabled: rowIdx <= 1,       onApply: () => mtMoveRow(node, rowIdx, -1) });
+  addItem('Move down', { disabled: rowIdx >= lastRow, onApply: () => mtMoveRow(node, rowIdx,  1) });
+
+  addSection('Delete', true);
+  addItem('Delete row', { danger: true, disabled: model.rows.length <= 2, onApply: () => mtDeleteRow(node, rowIdx) });
+
+  mtOpenMenu(panel, anchorEl);
+}
+
+// The consolidated Column panel: Calculate · Alignment · Width · Insert · Move · Delete.
+// One panel, growing by section. Every column op lives here so the header stays clean
+// and nothing is drag/double-click-only.
+function showColPanel(node, colIdx, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const col1 = colIdx + 1;
+  const model = mtModel(node);
+  const ncols = model.aligns.length;
+  const tblfm = extractTblfm(node.text);
+  const curAgg = mtColAggKind(tblfm, col1);
+  const curAlign = model.aligns[colIdx] || 'left';
+  const { addSection, addItem } = mtMenuBuilder(panel);
 
   addSection('Calculate');
   [['sum','Sum'],['avg','Average'],['count','Count'],['min','Min'],['max','Max'],['none','None']]
@@ -2964,16 +3004,7 @@ function showColPanel(node, colIdx, anchorEl) {
   addSection('Delete', true);
   addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
 
-  const rect = anchorEl.getBoundingClientRect();
-  panel.style.left = rect.left + 'px';
-  panel.style.top  = (rect.bottom + 2) + 'px';
-  panel.classList.add('on');
-  requestAnimationFrame(() => {
-    const pr = panel.getBoundingClientRect();
-    if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
-    if (pr.bottom > window.innerHeight - 8) panel.style.top  = (rect.top - pr.height - 2) + 'px';
-    (panel.querySelector('.mt-col-item.on:not(.mt-col-disabled)') || panel.querySelector('.mt-col-item:not(.mt-col-disabled)'))?.focus();
-  });
+  mtOpenMenu(panel, anchorEl);
 }
 
 // ── whole-base operations (surfaced on the base bullet's menu) ────────────────
@@ -3080,8 +3111,7 @@ function buildTableWidget(node, readOnly) {
   // unchanged. The surrounding `.mt-colhead` <th> is the menu+reorder zone — click
   // around the pill opens the Column menu, drag reorders — with the resize grip on its
   // right border. A computed (formula-targeted) header stays a plain read-only cell:
-  // it can't be renamed. The add-column "+" spans the whole grid as a non-clipped
-  // right-edge affordance. This replaces the earlier `.mt-colh` handle-row + `▾`-button.
+  // it can't be renamed.
   h += '<tr class="mt-headrow" data-r="0">';
   if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
   for (let c=0;c<nc;c++) {
@@ -3097,12 +3127,11 @@ function buildTableWidget(node, readOnly) {
          + `</th>`;
     }
   }
-  if (!readOnly) h += `<th class="mt-addcol-cell" rowspan="${model.rows.length}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th>`;
   h += '</tr>';
   for (let r=1;r<model.rows.length;r++) {
     const isTotal = r === totalRowIdx;
     h += `<tr data-r="${r}"${isTotal ? ' class="mt-total-row"' : ''}>`;
-    if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
+    if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options"></th>`;
     for (let c=0;c<nc;c++) {
       const cc = computedCells.has(r+','+c);
       // In the total row, an aggregated column's cell shows "<OpName> <value>" (the op
@@ -3117,7 +3146,6 @@ function buildTableWidget(node, readOnly) {
     }
     h += '</tr>';
   }
-  if (!readOnly) h += `<tr class="mt-addrow-row"><th></th><td class="mt-addrow-cell" colspan="${nc}"><button class="mt-addrow">+ Add row</button></td><td></td></tr>`;
   h += '</table></div>';
 
   const host = document.createElement('div');
@@ -3165,7 +3193,7 @@ function buildTableWidget(node, readOnly) {
     scheduleReconcile();
   });
 
-  // add / delete row & column; column panel toggle
+  // column menu toggle; row menu toggle (click the slim handle)
   host.addEventListener('click', e => {
     // click the header cell AROUND the name pill → Column menu.
     // Clicking the pill itself edits the name; the resize grip has its own gesture.
@@ -3175,13 +3203,10 @@ function buildTableWidget(node, readOnly) {
       showColPanel(node, +colhead.dataset.c, colhead);
       return;
     }
-    if (e.target.closest('.mt-addcol')) {
-      const m = mtModel(node); m.aligns.push(null); m.rows.forEach(r => r.push('')); if (node.colW) node.colW.push(null); mtCommit(node,m); refreshTable(node);
-    } else if (e.target.closest('.mt-addrow')) {
-      const m = mtModel(node); m.rows.push(Array(m.aligns.length).fill('')); mtCommit(node,m); refreshTable(node);
-    } else if (e.target.closest('.mt-delrow')) {
-      const r = +e.target.closest('.mt-delrow').dataset.r; const m = mtModel(node);
-      if (m.rows.length > 2 && r >= 1) { m.rows.splice(r,1); mtCommit(node,m); mtClearSelection(); refreshTable(node); }
+    const rh = e.target.closest('.mt-rowh');
+    if (rh && rh.dataset.r) {
+      e.stopPropagation();
+      showRowPanel(node, +rh.dataset.r, rh);
     }
   });
   // column resize: drag the right-edge grip; double-click it to auto-fit (clear width)
