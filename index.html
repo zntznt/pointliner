@@ -220,36 +220,41 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell.mt-a-center{text-align:center}
 .mt-cell.mt-a-right{text-align:right}
 .mt-cell .md-img{max-height:120px}
-/* handle cells (row/col grips) */
-.mt-corner,.mt-colh,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
-.mt-colh{height:18px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-bottom:none}
+/* handle cells (row grips) + the name-pill column header */
+.mt-corner,.mt-colhead,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
 .mt-rowh{width:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-right:none}
-.mt-colh:active,.mt-rowh:active{cursor:grabbing}
-/* drag-reorder grip cue (visible dots + grab cursor make the handle discoverable) */
+.mt-rowh:active{cursor:grabbing}
+/* drag-reorder grip cue for ROWS (visible dots + grab cursor make the handle discoverable) */
 .mt-grip{display:block;width:100%;height:100%;min-height:12px;opacity:.4}
-.mt-colh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center/5px 3px repeat-x}
 .mt-rowh .mt-grip{background:radial-gradient(circle,var(--muted) 1px,transparent 1px) center 0/3px 5px repeat-y}
-.mt-colh:hover,.mt-rowh:hover{background:var(--hbg)}
-.mt-colh:hover .mt-grip,.mt-rowh:hover .mt-grip{opacity:.75}
+.mt-rowh:hover{background:var(--hbg)}
+.mt-rowh:hover .mt-grip{opacity:.75}
 .mt-del{position:absolute;display:none;z-index:2;width:15px;height:15px;line-height:13px;text-align:center;font-size:12px;border-radius:50%;background:var(--del);color:#fff;cursor:pointer}
 .mt-rowh:hover .mt-delrow{display:block;left:-7px;top:-7px}
-.mt-colh.mt-dragover{background:var(--acc)}
 .mt-rowh.mt-dragover{background:var(--acc)}
-/* column-options opener: one clearly-sized caret button. Revealed on hover (always
-   on touch); kept in layout with opacity (not display:none) so it stays keyboard-
-   focusable / tab-reachable, then made visible on :focus-visible. */
-.mt-col-btn{position:absolute;top:0;right:0;height:100%;width:22px;display:flex;align-items:center;justify-content:center;border:none;border-radius:0 0 0 5px;background:var(--cbg);color:var(--muted);cursor:pointer;font-size:11px;line-height:1;z-index:3;opacity:0;transition:opacity .12s,background .12s,color .12s}
-.mt-colh:hover .mt-col-btn,.mt-col-btn:focus-visible{opacity:1}
-.mt-col-btn:hover,.mt-col-btn:focus-visible{background:var(--hbg);color:var(--fg)}
-@media(hover:none){.mt-col-btn{opacity:1}}
-@media(prefers-reduced-motion:reduce){.mt-col-btn{transition:none}}
+/* ── name-pill column header (Bases PR 2c) ──────────────────────────────────
+   The <th> is the column-control surface: click AROUND the pill → Column menu,
+   drag → reorder, resize grip on the right border. The pill inside is the
+   editable name (and the row-0 grid cell). The caret hints the menu; on narrow
+   columns the pill truncates so the around-pill (menu) zone never collapses. */
+.mt-colhead{position:relative;font-weight:700;background:var(--cbg);border:1px solid var(--bdr);padding:3px 20px 3px 5px;min-width:72px;max-width:340px;cursor:pointer;vertical-align:middle;box-sizing:border-box}
+.mt-colhead:hover{background:var(--hbg)}
+.mt-colhead:active{cursor:grabbing}
+.mt-colhead.mt-dragover{background:var(--acc)}
+.mt-name-pill{display:inline-block;max-width:100%;padding:1px 7px;border-radius:6px;font-weight:700;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;min-width:1.4em;min-height:1.25em;line-height:1.3;outline:none;background:transparent;transition:background .12s}
+.mt-name-pill:hover{background:var(--bg)}
+.mt-name-pill:focus{background:var(--bg);box-shadow:inset 0 0 0 2px var(--ring);overflow:visible;text-overflow:clip}
+.mt-name-pill:empty::before{content:attr(data-ph);color:var(--muted);opacity:.6;font-weight:400}
+.mt-colhead-caret{position:absolute;right:5px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:10px;line-height:1;opacity:0;transition:opacity .12s;pointer-events:none}
+.mt-colhead:hover .mt-colhead-caret,.mt-name-pill:focus ~ .mt-colhead-caret{opacity:.85}
+@media(prefers-reduced-motion:reduce){.mt-name-pill,.mt-colhead-caret{transition:none}}
 /* column resize grip: a thin strip straddling the column's right border. The 2px
    visual cue shows on hover; the grab zone is wider for easy targeting. The Column
    menu's Width presets are the keyboard/touch door (fine px control is mouse-only,
    mirroring drag-reorder vs the menu's Move). */
 .mt-col-resize{position:absolute;top:0;right:-5px;width:11px;height:100%;z-index:4;cursor:col-resize;touch-action:none}
 .mt-col-resize::after{content:'';position:absolute;top:2px;bottom:2px;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .12s}
-.mt-colh:hover .mt-col-resize::after{background:var(--bdr)}
+.mt-colhead:hover .mt-col-resize::after{background:var(--bdr)}
 .mt-col-resize:hover::after{background:var(--acc)}
 body.mt-resizing{cursor:col-resize}
 body.mt-resizing,body.mt-resizing *{user-select:none}
@@ -259,8 +264,8 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 @media(prefers-reduced-motion:reduce){.mt-col-resize::after{transition:none}}
 /* add-column: full-height "+" at the right edge (Notion-style, non-clipped, reveal on hover) */
 .mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
-.mt-addcol-cell{position:relative;padding:0;width:26px;border:none}
-.mt-addcol{position:absolute;top:1px;bottom:1px;left:4px;right:1px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:15px;border:1px dashed var(--bdr);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
+.mt-addcol-cell{position:relative;padding:0;width:32px;border:none}
+.mt-addcol{position:absolute;top:1px;bottom:1px;left:4px;right:1px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:16px;border:1px dashed var(--bdr);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
 .md-table-host:hover .mt-addcol,.mt-addcol:focus-visible{opacity:1}
 @media(hover:none){.mt-addcol{opacity:1}}
 .mt-addcol:hover,.mt-addcol:focus-visible,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
@@ -695,14 +700,16 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* edit pencils on pills are hover-revealed on desktop — always show on touch */
   .dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit{
     opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr)}
-  /* table row/column handles + delete buttons: always visible, bigger */
-  .mt-colh{height:22px}
+  /* table row handles + delete buttons: always visible, bigger */
   .mt-rowh{width:22px}
   .mt-grip{opacity:.5}
   .mt-del{display:block;width:19px;height:19px;line-height:17px;font-size:12px;opacity:.5}
   .mt-del:active{opacity:1}
-  .mt-colh .mt-delcol{top:-8px;right:-8px}
   .mt-rowh .mt-delrow{left:-8px;top:-8px}
+  /* name-pill header: keep a comfortable tap height and a visible caret (the menu
+     opener) since touch has no hover; tap around the pill opens the Column menu. */
+  .mt-colhead{padding-top:5px;padding-bottom:5px}
+  .mt-colhead-caret{opacity:.85}
   .mt-addcol{min-height:38px}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
@@ -2876,7 +2883,9 @@ function mtSetColWidth(node, colIdx, w) {
 // Live width during a drag: paint every cell in the column without a rebuild
 // (commit to node.colW + refresh happens on mouseup).
 function mtApplyColWidthLive(host, c, w) {
-  host.querySelectorAll(`.mt-cell[data-c="${c}"]`).forEach(cell => {
+  // width lives on the table cells (data <td>s + the header <th>) — not the name-pill
+  // span (which is a `.mt-cell` for nav but doesn't bear the column width).
+  host.querySelectorAll(`td[data-c="${c}"], th[data-c="${c}"]`).forEach(cell => {
     cell.style.boxSizing = 'border-box';
     cell.style.width = cell.style.minWidth = cell.style.maxWidth = w + 'px';
   });
@@ -3052,17 +3061,31 @@ function buildTableWidget(node, readOnly) {
   // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
   // the whole grid — a rowspan can't span the thead↔tbody boundary.
   h += '<div class="mt-scroll"><table class="md-table">';
-  if (!readOnly) {
-    // The add-column cell spans the whole grid height (tophandles + header + data
-    // rows) so the "+" is a full-height, non-clipped right-edge affordance.
-    const addColSpan = model.rows.length + 1;
-    h += '<tr class="mt-tophandles"><th class="mt-corner"></th>';
-    for (let c=0;c<nc;c++) h += `<th class="mt-colh" data-c="${c}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><button class="mt-col-btn" data-c="${c}" aria-label="Column options" title="Column options" aria-haspopup="menu">▾</button><span class="mt-col-resize" data-c="${c}" title="Drag to resize · double-click to auto-fit"></span></th>`;
-    h += `<th class="mt-addcol-cell" rowspan="${addColSpan}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th></tr>`;
-  }
+  // Header row — the column-control surface (Bases PR 2c "name-pill" model). The
+  // editable name lives in a `.mt-name-pill`, which is ALSO the row-0 grid cell
+  // (`.mt-cell` + data-r/data-c), so every cell nav/edit handler applies to it
+  // unchanged. The surrounding `.mt-colhead` <th> is the menu+reorder zone — click
+  // around the pill opens the Column menu, drag reorders — with the resize grip on its
+  // right border. A computed (formula-targeted) header stays a plain read-only cell:
+  // it can't be renamed. The add-column "+" spans the whole grid as a non-clipped
+  // right-edge affordance. This replaces the earlier `.mt-colh` handle-row + `▾`-button.
   h += '<tr class="mt-headrow" data-r="0">';
   if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
-  for (let c=0;c<nc;c++) { const ch0=computedCells.has('0,'+c); h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${colStyle(c)}${ch0?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[0][c]||'')}</th>`; }
+  for (let c=0;c<nc;c++) {
+    const ch0 = computedCells.has('0,'+c);
+    const nm = model.rows[0][c] || '';
+    if (readOnly || ch0) {
+      const ce = ch0 ? ' contenteditable="false" tabindex="0"' : '';
+      h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${colStyle(c)}${ce}>${mtInline(node, nm)}</th>`;
+    } else {
+      h += `<th class="mt-colhead${aCls(model.aligns[c])}" data-c="${c}" draggable="true"${colStyle(c)} title="Drag to reorder · click for column options">`
+         + `<span class="mt-cell mt-name-pill" data-r="0" data-c="${c}" contenteditable="true" role="textbox" aria-label="Column ${c+1} name" data-ph="Name">${mtInline(node, nm)}</span>`
+         + `<span class="mt-colhead-caret" aria-hidden="true">▾</span>`
+         + `<span class="mt-col-resize" data-c="${c}" title="Drag to resize · double-click to auto-fit"></span>`
+         + `</th>`;
+    }
+  }
+  if (!readOnly) h += `<th class="mt-addcol-cell" rowspan="${model.rows.length}"><button class="mt-addcol" aria-label="Insert column" title="Insert column">+</button></th>`;
   h += '</tr>';
   for (let r=1;r<model.rows.length;r++) {
     h += `<tr data-r="${r}">`;
@@ -3120,10 +3143,12 @@ function buildTableWidget(node, readOnly) {
 
   // add / delete row & column; column panel toggle
   host.addEventListener('click', e => {
-    if (e.target.closest('.mt-col-btn')) {
+    // click the header cell AROUND the name pill (or its caret) → Column menu.
+    // Clicking the pill itself edits the name; the resize grip has its own gesture.
+    const colhead = e.target.closest('.mt-colhead');
+    if (colhead && !e.target.closest('.mt-name-pill') && !e.target.closest('.mt-col-resize')) {
       e.stopPropagation();
-      const btn = e.target.closest('.mt-col-btn');
-      showColPanel(node, +btn.dataset.c, btn);
+      showColPanel(node, +colhead.dataset.c, colhead);
       return;
     }
     if (e.target.closest('.mt-addcol')) {
@@ -3140,7 +3165,7 @@ function buildTableWidget(node, readOnly) {
     const grip = e.target.closest('.mt-col-resize'); if (!grip) return;
     e.preventDefault(); e.stopPropagation();
     const c = +grip.dataset.c;
-    const headCell = host.querySelector(`.mt-cell[data-r="0"][data-c="${c}"]`);
+    const headCell = host.querySelector(`th[data-c="${c}"]`); // the column header <th> (colhead / computed)
     const startW = Math.round(headCell?.getBoundingClientRect().width || node.colW?.[c] || 120);
     mtColResize = { nodeId: node.id, c, startX: e.clientX, startW };
     document.body.classList.add('mt-resizing');
@@ -3151,10 +3176,11 @@ function buildTableWidget(node, readOnly) {
     mtSetColWidth(node, +grip.dataset.c, null); // auto-fit = clear the pinned width
   });
   // (alignment now lives in the Column panel — the hidden double-click cycle is gone)
-  // drag-reorder rows / columns via handle drag (▾ button + resize grip are not drag handles)
+  // drag-reorder rows / columns via handle drag. The name pill (text edit) and the
+  // resize grip are NOT drag handles — dragging the header cell AROUND them reorders.
   host.addEventListener('dragstart', e => {
-    if (e.target.closest('.mt-col-btn') || e.target.closest('.mt-col-resize')) { e.preventDefault(); return; }
-    const ch = e.target.closest('.mt-colh'), rh = e.target.closest('.mt-rowh');
+    if (e.target.closest('.mt-name-pill') || e.target.closest('.mt-col-resize')) { e.preventDefault(); return; }
+    const ch = e.target.closest('.mt-colhead'), rh = e.target.closest('.mt-rowh');
     if (ch) mtReorder = { kind:'col', from:+ch.dataset.c };
     else if (rh && rh.dataset.r) mtReorder = { kind:'row', from:+rh.dataset.r };
     else return;
@@ -3162,7 +3188,7 @@ function buildTableWidget(node, readOnly) {
   });
   host.addEventListener('dragover', e => {
     if (!mtReorder) return;
-    const sel = mtReorder.kind==='col' ? '.mt-colh' : '.mt-rowh';
+    const sel = mtReorder.kind==='col' ? '.mt-colhead' : '.mt-rowh';
     const tgt = e.target.closest(sel);
     if (!tgt || (mtReorder.kind==='row' && !tgt.dataset.r)) return;
     e.preventDefault();
@@ -3174,7 +3200,7 @@ function buildTableWidget(node, readOnly) {
     e.preventDefault();
     const m = mtModel(node);
     if (mtReorder.kind==='col') {
-      const ch = e.target.closest('.mt-colh');
+      const ch = e.target.closest('.mt-colhead');
       if (ch) { const to=+ch.dataset.c; mtMoveItem(m.aligns, mtReorder.from, to); m.rows.forEach(r => mtMoveItem(r, mtReorder.from, to)); if (node.colW) mtMoveItem(node.colW, mtReorder.from, to); mtCommit(node,m); }
     } else {
       const rh = e.target.closest('.mt-rowh');
@@ -3191,6 +3217,9 @@ function buildTableWidget(node, readOnly) {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
     mtPointerFocus = true; // the focusin this press causes keeps the click caret
     mtNavSel = null;
+    // the header row (the name pills) is the column-control surface, not part of a
+    // rectangular data selection — a header drag reorders the column instead.
+    if (+cell.dataset.r === 0) return;
     mtDrag = { nodeId:node.id, r0:+cell.dataset.r, c0:+cell.dataset.c, started:false };
   });
   host.addEventListener('mouseup', () => { mtPointerFocus = false; });
@@ -3208,6 +3237,17 @@ function buildTableWidget(node, readOnly) {
   host.addEventListener('keydown', e => {
     mtPointerFocus = false; // typing means any pointer-press gesture is over
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    // Shift+F10 / the Menu (ContextMenu) key on any focused cell → the Column menu for
+    // that cell's column (OS-standard "context menu of the focused element"). This is
+    // the keyboard door for column ops (replacing the dropped Cmd+M, which collided
+    // with macOS minimize). The base menu is reached from the base's bullet (Shift+F10
+    // there) — a clean split: cell focused → column menu, bullet focused → base menu.
+    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      e.preventDefault();
+      const c = +cell.dataset.c;
+      showColPanel(node, c, host.querySelector(`th[data-c="${c}"]`) || cell);
+      return;
+    }
     if (slashState?.cell && slashState.content === cell && isSlashMenuOpen()) {
       if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
       if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
@@ -4426,7 +4466,9 @@ _mtColPanel.addEventListener('keydown', e => {
   else if (e.key === 'Escape') { e.preventDefault(); hideColPanel(); }
 });
 document.addEventListener('click', e => {
-  if (!e.target.closest('#mt-colpanel') && !e.target.closest('.mt-col-btn')) hideColPanel();
+  // The header-cell opener stops propagation when it opens the panel, so a click that
+  // reaches here is always "outside" — close unless it landed inside the panel.
+  if (!e.target.closest('#mt-colpanel')) hideColPanel();
 });
 
 function showBulletPopup(nodeId, bulletEl, opts = {}) {

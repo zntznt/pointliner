@@ -93,11 +93,11 @@ The deliberate omission is the **type switcher**: a base has no "turn into headi
 The column name lives in an **editable name pill**; the surrounding header-cell area is the control zone. This resolves edit-vs-menu **spatially**, with no hidden gestures:
 
 - **Click the name pill** → edit the column name inline.
-- **Click the header cell *around* the pill** → open the **Column menu** (Calculate, Alignment, Insert, Move, Delete…).
+- **Click the header cell *around* the pill** (incl. the hover ▾ caret hint) → open the **Column menu** (Calculate, Alignment, Width, Insert, Move, Delete…).
 - **Hold + drag** (around the pill) → reorder the column.
 - *(No double-click — the pill is the rename affordance.)*
 
-> This **supersedes** the earlier `▾`-caret-on-a-handle column-header design. The header cell *is* the affordance. On narrow columns the around-pill click zone MUST never collapse to nothing (truncate the pill; keep a minimum header height), so "click for menu" always has somewhere to land.
+> **Shipped (Bases PR 2c).** This **supersedes** the earlier `▾`-caret-on-a-handle column-header design. The header cell *is* the affordance. The name pill is also the **row-0 grid cell** (`.mt-cell`), so keyboard cell navigation (UXP-2) reaches it and type-to-overwrite renames in place; the surrounding `.mt-colhead` `<th>` is the menu/reorder zone with the resize grip on its right border. On narrow columns the pill **truncates** (`text-overflow:ellipsis`) and the header keeps a `min-width`, so the around-pill click zone never collapses to nothing.
 
 ### Column width (resize)
 
@@ -108,15 +108,16 @@ Columns auto-size by default. A user can pin a column's width:
 
 Width is **base view-state, not content**: it lives on the node as `colW` (an array of `px | null`, `null` = auto) and serializes to the underscore-prefixed OPML attribute `_colw` — markdown pipe-tables have no width syntax, so it rides the node like the artifact sidecars, never `node.text`. It is therefore correctly **absent** from *Copy as markdown* / *Copy with TBLFM* (a pasted table elsewhere has no width concept). `colW` is kept index-aligned through insert/delete/move/reorder; an all-`null` array drops back to `undefined`. Cells pin via `box-sizing:border-box` width+min+max so the rendered width equals the stored px. *(Row height is intentionally out of scope — cells are single-line; see the PR discussion.)*
 
-### Menu keyboard shortcuts (required — `click` is mouse-only)
+### Menu keyboard access (`click` is mouse-only)
 
-Base-context-scoped (do nothing outside a base); documented in `ux-discipline.md` §3 and the `?` panel:
+The OS-standard **context-menu-of-the-focused-element** gesture is the single keyboard door (documented in `ux-discipline.md` §3 and the `?` panel):
 
-- **`Ctrl/⌘ + M`** → **Column menu** (for the column the focused cell is in).
-- **`Ctrl/⌘ + Shift + M`** → **Base menu** (whole-base operations).
-- **`Shift+F10`** (and the Menu key where present) → Column menu — the OS-standard "context menu of the focused element" gesture, for assistive-tech parity.
+- **`Shift+F10`** (and the Menu/Application key where present) on a **focused base cell** → the **Column menu** for that cell's column.
+- The **base menu** (whole-base ops) is reached from the base's **bullet** — `Shift+F10` on the focused point opens its bullet popup, which for a base carries the whole-base ops. The bullet is a focusable `role="button"` opener.
 
-Inline rename stays reachable by keyboard via UXP-2 navigation + type.
+> **Dropped the `⌘+M` collision (PR 2c).** The earlier plan used `Ctrl/⌘ + M` (Column menu) and `Ctrl/⌘ + Shift + M` (Base menu). `⌘+M` is the macOS "minimize window" system shortcut — a hard collision — so **both chords are dropped** in favor of `Shift+F10`. No dedicated chord remains for either menu.
+
+Inline rename stays reachable by keyboard via UXP-2 navigation + type (the name pill is the row-0 grid cell).
 
 ### Base width — normal in the outline, full-width when zoomed in
 
@@ -179,6 +180,7 @@ Binding terms for UI copy, `aria-label`s, docs, and this file:
    - **PR 2a ✅ Shipped.** Internal rename of the interactive object `node.type` `table` → **base** (widget dispatch, edit mode, OPML `_type`, exports, `nt-base` CSS); the `/base` verb (label **Base**, retiring `/table`) and the `@table` insert verb (a static pipe-table starter); a **shared keyboard-first grid size picker** swapped into the slash-menu popup (arrows size, Enter creates, Esc cancels; default 3×3, max 8×8) feeding both verbs; and a **non-destructive convert** (`createBaseAt`) — an empty point becomes the base in place, a content-bearing point keeps its text with the base inserted as the next sibling (fixes the destroy-text-on-convert data-loss bug). No migration (pre-release).
    - **PR 2b — base header bar + copy ops. ✅ Shipped.** A slim full-width **base header bar** atop the base (built extensible — left zone reserved for the future view switcher; no base title for MVP) hosting a **base-menu opener** (`aria-label` "Base options"). The **base menu** (distinct from the Column menu) carries **Copy as markdown** (the current displayed state — computed values baked into the cells, no `#+TBLFM` — a frozen static-table snapshot via `baseFrozenMarkdown`) and **Copy with TBLFM** (raw cell literals plus the `#+TBLFM` recipe via `baseRecipeMarkdown`, so a paste recomputes through PR 1's static render). Opened by the opener **and** by **Ctrl/⌘+Shift+M** (base-context-scoped); §7.2 menu pattern (`role=menu/menuitem`, `↑↓`/`Enter`/`Esc`, reduced-motion, ARIA). Each copy confirms with a `flashHint` toast. *Still scoped for a later pass: the §5 header-row interaction model (name pill vs Column menu) and `Ctrl/⌘+M` for the Column menu.* **Superseded:** the `⋯` opener, the `#mt-basemenu` dropdown and its `Ctrl/⌘+Shift+M` shortcut were later retired — the two copy ops (plus the node ops and a confirmed delete) now live on **the base bullet's menu** (§5 "The base bullet"). The header bar remains as an empty, collapsed reserved zone for the future view switcher.
 3. **PR 3 — promote. ✅ Shipped.** "Convert to base" on a static table, with the §6 split logic (see §6 "Promote" for the full behavior: hover-revealed `▦ base` button, point · base · point split, in-place for a table-only point, TBLFM carried + recomputed, one undo step, `planTablePromote` pure core pinned in tests).
+   - **PR 2c — name-pill column header + Column-menu consolidation + keyboard repick. ✅ Shipped.** The column header is now the **name-pill model** (§5): the editable name pill (also the row-0 grid cell, so UXP-2 nav + type-to-overwrite rename reach it), the surrounding `.mt-colhead` `<th>` as the click-for-menu / drag-to-reorder zone, and the resize grip on its right border — replacing the old `.mt-colh` handle row + `▾` opener. The Column menu carries the consolidated ops (**Calculate · Alignment · Width · Insert · Move · Delete**). **Keyboard repick:** the colliding `⌘+M` (Column) / `⌘+Shift+M` (Base) chords are gone; the Column menu opens via **`Shift+F10`** on a focused base cell, and the base menu via the base bullet's popup (`Shift+F10` on the point). Mostly DOM/visual — model ops (`mtModel`, align/insert/move/delete) reused; cross-platform (Chromium + WebKit) verified.
 4. **Later (this doc's deferred list, §4):** views, typed fields, filters.
 
 Each PR runs the normal process — rationale → decisions → brief → Conformance Statement gate.
