@@ -456,6 +456,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #sel-tb .cmd-icon{cursor:pointer}
 #sel-tb .cmd-icon:hover{background:var(--acc);color:#fff}
 #sel-tb .cmd-sep{width:1px;height:20px;background:var(--bdr);margin:0 1px;flex-shrink:0}
+#sel-tb.cell-sel .seltb-fn{display:none} /* footnotes are node-level, not per-cell */
 
 /* bullet popup */
 #bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:5px;box-shadow:0 8px 30px rgba(0,0,0,.12);min-width:210px}
@@ -2431,18 +2432,53 @@ let mtSel = null;   // rectangular cell selection { nodeId, r0,c0, r1,c1 }
 let mtDrag = null;  // in-flight range-select gesture
 let mtReorder = null; // { kind:'col'|'row', from }
 let mtGlobalInit = false;
+let mtNavSel = null;        // cell whose full selection came from navigation (suppresses the selection toolbar)
+let mtPointerFocus = false; // next cell focusin came from a pointer press (keep the click caret, no select-all)
 
 function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${id}"]`); }
-function mtFocusCell(node, r, c, collapseToEnd) {
+// Cell-scope mdInline: set the node's artifact sidecars as the render context so
+// [[type:key]] tokens inside cells resolve to live pills (mirrors renderContentHTML;
+// safe only because mdInline is synchronous).
+function mtInline(node, raw) {
+  diceRenderList    = node.dice    || null;
+  markovRenderList  = node.markov  || null;
+  rolltableRenderList = node.rolltable || null;
+  mathRenderList    = node.math    || null;
+  varRenderList     = node.vars    || null;
+  grammarRenderList = node.grammar || null;
+  globalVarMap      = collectVars();
+  const html = mdInline(raw || '');
+  diceRenderList = markovRenderList = rolltableRenderList = mathRenderList = varRenderList = grammarRenderList = null;
+  return html;
+}
+function mtSelectCellContents(cell) {
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  mtNavSel = cell;
+}
+function mtFocusCell(node, r, c) {
   const host = mtHost(node.id); if (!host) return false;
   const target = host.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
   if (!target) return false;
-  target.focus();
-  const range = document.createRange();
-  range.selectNodeContents(target);
-  range.collapse(!!collapseToEnd);
-  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  target.focus(); // focusin handler swaps to raw text and selects it for type-to-overwrite
+  if (mtNavSel !== target) mtSelectCellContents(target); // cell was already focused: no focusin fired
   return true;
+}
+// Replace the [start,end) span of one cell's raw text, then repaint that cell.
+function mtSpliceCell(nodeId, r, c, start, end, str) {
+  const node = nodeById(nodeId); if (!node) return;
+  const m = mtModel(node);
+  if (!m.rows[r] || c >= m.aligns.length) return; // row/col gone (deleted mid-dialog)
+  const cur = m.rows[r][c] ?? '';
+  const a = Math.min(Math.max(Math.min(start, end), 0), cur.length);
+  const b = Math.min(Math.max(Math.max(start, end), 0), cur.length);
+  m.rows[r][c] = cur.slice(0, a) + str + cur.slice(b);
+  mtCommit(node, m);
+  const cell = mtHost(nodeId)?.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
+  if (cell && cell !== document.activeElement) cell.innerHTML = mtInline(node, m.rows[r][c]);
+  if (mtRecompute(node)) mtPatchCells(node);
+  scheduleReconcile();
 }
 function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splice(to, 0, x); }
 function mtModel(node) { return parseTable(stripTblfm(node.text)) || parseTable(starterTableText()); }
@@ -2472,7 +2508,7 @@ function mtPatchCells(node, exceptCell) {
   const m = mtModel(node);
   host.querySelectorAll('.mt-cell').forEach(cell => {
     if (cell === exceptCell || cell === document.activeElement) return; // leave the cell being edited
-    cell.innerHTML = mdInline(m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '');
+    cell.innerHTML = mtInline(node, m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '');
   });
 }
 
@@ -2482,6 +2518,35 @@ function refreshTable(node) {
   if (!host) { render(); return; }
   host.replaceWith(buildTableWidget(node));
   scheduleReconcile();
+}
+
+// Repaint a node's display after an artifact record changed. Table nodes hold a
+// widget, not renderContentHTML output, so they rebuild the grid instead.
+function repaintNodeContent(node) {
+  const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
+  if (!el || el.dataset.editing) return null;
+  if (node.type === 'table') { refreshTable(node); return el; }
+  el.innerHTML = renderContentHTML(node);
+  return el;
+}
+
+// Display-mode pill click inside a table cell: pencil opens the editor, body
+// re-rolls in place (same semantics as pills in regular node content).
+function handleCellPill(node, pill, target) {
+  const key = pill.dataset.key;
+  if (pill.classList.contains('dice-roll') && !pill.classList.contains('dice-bad')) {
+    if (target.closest('.dice-edit')) editDice(node, key); else rerollDice(node, key);
+  } else if (pill.classList.contains('mk-roll') && !pill.classList.contains('mk-bad')) {
+    if (target.closest('.mk-edit')) editMarkov(node, key); else rerollMarkov(node, key);
+  } else if (pill.classList.contains('rt-roll') && !pill.classList.contains('rt-bad')) {
+    if (target.closest('.rt-edit')) editRolltable(node, key); else rerollRolltable(node, key);
+  } else if (pill.classList.contains('gr-roll') && !pill.classList.contains('gr-bad')) {
+    if (target.closest('.gr-edit')) editGrammar(node, key); else rerollGrammar(node, key);
+  } else if (pill.classList.contains('math-roll') && !pill.classList.contains('math-bad')) {
+    editMath(node, key);
+  } else if (pill.classList.contains('var-pill') && !pill.classList.contains('var-bad')) {
+    editVar(node, key);
+  }
 }
 
 function mtClearSelection() {
@@ -2516,13 +2581,13 @@ function buildTableWidget(node, readOnly) {
   }
   h += '<tr class="mt-headrow" data-r="0">';
   if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
-  for (let c=0;c<nc;c++) h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${ro}>${mdInline(model.rows[0][c]||'')}</th>`;
+  for (let c=0;c<nc;c++) h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${ro}>${mtInline(node, model.rows[0][c]||'')}</th>`;
   if (!readOnly) h += '<th class="mt-pad"></th>';
   h += '</tr></thead><tbody>';
   for (let r=1;r<model.rows.length;r++) {
     h += `<tr data-r="${r}">`;
     if (!readOnly) h += `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder"><span class="mt-grip"></span><span class="mt-del mt-delrow" data-r="${r}" title="Delete row">×</span></th>`;
-    for (let c=0;c<nc;c++) h += `<td class="mt-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${ro}>${mdInline(model.rows[r][c]||'')}</td>`;
+    for (let c=0;c<nc;c++) h += `<td class="mt-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
     if (!readOnly) h += '<td class="mt-pad"></td>';
     h += '</tr>';
   }
@@ -2542,20 +2607,28 @@ function buildTableWidget(node, readOnly) {
     forceIncludeId = node.id;
     const m = mtModel(node);
     cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    // Keyboard-driven focus (Tab / arrow navigation): select the whole cell for
+    // type-to-overwrite. Pointer focus keeps the browser's click-placed caret.
+    if (!mtPointerFocus) mtSelectCellContents(cell);
+    mtPointerFocus = false;
   });
   host.addEventListener('input', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    mtNavSel = null;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = cell.textContent;
     mtCommit(node, m);
+    checkCellSlash(cell, node);
   });
   host.addEventListener('focusout', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    if (mtNavSel === cell) mtNavSel = null;
+    if (slashState?.cell && slashState.content === cell) hideSlashMenu();
     const raw = cell.textContent;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
     mtCommit(node, m);
-    cell.innerHTML = mdInline(raw);
+    cell.innerHTML = mtInline(node, raw);
     forceIncludeId = null;
     // A source-cell edit may feed a formula: recompute and repaint the target cells in
     // place (rebuilding the widget here would steal focus from the next-clicked cell).
@@ -2622,25 +2695,40 @@ function buildTableWidget(node, readOnly) {
   // begin a rectangular cell selection
   host.addEventListener('mousedown', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    mtPointerFocus = true; // the focusin this press causes keeps the click caret
+    mtNavSel = null;
     mtDrag = { nodeId:node.id, r0:+cell.dataset.r, c0:+cell.dataset.c, started:false };
   });
+  host.addEventListener('mouseup', () => { mtPointerFocus = false; });
 
   // arrow-key navigation: ↑/↓ moves between rows; at the edge, exits to the adjacent point
   host.addEventListener('keydown', e => {
-    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    mtPointerFocus = false; // typing means any pointer-press gesture is over
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
+    // "@" insert menu open on this cell: arrows/Enter/Tab/Esc drive the menu
+    if (slashState?.cell && slashState.content === cell && isSlashMenuOpen()) {
+      if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
+      if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
+      if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
+      if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { mtNavSel = null; return; } // intentional select-all
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.shiftKey) { if (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End') mtNavSel = null; return; } // intentional selection
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     const r = +cell.dataset.r, c = +cell.dataset.c;
     const m = mtModel(node);
+    // a navigation-placed full selection acts like a spreadsheet cursor: arrows move cells
+    const navState = mtNavSel === cell && !window.getSelection()?.isCollapsed;
     if (e.key === 'ArrowDown') {
-      if (!isAtLastLine(cell)) return;
+      if (!navState && !isAtLastLine(cell)) return;
       e.preventDefault();
-      if (r < m.rows.length - 1) { mtFocusCell(node, r + 1, c, false); }
+      if (r < m.rows.length - 1) { mtFocusCell(node, r + 1, c); }
       else                        { navigateToNext(node.id); }
     } else {
-      if (!isAtFirstLine(cell)) return;
+      if (!navState && !isAtFirstLine(cell)) return;
       e.preventDefault();
-      if (r > 0) { mtFocusCell(node, r - 1, c, true); }
+      if (r > 0) { mtFocusCell(node, r - 1, c); }
       else       { navigateToPrev(node.id); }
     }
   });
@@ -2887,6 +2975,14 @@ function attachContentEvents(content, node) {
   if (node.type === 'table') {
     content.addEventListener('mousedown', e => {
       if (content.dataset.editing) return;
+      // artifact pills inside rendered cells stay live (reroll in place / open editor)
+      const pill = e.target.closest?.('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill');
+      if (pill && e.target.closest('.mt-cell')) {
+        e.preventDefault(); e.stopPropagation();
+        mtPointerFocus = false; // focus was prevented — don't leave the flag armed
+        handleCellPill(node, pill, e.target);
+        return;
+      }
       if (e.target.closest('.md-table-host')) return; // let the widget handle it
       e.preventDefault();
       enterEdit(content, node);
@@ -2896,6 +2992,7 @@ function attachContentEvents(content, node) {
       if (content.dataset.editing) exitEdit(content, node);
     });
     content.addEventListener('keydown', e => {
+      if (e.target.closest?.('.mt-cell')) return; // cell keys are the widget's (bubbled here)
       if (content.dataset.editing) {
         if (e.key === 'Escape') {
           e.preventDefault();
@@ -2912,8 +3009,7 @@ function attachContentEvents(content, node) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
           const m = mtModel(node);
-          const firstR = m.rows.length > 1 ? 1 : 0;
-          mtFocusCell(node, firstR, 0, false);
+          mtFocusCell(node, m.rows.length > 1 ? 1 : 0, 0);
         } else if (e.key === 'ArrowUp') {
           e.preventDefault();
           navigateToPrev(node.id);
@@ -3555,7 +3651,7 @@ function buildSelTb() {
   linkIc.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat('link'); });
   selTb.appendChild(linkIc);
   const fnIc = document.createElement('div');
-  fnIc.className = 'cmd-icon';
+  fnIc.className = 'cmd-icon seltb-fn'; // hidden for cell selections (footnotes are node-level)
   setIcon(fnIc, { fa:'fa-solid fa-superscript', fb:'†' });
   fnIc.title = 'Convert to footnote';
   fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
@@ -3576,10 +3672,16 @@ function updateSelToolbar() {
     if (!sel || sel.isCollapsed || !sel.rangeCount) { hideSelTb(); return; }
     const range = sel.getRangeAt(0);
     const anchor = range.commonAncestorContainer;
-    const cnt = anchor.nodeType===1 ? anchor.closest?.('.node-content') : anchor.parentElement?.closest('.node-content');
-    if (!cnt || !cnt.dataset.editing) { hideSelTb(); return; }
+    const anchorEl = anchor.nodeType===1 ? anchor : anchor.parentElement;
+    const cnt = anchorEl?.closest?.('.node-content');
+    // table cell: show for intentional selections in the focused (raw text) cell,
+    // but not for the full-cell selection placed by Tab/arrow navigation
+    const cell = anchorEl?.closest?.('.mt-cell');
+    const cellOk = cell && document.activeElement === cell && mtNavSel !== cell;
+    if (!cellOk && (!cnt || !cnt.dataset.editing)) { hideSelTb(); return; }
     const rect = range.getBoundingClientRect();
     if (!rect.width) { hideSelTb(); return; }
+    selTb.classList.toggle('cell-sel', !!cellOk);
     selTb.classList.add('on');
     selTb.style.left = (rect.left + rect.width/2) + 'px';
     // #sel-tb is position:fixed, so use viewport-relative coords (no scrollY).
@@ -3602,10 +3704,31 @@ function applyInlineFormat(fmt) {
   const range = sel.getRangeAt(0);
   const selected = range.toString();
   if (!selected) return;
-  const cnt = range.commonAncestorContainer?.parentElement?.closest('.node-content')
-    || range.commonAncestorContainer?.closest?.('.node-content');
+  const anchorEl = range.commonAncestorContainer.nodeType === 1
+    ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+  const cell = anchorEl?.closest?.('.mt-cell');
+  const cnt = anchorEl?.closest?.('.node-content');
   // Link needs a URL — collect it in the dialog rather than wrapping inline.
   if (fmt === 'link') {
+    if (cell) {
+      // cell selection: splice into the cell's raw text via the table model
+      const nodeId = cell.closest('.md-table-host')?.dataset.id; if (!nodeId) return;
+      const r = +cell.dataset.r, c = +cell.dataset.c;
+      const start = rangeOffset(cell, range.startContainer, range.startOffset);
+      const end   = rangeOffset(cell, range.endContainer, range.endOffset);
+      hideSelTb();
+      openInsertDialog({
+        icon: { fa:'fa-solid fa-link', fb:'⌘' },
+        title: 'Insert link',
+        submitLabel: 'Insert link',
+        fields: [
+          { key:'url',  label:'URL',  placeholder:'https://example.com', required:true },
+          { key:'text', label:'Text to show', placeholder:'Link text', value:selected },
+        ],
+        onSubmit: v => mtSpliceCell(nodeId, r, c, start, end, `[${v.text || v.url}](${v.url})`),
+      });
+      return;
+    }
     if (!cnt) return;
     const nodeId = cnt.dataset.id;
     const start = rangeOffset(cnt, range.startContainer, range.startOffset);
@@ -3627,7 +3750,9 @@ function applyInlineFormat(fmt) {
   const wrapped = map[fmt];
   if (!wrapped) return;
   document.execCommand('insertText', false, wrapped);
-  if (cnt) { const nd = nodeById(cnt.dataset.id); if (nd) { nd.text = editableText(cnt); markDirty(); } }
+  // Cell selections need no manual sync — the insertText fires 'input' on the cell
+  // and the table host's input handler commits the model.
+  if (!cell && cnt) { const nd = nodeById(cnt.dataset.id); if (nd) { nd.text = editableText(cnt); markDirty(); } }
   hideSelTb();
 }
 
@@ -3887,6 +4012,7 @@ function slashMove(dir) {
 
 function slashApply() {
   if (!slashState) return;
+  if (slashState.cell) { cellSlashApply(); return; }
   const { nodeId, content, slashOffset, activeIdx, matches, trigger } = slashState;
   const cmd = matches[activeIdx];
   hideSlashMenu();
@@ -4011,6 +4137,109 @@ function insertInlineArtifact(id, nodeId, content) {
       if (el) el.focus();
     }, 50);
     return;
+  }
+}
+
+// ─── "@" insert menu inside table cells ──────────────────────────────────────
+// Same INSERT_CMDS pool minus footnote (footnotes are node-level, not per-cell);
+// block commands ("/") stay node-only — there is no table-in-table.
+function checkCellSlash(cell, node) {
+  const pos = getCaretOffset(cell);
+  const before = (cell.textContent || '').slice(0, pos);
+  const m = before.match(/(^|[\s])@(\w*)$/);
+  if (!m) { if (slashState?.cell) hideSlashMenu(); return; }
+  const query = m[2].toLowerCase();
+  const slashOffset = pos - query.length - 1;
+  const matches = INSERT_CMDS.filter(c => c.id !== 'footnote').filter(c =>
+    c.id.startsWith(query) || c.label.toLowerCase().includes(query)
+  );
+  if (!matches.length) { hideSlashMenu(); return; }
+  slashState = { nodeId: node.id, content: cell, slashOffset, query, activeIdx: 0, matches, trigger: '@', cell: true };
+  renderSlashMenu();
+  positionSlashMenu(cell, slashOffset);
+}
+
+function cellSlashApply() {
+  const { nodeId, content: cell, slashOffset, activeIdx, matches } = slashState;
+  const cmd = matches[activeIdx];
+  hideSlashMenu();
+  const node = nodeById(nodeId);
+  if (!node) return;
+  // strip the @ trigger + the query the user typed after it
+  const cur = cell.textContent;
+  const afterTrigger = cur.slice(slashOffset + 1).match(/^\w*/)?.[0] ?? '';
+  const newText = cur.slice(0, slashOffset) + cur.slice(slashOffset + 1 + afterTrigger.length);
+  cell.textContent = newText; // doesn't fire 'input' — sync the model by hand
+  const r = +cell.dataset.r, c = +cell.dataset.c;
+  const m = mtModel(node);
+  if (m.rows[r]) { m.rows[r][c] = newText; mtCommit(node, m); }
+  try { setCaretByOffset(cell, slashOffset); } catch (_) {}
+  insertCellArtifact(cmd.id, node, r, c, slashOffset);
+}
+
+// Cell flavor of insertInlineArtifact: records go on the node's sidecars as
+// usual, but the token/markdown is spliced into one cell of the table model.
+function insertCellArtifact(id, node, r, c, offset) {
+  const nodeId = node.id;
+  const splice = str => mtSpliceCell(nodeId, r, c, offset, offset, str);
+  if (id === 'link') {
+    openInsertDialog({
+      icon: { fa:'fa-solid fa-link', fb:'⌘' },
+      title: 'Insert link',
+      submitLabel: 'Insert link',
+      fields: [
+        { key:'url',  label:'URL',  placeholder:'https://example.com', required:true },
+        { key:'text', label:'Text to show', placeholder:'Link text (optional)' },
+      ],
+      onSubmit: v => splice(`[${v.text || v.url}](${v.url})`),
+    });
+  } else if (id === 'image') {
+    openInsertDialog({
+      icon: { fa:'fa-regular fa-image', fb:'🖼' },
+      title: 'Insert image',
+      submitLabel: 'Insert image',
+      fields: [
+        { key:'url', label:'Image URL', placeholder:'https://…/picture.png', required:true },
+        { key:'alt', label:'Alt text', placeholder:'Describe the image (optional)' },
+      ],
+      onSubmit: v => splice(`![${v.alt || 'image'}](${v.url})`),
+    });
+  } else if (id === 'dice') {
+    openDiceDialog({
+      title: 'Roll dice',
+      submitLabel: 'Roll',
+      onResult: roll => { (node.dice ||= []).push(roll); splice(`[[dice:${roll.key}]]`); },
+    });
+  } else if (id === 'markov') {
+    openMarkovDialog({
+      title: 'New Markov chain',
+      submitLabel: 'Roll',
+      onResult: roll => { (node.markov ||= []).push(roll); splice(`[[markov:${roll.key}]]`); },
+    });
+  } else if (id === 'rolltable') {
+    openRolltableDialog({
+      title: 'New roll table',
+      submitLabel: 'Roll',
+      onResult: roll => { (node.rolltable ||= []).push(roll); splice(`[[rolltable:${roll.key}]]`); },
+    });
+  } else if (id === 'grammar') {
+    openGrammarDialog({
+      title: 'New grammar',
+      submitLabel: 'Generate',
+      onResult: roll => { (node.grammar ||= []).push(roll); splice(`[[grammar:${roll.key}]]`); },
+    });
+  } else if (id === 'math') {
+    openMathDialog({
+      title: 'Insert math',
+      submitLabel: 'Insert',
+      onResult: roll => { (node.math ||= []).push(roll); splice(`[[math:${roll.key}]]`); },
+    });
+  } else if (id === 'var') {
+    openVarDialog({
+      title: 'Insert variable',
+      submitLabel: 'Insert',
+      onResult: v => { (node.vars ||= []).push(v); splice(`[[var:${v.key}]]`); },
+    });
   }
 }
 
@@ -4454,11 +4683,8 @@ function rerollRolltable(node, key) {
   if (!entries) return;
   rt.result = rollTable(entries);
   markDirty();
-  const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-  if (el && !el.dataset.editing) {
-    el.innerHTML = renderContentHTML(node);
-    el.querySelector(`.rt-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('rt-rolled');
-  }
+  const el = repaintNodeContent(node);
+  el?.querySelector(`.rt-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('rt-rolled');
 }
 
 function editRolltable(node, key) {
@@ -4471,8 +4697,7 @@ function editRolltable(node, key) {
     onResult: roll => {
       Object.assign(rt, { def: roll.def, name: roll.name, result: roll.result });
       markDirty();
-      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+      repaintNodeContent(node);
     },
   });
 }
@@ -4768,11 +4993,8 @@ function rerollGrammar(node, key) {
   if (result === null) return;
   g.result = result;
   markDirty();
-  const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-  if (el && !el.dataset.editing) {
-    el.innerHTML = renderContentHTML(node);
-    el.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
-  }
+  const el = repaintNodeContent(node);
+  el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
 }
 
 function editGrammar(node, key) {
@@ -4785,8 +5007,7 @@ function editGrammar(node, key) {
     onResult: roll => {
       Object.assign(g, { def: roll.def, origin: roll.origin, result: roll.result });
       markDirty();
-      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+      repaintNodeContent(node);
     },
   });
 }
@@ -5339,11 +5560,8 @@ function editMath(node, key) {
     onResult: roll => {
       Object.assign(m, { expr: roll.expr, result: roll.result });
       markDirty();
-      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-      if (el && !el.dataset.editing) {
-        el.innerHTML = renderContentHTML(node);
-        el.querySelector(`.math-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('math-edited');
-      }
+      const el = repaintNodeContent(node);
+      el?.querySelector(`.math-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('math-edited');
     },
   });
 }
@@ -5495,8 +5713,7 @@ function editVar(node, key) {
     onResult: result => {
       Object.assign(v, { name: result.name, expr: result.expr });
       markDirty();
-      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+      repaintNodeContent(node);
     },
   });
 }
@@ -5808,11 +6025,8 @@ function rerollDice(node, key) {
   const { total, parts } = rollParsed(terms);
   d.total = total; d.parts = parts;
   markDirty();
-  const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-  if (el && !el.dataset.editing) {
-    el.innerHTML = renderContentHTML(node);
-    el.querySelector(`.dice-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('dice-rolled');
-  }
+  const el = repaintNodeContent(node);
+  el?.querySelector(`.dice-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('dice-rolled');
 }
 
 // Open the editor for an existing dice token; on submit, replace its formula
@@ -5827,8 +6041,7 @@ function editDice(node, key) {
     onResult: roll => {
       Object.assign(d, { expr: roll.expr, total: roll.total, parts: roll.parts });
       markDirty();
-      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+      repaintNodeContent(node);
     },
   });
 }
@@ -5847,11 +6060,8 @@ function rerollMarkov(node, key) {
   if (!parsed) return;
   mk.path = walkMarkov(parsed, mk.start, mk.steps);
   markDirty();
-  const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-  if (el && !el.dataset.editing) {
-    el.innerHTML = renderContentHTML(node);
-    el.querySelector(`.mk-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('mk-rolled');
-  }
+  const el = repaintNodeContent(node);
+  el?.querySelector(`.mk-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('mk-rolled');
 }
 
 // Open the editor for an existing chain; on submit, replace its def + re-walk.
@@ -5865,8 +6075,7 @@ function editMarkov(node, key) {
     onResult: roll => {
       Object.assign(mk, { def: roll.def, start: roll.start, steps: roll.steps, name: roll.name, path: roll.path });
       markDirty();
-      const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-      if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+      repaintNodeContent(node);
     },
   });
 }
@@ -6062,7 +6271,7 @@ function navigateToPrev(id) {
     requestAnimationFrame(() => {
       const m = mtModel(prevNode);
       const lastR = m.rows.length - 1, lastC = m.aligns.length - 1;
-      if (!mtFocusCell(prevNode, lastR, lastC, true)) {
+      if (!mtFocusCell(prevNode, lastR, lastC)) {
         document.querySelector(`.node-content[data-id="${prevNode.id}"]`)?.focus();
       }
     });
@@ -6085,7 +6294,7 @@ function navigateToNext(id) {
     requestAnimationFrame(() => {
       const m = mtModel(nextNode);
       const firstR = m.rows.length > 1 ? 1 : 0;
-      if (!mtFocusCell(nextNode, firstR, 0, false)) {
+      if (!mtFocusCell(nextNode, firstR, 0)) {
         document.querySelector(`.node-content[data-id="${nextNode.id}"]`)?.focus();
       }
     });
