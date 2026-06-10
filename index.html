@@ -616,6 +616,27 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #lp-menu.on{display:block}
 .lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
+/* ── brace / callable-name picker ({ trigger) ── */
+#brace-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
+#brace-menu.on{display:block}
+.bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
+.bm-item{display:flex;align-items:baseline;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px}
+.bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
+.bm-name{flex:none;font-family:ui-monospace,monospace}
+.bm-val{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.bm-item.hi .bm-val{opacity:.7}
+/* ── variables overview panel ── */
+#var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
+#var-panel.on{transform:translateY(0)}
+#var-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 16px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;display:flex;align-items:center;gap:8px}
+#var-panel-list{overflow-y:auto;padding:8px 16px 12px;flex:1;display:flex;flex-wrap:wrap;gap:6px 20px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;align-content:flex-start}
+.vp-row{display:flex;align-items:baseline;gap:5px;font-size:13px}
+.vp-name{font-weight:500;font-family:ui-monospace,monospace}
+.vp-eq{color:var(--muted);font-size:11px}
+.vp-val{font-family:ui-monospace,monospace;font-size:12px;color:var(--acc)}
+.vp-cycle{color:var(--err,#e55);font-size:11px}
+#var-panel-close{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 4px;line-height:1;border-radius:4px;flex-shrink:0}
+#var-panel-close:hover{color:var(--fg)}
 
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
@@ -713,6 +734,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <!-- slash menu -->
 <div id="slash-menu"></div>
 <div id="lp-menu"></div>
+<div id="brace-menu" role="menu" aria-label="Callable names"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card"></div></div>
 <!-- drag indicator -->
@@ -737,6 +759,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="bl-panel">
   <div class="fn-panel-hd" id="bl-panel-hd">Linked from</div>
   <div id="bl-list"></div>
+</div>
+<!-- variables overview panel (Ctrl+Shift+V) -->
+<div id="var-panel" role="region" aria-label="Variables">
+  <div id="var-panel-hd">Variables <button id="var-panel-close" aria-label="Close variables panel" title="Close">✕</button></div>
+  <div id="var-panel-list"></div>
 </div>
 
 <div id="storage-warn">
@@ -3022,10 +3049,11 @@ function attachContentEvents(content, node) {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
-    if (checkInlineHighlight(content, node)) return; // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
+    if (checkInlineHighlight(content, node)) { hideBraceMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id);
     if (LINK_PICKER_ENABLED) checkLinkTrigger(content, node.id);
+    checkBraceTrigger(content, node.id);
     updateSelToolbar();
     updateFnPanel(node);
   });
@@ -3191,7 +3219,7 @@ function exitEdit(content, node) {
   if (activeContentId === node.id) activeContentId = null;
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
-  hideSlashMenu(); updateSelToolbar(); scheduleReconcile();
+  hideSlashMenu(); hideBraceMenu(); updateSelToolbar(); scheduleReconcile();
 }
 
 function caretFromPoint(x, y) {
@@ -3297,6 +3325,12 @@ function onKeyDown(e, id, content) {
     if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
+  }
+  if (braceState && isBraceMenuOpen()) {
+    if (e.key==='ArrowDown') { e.preventDefault(); braceMove(1); return; }
+    if (e.key==='ArrowUp')   { e.preventDefault(); braceMove(-1); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); braceApply(); return; }
+    if (e.key==='Escape')    { e.preventDefault(); hideBraceMenu(); return; }
   }
   const isPara = nodeById(id)?.type === 'para';
   if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); isPara ? insertSiblingAfter(id) : insertLineBreak(content); }
@@ -4628,6 +4662,48 @@ function collectRules(rootNode) {
   return merged;
 }
 
+// Document-wide callable name index: variables (with resolved values), grammar
+// rules, named roll tables, and named markov chains — grouped for the brace
+// autocomplete picker. Cached on _varsVer like collectVars/collectRules.
+let _callablesCacheVer = -1, _callablesCached = [];
+function collectCallables(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache && _callablesCacheVer === _varsVer) return _callablesCached;
+  const vars = collectVars(rootNode);
+  const varList = Object.keys(vars).sort().map(nm => ({ group: 'var', name: nm, val: vars[nm] }));
+  const useRoot = useCache ? root : rootNode;
+  const ruleSet = new Set(), tableSet = new Set(), chainSet = new Set();
+  function gather(node) {
+    for (const g of (node.grammar || [])) {
+      if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
+      const p = parseRules(g.def);
+      if (p) for (const nm of Object.keys(p.rules)) ruleSet.add(nm.toLowerCase());
+    }
+    for (const rt of (node.rolltable || [])) {
+      if (rt.name && node.text.includes(`[[rolltable:${rt.key}]]`)) tableSet.add(rt.name.toLowerCase());
+    }
+    for (const mk of (node.markov || [])) {
+      if (mk.name && node.text.includes(`[[markov:${mk.key}]]`)) chainSet.add(mk.name.toLowerCase());
+    }
+    for (const c of node.children) gather(c);
+  }
+  if (useRoot?.children) for (const c of useRoot.children) gather(c);
+  const ruleList  = [...ruleSet ].sort().map(n => ({ group: 'rule',  name: n }));
+  const tableList = [...tableSet].sort().map(n => ({ group: 'table', name: n }));
+  const chainList = [...chainSet].sort().map(n => ({ group: 'chain', name: n }));
+  const result = [...varList, ...ruleList, ...tableList, ...chainList];
+  if (useCache) { _callablesCacheVer = _varsVer; _callablesCached = result; }
+  return result;
+}
+
+// Filter a collectCallables() list by prefix (case-insensitive, anchored at start).
+// Empty prefix returns the full list. Pure; no DOM access.
+function filterBraceCandidates(callables, prefix) {
+  if (!prefix) return callables;
+  const lo = prefix.toLowerCase();
+  return callables.filter(c => c.name.startsWith(lo));
+}
+
 // ─── node links (same-document) ──────────────────────────────────────────────
 // A link is a [[#TARGETID|label]] token in node.text pointing at another node by id.
 // `label` is only a fallback caption — display resolves the target's LIVE title.
@@ -5567,6 +5643,127 @@ function positionLinkMenu(content, offset) {
   });
 }
 
+// ─── { brace autocomplete (callable-name picker) ──────────────────────────────
+
+const braceMenu = document.getElementById('brace-menu');
+let braceState = null;
+function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
+function hideBraceMenu() { braceMenu.classList.remove('on'); braceState = null; }
+braceMenu.addEventListener('mousedown', e => e.preventDefault());
+
+function checkBraceTrigger(content, nodeId) {
+  const pos = getCaretOffset(content);
+  const before = editableText(content).slice(0, pos);
+  // Find the innermost unclosed `{` at depth 0
+  let depth = 0, braceStart = -1;
+  for (let i = before.length - 1; i >= 0; i--) {
+    if (before[i] === '}') depth++;
+    else if (before[i] === '{') { if (depth === 0) { braceStart = i; break; } depth--; }
+  }
+  if (braceStart < 0) { hideBraceMenu(); return; }
+  const inner = before.slice(braceStart + 1);
+  // Only show for a bare identifier prefix (or empty) — not math, dice, or alternation
+  if (inner !== '' && !/^[a-z_]\w*$/i.test(inner)) { hideBraceMenu(); return; }
+  const prefix = inner.toLowerCase();
+  const all = collectCallables();
+  const matches = filterBraceCandidates(all, prefix);
+  if (!matches.length) { hideBraceMenu(); return; }
+  braceState = { nodeId, content, braceStart, prefix, activeIdx: 0, matches };
+  renderBraceMenu();
+  positionBraceMenu(content, braceStart + 1);
+}
+
+const BM_GROUP_LABELS = { var: 'Variables', rule: 'Rules', table: 'Tables', chain: 'Chains' };
+
+function renderBraceMenu() {
+  if (!braceState) return;
+  braceMenu.innerHTML = '';
+  let lastGroup = null;
+  braceState.matches.forEach((item, i) => {
+    if (item.group !== lastGroup) {
+      const hdr = document.createElement('div');
+      hdr.className = 'bm-group';
+      hdr.textContent = BM_GROUP_LABELS[item.group] || item.group;
+      braceMenu.appendChild(hdr);
+      lastGroup = item.group;
+    }
+    const el = document.createElement('div');
+    el.className = 'bm-item' + (i === braceState.activeIdx ? ' hi' : '');
+    el.setAttribute('role', 'menuitem');
+    const nameEl = document.createElement('span');
+    nameEl.className = 'bm-name';
+    nameEl.textContent = item.name;
+    el.appendChild(nameEl);
+    if (item.group === 'var' && item.val !== undefined) {
+      const valEl = document.createElement('span');
+      valEl.className = 'bm-val';
+      valEl.textContent = '= ' + (Number.isInteger(item.val) ? item.val : +item.val.toPrecision(6));
+      el.appendChild(valEl);
+    }
+    el.addEventListener('mouseenter', () => { braceState.activeIdx = i; renderBraceMenu(); });
+    el.addEventListener('mousedown', e => { e.preventDefault(); braceState.activeIdx = i; braceApply(); });
+    braceMenu.appendChild(el);
+  });
+  braceMenu.classList.add('on');
+  braceMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+}
+
+function positionBraceMenu(content, offset) {
+  let rem = offset, targetNode = null, targetRawOff = 0;
+  function walkDom(node) {
+    if (targetNode) return;
+    if (node.nodeType === 3) {
+      const raw = node.nodeValue; let logical = 0, i = 0;
+      for (; i < raw.length; i++) {
+        if (raw[i] !== '​') {
+          if (logical === rem) { targetNode = node; targetRawOff = i; return; }
+          logical++;
+        }
+      }
+      rem -= logical; return;
+    }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) { rem -= node.dataset.token.length; return; }
+    if (node.nodeName === 'BR') { rem -= 1; return; }
+    for (const c of node.childNodes) walkDom(c);
+  }
+  for (const c of content.childNodes) walkDom(c);
+  if (!targetNode) { braceMenu.style.left = '0'; braceMenu.style.top = '0'; return; }
+  const range = document.createRange();
+  range.setStart(targetNode, targetRawOff);
+  range.setEnd(targetNode, Math.min(targetRawOff + 1, targetNode.length));
+  const rect = range.getBoundingClientRect();
+  braceMenu.style.left = rect.left + 'px';
+  braceMenu.style.top  = (rect.bottom + 4) + 'px';
+  requestAnimationFrame(() => {
+    const mr = braceMenu.getBoundingClientRect();
+    if (mr.right  > window.innerWidth - 8) braceMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) braceMenu.style.top  = (rect.top - mr.height - 4) + 'px';
+  });
+}
+
+function braceMove(dir) {
+  if (!braceState) return;
+  const n = braceState.matches.length;
+  braceState.activeIdx = (braceState.activeIdx + dir + n) % n;
+  renderBraceMenu();
+}
+
+function braceApply() {
+  if (!braceState) return;
+  const { nodeId, content, braceStart, prefix, activeIdx, matches } = braceState;
+  const chosen = matches[activeIdx];
+  hideBraceMenu();
+  const fullText = editableText(content);
+  const inserted = `{${chosen.name}}`;
+  const newText = fullText.slice(0, braceStart) + inserted + fullText.slice(braceStart + 1 + prefix.length);
+  const node = nodeById(nodeId); if (!node) return;
+  node.text = newText;
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, braceStart + inserted.length); } catch(_) {}
+  markDirty();
+}
+
 function checkMdBlockPrefix(content, node) {
   const text = editableText(content);
   // Divider is the only type that converts immediately (no persistent prefix)
@@ -6242,6 +6439,7 @@ function markDirty() {
   document.getElementById('toolbar-row').classList.add('dirty');
   document.getElementById('fm-dirty-dot').style.display = 'block';
   scheduleAutosave();
+  if (document.getElementById('var-panel')?.classList.contains('on')) updateVarPanelContent();
 }
 
 // ─── undo / redo ─────────────────────────────────────────────────────────────
@@ -6957,6 +7155,54 @@ blPanelEl.addEventListener('mouseenter', () => clearTimeout(blHideTimer));
 blPanelEl.addEventListener('mouseleave', scheduleBlHide);
 blPanelEl.addEventListener('mousedown', e => e.preventDefault());
 
+// ─── variables overview panel ─────────────────────────────────────────────────
+
+const varPanelEl = document.getElementById('var-panel');
+function isVarPanelOpen() { return varPanelEl.classList.contains('on'); }
+
+function openVarPanel() { updateVarPanelContent(); varPanelEl.classList.add('on'); }
+function closeVarPanel() { varPanelEl.classList.remove('on'); }
+function toggleVarPanel() { if (isVarPanelOpen()) closeVarPanel(); else openVarPanel(); }
+
+function updateVarPanelContent() {
+  const list = document.getElementById('var-panel-list');
+  if (!list) return;
+  const vars = collectVars();
+  const exprs = _varActiveExprs || {};
+  const cycles = _varCycles || new Set();
+  const names = Object.keys(exprs).sort();
+  list.innerHTML = '';
+  if (!names.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'font-size:12px;color:var(--muted);padding:4px 0;width:100%';
+    empty.textContent = 'No variables declared.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const nm of names) {
+    const row = document.createElement('div');
+    row.className = 'vp-row';
+    const nameEl = document.createElement('span'); nameEl.className = 'vp-name'; nameEl.textContent = nm;
+    const eqEl   = document.createElement('span'); eqEl.className   = 'vp-eq';   eqEl.textContent = '=';
+    row.appendChild(nameEl); row.appendChild(eqEl);
+    if (cycles.has(nm)) {
+      const cycleEl = document.createElement('span'); cycleEl.className = 'vp-cycle'; cycleEl.textContent = '↻ cycle';
+      row.appendChild(cycleEl);
+    } else {
+      const val = vars[nm];
+      const valEl = document.createElement('span'); valEl.className = 'vp-val';
+      valEl.textContent = val !== undefined
+        ? (Number.isInteger(val) ? String(val) : String(+val.toPrecision(6)))
+        : '?';
+      row.appendChild(valEl);
+    }
+    list.appendChild(row);
+  }
+}
+
+document.getElementById('var-panel-close').addEventListener('click', closeVarPanel);
+varPanelEl.addEventListener('mousedown', e => e.stopPropagation());
+
 // ─── boot ─────────────────────────────────────────────────────────────────────
 
 // file menu
@@ -7193,6 +7439,7 @@ document.addEventListener('keydown', e => {
   if (e.key==='Escape' && scPanel.classList.contains('on')) { e.preventDefault(); toggleShortcuts(false); return; }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
+  if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
   // collapse outline to first N levels (Ctrl/Cmd+1..6). Some browsers reserve
   // these for tab switching and won't deliver the event — the toolbar control is

@@ -91,6 +91,15 @@ reads as junk, and it blurs "my notes" with "tutorial."
    want → insert a dice roll / table / link." One place to discover capabilities by intent.
 4. **Self-documenting widgets** — ensure every pill/affordance has a clear label + tooltip.
 5. **The `?` syntax panel** — already exists; keep it as the full cheat-sheet for power users.
+6. **`{`-autocomplete for callable names (SHIPPED, UXP-9)** — typing `{` in edit mode opens a
+   grouped picker (Variables / Rules / Tables / Chains) from the document's name index
+   (`collectCallables`). Narrows by identifier prefix; variables show resolved values inline.
+   Selecting completes `{name}` and normal promotion-on-exit turns it into a pill. Keyboard nav
+   follows §7.2 (↑/↓/Enter/Tab/Esc), same pattern as `/` slash menu and `[[` link picker.
+   **Variables overview panel** (Ctrl+Shift+V) lists all declared vars + resolved values; updates
+   live; mirrors the footnote panel slide-up. Together these make the generative engine
+   self-documenting: the entry point (`{`) reveals what's callable, and the panel shows all
+   variable state at a glance.
 
 ## Open questions
 - **Where the dial lives** — appearance menu? A persistent corner control? And how discoverable

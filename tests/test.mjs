@@ -688,3 +688,83 @@ test('todo: todoSortKey + compareTodo (not-done before done, A<B<C<none)', () =>
   assert.deepEqual(items.slice().sort(compareTodo),
     ['NEXT [#A] hot', 'TODO [#C] low', 'plain note', 'DONE done it']);
 });
+
+// ── collectCallables / filterBraceCandidates ───────────────────────────────
+
+// Build a root with one var, one grammar rule, one named table, one named chain.
+const mkCallablesRoot = () => {
+  const root = c.mkRoot();
+  // variable: strength = 18
+  const varNode = c.mkNode('[[var:v1]]');
+  varNode.vars = [{ key: 'v1', name: 'strength', expr: '18' }];
+  root.children.push(varNode);
+  // grammar rule: color → red | blue
+  const gramNode = c.mkNode('[[grammar:g1]]');
+  gramNode.grammar = [{ key: 'g1', def: 'color: red | blue', origin: 'color', result: 'red' }];
+  root.children.push(gramNode);
+  // named roll table: loot
+  const rtNode = c.mkNode('[[rolltable:rt1]]');
+  rtNode.rolltable = [{ key: 'rt1', name: 'loot', def: '1 gold\n2 silver' }];
+  root.children.push(rtNode);
+  // named markov chain: weather
+  const mkNode = c.mkNode('[[markov:mk1]]');
+  mkNode.markov = [{ key: 'mk1', name: 'weather', def: 'sunny -> cloudy\ncloudy -> rainy', start: 'sunny', steps: 3 }];
+  root.children.push(mkNode);
+  return root;
+};
+
+test('collectCallables — four groups present, each with expected name', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  assert.ok(all.some(x => x.group === 'var'   && x.name === 'strength'), 'var: strength');
+  assert.ok(all.some(x => x.group === 'rule'  && x.name === 'color'),    'rule: color');
+  assert.ok(all.some(x => x.group === 'table' && x.name === 'loot'),     'table: loot');
+  assert.ok(all.some(x => x.group === 'chain' && x.name === 'weather'),  'chain: weather');
+});
+
+test('collectCallables — var entry carries resolved numeric value', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  const v = all.find(x => x.group === 'var' && x.name === 'strength');
+  assert.ok(v, 'strength entry present');
+  assert.equal(v.val, 18);
+});
+
+test('collectCallables — order: vars first, then rules, tables, chains', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  const groups = [...new Set(all.map(x => x.group))];
+  // vars should appear before rules, tables before chains
+  const vi = groups.indexOf('var'), ri = groups.indexOf('rule'),
+        ti = groups.indexOf('table'), ci = groups.indexOf('chain');
+  assert.ok(vi < ri, 'vars before rules');
+  assert.ok(ri < ti, 'rules before tables');
+  assert.ok(ti < ci, 'tables before chains');
+});
+
+test('filterBraceCandidates — empty prefix returns all', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  assert.equal(host(c.filterBraceCandidates(all, '')).length, all.length);
+});
+
+test('filterBraceCandidates — prefix narrows to matching names (case-insensitive)', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  const r = host(c.filterBraceCandidates(all, 'str'));
+  assert.equal(r.length, 1);
+  assert.equal(r[0].name, 'strength');
+});
+
+test('filterBraceCandidates — prefix "c" matches color and chain names starting with c', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  // 'color' starts with 'c'; 'chain' group 'weather' does not
+  const r = host(c.filterBraceCandidates(all, 'c'));
+  assert.ok(r.every(x => x.name.startsWith('c')), 'all results start with c');
+  assert.ok(r.some(x => x.name === 'color'), 'color in results');
+});
+
+test('filterBraceCandidates — no match returns empty array', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  assert.equal(host(c.filterBraceCandidates(all, 'zzz')).length, 0);
+});
+
+test('collectCallables — empty root yields empty list', () => {
+  const r = host(c.collectCallables(c.mkRoot()));
+  assert.equal(r.length, 0);
+});
