@@ -1153,3 +1153,77 @@ test('todo OPML: derived type+checked round-trip through _type/_checked attribut
   assert.ok(xml.includes('_checked="true"'));
   assert.ok(xml.includes('- [x] shipped')); // the markdown is the stored source of truth
 });
+
+// ── collectCallables / filterBraceCandidates ({ autocomplete data, UXP-9) ───
+
+// One var, one grammar rule, one named table, one named chain.
+const mkCallablesRoot = () => {
+  const root = c.mkRoot();
+  const varNode = c.mkNode('[[var:v1]]');
+  varNode.vars = [{ key: 'v1', name: 'strength', expr: '18' }];
+  root.children.push(varNode);
+  const gramNode = c.mkNode('[[grammar:g1]]');
+  gramNode.grammar = [{ key: 'g1', def: 'color: red | blue', origin: 'color', result: 'red' }];
+  root.children.push(gramNode);
+  const rtNode = c.mkNode('[[rolltable:rt1]]');
+  rtNode.rolltable = [{ key: 'rt1', name: 'loot', def: '1 gold\n2 silver' }];
+  root.children.push(rtNode);
+  const chainNode = c.mkNode('[[markov:mk1]]');
+  chainNode.markov = [{ key: 'mk1', name: 'weather', def: 'sunny -> cloudy\ncloudy -> rainy', start: 'sunny', steps: 3 }];
+  root.children.push(chainNode);
+  return root;
+};
+
+test('callables: four groups present, each with expected name', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  assert.ok(all.some(x => x.group === 'var'   && x.name === 'strength'), 'var: strength');
+  assert.ok(all.some(x => x.group === 'rule'  && x.name === 'color'),    'rule: color');
+  assert.ok(all.some(x => x.group === 'table' && x.name === 'loot'),     'table: loot');
+  assert.ok(all.some(x => x.group === 'chain' && x.name === 'weather'),  'chain: weather');
+});
+
+test('callables: var entry carries the resolved numeric value', () => {
+  const v = host(c.collectCallables(mkCallablesRoot())).find(x => x.group === 'var');
+  assert.equal(v.name, 'strength');
+  assert.equal(v.val, 18);
+});
+
+test('callables: group order is vars, rules, tables, chains', () => {
+  const groups = [...new Set(host(c.collectCallables(mkCallablesRoot())).map(x => x.group))];
+  assert.deepEqual(groups, ['var', 'rule', 'table', 'chain']);
+});
+
+test('callables: a record without its token in node.text is excluded (pruned-data rule)', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('no token here');
+  n.rolltable = [{ key: 'rt9', name: 'ghost', def: '1 boo' }];
+  root.children.push(n);
+  assert.ok(!host(c.collectCallables(root)).some(x => x.name === 'ghost'));
+});
+
+test('callables: empty root yields an empty list', () => {
+  assert.equal(host(c.collectCallables(c.mkRoot())).length, 0);
+});
+
+test('filterBraceCandidates: empty prefix returns the full list', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  assert.equal(host(c.filterBraceCandidates(all, '')).length, all.length);
+});
+
+test('filterBraceCandidates: prefix narrows, anchored + case-insensitive', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  const r = host(c.filterBraceCandidates(all, 'STR'));
+  assert.equal(r.length, 1);
+  assert.equal(r[0].name, 'strength');
+  // anchored: 'oot' is a substring of 'loot' but not a prefix
+  assert.equal(host(c.filterBraceCandidates(all, 'oot')).length, 0);
+});
+
+test('filterBraceCandidates: narrowing is monotone as the prefix grows', () => {
+  const all = host(c.collectCallables(mkCallablesRoot()));
+  const c1 = host(c.filterBraceCandidates(all, 'w')).length;
+  const c2 = host(c.filterBraceCandidates(all, 'we')).length;
+  const c3 = host(c.filterBraceCandidates(all, 'weather')).length;
+  assert.ok(c1 >= c2 && c2 >= c3 && c3 === 1);
+  assert.equal(host(c.filterBraceCandidates(all, 'zzz')).length, 0);
+});

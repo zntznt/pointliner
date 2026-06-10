@@ -246,8 +246,8 @@ One pattern, four channels. Reuse — do not invent.
 
 To stop reinvention, every feature reuses these rather than building its own.
 
-### 7.1 Menu pattern (`/`, `@`, link, state pickers)
-One behavior contract: open on trigger → filter as you type → `↑/↓` move, `Enter`/`Tab` apply, `Esc` close (P1-3) → each row = icon + label + description + **typed syntax** (P2-2) → `role="menu"`/`menuitem` per `accessibility.md` Phase 1 → reduced-motion respected. The **file menu is not a menu** — it is a settings `dialog` (per `accessibility.md`); don't force `role="menu"` on it.
+### 7.1 Menu pattern (`/`, `@`, `{`, link, state pickers)
+One behavior contract: open on trigger → filter as you type → `↑/↓` move, `Enter`/`Tab` apply, `Esc` close (P1-3) → each row = icon + label + description + **typed syntax** (P2-2) → `role="menu"`/`menuitem` per `accessibility.md` Phase 1 → reduced-motion respected. The **file menu is not a menu** — it is a settings `dialog` (per `accessibility.md`); don't force `role="menu"` on it. The **`{` callable-name picker** (UXP-9) is this pattern applied to the grammar engine's namespace: it opens on a bare identifier prefix inside an unclosed `{`, groups by kind (Variables / Rules / Tables / Chains, variables showing their resolved value), and applying writes the existing `{name}` reference — discoverability for callable names with **no new syntax** (P5-conformant by construction).
 
 ### 7.2 Pill pattern (all live inline objects)
 Dice/math/variable/grammar/markov/rolltable are one object with different generators (the "everything is under the grammar engine" reality from `CLAUDE.md`). They share: render = icon + (name) + result + edit affordance · interaction = body click re-rolls in place and **stays in display mode**, pencil opens the dialog (the documented model — do not deviate) · authoring = dialog **and** shorthand where inline-able, with preview before promotion (P2-5/P4-2) · a11y = accurate `aria-label` updated on reroll (P3-6 interim). A new generator plugs in here and MUST NOT define its own interaction or a11y behavior.
@@ -284,7 +284,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
 | Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (P3-6 labels; focus deferred) | ⚠️ (P4-1 silent shorthand) |
-| Variables | ✅ | ❌ (P2-4 no overview) | ⚠️ | ⚠️ |
+| Variables | ✅ | ✅ (`{` picker + variables panel; UXP-9) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ⚠️ | ⚠️ | ❌ (P4-1/P4-2) |
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
 | Table columns (ops) | ✅ (one Column panel: Calculate/Alignment/Insert/Move/Delete; no hidden double-click; UXP-21) | ✅ (one sized ▾ door; grip cue for drag; full-height "+") | ✅ (panel role=menu/menuitem keyboard-operable; sized targets + aria-labels) | ✅ (refresh reflects every op) |

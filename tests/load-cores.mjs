@@ -152,6 +152,7 @@ export function loadCores() {
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
     'migrateTodoText','textForDisplay',
+    'collectCallables','filterBraceCandidates',
   ];
   const cores = {};
   const missing = [];

@@ -54,10 +54,13 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 - **Violates:** P4-2.
 - **Target:** `#ERR (cycle)` / `(bad ref)` / `(non-numeric)` in the cell text and its `aria-label`.
 
-### UXP-9 ☐ Variables have no overview
-- **Problem:** variables affect math document-wide but there is no surface listing what exists and their resolved values.
-- **Violates:** P2-4.
-- **Target:** a variables panel (read-only is fine for v1), reusing the `collectVars` index.
+### UXP-9 ✓ Variables have no overview — **RESOLVED**
+- **Problem:** variables affect math document-wide but there was no surface listing what exists and their resolved values — and more broadly, no way to discover *any* callable name (variable, grammar rule, named table, named chain) without reading every node.
+- **Violated:** P2-4.
+- **Resolved (two surfaces, no new syntax):**
+  - **`{`-autocomplete** — typing `{` in edit mode opens a grouped picker (Variables / Rules / Tables / Chains) sourced from `collectCallables()` (wraps `collectVars` + the same token-gated tree-walk as `collectRules`; cached on `_varsVer`). Narrows on a bare identifier prefix; never fires after `=`, a dice pattern, or `|` (those are not name references). Variables show their resolved value inline. Applying completes `{name}`; the existing promotion-on-exit turns it into a pill — no new promotion path. §7.1 menu pattern: `↑/↓`/`Enter`/`Tab`/`Esc`, `role="menu"`/`menuitem`, caret-positioned like the `/` and `[[` menus.
+  - **Variables panel** — `Ctrl/⌘+Shift+V` toggles a read-only slide-up panel (fn/bl-panel pattern) listing every declared variable with its resolved value (`↻ cycle` for cyclic refs); re-renders on `markDirty` while open. `role="region"`, labeled, close button.
+- **Pure cores:** `collectCallables(rootNode)`, `filterBraceCandidates(callables, prefix)` — pinned in `tests/test.mjs`.
 
 ### UXP-10 ☐ Hashtags have no index / autocomplete
 - **Problem:** no tag list or completion, so tags drift (`#todo` vs `#todos`). (Already noted in backlog "Tag power.")
