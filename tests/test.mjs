@@ -1227,3 +1227,47 @@ test('filterBraceCandidates: narrowing is monotone as the prefix grows', () => {
   assert.ok(c1 >= c2 && c2 >= c3 && c3 === 1);
   assert.equal(host(c.filterBraceCandidates(all, 'zzz')).length, 0);
 });
+
+// ── edit-mode caret anchors + grammar-span bounding (var-pill caret / style-bleed) ──
+// anchorEditInlines turns the post-inline sentinel (U+0000, emitted after each pill /
+// .gr-src span) into a ZWSP caret anchor ONLY when no text node follows (next char is
+// another element or end-of-string); otherwise it drops the sentinel. The anchor gives
+// the caret a text node to render in after a trailing atomic pill, and stops typing
+// from bleeding into a trailing .gr-src span. ZWSP = U+200B (stripped by all caret math).
+const ZWSP = '​';
+const SENT = ' ';
+
+test('anchorEditInlines: trailing sentinel (end of string) -> ZWSP anchor', () => {
+  assert.equal(c.anchorEditInlines('<span>x</span>' + SENT), '<span>x</span>' + ZWSP);
+});
+
+test('anchorEditInlines: sentinel before another element -> ZWSP anchor (caret between two pills)', () => {
+  assert.equal(c.anchorEditInlines('<span>a</span>' + SENT + '<span>b</span>' + SENT),
+                                   '<span>a</span>' + ZWSP + '<span>b</span>' + ZWSP);
+});
+
+test('anchorEditInlines: sentinel before a text node -> dropped (no dead arrow-stop mid-text)', () => {
+  assert.equal(c.anchorEditInlines('<span>x</span>' + SENT + ' beta'), '<span>x</span> beta');
+  // escaped text (entity) also counts as following text -> sentinel dropped
+  assert.equal(c.anchorEditInlines('<span>x</span>' + SENT + '&lt;tag'), '<span>x</span>&lt;tag');
+});
+
+test('anchorEditInlines: no sentinels -> unchanged', () => {
+  assert.equal(c.anchorEditInlines('plain <b>text</b>'), 'plain <b>text</b>');
+});
+
+test('highlightGrammarText: a promotable {…} is bounded exactly at its closing brace', () => {
+  // {a|b} promotes (alternation) without needing document vars; following text stays
+  // OUTSIDE the .gr-src span (the style-bleed fix: span ends at }).
+  const out = c.highlightGrammarText('{a|b} hello');
+  const clean = out.split(SENT).join('').split(ZWSP).join(''); // drop sentinel/anchor
+  assert.equal(clean, '<span class="gr-src">{a|b}</span> hello');
+  const m = clean.match(/<span class="gr-src">([^<]*)<\/span>/);
+  assert.ok(m, 'one gr-src span'); assert.equal(m[1], '{a|b}');
+});
+
+test('highlightGrammarText: a non-promotable {…} stays literal (no span, no bleed)', () => {
+  // {nope} matches no rule/var and isn't dice/expr/alternation -> literal text
+  const out = c.highlightGrammarText('{nope} tail').split(SENT).join('').split(ZWSP).join('');
+  assert.ok(!out.includes('gr-src'), 'no gr-src span for an unrecognized body');
+});

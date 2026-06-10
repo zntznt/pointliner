@@ -4007,7 +4007,10 @@ function highlightGrammarText(str, unfoldedSet) {
         const brace = str.slice(i, j + 1);
         if ((unfoldedSet && unfoldedSet.has(brace)) || braceWouldPromote(str.slice(i + 1, j))) {
           flush();
-          out += `<span class="gr-src">${escHtml(brace)}</span>`;
+          // EDIT_ANCHOR sentinel after the span: anchorEditInlines turns it into a
+          // ZWSP caret anchor iff no text follows (so typing past a trailing {…}
+          // lands as plain prose, never bleeding into the .gr-src styling).
+          out += `<span class="gr-src">${escHtml(brace)}</span>${EDIT_ANCHOR}`;
           i = j + 1; continue;
         }
       }
@@ -4016,6 +4019,18 @@ function highlightGrammarText(str, unfoldedSet) {
   }
   flush();
   return out;
+}
+
+// A sentinel placed right after each edit-mode inline element (atomic pill span or
+// .gr-src grammar span). anchorEditInlines() then resolves each one: when the next
+// thing is another element or the end of the content (i.e. NO following text node),
+// it becomes a ZWSP caret anchor — a text node the caret can render inside, so the
+// caret is visible right after a trailing atomic pill and typing past a trailing
+// {…} stays plain prose. When a text node already follows, the sentinel is dropped
+// (that text node is the caret's landing spot; no extra dead arrow-stop). Pure.
+const EDIT_ANCHOR = '\x00';
+function anchorEditInlines(html) {
+  return html.replace(/\x00(?=<|$)/g, ZWSP).replace(/\x00/g, '');
 }
 
 // Build the innerHTML for a node in edit mode: plain text segments are HTML-escaped
@@ -4041,11 +4056,11 @@ function editModeHTML(node) {
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
     else if (type === 'grammar')   pill = renderGrammarPill(key, node.grammar?.find(d => d.key === key));
     else                           pill = renderVarPill(key, node.vars?.find(d => d.key === key));
-    html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>`;
+    html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>${EDIT_ANCHOR}`;
     last = m.index + m[0].length;
   }
   if (last < node.text.length) html += highlightGrammarText(node.text.slice(last), unfoldedSet);
-  return html;
+  return anchorEditInlines(html);
 }
 
 function enterEdit(content, node) {
@@ -5423,7 +5438,8 @@ function rangeOffset(el, container, off) {
   function walk(node) {
     if (found) return;
     if (node === container) {
-      if (node.nodeType === 3) count += off;
+      // Strip ZWSP caret anchors before the point (mirror getCaretOffset).
+      if (node.nodeType === 3) count += node.nodeValue.slice(0, off).replace(/​/g, '').length;
       else for (let i = 0; i < off; i++) countAll(node.childNodes[i]);
       found = true; return;
     }
@@ -6402,7 +6418,14 @@ function caretAfterGrSrc(el, target) {
     if (node.classList?.contains('gr-src')) {
       const before = count; count += textLen(node);
       if (before < target && count === target) {
-        const r = document.createRange(); r.setStartAfter(node); r.collapse(true);
+        // Land inside the following text node (ZWSP anchor) so typing lands as plain
+        // prose outside the span — a boundary position would let the browser merge
+        // the next character into the trailing .gr-src styling.
+        const nxt = node.nextSibling;
+        const r = document.createRange();
+        if (nxt && nxt.nodeType === 3) r.setStart(nxt, nxt.nodeValue[0] === '​' ? 1 : 0);
+        else r.setStartAfter(node);
+        r.collapse(true);
         const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); done = true;
       }
       return;
@@ -7066,7 +7089,11 @@ function checkBraceTrigger(content, nodeId) {
   if (!matches.length) { hideBraceMenu(); return; }
   braceState = { nodeId, content, braceStart, prefix, activeIdx: 0, matches };
   renderBraceMenu();
-  positionBraceMenu(content, braceStart + 1);
+  // Anchor at the `{` itself (always present), not braceStart+1 — when `{` is the
+  // last character that offset points past end-of-text, the DOM walk finds no node
+  // and the menu falls back to 0,0 until the next keystroke. The `{` always exists,
+  // so the menu lands at the caret on the very first trigger.
+  positionBraceMenu(content, braceStart);
 }
 
 const BM_GROUP_LABELS = { var: 'Variables', rule: 'Rules', table: 'Tables', chain: 'Chains' };
@@ -7262,7 +7289,9 @@ function getCaretOffset(el) {
   function walk(node) {
     if (found) return;
     if (node === range.startContainer) {
-      if (node.nodeType === 3) count += range.startOffset;
+      // Strip ZWSP caret anchors *before* the caret so the offset stays logical
+      // (an anchor the caret sits behind must not inflate the count).
+      if (node.nodeType === 3) count += node.nodeValue.slice(0, range.startOffset).replace(/​/g, '').length;
       else for (let i = 0; i < range.startOffset; i++) countAll(node.childNodes[i]);
       found = true; return;
     }
@@ -7307,7 +7336,16 @@ function setCaretByOffset(el, target) {
     if (node.dataset?.token) {
       const len = node.dataset.token.length;
       if (rem <= 0) { const r = document.createRange(); r.setStartBefore(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
-      else if (rem <= len) { const r = document.createRange(); r.setStartAfter(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
+      else if (rem <= len) {
+        // Land *inside* the following text node so the caret renders — a collapsed
+        // range at the bare element boundary after an atomic pill is invisible until
+        // the user types. The pill is contenteditable=false (typed text can't merge
+        // into it), so offset 0 is safe and keeps ArrowLeft a single hop over the
+        // pill (no dead stop on the ZWSP anchor).
+        const nxt = node.nextSibling;
+        if (nxt && nxt.nodeType === 3) place(nxt, 0);
+        else { const r = document.createRange(); r.setStartAfter(node); r.collapse(true); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); done = true; }
+      }
       else rem -= len;
       return;
     }
