@@ -999,9 +999,12 @@ const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
         setTodoState, setTodoPriority } = c;
 
 test('todo: parseTodo keyword + priority + body', () => {
-  assert.deepEqual(host(parseTodo('TODO [#A] Buy milk')), { keyword: 'TODO', priority: 'A', body: 'Buy milk' });
-  assert.deepEqual(host(parseTodo('NEXT Ship it')),       { keyword: 'NEXT', priority: null, body: 'Ship it' });
-  assert.deepEqual(host(parseTodo('DONE')),               { keyword: 'DONE', priority: null, body: '' });
+  assert.deepEqual(host(parseTodo('#TODO [#A] Buy milk')), { keyword: 'TODO', priority: 'A', body: 'Buy milk' });
+  assert.deepEqual(host(parseTodo('#NEXT Ship it')),       { keyword: 'NEXT', priority: null, body: 'Ship it' });
+  assert.deepEqual(host(parseTodo('#DONE')),               { keyword: 'DONE', priority: null, body: '' });
+  // bare DONE/TODO (no #) is plain text, never a keyword
+  assert.deepEqual(host(parseTodo('TODO plain')), { keyword: '', priority: null, body: 'TODO plain' });
+  assert.deepEqual(host(parseTodo('DONE shipped')), { keyword: '', priority: null, body: 'DONE shipped' });
 });
 
 test('todo: no keyword → empty keyword, whole text as body', () => {
@@ -1010,14 +1013,14 @@ test('todo: no keyword → empty keyword, whole text as body', () => {
 });
 
 test('todo: tolerant of extra whitespace + lowercase priority', () => {
-  assert.deepEqual(host(parseTodo('TODO   [#b]   tidy')), { keyword: 'TODO', priority: 'B', body: 'tidy' });
+  assert.deepEqual(host(parseTodo('#TODO   [#b]   tidy')), { keyword: 'TODO', priority: 'B', body: 'tidy' });
 });
 
 test('todo: formatTodo inverts parseTodo (normalized)', () => {
   const round = (s) => formatTodo(parseTodo(s));
-  assert.equal(round('TODO [#A] Buy milk'), 'TODO [#A] Buy milk');
-  assert.equal(round('TODO   [#b]   tidy'), 'TODO [#B] tidy');
-  assert.equal(round('DONE'), 'DONE');
+  assert.equal(round('#TODO [#A] Buy milk'), '#TODO [#A] Buy milk');
+  assert.equal(round('#TODO   [#b]   tidy'), '#TODO [#B] tidy');
+  assert.equal(round('#DONE'), '#DONE');
   assert.equal(round('plain text'), 'plain text');
 });
 
@@ -1048,72 +1051,76 @@ test('todo: cyclePriority none → A → B → C → none, and reverse', () => {
 });
 
 test('todo: cycleTodoState rewrites text keyword, preserving body + priority', () => {
-  assert.equal(cycleTodoState('TODO [#A] Buy milk'), 'NEXT [#A] Buy milk');
-  assert.equal(cycleTodoState('plain task'), 'TODO plain task');
-  assert.equal(cycleTodoState('DONE [#B] wrap up'), 'wrap up');   // clearing drops keyword + priority
+  assert.equal(cycleTodoState('#TODO [#A] Buy milk'), '#NEXT [#A] Buy milk');
+  assert.equal(cycleTodoState('plain task'), '#TODO plain task');
+  assert.equal(cycleTodoState('#DONE [#B] wrap up'), 'wrap up');   // clearing drops keyword + priority
 });
 
 test('todo: cycleTodoPriority no-op without a keyword', () => {
   assert.equal(cycleTodoPriority('just a note'), 'just a note');
-  assert.equal(cycleTodoPriority('TODO write tests'), 'TODO [#A] write tests');
-  assert.equal(cycleTodoPriority('TODO [#C] write tests'), 'TODO write tests');
+  assert.equal(cycleTodoPriority('#TODO write tests'), '#TODO [#A] write tests');
+  assert.equal(cycleTodoPriority('#TODO [#C] write tests'), '#TODO write tests');
 });
 
 test('todo: setTodoState direct jump to any state (picker), clamps garbage', () => {
-  assert.equal(setTodoState('TODO [#A] task', 'WAITING'), 'WAITING [#A] task');
-  assert.equal(setTodoState('plain task', 'DONE'), 'DONE plain task');
-  assert.equal(setTodoState('TODO [#B] task', ''), 'task');
-  assert.equal(setTodoState('TODO x', 'BOGUS'), 'x');
+  assert.equal(setTodoState('#TODO [#A] task', 'WAITING'), '#WAITING [#A] task');
+  assert.equal(setTodoState('plain task', 'DONE'), '#DONE plain task');
+  assert.equal(setTodoState('#TODO [#B] task', ''), 'task');
+  assert.equal(setTodoState('#TODO x', 'BOGUS'), 'x');
 });
 
 test('todo: setTodoPriority direct jump, no-op without keyword, clamps garbage', () => {
-  assert.equal(setTodoPriority('TODO task', 'C'), 'TODO [#C] task');
-  assert.equal(setTodoPriority('TODO [#A] task', null), 'TODO task');
+  assert.equal(setTodoPriority('#TODO task', 'C'), '#TODO [#C] task');
+  assert.equal(setTodoPriority('#TODO [#A] task', null), '#TODO task');
   assert.equal(setTodoPriority('plain task', 'A'), 'plain task');
-  assert.equal(setTodoPriority('TODO task', 'Z'), 'TODO task');
+  assert.equal(setTodoPriority('#TODO task', 'Z'), '#TODO task');
 });
 
 test('todo: todoSortKey + compareTodo (not-done before done, A<B<C<none)', () => {
-  assert.deepEqual(host(todoSortKey('TODO [#A] x')), [0, 0, 0]);
-  assert.deepEqual(host(todoSortKey('DONE x')),      [1, 3, 3]);
-  assert.deepEqual(host(todoSortKey('plain')),       [0, 3, 4]);
-  const items = ['DONE done it', 'TODO [#C] low', 'NEXT [#A] hot', 'plain note'];
+  assert.deepEqual(host(todoSortKey('#TODO [#A] x')), [0, 0, 0]);
+  assert.deepEqual(host(todoSortKey('#DONE x')),      [1, 3, 3]);
+  assert.deepEqual(host(todoSortKey('plain')),        [0, 3, 4]);
+  const items = ['#DONE done it', '#TODO [#C] low', '#NEXT [#A] hot', 'plain note'];
   assert.deepEqual(items.slice().sort(compareTodo),
-    ['NEXT [#A] hot', 'TODO [#C] low', 'plain note', 'DONE done it']);
+    ['#NEXT [#A] hot', '#TODO [#C] low', 'plain note', '#DONE done it']);
 });
 
 // ── markdown-first to-dos: type/checked DERIVE from the text ───────────────────
 // (only `paragraph` and `base` are special node types; a to-do is its markdown)
 
 test('todo derive: deriveTypeFromText knows both to-do forms (and stays strict)', () => {
-  assert.equal(c.deriveTypeFromText('- [ ] buy milk'), 'todo');   // task form
+  assert.equal(c.deriveTypeFromText('- [ ] buy milk'), 'todo');    // task form
   assert.equal(c.deriveTypeFromText('- [x] done it'),  'todo');
-  assert.equal(c.deriveTypeFromText('- [ ] '),         'todo');   // Enter-continuation stub
-  assert.equal(c.deriveTypeFromText('TODO write'),     'todo');   // keyword form
-  assert.equal(c.deriveTypeFromText('WAITING [#A] x'), 'todo');
-  assert.equal(c.deriveTypeFromText('- plain item'),   null);     // plain list ≠ todo
-  assert.equal(c.deriveTypeFromText('TODOx not a kw'), null);     // keyword needs a boundary
-  assert.equal(c.deriveTypeFromText('# heading'),      'h1');     // existing derivations intact
+  assert.equal(c.deriveTypeFromText('- [ ] '),         'todo');    // Enter-continuation stub
+  assert.equal(c.deriveTypeFromText('#TODO write'),    'todo');    // #keyword form
+  assert.equal(c.deriveTypeFromText('#WAITING [#A] x'), 'todo');
+  assert.equal(c.deriveTypeFromText('TODO write'),     null);      // bare TODO is NOT a keyword
+  assert.equal(c.deriveTypeFromText('WAITING [#A] x'), null);     // bare WAITING is NOT a keyword
+  assert.equal(c.deriveTypeFromText('- plain item'),   null);      // plain list ≠ todo
+  assert.equal(c.deriveTypeFromText('TODOx not a kw'), null);      // keyword needs a boundary
+  assert.equal(c.deriveTypeFromText('# heading'),      'h1');      // existing derivations intact
   assert.equal(c.deriveTypeFromText('> quote'),        'quote');
 });
 
 test('todo derive: todoDoneFromText — keyword wins; task form completes as a whole', () => {
-  assert.equal(c.todoDoneFromText('DONE shipped'), true);
-  assert.equal(c.todoDoneFromText('TODO open'),    false);
+  assert.equal(c.todoDoneFromText('#DONE shipped'), true);
+  assert.equal(c.todoDoneFromText('#TODO open'),    false);
   assert.equal(c.todoDoneFromText('- [x] single'), true);
   assert.equal(c.todoDoneFromText('- [ ] single'), false);
   assert.equal(c.todoDoneFromText('- [x] a\n- [ ] b'), false); // checklist not complete
   assert.equal(c.todoDoneFromText('- [x] a\n- [x] b'), true);  // all checked → done
   assert.equal(c.todoDoneFromText('plain text'),   false);
-  assert.equal(c.todoDoneFromText('DONE - [ ] composed'), true); // keyword wins over markers
+  assert.equal(c.todoDoneFromText('DONE shipped'),  false);     // bare DONE is plain text
+  assert.equal(c.todoDoneFromText('#DONE - [ ] composed'), true); // #keyword wins over markers
 });
 
 test('todo: continuationPrefix — Enter continues the format by writing markdown', () => {
   assert.equal(c.continuationPrefix('- [ ] buy milk'), '- [ ] ');
   assert.equal(c.continuationPrefix('- [x] done it'),  '- [ ] '); // new task starts unchecked
-  assert.equal(c.continuationPrefix('TODO write'),     'TODO ');  // same keyword continues
-  assert.equal(c.continuationPrefix('WAITING [#A] x'), 'WAITING ');
-  assert.equal(c.continuationPrefix('DONE shipped'),   'TODO ');  // DONE restarts as TODO
+  assert.equal(c.continuationPrefix('#TODO write'),    '#TODO '); // same #keyword continues
+  assert.equal(c.continuationPrefix('#WAITING [#A] x'), '#WAITING ');
+  assert.equal(c.continuationPrefix('#DONE shipped'),  '#TODO '); // #DONE restarts as #TODO
+  assert.equal(c.continuationPrefix('TODO write'),     '');       // bare TODO is plain text
   assert.equal(c.continuationPrefix('> a quote'),      '> ');     // quotes continue too
   assert.equal(c.continuationPrefix('plain text'),     '');       // no aid outside a format
   assert.equal(c.continuationPrefix('# heading'),      '');       // headings don't continue
@@ -1131,14 +1138,14 @@ test('todo render: `- [ ]` text renders exactly ONE checkbox via mdToHtml (no ra
 test('todo: migrateTodoText — legacy type-only todos get the marker written in', () => {
   assert.equal(c.migrateTodoText('buy milk', false), '- [ ] buy milk');
   assert.equal(c.migrateTodoText('done it', true),   '- [x] done it');
-  assert.equal(c.migrateTodoText('- [ ] already', false), '- [ ] already'); // self-consistent → untouched
-  assert.equal(c.migrateTodoText('TODO already', true),   'TODO already');  // keyword form → untouched
+  assert.equal(c.migrateTodoText('- [ ] already', false), '- [ ] already');   // self-consistent → untouched
+  assert.equal(c.migrateTodoText('#TODO already', true),  '#TODO already');   // #keyword form → untouched
 });
 
 test('todo: textForDisplay strips the task marker and keyword for breadcrumb/search', () => {
   assert.equal(c.textForDisplay({ type: 'todo', text: '- [ ] buy milk' }), 'buy milk');
-  assert.equal(c.textForDisplay({ type: 'todo', text: 'WAITING [#A] call' }), 'call');
-  assert.equal(c.textForDisplay({ type: 'todo', text: '- [x] TODO composed' }), 'composed');
+  assert.equal(c.textForDisplay({ type: 'todo', text: '#WAITING [#A] call' }), 'call');
+  assert.equal(c.textForDisplay({ type: 'todo', text: '- [x] TODO composed' }), 'TODO composed'); // bare TODO is body text
   assert.equal(c.textForDisplay({ type: 'h1', text: '# Title' }), 'Title'); // block prefixes intact
   assert.equal(c.textForDisplay({ type: 'ul', text: 'plain' }), 'plain');
 });
@@ -1359,26 +1366,31 @@ test('collectSequences: token-gated walk over node.seq, document order', () => {
 
 test('parseTodo: custom states recognized via an explicit states set', () => {
   const states = new Set(['TODO', 'NEXT', 'WAITING', 'DONE', 'BACKLOG', 'DOING', 'SHIPPED']);
-  assert.deepEqual(host(c.parseTodo('DOING [#A] ship it', states)),
+  assert.deepEqual(host(c.parseTodo('#DOING [#A] ship it', states)),
     { keyword: 'DOING', priority: 'A', body: 'ship it' });
+  // bare DOING (no #) is not a keyword even when it's in the states set
+  assert.deepEqual(host(c.parseTodo('DOING ship it', states)),
+    { keyword: '', priority: null, body: 'DOING ship it' });
   // a capitalized word that is NO state in any sequence is not a keyword
-  assert.deepEqual(host(c.parseTodo('URGENT call mom', states)),
-    { keyword: '', priority: null, body: 'URGENT call mom' });
+  assert.deepEqual(host(c.parseTodo('#URGENT call mom', states)),
+    { keyword: '', priority: null, body: '#URGENT call mom' });
 });
 
 test('todoDoneFromText: generalized — custom done-state via explicit sequences', () => {
   const seqs = [DEFAULT_SEQ, FLOW];
-  assert.equal(c.todoDoneFromText('SHIPPED v1 release', seqs), true);
-  assert.equal(c.todoDoneFromText('DOING v1 release', seqs), false);
-  assert.equal(c.todoDoneFromText('DONE old way', seqs), true);    // default unchanged
-  assert.equal(c.todoDoneFromText('- [x] task', seqs), true);      // task form unchanged
+  assert.equal(c.todoDoneFromText('#SHIPPED v1 release', seqs), true);
+  assert.equal(c.todoDoneFromText('#DOING v1 release', seqs), false);
+  assert.equal(c.todoDoneFromText('#DONE old way', seqs), true);    // default unchanged
+  assert.equal(c.todoDoneFromText('- [x] task', seqs), true);       // task form unchanged
+  assert.equal(c.todoDoneFromText('SHIPPED v1 release', seqs), false); // bare SHIPPED is plain text
 });
 
 test('continuationPrefix: a done custom state restarts at its sequence FIRST state', () => {
   const seqs = [DEFAULT_SEQ, FLOW];
-  assert.equal(c.continuationPrefix('SHIPPED v1', seqs), 'BACKLOG ');
-  assert.equal(c.continuationPrefix('DOING v1', seqs), 'DOING ');
-  assert.equal(c.continuationPrefix('DONE x', seqs), 'TODO ');     // default pin intact
+  assert.equal(c.continuationPrefix('#SHIPPED v1', seqs), '#BACKLOG ');
+  assert.equal(c.continuationPrefix('#DOING v1', seqs), '#DOING ');
+  assert.equal(c.continuationPrefix('#DONE x', seqs), '#TODO ');   // default pin intact
+  assert.equal(c.continuationPrefix('SHIPPED v1', seqs), '');      // bare SHIPPED is plain text
 });
 
 test('seqDefString: inverse of parseSequence (modulo spacing)', () => {

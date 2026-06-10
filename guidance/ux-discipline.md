@@ -63,7 +63,7 @@ A unified UX requires unified words. These terms are binding for **UI copy, the 
 | Hiding/showing children in place | `collapsed` | **collapse / expand** | fold, toggle |
 | Typed syntax that becomes a pill | `promoteInlineShorthand` | **shorthand** | macro, inline formula |
 | A keyboard-navigable overlay list | — | **menu** (`/`, `@`, link, state) | dropdown, popup, palette |
-| The TODO/NEXT/WAITING/DONE marker | keyword in `node.text` | **state badge** | tag, label |
+| The `#TODO`/`#NEXT`/`#WAITING`/`#DONE` marker (any sequence state) | `#KEYWORD` at start of `node.text` (the `#` prefix reuses the hashtag sigil) | **state badge** | tag, label |
 | An ordered, user-definable set of state keywords with a done split (the built-in to-do set is the default one) | `[[seq:key]]` + `node.seq` sidecar · `collectSequences` | **sequence** | workflow, status set, pipeline |
 | A static pipe table written in any point's text — a display/export form, not a view of a base | — | **table** | markdown table, grid |
 | A structured data object with its own dedicated point; its table view is the current (and default) view | `node.type === 'base'` (code) · `/base` verb | **base** | dynamic table, widget, database |
@@ -165,9 +165,9 @@ The project already has the **reference pattern**: the storage-quota warning (pr
 | Markov | `State -> Target weight, …` | markov chains |
 | Roll table | `entry  weight` (one per line) | roll tables |
 | Table formula | `#+TBLFM:` with `@row$col` + ranges | table calc (the one true form) |
-| TODO headline | `TODO [#A] body` | task state + priority — the keyword may be any state of any **sequence** (default or user-declared) |
+| Status headline | `#TODO [#A] body` (any sequence keyword; `#` reuses the hashtag sigil) | task state + priority — the keyword may be any state of any **sequence** (default or user-declared); bare `TODO` without `#` is plain text |
 
-**Note — sequences add NO new syntax.** User-definable state sets (sequences) ship entirely on existing rows: declared via `@` (an artifact-token `[[seq:key]]` pill, like `@var`), applied via `/` (writes the state keyword into the TODO-headline position), and the keyword-in-text IS the existing TODO-headline syntax. The pipe in the *dialog field* ("BACKLOG DOING | SHIPPED") is dialog input, not a typeable document syntax. The inventory does not grow.
+**Note — sequences add NO new syntax.** User-definable state sets (sequences) ship entirely on existing rows: declared via `@` (an artifact-token `[[seq:key]]` pill, like `@var`), applied via `/` (writes `#KEYWORD` into the status-headline position), and the `#keyword`-in-text IS the existing hashtag sigil reused. The `#` prevents bare capitalized words from accidentally becoming badges; `#word` that is not a known state is a normal clickable hashtag. The inventory does not grow.
 
 **Acceptance test:** the change added **zero** new top-level syntaxes — or, if it added one, it retired/subsumed an overlapping one and updated both the inventory and the `?` panel.
 

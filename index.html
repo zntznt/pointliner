@@ -964,8 +964,8 @@ const PRIO_CYCLE = [null, ...TODO_PRIOS];                // cycle incl. no-prior
 // to-do set IS the default sequence; user sequences are declared with a [[seq:KEY]]
 // pill (@sequence) carried in node.seq sidecars, document-wide via collectSequences
 // (token-gated walk, cached on _varsVer — the collectVars pattern). ZERO new
-// authoring syntax: declare via @, apply via /, and the state keyword sits at the
-// start of node.text exactly like TODO always has.
+// authoring syntax: declare via @, apply via /, and the `#KEYWORD` sits at the
+// start of node.text (reuses the `#` sigil, e.g. `#TODO body`).
 
 const DEFAULT_SEQUENCE = { key: 'default', name: 'To-do', states: TODO_STATES, doneFrom: TODO_STATES.indexOf('DONE') };
 
@@ -1037,17 +1037,19 @@ function knownStates(rootNode) {
   return set;
 }
 
-// Leading ALL-CAPS word candidate; only a member of knownStates() is a keyword.
-const LEAD_WORD_RE = /^([A-Z][A-Z0-9_-]*)(?=\s|$)/;
+// Leading #STATUS word candidate (`#TODO`, `#NEXT`, etc.); only a member of
+// knownStates() is recognized. Bare `TODO` (no `#`) is plain text, never a badge.
+const LEAD_WORD_RE = /^#([A-Z][A-Z0-9_-]*)(?=\s|$)/;
 
 // Split a node's text into { keyword, priority, body }. No keyword → keyword '',
 // priority null, body = the whole text. Priority is only read after a keyword.
 // `states` is the recognized-keyword set (defaults to the document's, cached).
+// keyword is returned WITHOUT the leading `#` (e.g. 'TODO', not '#TODO').
 function parseTodo(text, states = knownStates()) {
   const s = text == null ? '' : String(text);
   const km = s.match(LEAD_WORD_RE);
   if (!km || !states.has(km[1])) return { keyword: '', priority: null, body: s };
-  let rest = s.slice(km[1].length).replace(/^\s+/, '');
+  let rest = s.slice(km[0].length).replace(/^\s+/, '');  // km[0] = '#KEYWORD'
   let priority = null;
   const pm = rest.match(/^\[#([A-Za-z])\]\s*/);
   if (pm) { priority = pm[1].toUpperCase(); rest = rest.slice(pm[0].length); }
@@ -1056,10 +1058,10 @@ function parseTodo(text, states = knownStates()) {
 
 function todoIsDone(keyword) { return TODO_DONE.has(keyword); }
 
-// Re-serialize a parsed todo to `keyword [#P] body`, trimming cleanly when the
+// Re-serialize a parsed todo to `#keyword [#P] body`, trimming cleanly when the
 // keyword / priority are absent. Inverse of parseTodo (modulo whitespace).
 function formatTodo({ keyword, priority, body }) {
-  const head = [keyword || '', priority ? '[#' + priority + ']' : ''].filter(Boolean).join(' ');
+  const head = [keyword ? '#' + keyword : '', priority ? '[#' + priority + ']' : ''].filter(Boolean).join(' ');
   body = body || '';
   return head ? (body ? head + ' ' + body : head) : body;
 }
@@ -1121,7 +1123,8 @@ function setTodoPriority(text, priority) {
 // ── markdown-first to-do derivation (text is the source of truth) ────────────
 // A node IS a to-do when its TEXT says so, in one of two markdown forms:
 //   task form:    first line starts `- [ ]` / `- [x]` (GFM task item)
-//   keyword form: text starts `TODO|NEXT|WAITING|DONE` (+ optional `[#A]`)
+//   keyword form: text starts `#TODO|#NEXT|#WAITING|#DONE` (+ optional `[#A]`)
+//                 (bare `TODO` without the `#` is plain text, never a badge)
 // node.type==='todo' and node.checked are DERIVED HINTS computed from these,
 // never independent state. Pure: no DOM.
 const TASK_FIRST_RE = /^[-*+]\s+\[[ xX]\](\s|$)/;   // first line is a task item
@@ -1142,16 +1145,16 @@ function todoDoneFromText(text, seqs = allSequences()) {
 
 // Format-continuation aid for Enter: the markdown PREFIX a new sibling should
 // start with so the format continues (a new to-do gets its `- [ ]`, a new quote
-// its `> `). Keyword form continues with the same keyword; DONE restarts as TODO
-// (the new task isn't done). '' = no aid — plain text, type the markdown yourself.
+// its `> `). Keyword form continues with the same #keyword; #DONE restarts as
+// #FIRST (the new task isn't done). '' = no aid — plain text, type markdown yourself.
 function continuationPrefix(text, seqs = allSequences()) {
   const s = text == null ? '' : String(text);
   // resolve the keyword against the GIVEN sequences (not the doc-default set),
   // so the explicit-seqs form is a pure function of its arguments
   const km = s.match(LEAD_WORD_RE);
   const sq = km ? sequenceForKeyword(km[1], seqs) : null;
-  // a done keyword restarts at its sequence's FIRST state (DONE → TODO)
-  if (sq) return (keywordIsDone(km[1], seqs) ? sq.states[0] : km[1]) + ' ';
+  // a done keyword restarts at its sequence's FIRST state (#DONE → #TODO)
+  if (sq) return '#' + (keywordIsDone(km[1], seqs) ? sq.states[0] : km[1]) + ' ';
   if (TASK_FIRST_RE.test(s)) return '- [ ] ';
   if (s.startsWith('> ')) return '> ';
   return '';
@@ -1303,6 +1306,11 @@ function collectVars(rootNode) {
 }
 
 // Add block prefix to nodes that have a type but no prefix in text (migration)
+// NOTE: bare keywords from pre-`#STATUS` saves (`TODO body`) are NOT migrated —
+// a load-time rewrite would also capture plain prose typed after the change
+// (re-introducing the bare-word false-positive this syntax removes). Pre-release,
+// old bare-keyword to-dos simply become plain text; retype as `#KEYWORD` if meant
+// as statuses.
 function migrateNodePrefixes(n) {
   const prefix = BLOCK_PREFIX_MAP[n.type];
   if (prefix && !n.text.startsWith(prefix)) n.text = prefix + n.text;
@@ -2409,9 +2417,9 @@ const BLOCK_CMDS = [
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
-// user-defined sequence's states are applied exactly like TODO/NEXT — one section
+// user-defined sequence's states are applied exactly like #TODO/#NEXT — one section
 // per sequence, sequence→state in a single §7.1 picker pass. Also typeable: just
-// write the keyword at the start of the line. The four built-in states keep their
+// write `#KEYWORD ` at the start of the line. The four built-in states keep their
 // distinctive icons; other states get active/done icons by their side of the |.
 // First sequence claiming a keyword owns it (the MVP collision rule), so entries
 // are deduped by keyword. Rebuilt on _varsVer (declaring a sequence is an edit).
@@ -2435,7 +2443,7 @@ function stateCmds() {
       out.push({
         id: 'state:' + st, icon: ic.icon, fa: ic.fa, label: st,
         desc: done ? 'Mark as done (hides unless show-done).' : `Set the ${sq.name} state.`,
-        ex: st + ' text',
+        ex: '#' + st + ' text',
         section: sq.name + ' state',
       });
     });
@@ -9155,7 +9163,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'TODO state & priority', rows: [
     { keys: ['click badge'],            desc: 'Open the state / priority picker (set any state directly)' },
-    { keys: ['TODO', 'NEXT', 'WAITING', 'DONE'], desc: 'Just type the keyword at the start of a to-do line' },
+    { keys: ['#TODO', '#NEXT', '#WAITING', '#DONE'], desc: 'Type `#KEYWORD ` at the start of a point to set its state' },
     { keys: ['/todo', '/next', '…'],   desc: 'Slash menu sets the to-do state too' },
   ]},
   { sec: 'Insert & commands', rows: [
