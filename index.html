@@ -247,20 +247,16 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-name-pill:focus{background:var(--bg);box-shadow:inset 0 0 0 2px var(--ring);overflow:visible;text-overflow:clip}
 .mt-name-pill:empty::before{content:attr(data-ph);color:var(--muted);opacity:.6;font-weight:400}
 @media(prefers-reduced-motion:reduce){.mt-name-pill{transition:none}}
-/* column resize grip: a thin strip straddling the column's right border. The 2px
-   visual cue shows on hover; the grab zone is wider for easy targeting. The Column
-   menu's Width presets are the keyboard/touch door (fine px control is mouse-only,
-   mirroring drag-reorder vs the menu's Move). */
+/* column resize: an invisible grab zone straddling the column's right border. No
+   visual cue — you discover it by dragging the border, and the col-resize cursor on
+   approach is the only hint (like a spreadsheet). The Column menu's Width presets are
+   the menu/keyboard/touch door. */
 .mt-col-resize{position:absolute;top:0;right:-5px;width:11px;height:100%;z-index:4;cursor:col-resize;touch-action:none}
-.mt-col-resize::after{content:'';position:absolute;top:2px;bottom:2px;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .12s}
-.mt-colhead:hover .mt-col-resize::after{background:var(--bdr)}
-.mt-col-resize:hover::after{background:var(--acc)}
 body.mt-resizing{cursor:col-resize}
 body.mt-resizing,body.mt-resizing *{user-select:none}
-/* touch has no hover/mouse-drag — the grip can't work there; route to the Column
-   menu's Width presets (always-visible on touch) instead of showing a dead handle. */
+/* touch has no hover/mouse-drag — the grab zone can't work there; route to the Column
+   menu's Width presets (always-visible on touch) instead of keeping a dead zone. */
 @media(hover:none){.mt-col-resize{display:none}}
-@media(prefers-reduced-motion:reduce){.mt-col-resize::after{transition:none}}
 /* add-row / add-column affordances. The column one is a full-height "+" button at the
    right edge (Notion-style, non-clipped). It must READ AS A BUTTON, not a stray dashed
    line: revealed on table hover with a solid border, a subtle fill, and a bold legible
