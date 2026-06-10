@@ -216,6 +216,31 @@ test('toOpml — sidecar arrays serialize into underscore attributes', () => {
   assert.ok(xml.includes('r1'), 'dice key should appear in the attribute');
 });
 
+test('clampColW — rounds, clamps to bounds, rejects non-numbers', () => {
+  assert.equal(c.clampColW(160), 160);
+  assert.equal(c.clampColW(160.6), 161);          // rounds
+  assert.equal(c.clampColW(10), 56);              // below min → MIN_COL_W
+  assert.equal(c.clampColW(5000), 900);           // above max → MAX_COL_W
+  assert.equal(c.clampColW(NaN), null);           // non-finite → null
+  assert.equal(c.clampColW('abc'), null);
+});
+
+test('toOpml — base column widths serialize to _colw; absent when all auto', () => {
+  const root = c.mkRoot();
+  const base = c.mkNode('| a | b |\n| --- | --- |\n| 1 | 2 |');
+  base.type = 'base';
+  base.colW = [160, null];
+  root.children.push(base);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_colw='), 'a sized column should serialize _colw');
+  assert.ok(/_colw="\[160,null\]"/.test(xml), 'widths array should round-trip as JSON');
+
+  const plain = c.mkRoot();
+  const n2 = c.mkNode('no widths'); n2.type = 'base'; n2.colW = [null, null];
+  plain.children.push(n2);
+  assert.ok(!c.toOpml(plain).includes('_colw='), 'all-auto widths should NOT serialize');
+});
+
 // ── collectVars / collectRules (explicit root, parameterized) ───────────────
 const mkVarRoot = (decls) => {
   const root = c.mkRoot();

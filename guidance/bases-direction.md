@@ -99,6 +99,15 @@ The column name lives in an **editable name pill**; the surrounding header-cell 
 
 > This **supersedes** the earlier `▾`-caret-on-a-handle column-header design. The header cell *is* the affordance. On narrow columns the around-pill click zone MUST never collapse to nothing (truncate the pill; keep a minimum header height), so "click for menu" always has somewhere to land.
 
+### Column width (resize)
+
+Columns auto-size by default. A user can pin a column's width:
+
+- **Drag the grip on a column's right border** (`.mt-col-resize`, revealed on hover, `col-resize` cursor) → set the width live; **double-click it** → auto-fit (clear the pin).
+- **Column menu → Width** (Fit to content · Narrow · Medium · Wide) → the keyboard/touch door, mirroring how drag-reorder pairs with the menu's *Move*. Fine px control is mouse-drag; the presets cover keyboard + touch (the grip is hidden on touch, where mouse-drag can't fire).
+
+Width is **base view-state, not content**: it lives on the node as `colW` (an array of `px | null`, `null` = auto) and serializes to the underscore-prefixed OPML attribute `_colw` — markdown pipe-tables have no width syntax, so it rides the node like the artifact sidecars, never `node.text`. It is therefore correctly **absent** from *Copy as markdown* / *Copy with TBLFM* (a pasted table elsewhere has no width concept). `colW` is kept index-aligned through insert/delete/move/reorder; an all-`null` array drops back to `undefined`. Cells pin via `box-sizing:border-box` width+min+max so the rendered width equals the stored px. *(Row height is intentionally out of scope — cells are single-line; see the PR discussion.)*
+
 ### Menu keyboard shortcuts (required — `click` is mouse-only)
 
 Base-context-scoped (do nothing outside a base); documented in `ux-discipline.md` §3 and the `?` panel:
