@@ -183,7 +183,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Alt + ↑/↓` | Move the point (reorder) | The movement modifier — reserved for movement |
 | `Ctrl/⌘ + . / ,` | Collapse / expand | Replaces the `Ctrl+↑/↓` binding (which collides with caret-to-edges) |
 | `Ctrl/⌘ + Enter` | Zoom into point | — |
-| `Shift + F10` / `ContextMenu` (Menu key) | Point-actions menu (the focused point's bullet popup) | The OS-standard "context menu of the focused element". Opens `#bpop` and moves focus into it: `↑↓`/`Home`/`End` navigate, `Enter`/`Space` activate, `Esc` closes and returns focus to the point. Carries every per-point action — type switch, zoom, copy link, move, delete, convert-to-base — so it is the keyboard door to all of them |
+| `Shift + F10` / `ContextMenu` (Menu key) | Context menu of the **focused element** — a focused **point/bullet** → that point's bullet popup (`#bpop`); a focused **base cell** → the **Column menu** for that cell's column | The OS-standard "context menu of the focused element". Opens the menu and moves focus into it: `↑↓`/`Home`/`End` navigate, `Enter`/`Space` activate, `Esc` closes. The bullet popup carries every per-point action (type switch, zoom, copy link, move, delete, convert-to-base — and, on a base, the whole-base ops); the Column menu carries every per-column op. So it is the single keyboard door to both, with no dedicated chord (the colliding `⌘+M`/`⌘+Shift+M` were dropped — see below) |
 | `Esc` | Back out one layer | menu → cell sel → point sel → zoom → blur (P1-3) |
 | `Ctrl/⌘ + S / O / F` | Save / open / find | — |
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
@@ -193,7 +193,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | Table `↑/↓/←/→` | `↑/↓` cell above / below — at the top/bottom edge, **exit** the base to the adjacent outline point. `←/→` cell left / right — stop at the left/right edge (no wrap, no exit; horizontal has no outline analog) | Plain-arrows rule: the caret moves within the cell's text first; navigation fires at the text edge — the first/last line for `↑/↓`, the first/last character for `←/→` — same convention as `↑/↓` between points (which likewise **enter** a base's first/last cell when arrowing past it). A navigation-placed (type-to-overwrite) selection acts as a spreadsheet cursor: arrows move cells directly. That nav-placed selection never opens the selection toolbar; an intentional one (mouse drag, `Shift+arrows`, `Ctrl/⌘+A`) does. `@` in a cell opens the insert menu (sans Table — no table-in-base — and Footnote, which is point-level) |
 | `Ctrl/⌘ + 1…6` | Collapse to level (best-effort) | Toolbar is primary (P1-5) |
 
-*(Retired: `Ctrl/⌘ + Shift + M` for a separate base menu — whole-base ops now live on the base's bullet popup, reached like any point's via `Shift+F10` / the Menu key.)*
+*(Retired: `Ctrl/⌘ + M` (Column menu) and `Ctrl/⌘ + Shift + M` (Base menu). `⌘+M` collides with the macOS "minimize window" system shortcut, so both chords were dropped. Column menu → `Shift+F10` on a focused base cell; base menu → the base's bullet popup (`Shift+F10` on the focused point), where whole-base ops live. No dedicated chord remains for either.)*
 
 **Modifier semantics (memorize these, not the table):** plain = text · `Tab` = depth · `Alt` = move · `Ctrl/⌘` = app command · `Esc` = back out · `Shift` = extend.
 
@@ -258,8 +258,8 @@ Per §6 — the four channels, no bespoke feedback UI.
 ### 7.4 Affordance pattern
 Per §4 — the three doors, built in order.
 
-### 7.5 Column panel (consolidated table-column ops)
-A table column's operations live in **one** panel — the Column panel — opened by a single clearly-sized ▾ caret button (`aria-label="Column options"`) on the column header. It follows the §7.1 menu pattern (`role="menu"`/`menuitem`, `↑↓`/`Home`/`End`/`Enter`/`Esc`, reduced-motion respected) and grows by **section**, not by sprouting new header controls: today **Calculate · Alignment · Insert column · Move column · Delete column**; later formatting etc. slot in as further sections. The rule: a new per-column capability is a new panel section, **never** a new hidden header gesture (no double-click cycles, no tiny icon spans). Drag-to-reorder stays as the direct-manipulation path but always ships a **visible grip cue** and a keyboard-reachable twin in the panel (Move left/right), so nothing is drag- or double-click-only (P1/P2/P3).
+### 7.5 Column menu (consolidated table-column ops)
+A base column's operations live in **one** menu — the Column menu — off the **name-pill header cell** (Bases PR 2c). The column name is an editable **name pill**; **clicking the header cell around the pill** opens the Column menu, **dragging it** reorders, and a **right-border grip** resizes (double-click = auto-fit). There is no separate `▾` opener and no hidden gestures (the old double-click-cycles-alignment is gone). The menu follows the §7.1 pattern (`role="menu"`/`menuitem`, `↑↓`/`Home`/`End`/`Enter`/`Esc`, reduced-motion respected) and grows by **section**, not by sprouting header controls: today **Calculate · Alignment · Width · Insert column · Move column · Delete column**; later formatting etc. slot in as further sections. The rule: a new per-column capability is a new menu section, **never** a new hidden header gesture. **Keyboard door:** `Shift+F10` / the Menu key on a focused base cell opens the Column menu for that cell's column (replacing the dropped `⌘+M`, which collided with macOS minimize — see §3). Direct-manipulation paths (drag-reorder, drag-resize) each ship a **visible cue** and a keyboard-reachable twin in the menu (Move left/right, Width presets), so nothing is drag- or double-click-only (P1/P2/P3).
 
 ---
 
