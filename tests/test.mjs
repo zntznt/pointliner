@@ -1276,3 +1276,28 @@ test('highlightGrammarText: a non-promotable {…} stays literal (no span, no bl
   const out = c.highlightGrammarText('{nope} tail').split(SENT).join('').split(ZWSP).join('');
   assert.ok(!out.includes('gr-src'), 'no gr-src span for an unrecognized body');
 });
+
+// ── grSrcSpanClean (UXP-28 normalization predicate) ──
+// A live .gr-src span is clean iff its text is exactly one balanced {…} — the only
+// shape highlightGrammarText ever emits. Dirty = the browser merged typed/pasted
+// chars into the span past }, or the closing } was deleted; normalizeGrSrcSpans
+// then re-renders from node.text so the tail re-binds as plain prose.
+
+test('grSrcSpanClean: exactly one balanced brace is clean (incl. nesting)', () => {
+  assert.equal(c.grSrcSpanClean('{asas}'), true);
+  assert.equal(c.grSrcSpanClean('{a|b 2|c}'), true);
+  assert.equal(c.grSrcSpanClean('{= 2*r}'), true);
+  assert.equal(c.grSrcSpanClean('{a {b} c}'), true);   // nested braces balance at the end
+});
+
+test('grSrcSpanClean: merged tail after } is dirty (the UXP-28 bleed shape)', () => {
+  assert.equal(c.grSrcSpanClean('{asas} x'), false);   // typed text joined the span
+  assert.equal(c.grSrcSpanClean('{asas}{x}'), false);  // a second brace joined the span
+});
+
+test('grSrcSpanClean: broken or misplaced brace is dirty', () => {
+  assert.equal(c.grSrcSpanClean('{asas'), false);      // closing } deleted
+  assert.equal(c.grSrcSpanClean('x{asas}'), false);    // text before the brace
+  assert.equal(c.grSrcSpanClean(''), false);
+  assert.equal(c.grSrcSpanClean('plain'), false);
+});

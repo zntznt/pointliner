@@ -3949,17 +3949,28 @@ function attachContentEvents(content, node) {
       }, 80);
     }
   });
-  content.addEventListener('input', () => {
+  content.addEventListener('input', (e) => {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
     if (checkInlineHighlight(content, node)) { hideBraceMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
+    // Re-bind any .gr-src span the browser merged typed text into (UXP-28) —
+    // skipped mid-IME-composition (re-render would drop the composed text;
+    // the compositionend listener below catches up on commit).
+    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); return; }
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id);
     if (LINK_PICKER_ENABLED) checkLinkTrigger(content, node.id);
     checkBraceTrigger(content, node.id);
     updateSelToolbar();
     updateFnPanel(node);
+  });
+  // IME: composition updates arrive as input events with isComposing=true, which
+  // skip the gr-src normalize above. Normalize once when the composition commits.
+  content.addEventListener('compositionend', () => {
+    if (!content.dataset.editing) return;
+    node.text = editableText(content); markDirty();
+    if (normalizeGrSrcSpans(content, node)) hideBraceMenu();
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
   content.addEventListener('paste', e => handlePaste(e, node, content));
@@ -6430,6 +6441,37 @@ function caretAfterGrSrc(el, target) {
   }
   for (const c of el.childNodes) { walk(c); if (done) break; }
   return done;
+}
+
+// A .gr-src span's text must be exactly one balanced {…} — highlightGrammarText
+// only ever emits spans of that shape. Typing or pasting at the span's end boundary
+// merges characters INTO the span (the browser extends the trailing inline element,
+// even when the caret sits after it); deleting the closing } breaks the brace.
+// Either way the span is "dirty" and needs re-binding. Pure; pinned in tests.
+function grSrcSpanClean(text) {
+  return !!text && text[0] === '{' && matchBrace(text, 0) === text.length - 1;
+}
+
+// Self-healing pass for live edits around .gr-src spans (UXP-28): if any span's
+// content is no longer exactly one balanced {…}, re-render from node.text and
+// restore the caret by logical offset — highlightGrammarText re-bounds the span
+// at }, so a merged tail re-binds as plain text and the restored caret lands in
+// that plain text node, OUTSIDE the span. Runs synchronously in the input handler
+// (before paint), so the styled flash is never visible. Unlike the reverted #45
+// ZWSP anchor this adds NOTHING to the DOM, so Backspace always consumes a real
+// character and deletion can never loop. Callers MUST gate on IME composition
+// (e.isComposing) — a re-render mid-composition cancels the session and drops the
+// composed text; the compositionend listener normalizes once the commit lands.
+function normalizeGrSrcSpans(content, node) {
+  let dirty = false;
+  for (const sp of content.querySelectorAll('.gr-src')) {
+    if (!grSrcSpanClean(sp.textContent)) { dirty = true; break; }
+  }
+  if (!dirty) return false;
+  const off = getCaretOffset(content);
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, off); } catch(_) {}
+  return true;
 }
 
 // Live grammar styling while editing: when the caret lands just after a `}` that

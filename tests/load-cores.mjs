@@ -153,7 +153,7 @@ export function loadCores() {
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
     'migrateTodoText','textForDisplay',
     'collectCallables','filterBraceCandidates',
-    'anchorEditInlines','highlightGrammarText',
+    'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
   ];
   const cores = {};
   const missing = [];
