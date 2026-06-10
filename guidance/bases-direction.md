@@ -93,7 +93,7 @@ The deliberate omission is the **type switcher**: a base has no "turn into headi
 The column name lives in an **editable name pill**; the surrounding header-cell area is the control zone. This resolves edit-vs-menu **spatially**, with no hidden gestures:
 
 - **Click the name pill** → edit the column name inline.
-- **Click the header cell *around* the pill** (incl. the hover ▾ caret hint) → open the **Column menu** (Calculate, Alignment, Width, Insert, Move, Delete…).
+- **Click the header cell *around* the pill** (hover/cursor signal the click target) → open the **Column menu** (Calculate, Alignment, Width, Insert, Move, Delete…).
 - **Hold + drag** (around the pill) → reorder the column.
 - *(No double-click — the pill is the rename affordance.)*
 

@@ -221,7 +221,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell.mt-a-right{text-align:right}
 .mt-cell .md-img{max-height:120px}
 /* handle cells (row grips) + the name-pill column header */
-.mt-corner,.mt-colhead,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
+.mt-colhead,.mt-rowh,.mt-pad,.mt-addcol-cell,.mt-addrow-row th,.mt-addrow-row td{border:1px solid transparent;background:transparent}
 .mt-rowh{width:14px;padding:0;position:relative;cursor:grab;background:var(--cbg);border:1px solid var(--bdr);border-right:none}
 .mt-rowh:active{cursor:grabbing}
 /* drag-reorder grip cue for ROWS (visible dots + grab cursor make the handle discoverable) */
@@ -235,9 +235,10 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 /* ── name-pill column header (Bases PR 2c) ──────────────────────────────────
    The <th> is the column-control surface: click AROUND the pill → Column menu,
    drag → reorder, resize grip on the right border. The pill inside is the
-   editable name (and the row-0 grid cell). The caret hints the menu; on narrow
-   columns the pill truncates so the around-pill (menu) zone never collapses. */
-.mt-colhead{position:relative;font-weight:700;background:var(--cbg);border:1px solid var(--bdr);padding:3px 20px 3px 5px;min-width:72px;max-width:340px;cursor:pointer;vertical-align:middle;box-sizing:border-box}
+   editable name (and the row-0 grid cell); hover/cursor signal the click target.
+   On narrow columns the pill truncates so the around-pill (menu) zone never
+   collapses. */
+.mt-colhead{position:relative;font-weight:700;background:var(--cbg);border:1px solid var(--bdr);padding:3px 8px;min-width:72px;max-width:340px;cursor:pointer;vertical-align:middle;box-sizing:border-box}
 .mt-colhead:hover{background:var(--hbg)}
 .mt-colhead:active{cursor:grabbing}
 .mt-colhead.mt-dragover{background:var(--acc)}
@@ -245,31 +246,30 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-name-pill:hover{background:var(--bg)}
 .mt-name-pill:focus{background:var(--bg);box-shadow:inset 0 0 0 2px var(--ring);overflow:visible;text-overflow:clip}
 .mt-name-pill:empty::before{content:attr(data-ph);color:var(--muted);opacity:.6;font-weight:400}
-.mt-colhead-caret{position:absolute;right:5px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:10px;line-height:1;opacity:0;transition:opacity .12s;pointer-events:none}
-.mt-colhead:hover .mt-colhead-caret,.mt-name-pill:focus ~ .mt-colhead-caret{opacity:.85}
-@media(prefers-reduced-motion:reduce){.mt-name-pill,.mt-colhead-caret{transition:none}}
-/* column resize grip: a thin strip straddling the column's right border. The 2px
-   visual cue shows on hover; the grab zone is wider for easy targeting. The Column
-   menu's Width presets are the keyboard/touch door (fine px control is mouse-only,
-   mirroring drag-reorder vs the menu's Move). */
+@media(prefers-reduced-motion:reduce){.mt-name-pill{transition:none}}
+/* column resize: an invisible grab zone straddling the column's right border. No
+   visual cue — you discover it by dragging the border, and the col-resize cursor on
+   approach is the only hint (like a spreadsheet). The Column menu's Width presets are
+   the menu/keyboard/touch door. */
 .mt-col-resize{position:absolute;top:0;right:-5px;width:11px;height:100%;z-index:4;cursor:col-resize;touch-action:none}
-.mt-col-resize::after{content:'';position:absolute;top:2px;bottom:2px;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .12s}
-.mt-colhead:hover .mt-col-resize::after{background:var(--bdr)}
-.mt-col-resize:hover::after{background:var(--acc)}
 body.mt-resizing{cursor:col-resize}
 body.mt-resizing,body.mt-resizing *{user-select:none}
-/* touch has no hover/mouse-drag — the grip can't work there; route to the Column
-   menu's Width presets (always-visible on touch) instead of showing a dead handle. */
+/* touch has no hover/mouse-drag — the grab zone can't work there; route to the Column
+   menu's Width presets (always-visible on touch) instead of keeping a dead zone. */
 @media(hover:none){.mt-col-resize{display:none}}
-@media(prefers-reduced-motion:reduce){.mt-col-resize::after{transition:none}}
-/* add-column: full-height "+" at the right edge (Notion-style, non-clipped, reveal on hover) */
+/* add-row / add-column affordances. The column one is a full-height "+" button at the
+   right edge (Notion-style, non-clipped). It must READ AS A BUTTON, not a stray dashed
+   line: revealed on table hover with a solid border, a subtle fill, and a bold legible
+   "+", then an accent state on direct hover/keyboard focus. Its `title`/`aria-label`
+   spell out "Insert column" on hover. */
 .mt-addrow{border:1px dashed var(--bdr);background:transparent;color:var(--muted);border-radius:5px;font-size:13px;padding:2px 8px;cursor:pointer;width:100%}
-.mt-addcol-cell{position:relative;padding:0;width:32px;border:none}
-.mt-addcol{position:absolute;top:1px;bottom:1px;left:4px;right:1px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:16px;border:1px dashed var(--bdr);border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
-.md-table-host:hover .mt-addcol,.mt-addcol:focus-visible{opacity:1}
-@media(hover:none){.mt-addcol{opacity:1}}
-.mt-addcol:hover,.mt-addcol:focus-visible,.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
+.mt-addrow:hover{background:var(--hbg);color:var(--fg);border-style:solid}
 .mt-addrow-cell{padding-top:3px}
+.mt-addcol-cell{position:relative;padding:0;width:34px;border:none}
+.mt-addcol{position:absolute;top:2px;bottom:2px;left:4px;right:2px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;font-size:20px;font-weight:600;border:1px solid var(--bdr);border-radius:6px;background:var(--cbg);color:var(--fg);cursor:pointer;opacity:0;transition:opacity .12s,background .12s,border-color .12s,color .12s}
+.md-table-host:hover .mt-addcol{opacity:.85}
+.mt-addcol:hover,.mt-addcol:focus-visible{opacity:1;background:var(--acc);color:#fff;border-color:var(--acc)}
+@media(hover:none){.mt-addcol{opacity:.85}}
 /* column operations panel (the consolidated home for all column ops) */
 #mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:10px;padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);outline:none}
 #mt-colpanel.on{display:block}
@@ -706,10 +706,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .mt-del{display:block;width:19px;height:19px;line-height:17px;font-size:12px;opacity:.5}
   .mt-del:active{opacity:1}
   .mt-rowh .mt-delrow{left:-8px;top:-8px}
-  /* name-pill header: keep a comfortable tap height and a visible caret (the menu
-     opener) since touch has no hover; tap around the pill opens the Column menu. */
+  /* name-pill header: keep a comfortable tap height (tap around the pill = Column menu) */
   .mt-colhead{padding-top:5px;padding-bottom:5px}
-  .mt-colhead-caret{opacity:.85}
   .mt-addcol{min-height:38px}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
@@ -3080,7 +3078,6 @@ function buildTableWidget(node, readOnly) {
     } else {
       h += `<th class="mt-colhead${aCls(model.aligns[c])}" data-c="${c}" draggable="true"${colStyle(c)} title="Drag to reorder · click for column options">`
          + `<span class="mt-cell mt-name-pill" data-r="0" data-c="${c}" contenteditable="true" role="textbox" aria-label="Column ${c+1} name" data-ph="Name">${mtInline(node, nm)}</span>`
-         + `<span class="mt-colhead-caret" aria-hidden="true">▾</span>`
          + `<span class="mt-col-resize" data-c="${c}" title="Drag to resize · double-click to auto-fit"></span>`
          + `</th>`;
     }
@@ -3143,7 +3140,7 @@ function buildTableWidget(node, readOnly) {
 
   // add / delete row & column; column panel toggle
   host.addEventListener('click', e => {
-    // click the header cell AROUND the name pill (or its caret) → Column menu.
+    // click the header cell AROUND the name pill → Column menu.
     // Clicking the pill itself edits the name; the resize grip has its own gesture.
     const colhead = e.target.closest('.mt-colhead');
     if (colhead && !e.target.closest('.mt-name-pill') && !e.target.closest('.mt-col-resize')) {
