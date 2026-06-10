@@ -490,6 +490,9 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* unified command item */
 .cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;cursor:pointer}
 .cmd-item:hover,.cmd-item.hi{background:var(--bdr)}
+/* keyboard focus rings inside the point-actions menu (UXP-14) */
+#bpop .cmd-item:focus,#bpop .cmd-item:focus-visible{background:var(--bdr);outline:2px solid var(--acc);outline-offset:-2px}
+#bpop .bpop-type:focus,#bpop .bpop-type:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cmd-icon{width:26px;height:26px;border-radius:6px;background:var(--bdr);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;color:var(--fg);font-family:monospace}
 .cmd-icon.accent{background:var(--acc);color:#fff}
 .cmd-info{display:flex;flex-direction:column;gap:1px;min-width:0}
@@ -763,7 +766,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <!-- selection toolbar (dark) -->
 <div id="sel-tb"></div>
 <!-- bullet popup -->
-<div id="bpop"></div>
+<div id="bpop" role="menu" aria-label="Point actions"></div>
 <!-- column operations panel -->
 <div id="mt-colpanel" role="menu" aria-label="Column options"></div>
 <!-- slash menu -->
@@ -3191,12 +3194,26 @@ function renderRow(r) {
   }
 
   if (!opts.searchCtx) {
+    // Bullet is a button that opens the point-actions menu (UXP-14). tabindex=-1 keeps
+    // it out of the Tab order (it'd flood the virtual list); it's reached by Shift+F10 /
+    // the Menu key from the focused point (onKeyDown), then operated from the keyboard.
+    bullet.setAttribute('role', 'button');
+    bullet.setAttribute('tabindex', '-1');
+    bullet.setAttribute('aria-haspopup', 'menu');
+    bullet.setAttribute('aria-label', node.type === 'base' ? 'Base actions' : 'Point actions');
     bullet.addEventListener('click', e => {
       if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
       if (e.target.classList.contains('node-checkbox')) return;
       // every point (incl. a base) zooms in on a bullet click; the hover/long-press menu
       // carries the per-node ops (dismiss it so it doesn't linger over the zoomed view)
       if (node.type !== 'divider') { hideBpop(); zoomInto(node.id); }
+    });
+    // Keyboard: Enter/Space on the focused bullet opens its menu (beside mousedown/hover).
+    bullet.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        showBulletPopup(node.id, bullet, { keyboard: true });
+      }
     });
     if (IS_TOUCH) {
       // No hover on touch: long-press the bullet to open the node menu (type/move/delete/zoom).
@@ -3776,6 +3793,15 @@ function onKeyDown(e, id, content) {
       return;
     }
   }
+  // Point-actions menu: the OS-standard "context menu of the focused element" gesture
+  // (Shift+F10 or the Menu/ContextMenu key) opens this point's bullet popup with the
+  // keyboard and moves focus into it — the keyboard door for every per-point action
+  // (zoom, move, copy link, delete, convert…). Escape in the menu returns focus here.
+  if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+    const bullet = content.closest('.node-row')?.querySelector('.bullet');
+    if (bullet) { e.preventDefault(); showBulletPopup(id, bullet, { keyboard: true }); }
+    return;
+  }
   // Copy a ready-to-paste link token for this node to the clipboard.
   if ((e.key === 'l' || e.key === 'L') && ctrl && e.shiftKey) { e.preventDefault(); copyNodeLink(id); return; }
   if (LINK_PICKER_ENABLED && lpState && isLpMenuOpen()) {
@@ -4095,6 +4121,26 @@ let bpopTimer = null;
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
+// Keyboard nav (UXP-14): same §7 menu pattern as the Column panel. Items are the
+// type-switcher buttons + the action rows; Enter/Space fire their mousedown handler.
+bpop.addEventListener('keydown', e => {
+  const items = [...bpop.querySelectorAll('.bpop-type, .cmd-item')];
+  if (!items.length) return;
+  const idx = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
+  else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
+  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
+  else if (e.key === 'Escape') {
+    e.preventDefault(); e.stopPropagation();
+    const id = bpopReturnFocus; hideBpop();
+    // refocus by id (the row may have been rebuilt while the menu was open)
+    if (id) document.querySelector(`.node-content[data-id="${id}"]`)?.focus();
+  }
+});
+// The node id to restore focus to when the popup is closed by keyboard (Escape).
+let bpopReturnFocus = null;
 
 // ── column panel one-time init ────────────────────────────────────────────
 const _mtColPanel = document.getElementById('mt-colpanel');
@@ -4114,11 +4160,14 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#mt-colpanel') && !e.target.closest('.mt-col-btn')) hideColPanel();
 });
 
-function showBulletPopup(nodeId, bulletEl) {
+function showBulletPopup(nodeId, bulletEl, opts = {}) {
   clearTimeout(bpopTimer);
   const node = nodeById(nodeId);
   if (!node) return;
   bpop.innerHTML = '';
+  // Which point to send focus back to when the menu is closed by keyboard (Escape).
+  // Only set when opened from the keyboard — mouse hover must not steal focus.
+  bpopReturnFocus = opts.keyboard ? nodeId : null;
 
   // A base is a special structured object: no type switcher (it can't be turned into
   // another block type), and its menu leads with the base copy ops (mirroring the
@@ -4134,6 +4183,9 @@ function showBulletPopup(nodeId, bulletEl) {
       btn.className = 'bpop-type' + (node.type === cmd.id ? ' cur' : '');
       setIcon(btn, { fa:cmd.fa, fb:cmd.icon });
       btn.title = cmd.label;
+      btn.setAttribute('role', 'menuitem');
+      btn.setAttribute('tabindex', '-1');
+      btn.setAttribute('aria-label', 'Turn into ' + cmd.label);
       btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
       typeRow.appendChild(btn);
     });
@@ -4201,6 +4253,8 @@ function showBulletPopup(nodeId, bulletEl) {
   }
   actions.forEach(({ icon, label, fn, danger }) => {
     const item = mkCmdItem(icon, label, '', fn);
+    item.setAttribute('role', 'menuitem');
+    item.setAttribute('tabindex', '-1');
     if (danger) {
       item.querySelector('.cmd-label').style.color = '#e55';
       item.querySelector('.cmd-icon').style.color = '#e55';
@@ -4216,6 +4270,8 @@ function showBulletPopup(nodeId, bulletEl) {
     const pr = bpop.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
     if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (window.innerHeight - pr.height - 8) + 'px';
+    // Keyboard open: move focus into the menu (first item). Hover open never steals focus.
+    if (opts.keyboard) bpop.querySelector('.bpop-type, .cmd-item')?.focus();
   });
 }
 function scheduleBpopHide() { bpopTimer = setTimeout(hideBpop, 300); }

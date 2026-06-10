@@ -80,10 +80,19 @@ Controls that need this treatment:
   focus-ring plan can do anything — a focus ring on an unfocusable div is dead.
   State that dependency explicitly when scheduling the work.
 - `.collapse-btn` — also needs `aria-expanded` toggled on each collapse/expand.
-- `.bullet` — keyboard activates the bullet popup (same as hover/long-press).
+- ✅ `.bullet` — **done.** Now `role="button"` + `aria-label` ("Point/Base actions") +
+  `aria-haspopup="menu"` + `tabindex="-1"` + a `keydown` (Enter/Space) opening the popup.
+  Reached from the keyboard via `Shift+F10` / the Menu key on the focused point
+  (`onKeyDown`), which opens `#bpop` and moves focus into it. `tabindex="-1"` (not `0`)
+  is deliberate: a focusable bullet per visible row would flood the Tab order of the
+  virtual list.
+- ✅ `#bpop` (the point-actions popup) — **done.** `role="menu"` + `role="menuitem"` +
+  `tabindex="-1"` on every item (type-switcher buttons *and* action rows), arrow/Home/End
+  navigation, Enter/Space activate (dispatch the item's `mousedown`), Escape closes and
+  returns focus to the point. Focus-visible rings added (`#bpop .cmd-item:focus-visible`,
+  `#bpop .bpop-type:focus-visible`). Same §7 menu pattern as the Column panel.
 - `.crumb` items in the breadcrumb trail.
 - `.cmd-item` in the slash menu.
-- `.bpop-type` items in the bullet-type popup.
 - `#sc-toggle` — **convert from `<span>` to `<button>`** (it has no semantic
   role at all today). This is the cleanest fix; a `<button>` is focusable and
   keyboard-operable for free.

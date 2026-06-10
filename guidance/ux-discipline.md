@@ -183,14 +183,16 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Alt + ↑/↓` | Move the point (reorder) | The movement modifier — reserved for movement |
 | `Ctrl/⌘ + . / ,` | Collapse / expand | Replaces the `Ctrl+↑/↓` binding (which collides with caret-to-edges) |
 | `Ctrl/⌘ + Enter` | Zoom into point | — |
+| `Shift + F10` / `ContextMenu` (Menu key) | Point-actions menu (the focused point's bullet popup) | The OS-standard "context menu of the focused element". Opens `#bpop` and moves focus into it: `↑↓`/`Home`/`End` navigate, `Enter`/`Space` activate, `Esc` closes and returns focus to the point. Carries every per-point action — type switch, zoom, copy link, move, delete, convert-to-base — so it is the keyboard door to all of them |
 | `Esc` | Back out one layer | menu → cell sel → point sel → zoom → blur (P1-3) |
 | `Ctrl/⌘ + S / O / F` | Save / open / find | — |
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
 | `Ctrl/⌘ + C / X / V` | Copy / cut / paste points | Multi-select context |
 | Table `Tab` / `Shift+Tab` / `Enter` | Next / previous cell (wraps across rows; `Tab` at the last cell adds a row) · `Enter` = cell below (stops at last row), `Shift+Enter` = cell above (stops at top row) · computed (formula-driven) cells are read-only (`Σ`-tagged, Tab-navigable) | **P2-3** — lands selecting the cell's contents (type-to-overwrite). Cells are single-line, so `Shift+Enter` navigates (Excel/Sheets convention), never inserts a break. Column ▾ menu: `↑↓` navigate items, `Enter`/`Space` select, `Esc` closes |
-| `Ctrl/⌘ + Shift + M` | Base menu (whole-base ops: Copy as markdown / Copy with TBLFM) | **Base-context-scoped** — only fires when focus is inside a base; no-op elsewhere, no collision. Also reachable via the base header opener (▾/⋯). Same menu nav as the Column menu (`↑↓`/`Enter`/`Esc`) |
 | `Ctrl/⌘ + 1…6` | Collapse to level (best-effort) | Toolbar is primary (P1-5) |
+
+*(Retired: `Ctrl/⌘ + Shift + M` for a separate base menu — whole-base ops now live on the base's bullet popup, reached like any point's via `Shift+F10` / the Menu key.)*
 
 **Modifier semantics (memorize these, not the table):** plain = text · `Tab` = depth · `Alt` = move · `Ctrl/⌘` = app command · `Esc` = back out · `Shift` = extend.
 
