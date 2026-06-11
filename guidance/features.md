@@ -30,6 +30,15 @@ Implemented:
   named tables + named chains), so any pill can call anything declared anywhere.
   Cycles/depth caught at expansion (`↻`/`…`). Freezes its expansion like dice;
   click to re-generate.
+  **Consistent (bound) picks** — `{n := rule}` expands `rule` once, **emits the
+  result at that spot**, and stores it under `n` in a per-expansion binding scope.
+  `{n}` anywhere later in the *same expansion* returns the same value — enabling
+  Perchance-style coherent generation ("the **dragon** roared; the **dragon** flew").
+  Resolution order for a bare `{n}`: binding scope → named rule/table → document
+  variable → `{n?}`. Scope is one pill expansion; bindings are ephemeral and never
+  persist to OPML or document variables. A use-before-bind (`{n}` before `{n := …}`)
+  resolves by the normal path, never an error. Operator `:=` is source-verified
+  collision-free (see `guidance/generation-direction.md` §3).
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
   **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,

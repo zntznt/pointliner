@@ -159,7 +159,7 @@ The project already has the **reference pattern**: the storage-quota warning (pr
 | Footnote | `[^key]` | footnotes |
 | Node link | `[[#id\|label]]` | links / mirror |
 | Artifact token | `[[type:key]]` | stored pill reference (internal — users never type it) |
-| **Grammar engine** | `{…}` → `{= expr}`, `{NdM}`, `{a\|b 2\|c}`, `{rule}`/`{table}`/`{chain}`, `{var}` | **ALL** generative / computed inline content |
+| **Grammar engine** | `{…}` → `{= expr}`, `{NdM}`, `{a\|b 2\|c}`, `{rule}`/`{table}`/`{chain}`, `{var}`, `{n := rule}` (bind) | **ALL** generative / computed inline content |
 | Dice notation | `NdM[!][kh\|kl\|dl\|dh N][>=…]` | dice (inside `@dice` and `{…}`) |
 | Grammar rules | `name: a \| b 2 \| c` | named grammar rules |
 | Markov | `State -> Target weight, …` | markov chains |
