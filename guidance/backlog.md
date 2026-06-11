@@ -73,13 +73,6 @@ Spreadsheet-style cell formulas in tables, via Org-mode `#+TBLFM:` conventions.
   `node.text` (round-trips for free). See `guidance/features.md` for the supported grammar and the
   explicit not-yet list (named columns, `#+CONSTANTS:`, `remote()`, hline-relative `@I`, `B3`).
 
-### ✓ Consistent (bound) picks — Perchance-style generation (shipped)
-Bind a pick to a name and reuse the same result within one expansion: `{a := animal}` … `{a}`.
-- **Shipped (PR #51):** rides the `{…}` grammar engine via a per-expansion `ctx.binds` scope;
-  `:=` bind operator; resolution order `binds → rule/table → var → {?}`. Locked direction:
-  `guidance/generation-direction.md`. Remaining: modifiers (`a`/`an`, plural, capitalize), a
-  separable follow-up.
-
 ### ☐ Rich TODO states + priorities
 Custom task states (e.g. TODO → NEXT → WAITING → DONE) with cycling, plus A/B/C priorities.
 Today the todo is a binary checkbox.
