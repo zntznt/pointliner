@@ -431,8 +431,7 @@ bare `TODO` without `#` is plain text; to-do-ness fully derives from the text �
 or `#keyword` — see the node model above) ·
 Sequences (user-definable state sets: the built-in `TODO NEXT WAITING | DONE` is the default;
 `@sequence` declares a `[[seq:key]]` pill + `node.seq` sidecar; `/` applies any state as
-`#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) ·
-Consistent (bound) picks (`{name := body}` — pick once, reuse within one expansion).
+`#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog
@@ -451,10 +450,6 @@ The product direction is now set. Read these before proposing or building:
   and the scope fence: views/typed-fields/filters are deferred). Read before any
   table/base work.
 - `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
-- **Locked direction docs** — binding per-area feature decisions; read the relevant one before
-  building in that area. Each names its MVP and an explicit deferred-scope fence:
-  `guidance/bases-direction.md` (markdown-first tables/bases),
-  `guidance/generation-direction.md` (consistent bound picks, `{name := body}`).
 - `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu
   descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.

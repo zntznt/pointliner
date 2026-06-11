@@ -1039,7 +1039,7 @@ function knownStates(rootNode) {
 
 // Leading #STATUS word candidate (`#TODO`, `#NEXT`, etc.); only a member of
 // knownStates() is recognized. Bare `TODO` (no `#`) is plain text, never a badge.
-const LEAD_WORD_RE = /^#([A-Z][A-Z0-9_-]*)(?=\s|$)/;
+const LEAD_WORD_RE = /^#([A-Z][A-Z0-9_-]*)(?=[\s\[]|$)/;
 
 // Split a node's text into { keyword, priority, body }. No keyword → keyword '',
 // priority null, body = the whole text. Priority is only read after a keyword.
@@ -1240,10 +1240,13 @@ function collectVars(rootNode) {
   if (useCache) rootNode = root;
   if (useCache && _varsCacheVer === _varsVer) return _varsCached;
   // Pass 1: gather declarations in document order (last declaration of a name wins).
-  const defs = {};         // lowercase name -> expr string (last wins)
+  // All name-keyed maps are null-proto: VAR_NAME_RE accepts `constructor`/`__proto__`,
+  // and on a plain object those hit Object.prototype (`'constructor' in {}` is true,
+  // `allKeysForName.constructor` is a truthy function — `||= []` skips, `.push` throws).
+  const defs = Object.create(null);         // lowercase name -> expr string (last wins)
   const order = [];        // names in first-seen order, for deterministic resolution
-  const lastKeyForName = {}; // name -> key of last declaration seen
-  const allKeysForName = {}; // name -> [all keys seen]
+  const lastKeyForName = Object.create(null); // name -> key of last declaration seen
+  const allKeysForName = Object.create(null); // name -> [all keys seen]
   function gather(node) {
     const re = /\[\[var:([a-z0-9]+)\]\]/gi;
     let m;
@@ -1273,8 +1276,8 @@ function collectVars(rootNode) {
   // drive on-demand resolution of dependencies; `stack` tracks the active chain so
   // a re-entered name is recognised as a cycle (and every member of that cycle is
   // flagged) rather than recursing forever.
-  const resolved = {};   // name -> number (successful only; the returned map)
-  const memo = {};       // name -> number | undefined (incl. failures)
+  const resolved = Object.create(null);   // name -> number (successful only; the returned map)
+  const memo = Object.create(null);       // name -> number | undefined (incl. failures) — null-proto, or `'constructor' in memo` short-circuits to the Object function
   const stack = [];
   const cycles = new Set();
   const proxy = new Proxy({}, {
@@ -1604,7 +1607,7 @@ function parseDice(input, vars = {}) {
       terms.push({ sign, kind: 'mod', value: parseInt(m[9], 10) });
     } else {                                               // variable identifier
       const val = vars[m[10].toLowerCase()];
-      if (val === undefined) return null;
+      if (!Number.isFinite(val)) return null;   // unknown var, or non-numeric (incl. inherited Object keys like `constructor`)
       terms.push({ sign, kind: 'mod', value: Math.round(val) });
     }
   }
@@ -1772,7 +1775,7 @@ function renderDicePill(key, d) {
 function parseMarkov(def) {
   const lines = (def || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
-  const trans = {};          // state -> [{to, w}]
+  const trans = Object.create(null);  // state -> [{to, w}]  (null-proto: a state named "constructor"/"__proto__" must not hit Object.prototype)
   const order = [];          // first-seen declaration order
   const seen = new Set();
   const note = s => { if (!seen.has(s)) { seen.add(s); order.push(s); } };
@@ -1987,8 +1990,11 @@ function mtSplitRow(line) {
   let s = line.trim().replace(/^\|/, '').replace(/\|$/, '');
   const cells = []; let cur = '';
   for (let i = 0; i < s.length; i++) {
-    // inverse of serializeTable's esc: unescape any \x (covers \\ and \|)
-    if (s[i] === '\\') { cur += s[i+1] ?? '\\'; i++; }
+    // Inverse of serializeTable's esc, which only ever produces \\ and \|. Unescape
+    // exactly those two; any other backslash is literal content (a Windows path like
+    // C:\new\dir, a LaTeX snippet) and must be preserved, matching GFM (where `\`
+    // only escapes the pipe inside a table cell).
+    if (s[i] === '\\' && (s[i+1] === '\\' || s[i+1] === '|')) { cur += s[i+1]; i++; }
     else if (s[i] === '|') { cells.push(cur.trim()); cur = ''; }
     else cur += s[i];
   }
@@ -2137,7 +2143,7 @@ function parseTblfm(str, dims) {
 
 // Apply TBLFM formulas to a table model, returning a new rows grid with every
 // formula target replaced by its computed display value ('#ERR' on cycle/invalid).
-function computeTable(model, tblfm) {
+function computeTable(model, tblfm, vars = {}) {
   const rows = (model.rows || []).map(r => r.slice());
   const nrows = rows.length, ncols = rows[0] ? rows[0].length : 0;
   const dims = { nrows, ncols };
@@ -2219,7 +2225,9 @@ function computeTable(model, tblfm) {
       const v = valueAt(ref.row, ref.col);
       return '(' + (v === null ? 0 : v) + ')';
     });
-    return evalMath(e, {});
+    // The full math grammar — including document variables — is available in cell
+    // formulas (e.g. `$2=$1*tax` with `tax` declared elsewhere).
+    return evalMath(e, vars);
   }
 
   const out = rows.map(r => r.slice());
@@ -2292,7 +2300,7 @@ function renderStaticTable(block, l0, l1) {
       else if (t.kind === 'row')   { for (let c = 0; c < nc; c++) computed.add(t.row + ',' + c); }
       else if (t.kind === 'field') computed.add(t.row + ',' + t.col);
     }
-    rows = computeTable(model, tblfm);    // literals + computed values (#ERR on cycle/invalid)
+    rows = computeTable(model, tblfm, collectVars());    // literals + computed values (#ERR on cycle/invalid)
   }
   const aCls = a => a === 'center' ? ' mt-a-center' : a === 'right' ? ' mt-a-right' : '';
   const cCls = key => computed.has(key) ? ' mt-computed' : '';
@@ -2333,7 +2341,7 @@ function toOpml(r) {
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
       n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
-      `_id="${n.id}"`,
+      `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
@@ -2346,9 +2354,21 @@ ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
 </opml>`;
 }
-// Encode newlines as &#10; — XML attribute-value normalization collapses literal
-// newlines to spaces on re-parse, but numeric character references survive intact.
-function ex(s){ return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'&#10;'); }
+// Encode newlines/tabs/CRs as numeric character references — XML attribute-value
+// normalization collapses literal whitespace (incl. \t and \r) to spaces on re-parse,
+// but numeric character references survive intact. Also strip the characters XML 1.0
+// forbids outright (even as char refs): C0 controls, U+FFFE/U+FFFF, and LONE surrogate
+// halves — leaving one in produces a file DOMParser rejects on reload (the whole
+// document becomes unloadable). A surrogate that is part of a valid pair (emoji,
+// astral-plane text) is legal XML and must survive, so the lone-half pattern guards
+// with lookaround instead of stripping the whole \uD800-\uDFFF block.
+function ex(s){
+  return(s||'')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g,'')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,'')
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\n/g,'&#10;').replace(/\t/g,'&#9;').replace(/\r/g,'&#13;');
+}
 
 function fromOpml(xml) {
   const doc = new DOMParser().parseFromString(xml,'application/xml');
@@ -2963,7 +2983,7 @@ function mtRecompute(node) {
   const tblfm = extractTblfm(node.text);
   if (!tblfm) return false;
   const model = mtModel(node);
-  node.text = serializeTable({ aligns: model.aligns, rows: computeTable(model, tblfm) })
+  node.text = serializeTable({ aligns: model.aligns, rows: computeTable(model, tblfm, collectVars()) })
     + '\n#+TBLFM: ' + tblfm;
   markDirty();
   return true;
@@ -3270,7 +3290,7 @@ function showColPanel(node, colIdx, anchorEl) {
 function baseFrozenMarkdown(text) {
   const model = mtModelText(text);
   const tblfm = extractTblfm(text);
-  const rows  = tblfm ? computeTable(model, tblfm) : model.rows;
+  const rows  = tblfm ? computeTable(model, tblfm, collectVars()) : model.rows;
   return serializeTable({ aligns: model.aligns, rows });
 }
 function baseRecipeMarkdown(text) {
@@ -4161,7 +4181,7 @@ function braceWouldPromote(body) {
   if (splitTopLevel(body, '|').length > 1) return true;                 // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
-    return !!collectRules()[low] || (low in collectVars());
+    return !!collectRules()[low] || Object.prototype.hasOwnProperty.call(collectVars(), low);
   }
   return false;
 }
@@ -6122,7 +6142,7 @@ function parseAlt(a) {
 // Parse a multi-line definition into {rules:{name:[{template,weight}]}, order:[]}.
 // "name: a | b 2 | c" per line; "//" lines are comments. null if malformed.
 function parseRules(def) {
-  const rules = {}; const order = [];
+  const rules = Object.create(null); const order = [];  // null-proto: rules named `constructor`/`__proto__` must be real keys, not prototype hits
   for (const raw of (def || '').split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('//')) continue;
@@ -6182,7 +6202,7 @@ function resolveBrace(body, ctx) {
   if (/^[a-z_][\w]*$/i.test(body)) {
     const low = body.toLowerCase();
     if (ctx.rules[low]) return expandRule(low, ctx);
-    if (ctx.vars && low in ctx.vars) return formatMathResult(ctx.vars[low]);
+    if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, low)) return formatMathResult(ctx.vars[low]);
     return `{${body}?}`;
   }
   return body;
@@ -6217,7 +6237,7 @@ function expandRule(name, ctx) {
 function runGrammar(def, origin, docRules = null, vars = null) {
   const parsed = parseRules(def);
   if (!parsed) return null;
-  const rules = { ...(docRules || collectRules()), ...parsed.rules };
+  const rules = Object.assign(Object.create(null), docRules || collectRules(), parsed.rules);  // null-proto merge: don't reintroduce Object.prototype keys
   const start = (origin && origin.toLowerCase()) || parsed.order[0];
   if (!rules[start]) return null;
   return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [] });
@@ -6241,7 +6261,7 @@ function collectRules(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
   if (useCache && _rulesCacheVer === _varsVer) return _rulesCached;
-  const merged = {};
+  const merged = Object.create(null);  // null-proto: see parseRules
   function gather(node) {
     if (node.grammar?.length) {
       for (const g of node.grammar) {
@@ -6721,8 +6741,12 @@ function evalMath(input, vars = {}) {
 
   const DAY_MS = 86400000;
   const _today = (() => { const d = new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS); })();
-  const CONSTS = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity, today: _today };
-  const FN1 = {
+  // All lookup tables are null-proto: ident() probes them with `in`, and on a plain
+  // object `'constructor' in CONSTS` is true via Object.prototype — `constructor*2`
+  // would resolve to the Object function (NaN downstream) and `constructor(5)` would
+  // dispatch it as a unary FN1, instead of both failing cleanly to null.
+  const CONSTS = Object.assign(Object.create(null), { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity, today: _today });
+  const FN1 = Object.assign(Object.create(null), {
     sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
     round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
     asin: Math.asin, acos: Math.acos, atan: Math.atan,
@@ -6744,9 +6768,9 @@ function evalMath(input, vars = {}) {
     day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
     weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
     asdate:  x => x,
-  };
-  const FN2 = { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot };
-  const FN3 = { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) };
+  });
+  const FN2 = Object.assign(Object.create(null), { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot });
+  const FN3 = Object.assign(Object.create(null), { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) });
 
   function ident() {
     let name = '';
@@ -6755,7 +6779,15 @@ function evalMath(input, vars = {}) {
     // When followed by '(' treat as a function call — don't let a document variable
     // named 'year'/'month'/'day'/etc. shadow a built-in function.
     if (peek() !== '(') {
-      if (name in vars) return vars[name]; // document variable (no parens)
+      // Document variable (no parens). `in` is required here — collectVars hands in a
+      // Proxy whose `has` trap drives lazy resolution, and hasOwnProperty would bypass
+      // it. The typeof guard rejects what `in` can't: an inherited Object.prototype
+      // member when a caller passes a plain map, and a failed lazy resolution
+      // (undefined) — both fail to null instead of going NaN downstream.
+      if (name in vars) {
+        const v = vars[name];
+        if (typeof v === 'number') return v;
+      }
       throw 0;
     }
     if (name === 'if') {
@@ -6874,6 +6906,11 @@ function formatMathDisplay(v, expr) { return isDateExpr(expr) ? formatEpochDays(
 
 function formatMathResult(n) {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '-∞' : 'NaN';
+  // An exact integer prints in full — never round-trip it through toPrecision(10),
+  // which truncates the low digits of an integer with >10 significant figures
+  // (123456789012 → 123456789000). This value is persisted into node.text by table
+  // recompute, so the corruption would be saved, not just displayed.
+  if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
   // Round to 10 significant figures to wash out floating-point noise
   const r = parseFloat(n.toPrecision(10));
   // Snap near-zero results (e.g. sin(π) ≈ 1.2e-16 → 0)

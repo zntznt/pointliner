@@ -140,6 +140,16 @@ test('evalMath — malformed input returns null (callers branch on null)', () =>
   assert.equal(c.evalMath('2+2x'), null); // unconsumed trailing token
 });
 
+test('evalMath — names colliding with Object.prototype fail to null, not the inherited member', () => {
+  // On plain-object tables `'constructor' in CONSTS` was true via the prototype, so
+  // `constructor*2` resolved to the Object function (NaN) and `constructor(5)`
+  // dispatched it as a unary FN1. Both must be unknown names → null.
+  assert.equal(c.evalMath('constructor*2', {}), null);
+  assert.equal(c.evalMath('constructor(5)', {}), null);
+  // …but a DECLARED variable with that name works (resolved by collectVars)
+  assert.equal(c.evalMath('constructor*2', { constructor: 5 }), 10);
+});
+
 // ── markov ─────────────────────────────────────────────────────────────────
 test('parseMarkov — declaration order and weighted targets', () => {
   const p = c.parseMarkov('A -> B 2, C 1');
@@ -177,6 +187,33 @@ test('runGrammar — invalid definition returns null', () => {
   assert.equal(c.runGrammar('not a rule line', 'origin', {}, {}), null);
 });
 
+// ── prototype-key safety: names colliding with Object.prototype must not crash
+// or resolve to inherited members. Pure cores must return null/marker, never throw.
+test('parseMarkov — a state named "constructor" does not throw', () => {
+  const p = c.parseMarkov('constructor -> a');
+  assert.deepEqual(host(p.trans.constructor), [{ to: 'a', w: 1 }]);
+  // walking a chain that targets such a state must not throw either
+  const p2 = c.parseMarkov('a -> constructor\nconstructor -> a');
+  assert.ok(Array.isArray(c.walkMarkov(p2, 'a', 3)));
+});
+
+test('parseDice — a modifier named after an Object.prototype key is rejected, not NaN', () => {
+  assert.equal(c.parseDice('2d6+constructor', {}), null);
+  assert.equal(c.parseDice('2d6+__proto__', {}), null);
+  assert.equal(c.parseDice('2d6+hasOwnProperty', {}), null);
+});
+
+test('parseRules — rule named "constructor" is a real rule, not rejected', () => {
+  const p = c.parseRules('constructor: x | y');
+  assert.deepEqual(host(p.order), ['constructor']);
+  assert.ok(p.rules.constructor, 'constructor should be a real own rule');
+});
+
+test('runGrammar — {constructor} on an empty namespace yields the unknown marker', () => {
+  assert.equal(c.runGrammar('origin: {constructor}', 'origin', {}, {}), '{constructor?}');
+  assert.equal(c.runGrammar('origin: {__proto__}', 'origin', {}, {}), '{__proto__?}');
+});
+
 // ── tables (model ↔ markdown) ──────────────────────────────────────────────
 test('parseTable / serializeTable — alignment + round-trip', () => {
   const t = c.parseTable('| a | b |\n| --- | :-: |\n| 1 | 2 |');
@@ -184,6 +221,27 @@ test('parseTable / serializeTable — alignment + round-trip', () => {
   assert.deepEqual(host(t.rows), [['a', 'b'], ['1', '2']]);
   // serialize normalizes the center marker to :---:
   assert.equal(c.serializeTable(t), '| a | b |\n| --- | :---: |\n| 1 | 2 |');
+});
+
+test('parseTable — a backslash that is not \\\\ or \\| is literal content (not eaten)', () => {
+  // A Windows path / LaTeX snippet typed raw must survive; only \\ and \| are escapes.
+  const t = c.parseTable('| path | x |\n| --- | --- |\n| C:\\new\\dir | 1 |');
+  assert.deepEqual(host(t.rows[1]), ['C:\\new\\dir', '1']);
+  // round-trip through serialize→parse is still exact (serialize escapes \ → \\)
+  const round = c.parseTable(c.serializeTable(t));
+  assert.deepEqual(host(round.rows[1]), ['C:\\new\\dir', '1']);
+  // an escaped pipe inside a cell does not split the cell
+  assert.deepEqual(host(c.parseTable('| a \\| b | c |\n|---|---|').rows[0]), ['a | b', 'c']);
+});
+
+test('formatMathResult — a large exact integer prints in full (no 10-sig-fig truncation)', () => {
+  // Regression: the value is persisted into node.text by table recompute, so a
+  // truncated integer would be SAVED, not just shown.
+  assert.equal(c.formatMathResult(123456789012), '123456789012');
+  assert.equal(c.formatMathResult(10000000001), '10000000001');
+  assert.equal(c.formatMathResult(-99999999999), '-99999999999');
+  assert.equal(c.formatMathResult(7), '7');          // small integers unchanged
+  assert.equal(c.formatMathResult(0), '0');
 });
 
 // ── markdown helpers ───────────────────────────────────────────────────────
@@ -203,6 +261,39 @@ test('toOpml — escapes text and encodes newlines as &#10;', () => {
   const xml = c.toOpml(root);
   assert.ok(xml.includes('text="line1&#10;line2"'), 'newline should encode as &#10;');
   assert.ok(xml.includes('<opml version="2.0">'));
+});
+
+test('toOpml — encodes tabs/CRs as char refs (would otherwise collapse to spaces)', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('a\tb\rc'));
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('text="a&#9;b&#13;c"'), 'tab → &#9;, CR → &#13; survive attribute normalization');
+});
+
+test('toOpml — strips C0 control chars XML forbids (keeps the file loadable)', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('a\x0Bb\x00c'));   // vertical tab + NUL are illegal in XML 1.0
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('text="abc"'), 'illegal control chars are dropped, not emitted raw');
+  assert.ok(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(xml), 'no raw control char remains in the document');
+});
+
+test('toOpml — strips lone surrogates and U+FFFE/U+FFFF; valid emoji pairs survive', () => {
+  // U+FFFE/U+FFFF and unpaired surrogate halves are also illegal in XML 1.0, but a
+  // surrogate inside a valid pair (😀 is \uD83D\uDE00) is legal and must NOT be eaten.
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('a😀b\uD800c\uFFFEd\uDC00e'));
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('text="a😀bcde"'), `emoji kept, lone halves + noncharacters dropped: ${xml.match(/text="[^"]*"/)?.[0]}`);
+});
+
+test('toOpml — _id is attribute-escaped (a hostile imported id cannot break the XML)', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('x');
+  n.id = 'a"b<c';
+  root.children.push(n);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_id="a&quot;b&lt;c"'), '_id must go through ex() like every other attribute');
 });
 
 test('toOpml — sidecar arrays serialize into underscore attributes', () => {
@@ -274,6 +365,22 @@ test('collectVars — later declaration of a name shadows the earlier (last wins
 test('collectVars — explicit root bypasses the cache (distinct roots, distinct results)', () => {
   assert.equal(c.collectVars(mkVarRoot([['n', 'n', '10']])).n, 10);
   assert.equal(c.collectVars(mkVarRoot([['n', 'n', '20']])).n, 20);
+});
+
+test('collectVars — a variable named "constructor" resolves, not crashes', () => {
+  // VAR_NAME_RE accepts it, so it's reachable from the dialog. On plain-object maps
+  // pass 1 threw (allKeysForName.constructor is the inherited Object function —
+  // `||= []` skips it, `.push` explodes) — and collectVars runs on every render.
+  const vars = c.collectVars(mkVarRoot([['k1', 'constructor', '5']]));
+  assert.equal(vars.constructor, 5);
+  // another var can reference it (resolution goes through the same name maps)
+  const vars2 = c.collectVars(mkVarRoot([['k1', 'constructor', '5'], ['k2', 'd', 'constructor*2']]));
+  assert.equal(vars2.d, 10);
+});
+
+test('collectVars — a variable named "__proto__" is a real var (not a silent prototype write)', () => {
+  const vars = c.collectVars(mkVarRoot([['k1', '__proto__', '7']]));
+  assert.equal(vars['__proto__'], 7);
 });
 
 test('collectRules — a grammar pill registers its named rules document-wide', () => {
@@ -555,6 +662,16 @@ test('table: column formula $4=$2*$3 fills data rows, skips header', () => {
 
 test('table: field formula with vsum range over a column', () => {
   assert.equal(computeTable(tblModel(), '@4$3=vsum(@2$2..@4$2)')[3][2], '17');
+});
+
+test('table: a cell formula can reference a document variable', () => {
+  const m = { aligns: [null, null], rows: [['base', 'taxed'], ['100', ''], ['250', '']] };
+  // tax declared elsewhere in the document; passed in as the vars map
+  const out = computeTable(m, '$2=$1*tax', { tax: 1.2 });
+  assert.equal(out[1][1], '120');
+  assert.equal(out[2][1], '300');
+  // without the variable in scope the reference is unresolved → #ERR (not silently 0)
+  assert.equal(computeTable(m, '$2=$1*tax', {})[1][1], '#ERR');
 });
 
 test('table: range aggregates vmean/vmax/vmin/vcount/vmedian', () => {
@@ -1014,6 +1131,12 @@ test('todo: no keyword → empty keyword, whole text as body', () => {
 
 test('todo: tolerant of extra whitespace + lowercase priority', () => {
   assert.deepEqual(host(parseTodo('#TODO   [#b]   tidy')), { keyword: 'TODO', priority: 'B', body: 'tidy' });
+});
+
+test('todo: priority bracket may directly abut the keyword (no space)', () => {
+  // LEAD_WORD_RE lookahead must accept `[` so `#TODO[#A]` is recognized, not left as plain text.
+  assert.deepEqual(host(parseTodo('#TODO[#A] buy milk')), { keyword: 'TODO', priority: 'A', body: 'buy milk' });
+  assert.deepEqual(host(parseTodo('#DONE[#C]')), { keyword: 'DONE', priority: 'C', body: '' });
 });
 
 test('todo: formatTodo inverts parseTodo (normalized)', () => {
