@@ -6103,6 +6103,18 @@ function splitTopLevel(str, sep) {
   return out;
 }
 
+// First index of multi-char `op` at brace depth 0 in `str`; -1 if absent.
+function indexTopLevel(str, op) {
+  let depth = 0;
+  for (let i = 0; i <= str.length - op.length; i++) {
+    const ch = str[i];
+    if (ch === '{') { depth++; continue; }
+    if (ch === '}') { depth = Math.max(0, depth - 1); continue; }
+    if (depth === 0 && str.startsWith(op, i)) return i;
+  }
+  return -1;
+}
+
 // Index of the `}` matching the `{` at `open`; -1 if unmatched.
 function matchBrace(str, open) {
   let depth = 0;
@@ -6169,6 +6181,18 @@ function expandTemplate(tpl, ctx) {
 function resolveBrace(body, ctx) {
   body = body.trim();
   if (body === '') return '';
+  // Bound pick: {name := rhs} — expand rhs once, store under name, emit the value.
+  // A malformed bind (non-identifier name or empty rhs) falls through to normal handling.
+  const bindIdx = indexTopLevel(body, ':=');
+  if (bindIdx >= 0) {
+    const name = body.slice(0, bindIdx).trim();
+    const rhs  = body.slice(bindIdx + 2).trim();
+    if (/^[a-z_][\w]*$/i.test(name) && rhs !== '') {
+      const val = resolveBrace(rhs, ctx);
+      ctx.binds[name.toLowerCase()] = val;
+      return val;
+    }
+  }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt)).template, ctx);
   if (body[0] === '=') {
@@ -6181,6 +6205,8 @@ function resolveBrace(body, ctx) {
   }
   if (/^[a-z_][\w]*$/i.test(body)) {
     const low = body.toLowerCase();
+    // Binding scope is checked first (prepended to rule/table → var → {name?}).
+    if (ctx.binds[low] !== undefined) return ctx.binds[low];
     if (ctx.rules[low]) return expandRule(low, ctx);
     if (ctx.vars && low in ctx.vars) return formatMathResult(ctx.vars[low]);
     return `{${body}?}`;
@@ -6220,14 +6246,14 @@ function runGrammar(def, origin, docRules = null, vars = null) {
   const rules = { ...(docRules || collectRules()), ...parsed.rules };
   const start = (origin && origin.toLowerCase()) || parsed.order[0];
   if (!rules[start]) return null;
-  return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [] });
+  return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [], binds: {} });
 }
 
 // Expand a plain string's {…} against document-wide rules + variables. Used by
 // any artifact that wants composition (e.g. roll-table entries that roll dice or
 // call rules). A bare string with no braces comes back unchanged.
 function expandText(str) {
-  return expandTemplate(str || '', { rules: collectRules(), vars: collectVars(), depth: 0, stack: [] });
+  return expandTemplate(str || '', { rules: collectRules(), vars: collectVars(), depth: 0, stack: [], binds: {} });
 }
 
 // Document-wide rule map: walk the whole tree and merge into one namespace
@@ -6367,11 +6393,12 @@ function renderGrammarPill(key, g) {
 }
 
 const GRAMMAR_CHIPS = [
-  { label:'rule:',  insert: el => insertAtCaret(el, 'name: ') },
-  { label:'| alt',  insert: ' | ' },
-  { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
-  { label:'{dice}', insert: el => insertAndSelect(el, '{', '2d6', '}') },
-  { label:'{= }',   insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
+  { label:'rule:',    insert: el => insertAtCaret(el, 'name: ') },
+  { label:'| alt',    insert: ' | ' },
+  { label:'{ref}',    insert: el => insertAndSelect(el, '{', 'rule', '}') },
+  { label:'{dice}',   insert: el => insertAndSelect(el, '{', '2d6', '}') },
+  { label:'{= }',     insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
+  { label:'{n := }',  insert: el => insertAndSelect(el, '{', 'n := rule', '}') },
 ];
 
 function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing = null, onResult }) {
@@ -9181,6 +9208,13 @@ const SHORTCUTS = [
     { keys: ['~~s~~', '`c`'],     desc: 'Strikethrough / inline code' },
     { keys: ['==hi=='],           desc: 'Highlight' },
     { keys: ['[t](url)', ':emoji:'], desc: 'Link / emoji shortcode' },
+  ]},
+  { sec: 'Grammar { }', rows: [
+    { keys: ['{rule}'],       desc: 'Call a named rule, table, or chain' },
+    { keys: ['{a|b|c}'],     desc: 'Inline alternation (weighted: {a|b 2|c})' },
+    { keys: ['{2d6}'],       desc: 'Dice roll in any rule' },
+    { keys: ['{= expr}'],    desc: 'Math expression in any rule' },
+    { keys: ['{n := rule}'], desc: 'Bind pick to name; reuse same value later with {n}' },
   ]},
   { sec: 'Bases', rows: [
     { keys: [`${MOD}+⇧+M`], desc: 'Base menu — copy as markdown / with formulas (inside a base)' },
