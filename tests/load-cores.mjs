@@ -138,7 +138,7 @@ export function loadCores() {
     'parseDice', 'rollParsed', 'diceExprStr',
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'parseMarkov', 'walkMarkov', 'weightedPick',
-    'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace', 'expandText', 'indexTopLevel',
+    'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace',
     'collectVars', 'collectRules', 'collectLinks',
     'mkRoot', 'mkNode', 'toOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
