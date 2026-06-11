@@ -1240,10 +1240,13 @@ function collectVars(rootNode) {
   if (useCache) rootNode = root;
   if (useCache && _varsCacheVer === _varsVer) return _varsCached;
   // Pass 1: gather declarations in document order (last declaration of a name wins).
-  const defs = {};         // lowercase name -> expr string (last wins)
+  // All name-keyed maps are null-proto: VAR_NAME_RE accepts `constructor`/`__proto__`,
+  // and on a plain object those hit Object.prototype (`'constructor' in {}` is true,
+  // `allKeysForName.constructor` is a truthy function — `||= []` skips, `.push` throws).
+  const defs = Object.create(null);         // lowercase name -> expr string (last wins)
   const order = [];        // names in first-seen order, for deterministic resolution
-  const lastKeyForName = {}; // name -> key of last declaration seen
-  const allKeysForName = {}; // name -> [all keys seen]
+  const lastKeyForName = Object.create(null); // name -> key of last declaration seen
+  const allKeysForName = Object.create(null); // name -> [all keys seen]
   function gather(node) {
     const re = /\[\[var:([a-z0-9]+)\]\]/gi;
     let m;
@@ -1273,8 +1276,8 @@ function collectVars(rootNode) {
   // drive on-demand resolution of dependencies; `stack` tracks the active chain so
   // a re-entered name is recognised as a cycle (and every member of that cycle is
   // flagged) rather than recursing forever.
-  const resolved = {};   // name -> number (successful only; the returned map)
-  const memo = {};       // name -> number | undefined (incl. failures)
+  const resolved = Object.create(null);   // name -> number (successful only; the returned map)
+  const memo = Object.create(null);       // name -> number | undefined (incl. failures) — null-proto, or `'constructor' in memo` short-circuits to the Object function
   const stack = [];
   const cycles = new Set();
   const proxy = new Proxy({}, {
@@ -2353,12 +2356,16 @@ ${r.children.map(c=>nx(c,2)).join('\n')}
 }
 // Encode newlines/tabs/CRs as numeric character references — XML attribute-value
 // normalization collapses literal whitespace (incl. \t and \r) to spaces on re-parse,
-// but numeric character references survive intact. Also strip the C0 control chars
-// that XML 1.0 forbids outright (even as char refs): leaving one in produces a file
-// that DOMParser rejects on reload (the whole document becomes unloadable).
+// but numeric character references survive intact. Also strip the characters XML 1.0
+// forbids outright (even as char refs): C0 controls, U+FFFE/U+FFFF, and LONE surrogate
+// halves — leaving one in produces a file DOMParser rejects on reload (the whole
+// document becomes unloadable). A surrogate that is part of a valid pair (emoji,
+// astral-plane text) is legal XML and must survive, so the lone-half pattern guards
+// with lookaround instead of stripping the whole \uD800-\uDFFF block.
 function ex(s){
   return(s||'')
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g,'')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,'')
     .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/\n/g,'&#10;').replace(/\t/g,'&#9;').replace(/\r/g,'&#13;');
 }
@@ -6734,8 +6741,12 @@ function evalMath(input, vars = {}) {
 
   const DAY_MS = 86400000;
   const _today = (() => { const d = new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS); })();
-  const CONSTS = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity, today: _today };
-  const FN1 = {
+  // All lookup tables are null-proto: ident() probes them with `in`, and on a plain
+  // object `'constructor' in CONSTS` is true via Object.prototype — `constructor*2`
+  // would resolve to the Object function (NaN downstream) and `constructor(5)` would
+  // dispatch it as a unary FN1, instead of both failing cleanly to null.
+  const CONSTS = Object.assign(Object.create(null), { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity, today: _today });
+  const FN1 = Object.assign(Object.create(null), {
     sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
     round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
     asin: Math.asin, acos: Math.acos, atan: Math.atan,
@@ -6757,9 +6768,9 @@ function evalMath(input, vars = {}) {
     day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
     weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
     asdate:  x => x,
-  };
-  const FN2 = { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot };
-  const FN3 = { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) };
+  });
+  const FN2 = Object.assign(Object.create(null), { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot });
+  const FN3 = Object.assign(Object.create(null), { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) });
 
   function ident() {
     let name = '';
@@ -6768,7 +6779,15 @@ function evalMath(input, vars = {}) {
     // When followed by '(' treat as a function call — don't let a document variable
     // named 'year'/'month'/'day'/etc. shadow a built-in function.
     if (peek() !== '(') {
-      if (name in vars) return vars[name]; // document variable (no parens)
+      // Document variable (no parens). `in` is required here — collectVars hands in a
+      // Proxy whose `has` trap drives lazy resolution, and hasOwnProperty would bypass
+      // it. The typeof guard rejects what `in` can't: an inherited Object.prototype
+      // member when a caller passes a plain map, and a failed lazy resolution
+      // (undefined) — both fail to null instead of going NaN downstream.
+      if (name in vars) {
+        const v = vars[name];
+        if (typeof v === 'number') return v;
+      }
       throw 0;
     }
     if (name === 'if') {

@@ -140,6 +140,16 @@ test('evalMath — malformed input returns null (callers branch on null)', () =>
   assert.equal(c.evalMath('2+2x'), null); // unconsumed trailing token
 });
 
+test('evalMath — names colliding with Object.prototype fail to null, not the inherited member', () => {
+  // On plain-object tables `'constructor' in CONSTS` was true via the prototype, so
+  // `constructor*2` resolved to the Object function (NaN) and `constructor(5)`
+  // dispatched it as a unary FN1. Both must be unknown names → null.
+  assert.equal(c.evalMath('constructor*2', {}), null);
+  assert.equal(c.evalMath('constructor(5)', {}), null);
+  // …but a DECLARED variable with that name works (resolved by collectVars)
+  assert.equal(c.evalMath('constructor*2', { constructor: 5 }), 10);
+});
+
 // ── markov ─────────────────────────────────────────────────────────────────
 test('parseMarkov — declaration order and weighted targets', () => {
   const p = c.parseMarkov('A -> B 2, C 1');
@@ -268,6 +278,15 @@ test('toOpml — strips C0 control chars XML forbids (keeps the file loadable)',
   assert.ok(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(xml), 'no raw control char remains in the document');
 });
 
+test('toOpml — strips lone surrogates and U+FFFE/U+FFFF; valid emoji pairs survive', () => {
+  // U+FFFE/U+FFFF and unpaired surrogate halves are also illegal in XML 1.0, but a
+  // surrogate inside a valid pair (😀 is \uD83D\uDE00) is legal and must NOT be eaten.
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('a😀b\uD800c\uFFFEd\uDC00e'));
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('text="a😀bcde"'), `emoji kept, lone halves + noncharacters dropped: ${xml.match(/text="[^"]*"/)?.[0]}`);
+});
+
 test('toOpml — _id is attribute-escaped (a hostile imported id cannot break the XML)', () => {
   const root = c.mkRoot();
   const n = c.mkNode('x');
@@ -346,6 +365,22 @@ test('collectVars — later declaration of a name shadows the earlier (last wins
 test('collectVars — explicit root bypasses the cache (distinct roots, distinct results)', () => {
   assert.equal(c.collectVars(mkVarRoot([['n', 'n', '10']])).n, 10);
   assert.equal(c.collectVars(mkVarRoot([['n', 'n', '20']])).n, 20);
+});
+
+test('collectVars — a variable named "constructor" resolves, not crashes', () => {
+  // VAR_NAME_RE accepts it, so it's reachable from the dialog. On plain-object maps
+  // pass 1 threw (allKeysForName.constructor is the inherited Object function —
+  // `||= []` skips it, `.push` explodes) — and collectVars runs on every render.
+  const vars = c.collectVars(mkVarRoot([['k1', 'constructor', '5']]));
+  assert.equal(vars.constructor, 5);
+  // another var can reference it (resolution goes through the same name maps)
+  const vars2 = c.collectVars(mkVarRoot([['k1', 'constructor', '5'], ['k2', 'd', 'constructor*2']]));
+  assert.equal(vars2.d, 10);
+});
+
+test('collectVars — a variable named "__proto__" is a real var (not a silent prototype write)', () => {
+  const vars = c.collectVars(mkVarRoot([['k1', '__proto__', '7']]));
+  assert.equal(vars['__proto__'], 7);
 });
 
 test('collectRules — a grammar pill registers its named rules document-wide', () => {
