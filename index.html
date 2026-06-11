@@ -1039,7 +1039,7 @@ function knownStates(rootNode) {
 
 // Leading #STATUS word candidate (`#TODO`, `#NEXT`, etc.); only a member of
 // knownStates() is recognized. Bare `TODO` (no `#`) is plain text, never a badge.
-const LEAD_WORD_RE = /^#([A-Z][A-Z0-9_-]*)(?=\s|$)/;
+const LEAD_WORD_RE = /^#([A-Z][A-Z0-9_-]*)(?=[\s\[]|$)/;
 
 // Split a node's text into { keyword, priority, body }. No keyword → keyword '',
 // priority null, body = the whole text. Priority is only read after a keyword.
@@ -1604,7 +1604,7 @@ function parseDice(input, vars = {}) {
       terms.push({ sign, kind: 'mod', value: parseInt(m[9], 10) });
     } else {                                               // variable identifier
       const val = vars[m[10].toLowerCase()];
-      if (val === undefined) return null;
+      if (!Number.isFinite(val)) return null;   // unknown var, or non-numeric (incl. inherited Object keys like `constructor`)
       terms.push({ sign, kind: 'mod', value: Math.round(val) });
     }
   }
@@ -1772,7 +1772,7 @@ function renderDicePill(key, d) {
 function parseMarkov(def) {
   const lines = (def || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
-  const trans = {};          // state -> [{to, w}]
+  const trans = Object.create(null);  // state -> [{to, w}]  (null-proto: a state named "constructor"/"__proto__" must not hit Object.prototype)
   const order = [];          // first-seen declaration order
   const seen = new Set();
   const note = s => { if (!seen.has(s)) { seen.add(s); order.push(s); } };
@@ -4161,7 +4161,7 @@ function braceWouldPromote(body) {
   if (splitTopLevel(body, '|').length > 1) return true;                 // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
-    return !!collectRules()[low] || (low in collectVars());
+    return !!collectRules()[low] || Object.prototype.hasOwnProperty.call(collectVars(), low);
   }
   return false;
 }
@@ -6122,7 +6122,7 @@ function parseAlt(a) {
 // Parse a multi-line definition into {rules:{name:[{template,weight}]}, order:[]}.
 // "name: a | b 2 | c" per line; "//" lines are comments. null if malformed.
 function parseRules(def) {
-  const rules = {}; const order = [];
+  const rules = Object.create(null); const order = [];  // null-proto: rules named `constructor`/`__proto__` must be real keys, not prototype hits
   for (const raw of (def || '').split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('//')) continue;
@@ -6182,7 +6182,7 @@ function resolveBrace(body, ctx) {
   if (/^[a-z_][\w]*$/i.test(body)) {
     const low = body.toLowerCase();
     if (ctx.rules[low]) return expandRule(low, ctx);
-    if (ctx.vars && low in ctx.vars) return formatMathResult(ctx.vars[low]);
+    if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, low)) return formatMathResult(ctx.vars[low]);
     return `{${body}?}`;
   }
   return body;
@@ -6217,7 +6217,7 @@ function expandRule(name, ctx) {
 function runGrammar(def, origin, docRules = null, vars = null) {
   const parsed = parseRules(def);
   if (!parsed) return null;
-  const rules = { ...(docRules || collectRules()), ...parsed.rules };
+  const rules = Object.assign(Object.create(null), docRules || collectRules(), parsed.rules);  // null-proto merge: don't reintroduce Object.prototype keys
   const start = (origin && origin.toLowerCase()) || parsed.order[0];
   if (!rules[start]) return null;
   return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [] });
@@ -6241,7 +6241,7 @@ function collectRules(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
   if (useCache && _rulesCacheVer === _varsVer) return _rulesCached;
-  const merged = {};
+  const merged = Object.create(null);  // null-proto: see parseRules
   function gather(node) {
     if (node.grammar?.length) {
       for (const g of node.grammar) {

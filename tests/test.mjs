@@ -177,6 +177,33 @@ test('runGrammar — invalid definition returns null', () => {
   assert.equal(c.runGrammar('not a rule line', 'origin', {}, {}), null);
 });
 
+// ── prototype-key safety: names colliding with Object.prototype must not crash
+// or resolve to inherited members. Pure cores must return null/marker, never throw.
+test('parseMarkov — a state named "constructor" does not throw', () => {
+  const p = c.parseMarkov('constructor -> a');
+  assert.deepEqual(host(p.trans.constructor), [{ to: 'a', w: 1 }]);
+  // walking a chain that targets such a state must not throw either
+  const p2 = c.parseMarkov('a -> constructor\nconstructor -> a');
+  assert.ok(Array.isArray(c.walkMarkov(p2, 'a', 3)));
+});
+
+test('parseDice — a modifier named after an Object.prototype key is rejected, not NaN', () => {
+  assert.equal(c.parseDice('2d6+constructor', {}), null);
+  assert.equal(c.parseDice('2d6+__proto__', {}), null);
+  assert.equal(c.parseDice('2d6+hasOwnProperty', {}), null);
+});
+
+test('parseRules — rule named "constructor" is a real rule, not rejected', () => {
+  const p = c.parseRules('constructor: x | y');
+  assert.deepEqual(host(p.order), ['constructor']);
+  assert.ok(p.rules.constructor, 'constructor should be a real own rule');
+});
+
+test('runGrammar — {constructor} on an empty namespace yields the unknown marker', () => {
+  assert.equal(c.runGrammar('origin: {constructor}', 'origin', {}, {}), '{constructor?}');
+  assert.equal(c.runGrammar('origin: {__proto__}', 'origin', {}, {}), '{__proto__?}');
+});
+
 // ── tables (model ↔ markdown) ──────────────────────────────────────────────
 test('parseTable / serializeTable — alignment + round-trip', () => {
   const t = c.parseTable('| a | b |\n| --- | :-: |\n| 1 | 2 |');
@@ -1014,6 +1041,12 @@ test('todo: no keyword → empty keyword, whole text as body', () => {
 
 test('todo: tolerant of extra whitespace + lowercase priority', () => {
   assert.deepEqual(host(parseTodo('#TODO   [#b]   tidy')), { keyword: 'TODO', priority: 'B', body: 'tidy' });
+});
+
+test('todo: priority bracket may directly abut the keyword (no space)', () => {
+  // LEAD_WORD_RE lookahead must accept `[` so `#TODO[#A]` is recognized, not left as plain text.
+  assert.deepEqual(host(parseTodo('#TODO[#A] buy milk')), { keyword: 'TODO', priority: 'A', body: 'buy milk' });
+  assert.deepEqual(host(parseTodo('#DONE[#C]')), { keyword: 'DONE', priority: 'C', body: '' });
 });
 
 test('todo: formatTodo inverts parseTodo (normalized)', () => {
