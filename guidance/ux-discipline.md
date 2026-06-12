@@ -187,7 +187,8 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Ctrl/⌘ + . / ,` | Collapse / expand | Replaces the `Ctrl+↑/↓` binding (which collides with caret-to-edges) |
 | `Ctrl/⌘ + Enter` | Zoom into point | — |
 | `Shift + F10` / `ContextMenu` (Menu key) | Context menu of the **focused element** — a focused **point/bullet** → that point's bullet popup (`#bpop`); a focused **base cell** → the **Column menu** for that cell's column | The OS-standard "context menu of the focused element". Opens the menu and moves focus into it: `↑↓`/`Home`/`End` navigate, `Enter`/`Space` activate, `Esc` closes. The bullet popup carries every per-point action (type switch, zoom, copy link, move, delete, convert-to-base — and, on a base, the whole-base ops); the Column menu carries every per-column op. So it is the single keyboard door to both, with no dedicated chord (the colliding `⌘+M`/`⌘+Shift+M` were dropped — see below) |
-| `Esc` | Back out one layer | menu → cell sel → point sel → zoom → blur (P1-3) |
+| `Esc` | Back out one layer | menu → cell sel → point sel → zoom → blur (P1-3). **Backing out of chrome restores the interrupted edit**: leaving the search field, the file menu, or the help panel via `Esc` puts the caret back exactly where it stood — same point, same offset — unless another point was focused meanwhile (`armChromeReturn`/`restoreChromeReturn`) |
+| Search `↓` | Step from the search field into the outline | First **matching** point while a filter is active, else the first displayed point. The filter stays applied; `Esc` from the landed point follows the normal back-out order |
 | `Ctrl/⌘ + S / O / F` | Save / open / find | — |
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
