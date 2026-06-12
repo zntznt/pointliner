@@ -58,6 +58,11 @@ Every artifact follows the same path. To add one (say `@weather`):
     `exitEdit`; `editWeather(node, key)` opens the dialog prefilled.
 11. **CSS** — a `.weather-pill` block near the other pill styles; reuse the
     `--acc` / `--ring` / `--bdr` tokens so light/dark themes work automatically.
+    Follow the pill grammar in `guidance/design-language.md` §4: pick a distinct
+    `--pill` family hue (added to the family-hue list there in the same PR), keep the
+    shared metrics/padding, **one box per pill** (no bordered boxes nested inside),
+    hover = accent border + tint, the `--ring` glow is focus-only, and any text on an
+    accent background uses `--acc-fg`, never `#fff`.
 12. **Font Awesome** — if you need a new icon, see the workflow below.
 13. **UX conformance gate — the artifact is not done until it passes.** Run
     `guidance/ux-definition-of-done.md`. The recipe builds the pill; the gate ships it.

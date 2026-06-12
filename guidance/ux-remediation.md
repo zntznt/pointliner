@@ -150,11 +150,13 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 ### UXP-16 ☐ Dialog focus-trap + restore — *a11y Phase 3*
 - **Violates:** P3-2/P3-3. **Target:** `role="dialog"` + `aria-modal`, focus trap, focus restore on close for the insert/edit dialogs.
 
-### UXP-17 ☐ Focus-visible + reduced-motion — *a11y Phase 4*
+### UXP-17 ◐ Focus-visible + reduced-motion — *a11y Phase 4*
 - **Violates:** P3-3. **Target:** the two additive CSS rules (`:focus-visible`, `prefers-reduced-motion`).
+- **Partial (design pass 2):** `:focus-visible` rules added for the search field, zoom title, and all seven artifact pills (solid accent outline; the soft `--ring` glow is now decoration, not the focus indicator). Pills still lack `tabindex`, so the pill rules arm only once UXP-15's keyboard reach lands. Full sweep remains.
 
-### UXP-18 ☐ Storage alert + muted contrast — *a11y Phase 5*
+### UXP-18 ◐ Storage alert + muted contrast — *a11y Phase 5*
 - **Violates:** P3-4/P3-5. **Target:** `role="alert"` on `#storage-warn`; raise `--muted` to pass WCAG AA in both themes (owner sign-off on the tone shift).
+- **Partial (design pass 2):** `--muted` now passes AA in both themes (light `#6b665c` ≈4.9:1, dark `#a39a8d` ≈6.4:1), in CSS **and** the `applyTheme` forced-theme strings; status badges, priority chips, and hashtags also moved to AA-passing theme-paired tokens (`--ok/--warn/--bad/--info`), and `--acc-fg` fixed the white-on-pastel-accent dark-mode failure. `role="alert"` on `#storage-warn` remains open.
 
 ### UXP-19 ◐ Outline tree + table grid semantics — *deferred, dedicated pass*
 - **Problem:** the virtualized outline isn't a `role="tree"` and tables aren't a `role="grid"`; high-risk to keep in sync across `render()`.

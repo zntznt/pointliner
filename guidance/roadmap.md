@@ -16,6 +16,10 @@ discoverability / UX strategy in `guidance/ux.md`.
    (Chromium). The multi-doc workspace is **gated behind establishing this durable backing** —
    durability over reach. Non-Chromium browsers keep the full single-file app and are *invited*
    to switch to unlock the workspace. (See "Storage reality + the durability decision" below.)
+5. **Visual identity: editorial, locked.** Embedded Fraunces display + Geist body over warm
+   paper/ink palettes, contrast floors as merge criteria, tokened components — the full
+   standard (decisions *and* the binding anti-decisions) is `guidance/design-language.md`.
+   Visual changes conform to it the way UI changes conform to `ux-discipline.md`.
 
 ## Storage reality + the durability decision (verified June 2026)
 The File System Access API has two halves:
