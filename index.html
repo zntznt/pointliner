@@ -477,8 +477,6 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-key.hi{background:var(--ring);border-color:var(--acc)}
 .fn-content{outline:none;font:inherit;font-size:16px;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
 .fn-content:empty::before{content:'Add a note…';color:var(--muted);opacity:.65;pointer-events:none}
-.nc-italic .node-content{font-style:italic}
-.nc-underline .node-content{text-decoration:underline}
 
 /* node types */
 .nt-h1{margin-top:28px}.nt-h2{margin-top:18px}.nt-h3{margin-top:10px}
@@ -991,11 +989,11 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [], seq: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [], seq: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -1430,9 +1428,36 @@ function collectVars(rootNode) {
 // (re-introducing the bare-word false-positive this syntax removes). Pre-release,
 // old bare-keyword to-dos simply become plain text; retype as `#KEYWORD` if meant
 // as statuses.
+// UXP-27: fold a legacy whole-node italic/underline flag into the text as inline
+// markdown (*…* / ++…++), per line, after any block prefix so headings/quotes/list
+// items keep their structure. Structural lines (blank, fences and fenced content,
+// thematic breaks, table rows, #+TBLFM recipes) are left untouched — emphasis has
+// no meaning there. Pure; returns the migrated text.
+function migrateEmphasisText(text, italic, underline) {
+  if (!italic && !underline) return text;
+  const open  = (italic ? '*' : '') + (underline ? '++' : '');
+  const close = (underline ? '++' : '') + (italic ? '*' : '');
+  let inFence = false;
+  return (text || '').split('\n').map(line => {
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
+    if (inFence || !line.trim()) return line;
+    if (HR_RE.test(line)) return line;
+    if (/^\s*\|/.test(line)) return line;                 // table row
+    if (/^#\+TBLFM:/i.test(line.trim())) return line;     // recipe line
+    const m = line.match(/^(\s*(?:#{1,6} |> |(?:[-*+]|\d+[.)]) (?:\[[ xX]\] )?)?)(.*)$/);
+    const pre = m[1] || '', body = m[2] || '';
+    if (!body.trim()) return line;
+    return pre + open + body + close;
+  }).join('\n');
+}
+
 function migrateNodePrefixes(n) {
   const prefix = BLOCK_PREFIX_MAP[n.type];
   if (prefix && !n.text.startsWith(prefix)) n.text = prefix + n.text;
+  // legacy whole-node italic/underline flags (UXP-27) — fold into the text as
+  // inline markdown, then drop the flags; OPML no longer writes them.
+  if (n.italic || n.underline) n.text = migrateEmphasisText(n.text, n.italic, n.underline);
+  delete n.italic; delete n.underline;
   // legacy `_type="todo"` carried to-do-ness in the type alone — write the marker
   // into the text so the node is self-consistent, then re-derive the checked cache
   if (n.type === 'todo') {
@@ -2492,8 +2517,6 @@ function toOpml(r) {
     const attrs = [
       `text="${ex(n.text)}"`,
       n.type && n.type !== 'ul' ? `_type="${n.type}"` : '',
-      n.italic    ? `_italic="true"` : '',
-      n.underline ? `_underline="true"` : '',
       n.checked   ? `_checked="true"` : '',
       n.collapsed ? `_collapsed="true"` : '',
       n.footnotes?.length ? `_footnotes="${ex(JSON.stringify(n.footnotes))}"` : '',
@@ -2544,6 +2567,8 @@ function fromOpml(xml) {
       text: el.getAttribute('text') || '',
       note: el.getAttribute('_note') || '',
       type: raw === 'text' ? 'ul' : raw,
+      // legacy whole-node emphasis flags — read for the UXP-27 load migration
+      // (migrateNodePrefixes folds them into the text), never written back
       italic: el.getAttribute('_italic') === 'true',
       underline: el.getAttribute('_underline') === 'true',
       checked: el.getAttribute('_checked') === 'true',
@@ -2576,7 +2601,7 @@ function fromOpml(xml) {
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
-  return { id: uid(), text: title, note: '', type: 'ul', italic: false, underline: false, checked: false, collapsed: false,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -4057,8 +4082,6 @@ function renderRow(r) {
     visKids.length ? 'has-children' : '',
     node.collapsed  ? 'collapsed' : '',
     node.checked    ? 'checked' : '',
-    node.italic     ? 'nc-italic' : '',
-    node.underline  ? 'nc-underline' : '',
     opts.searchCtx  ? 'search-ctx' : '',
     selectedIds.has(node.id) ? 'node-selected' : '',
   ].filter(Boolean).join(' ');

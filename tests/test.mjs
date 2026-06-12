@@ -2044,6 +2044,54 @@ test('migrateNodePrefixes: legacy type-only divider gets its break written in, l
   assert.equal(modern.text, '---\nkeep');         // already self-consistent — untouched
 });
 
+// ── migrateEmphasisText (UXP-27: legacy whole-node italic/underline → markdown) ─
+
+test('migrateEmphasisText: wraps plain text per flag combination', () => {
+  assert.equal(c.migrateEmphasisText('hello', true, false), '*hello*');
+  assert.equal(c.migrateEmphasisText('hello', false, true), '++hello++');
+  assert.equal(c.migrateEmphasisText('hello', true, true), '*++hello++*');
+  assert.equal(c.migrateEmphasisText('hello', false, false), 'hello');
+});
+
+test('migrateEmphasisText: per line, after block prefixes; structural lines untouched', () => {
+  const src = '# Title\n> a quote\n- item\n- [ ] task\n3. third\n\n---\n| a | b |\nplain';
+  assert.equal(c.migrateEmphasisText(src, true, false),
+    '# *Title*\n> *a quote*\n- *item*\n- [ ] *task*\n3. *third*\n\n---\n| a | b |\n*plain*');
+});
+
+test('migrateEmphasisText: fenced code (content and fences) left untouched', () => {
+  const src = 'before\n```\ncode line\n```\nafter';
+  assert.equal(c.migrateEmphasisText(src, true, false),
+    '*before*\n```\ncode line\n```\n*after*');
+});
+
+test('migrateNodePrefixes: folds legacy flags into the text and deletes them', () => {
+  const root = c.mkRoot();
+  const it = c.mkNode('slanted');  it.italic = true;
+  const ul = c.mkNode('scored');   ul.underline = true;
+  const both = c.mkNode('fancy');  both.italic = true; both.underline = true;
+  const plain = c.mkNode('plain');
+  root.children.push(it, ul, both, plain);
+  c.migrateNodePrefixes(root);
+  assert.equal(it.text, '*slanted*');
+  assert.equal(ul.text, '++scored++');
+  assert.equal(both.text, '*++fancy++*');
+  assert.equal(plain.text, 'plain');
+  for (const n of [it, ul, both, plain]) {
+    assert.equal('italic' in n, false);
+    assert.equal('underline' in n, false);
+  }
+});
+
+test('toOpml: never writes _italic/_underline attributes', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('hello'); n.italic = true; n.underline = true; // even if set
+  root.children.push(n);
+  const xml = c.toOpml(root);
+  assert.ok(!xml.includes('_italic'));
+  assert.ok(!xml.includes('_underline'));
+});
+
 test('textForDisplay: divider shows the label only (break line stripped)', () => {
   const labeled = c.mkNode('---\nnorth wing'); labeled.type = 'divider';
   assert.equal(c.textForDisplay(labeled), 'north wing');

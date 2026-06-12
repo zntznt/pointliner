@@ -152,7 +152,7 @@ export function loadCores() {
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
-    'migrateTodoText','migrateNodePrefixes','textForDisplay',
+    'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates',
     'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderRolltablePill','renderGrammarPill','renderSeqPill',
