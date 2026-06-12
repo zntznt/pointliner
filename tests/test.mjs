@@ -1905,6 +1905,30 @@ test('classifyBraceBody: a dice-looking body that fails parseDice still falls th
   assert.equal(c.classifyBraceBody('2d6|1d4', {}, {}), 'artifact');
 });
 
+// ── braceTypeLabel (UXP-7: shorthand live preview) ────────────────────────────
+test('braceTypeLabel: identifies the pill type for every valid artifact body', () => {
+  const [dt] = c.braceTypeLabel('2d6', {}, {});          assert.equal(dt, 'dice');
+  const [mt] = c.braceTypeLabel('= 2*3', {}, {});        assert.equal(mt, 'math');
+  const [at] = c.braceTypeLabel('a|b', {}, {});          assert.equal(at, 'grammar');
+  const [rt, rd] = c.braceTypeLabel('color', { color: ['red'] }, {});
+  assert.equal(rt, 'grammar'); assert.equal(rd, 'color');
+  const [vt, vd] = c.braceTypeLabel('str', {}, { str: 5 });
+  assert.equal(vt, 'var'); assert.equal(vd, 'str = 5');
+});
+
+test('braceTypeLabel: detail is null for dice/math/bare-alternation', () => {
+  assert.equal(c.braceTypeLabel('4d6kh3', {}, {})[1], null);  // dice, no detail
+  assert.equal(c.braceTypeLabel('= pi*2', {}, {})[1], null);  // math, no detail
+  assert.equal(c.braceTypeLabel('a|b|c', {}, {})[1], null);   // alternation, no detail
+});
+
+test('braceTypeLabel: var detail shows value (string vars stay string)', () => {
+  const [, d1] = c.braceTypeLabel('hero', {}, { hero: 'Arden' });
+  assert.equal(d1, 'hero = Arden');
+  const [, d2] = c.braceTypeLabel('x', {}, { x: 3.14159 });
+  assert.ok(d2.startsWith('x = 3.14'), 'numeric detail shows toPrecision(4) value');
+});
+
 // ── collectTags / filterTagCandidates (UXP-10: hashtag autocomplete) ─────────
 // (vm-realm arrays/objects fail deepEqual on prototype identity — JSON-normalize)
 const plainTags = x => JSON.parse(JSON.stringify(x));

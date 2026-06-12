@@ -153,7 +153,7 @@ export function loadCores() {
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
     'migrateTodoText','migrateNodePrefixes','textForDisplay',
     'collectCallables','filterBraceCandidates',
-    'classifyBraceBody','collectTags','filterTagCandidates',
+    'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderRolltablePill','renderGrammarPill','renderSeqPill',
     'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',

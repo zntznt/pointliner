@@ -407,6 +407,10 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* grammar source, shown while editing so {…} artifacts read as editable text */
 .gr-src{font-family:var(--mono);font-size:.92em;background:color-mix(in srgb,var(--acc) 12%,var(--cbg));color:var(--acc);border-radius:5px;padding:.5px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .gr-src.gr-bad{background:color-mix(in srgb,var(--warn) 13%,var(--cbg));color:var(--warn);text-decoration:underline dotted;text-underline-offset:2px}
+/* shorthand live-preview tooltip (UXP-7) */
+#brace-preview{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);box-shadow:var(--sh-1);padding:3px 8px;font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none}
+#brace-preview.on{display:block}
+.bp-label{font-weight:500;color:var(--acc)}
 /* math expression pill */
 .math-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .math-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -892,6 +896,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="lp-menu" role="listbox" aria-label="Points to link"></div>
 <div id="brace-menu" role="listbox" aria-label="Callable names"></div>
 <div id="tag-menu" role="listbox" aria-label="Tags"></div>
+<div id="brace-preview" aria-hidden="true"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card"></div></div>
 <!-- drag indicator -->
@@ -4365,7 +4370,7 @@ function attachContentEvents(content, node) {
     // Re-bind any .gr-src span the browser merged typed text into (UXP-28) —
     // skipped mid-IME-composition (re-render would drop the composed text;
     // the compositionend listener below catches up on commit).
-    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); return; }
+    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideBracePreview(); return; }
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id);
     if (LINK_PICKER_ENABLED) checkLinkTrigger(content, node.id);
@@ -4379,7 +4384,7 @@ function attachContentEvents(content, node) {
   content.addEventListener('compositionend', () => {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
-    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); }
+    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideBracePreview(); }
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
   content.addEventListener('paste', e => handlePaste(e, node, content));
@@ -4425,6 +4430,30 @@ function classifyBraceBody(body, rules, vars) {
 // but fail promotion, e.g. {2d6kh} or {= 2*}: those classify 'invalid', not true.)
 function braceWouldPromote(body) {
   return classifyBraceBody(body, collectRules(), collectVars()) === 'artifact';
+}
+
+// What pill type will a valid {body} become? Returns [pillType, detail|null].
+// Mirrors classifyBraceBody's branch order (same signature) so callers can pair
+// classify + label in one step without running the classification twice.
+// pillType: 'dice' | 'math' | 'grammar' | 'var'; detail: extra context string or null.
+function braceTypeLabel(body, rules, vars) {
+  body = (body || '').trim();
+  if (!body) return ['pill', null];
+  if (body[0] === '=') return ['math', null];
+  rules = rules || {}; vars = vars || {};
+  const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
+  if (diceish && parseDice(body, vars)) return ['dice', null];
+  if (splitTopLevel(body, '|').length > 1) return ['grammar', null];
+  if (/^[a-z_][\w]*$/i.test(body)) {
+    const low = body.toLowerCase();
+    if (rules[low]) return ['grammar', body];
+    if (Object.prototype.hasOwnProperty.call(vars, low)) {
+      const val = vars[low];
+      const display = typeof val === 'string' ? val : +Number(val).toPrecision(4);
+      return ['var', body + ' = ' + display];
+    }
+  }
+  return ['pill', null];
 }
 
 // Escape a plain-text segment for edit mode, wrapping each top-level {…} that
@@ -4610,7 +4639,7 @@ function exitEdit(content, node) {
   if (activeContentId === node.id) activeContentId = null;
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
-  hideSlashMenu(); hideBraceMenu(); hideTagMenu(); updateSelToolbar(); scheduleReconcile();
+  hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
 }
 
 function caretFromPoint(x, y) {
@@ -7083,20 +7112,24 @@ function normalizeGrSrcSpans(content, node) {
 // (deferred a frame, since the browser resets the selection after an input handler).
 function checkInlineHighlight(content, node) {
   const off = getCaretOffset(content);
-  if (off < 2 || node.text[off - 1] !== '}') return false;
+  if (off < 2 || node.text[off - 1] !== '}') { hideBracePreview(); return false; }
   let depth = 0, start = -1;
   for (let k = off - 1; k >= 0; k--) {
     if (node.text[k] === '}') depth++;
     else if (node.text[k] === '{') { depth--; if (depth === 0) { start = k; break; } }
   }
-  if (start < 0) return false;
+  if (start < 0) { hideBracePreview(); return false; }
+  const body = node.text.slice(start + 1, off - 1);
   // Re-render for 'invalid' too — the gr-bad typo marker must appear live as the
   // closing } lands, not on the next incidental re-render (UXP-6).
-  const braceCls = classifyBraceBody(node.text.slice(start + 1, off - 1), collectRules(), collectVars());
-  if (braceCls === 'literal') return false;
+  const braceCls = classifyBraceBody(body, collectRules(), collectVars());
+  if (braceCls === 'literal') { hideBracePreview(); return false; }
   // the marker's AT twin (UXP-15): the visual signal is also announced
-  if (braceCls === 'invalid') announce('Not recognized — stays plain text');
+  if (braceCls === 'invalid') { hideBracePreview(); announce('Not recognized — stays plain text'); }
   content.innerHTML = editModeHTML(node);
+  // Preview: show what the valid body promotes to (UXP-7). Sync after innerHTML set
+  // so positionCaretMenu's getBoundingClientRect sees the updated DOM layout.
+  if (braceCls === 'artifact') showBracePreview(body, content, off - 1);
   requestAnimationFrame(() => {
     content.focus();
     try { if (!caretAfterGrSrc(content, off)) setCaretByOffset(content, off); } catch(_) {}
@@ -7951,6 +7984,19 @@ let braceState = null;
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
 function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceMenu.classList.remove('on'); braceState = null; }
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
+
+// ─── {…} shorthand live-preview tooltip (UXP-7) ──────────────────────────────
+// A non-interactive tooltip that appears below the closing } of a valid {body}
+// while editing, showing what pill type the body will promote to on exitEdit.
+const bracePreview = document.getElementById('brace-preview');
+function hideBracePreview() { bracePreview.classList.remove('on'); }
+function showBracePreview(body, content, offset) {
+  const [type, detail] = braceTypeLabel(body, collectRules(), collectVars());
+  bracePreview.innerHTML = `<span class="bp-label">→ ${escHtml(type)}</span>`
+    + (detail ? `<span class="bp-detail"> · ${escHtml(detail)}</span>` : '');
+  bracePreview.classList.add('on');
+  positionCaretMenu(bracePreview, content, offset);
+}
 
 function checkBraceTrigger(content, nodeId) {
   const pos = getCaretOffset(content);

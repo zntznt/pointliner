@@ -44,10 +44,10 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 - **Violated:** P4-1.
 - **Resolved (pure core `classifyBraceBody(body, rules, vars)`, pinned):** classifies a brace body the way `promoteBraceBody` will actually treat it on exit — `'artifact'` (promotes), `'invalid'` (reads as an attempted formula/roll/reference but will NOT promote), `'literal'` (prose braces, the deliberate escape hatch) — mirroring promoteBraceBody's branch order *including* its fall-throughs (`{2d6|1d4}` fails the dice parse but promotes as alternation). `braceWouldPromote` is now a thin wrapper on it, so edit-mode styling can never again disagree with promotion. In edit mode an `'invalid'` body renders as `.gr-src.gr-bad` — warn-toned dotted underline + "Not recognized — stays plain text" title — applied **live** as the closing `}` lands (`checkInlineHighlight` re-renders for invalid too, not just promotable). Intentional literal braces (`{hello world}`) get no marker. UXP-7 (preview of what a *valid* body becomes) remains open and pairs with this.
 
-### UXP-7 ☐ Shorthand has no preview before it commits
+### UXP-7 ✓ Shorthand has no preview before it commits — **RESOLVED**
 - **Problem:** `{…}` promotes to a pill on exit with no preview of what it will become.
-- **Violates:** P2-5.
-- **Target:** live preview of the resulting pill while editing.
+- **Violated:** P2-5.
+- **Resolved (pure core `braceTypeLabel(body, rules, vars)`, pinned):** a non-interactive tooltip (`#brace-preview`) appears below the closing `}` as soon as a valid `{body}` is complete at the caret, showing what pill type the body will promote to on exit: `→ dice`, `→ math`, `→ grammar · ruleName`, `→ var · name = value`. Positioned by the shared `positionCaretMenu`; shown synchronously in `checkInlineHighlight` after `editModeHTML` re-renders, so there is no one-frame race between show and the next input event. Hides automatically when any input changes the body or moves the caret away from the `}` — no user gesture required; also cleared on blur and on `normalizeGrSrcSpans` normalize. The `gr-bad` marker (invalid body, UXP-6) and the preview (valid body) are mutually exclusive — they coexist cleanly because `checkInlineHighlight` handles both paths. `pointer-events: none` keeps the overlay from intercepting mouse events. Pairs with UXP-6's typo signal to complete the `{…}` feedback loop: bad body → warn marker + AT announcement; good body → preview tooltip.
 
 ### UXP-8 ✓ Table `#ERR` gives no reason — **RESOLVED**
 - **Problem:** formula errors rendered a bare `#ERR` with no cause (cycle vs bad ref vs non-numeric).
@@ -312,7 +312,7 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
    outlives a blur are always folded — see UXP-30/31) which future edit-path work must preserve.
    UXP-35 (caret-restore typing race, pre-existing) is the one correctness item still open.
 2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
-3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 8, 10, 12 closed; UXP-7 and UXP-11 remain.)
+3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 7, 8, 10, 12 closed; UXP-11 remains.)
 4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
 
 When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. The register is empty when the app speaks one language.
