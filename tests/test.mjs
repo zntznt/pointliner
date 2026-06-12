@@ -23,6 +23,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadCores } from './load-cores.mjs';
 
 const c = loadCores();
@@ -2066,4 +2069,39 @@ test('linkCandidates: titles come through textForDisplay (prefixes stripped)', (
   root.children.push(h);
   const out = JSON.parse(JSON.stringify(c.linkCandidates('heading', 'none', root)));
   assert.deepEqual(out.map(t => t.title), ['Heading title']);
+});
+
+// ── SHORTCUTS registry drift guard (UXP-36) ───────────────────────────────────
+// These tests read the raw HTML source and assert that critical keyboard handler
+// patterns are still present. They catch a whole class of silent regression:
+// renaming a handler, restructuring onKeyDown, or removing a chord without
+// updating docs. Not a spec for behavior — a wire-trip for drift.
+
+const _htmlPath = process.env.POINTLINER_HTML
+  || resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
+const _src = readFileSync(_htmlPath, 'utf8');
+
+test('UXP-36: SHORTCUTS registry declaration is present', () => {
+  assert.ok(_src.includes('const SHORTCUTS = ['),
+    'const SHORTCUTS = [ not found in index.html');
+});
+
+test('UXP-36: Ctrl+S save shortcut handler is present', () => {
+  assert.ok(_src.includes("e.key==='s' && ctrl") || _src.includes('e.key === \'s\' && ctrl'),
+    "Ctrl+S handler pattern not found in index.html");
+});
+
+test('UXP-36: collapseToLevel shortcut handler is present', () => {
+  assert.ok(_src.includes('collapseToLevel'),
+    'collapseToLevel not found in index.html');
+});
+
+test('UXP-36: toggleVarPanel shortcut handler is present', () => {
+  assert.ok(_src.includes('toggleVarPanel'),
+    'toggleVarPanel not found in index.html');
+});
+
+test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
+  assert.ok(_src.includes('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit'),
+    'pill-pencil keyboard activation selector not found in index.html');
 });

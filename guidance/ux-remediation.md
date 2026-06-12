@@ -177,28 +177,33 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   also gained an `aria-label` in the same pass (incidental progress toward UXP-15; that item is
   not yet closed). Was pre-existing, not introduced by #62.
 
-### UXP-35 ☐ 🟡 Fast typing across a completing `}` garbles the buffer (caret-restore race)
+### UXP-35 ✓ Fast typing across a completing `}` garbles the buffer (caret-restore race) — **RESOLVED**
 - **Problem:** `checkInlineHighlight` re-renders the edit buffer when a typed `}` completes a
   classifiable `{…}` and restores the caret **a frame later** (`requestAnimationFrame`, because
   the browser resets the selection after an input handler). Keystrokes landing in that gap
-  splice at a stale caret position, scrambling the typed text (e.g. zero-delay automation, very
-  fast typists, key autorepeat). Reproduced and confirmed **pre-existing** on the pre-UXP-6 base
-  — the invalid-body re-render added by UXP-6 widens the trigger set but did not create the race.
-- **Violates:** P4 (silent text corruption while typing).
-- **Target:** make the re-render caret-safe — e.g. capture the offset *at re-render time* and
-  re-apply synchronously where possible, queue intervening input, or only re-style the affected
-  span in place instead of re-rendering the whole buffer (the UXP-28 normalization machinery may
-  be reusable). Must keep the IME guard and the no-anchor rule (UXP-28).
+  splice at a stale caret position, scrambling the typed text. Pre-existing on the pre-UXP-6
+  base — the invalid-body re-render added by UXP-6 widened the trigger set but did not create
+  the race.
+- **Violated:** P4 (silent text corruption while typing).
+- **Resolved (generation counter):** every `checkInlineHighlight` call bumps a module-level
+  `_highlightGen` and captures its own generation; the deferred rAF caret-restore runs **only
+  if no later call has superseded it** (`myGen !== _highlightGen` → skip). A keystroke landing
+  in the gap therefore invalidates the stale restore instead of having its splice point yanked
+  out from under it — the *latest* input's coordinates always win. The IME guard and the
+  no-anchor rule (UXP-28) are untouched.
 
-### UXP-36 ☐ 🟢 The `?` panel's `SHORTCUTS` array is a hand-maintained parallel registry
+### UXP-36 ✓ The `?` panel's `SHORTCUTS` array is a hand-maintained parallel registry — **RESOLVED (drift guard)**
 - **Problem:** keybindings live in `onKeyDown`/document handlers; their documentation lives in a
   separate hand-edited `SHORTCUTS` array. The two have already drifted once (UXP-29 found a
   retired chord still documented and five live ones missing). Every keyboard change risks silent
-  help-panel rot. (Carried from UXP-29's "durable fix open" note, now tracked with a number so it
-  is visible to the closing process.)
-- **Violates:** P2/P4 (the help surface silently lies when it drifts).
-- **Target:** single-source the registry — bindings declared in one table that both the handlers
-  and the `?` panel read, or a test that pins the documented chords against the handler source.
+  help-panel rot.
+- **Violated:** P2/P4 (the help surface silently lies when it drifts).
+- **Resolved (the test option from the target):** `tests/test.mjs` now reads the raw
+  `index.html` source and pins the presence of the `SHORTCUTS` registry declaration plus
+  representative live handler patterns (Ctrl+S, `collapseToLevel`, `toggleVarPanel`, the
+  pill-pencil Enter/Space path). Renaming or removing a documented handler now trips a test
+  instead of silently rotting the help panel. Full single-sourcing (one table read by both the
+  handlers and the `?` panel) stays a welcome refactor, but the drift class is now wired.
 
 ---
 
@@ -259,15 +264,16 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 
 These are **not new tickets** — they are the standard's P3 requirements mapped onto the existing accessibility phases, listed here so a11y is visible as part of the *one* conformance picture rather than a separate track. **Do not front-run the deferred items**; do satisfy the interim labels now.
 
-### UXP-13 ◐ Accessible names on icon-only controls — *a11y Phase 0 (in progress)*
-- **Violates:** P3-1. **Target:** `aria-label` on `#btn-done`, level buttons, pill pencils, table add buttons, search; decorative glyphs `aria-hidden`.
-- **Partial (chrome design pass):** toolbar controls are now named — `#btn-done` (`aria-label` + `aria-pressed`, "done points" vocabulary), `#level-ctl` (`role="group"` + per-button labels), `#search-box` (`aria-label="Search points"`), the logo button, `#sc-toggle`, the accent swatches (`aria-label` + `aria-pressed`), both dirty dots. **Remaining:** pill pencils, table add buttons.
+### UXP-13 ✓ Accessible names on icon-only controls — *a11y Phase 0* — **RESOLVED**
+- **Violated:** P3-1. **Target:** `aria-label` on `#btn-done`, level buttons, pill pencils, table add buttons, search; decorative glyphs `aria-hidden`.
+- **Resolved across two passes.** Chrome design pass: `#btn-done` (`aria-label` + `aria-pressed`, "done points" vocabulary), `#level-ctl` (`role="group"` + per-button labels), `#search-box` (`aria-label="Search points"`), the logo button, `#sc-toggle`, the accent swatches (`aria-label` + `aria-pressed`), both dirty dots. This pass: all eight **pill pencils** (`.dice-edit`, `.mk-edit`, `.rt-edit`, `.gr-edit`, both `.math-edit`, all three `.var-edit`) carry `role="button"` + `aria-label` matching their tooltip + `aria-hidden` on the decorative pen glyph; the selection-toolbar `#sel-tb .cmd-icon` buttons (including the link and footnote icons) are named from their command labels; `#storage-warn-close` is named. The once-listed **table add buttons no longer exist** — UXP-21's consolidation retired the standalone add/delete handles into the keyboard-operable Column/Row menus, so there is nothing left to name.
 
 ### UXP-14 ◐ Keyboard operability on `<div>`/`<span>` controls — *a11y Phase 1 (in progress)*
 - **Violates:** P3-2. **Target:** `role`/`tabindex` + `keydown` **beside** existing `mousedown` (caret invariant) on file-menu items, collapse button, bullet, breadcrumb, slash-menu items, `#sc-toggle`→`<button>`, table handles, and the static-table `.mt-promote` button.
 - **✅ Done — the bullet / point-actions popup (the highest-leverage slice).** `.bullet` is now `role="button"`/`aria-haspopup="menu"`/`aria-label`/`tabindex="-1"` + Enter-Space keydown; `#bpop` is a full `role="menu"` (items `role="menuitem"` + `tabindex="-1"`, arrow/Home/End nav, Enter/Space activate, Esc closes + restores focus, focus-visible rings). The keyboard door is **`Shift+F10` / the Menu key** on the focused point (`onKeyDown`), added to §3. This makes **every per-point action keyboard-reachable in one stroke** — type switch, zoom, copy link, move, delete, and the static-table **convert-to-base** (which was filed here in PR 3 and is now operable). 
 - **✅ Done — the file menu (chrome design pass).** `#logo-btn` is `role="button"`/`tabindex="0"`/`aria-haspopup="dialog"`/`aria-expanded` + Enter/Space keydown beside the click handler; `#file-menu` is a `role="dialog"` (per §7.1 it is a settings dialog, **not** a menu) with `role="button"`/`tabindex="-1"` rows, ↑/↓/Home/End roving focus as a convenience, Enter/Space activate, Esc closes + restores focus — to the **interrupted edit at its exact caret offset** when one was armed (`restoreChromeReturn`), else to the logo. Also done in the same pass: `#sc-toggle` (button semantics + Enter/Space; the panel takes focus on open so keys scroll it), `.ghost-row` (`role="button"`/`tabindex="0"` + Enter/Space), and the slash menu's screen-reader path (`role="listbox"`/`option` + `aria-activedescendant` on the editing element — focus never leaves the caret).
-- **☐ Remaining:** `.collapse-btn` (+`aria-expanded`), `.crumb`, `#storage-warn-close`→`<button>`, `.fn-key`, table handles (`.mt-colh`/`.mt-rowh`/`.mt-delcol`/`.mt-delrow`), `.mt-promote` focus-reach (rides its `#bpop` menu entry, now live), `#sel-tb .cmd-icon` (selection-toolbar buttons — now also shown for base-cell selections; the typed markdown path covers the capability meanwhile). **✅ Done — caret-picker AT wiring:** the `{`, `#`, and `[[` pickers now match the slash menu's screen-reader pattern — container `role="listbox"`, items `role="option"` with ids + `aria-selected`, `aria-activedescendant` set on the editing element and removed on hide (focus never leaves the caret).
+- **✅ Done — the long-tail sweep (this pass).** `.collapse-btn`: `role="button"` + `tabindex="-1"` + `aria-label` (Expand/Collapse) + `aria-expanded` + Enter/Space keydown beside the existing click handler. `.crumb`: navigable crumbs are `role="link"` + `tabindex="0"` + Enter/Space, named with their title. `#storage-warn-close` is now a real `<button>` (CSS-reset to keep its look), named. `.fn-key`: `role="button"` + `tabindex="0"` + Enter/Space → `returnToFnRef`, named ("Footnote [^key] — jump to reference"), beside the untouched mouse handlers. **Pill pencils**: Enter/Space on a focused pencil dispatches a bubbling `mousedown` in `onKeyDown`, so the content's existing pill-handler block runs unchanged — keyboard added *beside* the mousedown path, per the caret invariant (pencils are `tabindex="-1"`: reached programmatically/by AT, not flooding the Tab order). `#sel-tb .cmd-icon` buttons carry `role="button"` + names (toolbar reach itself remains selection-driven; the typed markdown path covers the capability for keyboard users). **✅ Done — caret-picker AT wiring:** the `{`, `#`, and `[[` pickers match the slash menu's screen-reader pattern — container `role="listbox"`, items `role="option"` with ids + `aria-selected`, `aria-activedescendant` on the editing element, removed on hide.
+- **☐ Remaining:** the **row menu's keyboard door** — `.mt-rowh` (the one surviving table handle; `.mt-colh`/`.mt-delcol`/`.mt-delrow` were retired by UXP-21) opens `showRowPanel` by click only. Shift+F10 on a cell opens the *Column* menu; the row menu needs its own keyboard path — a new chord or a menu entry, which is a §3 keyboard-grammar decision, not a mechanical fix, so it is **not** front-run here. `.mt-promote` focus-reach rides its `#bpop` menu entry (live).
 
 ### UXP-15 ✓ Pill labels + live announcements — *a11y Phase 2* — **RESOLVED**
 - **Violated:** P3-5, P3-6 interim.
@@ -310,9 +316,9 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
    **folded-coordinates invariant** (undo entries, `dataset.prevText`, and any offset that
    outlives a blur are always folded — see UXP-30/31) which future edit-path work must preserve.
-   UXP-35 (caret-restore typing race, pre-existing) is the one correctness item still open.
+   UXP-35 (caret-restore typing race) closed via the `_highlightGen` generation counter.
 2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
 3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 7, 8, 10, 12 closed; UXP-11 remains.)
-4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
+4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order. (UXP-13, 15, 18 closed; UXP-14 nearly closed — the row-menu keyboard door remains; UXP-16/17/19 open per their phases.)
 
 When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. The register is empty when the app speaks one language.

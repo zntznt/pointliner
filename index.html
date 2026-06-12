@@ -703,7 +703,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #storage-warn-msg{flex:1;min-width:0}
 #storage-warn button{border:1px solid currentColor;background:transparent;color:inherit;font-size:11.5px;padding:3px 9px;border-radius:var(--r-xs);flex-shrink:0}
 #storage-warn button:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
-#storage-warn-close{cursor:pointer;opacity:.8;font-size:13px;flex-shrink:0;user-select:none;line-height:1}
+#storage-warn-close{cursor:pointer;opacity:.8;font-size:13px;flex-shrink:0;user-select:none;line-height:1;background:none;border:none;padding:0;color:inherit;font-family:inherit}
 #storage-warn-close:hover{opacity:1}
 
 /* drag and drop */
@@ -933,7 +933,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="storage-warn" role="alert">
   <span id="storage-warn-msg"></span>
   <button id="storage-warn-save">Save to file</button>
-  <span id="storage-warn-close" title="Dismiss">✕</span>
+  <button id="storage-warn-close" title="Dismiss" aria-label="Dismiss">✕</button>
 </div>
 
 <span id="sc-toggle" role="button" tabindex="0" title="Keyboard shortcuts &amp; syntax" aria-label="Keyboard shortcuts and syntax" aria-expanded="false" aria-controls="sc-panel">?</span>
@@ -1875,7 +1875,7 @@ function renderDicePill(key, d) {
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
     + `<span class="dice-eq">=</span>`
     + `<span class="dice-total">${totalStr}</span>`
-    + `<span class="dice-edit" title="Edit dice"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="dice-edit" role="button" tabindex="-1" aria-label="Edit dice" title="Edit dice"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -1967,7 +1967,7 @@ function renderMarkovPill(key, mk) {
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
     + nameTag
     + `<span class="mk-path">${path}</span>`
-    + `<span class="mk-edit" title="Edit chain"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="mk-edit" role="button" tabindex="-1" aria-label="Edit chain" title="Edit chain"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -2770,7 +2770,20 @@ function renderBreadcrumb() {
 // A base has no prose title (its text is the table markdown), so show a clean label
 // rather than a row of pipes in the breadcrumb.
 function crumbLabel(n) { return n && n.type === 'base' ? '▦ Base' : ((n && textForDisplay(n)) || '(untitled)'); }
-function mkCrumb(t, fn) { const s=document.createElement('span'); s.className='crumb'; s.textContent=t; s.title=t; if(fn) s.addEventListener('click',fn); return s; }
+function mkCrumb(t, fn) {
+  const s = document.createElement('span');
+  s.className = 'crumb';
+  s.textContent = t;
+  s.title = t;
+  s.setAttribute('aria-label', t);
+  if (fn) {
+    s.setAttribute('role', 'link');
+    s.setAttribute('tabindex', '0');
+    s.addEventListener('click', fn);
+    s.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+  }
+  return s;
+}
 function mkSep() { const s=document.createElement('span'); s.className='crumb-sep'; s.textContent='›'; return s; }
 
 // ─── render ──────────────────────────────────────────────────────────────────
@@ -3923,6 +3936,10 @@ function renderRow(r) {
   const colBtn = document.createElement('span');
   colBtn.className = 'collapse-btn';
   colBtn.title = node.collapsed ? 'Expand' : 'Collapse';
+  colBtn.setAttribute('role', 'button');
+  colBtn.setAttribute('tabindex', '-1');
+  colBtn.setAttribute('aria-label', node.collapsed ? 'Expand' : 'Collapse');
+  colBtn.setAttribute('aria-expanded', String(!node.collapsed));
   const chevron = document.createElement('span');
   chevron.className = 'col-chevron';
   chevron.textContent = '▶';
@@ -3934,6 +3951,7 @@ function renderRow(r) {
     colBtn.appendChild(badge);
   }
   colBtn.addEventListener('click', () => toggleCollapse(node.id));
+  colBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(node.id); } });
 
   // bullet area
   const bullet = document.createElement('span');
@@ -4797,6 +4815,17 @@ function onKeyDown(e, id, content) {
       return;
     }
   }
+  // Pill-pencil keyboard activation (UXP-13/14): Enter/Space on a focused pencil icon
+  // dispatches a mousedown that the content's existing pill-handler block already handles —
+  // same action as a click, no duplicate logic.
+  if (e.key === 'Enter' || e.key === ' ') {
+    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit');
+    if (pencil) {
+      e.preventDefault();
+      pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      return;
+    }
+  }
   // Point-actions menu: the OS-standard "context menu of the focused element" gesture
   // (Shift+F10 or the Menu/ContextMenu key) opens this point's bullet popup with the
   // keyboard and moves focus into it — the keyboard door for every per-point action
@@ -5055,6 +5084,9 @@ function buildSelTb() {
     if (i === 4) { const sep = document.createElement('div'); sep.className = 'cmd-sep'; selTb.appendChild(sep); }
     const ic = document.createElement('div');
     ic.className = 'cmd-icon';
+    ic.setAttribute('role', 'button');
+    ic.setAttribute('tabindex', '-1');
+    ic.setAttribute('aria-label', cmd.label);
     setIcon(ic, { fa:cmd.fa, fb:cmd.icon });
     ic.title = cmd.label;
     ic.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat(cmd.id); });
@@ -5064,12 +5096,18 @@ function buildSelTb() {
   // link wraps the selection; footnote converts the selection into a note
   const linkIc = document.createElement('div');
   linkIc.className = 'cmd-icon';
+  linkIc.setAttribute('role', 'button');
+  linkIc.setAttribute('tabindex', '-1');
+  linkIc.setAttribute('aria-label', 'Link');
   setIcon(linkIc, { fa:'fa-solid fa-link', fb:'⌘' });
   linkIc.title = 'Link';
   linkIc.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat('link'); });
   selTb.appendChild(linkIc);
   const fnIc = document.createElement('div');
   fnIc.className = 'cmd-icon seltb-fn'; // hidden for cell selections (footnotes are node-level)
+  fnIc.setAttribute('role', 'button');
+  fnIc.setAttribute('tabindex', '-1');
+  fnIc.setAttribute('aria-label', 'Convert to footnote');
   setIcon(fnIc, { fa:'fa-solid fa-superscript', fb:'†' });
   fnIc.title = 'Convert to footnote';
   fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
@@ -6391,7 +6429,7 @@ function renderRolltablePill(key, rt) {
     + `<span class="rt-ico"><i class="fa-solid fa-table-list"></i></span>`
     + nameTag
     + `<span class="rt-result">${escHtml(rt.result)}</span>`
-    + `<span class="rt-edit" title="Edit table"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="rt-edit" role="button" tabindex="-1" aria-label="Edit table" title="Edit table"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -6789,7 +6827,7 @@ function renderGrammarPill(key, g) {
     + ` aria-label="Grammar: ${escQ(g.result)} — click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + `<span class="gr-result">${escHtml(g.result)}</span>`
-    + `<span class="gr-edit" title="Edit grammar"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit grammar" title="Edit grammar"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -7110,7 +7148,12 @@ function normalizeGrSrcSpans(content, node) {
 // up its .gr-src styling. Unlike promotion this never changes node.text length, so
 // the caret is restored to where it was — but parked *after* the new grammar span
 // (deferred a frame, since the browser resets the selection after an input handler).
+// Generation guard (UXP-35): if a subsequent input runs before the rAF fires, that
+// call bumps _highlightGen; the stale rAF's captured gen no longer matches, so it
+// skips the caret restore instead of stomping the updated position.
+let _highlightGen = 0;
 function checkInlineHighlight(content, node) {
+  const myGen = ++_highlightGen;
   const off = getCaretOffset(content);
   if (off < 2 || node.text[off - 1] !== '}') { hideBracePreview(); return false; }
   let depth = 0, start = -1;
@@ -7131,6 +7174,7 @@ function checkInlineHighlight(content, node) {
   // so positionCaretMenu's getBoundingClientRect sees the updated DOM layout.
   if (braceCls === 'artifact') showBracePreview(body, content, off - 1);
   requestAnimationFrame(() => {
+    if (myGen !== _highlightGen) return; // a subsequent input ran; skip stale restore
     content.focus();
     try { if (!caretAfterGrSrc(content, off)) setCaretByOffset(content, off); } catch(_) {}
   });
@@ -7392,7 +7436,7 @@ function renderMathPill(key, m) {
       + `<span class="math-expr">${escHtml(m.expr)}</span>`
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(label)}</span>`
-      + `<span class="math-edit" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
@@ -7402,7 +7446,7 @@ function renderMathPill(key, m) {
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
-    + `<span class="math-edit" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -7426,7 +7470,7 @@ function renderVarPill(key, v) {
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-eq">=</span>`
       + `<span class="var-val">${escHtml(rolled)}</span>`
-      + `<span class="var-edit" title="Edit random variable"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit random variable" title="Edit random variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   // Display-only mode: empty expr — read value from globalVarMap without declaring
@@ -7441,7 +7485,7 @@ function renderVarPill(key, v) {
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-val">${escHtml(display)}</span>`
-      + `<span class="var-edit" title="Edit"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit variable reference" title="Edit"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
@@ -7461,7 +7505,7 @@ function renderVarPill(key, v) {
     + `<span class="var-name">${escHtml(v.name)}</span>`
     + `<span class="var-eq">=</span>`
     + `<span class="var-val">${escHtml(display)}</span>`
-    + `<span class="var-edit" title="Edit variable"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit variable" title="Edit variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -9544,6 +9588,9 @@ function renderFnPanel(node, refs) {
 
     const keyEl = document.createElement('div');
     keyEl.className = 'fn-key';
+    keyEl.setAttribute('role', 'button');
+    keyEl.setAttribute('tabindex', '0');
+    keyEl.setAttribute('aria-label', `Footnote [^${key}] — jump to reference`);
     keyEl.textContent = `[^${key}]`;
     keyEl.title = 'Hover to highlight · click to jump to reference';
     keyEl.addEventListener('mouseenter', () => {
@@ -9560,6 +9607,7 @@ function renderFnPanel(node, refs) {
     });
     keyEl.addEventListener('mousedown', e => e.preventDefault());
     keyEl.addEventListener('click', () => returnToFnRef(key));
+    keyEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); returnToFnRef(key); } });
 
     const contentEl = document.createElement('div');
     contentEl.className = 'fn-content';

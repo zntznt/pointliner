@@ -283,18 +283,18 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 
 | Feature | P1 predictable | P2 discoverable | P3 reachable | P4 responsive |
 |---|---|---|---|---|
-| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ | ⚠️ (row labels; tree deferred) | ✅ |
+| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ | ⚠️ (row labels; collapse-btn + breadcrumb named/keyboard-operable — UXP-14; tree deferred) | ✅ |
 | Paragraph block | ✅ (documented prose-mode exception) | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
-| Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (labels + reroll announcements ✓ — UXP-15; pill focus/tabindex deferred to the UXP-19 pass) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
+| Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (labels + reroll announcements ✓ — UXP-15; pencils named + Enter/Space-operable — UXP-13/14; pill focus/tabindex deferred to the UXP-19 pass) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
 | Variables | ✅ | ✅ (`{` picker + variables panel; UXP-9) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ✅ (live preview tooltip on `}` close: → dice/math/grammar/var — UXP-7) | ⚠️ | ✅ (gr-bad typo marker + AT announce — UXP-6) |
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
 | Table columns (ops) | ✅ (one Column panel: Calculate/Alignment/Insert/Move/Delete; no hidden double-click; UXP-21) | ✅ (one sized ▾ door; grip cue for drag; full-height "+") | ✅ (panel role=menu/menuitem keyboard-operable; sized targets + aria-labels) | ✅ (refresh reflects every op) |
 | Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; reason-coded `#ERR (cycle/bad ref/non-numeric)` — UXP-8) |
 | Links (`[[ ]]`) | ✅ | ✅ (`[[` picker live — UXP-4; Copy-link stays the power path) | ✅ (listbox/option + activedescendant) | ✅ (rename repaints on-screen links immediately) |
-| Footnotes / hashtags / emoji | ✅ | ✅ (`#` tag picker — UXP-10) | ⚠️ | ✅ |
+| Footnotes / hashtags / emoji | ✅ | ✅ (`#` tag picker — UXP-10) | ⚠️ (fn-panel keys named + Enter/Space-operable — UXP-14) | ✅ |
 | Search | ✅ | ✅ | ⚠️ | ✅ |
 | Autosave / storage | n/a | ✅ | ✅ (`role="alert"` on the warning — UXP-18) | ✅ (reference pattern) |
 
