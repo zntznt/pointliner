@@ -1,0 +1,185 @@
+# Design language — the locked visual standard
+
+**Status: locked direction.** This document records the visual-design decisions shipped in
+the two design passes (embedded type + the five-reviewer panel pass) so they survive future
+development. Treat every "Decision" below the way `ux-discipline.md` treats its principles:
+**a change that contradicts one is a regression, not a restyle**, unless the decision itself
+is explicitly revisited and this file is updated in the same PR. Where this file and
+`ux-discipline.md` conflict, the UX standard wins (it governs behavior; this governs paint).
+
+The brief these decisions serve: *a contemporary magazine on the readable edge* — editorial
+type contrast, warm paper/ink surfaces, characterful-but-quiet components — inside a working
+editor (no reading mode; bullets, indent rail, click-to-edit all survive).
+
+---
+
+## 1. Typefaces
+
+**Decision: three voices, fixed roles.**
+- **Fraunces** (embedded variable serif, `--display-font`) — display only: `h1–h4`,
+  `.zoom-title`, and blockquotes (`.md-bq`, italic). Never body text.
+- **Geist** (embedded variable grotesque, `--font`) — everything else.
+- **`--mono`** (native stack: `ui-monospace,'SF Mono',…`) — code, formulas, pill internals,
+  kbd, the static-table header. **Never write a bare `monospace` or an ad-hoc mono stack**
+  — the single token kills the Courier/SF Mono split and the browser's
+  default-monospace-size quirk.
+
+**Constraint (owner-set, absolute): any typeface is native or embedded.** Embedded =
+latin-subsetted WOFF2, base64 in `@font-face`, single file, no network. Prefer embedded.
+
+**Invariant — payload labeling:** the `font-style` descriptor on each `@font-face` MUST
+match the binary it wraps. The original Fraunces roman/italic payloads were swapped and
+every heading silently rendered italic; this class of bug is invisible in code review.
+**When adding or replacing an embedded font, verify by screenshot that roman renders
+upright** (decoding the fvar/fsSelection bits is the thorough check).
+
+**Decision — no Geist italic is embedded; inline `em` stays a synthesized oblique.**
+Acceptable for incidental emphasis. The *quotation* voice gets the real italic by routing
+blockquotes to Fraunces italic instead. If emphasis-heavy prose ever becomes the norm,
+embed a true text italic rather than widening Fraunces' role.
+
+## 2. Type system
+
+**Decision: opsz tracks rendered size — never inverted.** Fraunces' optical axis runs
+soft-text-grade (low) to high-contrast display (high). Larger element ⇒ higher `opsz`:
+
+| Element | size | weight | opsz | tracking |
+|---|---|---|---|---|
+| `.zoom-title` | 30px | 640 | 60 | −.025em |
+| `h1.md-h` | 2em | 640 | 84 | −.025em |
+| `h2.md-h` | 1.5em | 660 | 40 | −.012em |
+| `h3.md-h` | 1.2em | 680 | 22 | 0 |
+| `h4.md-h` | 1.05em | 700 | 14 | 0 |
+| `.md-bq` | 1.04em | — | 12 | 0 (italic) |
+
+- **Display sizes go *lighter*, not heavier** (640 at 2em, not 700) — contrast does the
+  work, mass doesn't. Negative tracking tapers to zero by h3; small caps labels get
+  *positive* tracking (`.06–.07em`).
+- **h5/h6 are caps eyebrows** (Geist, `.8em`, 600, uppercase, `.07em`), not ever-smaller
+  serif headings — the scale stops shrinking below body size, and the eyebrow voice matches
+  the app's existing section labels.
+- **The zoomed title outranks an inline h1** (30px > 2×17px = 34px… measured: it must never
+  render *smaller* than its children's headings, the original inversion).
+- **Display ceiling: ~2em for h1.** This is a click-anywhere-to-edit editor; dramatic
+  display/edit reflow makes the caret feel broken. Do not push past it.
+
+**Decision: body 17px / `--lh:1.55` / 720px measure.** ≈72–79 CPL. Lower the measure *or*
+raise the body — never both (the panel pinned this trade-off). Code blocks override to
+`line-height:1.5`.
+
+**Decision: tabular figures wherever digits align** — table cells, ordinals, dice/math
+totals, collapse counts (`font-variant-numeric:tabular-nums`). Geist's default figures are
+proportional; alignment must be opted into.
+
+## 3. Color system
+
+**Decision: warm paper, warm ink — dark mode is a palette, not an inversion.**
+- Light: `--bg:#f7f4ed` (paper), `--hbg:#fcfaf5` (a brighter sheet of the same stock —
+  chrome recedes, page glows), warm borders/fills.
+- Dark: `--bg:#1b1815` (ink), `--hbg:#252220`. **Elevation in dark mode = lighter than the
+  canvas.** Floating surfaces rise; the original `#111`-below-`#1c1c1e` inversion is the
+  regression to watch for. Shadows are warm-tinted in light (`rgba(45,35,25,…)`), stronger
+  and black in dark (`--sh-1`/`--sh-2` swap per theme).
+- Neutral-gray palettes (`#fafaf8/#1c1c1e/#333`-era) are retired. New surface colors stay
+  in the warm family.
+
+**Decision: semantic tokens, one color per meaning.** `--ok` / `--warn` / `--bad` /
+`--info`, theme-paired (deep inks in light, lifted tints in dark). **One red**: every
+danger/error surface (priority A, danger buttons, fate-minus, selection-bar danger, cycle
+warnings route to `--warn`) uses `--bad` — never a fresh hex. Status badges and priority
+chips are `color-mix(in srgb, var(--TOKEN) 16%, transparent)` background + the token as
+text ink; this recipe passed AA at badge size in both themes — keep the percentages.
+
+**Decision: contrast floors are merge criteria, not aspirations.**
+- `--muted` ≥ 4.5:1 on `--bg` in both themes (it styles *content* — placeholders,
+  formulas, eyebrows). Light `#6b665c`, dark `#a39a8d`. Never push it back toward `#999`
+  for tone; de-emphasize with *role* (size, caps, spacing), not failing ink.
+- Text on the accent uses **`--acc-fg`, never a hardcoded `#fff`** — `applyAccentCSS`
+  computes the higher-contrast ink (white vs `#16130f`) per accent, because dark-mode
+  accents are pastels (white-on-`#a5b4fc` was 1.99:1). Any new `background:var(--acc)`
+  rule pairs with `color:var(--acc-fg)`.
+- `--bdr` is decorative (hairlines may whisper); **`--bdr-ui` (≈3:1) exists for functional
+  boundaries** — use it when a border is the only thing delineating a control.
+- New color pairs ship with their computed WCAG ratio in the PR.
+
+**Decision: the default accent is indigo (`#4338ca` / `#a5b4fc`).** The editorial Oxblood
+preset exists in the picker, but **a red-family accent must not become the default**: it
+collides semantically with the danger/priority-A/fate-minus red lane. Any future default
+must keep all four semantic lanes (`ok/warn/bad/info`) visually distinct from the accent.
+
+**Invariant — the palette lives in two homes; change both or neither.** Every
+theme-varying token exists in (a) the CSS `:root` + dark media query and (b) the
+**`applyTheme` forced-theme strings**; accent-derived tokens (`--acc`, `--acc-fg`,
+`--ring`, `--bullet-h`, `--qbdr`) live in **`applyAccentCSS`**. A CSS-only edit silently
+regresses the moment the user touches the in-app theme toggle or accent picker. Likewise
+`color-scheme` is set in CSS *and* mirrored to `documentElement.style.colorScheme` by
+`applyTheme` — native controls (checkboxes, scrollbars) must always follow the active
+theme, and `accent-color:var(--acc)` keeps them on brand.
+
+## 4. Components
+
+**Decision: token systems over eyeballed values.**
+- **Radii:** `--r-xs:3px` (inline marks) · `--r-sm:6px` (controls/chips) · `--r-md:8px`
+  (menu rows, inputs, code blocks) · `--r-lg:12px` (floating surfaces) · `999px` (pills,
+  reserved for the artifact-pill silhouette). New radii come from this set.
+- **Shadows:** `--sh-1` (popovers) / `--sh-2` (dialogs, file menu) — tight, bordered
+  elevation. The 30–50px-blur floating card is retired; don't reintroduce it.
+- **Spacing/UI sizes:** prefer the existing steps; no informational text below 11px
+  effective (caps+tracking earns 10px for labels only).
+
+**Decision: pill grammar.** The stadium pill is the *artifact* signature (dice, markov,
+table, grammar, math, var, seq); status badges/chips stay small rectangles (`--r-xs`+1) —
+two shapes, two meanings, shared vertical metrics (`.72em/600/.06em`, `padding:1px 6px`).
+- Each pill family carries a fixed hue via `--pill`, mixed at **7% into the background and
+  22% into the border** — identity at whisper level, never candy. Family hues: dice
+  `#9a3b2e`, markov/seq `#3d6280`, table `#5b3a6e`, grammar `#4a7a4d`, math `#8a5300`,
+  var `#2a7f74`. A new artifact family picks a distinct hue here in the same PR.
+- **One box per pill** — no bordered/filled boxes nested inside (the dice breakdown is
+  flat muted text). Typography differentiates internals.
+- **The `--ring` glow means focus, not hover.** Pill hover = accent border + 6% tint;
+  `:focus-visible` = solid accent outline (the glow may remain as decoration around it).
+  Don't re-blur the focus indicator into a 20%-alpha ghost.
+
+**Decision: tables.** The **static** rendered table (`.md-table-static`) is editorial —
+horizontal rules only, 2px head rule, mono caps header, no vertical lines, no header fill.
+The **interactive base keeps its full editing grid** — cell borders aid editing; the skins
+are scoped and must stay separate.
+
+**Decision: the indent thread.** Nesting depth gets a physical trace: a hairline at every
+indent step, painted per row via a repeating gradient clipped to `--depth-w` (set in
+`renderRow` next to `paddingLeft`, because the virtual list flattens the DOM — there is no
+`.children` ancestor to hang it on). Anything else that wants per-depth paint must use the
+same `--depth-w` mechanism.
+
+**Micro-layer (all required, all cheap to lose in a refactor):** `::selection` accent
+tint · thin themed scrollbars · warm highlighter (`.md-hl`, not screen-yellow) · hashtags
+at `color-mix` ink (no opacity-faded text dragging its underline down).
+
+## 5. Deliberately rejected (binding anti-decisions)
+
+Re-proposing one of these is a P5-style decision, not a tweak — it needs this file updated:
+
+- **Glassmorphism / `backdrop-filter` chrome** — dated; legibility + paint cost over a
+  contenteditable surface.
+- **Grain/noise overlays** — banding in dark mode, fights text antialiasing. Paper comes
+  from color temperature and hairlines, not texture layers.
+- **Neobrutalism** (3px borders, hard offset shadows) — poster style, fatiguing in a tool.
+  The tactile-border idea survives only at 1px and warm tones.
+- **Gradient blobs / mesh / iridescent accents** — at war with "magazine".
+- **Display type past ~2em, variable-font hover animations** — edit-mode reflow breaks the
+  caret feel (see §2 ceiling).
+- **Oxblood (any red) as the default accent** — semantic collision (§3).
+- **Whole-blockquote muted ink** — quotes are content; de-emphasis ≠ sub-AA gray (§3).
+
+## 6. Verification discipline
+
+Any change touching palette, type, or component skin re-verifies before merge:
+1. **Headless screenshots in both modes** (media-query light *and* dark) at desktop +
+   narrow widths — and **a forced-theme shot** (e.g. OS-light + in-app dark) to prove the
+   JS strings kept pace (§3 dual-home invariant).
+2. **Contrast math** for any new color pair (text ≥4.5:1, large text / non-text UI ≥3:1),
+   stated in the PR.
+3. **An edit-mode shot** (unfolded `{…}` grammar text) — display-mode-only verification
+   misses half the surface.
+4. Screenshots and tooling are throwaway per the repo rule — verify, attach to the PR if
+   needed, never commit.

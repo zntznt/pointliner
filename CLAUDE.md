@@ -49,9 +49,16 @@ in a browser and it runs.
 - **`mdToHtml` must stay synchronous** (render-context globals depend on it).
 - **`markDirty()` is the single invalidation point** — it bumps `_varsVer`. Any
   new cross-node cache must be invalidated there too.
-- **Theme via CSS custom properties** (`--acc`, `--bg`, `--fg`, `--bdr`,
-  `--ring`, `--muted`, …). Don't hardcode colors; dark mode is a media query that
-  swaps the variables.
+- **Theme via CSS custom properties** (`--acc`, `--bg`, `--fg`, `--bdr`, `--ring`,
+  `--muted`, the semantic `--ok/--warn/--bad/--info`, `--acc-fg`, `--mono`, the `--r-*`
+  radius and `--sh-*` shadow tokens). Don't hardcode colors; dark mode is a media query
+  that swaps the variables. **The palette lives in two homes:** every theme-varying token
+  also exists in the `applyTheme` forced-theme strings (accent-derived ones in
+  `applyAccentCSS`) — a CSS-only palette edit silently regresses when the user touches the
+  in-app theme toggle. Text on the accent uses `--acc-fg`, never hardcoded `#fff` (dark
+  accents are pastels). The full locked visual standard — type roles, scale, color floors,
+  component rules, rejected trends — is `guidance/design-language.md`; read it before any
+  visual change.
 - **Custom OPML attributes are underscore-prefixed.** Add serialize + parse in
   the same change or data silently drops on save.
 - **Hover-only affordances need a touch fallback.** Edit pencils, table grips, the
@@ -449,6 +456,12 @@ The product direction is now set. Read these before proposing or building:
   Bases (table-vs-base model, freeform-bases philosophy, base layout + header interaction,
   and the scope fence: views/typed-fields/filters are deferred). Read before any
   table/base work.
+- `guidance/design-language.md` — **the locked visual standard** (typeface roles + the
+  native-or-embedded constraint, the opsz-tracks-size type scale, warm paper/ink palettes,
+  contrast floors as merge criteria, the dual-home CSS+JS palette invariant, pill/table/
+  shadow/radius component rules, and the binding anti-decisions: no glassmorphism, no
+  noise, no red default accent, display ceiling ~2em). Read before any visual change;
+  contradicting a Decision there is a regression, not a restyle.
 - `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
 - `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu

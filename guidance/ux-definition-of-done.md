@@ -108,6 +108,7 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Pure-core tests stay green** for any parse/eval/index change (`node --test tests/test.mjs`). *(`CLAUDE.md` working method)*
 - [ ] **Touch path shipped** for any new hover/mouse interaction (`@media(hover:none)` + long-press where applicable). *(`CLAUDE.md` touch invariant)*
 - [ ] **OPML round-trip** preserved for any new persisted data (serialize + parse in the same change). *(`CLAUDE.md`)*
+- [ ] **Design-language conformance** for any visual change (`guidance/design-language.md`): colors via tokens (semantic `--ok/--warn/--bad/--info`, `--acc-fg` on accent backgrounds, radii/shadows from the token sets), new color pairs ship their contrast ratio, the palette change lands in **both** homes (CSS *and* the `applyTheme`/`applyAccentCSS` strings), and both-mode + forced-theme screenshots were checked. *(design-language §3/§6)*
 - [ ] **Acceptance tests met** — the five self-checks below.
 
 ---
