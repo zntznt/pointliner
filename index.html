@@ -406,6 +406,11 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-preview-result{font-weight:600;color:var(--acc)}
 /* grammar source, shown while editing so {…} artifacts read as editable text */
 .gr-src{font-family:var(--mono);font-size:.92em;background:color-mix(in srgb,var(--acc) 12%,var(--cbg));color:var(--acc);border-radius:5px;padding:.5px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.gr-src.gr-bad{background:color-mix(in srgb,var(--warn) 13%,var(--cbg));color:var(--warn);text-decoration:underline dotted;text-underline-offset:2px}
+/* shorthand live-preview tooltip (UXP-7) */
+#brace-preview{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);box-shadow:var(--sh-1);padding:3px 8px;font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none}
+#brace-preview.on{display:block}
+.bp-label{font-weight:500;color:var(--acc)}
 /* math expression pill */
 .math-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .math-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -419,6 +424,8 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .math-roll.math-bad{color:var(--del);border-style:dashed;cursor:default}
 .math-roll.math-bad:hover{box-shadow:none;border-color:var(--bdr)}
+.math-roll.math-err{border-color:var(--bad);border-style:dashed}
+.math-roll.math-err .math-result{color:var(--bad);font-weight:600}
 @keyframes math-pop{0%{opacity:.35;transform:scale(.88)}60%{transform:scale(1.05)}100%{opacity:1;transform:scale(1)}}
 .math-roll.math-edited .math-result{display:inline-block;animation:math-pop .25s cubic-bezier(.2,.8,.3,1)}
 /* variable pill */
@@ -503,6 +510,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .nt-divider>.node-row{padding:8px 0;cursor:default;user-select:none}
 .nt-divider>.node-row::after{content:'';display:block;height:1px;background:var(--bdr-ui);flex:1;align-self:center;margin-left:8px}
 .nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.node-content{display:none}
+.nt-divider>.node-row>.node-content[data-editing]{display:block;flex:1} /* an open editor is never hidden (markdown-first divider) */
 .nt-divider>.node-row>.bullet{cursor:pointer}
 .nt-divider>.node-row>.bullet .bullet-dot{opacity:0;transition:opacity .12s}
 .nt-divider>.node-row>.bullet:hover .bullet-dot{opacity:.55}
@@ -695,7 +703,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #storage-warn-msg{flex:1;min-width:0}
 #storage-warn button{border:1px solid currentColor;background:transparent;color:inherit;font-size:11.5px;padding:3px 9px;border-radius:var(--r-xs);flex-shrink:0}
 #storage-warn button:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
-#storage-warn-close{cursor:pointer;opacity:.8;font-size:13px;flex-shrink:0;user-select:none;line-height:1}
+#storage-warn-close{cursor:pointer;opacity:.8;font-size:13px;flex-shrink:0;user-select:none;line-height:1;background:none;border:none;padding:0;color:inherit;font-family:inherit}
 #storage-warn-close:hover{opacity:1}
 
 /* drag and drop */
@@ -766,9 +774,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #lp-menu.on{display:block}
 .lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
-/* ── brace / callable-name picker ({ trigger) ── */
-#brace-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
-#brace-menu.on{display:block}
+/* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
+#brace-menu,#tag-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
+#brace-menu.on,#tag-menu.on{display:block}
 .bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
 .bm-item{display:flex;align-items:baseline;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px}
 .bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
@@ -885,8 +893,10 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="mt-colpanel" role="menu" aria-label="Column options"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
-<div id="lp-menu"></div>
-<div id="brace-menu" role="menu" aria-label="Callable names"></div>
+<div id="lp-menu" role="listbox" aria-label="Points to link"></div>
+<div id="brace-menu" role="listbox" aria-label="Callable names"></div>
+<div id="tag-menu" role="listbox" aria-label="Tags"></div>
+<div id="brace-preview" aria-hidden="true"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card"></div></div>
 <!-- drag indicator -->
@@ -920,10 +930,10 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div id="var-panel-list"></div>
 </div>
 
-<div id="storage-warn">
+<div id="storage-warn" role="alert">
   <span id="storage-warn-msg"></span>
   <button id="storage-warn-save">Save to file</button>
-  <span id="storage-warn-close" title="Dismiss">✕</span>
+  <button id="storage-warn-close" title="Dismiss" aria-label="Dismiss">✕</button>
 </div>
 
 <span id="sc-toggle" role="button" tabindex="0" title="Keyboard shortcuts &amp; syntax" aria-label="Keyboard shortcuts and syntax" aria-expanded="false" aria-controls="sc-panel">?</span>
@@ -996,6 +1006,11 @@ function deriveTypeFromText(text) {
   if (text.startsWith('# '))   return 'h1';
   if (text.startsWith('> '))   return 'quote';
   if (text.startsWith('```'))  return 'code';
+  // divider: first line is a thematic break (---/***/___ — HR_RE, the same rule
+  // mdToHtml renders <hr> from). Markdown-first (UXP-26): the break lives in the
+  // text; any lines below it are the divider's hover-reveal section label. Note
+  // the order ABOVE matters only for prefixes — a break can't collide with them.
+  if (HR_RE.test(text.split('\n', 1)[0])) return 'divider';
   // to-do: task form (`- [ ]` first line) or state-keyword form — any state of
   // any sequence (default TODO/NEXT/… or user-declared), markdown-first.
   // The type is a derived hint here exactly like headings — the markdown renders.
@@ -1011,6 +1026,10 @@ function textForDisplay(node) {
   let t = node.text;
   const prefix = BLOCK_PREFIX_MAP[node.type];
   if (prefix && t.startsWith(prefix)) return t.slice(prefix.length);
+  // divider: show the label only — the break line is the "prefix" here
+  if (node.type === 'divider' && HR_RE.test(t.split('\n', 1)[0])) {
+    return t.split('\n').slice(1).join('\n').trim();
+  }
   t = t.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
   const pt = parseTodo(t);
   if (pt.keyword) t = pt.body;
@@ -1406,6 +1425,12 @@ function migrateNodePrefixes(n) {
   if (n.type === 'todo') {
     n.text = migrateTodoText(n.text, n.checked);
     n.checked = todoDoneFromText(n.text);
+  }
+  // legacy `_type="divider"` carried the rule in the type alone (text = optional
+  // hover label) — write the thematic break into the text so the node is
+  // self-consistent (markdown-first, UXP-26), label preserved below the break
+  if (n.type === 'divider' && !HR_RE.test(n.text.split('\n', 1)[0])) {
+    n.text = n.text.trim() ? '---\n' + n.text : '---';
   }
   n.children.forEach(migrateNodePrefixes);
 }
@@ -1832,18 +1857,25 @@ function diceBreakdownHTML(d) {
   }).join('');
 }
 
-function renderDicePill(key, d) {
-  if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}">🎲 ?</span>`;
+// Displayed total for a dice record — success pools show "N succ", Fate shows a
+// signed total. Shared by the pill renderer and the reroll announcement (UXP-15).
+function diceTotalStr(d) {
   const isFate = d.parts?.some(p => p.kind === 'dice' && p.sides === 'F');
   const isSuccess = d.parts?.some(p => p.kind === 'dice' && p.success);
-  const totalStr = isSuccess ? `${d.total} succ`
+  return isSuccess ? `${d.total} succ`
     : (isFate && d.total > 0 ? '+' + d.total : String(d.total));
-  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll">`
+}
+
+function renderDicePill(key, d) {
+  if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}" aria-label="Dice roll (missing data)">🎲 ?</span>`;
+  const totalStr = diceTotalStr(d);
+  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll"`
+    + ` aria-label="Dice roll ${escQ(d.expr)} = ${escQ(totalStr)} — click to re-roll">`
     + `<span class="dice-ico"><i class="fa-solid fa-dice-d20"></i></span>`
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
     + `<span class="dice-eq">=</span>`
     + `<span class="dice-total">${totalStr}</span>`
-    + `<span class="dice-edit" title="Edit dice"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="dice-edit" role="button" tabindex="-1" aria-label="Edit dice" title="Edit dice"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -1923,18 +1955,19 @@ function makeMarkovRoll(def, startInput, stepsInput, name) {
 }
 
 function renderMarkovPill(key, mk) {
-  if (!mk) return `<span class="mk-roll mk-bad" data-key="${escQ(key)}">⛓ ?</span>`;
+  if (!mk) return `<span class="mk-roll mk-bad" data-key="${escQ(key)}" aria-label="Markov chain (missing data)">⛓ ?</span>`;
   const stoppedEarly = mk.path.length - 1 < mk.steps;
   const path = mk.path
     .map(s => `<span class="mk-state">${escHtml(s)}</span>`)
     .join('<span class="mk-arrow">→</span>')
     + (stoppedEarly ? `<span class="mk-arrow">→</span><span class="mk-terminal" title="Walk ended — last state has no outgoing transitions. Add more rules to continue.">…</span>` : '');
   const nameTag = mk.name ? `<span class="mk-name" title="Callable as {${escQ(mk.name)}}">${escHtml(mk.name)}</span>` : '';
-  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}">`
+  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}"`
+    + ` aria-label="Markov chain${mk.name ? ' ' + escQ(mk.name) : ''}: ${escQ(mk.path.join(' → '))} — click to re-roll">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
     + nameTag
     + `<span class="mk-path">${path}</span>`
-    + `<span class="mk-edit" title="Edit chain"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="mk-edit" role="button" tabindex="-1" aria-label="Edit chain" title="Edit chain"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -2225,8 +2258,39 @@ function parseTblfm(str, dims) {
   return out;
 }
 
+// Bare-word evalMath atoms that are NOT document-variable references (they need no
+// declaration). Used by mathErrorReason to avoid flagging them as bad refs.
+const MATH_CONST_NAMES = new Set(['pi', 'e', 'tau', 'inf', 'infinity', 'today']);
+
+// Classify *why* evalMath(expr, vars) returned null / non-finite, for the
+// `#ERR (reason)` surface (UXP-8 table cells, UXP-34 math pills). Pure: inspects the
+// value-position identifiers in `expr` against the resolved `vars` map and the set of
+// cyclic names. Mirrors evalMath's own rule — an identifier directly followed by `(`
+// is a function call, not a variable — so function names need no enumeration.
+//   'cycle'       — an identifier names a variable caught in a reference cycle
+//   'non-numeric' — an identifier names a variable whose value is a string (e.g. a pick)
+//   'bad ref'     — an identifier names nothing resolvable (deleted / never declared)
+//   ''            — no offending identifier; a generic malformed expression
+function mathErrorReason(expr, vars = {}, cycles = new Set()) {
+  const s = String(expr || '');
+  const re = /[A-Za-z_]\w*/g;
+  let m, sawNonNumeric = false, sawBadRef = false;
+  while ((m = re.exec(s)) !== null) {
+    if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;  // followed by '(' → function call, not a var
+    const id = m[0].toLowerCase();
+    if (MATH_CONST_NAMES.has(id)) continue;
+    if (cycles.has(id)) return 'cycle';                  // cycle is the most specific reason
+    if (id in vars) { if (typeof vars[id] === 'string') sawNonNumeric = true; }
+    else sawBadRef = true;
+  }
+  if (sawBadRef) return 'bad ref';
+  if (sawNonNumeric) return 'non-numeric';
+  return '';
+}
+
 // Apply TBLFM formulas to a table model, returning a new rows grid with every
-// formula target replaced by its computed display value ('#ERR' on cycle/invalid).
+// formula target replaced by its computed display value ('#ERR (reason)' on
+// cycle / bad ref / non-numeric / invalid).
 function computeTable(model, tblfm, vars = {}) {
   const rows = (model.rows || []).map(r => r.slice());
   const nrows = rows.length, ncols = rows[0] ? rows[0].length : 0;
@@ -2320,8 +2384,11 @@ function computeTable(model, tblfm, vars = {}) {
     let disp;
     try {
       const v = valueAt(r, c);
-      disp = (v === null || !isFinite(v)) ? '#ERR' : formatMathResult(v);
-    } catch (_) { disp = '#ERR'; }
+      if (v === null || !isFinite(v)) {
+        const reason = mathErrorReason(fmap.get(key), vars);
+        disp = reason ? `#ERR (${reason})` : '#ERR';
+      } else disp = formatMathResult(v);
+    } catch (e) { disp = (e && e.message === 'CYCLE') ? '#ERR (cycle)' : '#ERR'; }
     if (out[r]) out[r][c] = disp;
   }
   return out;
@@ -2660,10 +2727,17 @@ function flashHint(msg) {
     document.body.appendChild(el);
   }
   el.textContent = msg;
+  announce(msg); // every toast also reaches assistive tech via the #a11y-live region
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   clearTimeout(_hintTimer);
   _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
 }
+// Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
+// announces what it touched via flashHint — counts include descendants, since a
+// subtree op moves/destroys them too. Destructive toasts teach the undo route.
+function ptsLabel(n) { return n === 1 ? '1 point' : `${n} points`; }
+function countPoints(node) { let c = 1; for (const ch of node.children || []) c += countPoints(ch); return c; }
+
 function fallbackCopy(text, after) {
   try {
     const ta = document.createElement('textarea');
@@ -2696,7 +2770,20 @@ function renderBreadcrumb() {
 // A base has no prose title (its text is the table markdown), so show a clean label
 // rather than a row of pipes in the breadcrumb.
 function crumbLabel(n) { return n && n.type === 'base' ? '▦ Base' : ((n && textForDisplay(n)) || '(untitled)'); }
-function mkCrumb(t, fn) { const s=document.createElement('span'); s.className='crumb'; s.textContent=t; s.title=t; if(fn) s.addEventListener('click',fn); return s; }
+function mkCrumb(t, fn) {
+  const s = document.createElement('span');
+  s.className = 'crumb';
+  s.textContent = t;
+  s.title = t;
+  s.setAttribute('aria-label', t);
+  if (fn) {
+    s.setAttribute('role', 'link');
+    s.setAttribute('tabindex', '0');
+    s.addEventListener('click', fn);
+    s.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+  }
+  return s;
+}
 function mkSep() { const s=document.createElement('span'); s.className='crumb-sep'; s.textContent='›'; return s; }
 
 // ─── render ──────────────────────────────────────────────────────────────────
@@ -3849,6 +3936,10 @@ function renderRow(r) {
   const colBtn = document.createElement('span');
   colBtn.className = 'collapse-btn';
   colBtn.title = node.collapsed ? 'Expand' : 'Collapse';
+  colBtn.setAttribute('role', 'button');
+  colBtn.setAttribute('tabindex', '-1');
+  colBtn.setAttribute('aria-label', node.collapsed ? 'Expand' : 'Collapse');
+  colBtn.setAttribute('aria-expanded', String(!node.collapsed));
   const chevron = document.createElement('span');
   chevron.className = 'col-chevron';
   chevron.textContent = '▶';
@@ -3860,6 +3951,7 @@ function renderRow(r) {
     colBtn.appendChild(badge);
   }
   colBtn.addEventListener('click', () => toggleCollapse(node.id));
+  colBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(node.id); } });
 
   // bullet area
   const bullet = document.createElement('span');
@@ -4292,15 +4384,16 @@ function attachContentEvents(content, node) {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
-    if (checkInlineHighlight(content, node)) { hideBraceMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
+    if (checkInlineHighlight(content, node)) { hideBraceMenu(); hideTagMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
     // Re-bind any .gr-src span the browser merged typed text into (UXP-28) —
     // skipped mid-IME-composition (re-render would drop the composed text;
     // the compositionend listener below catches up on commit).
-    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); return; }
+    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideBracePreview(); return; }
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id);
     if (LINK_PICKER_ENABLED) checkLinkTrigger(content, node.id);
     checkBraceTrigger(content, node.id);
+    checkTagTrigger(content, node.id);
     updateSelToolbar();
     updateFnPanel(node);
   });
@@ -4309,7 +4402,7 @@ function attachContentEvents(content, node) {
   content.addEventListener('compositionend', () => {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
-    if (normalizeGrSrcSpans(content, node)) hideBraceMenu();
+    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideBracePreview(); }
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
   content.addEventListener('paste', e => handlePaste(e, node, content));
@@ -4325,20 +4418,60 @@ function attachContentEvents(content, node) {
   });
 }
 
-// Would a {body} promote to an artifact pill on exit? Pure mirror of
-// promoteBraceBody's success conditions (no side effects) — used to decide which
-// {…} get the grammar-source styling while editing.
-function braceWouldPromote(body) {
-  body = body.trim();
-  if (!body) return false;
-  if (body[0] === '=') return body.slice(1).trim().length > 0;          // {= expr}
-  if (DICE_SNIFF.test(body.replace(/\s/g, ''))) return true;            // {2d6}
-  if (splitTopLevel(body, '|').length > 1) return true;                 // {a|b}
+// Classify a {body} the way promoteBraceBody will treat it on exitEdit. Pure —
+// rules/vars are explicit arguments (live callers pass collectRules()/collectVars())
+// and the branch order mirrors promoteBraceBody INCLUDING its fall-throughs: a
+// dice-looking body that doesn't parse still gets the alternation/identifier checks.
+//   'artifact' — promotes to a pill on exit
+//   'invalid'  — reads as an attempted formula/roll/reference but will NOT promote;
+//                styled as the gr-bad typo signal so the failure isn't silent (UXP-6)
+//   'literal'  — plain prose braces, left alone (the deliberate escape hatch)
+function classifyBraceBody(body, rules, vars) {
+  body = (body || '').trim();
+  if (!body) return 'literal';
+  if (body[0] === '=') {                                                // {= expr}
+    const expr = body.slice(1).trim();
+    return expr && evalMath(expr, vars) !== null ? 'artifact' : 'invalid';
+  }
+  const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
+  if (diceish && parseDice(body, vars)) return 'artifact';
+  if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
-    return !!collectRules()[low] || Object.prototype.hasOwnProperty.call(collectVars(), low);
+    return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
   }
-  return false;
+  return diceish ? 'invalid' : 'literal'; // dice-looking but unparseable → attempted roll
+}
+
+// Would a {body} promote to an artifact pill on exit? (Thin doc-context wrapper —
+// see classifyBraceBody. Now also catches the bodies that used to style as valid
+// but fail promotion, e.g. {2d6kh} or {= 2*}: those classify 'invalid', not true.)
+function braceWouldPromote(body) {
+  return classifyBraceBody(body, collectRules(), collectVars()) === 'artifact';
+}
+
+// What pill type will a valid {body} become? Returns [pillType, detail|null].
+// Mirrors classifyBraceBody's branch order (same signature) so callers can pair
+// classify + label in one step without running the classification twice.
+// pillType: 'dice' | 'math' | 'grammar' | 'var'; detail: extra context string or null.
+function braceTypeLabel(body, rules, vars) {
+  body = (body || '').trim();
+  if (!body) return ['pill', null];
+  if (body[0] === '=') return ['math', null];
+  rules = rules || {}; vars = vars || {};
+  const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
+  if (diceish && parseDice(body, vars)) return ['dice', null];
+  if (splitTopLevel(body, '|').length > 1) return ['grammar', null];
+  if (/^[a-z_][\w]*$/i.test(body)) {
+    const low = body.toLowerCase();
+    if (rules[low]) return ['grammar', body];
+    if (Object.prototype.hasOwnProperty.call(vars, low)) {
+      const val = vars[low];
+      const display = typeof val === 'string' ? val : +Number(val).toPrecision(4);
+      return ['var', body + ' = ' + display];
+    }
+  }
+  return ['pill', null];
 }
 
 // Escape a plain-text segment for edit mode, wrapping each top-level {…} that
@@ -4349,20 +4482,27 @@ function braceWouldPromote(body) {
 // the rule isn't defined yet in this document).
 function highlightGrammarText(str, unfoldedSet) {
   let out = '', run = '', i = 0;
+  const rules = collectRules(), vars = collectVars();
   const flush = () => { if (run) { out += escHtml(run); run = ''; } };
   while (i < str.length) {
     if (str[i] === '{') {
       const j = matchBrace(str, i);
       if (j > i) {
         const brace = str.slice(i, j + 1);
-        if ((unfoldedSet && unfoldedSet.has(brace)) || braceWouldPromote(str.slice(i + 1, j))) {
+        const cls = (unfoldedSet && unfoldedSet.has(brace)) ? 'artifact'
+          : classifyBraceBody(str.slice(i + 1, j), rules, vars);
+        if (cls !== 'literal') {
           flush();
           // NO caret anchor after a .gr-src span (unlike atomic pills below). The span
           // is editable text; an anchor here interacts with checkInlineHighlight's
           // re-render to make the reference UNDELETABLE on the picker-apply path
           // (Backspace eats the ZWSP, the re-render regenerates it — a no-op loop).
           // The style-bleed this leaves unsolved is tracked as UXP-28.
-          out += `<span class="gr-src">${escHtml(brace)}</span>`;
+          // 'invalid' = an attempted formula that will NOT promote — marked gr-bad so
+          // the user can tell a typo from intended literal text (UXP-6).
+          out += cls === 'artifact'
+            ? `<span class="gr-src">${escHtml(brace)}</span>`
+            : `<span class="gr-src gr-bad" title="Not recognized — stays plain text">${escHtml(brace)}</span>`;
           i = j + 1; continue;
         }
       }
@@ -4494,7 +4634,7 @@ function exitEdit(content, node) {
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
-  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo') node.type = 'ul';
+  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider') node.type = 'ul';
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
@@ -4503,10 +4643,21 @@ function exitEdit(content, node) {
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
   markDirty();
+  // Live-title links and mirrors pointing here re-render NOW, not at the next
+  // full render() — an edit must not leave stale captions/transclusions on
+  // screen (UXP-4). Off-screen sources have no DOM and render fresh on scroll.
+  if (node.text !== prevText) {
+    const bl = collectLinks().backlinks[node.id];
+    if (bl) for (const srcId of bl) {
+      if (srcId === node.id) continue;
+      const src = nodeById(srcId);
+      if (src) repaintNodeContent(src);
+    }
+  }
   if (activeContentId === node.id) activeContentId = null;
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
-  hideSlashMenu(); hideBraceMenu(); updateSelToolbar(); scheduleReconcile();
+  hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
 }
 
 function caretFromPoint(x, y) {
@@ -4553,7 +4704,8 @@ function handlePaste(e, node, content) {
   if (!parent) { document.execCommand('insertText', false, text); return; }
   pushUndo(); // flush the in-progress text edit + snapshot the pre-paste tree (undoable as a unit)
   node.text += parsed[0].text; content.textContent = node.text;
-  content.dataset.prevText = node.text; // keep the edit baseline in sync so blur won't re-record
+  // baseline stays in FOLDED coordinates (UXP-31) — the buffer may hold unfolded {…}
+  content.dataset.prevText = foldedTextForSave(node);
   const idx = parent.children.findIndex(c => c.id === node.id);
   const newNodes = [];
   function insDeep(item, par) {
@@ -4570,7 +4722,10 @@ function handlePaste(e, node, content) {
   ins(parsed.slice(1), parent, idx);
   buildIndex(root, null);
   markDirty(); render();
-  if (newNodes.length) focusNode(newNodes[newNodes.length-1].id);
+  if (newNodes.length) {
+    focusNode(newNodes[newNodes.length-1].id);
+    flashHint(`Pasted as ${ptsLabel(newNodes.length + 1)}`); // +1: the first line merged into this point
+  }
 }
 
 // Shared GFM table-block detector (the ONE detector — reused by findFirstTableRange,
@@ -4660,6 +4815,17 @@ function onKeyDown(e, id, content) {
       return;
     }
   }
+  // Pill-pencil keyboard activation (UXP-13/14): Enter/Space on a focused pencil icon
+  // dispatches a mousedown that the content's existing pill-handler block already handles —
+  // same action as a click, no duplicate logic.
+  if (e.key === 'Enter' || e.key === ' ') {
+    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit');
+    if (pencil) {
+      e.preventDefault();
+      pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      return;
+    }
+  }
   // Point-actions menu: the OS-standard "context menu of the focused element" gesture
   // (Shift+F10 or the Menu/ContextMenu key) opens this point's bullet popup with the
   // keyboard and moves focus into it — the keyboard door for every per-point action
@@ -4698,6 +4864,12 @@ function onKeyDown(e, id, content) {
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); braceApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideBraceMenu(); return; }
   }
+  if (tagState && isTagMenuOpen()) {
+    if (e.key==='ArrowDown') { e.preventDefault(); tagMove(1); return; }
+    if (e.key==='ArrowUp')   { e.preventDefault(); tagMove(-1); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); tagApply(); return; }
+    if (e.key==='Escape')    { e.preventDefault(); hideTagMenu(); return; }
+  }
   // Paragraph is the sanctioned prose-mode exception (P1-1): Enter = line break, Shift+Enter = new point.
   const isPara = nodeById(id)?.type === 'para';
   if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); isPara ? insertSiblingAfter(id) : insertLineBreak(content); }
@@ -4711,8 +4883,10 @@ function onKeyDown(e, id, content) {
   }
   else if (e.key==='ArrowUp'   && e.altKey)  { e.preventDefault(); moveNode(id,-1); }
   else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
-  else if (e.key==='ArrowUp'   && ctrl) { e.preventDefault(); setCollapsed(id,true); }
-  else if (e.key==='ArrowDown' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
+  // Collapse/expand on Ctrl/⌘+. / , (UXP-5) — frees Ctrl+Arrow for the native
+  // caret-to-document-edge, which the old binding clobbered.
+  else if (e.key==='.' && ctrl) { e.preventDefault(); setCollapsed(id,true); }
+  else if (e.key===',' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
   else if (e.key==='ArrowUp'   && !e.altKey && !ctrl && !e.shiftKey) {
     if (isAtFirstLine(content)) { e.preventDefault(); navigateToPrev(id); }
   }
@@ -4806,15 +4980,17 @@ function copySelection() {
   const text = serializeNodesToText(tops);
   navigator.clipboard?.writeText(text).catch(() => {});
   clearSelection();
+  flashHint(`Copied ${ptsLabel(tops.reduce((n, t) => n + countPoints(t), 0))}`);
 }
 
-function deleteSelected() {
+function deleteSelected(verb = 'Deleted') {  // verb: 'Cut' on the Ctrl+X path (UXP-12)
   if (selectedIds.size === 0) return;
   pushUndo();
   const toDelete = [...flatRows]
     .filter(r => selectedIds.has(r.node.id))
     .map(r => r.node.id)
     .reverse();
+  let removed = 0;
   for (const id of toDelete) {
     const parent = parentOf(id);
     if (!parent) continue;
@@ -4822,16 +4998,19 @@ function deleteSelected() {
     if (idx < 0) continue;
     const [removedNode] = parent.children.splice(idx, 1);
     deregisterSubtree(removedNode);
+    removed += countPoints(removedNode);
   }
   clearSelection();
   markDirty();
   render();
+  if (removed) flashHint(`${verb} ${ptsLabel(removed)} — ${MOD}+Z to undo`);
 }
 
 function indentSelected() {
   if (selectedIds.size === 0) return;
   pushUndo();
   const toIndent = flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node.id);
+  let moved = 0;
   for (const id of toIndent) {
     const parent = parentOf(id);
     if (!parent) continue;
@@ -4843,17 +5022,20 @@ function indentSelected() {
     np.children.push(node);
     parentMap.set(node.id, np);
     if (np.collapsed) np.collapsed = false;
+    moved++;
   }
   markDirty();
   render();
   updateSelVisuals();
   updateNodeSelBar();
+  if (moved) flashHint(`Indented ${ptsLabel(moved)}`);
 }
 
 function outdentSelected() {
   if (selectedIds.size === 0) return;
   pushUndo();
   const toOutdent = flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node.id).reverse();
+  let moved = 0;
   for (const id of toOutdent) {
     const parent = parentOf(id);
     if (!parent || parent === root) continue;
@@ -4865,11 +5047,13 @@ function outdentSelected() {
     const pi = gp.children.findIndex(c => c.id === parent.id);
     gp.children.splice(pi + 1, 0, node);
     parentMap.set(node.id, gp);
+    moved++;
   }
   markDirty();
   render();
   updateSelVisuals();
   updateNodeSelBar();
+  if (moved) flashHint(`Outdented ${ptsLabel(moved)}`);
 }
 
 function pasteFromNodeClipboard(atId) {
@@ -4883,7 +5067,10 @@ function pasteFromNodeClipboard(atId) {
   buildIndex(root, null);
   markDirty();
   render();
-  if (newNodes.length) focusNode(newNodes[newNodes.length - 1].id);
+  if (newNodes.length) {
+    focusNode(newNodes[newNodes.length - 1].id);
+    flashHint(`Pasted ${ptsLabel(newNodes.reduce((n, t) => n + countPoints(t), 0))}`);
+  }
 }
 
 // ─── selection toolbar ───────────────────────────────────────────────────────
@@ -4897,6 +5084,9 @@ function buildSelTb() {
     if (i === 4) { const sep = document.createElement('div'); sep.className = 'cmd-sep'; selTb.appendChild(sep); }
     const ic = document.createElement('div');
     ic.className = 'cmd-icon';
+    ic.setAttribute('role', 'button');
+    ic.setAttribute('tabindex', '-1');
+    ic.setAttribute('aria-label', cmd.label);
     setIcon(ic, { fa:cmd.fa, fb:cmd.icon });
     ic.title = cmd.label;
     ic.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat(cmd.id); });
@@ -4906,12 +5096,18 @@ function buildSelTb() {
   // link wraps the selection; footnote converts the selection into a note
   const linkIc = document.createElement('div');
   linkIc.className = 'cmd-icon';
+  linkIc.setAttribute('role', 'button');
+  linkIc.setAttribute('tabindex', '-1');
+  linkIc.setAttribute('aria-label', 'Link');
   setIcon(linkIc, { fa:'fa-solid fa-link', fb:'⌘' });
   linkIc.title = 'Link';
   linkIc.addEventListener('mousedown', e => { e.preventDefault(); applyInlineFormat('link'); });
   selTb.appendChild(linkIc);
   const fnIc = document.createElement('div');
   fnIc.className = 'cmd-icon seltb-fn'; // hidden for cell selections (footnotes are node-level)
+  fnIc.setAttribute('role', 'button');
+  fnIc.setAttribute('tabindex', '-1');
+  fnIc.setAttribute('aria-label', 'Convert to footnote');
   setIcon(fnIc, { fa:'fa-solid fa-superscript', fb:'†' });
   fnIc.title = 'Convert to footnote';
   fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
@@ -5405,8 +5601,12 @@ function slashApply() {
       const off = Math.min(ed ? getCaretOffset(ed) : n.text.length, n.text.length);
       if (ed) ed.blur();
       const cur = nodeById(nodeId); if (!cur) return;
-      // keep the table block on its own line(s) so PR 1's static path detects it
-      const before = cur.text.slice(0, off), after = cur.text.slice(off);
+      // keep the table block on its own line(s) so PR 1's static path detects it.
+      // `off` is unfolded (captured pre-blur) but cur.text is folded now — translate
+      // for the padding peek; applyInlineInsertion does the same translation for the
+      // splice itself, so keep passing the raw unfolded `off` (UXP-30).
+      const offF = foldedOffsetFor(cur, off);
+      const before = cur.text.slice(0, offF), after = cur.text.slice(offF);
       let ins = starterTableText(rows, cols);
       if (before && !/\n$/.test(before)) ins = '\n' + ins;
       if (after && !/^\n/.test(after)) ins = ins + '\n';
@@ -5845,9 +6045,23 @@ function applyInlineInsertion(nodeId, offset, str) { applyInlineReplace(nodeId, 
 
 // Replace the text span [start,end) of a node with `str`, then drop back into
 // edit mode with the caret parked right after it so typing can continue.
+// `start`/`end` are UNFOLDED (edit-buffer) coordinates: every caller captures them
+// while the node is in edit mode (the @ menu and selection toolbar exist only there).
 function applyInlineReplace(nodeId, start, end, str) {
   const node = nodeById(nodeId);
   if (!node) return;
+  // If the node is somehow still in edit mode, leave it first: the render() below
+  // would fire its blur mid-rebuild and exitEdit would clobber node.text back to
+  // the pre-splice buffer (the same hazard the @table path guards — createBaseAt).
+  const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+  if (ed) ed.blur();
+  // By now the blur has refolded + promoted node.text back to token form, which is
+  // LONGER than the {…} the user saw — splicing at the raw captured offset could
+  // land inside a token, corrupting it (UXP-30). Translate into folded coordinates
+  // against the post-blur text + sidecars (this also absorbs promotions, which the
+  // capture-time refold pairs alone could not).
+  start = foldedOffsetFor(node, start);
+  end = foldedOffsetFor(node, end);
   const len = node.text.length;
   const a = Math.min(Math.max(Math.min(start, end), 0), len);
   const b = Math.min(Math.max(Math.max(start, end), 0), len);
@@ -6208,13 +6422,14 @@ function makeRolltableRoll(def, name) {
 }
 
 function renderRolltablePill(key, rt) {
-  if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}">🎯 ?</span>`;
+  if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}" aria-label="Roll table (missing data)">🎯 ?</span>`;
   const nameTag = rt.name ? `<span class="rt-name" title="Callable as {${escQ(rt.name)}}">${escHtml(rt.name)}</span>` : '';
-  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}">`
+  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}"`
+    + ` aria-label="Roll table${rt.name ? ' ' + escQ(rt.name) : ''}: ${escQ(rt.result)} — click to re-roll">`
     + `<span class="rt-ico"><i class="fa-solid fa-table-list"></i></span>`
     + nameTag
     + `<span class="rt-result">${escHtml(rt.result)}</span>`
-    + `<span class="rt-edit" title="Edit table"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="rt-edit" role="button" tabindex="-1" aria-label="Edit table" title="Edit table"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -6247,6 +6462,7 @@ function rerollRolltable(node, key) {
   if (!entries) return;
   rt.result = rollTable(entries);
   markDirty();
+  announce(`${rt.name || 'Table'} re-rolled: ${rt.result}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.rt-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('rt-rolled');
 }
@@ -6454,6 +6670,7 @@ function collectRules(rootNode) {
   function gather(node) {
     if (node.grammar?.length) {
       for (const g of node.grammar) {
+        if (g.anon) continue;  // anonymous shorthand pill — its synthetic `origin` is not document-wide (UXP-33)
         if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
         const parsed = parseRules(g.def);
         if (parsed) Object.assign(merged, parsed.rules);
@@ -6493,6 +6710,7 @@ function collectCallables(rootNode) {
   const ruleSet = new Set(), tableSet = new Set(), chainSet = new Set();
   function gather(node) {
     for (const g of (node.grammar || [])) {
+      if (g.anon) continue;  // anonymous shorthand pill — keep its `origin` out of the callable index (UXP-33)
       if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
       const p = parseRules(g.def);
       if (p) for (const nm of Object.keys(p.rules)) ruleSet.add(nm.toLowerCase());
@@ -6520,6 +6738,43 @@ function filterBraceCandidates(callables, prefix) {
   if (!prefix) return callables;
   const lo = prefix.toLowerCase();
   return callables.filter(c => c.name.startsWith(lo));
+}
+
+// ─── hashtag index ───────────────────────────────────────────────────────────
+// Document-wide tag list for the # autocomplete (UXP-10): every #word the hashtag
+// renderer (mdInline) would produce, counted across the tree — same sigil rule,
+// `#` not preceded by a letter/digit. [[…]] tokens are stripped first so link
+// targets ([[#id|…]]) and artifact tokens never read as tags; status keywords
+// (#TODO) count deliberately — completing them is useful. Sorted most-used first.
+// Pure over rootNode (tests); no-arg = the live document, cached on _varsVer.
+let _tagsCacheVer = -1, _tagsCached = null;
+function collectTags(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _tagsCacheVer === _varsVer && _tagsCached) return _tagsCached;
+  const counts = new Map();
+  const TAG_RE = /(?<![a-zA-Z0-9])#(\w+)/g; // mirror mdInline's hashtag rule
+  function walk(n) {
+    const text = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
+    let m; TAG_RE.lastIndex = 0;
+    while ((m = TAG_RE.exec(text)) !== null) counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+    for (const c of n.children || []) walk(c);
+  }
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  const result = [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  if (useCache) { _tagsCacheVer = _varsVer; _tagsCached = result; }
+  return result;
+}
+
+// Filter a collectTags() list by prefix (case-insensitive, anchored at start).
+// A lone match that IS the typed prefix offers nothing to complete → empty
+// (the menu dismisses itself once the tag is fully typed). Pure.
+function filterTagCandidates(tags, prefix) {
+  const lo = (prefix || '').toLowerCase();
+  const out = lo ? tags.filter(t => t.name.toLowerCase().startsWith(lo)) : tags;
+  return (out.length === 1 && out[0].name.toLowerCase() === lo) ? [] : out;
 }
 
 // ─── node links (same-document) ──────────────────────────────────────────────
@@ -6567,11 +6822,12 @@ function makeGrammarRoll(def, originInput) {
 }
 
 function renderGrammarPill(key, g) {
-  if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}">❖ ?</span>`;
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-generate">`
+  if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
+  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-generate"`
+    + ` aria-label="Grammar: ${escQ(g.result)} — click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + `<span class="gr-result">${escHtml(g.result)}</span>`
-    + `<span class="gr-edit" title="Edit grammar"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit grammar" title="Edit grammar"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -6617,6 +6873,7 @@ function rerollGrammar(node, key) {
   if (result === null) return;
   g.result = result;
   markDirty();
+  announce(`Re-generated: ${g.result}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
 }
@@ -6664,10 +6921,12 @@ function promoteBraceBody(node, body) {
     const roll = makeDiceRoll(body);
     if (roll) { (node.dice ||= []).push(roll); return `[[dice:${roll.key}]]`; }
   }
-  // inline alternation: {a | b 2 | c} → an anonymous grammar
+  // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
+  // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
+  // never declared `origin`, so it must not become a callable `{origin}` elsewhere.
   if (splitTopLevel(body, '|').length > 1) {
     const roll = makeGrammarRoll(`origin: ${body}`, 'origin');
-    if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // bare identifier: {color} → grammar that expands a known rule/table; else
   // {strength} → a display-only variable pill if it's a defined variable. A
@@ -6676,7 +6935,7 @@ function promoteBraceBody(node, body) {
     const low = body.toLowerCase();
     if (collectRules()[low]) {
       const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
-      if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+      if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
     }
     if (low in collectVars()) {
       const rec = { key: varKey(), name: body, expr: '' };
@@ -6743,6 +7002,29 @@ function unfoldedPrefixLen(node, prefix) {
     last = m.index + m[0].length;
   }
   return len + (prefix.length - last);
+}
+
+// The inverse: translate an offset captured against the UNFOLDED edit buffer into
+// the equivalent offset in the node's current FOLDED text (UXP-30). Walks the
+// folded text's inline-able tokens, accumulating each one's unfolded ({…}) length;
+// an offset that falls *inside* an unfolded span snaps to just after its token —
+// a caret can sit inside editable {…} text but a splice must never land inside a
+// token. Pure; offsets are monotonic, so [start,end) ranges stay ordered.
+function foldedOffsetFor(node, offset) {
+  const RE = /\[\[(dice|math|var|grammar):([a-z0-9]+)\]\]/gi;
+  const text = node.text;
+  let u = 0, last = 0, m;
+  while ((m = RE.exec(text)) !== null) {
+    const gap = m.index - last;
+    if (offset <= u + gap) return last + (offset - u);
+    u += gap;
+    const arr = node[m[1] === 'var' ? 'vars' : m[1]];
+    const sh = artifactToShorthand(m[1], arr?.find(r => r.key === m[2]));
+    u += sh == null ? m[0].length : sh.length;
+    last = m.index + m[0].length;
+    if (offset < u) return last; // inside the unfolded span → after the token
+  }
+  return Math.min(last + (offset - u), text.length);
 }
 
 // While a node is in edit mode its text transiently holds {…} grammar source in
@@ -6866,17 +7148,33 @@ function normalizeGrSrcSpans(content, node) {
 // up its .gr-src styling. Unlike promotion this never changes node.text length, so
 // the caret is restored to where it was — but parked *after* the new grammar span
 // (deferred a frame, since the browser resets the selection after an input handler).
+// Generation guard (UXP-35): if a subsequent input runs before the rAF fires, that
+// call bumps _highlightGen; the stale rAF's captured gen no longer matches, so it
+// skips the caret restore instead of stomping the updated position.
+let _highlightGen = 0;
 function checkInlineHighlight(content, node) {
+  const myGen = ++_highlightGen;
   const off = getCaretOffset(content);
-  if (off < 2 || node.text[off - 1] !== '}') return false;
+  if (off < 2 || node.text[off - 1] !== '}') { hideBracePreview(); return false; }
   let depth = 0, start = -1;
   for (let k = off - 1; k >= 0; k--) {
     if (node.text[k] === '}') depth++;
     else if (node.text[k] === '{') { depth--; if (depth === 0) { start = k; break; } }
   }
-  if (start < 0 || !braceWouldPromote(node.text.slice(start + 1, off - 1))) return false;
+  if (start < 0) { hideBracePreview(); return false; }
+  const body = node.text.slice(start + 1, off - 1);
+  // Re-render for 'invalid' too — the gr-bad typo marker must appear live as the
+  // closing } lands, not on the next incidental re-render (UXP-6).
+  const braceCls = classifyBraceBody(body, collectRules(), collectVars());
+  if (braceCls === 'literal') { hideBracePreview(); return false; }
+  // the marker's AT twin (UXP-15): the visual signal is also announced
+  if (braceCls === 'invalid') { hideBracePreview(); announce('Not recognized — stays plain text'); }
   content.innerHTML = editModeHTML(node);
+  // Preview: show what the valid body promotes to (UXP-7). Sync after innerHTML set
+  // so positionCaretMenu's getBoundingClientRect sees the updated DOM layout.
+  if (braceCls === 'artifact') showBracePreview(body, content, off - 1);
   requestAnimationFrame(() => {
+    if (myGen !== _highlightGen) return; // a subsequent input ran; skip stale restore
     content.focus();
     try { if (!caretAfterGrSrc(content, off)) setCaretByOffset(content, off); } catch(_) {}
   });
@@ -7122,23 +7420,40 @@ function makeMathResult(expr) {
 }
 
 function renderMathPill(key, m) {
-  if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}">🖩 ?</span>`;
-  // Recompute with current vars so math stays live when variables change
+  if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}" aria-label="Math (missing data)">🖩 ?</span>`;
+  // Recompute with current vars so math stays live when variables change.
   const fresh = evalMath(m.expr, globalVarMap);
-  const display = fresh !== null ? formatMathDisplay(fresh, m.expr) : m.result;
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to edit">`
+  if (fresh === null) {
+    // The live recompute failed — a referenced variable became unresolvable (deleted,
+    // cyclic, or redeclared non-numeric). Surface the failure with its reason rather
+    // than the stale last-good m.result (UXP-34); the pill stays clickable so the user
+    // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
+    const reason = mathErrorReason(m.expr, globalVarMap, _varCycles);
+    const label = reason ? `#ERR (${reason})` : '#ERR';
+    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" title="Click to edit — reference unresolved"`
+      + ` aria-label="Math ${escQ(m.expr)} — ${escQ(label)} — click to edit">`
+      + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
+      + `<span class="math-expr">${escHtml(m.expr)}</span>`
+      + `<span class="math-eq">=</span>`
+      + `<span class="math-result">${escHtml(label)}</span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `</span>`;
+  }
+  const display = formatMathDisplay(fresh, m.expr);
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to edit"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
-    + `<span class="math-edit" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
 function varKey() { return 'v' + Math.random().toString(36).slice(2, 9); }
 
 function renderVarPill(key, v) {
-  if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}">$ ?</span>`;
+  if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}" aria-label="Variable (missing data)">$ ?</span>`;
   // Random pick declaration: shows the FROZEN rolled value (never re-expanded at
   // render — the engine runs only at declaration/re-roll). Generative-pill
   // interaction: body-click re-rolls, pencil edits (like dice/grammar).
@@ -7155,7 +7470,7 @@ function renderVarPill(key, v) {
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-eq">=</span>`
       + `<span class="var-val">${escHtml(rolled)}</span>`
-      + `<span class="var-edit" title="Edit random variable"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit random variable" title="Edit random variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   // Display-only mode: empty expr — read value from globalVarMap without declaring
@@ -7164,11 +7479,13 @@ function renderVarPill(key, v) {
     const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
     const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
-    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
+    const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found — click to edit`
+      : `Variable ${escQ(v.name)} = ${escQ(display)}`;
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${refLabel}">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-val">${escHtml(display)}</span>`
-      + `<span class="var-edit" title="Edit"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit variable reference" title="Edit"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
@@ -7181,12 +7498,14 @@ function renderVarPill(key, v) {
   const title = cyclic   ? 'Circular reference — click to edit'
     : shadowed ? 'Shadowed — a later declaration of this name takes effect'
     : 'Click to edit';
-  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
+  const declLabel = cyclic ? `Variable ${escQ(v.name)}: circular reference — click to edit`
+    : `Variable ${escQ(v.name)} = ${escQ(display)}${shadowed ? ' (shadowed by a later declaration)' : ''} — click to edit`;
+  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${declLabel}">`
     + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
     + `<span class="var-name">${escHtml(v.name)}</span>`
     + `<span class="var-eq">=</span>`
     + `<span class="var-val">${escHtml(display)}</span>`
-    + `<span class="var-edit" title="Edit variable"><i class="fa-solid fa-pen"></i></span>`
+    + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit variable" title="Edit variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -7211,11 +7530,12 @@ function seqDefString(sq) {
 }
 
 function renderSeqPill(key, sq) {
-  if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}">⇶ ?</span>`;
+  if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}" aria-label="Sequence (missing data)">⇶ ?</span>`;
   const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
     + '<span class="seq-pipe">|</span>'
     + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
-  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" title="Sequence ${escQ(sq.name)} — click to edit">`
+  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" title="Sequence ${escQ(sq.name)} — click to edit"`
+    + ` aria-label="Sequence ${escQ(sq.name)} — active: ${escQ(sq.states.slice(0, sq.doneFrom).join(' '))}; done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))} — click to edit">`
     + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
     + `<span class="seq-name">${escHtml(sq.name)}</span>`
     + `<span class="seq-states">${states}</span>`
@@ -7572,18 +7892,35 @@ function announce(msg) {
 function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashMenu.classList.remove('on'); slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
-// Opt-in guidance overlay, OFF by default. The base linking path is keyboard-first:
-// type or paste a [[#id]] token directly (LINK_RE + renderLinkPill handle it), or use
-// "Copy link to this node" (bullet menu / Ctrl-Shift-L) and paste. The auto-picker is
-// a discoverability layer on top of that — never the only way, and it must never
-// intercept normal typing. Flip this to true to surface it.
-const LINK_PICKER_ENABLED = false;
+// ON by default (UXP-4 — a built capability with no front door at any verbosity is
+// non-conformant; this flag is now a kill switch, not a gate). The picker is a
+// discoverability layer over the keyboard-first base path — type/paste a [[#id]]
+// token directly (LINK_RE + renderLinkPill), or "Copy link to this node" (bullet
+// menu / Ctrl-Shift-L) and paste — never the only way, and the trigger regex
+// excludes `#` so typing/pasting a raw token is never intercepted.
+const LINK_PICKER_ENABLED = true;
 const lpMenu = document.getElementById('lp-menu');
 let lpState = null;
 function isLpMenuOpen() { return lpMenu.classList.contains('on'); }
 lpMenu.addEventListener('mousedown', e => e.preventDefault());
 
-function hideLinkMenu() { lpMenu.classList.remove('on'); lpState = null; }
+function hideLinkMenu() { lpState?.content?.removeAttribute('aria-activedescendant'); lpMenu.classList.remove('on'); lpState = null; }
+
+// Link-target candidates: every point whose title contains the query (case-
+// insensitive), excluding the linking point itself and title-less points. Pure
+// over rootNode (tests pass an explicit tree); no-arg = the live document.
+function linkCandidates(query, excludeId, rootNode = root) {
+  const out = [];
+  function walk(n) {
+    if (n.id !== excludeId) {
+      const title = textForDisplay(n);
+      if (title && (query === '' || title.toLowerCase().includes(query))) out.push({ id: n.id, title });
+    }
+    for (const c of n.children) walk(c);
+  }
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  return out;
+}
 
 function checkLinkTrigger(content, nodeId) {
   if (isSlashMenuOpen()) { hideLinkMenu(); return; }
@@ -7593,15 +7930,7 @@ function checkLinkTrigger(content, nodeId) {
   if (!m) { hideLinkMenu(); return; }
   const query = m[1].toLowerCase();
   const triggerOffset = m.index;
-  const candidates = [];
-  function walkForLinks(n) {
-    if (n.id !== nodeId) {
-      const title = textForDisplay(n);
-      if (title && (query === '' || title.toLowerCase().includes(query))) candidates.push({ id: n.id, title });
-    }
-    for (const c of n.children) walkForLinks(c);
-  }
-  if (root?.children) for (const c of root.children) walkForLinks(c);
+  const candidates = linkCandidates(query, nodeId);
   if (!candidates.length) { hideLinkMenu(); return; }
   lpState = { nodeId, content, triggerOffset, query, activeIdx: 0, matches: candidates.slice(0, 20) };
   hideSlashMenu();
@@ -7616,10 +7945,16 @@ function renderLinkMenu() {
     const item = document.createElement('div');
     item.className = 'lp-item' + (i === lpState.activeIdx ? ' hi' : '');
     item.textContent = nd.title;
+    item.setAttribute('role', 'option');
+    item.id = 'lp-opt-' + i;
+    item.setAttribute('aria-selected', String(i === lpState.activeIdx));
     item.addEventListener('mouseenter', () => { lpState.activeIdx = i; renderLinkMenu(); });
     item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = i; lpApply(); });
     lpMenu.appendChild(item);
   });
+  // focus stays at the caret — the active option is exposed via activedescendant
+  // (the slash menu's screen-reader pattern, shared by all caret pickers)
+  lpState.content?.setAttribute('aria-activedescendant', 'lp-opt-' + lpState.activeIdx);
   lpMenu.classList.add('on');
   lpMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
@@ -7637,7 +7972,9 @@ function lpApply() {
   const chosen = matches[activeIdx];
   hideLinkMenu();
   const fullText = editableText(content);
-  const token = `[[#${chosen.id}|${chosen.title}]]`;
+  // Empty label = the target's LIVE title (the same form "Copy link" produces) —
+  // the link follows a rename instead of freezing the title as typed today.
+  const token = `[[#${chosen.id}|]]`;
   const newText = fullText.slice(0, triggerOffset) + token + fullText.slice(triggerOffset + 2 + query.length);
   const node = nodeById(nodeId); if (!node) return;
   node.text = newText;
@@ -7689,8 +8026,21 @@ function positionLinkMenu(content, offset) {
 const braceMenu = document.getElementById('brace-menu');
 let braceState = null;
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
-function hideBraceMenu() { braceMenu.classList.remove('on'); braceState = null; }
+function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceMenu.classList.remove('on'); braceState = null; }
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
+
+// ─── {…} shorthand live-preview tooltip (UXP-7) ──────────────────────────────
+// A non-interactive tooltip that appears below the closing } of a valid {body}
+// while editing, showing what pill type the body will promote to on exitEdit.
+const bracePreview = document.getElementById('brace-preview');
+function hideBracePreview() { bracePreview.classList.remove('on'); }
+function showBracePreview(body, content, offset) {
+  const [type, detail] = braceTypeLabel(body, collectRules(), collectVars());
+  bracePreview.innerHTML = `<span class="bp-label">→ ${escHtml(type)}</span>`
+    + (detail ? `<span class="bp-detail"> · ${escHtml(detail)}</span>` : '');
+  bracePreview.classList.add('on');
+  positionCaretMenu(bracePreview, content, offset);
+}
 
 function checkBraceTrigger(content, nodeId) {
   const pos = getCaretOffset(content);
@@ -7714,7 +8064,7 @@ function checkBraceTrigger(content, nodeId) {
   // last character that offset points past end-of-text, the DOM walk finds no node
   // and the menu falls back to 0,0 until the next keystroke. The `{` always exists,
   // so the menu lands at the caret on the very first trigger.
-  positionBraceMenu(content, braceStart);
+  positionCaretMenu(braceMenu, content, braceStart);
 }
 
 const BM_GROUP_LABELS = { var: 'Variables', rule: 'Rules', table: 'Tables', chain: 'Chains' };
@@ -7733,7 +8083,9 @@ function renderBraceMenu() {
     }
     const el = document.createElement('div');
     el.className = 'bm-item' + (i === braceState.activeIdx ? ' hi' : '');
-    el.setAttribute('role', 'menuitem');
+    el.setAttribute('role', 'option');
+    el.id = 'bm-opt-' + i;
+    el.setAttribute('aria-selected', String(i === braceState.activeIdx));
     const nameEl = document.createElement('span');
     nameEl.className = 'bm-name';
     nameEl.textContent = item.name;
@@ -7749,11 +8101,15 @@ function renderBraceMenu() {
     el.addEventListener('mousedown', e => { e.preventDefault(); braceState.activeIdx = i; braceApply(); });
     braceMenu.appendChild(el);
   });
+  // focus stays at the caret — active option exposed via activedescendant (UXP-14)
+  braceState.content?.setAttribute('aria-activedescendant', 'bm-opt-' + braceState.activeIdx);
   braceMenu.classList.add('on');
   braceMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
 
-function positionBraceMenu(content, offset) {
+// Position a caret-anchored picker (the { and # menus share this) at the logical
+// text offset, flipping above the caret when it would clip the viewport bottom.
+function positionCaretMenu(menu, content, offset) {
   let rem = offset, targetNode = null, targetRawOff = 0;
   function walkDom(node) {
     if (targetNode) return;
@@ -7773,17 +8129,17 @@ function positionBraceMenu(content, offset) {
     for (const c of node.childNodes) walkDom(c);
   }
   for (const c of content.childNodes) walkDom(c);
-  if (!targetNode) { braceMenu.style.left = '0'; braceMenu.style.top = '0'; return; }
+  if (!targetNode) { menu.style.left = '0'; menu.style.top = '0'; return; }
   const range = document.createRange();
   range.setStart(targetNode, targetRawOff);
   range.setEnd(targetNode, Math.min(targetRawOff + 1, targetNode.length));
   const rect = range.getBoundingClientRect();
-  braceMenu.style.left = rect.left + 'px';
-  braceMenu.style.top  = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+  menu.style.top  = (rect.bottom + 4) + 'px';
   requestAnimationFrame(() => {
-    const mr = braceMenu.getBoundingClientRect();
-    if (mr.right  > window.innerWidth - 8) braceMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
-    if (mr.bottom > window.innerHeight - 8) braceMenu.style.top  = (rect.top - mr.height - 4) + 'px';
+    const mr = menu.getBoundingClientRect();
+    if (mr.right  > window.innerWidth - 8) menu.style.left = (window.innerWidth - mr.width - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) menu.style.top  = (rect.top - mr.height - 4) + 'px';
   });
 }
 
@@ -7809,18 +8165,100 @@ function braceApply() {
   markDirty();
 }
 
+// ─── # hashtag autocomplete (tag picker) ──────────────────────────────────────
+// Same §7.1 menu pattern as the { picker: trigger → narrow as you type →
+// ↑/↓/Enter/Tab/Esc, mouse via mousedown (caret invariant). Sourced from
+// collectTags() so tags stop drifting (#todo vs #todos) — the menu shows what
+// already exists, with usage counts (UXP-10). Fires on #prefix at the caret,
+// mirroring mdInline's sigil rule; never inside a [[#id|…]] link token.
+
+const tagMenu = document.getElementById('tag-menu');
+let tagState = null;
+function isTagMenuOpen() { return tagMenu.classList.contains('on'); }
+function hideTagMenu() { tagState?.content?.removeAttribute('aria-activedescendant'); tagMenu.classList.remove('on'); tagState = null; }
+tagMenu.addEventListener('mousedown', e => e.preventDefault());
+
+function checkTagTrigger(content, nodeId) {
+  const pos = getCaretOffset(content);
+  const before = editableText(content).slice(0, pos);
+  const m = before.match(/(?<![a-zA-Z0-9])#(\w*)$/);
+  if (!m) { hideTagMenu(); return; }
+  const hashAt = pos - m[1].length - 1;
+  if (before.slice(Math.max(0, hashAt - 2), hashAt) === '[[') { hideTagMenu(); return; } // link token target, not a tag
+  // The prefix being typed is itself already indexed (the input handler wrote
+  // node.text before this ran) — a count-1 exact match is that self-occurrence,
+  // not a real tag, so it must not offer itself.
+  const matches = filterTagCandidates(collectTags(), m[1])
+    .filter(t => !(t.count === 1 && t.name === m[1]));
+  if (!matches.length) { hideTagMenu(); return; }
+  tagState = { nodeId, content, hashAt, prefix: m[1], activeIdx: 0, matches };
+  renderTagMenu();
+  positionCaretMenu(tagMenu, content, hashAt); // anchor at the #, which always exists
+}
+
+function renderTagMenu() {
+  if (!tagState) return;
+  tagMenu.innerHTML = '';
+  tagState.matches.forEach((item, i) => {
+    const el = document.createElement('div');
+    el.className = 'bm-item' + (i === tagState.activeIdx ? ' hi' : '');
+    el.setAttribute('role', 'option');
+    el.id = 'tm-opt-' + i;
+    el.setAttribute('aria-selected', String(i === tagState.activeIdx));
+    const nameEl = document.createElement('span');
+    nameEl.className = 'bm-name';
+    nameEl.textContent = '#' + item.name;
+    el.appendChild(nameEl);
+    const valEl = document.createElement('span');
+    valEl.className = 'bm-val';
+    valEl.textContent = '×' + item.count; // occurrences across the document
+    el.appendChild(valEl);
+    el.addEventListener('mouseenter', () => { tagState.activeIdx = i; renderTagMenu(); });
+    el.addEventListener('mousedown', e => { e.preventDefault(); tagState.activeIdx = i; tagApply(); });
+    tagMenu.appendChild(el);
+  });
+  // focus stays at the caret — active option exposed via activedescendant (UXP-14)
+  tagState.content?.setAttribute('aria-activedescendant', 'tm-opt-' + tagState.activeIdx);
+  tagMenu.classList.add('on');
+  tagMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+}
+
+function tagMove(dir) {
+  if (!tagState) return;
+  const n = tagState.matches.length;
+  tagState.activeIdx = (tagState.activeIdx + dir + n) % n;
+  renderTagMenu();
+}
+
+function tagApply() {
+  if (!tagState) return;
+  const { nodeId, content, hashAt, prefix, activeIdx, matches } = tagState;
+  const chosen = matches[activeIdx];
+  hideTagMenu();
+  const fullText = editableText(content);
+  const inserted = `#${chosen.name}`;
+  const newText = fullText.slice(0, hashAt) + inserted + fullText.slice(hashAt + 1 + prefix.length);
+  const node = nodeById(nodeId); if (!node) return;
+  node.text = newText;
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, hashAt + inserted.length); } catch(_) {}
+  markDirty();
+}
+
 function checkMdBlockPrefix(content, node) {
   const text = editableText(content);
-  // Divider is the only type that converts immediately (no persistent prefix)
-  if (/^---\s*$/.test(text)) {
-    node.type = 'divider'; node.text = '';
+  // Divider still converts immediately (its row hides the content element, so
+  // staying in edit mode isn't useful) — but the break now STAYS in node.text
+  // (markdown-first, UXP-26): the text is the source, the type a derived hint.
+  if (node.type !== 'divider' && HR_RE.test(text)) {
+    node.type = 'divider'; node.text = text.trimEnd();
     delete content.dataset.editing;
     rerenderNode(node.id);
     return true;
   }
   // For all other block types: prefix stays in text, just update type + CSS live
   const newType = deriveTypeFromText(text)
-    ?? (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' ? 'ul' : node.type);
+    ?? (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' ? 'ul' : node.type);
   if (newType !== node.type) {
     const nodeEl = content.closest('.node');
     if (nodeEl) { nodeEl.classList.remove(`nt-${node.type}`); nodeEl.classList.add(`nt-${newType}`); }
@@ -7883,7 +8321,14 @@ function applyBlockCmd(id, nodeId, node, content) {
   cleanText = cleanText.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
   const pt = parseTodo(cleanText);
   if (pt.keyword) cleanText = pt.body;
-  node.text = id === 'divider' ? '' : newPrefix + cleanText;
+  // converting away from a divider strips its break line (like to-do markers above —
+  // otherwise the node would just derive back to 'divider' on the next edit)
+  if (node.type === 'divider' && HR_RE.test(cleanText.split('\n', 1)[0])) {
+    cleanText = cleanText.split('\n').slice(1).join('\n');
+  }
+  // → divider is NON-destructive (UXP-26): existing content becomes the section
+  // label below the break, never erased.
+  node.text = id === 'divider' ? (cleanText.trim() ? '---\n' + cleanText : '---') : newPrefix + cleanText;
   node.type = id;
   node.checked = false;
   // if currently editing this node, sync the live contenteditable
@@ -8020,6 +8465,7 @@ function rerollDice(node, key) {
   const { total, parts } = rollParsed(terms);
   d.total = total; d.parts = parts;
   markDirty();
+  announce(`${d.expr} re-rolled: ${diceTotalStr(d)}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.dice-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('dice-rolled');
 }
@@ -8055,6 +8501,7 @@ function rerollMarkov(node, key) {
   if (!parsed) return;
   mk.path = walkMarkov(parsed, mk.start, mk.steps);
   markDirty();
+  announce(`${mk.name || 'Chain'} re-rolled: ${mk.path.join(' → ')}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.mk-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('mk-rolled');
 }
@@ -8149,6 +8596,11 @@ function deleteNode(id) {
   const [removedNode] = parent.children.splice(idx,1);
   deregisterSubtree(removedNode);
   markDirty();
+  // Confirm destruction of real content (UXP-12). Backspace on an empty leaf is
+  // an editing-flow delete — visible at the caret — and stays quiet.
+  if (removedNode.children.length || removedNode.text.trim()) {
+    flashHint(`Deleted ${ptsLabel(countPoints(removedNode))} — ${MOD}+Z to undo`);
+  }
   let ft = null;
   if (idx > 0) ft = lastVis(parent.children[idx-1]).id;
   else if (parent.id !== root.id && parent.id !== focusedId) ft = parent.id;
@@ -8514,6 +8966,13 @@ function performMultiDrop(ids, targetId, position) {
 
 // ─── dirty ────────────────────────────────────────────────────────────────────
 
+// Invalidate every _varsVer-keyed document cache (collectVars/Rules/Links/
+// Sequences/Callables, state commands). markDirty does this on every edit, but a
+// fresh document load (newFile/openFile/restore) replaces `root` without an edit —
+// so the previous document's caches would be served until the first keystroke
+// (UXP-32). Call beside every buildIndex(root, null) that swaps the tree.
+function resetDocCaches() { _varsVer++; }
+
 function markDirty() {
   dirty = true;
   _varsVer++; // invalidate collectVars() cache
@@ -8546,7 +9005,7 @@ function trimStack(stack) {
 function restoreSnapshot(snap) {
   root = JSON.parse(snap.root);
   focusedId = snap.focusedId;
-  buildIndex(root, null);
+  buildIndex(root, null); resetDocCaches();
 }
 
 // Text edits are recorded as tiny {prev,next} entries instead of full-tree
@@ -8567,8 +9026,15 @@ function flushActiveTextEdit() {
   if (!node) return;
   const prev = el.dataset.prevText ?? '';
   node.text = editableText(el);
-  recordTextEdit(activeContentId, prev, node.text);
-  el.dataset.prevText = node.text; // reset baseline so exitEdit won't double-record
+  // Undo entries live in FOLDED coordinates (UXP-31): the live buffer transiently
+  // holds {…} for unfolded artifacts, and recording it would let a later undo
+  // restore raw shorthand into node.text outside edit mode — the refold pairs no
+  // longer apply there, so the artifact's frozen roll + key would be lost and the
+  // next edit/exit would re-promote it as a fresh pill. prevText is folded too
+  // (enterEdit sets it before unfoldArtifacts), so entries stay folded↔folded.
+  const next = foldedTextForSave(node);
+  recordTextEdit(activeContentId, prev, next);
+  el.dataset.prevText = next; // folded baseline so exitEdit won't double-record
 }
 
 // structural ops: flush any in-progress text edit, then snapshot the whole tree
@@ -8589,6 +9055,13 @@ function applyEntry(entry, intoStack, dir) {
     if (activeContentId != null) {
       const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
       if (el) { delete el.dataset.editing; delete el.dataset.prevText; }
+      // The abandoned session's model text may still be the unfolded {…} buffer
+      // (flushActiveTextEdit syncs it from the DOM); exitEdit will never run for it
+      // now, so refold here or raw shorthand leaks into node.text — losing the
+      // frozen roll/key on the next edit/exit re-promotion (UXP-31). A no-op when
+      // the entry targets this same node: its text is overwritten just below.
+      const abandoned = nodeById(activeContentId);
+      if (abandoned) refoldArtifacts(abandoned);
       activeContentId = null;
     }
     if (node) {
@@ -8645,7 +9118,7 @@ async function newFile() {
   document.getElementById('search-box').value = '';
   document.getElementById('search-clear').classList.remove('on');
   migrateNodePrefixes(root);
-  buildIndex(root, null);
+  buildIndex(root, null); resetDocCaches();
   markClean(); render();
 }
 
@@ -8662,7 +9135,7 @@ async function openFile() {
       fileName = file.name;
       root = fromOpml(await file.text());
       migrateNodePrefixes(root);
-      buildIndex(root, null);
+      buildIndex(root, null); resetDocCaches();
       focusedId = null; searchQuery = ''; searchQueryLC = '';
       undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
       document.getElementById('file-name').textContent = fileName;
@@ -8677,7 +9150,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
+      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); resetDocCaches(); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -8786,6 +9259,8 @@ function toMarkdown(rootNode) {
       body.split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}- ---`);
+      const dlabel = textForDisplay(node);
+      if (dlabel) out.push(`${indent}  ${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos carry their own markdown (`- [ ]` marker / Org keyword) in node.text —
       // export it verbatim instead of synthesizing a marker from type+checked.
@@ -8830,6 +9305,8 @@ function toPlainText(rootNode) {
       stripInlineMd(flattenArtifacts(node.text, node, varMap)).split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
+      const dlabel = stripInlineMd(textForDisplay(node));
+      if (dlabel) out.push(`${indent}${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
@@ -9111,6 +9588,9 @@ function renderFnPanel(node, refs) {
 
     const keyEl = document.createElement('div');
     keyEl.className = 'fn-key';
+    keyEl.setAttribute('role', 'button');
+    keyEl.setAttribute('tabindex', '0');
+    keyEl.setAttribute('aria-label', `Footnote [^${key}] — jump to reference`);
     keyEl.textContent = `[^${key}]`;
     keyEl.title = 'Hover to highlight · click to jump to reference';
     keyEl.addEventListener('mouseenter', () => {
@@ -9127,6 +9607,7 @@ function renderFnPanel(node, refs) {
     });
     keyEl.addEventListener('mousedown', e => e.preventDefault());
     keyEl.addEventListener('click', () => returnToFnRef(key));
+    keyEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); returnToFnRef(key); } });
 
     const contentEl = document.createElement('div');
     contentEl.className = 'fn-content';
@@ -9542,7 +10023,7 @@ const MOD = IS_MAC ? '⌘' : 'Ctrl';
 const SHORTCUTS = [
   { sec: 'Navigate', rows: [
     { keys: ['↑', '↓'],            desc: 'Move between points' },
-    { keys: [`${MOD}+↑`, '↓'],    desc: 'Collapse / expand point' },
+    { keys: [`${MOD}+.`, ','],    desc: 'Collapse / expand point' },
     { keys: [`${MOD}+1`, '…', '6'], desc: 'Show first N levels (or use the toolbar 1·2·3·All)' },
     { keys: [`${MOD}+Enter`],     desc: 'Zoom into point' },
     { keys: ['Esc'],              desc: 'Zoom out / deselect — from search or a menu, returns to your edit' },
@@ -9562,6 +10043,8 @@ const SHORTCUTS = [
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, dice, math, variable…' },
+    { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
+    { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point or base column' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },
@@ -9650,7 +10133,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     const tops = getTopLevelSelected();
     nodeClipboard = { nodes: tops.map(n => JSON.parse(JSON.stringify(n))) };
-    deleteSelected();
+    deleteSelected('Cut');
   }
   if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {
     e.preventDefault();
@@ -9742,7 +10225,7 @@ function scheduleAutosave() {
     if (data.root) {
       root = data.root;
       migrateNodePrefixes(root);
-      buildIndex(root, null);
+      buildIndex(root, null); resetDocCaches();
       focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
       if (data.fileName) {
         fileName = data.fileName;
@@ -9771,7 +10254,7 @@ function scheduleAutosave() {
 })();
 
 migrateNodePrefixes(root);
-buildIndex(root, null);
+buildIndex(root, null); resetDocCaches();
 render();
 updateTitle();
 refreshIcons();

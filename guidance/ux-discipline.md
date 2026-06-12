@@ -101,10 +101,10 @@ Each carries: the **law**, **normative rules**, and an **acceptance test** the A
 
 This is fully compatible with `ux.md`'s lean-first model: the *capability* must never be syntax-only at the **floor** (`ux.md`'s own rule: "a complete reference is reachable from every mode"), but the *visible affordance* MAY be a verbosity-gated overlay that Lean mode quiets. Discoverable ≠ loud; it means *a way in exists without prior knowledge*.
 
-- **P2-1 (MUST):** Every capability satisfies all three doors. A capability that is built but reachable only by syntax (or gated entirely off with no visible path at any verbosity) is **non-conformant**. *(The `[[` link picker is the canonical example: it exists but is gated off; under this standard its front door must surface at least in Guided mode — its staging belongs to `ux.md`/roadmap, but "no front door at any level" is not a conformant end state.)*
+- **P2-1 (MUST):** Every capability satisfies all three doors. A capability that is built but reachable only by syntax (or gated entirely off with no visible path at any verbosity) is **non-conformant**. *(The `[[` link picker was the canonical example — built but gated off; it is now un-gated (UXP-4). The rule stands for the next case: "no front door at any level" is never a conformant end state.)*
 - **P2-2 (MUST):** Menu items show **label + one-line description + the typed syntax** (the `/`/`@` menus already do this — it is now the standard for every menu).
 - **P2-3 (MUST):** A power feature entered only through raw markdown MUST also have an affordance. *(Org `#+TBLFM:` formulas are entered today by typing a raw line with no UI — non-conformant; a formula affordance is required, syntax retained as the power path.)*
-- **P2-4 (SHOULD):** Stateful generative state is inspectable — variables and tags get an overview surface (a variables list; tag autocomplete — already in backlog "Tag power").
+- **P2-4 (SHOULD):** Stateful generative state is inspectable — variables and tags get an overview surface. *(Both shipped: the variables panel + `{` picker — UXP-9; the `#` tag picker sourced from the document-wide tag index — UXP-10.)*
 - **P2-5 (SHOULD):** Shorthand previews before it commits (pairs with P4-2).
 
 **Acceptance test:** a user who has read no docs can find and use the feature through visible UI alone (in Guided mode).
@@ -250,8 +250,8 @@ One pattern, four channels. Reuse — do not invent.
 
 To stop reinvention, every feature reuses these rather than building its own.
 
-### 7.1 Menu pattern (`/`, `@`, `{`, link, state pickers)
-One behavior contract: open on trigger → filter as you type → `↑/↓` move, `Enter`/`Tab` apply, `Esc` close (P1-3) → each row = icon + label + description + **typed syntax** (P2-2) → `role="menu"`/`menuitem` per `accessibility.md` Phase 1 → reduced-motion respected. The **file menu is not a menu** — it is a settings `dialog` (per `accessibility.md`); don't force `role="menu"` on it. The **`{` callable-name picker** (UXP-9) is this pattern applied to the grammar engine's namespace: it opens on a bare identifier prefix inside an unclosed `{`, groups by kind (Variables / Rules / Tables / Chains, variables showing their resolved value), and applying writes the existing `{name}` reference — discoverability for callable names with **no new syntax** (P5-conformant by construction).
+### 7.1 Menu pattern (`/`, `@`, `{`, `#`, link, state pickers)
+One behavior contract: open on trigger → filter as you type → `↑/↓` move, `Enter`/`Tab` apply, `Esc` close (P1-3) → each row = icon + label + description + **typed syntax** (P2-2) → `role="menu"`/`menuitem` per `accessibility.md` Phase 1 → reduced-motion respected. The **file menu is not a menu** — it is a settings `dialog` (per `accessibility.md`); don't force `role="menu"` on it. The **`{` callable-name picker** (UXP-9) is this pattern applied to the grammar engine's namespace: it opens on a bare identifier prefix inside an unclosed `{`, groups by kind (Variables / Rules / Tables / Chains, variables showing their resolved value), and applying writes the existing `{name}` reference — discoverability for callable names with **no new syntax** (P5-conformant by construction). The **`#` tag picker** (UXP-10) is the same pattern over the document-wide tag index (`collectTags`, usage counts shown): it opens on `#prefix` at the caret (mdInline's sigil rule; never inside a `[[#id|…]]` link token) and applying writes the existing `#tag` — so tags stop drifting (`#todo` vs `#todos`).
 
 ### 7.2 Pill pattern (all live inline objects)
 Dice/math/variable/grammar/markov/rolltable are one object with different generators (the "everything is under the grammar engine" reality from `CLAUDE.md`). They share: render = icon + (name) + result + edit affordance · interaction = body click re-rolls in place and **stays in display mode**, pencil opens the dialog (the documented model — do not deviate) · authoring = dialog **and** shorthand where inline-able, with preview before promotion (P2-5/P4-2) · a11y = accurate `aria-label` updated on reroll (P3-6 interim). A new generator plugs in here and MUST NOT define its own interaction or a11y behavior.
@@ -283,20 +283,20 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 
 | Feature | P1 predictable | P2 discoverable | P3 reachable | P4 responsive |
 |---|---|---|---|---|
-| Outline nav / move / indent | ⚠️ (P1-2 collapse binding) | ✅ | ⚠️ (row labels; tree deferred) | ✅ |
+| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ | ⚠️ (row labels; collapse-btn + breadcrumb named/keyboard-operable — UXP-14; tree deferred) | ✅ |
 | Paragraph block | ✅ (documented prose-mode exception) | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
-| Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (P3-6 labels; focus deferred) | ⚠️ (P4-1 silent shorthand) |
+| Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (labels + reroll announcements ✓ — UXP-15; pencils named + Enter/Space-operable — UXP-13/14; pill focus/tabindex deferred to the UXP-19 pass) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
 | Variables | ✅ | ✅ (`{` picker + variables panel; UXP-9) | ⚠️ | ⚠️ |
-| Inline `{…}` shorthand | ✅ | ⚠️ | ⚠️ | ❌ (P4-1/P4-2) |
+| Inline `{…}` shorthand | ✅ | ✅ (live preview tooltip on `}` close: → dice/math/grammar/var — UXP-7) | ⚠️ | ✅ (gr-bad typo marker + AT announce — UXP-6) |
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
 | Table columns (ops) | ✅ (one Column panel: Calculate/Alignment/Insert/Move/Delete; no hidden double-click; UXP-21) | ✅ (one sized ▾ door; grip cue for drag; full-height "+") | ✅ (panel role=menu/menuitem keyboard-operable; sized targets + aria-labels) | ✅ (refresh reflects every op) |
-| Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; `#ERR` on invalid formula) |
-| Links (`[[ ]]`) | ✅ | ❌ (P2-1 picker gated off, no floor door) | ⚠️ | ✅ |
-| Footnotes / hashtags / emoji | ✅ | ⚠️ (tag index P2-4) | ⚠️ | ✅ |
+| Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; reason-coded `#ERR (cycle/bad ref/non-numeric)` — UXP-8) |
+| Links (`[[ ]]`) | ✅ | ✅ (`[[` picker live — UXP-4; Copy-link stays the power path) | ✅ (listbox/option + activedescendant) | ✅ (rename repaints on-screen links immediately) |
+| Footnotes / hashtags / emoji | ✅ | ✅ (`#` tag picker — UXP-10) | ⚠️ (fn-panel keys named + Enter/Space-operable — UXP-14) | ✅ |
 | Search | ✅ | ✅ | ⚠️ | ✅ |
-| Autosave / storage | n/a | ✅ | ⚠️ (P3-5 alert — a11y Ph5) | ✅ (reference pattern) |
+| Autosave / storage | n/a | ✅ | ✅ (`role="alert"` on the warning — UXP-18) | ✅ (reference pattern) |
 
 **Syntax conformance (P5) — read this whenever proposing a feature.** The inventory in §2/P5 **is** the current authoring language; today's set is the baseline, not a problem. The rule is **no growth without sign-off**. The standing risk is *new* sprawl — and the roadmap already contains two examples to police: a proposed render-only `{= expr}`/`{NdM}` "second syntax alongside `[[type:key]]`," and possible `B3`-style table refs. Both are **P5-3 violations unless they replace** what they overlap; route them through the `{…}` engine / `@row$col` instead. Tracked as a standing guard in `ux-remediation.md`.
 
