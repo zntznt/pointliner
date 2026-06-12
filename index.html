@@ -830,6 +830,19 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* suppress the iOS long-press text/callout on tappable widgets */
   .bullet,.collapse-btn,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.fn-ref{-webkit-touch-callout:none}
 }
+/* focus-visible sweep (UXP-17): every keyboard-focusable control shows the standard
+   2px accent ring (the app's one focus indicator), instead of the per-browser default. */
+.collapse-btn:focus-visible,.crumb:focus-visible,.fn-key:focus-visible,#storage-warn-close:focus-visible,
+.bullet:focus-visible,.lvl-btn:focus-visible,#btn-done:focus-visible,.io-btn:focus-visible,.io-chip:focus-visible,
+.dice-edit:focus-visible,.mk-edit:focus-visible,.rt-edit:focus-visible,.gr-edit:focus-visible,
+.math-edit:focus-visible,.var-edit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* menu rows: inset ring so the scrollable panel doesn't clip it (matches #bpop) */
+#file-menu .cmd-item:focus-visible,.mt-col-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+/* reduced motion (UXP-17): collapse every animation/transition to imperceptible.
+   Additive and global — subsumes the two earlier per-widget rules. */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
+}
 </style>
 </head>
 <body>
@@ -3430,7 +3443,7 @@ function showRowPanel(node, rowIdx, anchorEl) {
 // The consolidated Column panel: Calculate · Alignment · Width · Insert · Move · Delete.
 // One panel, growing by section. Every column op lives here so the header stays clean
 // and nothing is drag/double-click-only.
-function showColPanel(node, colIdx, anchorEl) {
+function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const col1 = colIdx + 1;
@@ -3463,8 +3476,26 @@ function showColPanel(node, colIdx, anchorEl) {
   addItem('Move left',  { disabled: colIdx === 0,         onApply: () => mtMoveCol(node, colIdx, -1) });
   addItem('Move right', { disabled: colIdx === ncols - 1, onApply: () => mtMoveCol(node, colIdx,  1) });
 
-  addSection('Delete', true);
-  addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+  // Row sections — added when opened from a data cell (the Shift+F10 keyboard door),
+  // so the cell's context menu covers its row too; the row handle's click menu
+  // (showRowPanel) stays the pointer path. Header (r=0) and footer rows get none.
+  const lastDataRow = mtLastDataRow(node, model);
+  const rowOps = rowIdx != null && rowIdx >= 1 && rowIdx <= lastDataRow;
+  if (rowOps) {
+    const minRows = mtHasFooter(tblfm) ? 3 : 2;
+    addSection('Insert row', true);
+    addItem('Insert above', { onApply: () => mtInsertRow(node, rowIdx, 'above') });
+    addItem('Insert below', { onApply: () => mtInsertRow(node, rowIdx, 'below') });
+    addSection('Move row', true);
+    addItem('Move up',   { disabled: rowIdx <= 1,           onApply: () => mtMoveRow(node, rowIdx, -1) });
+    addItem('Move down', { disabled: rowIdx >= lastDataRow, onApply: () => mtMoveRow(node, rowIdx,  1) });
+    addSection('Delete', true);
+    addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+    addItem('Delete row',    { danger: true, disabled: model.rows.length <= minRows, onApply: () => mtDeleteRow(node, rowIdx) });
+  } else {
+    addSection('Delete', true);
+    addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+  }
 
   mtOpenMenu(panel, anchorEl);
 }
@@ -3756,15 +3787,16 @@ function buildTableWidget(node, readOnly) {
   host.addEventListener('keydown', e => {
     mtPointerFocus = false; // typing means any pointer-press gesture is over
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
-    // Shift+F10 / the Menu (ContextMenu) key on any focused cell → the Column menu for
-    // that cell's column (OS-standard "context menu of the focused element"). This is
-    // the keyboard door for column ops (replacing the dropped Cmd+M, which collided
-    // with macOS minimize). The base menu is reached from the base's bullet (Shift+F10
-    // there) — a clean split: cell focused → column menu, bullet focused → base menu.
+    // Shift+F10 / the Menu (ContextMenu) key on any focused cell → the cell's context
+    // menu: the Column sections plus, on a data row, the Row sections (insert/move/
+    // delete row) — the keyboard door for BOTH axes (replacing the dropped Cmd+M,
+    // which collided with macOS minimize). The base menu is reached from the base's
+    // bullet (Shift+F10 there) — a clean split: cell focused → cell context menu,
+    // bullet focused → base menu. The row handle's click menu stays the pointer path.
     if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
       e.preventDefault();
       const c = +cell.dataset.c;
-      showColPanel(node, c, host.querySelector(`th[data-c="${c}"]`) || cell);
+      showColPanel(node, c, host.querySelector(`th[data-c="${c}"]`) || cell, +cell.dataset.r);
       return;
     }
     if (slashState?.cell && slashState.content === cell && isSlashMenuOpen()) {
@@ -10072,7 +10104,7 @@ const SHORTCUTS = [
     { keys: ['@'],  desc: 'Insert link, image, footnote, dice, roll table, Markov chain, grammar, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
-    { keys: ['⇧+F10'], desc: 'Open the menu for the focused point or base column' },
+    { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },
   ]},
