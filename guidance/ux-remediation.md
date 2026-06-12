@@ -140,6 +140,21 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   rule name) and skip them in `collectRules`/`collectCallables`; named pills keep registering
   as today. The dialog-example `origin:` convention for *named* grammars is unaffected.
 
+### UXP-34 ☐ 🟡 Math pill shows a stale value instead of an error on an unresolvable reference
+- **Problem:** when a math pill's referenced variable becomes unresolvable — deleted, cyclic, or
+  redeclared as a non-numeric kind (e.g. a random/pick variable) — the pill falls back to its
+  last-good `m.result` rather than surfacing the failure (`renderMathPill`: a `null` recompute
+  against `globalVarMap` renders the stored result). The stale number reads as still-valid.
+- **Violates:** P4-2 (errors explain the cause; no silent stale result).
+- **Note:** pre-existing behavior, NOT introduced by the random-variables PR (#62) — but #62 makes
+  it slightly easier to hit, since redeclaring a name from a formula var to a pick var now turns a
+  numeric reference into text. (New pills can't be created in this state — the dialog validates
+  and typed shorthand stays literal — only an *existing* pill whose reference later breaks.)
+- **Target:** an unresolvable math-pill reference renders a visible marker (`?` / `#ERR (bad ref)`)
+  with an accurate `aria-label`, instead of the last good value — consistent with how other
+  unresolvable states surface (the formula-var pill already renders `?`; pairs with UXP-8's
+  reason-coded `#ERR` work).
+
 ---
 
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)

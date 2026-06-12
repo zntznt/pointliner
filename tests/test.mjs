@@ -1531,3 +1531,172 @@ test('OPML: a [[seq:KEY]] record serializes into the _seq attribute', () => {
   assert.ok(xml.includes('_seq='), 'seq sidecar should serialize');
   assert.ok(xml.includes('BACKLOG'), 'states should appear in the attribute');
 });
+
+// ── Random variables: a variable whose value is a frozen random pick ─────────
+// (guidance/generation-direction.md v1 / brief-pick-variables.md §6)
+// The pick rolls via the grammar engine ONLY at declaration / explicit re-roll;
+// collectVars returns the stored `rolled` string unchanged on every pass.
+
+test('rollPickSource: alternation source picks deterministically (seeded)', () => {
+  c.seedSequence([0]);
+  assert.equal(c.rollPickSource('dragon|wyrm|drake', {}, {}), 'dragon');
+  c.seedSequence([0.99]);
+  assert.equal(c.rollPickSource('dragon|wyrm|drake', {}, {}), 'drake');
+  c.resetRandom();
+});
+
+test('rollPickSource: weighted alternation respects weights', () => {
+  c.seedSequence([0.5]); // weight mass: dragon 3, wyrm 1 → 0.5*4=2 lands in dragon
+  assert.equal(c.rollPickSource('dragon 3|wyrm', {}, {}), 'dragon');
+  c.resetRandom();
+});
+
+test('rollPickSource: dice source rolls through the dice core', () => {
+  c.seedSequence([0]); // every die rolls its minimum
+  assert.equal(c.rollPickSource('2d6', {}, {}), '2');
+  c.resetRandom();
+});
+
+test('rollPickSource: template source expands embedded braces', () => {
+  const rules = {
+    color: [{ template: 'red', weight: 1 }],
+    beast: [{ template: 'cat', weight: 1 }],
+  };
+  c.seedSequence([0]);
+  assert.equal(c.rollPickSource('{color} {beast}', rules, {}), 'red cat');
+  c.resetRandom();
+});
+
+test('rollPickSource: bare name resolves a rule, then a variable, else marker', () => {
+  const rules = { color: [{ template: 'blue', weight: 1 }] };
+  c.seedSequence([0]);
+  assert.equal(c.rollPickSource('color', rules, {}), 'blue');
+  assert.equal(c.rollPickSource('width', {}, { width: 42 }), '42');
+  assert.equal(c.rollPickSource('nosuch', {}, {}), '{nosuch?}'); // visible-failure marker
+  c.resetRandom();
+});
+
+test('rollPickSource: empty source → null (callers branch on null)', () => {
+  assert.equal(c.rollPickSource('', {}, {}), null);
+  assert.equal(c.rollPickSource('   ', {}, {}), null);
+});
+
+// Build a tree with one pick declaration + (optionally) other var declarations.
+const mkPickRoot = (recs) => {
+  const root = c.mkRoot();
+  for (const rec of recs) {
+    const n = c.mkNode(`[[var:${rec.key}]]`);
+    n.vars = [rec];
+    root.children.push(n);
+  }
+  return root;
+};
+
+test('collectVars: a pick contributes its FROZEN rolled string (no evaluation)', () => {
+  const root = mkPickRoot([{ key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'wyrm' }]);
+  const vars = c.collectVars(root);
+  assert.equal(vars.beast, 'wyrm');
+});
+
+test('collectVars: repeated resolution never re-rolls (frozen across passes)', () => {
+  const rec = { key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm|drake', rolled: 'drake' };
+  const root = mkPickRoot([rec]);
+  // a moving RNG would change the value IF the engine ran — it must not
+  c.seedSequence([0.1, 0.5, 0.9, 0.3]);
+  const a = c.collectVars(root).beast;
+  const b = c.collectVars(root).beast;
+  const d = c.collectVars(root).beast;
+  c.resetRandom();
+  assert.equal(a, 'drake');
+  assert.equal(b, 'drake');
+  assert.equal(d, 'drake');
+  assert.equal(rec.rolled, 'drake'); // the stored record is untouched
+});
+
+test('collectVars: re-roll = update rolled, every reference resolves the new value', () => {
+  const rec = { key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'dragon' };
+  const root = mkPickRoot([rec]);
+  assert.equal(c.collectVars(root).beast, 'dragon');
+  rec.rolled = 'wyrm'; // what rerollPickVar does
+  assert.equal(c.collectVars(root).beast, 'wyrm');
+});
+
+test('collectVars: mixed map — numbers for formula vars, strings for picks', () => {
+  const root = mkPickRoot([
+    { key: 'm1', name: 'hp', expr: '10' },
+    { key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'dragon' },
+  ]);
+  const vars = c.collectVars(root);
+  assert.equal(vars.hp, 10);
+  assert.equal(vars.beast, 'dragon');
+});
+
+test('collectVars: a formula var referencing a pick fails VISIBLY (absent), not silently', () => {
+  const root = mkPickRoot([
+    { key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'dragon' },
+    { key: 'm1', name: 'dmg', expr: 'beast*2' }, // text in math — must not compute
+  ]);
+  const vars = c.collectVars(root);
+  assert.equal(vars.beast, 'dragon'); // pick is fine
+  assert.equal('dmg' in vars, false); // the math var fails to resolve (renders ?)
+});
+
+test('collectVars: last declaration wins across kinds (pick over formula, formula over pick)', () => {
+  const pickLast = mkPickRoot([
+    { key: 'a1', name: 'x', expr: '5' },
+    { key: 'a2', name: 'x', kind: 'pick', expr: 'a|b', rolled: 'b' },
+  ]);
+  assert.equal(c.collectVars(pickLast).x, 'b');
+  const mathLast = mkPickRoot([
+    { key: 'b1', name: 'x', kind: 'pick', expr: 'a|b', rolled: 'a' },
+    { key: 'b2', name: 'x', expr: '7' },
+  ]);
+  assert.equal(c.collectVars(mathLast).x, 7);
+});
+
+test('evalMath: a string-valued variable fails to null (type-safe, fail-visible)', () => {
+  assert.equal(c.evalMath('beast*2', { beast: 'dragon' }), null);
+  assert.equal(c.evalMath('beast', { beast: 'dragon' }), null);
+});
+
+test('parseDice: a string-valued variable modifier fails to null', () => {
+  assert.equal(c.parseDice('1d6+beast', { beast: 'wolf' }), null);
+});
+
+test('formatVarValue: strings pass through, numbers format as math results', () => {
+  assert.equal(c.formatVarValue('dragon'), 'dragon');
+  assert.equal(c.formatVarValue(42), '42');
+  assert.equal(c.formatVarValue(2 / 3), c.formatMathResult(2 / 3));
+});
+
+test('flattenArtifacts: a pick declaration exports its frozen value', () => {
+  const node = c.mkNode('A [[var:p1]] appears');
+  node.vars = [{ key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'dragon' }];
+  const out = c.flattenArtifacts(node.text, node, { beast: 'dragon' });
+  assert.equal(out, 'A beast = dragon appears');
+});
+
+test('flattenArtifacts: a display-only reference to a pick exports the frozen text', () => {
+  const node = c.mkNode('It was [[var:r1]]!');
+  node.vars = [{ key: 'r1', name: 'beast', expr: '' }]; // display-only ref record
+  const out = c.flattenArtifacts(node.text, node, { beast: 'wyrm' });
+  assert.equal(out, 'It was wyrm!');
+});
+
+test('OPML: a pick record serializes kind + rolled into the _vars attribute', () => {
+  const root = mkPickRoot([{ key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'dragon' }]);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_vars='), 'vars sidecar should serialize');
+  assert.ok(xml.includes('pick'), 'kind:pick should ride the JSON blob');
+  assert.ok(xml.includes('rolled'), 'rolled should ride the JSON blob');
+});
+
+test('regression: formula-only variables are untouched by the pick branch', () => {
+  const root = mkPickRoot([
+    { key: 'r', name: 'r', expr: '5' },
+    { key: 'a', name: 'area', expr: 'pi*r^2' },
+  ]);
+  const vars = c.collectVars(root);
+  assert.equal(vars.r, 5);
+  assert.ok(Math.abs(vars.area - Math.PI * 25) < 1e-9);
+});
