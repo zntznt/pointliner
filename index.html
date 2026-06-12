@@ -1852,13 +1852,20 @@ function diceBreakdownHTML(d) {
   }).join('');
 }
 
-function renderDicePill(key, d) {
-  if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}">🎲 ?</span>`;
+// Displayed total for a dice record — success pools show "N succ", Fate shows a
+// signed total. Shared by the pill renderer and the reroll announcement (UXP-15).
+function diceTotalStr(d) {
   const isFate = d.parts?.some(p => p.kind === 'dice' && p.sides === 'F');
   const isSuccess = d.parts?.some(p => p.kind === 'dice' && p.success);
-  const totalStr = isSuccess ? `${d.total} succ`
+  return isSuccess ? `${d.total} succ`
     : (isFate && d.total > 0 ? '+' + d.total : String(d.total));
-  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll">`
+}
+
+function renderDicePill(key, d) {
+  if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}" aria-label="Dice roll (missing data)">🎲 ?</span>`;
+  const totalStr = diceTotalStr(d);
+  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll"`
+    + ` aria-label="Dice roll ${escQ(d.expr)} = ${escQ(totalStr)} — click to re-roll">`
     + `<span class="dice-ico"><i class="fa-solid fa-dice-d20"></i></span>`
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
     + `<span class="dice-eq">=</span>`
@@ -1943,14 +1950,15 @@ function makeMarkovRoll(def, startInput, stepsInput, name) {
 }
 
 function renderMarkovPill(key, mk) {
-  if (!mk) return `<span class="mk-roll mk-bad" data-key="${escQ(key)}">⛓ ?</span>`;
+  if (!mk) return `<span class="mk-roll mk-bad" data-key="${escQ(key)}" aria-label="Markov chain (missing data)">⛓ ?</span>`;
   const stoppedEarly = mk.path.length - 1 < mk.steps;
   const path = mk.path
     .map(s => `<span class="mk-state">${escHtml(s)}</span>`)
     .join('<span class="mk-arrow">→</span>')
     + (stoppedEarly ? `<span class="mk-arrow">→</span><span class="mk-terminal" title="Walk ended — last state has no outgoing transitions. Add more rules to continue.">…</span>` : '');
   const nameTag = mk.name ? `<span class="mk-name" title="Callable as {${escQ(mk.name)}}">${escHtml(mk.name)}</span>` : '';
-  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}">`
+  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}"`
+    + ` aria-label="Markov chain${mk.name ? ' ' + escQ(mk.name) : ''}: ${escQ(mk.path.join(' → '))} — click to re-roll">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
     + nameTag
     + `<span class="mk-path">${path}</span>`
@@ -6336,9 +6344,10 @@ function makeRolltableRoll(def, name) {
 }
 
 function renderRolltablePill(key, rt) {
-  if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}">🎯 ?</span>`;
+  if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}" aria-label="Roll table (missing data)">🎯 ?</span>`;
   const nameTag = rt.name ? `<span class="rt-name" title="Callable as {${escQ(rt.name)}}">${escHtml(rt.name)}</span>` : '';
-  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}">`
+  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}"`
+    + ` aria-label="Roll table${rt.name ? ' ' + escQ(rt.name) : ''}: ${escQ(rt.result)} — click to re-roll">`
     + `<span class="rt-ico"><i class="fa-solid fa-table-list"></i></span>`
     + nameTag
     + `<span class="rt-result">${escHtml(rt.result)}</span>`
@@ -6375,6 +6384,7 @@ function rerollRolltable(node, key) {
   if (!entries) return;
   rt.result = rollTable(entries);
   markDirty();
+  announce(`${rt.name || 'Table'} re-rolled: ${rt.result}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.rt-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('rt-rolled');
 }
@@ -6734,8 +6744,9 @@ function makeGrammarRoll(def, originInput) {
 }
 
 function renderGrammarPill(key, g) {
-  if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}">❖ ?</span>`;
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-generate">`
+  if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
+  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-generate"`
+    + ` aria-label="Grammar: ${escQ(g.result)} — click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + `<span class="gr-result">${escHtml(g.result)}</span>`
     + `<span class="gr-edit" title="Edit grammar"><i class="fa-solid fa-pen"></i></span>`
@@ -6784,6 +6795,7 @@ function rerollGrammar(node, key) {
   if (result === null) return;
   g.result = result;
   markDirty();
+  announce(`Re-generated: ${g.result}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
 }
@@ -7069,7 +7081,10 @@ function checkInlineHighlight(content, node) {
   if (start < 0) return false;
   // Re-render for 'invalid' too — the gr-bad typo marker must appear live as the
   // closing } lands, not on the next incidental re-render (UXP-6).
-  if (classifyBraceBody(node.text.slice(start + 1, off - 1), collectRules(), collectVars()) === 'literal') return false;
+  const braceCls = classifyBraceBody(node.text.slice(start + 1, off - 1), collectRules(), collectVars());
+  if (braceCls === 'literal') return false;
+  // the marker's AT twin (UXP-15): the visual signal is also announced
+  if (braceCls === 'invalid') announce('Not recognized — stays plain text');
   content.innerHTML = editModeHTML(node);
   requestAnimationFrame(() => {
     content.focus();
@@ -7317,7 +7332,7 @@ function makeMathResult(expr) {
 }
 
 function renderMathPill(key, m) {
-  if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}">🖩 ?</span>`;
+  if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}" aria-label="Math (missing data)">🖩 ?</span>`;
   // Recompute with current vars so math stays live when variables change.
   const fresh = evalMath(m.expr, globalVarMap);
   if (fresh === null) {
@@ -7350,7 +7365,7 @@ function renderMathPill(key, m) {
 function varKey() { return 'v' + Math.random().toString(36).slice(2, 9); }
 
 function renderVarPill(key, v) {
-  if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}">$ ?</span>`;
+  if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}" aria-label="Variable (missing data)">$ ?</span>`;
   // Random pick declaration: shows the FROZEN rolled value (never re-expanded at
   // render — the engine runs only at declaration/re-roll). Generative-pill
   // interaction: body-click re-rolls, pencil edits (like dice/grammar).
@@ -7376,7 +7391,9 @@ function renderVarPill(key, v) {
     const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
     const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
-    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
+    const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found — click to edit`
+      : `Variable ${escQ(v.name)} = ${escQ(display)}`;
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${refLabel}">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-val">${escHtml(display)}</span>`
@@ -7393,7 +7410,9 @@ function renderVarPill(key, v) {
   const title = cyclic   ? 'Circular reference — click to edit'
     : shadowed ? 'Shadowed — a later declaration of this name takes effect'
     : 'Click to edit';
-  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
+  const declLabel = cyclic ? `Variable ${escQ(v.name)}: circular reference — click to edit`
+    : `Variable ${escQ(v.name)} = ${escQ(display)}${shadowed ? ' (shadowed by a later declaration)' : ''} — click to edit`;
+  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${declLabel}">`
     + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
     + `<span class="var-name">${escHtml(v.name)}</span>`
     + `<span class="var-eq">=</span>`
@@ -7423,11 +7442,12 @@ function seqDefString(sq) {
 }
 
 function renderSeqPill(key, sq) {
-  if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}">⇶ ?</span>`;
+  if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}" aria-label="Sequence (missing data)">⇶ ?</span>`;
   const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
     + '<span class="seq-pipe">|</span>'
     + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
-  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" title="Sequence ${escQ(sq.name)} — click to edit">`
+  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" title="Sequence ${escQ(sq.name)} — click to edit"`
+    + ` aria-label="Sequence ${escQ(sq.name)} — active: ${escQ(sq.states.slice(0, sq.doneFrom).join(' '))}; done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))} — click to edit">`
     + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
     + `<span class="seq-name">${escHtml(sq.name)}</span>`
     + `<span class="seq-states">${states}</span>`
@@ -8319,6 +8339,7 @@ function rerollDice(node, key) {
   const { total, parts } = rollParsed(terms);
   d.total = total; d.parts = parts;
   markDirty();
+  announce(`${d.expr} re-rolled: ${diceTotalStr(d)}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.dice-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('dice-rolled');
 }
@@ -8354,6 +8375,7 @@ function rerollMarkov(node, key) {
   if (!parsed) return;
   mk.path = walkMarkov(parsed, mk.start, mk.steps);
   markDirty();
+  announce(`${mk.name || 'Chain'} re-rolled: ${mk.path.join(' → ')}`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.mk-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('mk-rolled');
 }

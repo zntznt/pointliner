@@ -287,7 +287,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Paragraph block | ✅ (documented prose-mode exception) | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
-| Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (P3-6 labels; focus deferred) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
+| Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (labels + reroll announcements ✓ — UXP-15; pill focus/tabindex deferred to the UXP-19 pass) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
 | Variables | ✅ | ✅ (`{` picker + variables panel; UXP-9) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ⚠️ | ⚠️ | ⚠️ (P4-1 marker shipped — UXP-6; P2-5/P4-2 preview open — UXP-7) |
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |

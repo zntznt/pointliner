@@ -1983,3 +1983,34 @@ test('mdToHtml: a thematic break line renders a real <hr> (the divider visual so
   assert.ok(c.mdToHtml('---').includes('<hr class="md-hr">'));
   assert.ok(c.mdToHtml('---\nlabel').includes('<hr class="md-hr">'));
 });
+
+// ── pill aria-labels (UXP-15: P3-6 interim labels, menu vocabulary) ──────────
+// Labels live in the renderers, so every repaint — including a reroll — updates
+// them for free. The label words match the @-menu entry labels (one vocabulary).
+
+test('pill aria-labels: each renderer emits an accurate label', () => {
+  const dice = c.renderDicePill('k', { key: 'k', expr: '2d6', total: 7, parts: [] });
+  assert.ok(dice.includes('aria-label="Dice roll 2d6 = 7 — click to re-roll"'), dice);
+  const mk = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'] });
+  assert.ok(mk.includes('aria-label="Markov chain: a → b — click to re-roll"'), mk);
+  const named = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'], name: 'walk' });
+  assert.ok(named.includes('aria-label="Markov chain walk: a → b'), named);
+  const rt = c.renderRolltablePill('r', { key: 'r', def: 'x', result: 'a sword', name: 'loot' });
+  assert.ok(rt.includes('aria-label="Roll table loot: a sword — click to re-roll"'), rt);
+  const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!' });
+  assert.ok(gr.includes('aria-label="Grammar: x! — click to re-generate"'), gr);
+  const sq = c.renderSeqPill('q', { key: 'q', name: 'Flow', states: ['A', 'B', 'C'], doneFrom: 2 });
+  assert.ok(sq.includes('aria-label="Sequence Flow — active: A B; done: C — click to edit"'), sq);
+});
+
+test('pill aria-labels: dead-record fallbacks are labeled too', () => {
+  assert.ok(c.renderDicePill('k', null).includes('aria-label="Dice roll (missing data)"'));
+  assert.ok(c.renderGrammarPill('g', null).includes('aria-label="Grammar (missing data)"'));
+});
+
+test('diceTotalStr: success pools and Fate totals format like the pill', () => {
+  assert.equal(c.diceTotalStr({ total: 7, parts: [] }), '7');
+  assert.equal(c.diceTotalStr({ total: 3, parts: [{ kind: 'dice', sides: 6, success: '>=' }] }), '3 succ');
+  assert.equal(c.diceTotalStr({ total: 2, parts: [{ kind: 'dice', sides: 'F' }] }), '+2');
+  assert.equal(c.diceTotalStr({ total: -1, parts: [{ kind: 'dice', sides: 'F' }] }), '-1');
+});

@@ -154,6 +154,7 @@ export function loadCores() {
     'migrateTodoText','migrateNodePrefixes','textForDisplay',
     'collectCallables','filterBraceCandidates',
     'classifyBraceBody','collectTags','filterTagCandidates',
+    'diceTotalStr','renderDicePill','renderMarkovPill','renderRolltablePill','renderGrammarPill','renderSeqPill',
     'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
