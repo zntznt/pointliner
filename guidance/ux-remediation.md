@@ -67,10 +67,10 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 - **Violated:** P2-4.
 - **Resolved (pure cores `collectTags(rootNode)` + `filterTagCandidates(tags, prefix)`, pinned):** a `#` tag picker on the §7.1 menu pattern (trigger → narrow → `↑/↓`/`Enter`/`Tab`/`Esc`, `role="menu"`/`menuitem`, caret-anchored via the now-shared `positionCaretMenu`). `collectTags` walks the tree with **mdInline's own sigil rule** (`#` not preceded by a letter/digit) after stripping `[[…]]` tokens — so link targets (`[[#id|…]]`) never read as tags — counts occurrences, sorts most-used first, and caches on `_varsVer`. Status keywords (`#TODO`) count deliberately: completing them is useful. The trigger fires on `#prefix` at the caret (never inside a `[[` link token); the in-progress tag's own count-1 self-occurrence is excluded, and a fully-typed lone exact match dismisses the menu. Applying writes the existing `#tag` syntax — zero new syntax (P5). The `?` panel gained the `#` row beside `/` and `@`.
 
-### UXP-11 ☐ Some pills are reachable only via the insert dialog
+### UXP-11 ✓ Some pills are reachable only via the insert dialog — **RESOLVED**
 - **Problem:** certain generators are creatable only through `@`/dialog, with no shorthand path, so authoring is inconsistent across pill types.
-- **Violates:** P2-1 (three doors).
-- **Target:** every inline-able generator has both a dialog and a shorthand; complex ones keep the dialog but appear in the `@` menu with a described entry.
+- **Violated:** P2-1 (three doors).
+- **Resolved (audit + documentation):** audit confirmed **every pill type is reachable via the `@` menu** — dice, roll table, Markov chain, grammar, math, variable, and sequence are all listed there; P2 is satisfied. The one documentation gap was the `SHORTCUTS` panel's `@` row, which said "…dice, math, variable…" (trailing `…` didn't name the rest). Updated to the explicit list: "link, image, footnote, dice, roll table, Markov chain, grammar, math, variable, sequence." Markov, rolltable, grammar, and sequence intentionally have no `{…}` typed shorthand — their configuration is richer than a one-liner, so the dialog is the right authoring path (P5-conformant by construction).
 
 ### UXP-12 ✓ Structural/destructive actions don't all confirm — **RESOLVED**
 - **Problem:** delete-subtree, paste-points, cut, and bulk indent didn't consistently surface a confirmation toast the way copy-link does.
@@ -279,8 +279,9 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 - **Violated:** P3-5, P3-6 interim.
 - **Resolved:** every pill type carries an accurate `aria-label` in the **menu's vocabulary** ("Dice roll 2d6 = 7 — click to re-roll", "Markov chain walk: a → b", "Roll table loot: …", "Grammar: …", "Variable x = 5" incl. cyclic/shadowed/not-found states, "Sequence Flow — active: …; done: …"), including the dead-record `?` fallbacks. Labels live **in the renderers** (pure string builders, pinned), so every repaint — reroll included — refreshes them for free. The `#a11y-live` region now announces: all four generative **rerolls** (`rerollDice/Markov/Rolltable/Grammar`, joining the pick-var announcement), every **`flashHint` toast** (so the UXP-12 confirmations reach AT), and the **`gr-bad` typo marker** ("Not recognized — stays plain text") when an invalid `{…}` completes — the marker's AT twin. Shared `diceTotalStr` keeps the spoken total identical to the displayed one (success pools, Fate). Pill `tabindex`/focus reach stays deferred as the target specified — it is sequenced with the UXP-19 dedicated pass, and UXP-17's pill focus rules arm when it lands.
 
-### UXP-16 ☐ Dialog focus-trap + restore — *a11y Phase 3*
-- **Violates:** P3-2/P3-3. **Target:** `role="dialog"` + `aria-modal`, focus trap, focus restore on close for the insert/edit dialogs.
+### UXP-16 ✓ Dialog focus-trap + restore — *a11y Phase 3* — **RESOLVED**
+- **Violated:** P3-2/P3-3.
+- **Resolved:** `#io-card` is now `role="dialog" aria-modal="true"`, with `aria-label` set to the dialog title on each open. All three open paths (`openInsertDialog`, `openVarDialog`, `openConfirmDialog`) capture `ioReturnFocus = document.activeElement` before showing; `closeIo` restores focus to that element on every close path (OK, Cancel, Esc, backdrop click). A static Tab-trap listener on `#io-back` cycles focus through all `input/textarea/button:not(:disabled)` elements in `#io-card` — Shift+Tab wraps from first to last, Tab wraps from last to first. Input `keydown` handlers changed from `e.stopPropagation()` to `if (e.key !== 'Tab') e.stopPropagation()` so Tab events bubble to the trap without exposing global editor shortcuts. The table Column/Row menus (`mtOpenMenu` / `hideColPanel`) gained the same focus-restore pattern via `mtPanelReturn`. **Not in scope:** `showTodoPicker` chips (plain `<div>` with no keyboard path — that is a separate item under UXP-14's row-menu residue).
 
 ### UXP-17 ◐ Focus-visible + reduced-motion — *a11y Phase 4*
 - **Violates:** P3-3. **Target:** the two additive CSS rules (`:focus-visible`, `prefers-reduced-motion`).
@@ -318,7 +319,7 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
    outlives a blur are always folded — see UXP-30/31) which future edit-path work must preserve.
    UXP-35 (caret-restore typing race) closed via the `_highlightGen` generation counter.
 2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
-3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 7, 8, 10, 12 closed; UXP-11 remains.)
-4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order. (UXP-13, 15, 18 closed; UXP-14 nearly closed — the row-menu keyboard door remains; UXP-16/17/19 open per their phases.)
+3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 7, 8, 10, 11, 12 closed.)
+4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order. (UXP-13, 15, 16, 18 closed; UXP-14 nearly closed — the row-menu keyboard door remains; UXP-17/19 open per their phases.)
 
 When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. The register is empty when the app speaks one language.

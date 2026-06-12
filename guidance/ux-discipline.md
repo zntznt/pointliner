@@ -287,7 +287,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Paragraph block | ✅ (documented prose-mode exception) | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
-| Pills (dice/math/grammar/…) | ✅ | ⚠️ (some dialog-only) | ⚠️ (labels + reroll announcements ✓ — UXP-15; pencils named + Enter/Space-operable — UXP-13/14; pill focus/tabindex deferred to the UXP-19 pass) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
+| Pills (dice/math/grammar/…) | ✅ | ✅ (all reachable via `@` menu — UXP-11 audit; SHORTCUTS names each type) | ⚠️ (labels + reroll announcements ✓ — UXP-15; pencils named + Enter/Space-operable — UXP-13/14; dialogs focus-trap + restore — UXP-16; pill focus/tabindex deferred to the UXP-19 pass) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
 | Variables | ✅ | ✅ (`{` picker + variables panel; UXP-9) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ✅ (live preview tooltip on `}` close: → dice/math/grammar/var — UXP-7) | ⚠️ | ✅ (gr-bad typo marker + AT announce — UXP-6) |
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |

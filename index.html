@@ -898,7 +898,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="tag-menu" role="listbox" aria-label="Tags"></div>
 <div id="brace-preview" aria-hidden="true"></div>
 <!-- inline-insert dialog (links / images) -->
-<div id="io-back"><div id="io-card"></div></div>
+<div id="io-back"><div id="io-card" role="dialog" aria-modal="true"></div></div>
 <!-- drag indicator -->
 <div id="drop-line"></div>
 <!-- multi-select action bar -->
@@ -3357,9 +3357,12 @@ function mtDeleteRow(node, rowIdx) {
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
 
+let mtPanelReturn = null;
 function hideColPanel() {
   const p = document.getElementById('mt-colpanel');
   if (p) p.classList.remove('on');
+  const ret = mtPanelReturn; mtPanelReturn = null;
+  if (ret) try { ret.focus(); } catch (_) {}
 }
 
 // Shared builders for the column/row dropdown menus (§7.1 menu pattern: role=menu/
@@ -3386,6 +3389,7 @@ function mtMenuBuilder(panel) {
   return { addSection, addItem };
 }
 function mtOpenMenu(panel, anchorEl) {
+  mtPanelReturn = document.activeElement;
   const rect = anchorEl.getBoundingClientRect();
   panel.style.left = rect.left + 'px';
   panel.style.top  = (rect.bottom + 2) + 'px';
@@ -6089,6 +6093,7 @@ function applyInlineReplace(nodeId, start, end, str) {
 const ioBack = document.getElementById('io-back');
 const ioCard = document.getElementById('io-card');
 let ioCancel = null;
+let ioReturnFocus = null;
 
 // Insert text at an input/textarea caret (used by the syntax-helper chips).
 function insertAtCaret(el, text) {
@@ -6241,7 +6246,7 @@ function openInsertDialog(opts) {
     inputs[f.key] = inp;
     inp.addEventListener('input', validate);
     inp.addEventListener('keydown', e => {
-      e.stopPropagation(); // don't let typing trigger global editor shortcuts
+      if (e.key !== 'Tab') e.stopPropagation(); // protect global shortcuts; Tab bubbles to the focus trap
       if (e.key === 'Escape') { e.preventDefault(); cancel(); }
       // textarea: Enter inserts a newline; Cmd/Ctrl+Enter submits
       else if (e.key === 'Enter' && (!area || e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
@@ -6288,11 +6293,29 @@ function openInsertDialog(opts) {
   function cancel() { closeIo(); }
   ioCancel = cancel;
   validate();
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', opts.title);
   ioBack.classList.add('on');
   requestAnimationFrame(() => { const f = ioCard.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
-function closeIo() { ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null; }
+function closeIo() {
+  ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null;
+  const ret = ioReturnFocus; ioReturnFocus = null;
+  if (ret) try { ret.focus(); } catch (_) {}
+}
 ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) closeIo(); });
+// Focus trap: Tab cycles within the dialog, never escaping to background content.
+ioBack.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  const focusable = [...ioCard.querySelectorAll('input,textarea,button:not(:disabled)')];
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey) {
+    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+  } else {
+    if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
 
 // Lightweight destructive-action confirmation. Returns a Promise that resolves
 // to true (confirmed) or false (cancelled). Reuses the io-back/io-card overlay.
@@ -6329,6 +6352,8 @@ function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'O
     }
     ioBack.addEventListener('keydown', onKey);
 
+    ioReturnFocus = document.activeElement;
+    ioCard.setAttribute('aria-label', title);
     ioBack.classList.add('on');
     cancelBtn.focus(); // focus Cancel so Enter doesn't accidentally discard
   });
@@ -7825,7 +7850,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   [nameInp, exprInp].forEach(inp => {
     inp.addEventListener('input', () => { if (inp === exprInp) updatePrev(); validate(); });
     inp.addEventListener('keydown', e => {
-      e.stopPropagation();
+      if (e.key !== 'Tab') e.stopPropagation(); // protect global shortcuts; Tab bubbles to the focus trap
       if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
       else if (e.key === 'Enter') { e.preventDefault(); submit(); }
     });
@@ -7839,6 +7864,8 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
 
   ioCancel = () => closeIo();
   setMode(mode); // applies label/placeholder/hint/button text, then validates + previews
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Variable');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { nameInp.focus(); nameInp.select(); });
 }
@@ -10042,7 +10069,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
-    { keys: ['@'],  desc: 'Insert link, image, footnote, dice, math, variable…' },
+    { keys: ['@'],  desc: 'Insert link, image, footnote, dice, roll table, Markov chain, grammar, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point or base column' },
