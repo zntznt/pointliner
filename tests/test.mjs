@@ -23,6 +23,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadCores } from './load-cores.mjs';
 
 const c = loadCores();
@@ -391,6 +394,38 @@ test('collectRules — a grammar pill registers its named rules document-wide', 
   assert.ok('color' in c.collectRules(root), 'named grammar rule should be registered');
 });
 
+test('collectRules — an anonymous shorthand pill does NOT leak its synthetic `origin` (UXP-33)', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('shorthand [[grammar:a1]] plus named [[grammar:n1]]');
+  n.grammar = [
+    { key: 'a1', def: 'origin: red | blue', origin: 'origin', result: 'red', anon: true },
+    { key: 'n1', def: 'color: green | yellow', origin: 'color', result: 'green' },
+  ];
+  root.children.push(n);
+  const rules = c.collectRules(root);
+  assert.ok(!('origin' in rules), 'synthetic origin from an anonymous pill must not be document-wide');
+  assert.ok('color' in rules, 'a co-located named rule still registers');
+});
+
+test('collectRules — a NAMED grammar with an explicit origin: rule still registers it', () => {
+  // the dialog example literally uses `origin:` — a user-named `origin` rule (no anon
+  // flag) must stay callable, so UXP-33 keys on the flag, never the name.
+  const root = c.mkRoot();
+  const n = c.mkNode('[[grammar:g1]]');
+  n.grammar = [{ key: 'g1', def: 'origin: a {x}\nx: b | c', origin: 'origin', result: 'a b' }];
+  root.children.push(n);
+  assert.ok('origin' in c.collectRules(root), 'a deliberately-named origin rule still registers');
+});
+
+test('collectCallables — an anonymous pill does not advertise `origin` as a callable (UXP-33)', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('shorthand [[grammar:a1]]');
+  n.grammar = [{ key: 'a1', def: 'origin: red | blue', origin: 'origin', result: 'red', anon: true }];
+  root.children.push(n);
+  assert.ok(!c.collectCallables(root).some(x => x.name === 'origin'),
+    'the { autocomplete must not list a phantom origin rule');
+});
+
 // ── success-counting dice pools (with exploding) ────────────────────────────
 // A comparison suffix (>=,<=,>,<,=) turns the term into "count dice that match".
 // In a pool each rolled face is its own die — exploding adds independently-
@@ -670,8 +705,8 @@ test('table: a cell formula can reference a document variable', () => {
   const out = computeTable(m, '$2=$1*tax', { tax: 1.2 });
   assert.equal(out[1][1], '120');
   assert.equal(out[2][1], '300');
-  // without the variable in scope the reference is unresolved → #ERR (not silently 0)
-  assert.equal(computeTable(m, '$2=$1*tax', {})[1][1], '#ERR');
+  // without the variable in scope the reference is unresolved → reason-coded #ERR (not silently 0)
+  assert.equal(computeTable(m, '$2=$1*tax', {})[1][1], '#ERR (bad ref)');
 });
 
 test('table: range aggregates vmean/vmax/vmin/vcount/vmedian', () => {
@@ -716,10 +751,10 @@ test('table: $< / $> immutable first/last column references', () => {
   assert.equal(computeTable(m, '@2$2=$<+$>')[1][1], '11');
 });
 
-test('table: cycle detection yields #ERR, not a hang', () => {
+test('table: cycle detection yields #ERR (cycle), not a hang', () => {
   const out = computeTable(tblModel(), '@2$1=@2$2 :: @2$2=@2$1');
-  assert.equal(out[1][0], '#ERR');
-  assert.equal(out[1][1], '#ERR');
+  assert.equal(out[1][0], '#ERR (cycle)');
+  assert.equal(out[1][1], '#ERR (cycle)');
 });
 
 test('table: field formula overrides column formula regardless of source order', () => {
@@ -1401,10 +1436,20 @@ test('highlightGrammarText: a promotable {…} is bounded at }, with NO sentinel
   assert.equal(tail, 'say <span class="gr-src">{a|b}</span>');
 });
 
-test('highlightGrammarText: a non-promotable {…} stays literal (no span, no bleed)', () => {
-  // {nope} matches no rule/var and isn't dice/expr/alternation -> literal text
-  const out = c.highlightGrammarText('{nope} tail').split(SENT).join('').split(ZWSP).join('');
-  assert.ok(!out.includes('gr-src'), 'no gr-src span for an unrecognized body');
+test('highlightGrammarText: an attempted-but-unknown {name} is marked gr-bad (UXP-6)', () => {
+  // {nope} reads as a reference attempt but matches no rule/var — it will NOT
+  // promote, and that must be visible (a typo signal), not silent.
+  const out = c.highlightGrammarText('{nope} tail');
+  assert.ok(out.includes('class="gr-src gr-bad"'), 'unknown-name brace gets the gr-bad marker');
+  assert.ok(out.includes('>{nope}</span> tail'), 'marker is bounded at }; tail stays plain');
+  assert.ok(!out.includes(SENT) && !out.includes(ZWSP), 'no sentinel/anchor after the span');
+});
+
+test('highlightGrammarText: prose braces stay literal (no span, no marker)', () => {
+  // a body that reads as plain prose (spaces, no formula shape) is the deliberate
+  // escape hatch — it gets neither gr-src styling nor the gr-bad marker
+  const out = c.highlightGrammarText('{hello world} tail').split(SENT).join('').split(ZWSP).join('');
+  assert.ok(!out.includes('gr-src'), 'no span for an intentional literal brace');
 });
 
 // ── grSrcSpanClean (UXP-28 normalization predicate) ──
@@ -1699,4 +1744,364 @@ test('regression: formula-only variables are untouched by the pick branch', () =
   const vars = c.collectVars(root);
   assert.equal(vars.r, 5);
   assert.ok(Math.abs(vars.area - Math.PI * 25) < 1e-9);
+});
+
+// ── mathErrorReason — reason-coded #ERR (UXP-8 table cells, UXP-34 math pills) ──
+// Classifies why evalMath(expr, vars) returned null, so the failure carries a cause
+// instead of a bare #ERR or (worse) a stale last-good value.
+{
+  const { mathErrorReason } = c;
+
+  test('mathErrorReason — an undeclared identifier is a bad ref', () => {
+    assert.equal(mathErrorReason('x * 2', {}), 'bad ref');
+    assert.equal(mathErrorReason('$1 * tax', {}), 'bad ref'); // table-style: tax undeclared
+  });
+
+  test('mathErrorReason — a string-valued (pick) variable is non-numeric', () => {
+    assert.equal(mathErrorReason('beast * 2', { beast: 'dragon' }), 'non-numeric');
+  });
+
+  test('mathErrorReason — a cyclic identifier reports cycle (most specific)', () => {
+    assert.equal(mathErrorReason('a + 1', {}, new Set(['a'])), 'cycle');
+  });
+
+  test('mathErrorReason — constants and function calls are not flagged', () => {
+    assert.equal(mathErrorReason('2*pi', {}), '');            // pi is a constant, not a var
+    assert.equal(mathErrorReason('sqrt(16) + e', {}), '');    // sqrt( → fn, e → constant
+    assert.equal(mathErrorReason('c2f(20)', {}), '');         // unit-conversion fn, no enumeration needed
+    assert.equal(mathErrorReason('asdate(today + 90)', {}), '');
+  });
+
+  test('mathErrorReason — a resolvable numeric variable is not flagged', () => {
+    assert.equal(mathErrorReason('r * 2', { r: 5 }), '');
+  });
+
+  test('mathErrorReason — a malformed expression with no bad identifier is generic', () => {
+    assert.equal(mathErrorReason('2 + * 3', {}), '');  // syntactic garbage → bare #ERR, no parenthetical
+  });
+
+  test('mathErrorReason — bad ref wins over non-numeric when both are present', () => {
+    assert.equal(mathErrorReason('missing + beast', { beast: 'dragon' }), 'bad ref');
+  });
+}
+
+// ── unfold/refold + offset translation (UXP-30 / UXP-31) ───────────────────────
+// In edit mode, inline-able [[type:key]] tokens unfold to their {…} source; the
+// token form is LONGER, so any offset captured against the edit buffer must be
+// translated before it touches the folded text. foldedOffsetFor is that inverse
+// (of unfoldedPrefixLen); foldedTextForSave is what undo entries must record.
+{
+  const diceNode = (text) => {
+    const n = c.mkNode(text);
+    n.dice = [{ key: 'k1', expr: '2d6', result: 7 }];
+    return n;
+  };
+
+  test('artifactToShorthand — inline-able forms and atomic nulls', () => {
+    assert.equal(c.artifactToShorthand('dice', { expr: '2d6' }), '{2d6}');
+    assert.equal(c.artifactToShorthand('math', { expr: '2*r' }), '{= 2*r}');
+    assert.equal(c.artifactToShorthand('var', { name: 'str', expr: '' }), '{str}');   // display-only unfolds
+    assert.equal(c.artifactToShorthand('var', { name: 'str', expr: '5' }), null);     // declaring stays atomic
+    assert.equal(c.artifactToShorthand('grammar', { def: 'color: red | blue', origin: 'color' }), '{red | blue}');
+    assert.equal(c.artifactToShorthand('grammar', { def: 'a: x\nb: y', origin: 'a' }), null); // multi-rule stays atomic
+  });
+
+  test('unfoldArtifacts ⇄ foldedTextForSave — untouched shorthand folds back verbatim', () => {
+    const n = diceNode('a [[dice:k1]] b');
+    c.unfoldArtifacts(n);
+    assert.equal(n.text, 'a {2d6} b');
+    assert.equal(c.foldedTextForSave(n), 'a [[dice:k1]] b'); // the token, frozen roll intact
+    assert.equal(n.text, 'a {2d6} b');                       // non-mutating
+    n.text = 'a {2d6} b plus prose';                         // typing elsewhere
+    assert.equal(c.foldedTextForSave(n), 'a [[dice:k1]] b plus prose');
+    c.refoldArtifacts(n);
+    assert.equal(n.text, 'a [[dice:k1]] b plus prose');
+  });
+
+  test('foldedTextForSave — an EDITED shorthand is left literal (promote owns it)', () => {
+    const n = diceNode('a [[dice:k1]] b');
+    c.unfoldArtifacts(n);
+    n.text = 'a {3d8} b'; // user rewrote the dice source
+    assert.equal(c.foldedTextForSave(n), 'a {3d8} b');
+    c.refoldArtifacts(n);
+  });
+
+  test('foldedOffsetFor — identity on token-free text', () => {
+    const n = c.mkNode('plain prose only');
+    assert.equal(c.foldedOffsetFor(n, 0), 0);
+    assert.equal(c.foldedOffsetFor(n, 7), 7);
+  });
+
+  test('foldedOffsetFor — before / after / inside an unfolded span', () => {
+    // folded 'a [[dice:k1]] b' (token at 2..13) ⇄ unfolded 'a {2d6} b' (span at 2..7)
+    const n = diceNode('a [[dice:k1]] b');
+    assert.equal(c.foldedOffsetFor(n, 0), 0);
+    assert.equal(c.foldedOffsetFor(n, 2), 2);   // just before the span
+    assert.equal(c.foldedOffsetFor(n, 7), 13);  // just after the span → just after the token
+    assert.equal(c.foldedOffsetFor(n, 4), 13);  // INSIDE the span → snaps after the token
+    assert.equal(c.foldedOffsetFor(n, 9), 15);  // end of buffer → end of folded text
+  });
+
+  test('foldedOffsetFor — the UXP-30 repro: stale offset would land inside the token', () => {
+    // unfolded buffer 'a {2d6} b ' caret at end (10); folded 'a [[dice:k1]] b ' —
+    // raw 10 falls inside [[dice:k1]] (2..13): the corruption. Translated → 16 (end).
+    const n = diceNode('a [[dice:k1]] b ');
+    assert.equal(c.foldedOffsetFor(n, 10), 16);
+  });
+
+  test('foldedOffsetFor — accumulates across multiple inline-able tokens', () => {
+    const n = c.mkNode('[[dice:a1]]+[[math:m1]] end');
+    n.dice = [{ key: 'a1', expr: '2d6' }];
+    n.math = [{ key: 'm1', expr: '2*r' }];
+    // unfolded: '{2d6}+{= 2*r} end' (17) ⇄ folded (27)
+    assert.equal(c.foldedOffsetFor(n, 6), 12);   // between the two tokens
+    assert.equal(c.foldedOffsetFor(n, 17), 27);  // end ↔ end
+  });
+
+  test('foldedOffsetFor — atomic tokens (declaring var / rolltable) are identity', () => {
+    const n = c.mkNode('x [[var:v1]] y');
+    n.vars = [{ key: 'v1', name: 'str', expr: '5' }]; // declaring → no unfold
+    assert.equal(c.foldedOffsetFor(n, 14), 14);
+    const n2 = c.mkNode('x [[rolltable:r1]] y');      // not in the inline-able set at all
+    assert.equal(c.foldedOffsetFor(n2, 20), 20);
+  });
+
+  test('foldedOffsetFor ∘ unfoldedPrefixLen — round-trips folded boundary offsets', () => {
+    const n = diceNode('a [[dice:k1]] b');
+    for (const p of [0, 1, 2, 13, 14, 15]) { // every plain-text/boundary offset
+      assert.equal(c.foldedOffsetFor(n, c.unfoldedPrefixLen(n, n.text.slice(0, p))), p);
+    }
+  });
+}
+
+// ── classifyBraceBody (UXP-6: the typo signal) ───────────────────────────────
+// Classifies a {body} the way promoteBraceBody will treat it on exit, with
+// explicit rules/vars (pure). 'invalid' is the set that used to fail SILENTLY:
+// styled as valid grammar (or as nothing) but left as literal text on exit.
+
+test('classifyBraceBody: valid artifact bodies classify artifact', () => {
+  assert.equal(c.classifyBraceBody('2d6', {}, {}), 'artifact');           // dice
+  assert.equal(c.classifyBraceBody('= 2*3', {}, {}), 'artifact');         // expression
+  assert.equal(c.classifyBraceBody('= x', {}, { x: 5 }), 'artifact');     // expr over a var
+  assert.equal(c.classifyBraceBody('a|b 2|c', {}, {}), 'artifact');       // alternation
+  assert.equal(c.classifyBraceBody('color', { color: ['red'] }, {}), 'artifact'); // known rule
+  assert.equal(c.classifyBraceBody('str', {}, { str: 3 }), 'artifact');   // known var
+});
+
+test('classifyBraceBody: attempted-but-broken bodies classify invalid (no more silent failure)', () => {
+  assert.equal(c.classifyBraceBody('2d6kh', {}, {}), 'invalid');  // dice sniff passes, parse fails
+  assert.equal(c.classifyBraceBody('= 2*', {}, {}), 'invalid');   // malformed expression
+  assert.equal(c.classifyBraceBody('=', {}, {}), 'invalid');      // empty expression attempt
+  assert.equal(c.classifyBraceBody('= x', {}, {}), 'invalid');    // expr over an unknown var
+  assert.equal(c.classifyBraceBody('colr', { color: ['red'] }, {}), 'invalid'); // unknown name (typo)
+});
+
+test('classifyBraceBody: prose braces stay literal (the escape hatch)', () => {
+  assert.equal(c.classifyBraceBody('hello world', {}, {}), 'literal');
+  assert.equal(c.classifyBraceBody('', {}, {}), 'literal');
+  assert.equal(c.classifyBraceBody('  ', {}, {}), 'literal');
+});
+
+test('classifyBraceBody: a dice-looking body that fails parseDice still falls through like promoteBraceBody', () => {
+  // promoteBraceBody does NOT stop at the failed dice branch — '2d6|1d4' then
+  // promotes as alternation. The classifier must mirror that fall-through.
+  assert.equal(c.classifyBraceBody('2d6|1d4', {}, {}), 'artifact');
+});
+
+// ── braceTypeLabel (UXP-7: shorthand live preview) ────────────────────────────
+test('braceTypeLabel: identifies the pill type for every valid artifact body', () => {
+  const [dt] = c.braceTypeLabel('2d6', {}, {});          assert.equal(dt, 'dice');
+  const [mt] = c.braceTypeLabel('= 2*3', {}, {});        assert.equal(mt, 'math');
+  const [at] = c.braceTypeLabel('a|b', {}, {});          assert.equal(at, 'grammar');
+  const [rt, rd] = c.braceTypeLabel('color', { color: ['red'] }, {});
+  assert.equal(rt, 'grammar'); assert.equal(rd, 'color');
+  const [vt, vd] = c.braceTypeLabel('str', {}, { str: 5 });
+  assert.equal(vt, 'var'); assert.equal(vd, 'str = 5');
+});
+
+test('braceTypeLabel: detail is null for dice/math/bare-alternation', () => {
+  assert.equal(c.braceTypeLabel('4d6kh3', {}, {})[1], null);  // dice, no detail
+  assert.equal(c.braceTypeLabel('= pi*2', {}, {})[1], null);  // math, no detail
+  assert.equal(c.braceTypeLabel('a|b|c', {}, {})[1], null);   // alternation, no detail
+});
+
+test('braceTypeLabel: var detail shows value (string vars stay string)', () => {
+  const [, d1] = c.braceTypeLabel('hero', {}, { hero: 'Arden' });
+  assert.equal(d1, 'hero = Arden');
+  const [, d2] = c.braceTypeLabel('x', {}, { x: 3.14159 });
+  assert.ok(d2.startsWith('x = 3.14'), 'numeric detail shows toPrecision(4) value');
+});
+
+// ── collectTags / filterTagCandidates (UXP-10: hashtag autocomplete) ─────────
+// (vm-realm arrays/objects fail deepEqual on prototype identity — JSON-normalize)
+const plainTags = x => JSON.parse(JSON.stringify(x));
+
+test('collectTags: counts #tags across the tree, most-used first then alpha', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('see #alpha and #beta');
+  const b = c.mkNode('#alpha again');
+  a.children.push(b);
+  root.children.push(a);
+  assert.deepEqual(plainTags(c.collectTags(root)), [
+    { name: 'alpha', count: 2 },
+    { name: 'beta',  count: 1 },
+  ]);
+});
+
+test('collectTags: link tokens, headings, and mid-word # are not tags', () => {
+  const root = c.mkRoot();
+  // [[#abc12|x]] is a node link (token stripped before the scan); '# heading' has
+  // no word right after #; 'not#tag' has the sigil mid-word (mdInline rule).
+  root.children.push(c.mkNode('[[#abc12|x]] # heading not#tag #real'));
+  assert.deepEqual(plainTags(c.collectTags(root)), [{ name: 'real', count: 1 }]);
+});
+
+test('collectTags: status keywords (#TODO) count deliberately; explicit root bypasses the cache', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('#TODO ship it'));
+  assert.deepEqual(plainTags(c.collectTags(root)), [{ name: 'TODO', count: 1 }]);
+  const other = c.mkRoot();
+  other.children.push(c.mkNode('#different'));
+  assert.deepEqual(plainTags(c.collectTags(other)), [{ name: 'different', count: 1 }]);
+});
+
+test('filterTagCandidates: case-insensitive prefix; a lone exact match offers nothing', () => {
+  const tags = [{ name: 'alpha', count: 2 }, { name: 'Alps', count: 1 }, { name: 'beta', count: 1 }];
+  assert.deepEqual(c.filterTagCandidates(tags, 'al').map(t => t.name), ['alpha', 'Alps']);
+  assert.deepEqual(plainTags(c.filterTagCandidates(tags, '')), tags); // bare # → full list
+  assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'beta')), []);        // fully typed → dismiss
+  assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'x')), []);           // no match
+});
+
+// ── divider derives from the text (UXP-26: markdown-first, no destruction) ───
+// The break (---/***/___, HR_RE) lives in node.text; lines below it are the
+// hover-reveal section label; node.type is a derived hint like headings.
+
+test('deriveTypeFromText: a first-line thematic break derives divider', () => {
+  assert.equal(c.deriveTypeFromText('---'), 'divider');
+  assert.equal(c.deriveTypeFromText('***'), 'divider');
+  assert.equal(c.deriveTypeFromText('___'), 'divider');
+  assert.equal(c.deriveTypeFromText('---\nsection label'), 'divider'); // label below the break
+  assert.equal(c.deriveTypeFromText('--- x'), null);   // trailing text → not a break
+  assert.equal(c.deriveTypeFromText('a\n---'), null);  // break must be the FIRST line
+  assert.equal(c.deriveTypeFromText('--'), null);      // two dashes are prose
+});
+
+test('migrateNodePrefixes: legacy type-only divider gets its break written in, label preserved', () => {
+  const root = c.mkRoot();
+  const bare = c.mkNode('');                bare.type = 'divider';
+  const labeled = c.mkNode('north wing');   labeled.type = 'divider';
+  const modern = c.mkNode('---\nkeep');     modern.type = 'divider';
+  root.children.push(bare, labeled, modern);
+  c.migrateNodePrefixes(root);
+  assert.equal(bare.text, '---');
+  assert.equal(labeled.text, '---\nnorth wing');  // the old hidden label survives below the break
+  assert.equal(modern.text, '---\nkeep');         // already self-consistent — untouched
+});
+
+test('textForDisplay: divider shows the label only (break line stripped)', () => {
+  const labeled = c.mkNode('---\nnorth wing'); labeled.type = 'divider';
+  assert.equal(c.textForDisplay(labeled), 'north wing');
+  const bare = c.mkNode('---'); bare.type = 'divider';
+  assert.equal(c.textForDisplay(bare), '');
+});
+
+test('mdToHtml: a thematic break line renders a real <hr> (the divider visual source)', () => {
+  assert.ok(c.mdToHtml('---').includes('<hr class="md-hr">'));
+  assert.ok(c.mdToHtml('---\nlabel').includes('<hr class="md-hr">'));
+});
+
+// ── pill aria-labels (UXP-15: P3-6 interim labels, menu vocabulary) ──────────
+// Labels live in the renderers, so every repaint — including a reroll — updates
+// them for free. The label words match the @-menu entry labels (one vocabulary).
+
+test('pill aria-labels: each renderer emits an accurate label', () => {
+  const dice = c.renderDicePill('k', { key: 'k', expr: '2d6', total: 7, parts: [] });
+  assert.ok(dice.includes('aria-label="Dice roll 2d6 = 7 — click to re-roll"'), dice);
+  const mk = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'] });
+  assert.ok(mk.includes('aria-label="Markov chain: a → b — click to re-roll"'), mk);
+  const named = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'], name: 'walk' });
+  assert.ok(named.includes('aria-label="Markov chain walk: a → b'), named);
+  const rt = c.renderRolltablePill('r', { key: 'r', def: 'x', result: 'a sword', name: 'loot' });
+  assert.ok(rt.includes('aria-label="Roll table loot: a sword — click to re-roll"'), rt);
+  const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!' });
+  assert.ok(gr.includes('aria-label="Grammar: x! — click to re-generate"'), gr);
+  const sq = c.renderSeqPill('q', { key: 'q', name: 'Flow', states: ['A', 'B', 'C'], doneFrom: 2 });
+  assert.ok(sq.includes('aria-label="Sequence Flow — active: A B; done: C — click to edit"'), sq);
+});
+
+test('pill aria-labels: dead-record fallbacks are labeled too', () => {
+  assert.ok(c.renderDicePill('k', null).includes('aria-label="Dice roll (missing data)"'));
+  assert.ok(c.renderGrammarPill('g', null).includes('aria-label="Grammar (missing data)"'));
+});
+
+test('diceTotalStr: success pools and Fate totals format like the pill', () => {
+  assert.equal(c.diceTotalStr({ total: 7, parts: [] }), '7');
+  assert.equal(c.diceTotalStr({ total: 3, parts: [{ kind: 'dice', sides: 6, success: '>=' }] }), '3 succ');
+  assert.equal(c.diceTotalStr({ total: 2, parts: [{ kind: 'dice', sides: 'F' }] }), '+2');
+  assert.equal(c.diceTotalStr({ total: -1, parts: [{ kind: 'dice', sides: 'F' }] }), '-1');
+});
+
+// ── linkCandidates (UXP-4: the [[ picker's source) ───────────────────────────
+
+test('linkCandidates: substring match on titles, excludes self and title-less points', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Alpha section');
+  const b = c.mkNode('beta notes');
+  const child = c.mkNode('alphabet child');
+  const empty = c.mkNode('');
+  a.children.push(child);
+  root.children.push(a, b, empty);
+  const plain = x => JSON.parse(JSON.stringify(x));
+  // case-insensitive substring, walked depth-first
+  assert.deepEqual(plain(c.linkCandidates('alpha', 'none', root)).map(t => t.title),
+    ['Alpha section', 'alphabet child']);
+  // the linking point itself is excluded
+  assert.deepEqual(plain(c.linkCandidates('alpha', a.id, root)).map(t => t.title),
+    ['alphabet child']);
+  // empty query lists every titled point (empty-title point skipped)
+  assert.equal(c.linkCandidates('', 'none', root).length, 3);
+});
+
+test('linkCandidates: titles come through textForDisplay (prefixes stripped)', () => {
+  const root = c.mkRoot();
+  const h = c.mkNode('# Heading title'); h.type = 'h1';
+  root.children.push(h);
+  const out = JSON.parse(JSON.stringify(c.linkCandidates('heading', 'none', root)));
+  assert.deepEqual(out.map(t => t.title), ['Heading title']);
+});
+
+// ── SHORTCUTS registry drift guard (UXP-36) ───────────────────────────────────
+// These tests read the raw HTML source and assert that critical keyboard handler
+// patterns are still present. They catch a whole class of silent regression:
+// renaming a handler, restructuring onKeyDown, or removing a chord without
+// updating docs. Not a spec for behavior — a wire-trip for drift.
+
+const _htmlPath = process.env.POINTLINER_HTML
+  || resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
+const _src = readFileSync(_htmlPath, 'utf8');
+
+test('UXP-36: SHORTCUTS registry declaration is present', () => {
+  assert.ok(_src.includes('const SHORTCUTS = ['),
+    'const SHORTCUTS = [ not found in index.html');
+});
+
+test('UXP-36: Ctrl+S save shortcut handler is present', () => {
+  assert.ok(_src.includes("e.key==='s' && ctrl") || _src.includes('e.key === \'s\' && ctrl'),
+    "Ctrl+S handler pattern not found in index.html");
+});
+
+test('UXP-36: collapseToLevel shortcut handler is present', () => {
+  assert.ok(_src.includes('collapseToLevel'),
+    'collapseToLevel not found in index.html');
+});
+
+test('UXP-36: toggleVarPanel shortcut handler is present', () => {
+  assert.ok(_src.includes('toggleVarPanel'),
+    'toggleVarPanel not found in index.html');
+});
+
+test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
+  assert.ok(_src.includes('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit'),
+    'pill-pencil keyboard activation selector not found in index.html');
 });

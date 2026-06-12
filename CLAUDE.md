@@ -171,8 +171,11 @@ canonical shape:
   change, re-introducing the bare-word false-positive the `#` form removes. `textForDisplay()` (prefix-, marker- and keyword-
   stripped) is used for breadcrumb/search, not for the main render; to-do exports
   emit the raw text since it carries its own marker. Remaining type-driven
-  stragglers (`ol` ordinals, `divider`, whole-node italic/underline) are tracked
-  as UXP-25…27 in `guidance/ux-remediation.md`. Inline emphasis supports both
+  stragglers (`ol` ordinals, whole-node italic/underline) are tracked
+  as UXP-25/27 in `guidance/ux-remediation.md`; dividers derive from the text since
+  UXP-26 (first line a thematic break `---`/`***`/`___`; lines below it are the
+  hover-reveal section label — `migrateNodePrefixes` writes the break into legacy
+  type-only dividers on load). Inline emphasis supports both
   `**`/`__` (bold), `*`/`_` (italic), `***`/`___` (both); underscore forms are
   word-boundary-guarded so `snake_case` stays literal.
 - **Artifact sidecars** (`dice`, `markov`, etc.) are arrays of records keyed by a
@@ -216,7 +219,13 @@ JSON/OPML. Because the edit buffer transiently holds `{…}` instead of tokens,
 `toOpml`, `toMarkdown`/`toPlainText`, undo `snapshot`) — it folds the active
 node's text just for the serialize, so a mid-edit save/refresh never persists raw
 `{…}` for an untouched artifact. `unfoldedPrefixLen` translates a folded caret
-offset into unfolded coordinates for the insert path. Typed `{…}` shorthand is no
+offset into unfolded coordinates for the insert path; `foldedOffsetFor` is its
+inverse — any offset captured against the edit buffer that outlives a blur (the
+`@` menu / selection-toolbar dialogs) must go through it before splicing into the
+refolded text, which `applyInlineReplace` does centrally (UXP-30). **The folded-
+coordinates invariant:** undo entries and `dataset.prevText` always hold folded
+text — `flushActiveTextEdit` records `foldedTextForSave(node)`, never the raw
+buffer (UXP-31). Typed `{…}` shorthand is no
 longer promoted live; it stays grammar-styled text while editing and promotes on
 exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
 
@@ -390,7 +399,10 @@ directly; in math/dice a string value fails to `null` visibly (the type-safety
 contract). Direction: `guidance/generation-direction.md` — the reverted
 per-expansion bound-picks model (`:=`/`ctx.binds`, PR #51) must not return.
 
-**Node links** are a third document-wide index, same shape as the above.
+**Node links** are a third document-wide index, same shape as the above — and
+**hashtags** a fourth: `collectTags(rootNode = root)` walks the tree with mdInline's
+sigil rule (`[[…]]` tokens stripped first so link targets never read as tags), cached
+on `_varsVer`; it sources the `#` tag-picker menu (same §7.1 pattern as the `{` picker).
 `collectLinks(rootNode = root)` walks the tree for `[[#TARGETID|label]]` tokens and
 returns `{ outgoing, backlinks, broken }`, cached on `_varsVer`. A link is **token-in-
 text, not a sidecar artifact** — the target id lives directly in `node.text` (like a
@@ -399,10 +411,13 @@ attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption fo
 `[[#id|text]]`, the target's **live** title for `[[#id|]]`, or — when the label is empty
 — *mirrors* the target by transcluding its rendered content (display-only, inline; see
 the re-entrancy note above). Missing target → `.node-link-broken`. Same-document only
-(cross-document waits on the multi-doc workspace). The `[[` picker is gated off
-(`LINK_PICKER_ENABLED`); keyboard-first creation is "Copy link" → `[[#id|]]` + paste.
-**(UX: a built-but-fully-gated feature with no front door at any verbosity is a P2
-non-conformance — tracked as UXP-4 in `guidance/ux-remediation.md`.)**
+(cross-document waits on the multi-doc workspace). Creation paths: typing `[[`
+opens the **link picker** (`LINK_PICKER_ENABLED`, now a kill switch defaulting on —
+UXP-4; candidates via the pure `linkCandidates`, applied as the live-title form
+`[[#id|]]`; the trigger regex excludes `#` so a raw token is never intercepted), or
+"Copy link" → `[[#id|]]` + paste (the keyboard-first power path). Because live
+titles are render-time values, `exitEdit` repaints on-screen backlink sources when
+a node's text changes, so a rename never leaves stale captions/mirrors visible.
 
 ---
 
@@ -441,9 +456,11 @@ Implemented: Dice (incl. success-counting pools) · Markov · Roll tables · Gra
 Math (incl. unit conversion + date math) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
-Typed shorthand · Footnotes ·
+Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodies —
+`classifyBraceBody` keeps edit-mode styling and exit promotion in agreement) ·
+Footnotes · Hashtags (incl. the `#` tag picker sourced from `collectTags`) ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
-Node links (same-doc, incl. live-title "mirror") ·
+Node links (same-doc, incl. live-title "mirror" and the `[[` picker) ·
 Click-anywhere-to-edit ·
 Status states + priorities (`#TODO [#A] body` — the `#` prefix reuses the hashtag sigil;
 bare `TODO` without `#` is plain text; to-do-ness fully derives from the text — task marker
