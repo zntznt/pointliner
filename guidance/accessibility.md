@@ -73,12 +73,7 @@ the same action on Enter or Space — but **on a separate `keydown` listener, ne
 by replacing the existing `mousedown`**.
 
 Controls that need this treatment:
-- **File-menu items** — `#btn-new`, `#btn-open`, `#btn-save`, `#btn-save-as`,
-  `#btn-theme`, `#btn-width` (and any other `.cmd-item`). These are `<div>`s with
-  `mousedown` handlers today: no role, not focusable. They need `role="button"
-  tabindex="0"` + keydown **before** the Phase-1 file-menu `role="dialog"` +
-  focus-ring plan can do anything — a focus ring on an unfocusable div is dead.
-  State that dependency explicitly when scheduling the work.
+- ✅ **File-menu items** — **done (chrome design pass).** `#logo-btn` has `role="button"`/`tabindex="0"`/`aria-haspopup="dialog"`/`aria-expanded` + Enter/Space keydown beside its click handler; `#file-menu` is `role="dialog"` (a settings panel, not a menu — see §7.1 note below and `ux-discipline.md`); row items have `role="button"`/`tabindex="-1"`, roving ↑/↓/Home/End focus, Enter/Space activate, Esc closes + restores focus (caret-exact via `restoreChromeReturn`). See UXP-14 in `ux-remediation.md`.
 - `.collapse-btn` — also needs `aria-expanded` toggled on each collapse/expand.
 - ✅ `.bullet` — **done.** Now `role="button"` + `aria-label` ("Point/Base actions") +
   `aria-haspopup="menu"` + `tabindex="-1"` + a `keydown` (Enter/Space) opening the popup.
@@ -92,13 +87,11 @@ Controls that need this treatment:
   returns focus to the point. Focus-visible rings added (`#bpop .cmd-item:focus-visible`,
   `#bpop .bpop-type:focus-visible`). Same §7 menu pattern as the Column panel.
 - `.crumb` items in the breadcrumb trail.
-- `.cmd-item` in the slash menu.
-- `#sc-toggle` — **convert from `<span>` to `<button>`** (it has no semantic
-  role at all today). This is the cleanest fix; a `<button>` is focusable and
-  keyboard-operable for free.
-- `#storage-warn-close` — same, convert to `<button>`.
+- ✅ `.cmd-item` in the slash menu — **done (chrome design pass, screen-reader path).** The slash menu uses `role="listbox"` on the dropdown + `role="option"` on each item + `aria-activedescendant` tracking on the editing element. Focus **never leaves the caret** (no `tabindex` on the rows), which avoids any caret-invariant conflict; keyboard navigation (`↑/↓/Enter/Esc`) was already wired. See UXP-14 in `ux-remediation.md`.
+- ✅ `#sc-toggle` — **done (chrome design pass).** Now a `<button>` with Enter/Space keydown; the shortcuts panel takes focus on open so keyboard users can scroll it.
+- `#storage-warn-close` — convert to `<button>`.
 - `.fn-key` footnote markers.
-- `.ghost-row` (table "add row" affordance).
+- ✅ `.ghost-row` (table "add row" affordance) — **done (chrome design pass).** Now `role="button"`/`tabindex="0"` + Enter/Space keydown.
 - Table column/row handles (`.mt-colh`, `.mt-rowh`).
 - Table delete controls (`.mt-delcol`, `.mt-delrow`) — confirmed `<span>` elements
   inside the column/row handle `<th>`s, not buttons.
@@ -109,20 +102,11 @@ Controls that need this treatment:
   indent, so it isn't a focus stop until the bullet-popup keyboard path lands — the same
   door its menu entry ("Convert table to base" in `#bpop`) rides.
 
-**Menu ARIA pattern — file menu and slash menu:**
+**Menu ARIA pattern — slash menu and file menu:**
 
-The slash menu is a strict single-purpose picker (`role="menu"` + `role="menuitem"` +
-arrow/Escape navigation) and fits the ARIA menu pattern cleanly.
+The slash menu is a strict single-purpose picker. **Implemented:** `role="listbox"` on the container + `role="option"` on each item + `aria-activedescendant` tracking on the editing element — focus never leaves the caret, which avoids the caret-invariant conflict. Arrow/Enter/Esc keyboard nav was wired from the start.
 
-**Do not apply `role="menu"` to the file menu.** The file menu is more of a
-settings panel than a command menu: it contains a row of accent-color swatches
-(radio-group semantics), a theme toggle, a width toggle, and storage controls —
-persistent stateful widgets, not a list of commands. Forcing `role="menu"` means
-Escape must close it and arrow keys must cycle focus through a heterogeneous set
-of widgets, which fights both the color-swatch row and the current "click-outside
-closes" model. Instead: add `role="dialog"` (`aria-label="Settings"`) with an
-Escape-to-close handler and visible focus rings on each interactive element
-inside — **after** those `.cmd-item` divs are made focusable (see above).
+**The file menu is not a menu — it is a settings dialog (✅ done).** It contains accent-color swatches (radio-group semantics), a theme cycle, a width toggle, and storage controls — persistent stateful widgets, not a list of commands. Applied: `role="dialog"` (`aria-label="Pointliner menu"`) with roving-focus row buttons, Escape-to-close + caret-restore, and visible focus rings. See UXP-14 in `ux-remediation.md`.
 
 The bullet popup (`#bpop`) is similarly mixed — type-switcher items fit
 `role="menuitem"`, but the Move up/down actions are more command-like. A

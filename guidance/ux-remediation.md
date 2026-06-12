@@ -79,6 +79,69 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 ---
 
+## Correctness defects with UX impact (P4 — silent corruption / silently wrong data)
+
+From the engine audit; each re-verified live against the current code (June 2026). These are
+engine bugs, but they violate P4 the same way a missing toast does — the user's data or the
+data shown to the user is silently wrong — so they're tracked here, not in a separate list.
+
+### UXP-30 ☐ 🔴 `@`-menu insertion corrupts text when an unfolded artifact precedes the caret
+- **Problem:** `insertInlineArtifact` captures the caret offset against the **unfolded** edit
+  buffer (`getCaretOffset` while `{…}` text is live), then opens a dialog — which blurs the
+  editor, firing `exitEdit` → `refoldArtifacts`, so `node.text` reverts to the **longer folded**
+  token form. The dialog's `onResult` then calls `applyInlineInsertion` with the stale unfolded
+  offset, splicing the new `[[type:key]]` at the wrong position — possibly *inside* an existing
+  token, corrupting it. (`applyInlineReplace` already knows its text is folded — it translates
+  the *post-insert* caret via `unfoldedPrefixLen` — but the *incoming* offset is never
+  translated folded-ward.)
+- **Violates:** P4 (silent data corruption).
+- **Repro:** point containing a dice pill → edit (pill unfolds to `{2d6}`) → caret after it →
+  `@` → Math → submit. The math token lands inside the refolded `[[dice:…]]`.
+- **Target:** translate the captured offset into folded coordinates before the splice (the
+  inverse of `unfoldedPrefixLen`), or capture it post-blur against the folded text.
+
+### UXP-31 ☐ 🔴 Mid-edit undo entries record the unfolded buffer
+- **Problem:** `flushActiveTextEdit` (called by `pushUndo` before any structural op, and by
+  `undo()`) records `editableText(el)` — the live **unfolded** `{…}` buffer — as a text-undo
+  entry's `next`, and resets `dataset.prevText` to it, so the *following* `exitEdit` entry mixes
+  coordinate systems too (`prev` unfolded, `next` folded). Undoing past that boundary after
+  exiting edit restores raw unfolded `{…}` into `node.text` outside edit mode: the WeakMap
+  refold data no longer applies, so the artifact's frozen roll + key are lost — the next
+  edit/exit re-promotes it as a *fresh* pill with a new roll. (`snapshot()` and the normal
+  `exitEdit` entry are already folded via `withFoldedActive` / recording after
+  `refoldArtifacts` — only the flush path leaks.)
+- **Violates:** P4 (silent data corruption; frozen state silently re-rolled).
+- **Repro:** edit a point with a dice pill → Tab (indent = `pushUndo` → flush) → exit edit →
+  `⌘Z` twice. The point now shows literal `{2d6}` text; re-editing mints a new roll.
+- **Target:** fold the buffer when recording (`foldedTextForSave`-style translation in
+  `flushActiveTextEdit`), keeping `prevText` and the entry in folded coordinates throughout.
+
+### UXP-32 ☐ 🟡 File → Open / New serves the previous document's caches
+- **Problem:** `newFile` and `openFile` replace `root` and call `markClean()` — but never bump
+  `_varsVer` (only `markDirty` does). Every `_varsVer`-keyed cache — `collectVars`,
+  `collectRules`, `collectLinks`, `collectSequences`, `collectCallables`, state commands —
+  keeps serving the **previous** document's data until the first edit: the variables panel,
+  backlinks, `{`-autocomplete, and status-badge state sets are silently wrong on a fresh open.
+- **Violates:** P4 (silently wrong data presented as current).
+- **Target:** bump `_varsVer` (or call a shared invalidation) wherever `root` is replaced —
+  `newFile`, both `openFile` branches, and any future load path. Cheapest durable fix: a
+  `resetDocCaches()` helper called beside every `buildIndex(root, null)`.
+
+### UXP-33 ☐ 🟡 Anonymous `{a|b}` pills register a phantom doc-wide rule named `origin`
+- **Problem:** `promoteBraceBody` wraps inline alternation as `origin: a | b` and bare-name
+  references as `origin: {name}`; `collectRules` and `collectCallables` merge **every** pill's
+  rules unconditionally, so each anonymous pill registers (and clobbers) a document-wide rule
+  named `origin` the user never declared. `{origin}` typed anywhere resolves to whichever
+  anonymous pill was gathered last — and since UXP-9, the `{`-autocomplete *advertises*
+  `origin` as a callable rule.
+- **Violates:** P4 (phantom name, surprising resolution), P5 (the namespace is polluted by an
+  implementation detail).
+- **Target:** mark anonymous grammar records (e.g. an `anon` flag, or a reserved non-identifier
+  rule name) and skip them in `collectRules`/`collectCallables`; named pills keep registering
+  as today. The dialog-example `origin:` convention for *named* grammars is unaffected.
+
+---
+
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
 - **Problem:** the loudest symptom of the scattered direction is the steady flood of new authoring syntaxes and grammars, each invented per-feature. The architecture *encourages* it (`CLAUDE.md`: "a new token type / expression primitive fits very well"), so the pressure is structural and continuous — this guard never fully closes.
 - **Violates:** P5 (one authoring language).
@@ -179,11 +242,13 @@ Defects found by the chrome design review, fixed together — recorded so the de
 These are **not non-conformances** — the standard is satisfied — just nice-to-haves noted so they aren't lost.
 
 - 🟢 **Table arrow-key cell nav** — `↑/↓/←/→` to cross cells and `Shift+Arrow` to extend the selection (beyond the conformant `Tab`/`Enter` nav from UXP-2). Today arrows move the caret within the cell; P2-3 is met without this.
+- 🟢 **`mdInline` per-token sidecar scans** — each `[[type:key]]` match does a linear `.find` over the node's sidecar array, so rendering is O(tokens × sidecar size) per node. Harmless at realistic pill counts (single-digit per point); a `Map` keyed by `key` in `renderContentHTML` retires it whenever a render pass is touched anyway. From the engine audit, verified still present — a perf nit, not a defect.
 
 ## Closing order (recommended)
 
-1. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency.
-2. **Tier 2** (UXP-6…12) — discoverability + feedback gaps.
-3. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
+1. **Correctness defects** (UXP-30…31 first — silent data corruption; then 32…33) — these damage user data or trust directly and gate everything else.
+2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency.
+3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps.
+4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
 
 When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. The register is empty when the app speaks one language.
