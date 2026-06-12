@@ -151,7 +151,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #search-box::placeholder{color:var(--muted)}
 #search-wrap::before{content:'\f002';font-family:'Font Awesome 6 Free';font-weight:900;position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px;pointer-events:none}
 #search-key{position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none}
-#search-wrap:focus-within #search-key,#search-wrap.has-q #search-key{display:none}
+#search-wrap:focus-within #search-key,#search-wrap:has(#search-clear.on) #search-key{display:none}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
 #search-clear.on{display:block}
@@ -820,7 +820,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <body>
 <div id="toolbar">
   <div id="toolbar-row">
-    <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="file-menu" aria-label="Pointliner menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span></span>
+    <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-menu" aria-label="Pointliner menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span></span>
     <span class="dirty-dot" id="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
     <span class="spacer"></span>
     <div id="search-wrap">
@@ -839,7 +839,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   </div>
   <div id="breadcrumb-row"></div>
 </div>
-<div id="file-menu" role="menu" aria-label="Pointliner menu">
+<div id="file-menu" role="dialog" aria-label="Pointliner menu">
   <div class="fm-head">
     <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
     <div class="fm-head-info">
@@ -4001,6 +4001,51 @@ function highlightContent(el, query) {
 
 let activeContentId = null;
 
+// ── chrome excursions: caret restore ─────────────────────────────────────────
+// Going to the search bar, the file menu, or the help panel mid-edit must be
+// reversible: Escape puts the caret back exactly where it stood (same point,
+// same offset). Focusing another point meanwhile disarms it (enterEdit).
+let lastEdit = null;     // { id, offset|null, t } — written by every exitEdit
+let chromeReturn = null; // { id, offset|null } — armed when chrome takes focus
+
+function armChromeReturn() {
+  // Keyboard path (e.g. ⌘F): the editor may still be focused — capture live.
+  if (activeContentId) {
+    const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
+    if (el) {
+      const sel = window.getSelection();
+      const offset = sel?.anchorNode && el.contains(sel.anchorNode) ? getCaretOffset(el) : null;
+      chromeReturn = { id: activeContentId, offset };
+      return;
+    }
+  }
+  // Mouse path: the editor blurred just before chrome took focus, so exitEdit
+  // already recorded the position. A stale lastEdit (no edit was interrupted)
+  // keeps any previously armed target, so chrome→chrome hops stay reversible.
+  if (lastEdit && Date.now() - lastEdit.t < 400) chromeReturn = { id: lastEdit.id, offset: lastEdit.offset };
+}
+
+function restoreChromeReturn() {
+  if (!chromeReturn) return false;
+  const { id, offset } = chromeReturn;
+  chromeReturn = null;
+  if (!nodeById(id)) return false;
+  requestAnimationFrame(() => {
+    ensureRowVisible(id);
+    const el = document.querySelector(`.node-content[data-id="${id}"]`);
+    const node = nodeById(id);
+    if (!el || !node) return;
+    if (node.type === 'base') { el.focus(); return; }
+    if (!el.dataset.editing) enterEdit(el, node);
+    el.focus();
+    // offset is in unfolded (edit-mode) coordinates; clamp in case exitEdit's
+    // refold/promote changed the text length. null → end of text.
+    const max = editableText(el).length;
+    try { setCaretByOffset(el, Math.min(offset ?? max, max)); } catch (_) {}
+  });
+  return true;
+}
+
 function attachContentEvents(content, node) {
   // Table nodes: clicking OUTSIDE the widget → raw-markdown text edit; clicking ON
   // the widget → cell editing handled internally by buildTableWidget.
@@ -4340,6 +4385,7 @@ function editModeHTML(node) {
 }
 
 function enterEdit(content, node) {
+  chromeReturn = null; // editing a point supersedes any pending chrome-Escape return
   if (node.type === 'base') {
     if (content.dataset.editing) return;
     if (selectedIds.size > 0) clearSelection();
@@ -4366,6 +4412,16 @@ function enterEdit(content, node) {
 }
 
 function exitEdit(content, node) {
+  // Record where the caret stood (unfolded coordinates) so a chrome excursion —
+  // search / file menu / help — can restore it on Escape (armChromeReturn).
+  {
+    const sel = window.getSelection();
+    lastEdit = {
+      id: node.id,
+      offset: sel?.anchorNode && content.contains(sel.anchorNode) ? getCaretOffset(content) : null,
+      t: Date.now(),
+    };
+  }
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
 
@@ -8669,11 +8725,19 @@ document.getElementById('search-clear').addEventListener('click', () => {
   document.getElementById('search-box').value = '';
   applySearch('');
 });
+document.getElementById('search-box').addEventListener('focus', armChromeReturn);
 document.getElementById('search-box').addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.getElementById('search-box').value = '';
     applySearch('');
     document.getElementById('search-box').blur();
+    restoreChromeReturn(); // back to exactly where the caret stood before the excursion
+  } else if (e.key === 'ArrowDown') {
+    // step from the search field into the outline: first match while filtering,
+    // else the first displayed point
+    e.preventDefault();
+    const row = flatRows.find(r => r.highlight) ?? flatRows.find(r => !r.searchCtx);
+    if (row) focusNode(row.node.id);
   }
 });
 
@@ -9093,6 +9157,7 @@ function updateFmStatus() {
 
 const fmtKey = k => (typeof IS_MAC !== 'undefined' && IS_MAC) ? '⌘' + k : 'Ctrl+' + k;
 function openFileMenu() {
+  armChromeReturn();
   // platform-correct shortcut chips (⌘K on Mac, Ctrl+K elsewhere)
   const keySave = document.getElementById('key-save');
   if (keySave) keySave.textContent = fmtKey('S');
@@ -9114,9 +9179,11 @@ function closeFileMenu() {
   logoBtn.setAttribute('aria-expanded', 'false');
   if (wasOpen && fileMenu.contains(document.activeElement)) logoBtn.focus();
 }
-// keyboard path added ALONGSIDE the pointer path (same §7.1 pattern as #bpop)
+// keyboard path added ALONGSIDE the pointer path. Per ux-discipline §7.1 the file
+// menu is a settings *dialog*, not a menu — rows are buttons; arrow-roving is a
+// convenience on top, not menu semantics.
 const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')];
-fileMenu.querySelectorAll('.cmd-item').forEach(it => { it.setAttribute('role', 'menuitem'); it.setAttribute('tabindex', '-1'); });
+fileMenu.querySelectorAll('.cmd-item').forEach(it => { it.setAttribute('role', 'button'); it.setAttribute('tabindex', '-1'); });
 fileMenu.addEventListener('keydown', e => {
   const items = fmItems();
   const idx = items.indexOf(document.activeElement);
@@ -9127,7 +9194,8 @@ fileMenu.addEventListener('keydown', e => {
   } else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
   else if (e.key === 'End')  { e.preventDefault(); items[items.length - 1]?.focus(); }
   else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.click(); }
-  else if (e.key === 'Escape') { e.preventDefault(); closeFileMenu(); }
+  // Escape: back to the edit it interrupted (exact caret), else to the logo button
+  else if (e.key === 'Escape') { e.preventDefault(); closeFileMenu(); restoreChromeReturn(); }
 });
 
 logoBtn.addEventListener('click', e => {
@@ -9315,7 +9383,8 @@ const SHORTCUTS = [
     { keys: [`${MOD}+↑`, '↓'],    desc: 'Collapse / expand point' },
     { keys: [`${MOD}+1`, '…', '6'], desc: 'Show first N levels (or use the toolbar 1·2·3·All)' },
     { keys: [`${MOD}+Enter`],     desc: 'Zoom into point' },
-    { keys: ['Esc'],              desc: 'Zoom out / deselect' },
+    { keys: ['Esc'],              desc: 'Zoom out / deselect — from search or a menu, returns to your edit' },
+    { keys: ['↓'],                desc: 'From the search field: jump to the first matching point' },
   ]},
   { sec: 'Edit structure', rows: [
     { keys: ['Enter'],            desc: 'New point' },
@@ -9381,6 +9450,7 @@ const scToggle = document.getElementById('sc-toggle');
 const scPanel  = document.getElementById('sc-panel');
 function toggleShortcuts(force) {
   const on = force === undefined ? !scPanel.classList.contains('on') : force;
+  if (on) armChromeReturn(); // before the panel steals focus from a live edit
   scPanel.classList.toggle('on', on);
   scToggle.classList.toggle('on', on);
   scToggle.setAttribute('aria-expanded', String(on));
@@ -9399,8 +9469,8 @@ document.addEventListener('mousedown', e => {
 });
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
-  if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); closeFileMenu(); return; }
-  if (e.key==='Escape' && scPanel.classList.contains('on')) { e.preventDefault(); toggleShortcuts(false); return; }
+  if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); closeFileMenu(); restoreChromeReturn(); return; }
+  if (e.key==='Escape' && scPanel.classList.contains('on')) { e.preventDefault(); toggleShortcuts(false); restoreChromeReturn(); return; }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
