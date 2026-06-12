@@ -170,9 +170,10 @@ canonical shape:
   migrated — a load-time rewrite would also capture plain prose typed after the
   change, re-introducing the bare-word false-positive the `#` form removes. `textForDisplay()` (prefix-, marker- and keyword-
   stripped) is used for breadcrumb/search, not for the main render; to-do exports
-  emit the raw text since it carries its own marker. The one remaining type-driven
-  straggler (`ol` ordinals) is tracked as UXP-25 in `guidance/ux-remediation.md`
-  (whole-node italic/underline flags were retired by UXP-27 — legacy `_italic`/
+  emit the raw text since it carries its own marker. `ol` ordinals were the last
+  type-driven straggler — resolved by UXP-25 (text carries `1. ` prefix; type derives
+  from text; display renumbers from sibling position via `olNum()`; `migrateNodePrefixes`
+  adds the prefix to legacy nodes). Italic/underline flags were retired by UXP-27 — legacy `_italic`/
   `_underline` OPML attrs fold into the text as `*…*`/`++…++` on load via
   `migrateEmphasisText` and are never written back); dividers derive from the text since
   UXP-26 (first line a thematic break `---`/`***`/`___`; lines below it are the

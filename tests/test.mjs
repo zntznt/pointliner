@@ -2198,3 +2198,46 @@ test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
 });
+
+// ── UXP-25: ol ordinals from text not type (markdown-lazy numbering) ──────────
+
+test('UXP-25: deriveTypeFromText detects ol from N. prefix', () => {
+  assert.equal(c.deriveTypeFromText('1. foo'),   'ol');
+  assert.equal(c.deriveTypeFromText('2. bar'),   'ol');
+  assert.equal(c.deriveTypeFromText('10. baz'),  'ol');
+  assert.equal(c.deriveTypeFromText('1. '),       'ol');   // empty body (Enter-continuation stub)
+  assert.equal(c.deriveTypeFromText('- item'),    null);   // ul is NOT ol
+  assert.equal(c.deriveTypeFromText('1 nospace'), null);   // missing dot — not ol
+  assert.equal(c.deriveTypeFromText('1.nospace'), null);   // missing space after dot — not ol
+  assert.equal(c.deriveTypeFromText('# heading'), 'h1');   // existing derivations intact
+});
+
+test('UXP-25: continuationPrefix returns 1. for any ol item', () => {
+  assert.equal(c.continuationPrefix('1. first'),  '1. ');
+  assert.equal(c.continuationPrefix('5. fifth'),  '1. ');  // literal value ignored
+  assert.equal(c.continuationPrefix('10. tenth'), '1. ');
+  assert.equal(c.continuationPrefix('- bullet'),  '');     // ul stays empty (no continuation)
+  assert.equal(c.continuationPrefix('> quote'),   '> ');   // quote path unaffected
+});
+
+test('UXP-25: textForDisplay strips ol N. prefix', () => {
+  const n1 = c.mkNode('1. buy milk');   n1.type = 'ol';
+  const n5 = c.mkNode('5. fifth item'); n5.type = 'ol';
+  assert.equal(c.textForDisplay(n1), 'buy milk');
+  assert.equal(c.textForDisplay(n5), 'fifth item');
+  // h1 prefix stripping intact
+  const h = c.mkNode('# Title'); h.type = 'h1';
+  assert.equal(c.textForDisplay(h), 'Title');
+});
+
+test('UXP-25: migrateNodePrefixes adds 1. to legacy type-only ol nodes', () => {
+  const root = c.mkRoot();
+  const legacy = c.mkNode('buy milk'); legacy.type = 'ol';
+  const already = c.mkNode('1. already has prefix'); already.type = 'ol';
+  const two = c.mkNode('2. different number'); two.type = 'ol';
+  root.children.push(legacy, already, two);
+  c.migrateNodePrefixes(root);
+  assert.equal(legacy.text, '1. buy milk');   // prefix added
+  assert.equal(already.text, '1. already has prefix'); // unchanged
+  assert.equal(two.text, '2. different number');       // unchanged (already has N.)
+});

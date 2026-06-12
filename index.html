@@ -1026,6 +1026,8 @@ function deriveTypeFromText(text) {
   // any sequence (default TODO/NEXT/… or user-declared), markdown-first.
   // The type is a derived hint here exactly like headings — the markdown renders.
   if (TASK_FIRST_RE.test(text) || parseTodo(text).keyword) return 'todo';
+  // ol: first line matches OL_RE (any N. marks list-ness; UXP-25)
+  if (OL_RE.test(text.split('\n', 1)[0])) return 'ol';
   return null;
 }
 
@@ -1040,6 +1042,11 @@ function textForDisplay(node) {
   // divider: show the label only — the break line is the "prefix" here
   if (node.type === 'divider' && HR_RE.test(t.split('\n', 1)[0])) {
     return t.split('\n').slice(1).join('\n').trim();
+  }
+  // ol: strip the N. list prefix; the ordinal is display-computed from position (UXP-25)
+  if (node.type === 'ol') {
+    const m = t.match(/^\s*\d+\.\s+([\s\S]*)/);
+    if (m) return m[1];
   }
   t = t.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
   const pt = parseTodo(t);
@@ -1260,6 +1267,7 @@ function continuationPrefix(text, seqs = allSequences()) {
   // a done keyword restarts at its sequence's FIRST state (#DONE → #TODO)
   if (sq) return '#' + (keywordIsDone(km[1], seqs) ? sq.states[0] : km[1]) + ' ';
   if (TASK_FIRST_RE.test(s)) return '- [ ] ';
+  if (OL_RE.test(s.split('\n', 1)[0])) return '1. ';
   if (s.startsWith('> ')) return '> ';
   return '';
 }
@@ -1320,6 +1328,11 @@ function renderContentHTML(node) {
       // inject badges inside the first block-open tag so they flow inline with the text
       const m = bodyHtml.match(/^(<(?:p|li|h[1-6]|blockquote|div)[^>]*>)/);
       html = m ? m[1] + badge + chip + bodyHtml.slice(m[1].length) : badge + chip + bodyHtml;
+    } else if (node.type === 'ol') {
+      // Strip N. prefix before mdToHtml; the .ol-num DOM span provides the visual
+      // ordinal (display-computed from sibling position, UXP-25)
+      const om = node.text.match(/^\s*\d+\.\s+([\s\S]*)/);
+      html = mdToHtml(om ? om[1] : node.text);
     } else {
       html = mdToHtml(node.text);
     }
@@ -1469,6 +1482,11 @@ function migrateNodePrefixes(n) {
   // self-consistent (markdown-first, UXP-26), label preserved below the break
   if (n.type === 'divider' && !HR_RE.test(n.text.split('\n', 1)[0])) {
     n.text = n.text.trim() ? '---\n' + n.text : '---';
+  }
+  // legacy `_type="ol"` carried list-ness in the type alone — write 1. into
+  // the text so the node is self-consistent (markdown-first, UXP-25)
+  if (n.type === 'ol' && !OL_RE.test(n.text.split('\n', 1)[0])) {
+    n.text = '1. ' + n.text;
   }
   n.children.forEach(migrateNodePrefixes);
 }
@@ -2865,7 +2883,7 @@ function render() {
       vp.text = editableText(te);
       const zt = deriveTypeFromText(vp.text);
       if (zt) vp.type = zt;
-      else if (vp.type in BLOCK_PREFIX_MAP) vp.type = 'ul';
+      else if (vp.type in BLOCK_PREFIX_MAP || vp.type === 'ol') vp.type = 'ul';
       delete te.dataset.editing;
       te.innerHTML = renderContentHTML(vp);
       markDirty();
@@ -4792,7 +4810,7 @@ function exitEdit(content, node) {
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
-  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider') node.type = 'ul';
+  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
@@ -8507,9 +8525,19 @@ function applyBlockCmd(id, nodeId, node, content) {
   if (node.type === 'divider' && HR_RE.test(cleanText.split('\n', 1)[0])) {
     cleanText = cleanText.split('\n').slice(1).join('\n');
   }
+  // converting away from an ol strips its N. list prefix (UXP-25 — otherwise the node
+  // would derive back to 'ol' from its text on the next edit)
+  if (node.type === 'ol') {
+    const om = cleanText.match(/^\s*\d+\.\s+([\s\S]*)/);
+    if (om) cleanText = om[1];
+  }
   // → divider is NON-destructive (UXP-26): existing content becomes the section
   // label below the break, never erased.
-  node.text = id === 'divider' ? (cleanText.trim() ? '---\n' + cleanText : '---') : newPrefix + cleanText;
+  // → ol gets a 1. prefix unless text is already a list item (UXP-25)
+  node.text = id === 'ol'
+    ? (OL_RE.test(cleanText.split('\n', 1)[0]) ? cleanText : '1. ' + cleanText)
+    : id === 'divider' ? (cleanText.trim() ? '---\n' + cleanText : '---')
+    : newPrefix + cleanText;
   node.type = id;
   node.checked = false;
   // if currently editing this node, sync the live contenteditable
@@ -9249,7 +9277,7 @@ function applyEntry(entry, intoStack, dir) {
       node.text = entry[dir];
       const rt = deriveTypeFromText(node.text);
       if (rt) node.type = rt;
-      else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
+      else if (node.type in BLOCK_PREFIX_MAP || node.type === 'ol') node.type = 'ul';
     }
     markDirty(); render();
     if (node) { ensureRowVisible(entry.nodeId); focusNode(entry.nodeId); }
