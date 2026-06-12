@@ -114,7 +114,7 @@ canonical shape:
 ```js
 {
   id, text, note, type,                 // type ∈ ul|ol|todo|h1..h6|quote|code|divider|para|base — only para+base special; rest derived hints
-  italic, underline, checked, collapsed, // checked is a derived cache (todoDoneFromText)
+  checked, collapsed,                   // checked is a derived cache (todoDoneFromText)
   children: [],                         // nested nodes
   footnotes: [],                        // [{key, text}]
   dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: []  // artifact sidecars
@@ -170,9 +170,12 @@ canonical shape:
   migrated — a load-time rewrite would also capture plain prose typed after the
   change, re-introducing the bare-word false-positive the `#` form removes. `textForDisplay()` (prefix-, marker- and keyword-
   stripped) is used for breadcrumb/search, not for the main render; to-do exports
-  emit the raw text since it carries its own marker. Remaining type-driven
-  stragglers (`ol` ordinals, whole-node italic/underline) are tracked
-  as UXP-25/27 in `guidance/ux-remediation.md`; dividers derive from the text since
+  emit the raw text since it carries its own marker. `ol` ordinals were the last
+  type-driven straggler — resolved by UXP-25 (text carries `1. ` prefix; type derives
+  from text; display renumbers from sibling position via `olNum()`; `migrateNodePrefixes`
+  adds the prefix to legacy nodes). Italic/underline flags were retired by UXP-27 — legacy `_italic`/
+  `_underline` OPML attrs fold into the text as `*…*`/`++…++` on load via
+  `migrateEmphasisText` and are never written back); dividers derive from the text since
   UXP-26 (first line a thematic break `---`/`***`/`___`; lines below it are the
   hover-reveal section label — `migrateNodePrefixes` writes the break into legacy
   type-only dividers on load). Inline emphasis supports both
@@ -434,13 +437,15 @@ an `evalMath` primitive, not a new artifact or syntax.
 
 ## Accessibility
 
-Remediation is tracked in `guidance/accessibility.md` (phased plan, kept out of the
-always-loaded `CLAUDE.md` because it retires as the work ships). Accessibility is
-now also a **per-feature requirement** under the UX standard (`guidance/ux-discipline.md`
-§5 / P3): every feature satisfies its accessible-name, keyboard-operability, and
-announcement obligations **in the same pass that builds it**, rather than as a
-separate later track — `accessibility.md` still owns the *sequencing* of the
-larger items. The one durable invariant: **keyboard operability is added
+The remediation plan in `guidance/accessibility.md` is **complete** (phases 0–5 +
+the UXP-19 tree/grid/pill-focus pass; the file is retained for its durable
+guardrails). The outline is a flat ARIA tree (`role="tree"`, rows `role="treeitem"`
+with `aria-level`/`posinset`/`setsize` stamped in `renderRow` — the virtualized-tree
+pattern), interactive bases are `role="grid"`, and pills carry `tabindex="-1"` +
+Enter/Space activation. Accessibility is a **per-feature requirement** under the UX
+standard (`guidance/ux-discipline.md` §5 / P3): every feature satisfies its
+accessible-name, keyboard-operability, and announcement obligations **in the same
+pass that builds it**, never as a separate later track. The one durable invariant: **keyboard operability is added
 *alongside* `mousedown`+`preventDefault` handlers, never by replacing them** —
 bullets, pill pencils, the collapse button and the breadcrumb rely on `mousedown`
 to keep focus off the active contenteditable, so converting them to `click`

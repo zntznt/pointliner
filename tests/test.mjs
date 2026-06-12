@@ -1049,6 +1049,51 @@ test('mtBuildAggFormula: preserves unrelated column formulas', () => {
   assert.ok(result.includes('@>$2=vcount(@2$2..@-1$2)'));
 });
 
+// ── tblfmGetAssign / tblfmSetAssign (UXP-3 Part B: the formula dialog's core) ─
+
+test('tblfmSetAssign: set on empty TBLFM', () => {
+  assert.equal(c.tblfmSetAssign('', '$3', '$1*$2'), '$3=$1*$2');
+  assert.equal(c.tblfmSetAssign(null, '@2$3', '@2$1+10'), '@2$3=@2$1+10');
+});
+
+test('tblfmSetAssign: replaces the assignment with the same lhs, keeps others', () => {
+  const existing = '$3=$1*$2 :: @>$3=vsum(@2$3..@-1$3)';
+  assert.equal(c.tblfmSetAssign(existing, '$3', '$1+$2'),
+    '@>$3=vsum(@2$3..@-1$3) :: $3=$1+$2');
+});
+
+test('tblfmSetAssign: empty expr removes the assignment ("" when none left)', () => {
+  assert.equal(c.tblfmSetAssign('$3=$1*$2', '$3', ''), '');
+  assert.equal(c.tblfmSetAssign('$3=$1*$2 :: @2$1=5', '$3', '  '), '@2$1=5');
+});
+
+test('tblfmSetAssign: exact-lhs match — "$3" never touches "@>$3"', () => {
+  const footer = '@>$3=vsum(@2$3..@-1$3)';
+  assert.equal(c.tblfmSetAssign(footer, '$3', '$1*$2'), footer + ' :: $3=$1*$2');
+});
+
+test('tblfmGetAssign: returns the expr for the exact lhs, null otherwise', () => {
+  const t = '$3=$1*$2 :: @2$1=10 :: @>$2=vsum(@2$2..@-1$2)';
+  assert.equal(c.tblfmGetAssign(t, '$3'), '$1*$2');
+  assert.equal(c.tblfmGetAssign(t, '@2$1'), '10');
+  assert.equal(c.tblfmGetAssign(t, '@>$2'), 'vsum(@2$2..@-1$2)');
+  assert.equal(c.tblfmGetAssign(t, '$1'), null);
+  assert.equal(c.tblfmGetAssign('', '$1'), null);
+});
+
+test('tblfmSetAssign round-trips through parseTblfm and computeTable', () => {
+  const model = { aligns: ['left','left','left'], rows: [['A','B','C'], ['2','3',''], ['4','5','']] };
+  const tblfm = c.tblfmSetAssign('', '$3', '$1*$2');
+  const rows = JSON.parse(JSON.stringify(c.computeTable(model, tblfm, {})));
+  assert.equal(rows[1][2], '6');
+  assert.equal(rows[2][2], '20');
+  // a cell formula overrides the column formula for just that cell (Org rule)
+  const tblfm2 = c.tblfmSetAssign(tblfm, '@3$3', '99');
+  const rows2 = JSON.parse(JSON.stringify(c.computeTable(model, tblfm2, {})));
+  assert.equal(rows2[1][2], '6');
+  assert.equal(rows2[2][2], '99');
+});
+
 test('mtHasFooter: false when empty or null', () => {
   assert.equal(mtHasFooter(''), false);
   assert.equal(mtHasFooter(null), false);
@@ -1999,6 +2044,54 @@ test('migrateNodePrefixes: legacy type-only divider gets its break written in, l
   assert.equal(modern.text, '---\nkeep');         // already self-consistent — untouched
 });
 
+// ── migrateEmphasisText (UXP-27: legacy whole-node italic/underline → markdown) ─
+
+test('migrateEmphasisText: wraps plain text per flag combination', () => {
+  assert.equal(c.migrateEmphasisText('hello', true, false), '*hello*');
+  assert.equal(c.migrateEmphasisText('hello', false, true), '++hello++');
+  assert.equal(c.migrateEmphasisText('hello', true, true), '*++hello++*');
+  assert.equal(c.migrateEmphasisText('hello', false, false), 'hello');
+});
+
+test('migrateEmphasisText: per line, after block prefixes; structural lines untouched', () => {
+  const src = '# Title\n> a quote\n- item\n- [ ] task\n3. third\n\n---\n| a | b |\nplain';
+  assert.equal(c.migrateEmphasisText(src, true, false),
+    '# *Title*\n> *a quote*\n- *item*\n- [ ] *task*\n3. *third*\n\n---\n| a | b |\n*plain*');
+});
+
+test('migrateEmphasisText: fenced code (content and fences) left untouched', () => {
+  const src = 'before\n```\ncode line\n```\nafter';
+  assert.equal(c.migrateEmphasisText(src, true, false),
+    '*before*\n```\ncode line\n```\n*after*');
+});
+
+test('migrateNodePrefixes: folds legacy flags into the text and deletes them', () => {
+  const root = c.mkRoot();
+  const it = c.mkNode('slanted');  it.italic = true;
+  const ul = c.mkNode('scored');   ul.underline = true;
+  const both = c.mkNode('fancy');  both.italic = true; both.underline = true;
+  const plain = c.mkNode('plain');
+  root.children.push(it, ul, both, plain);
+  c.migrateNodePrefixes(root);
+  assert.equal(it.text, '*slanted*');
+  assert.equal(ul.text, '++scored++');
+  assert.equal(both.text, '*++fancy++*');
+  assert.equal(plain.text, 'plain');
+  for (const n of [it, ul, both, plain]) {
+    assert.equal('italic' in n, false);
+    assert.equal('underline' in n, false);
+  }
+});
+
+test('toOpml: never writes _italic/_underline attributes', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('hello'); n.italic = true; n.underline = true; // even if set
+  root.children.push(n);
+  const xml = c.toOpml(root);
+  assert.ok(!xml.includes('_italic'));
+  assert.ok(!xml.includes('_underline'));
+});
+
 test('textForDisplay: divider shows the label only (break line stripped)', () => {
   const labeled = c.mkNode('---\nnorth wing'); labeled.type = 'divider';
   assert.equal(c.textForDisplay(labeled), 'north wing');
@@ -2104,4 +2197,81 @@ test('UXP-36: toggleVarPanel shortcut handler is present', () => {
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
+});
+
+// ── UXP-19: outline tree + base grid ARIA (the dedicated pass) ────────────────
+
+test('UXP-19: the outline is a flat ARIA tree (role + level/position attributes)', () => {
+  assert.ok(_src.includes(`vlist.setAttribute('role', 'tree')`), 'role=tree on #vlist');
+  assert.ok(_src.includes(`'aria-multiselectable'`), 'tree is multiselectable');
+  assert.ok(_src.includes(`div.setAttribute('role', 'treeitem')`), 'rows are treeitems');
+  assert.ok(_src.includes(`'aria-level'`), 'aria-level set');
+  assert.ok(_src.includes(`'aria-posinset'`), 'aria-posinset set');
+  assert.ok(_src.includes(`'aria-setsize'`), 'aria-setsize set');
+});
+
+test('UXP-19: the interactive base table is role="grid"; computed cells aria-readonly', () => {
+  assert.ok(_src.includes(`role="grid" aria-label="Base"`), 'role=grid on the base table');
+  assert.ok(_src.includes(`tabindex="0" aria-readonly="true"`), 'computed cells aria-readonly');
+});
+
+test('UXP-19: pills carry tabindex=-1 (programmatic/AT focus reach)', () => {
+  const dice = c.renderDicePill('k', { key: 'k', expr: '2d6', total: 7, parts: [] });
+  assert.ok(dice.includes('tabindex="-1"'), dice);
+  const mk = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'] });
+  assert.ok(mk.includes('tabindex="-1"'), mk);
+  const rt = c.renderRolltablePill('r', { key: 'r', def: 'x', result: 'a sword', name: 'loot' });
+  assert.ok(rt.includes('tabindex="-1"'), rt);
+  const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!' });
+  assert.ok(gr.includes('tabindex="-1"'), gr);
+  const sq = c.renderSeqPill('q', { key: 'q', name: 'Flow', states: ['A', 'B', 'C'], doneFrom: 2 });
+  assert.ok(sq.includes('tabindex="-1"'), sq);
+});
+
+test('UXP-19: pill-body keyboard activation (Enter/Space dispatch) is present', () => {
+  assert.ok(_src.includes('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.seq-pill'),
+    'pill-body keyboard activation selector not found in index.html');
+});
+
+// ── UXP-25: ol ordinals from text not type (markdown-lazy numbering) ──────────
+
+test('UXP-25: deriveTypeFromText detects ol from N. prefix', () => {
+  assert.equal(c.deriveTypeFromText('1. foo'),   'ol');
+  assert.equal(c.deriveTypeFromText('2. bar'),   'ol');
+  assert.equal(c.deriveTypeFromText('10. baz'),  'ol');
+  assert.equal(c.deriveTypeFromText('1. '),       'ol');   // empty body (Enter-continuation stub)
+  assert.equal(c.deriveTypeFromText('- item'),    null);   // ul is NOT ol
+  assert.equal(c.deriveTypeFromText('1 nospace'), null);   // missing dot — not ol
+  assert.equal(c.deriveTypeFromText('1.nospace'), null);   // missing space after dot — not ol
+  assert.equal(c.deriveTypeFromText('# heading'), 'h1');   // existing derivations intact
+});
+
+test('UXP-25: continuationPrefix returns 1. for any ol item', () => {
+  assert.equal(c.continuationPrefix('1. first'),  '1. ');
+  assert.equal(c.continuationPrefix('5. fifth'),  '1. ');  // literal value ignored
+  assert.equal(c.continuationPrefix('10. tenth'), '1. ');
+  assert.equal(c.continuationPrefix('- bullet'),  '');     // ul stays empty (no continuation)
+  assert.equal(c.continuationPrefix('> quote'),   '> ');   // quote path unaffected
+});
+
+test('UXP-25: textForDisplay strips ol N. prefix', () => {
+  const n1 = c.mkNode('1. buy milk');   n1.type = 'ol';
+  const n5 = c.mkNode('5. fifth item'); n5.type = 'ol';
+  assert.equal(c.textForDisplay(n1), 'buy milk');
+  assert.equal(c.textForDisplay(n5), 'fifth item');
+  // h1 prefix stripping intact
+  const h = c.mkNode('# Title'); h.type = 'h1';
+  assert.equal(c.textForDisplay(h), 'Title');
+});
+
+test('UXP-25: migrateNodePrefixes adds 1. to legacy type-only ol nodes', () => {
+  const root = c.mkRoot();
+  const legacy = c.mkNode('buy milk'); legacy.type = 'ol';
+  const already = c.mkNode('1. already has prefix'); already.type = 'ol';
+  const two = c.mkNode('2. different number'); two.type = 'ol';
+  root.children.push(legacy, already, two);
+  c.migrateNodePrefixes(root);
+  assert.equal(legacy.text, '1. buy milk');   // prefix added
+  assert.equal(already.text, '1. already has prefix'); // unchanged
+  assert.equal(two.text, '2. different number');       // unchanged (already has N.)
 });

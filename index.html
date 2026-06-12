@@ -477,8 +477,6 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-key.hi{background:var(--ring);border-color:var(--acc)}
 .fn-content{outline:none;font:inherit;font-size:16px;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
 .fn-content:empty::before{content:'Add a note…';color:var(--muted);opacity:.65;pointer-events:none}
-.nc-italic .node-content{font-style:italic}
-.nc-underline .node-content{text-decoration:underline}
 
 /* node types */
 .nt-h1{margin-top:28px}.nt-h2{margin-top:18px}.nt-h3{margin-top:10px}
@@ -830,6 +828,19 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* suppress the iOS long-press text/callout on tappable widgets */
   .bullet,.collapse-btn,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.fn-ref{-webkit-touch-callout:none}
 }
+/* focus-visible sweep (UXP-17): every keyboard-focusable control shows the standard
+   2px accent ring (the app's one focus indicator), instead of the per-browser default. */
+.collapse-btn:focus-visible,.crumb:focus-visible,.fn-key:focus-visible,#storage-warn-close:focus-visible,
+.bullet:focus-visible,.lvl-btn:focus-visible,#btn-done:focus-visible,.io-btn:focus-visible,.io-chip:focus-visible,
+.dice-edit:focus-visible,.mk-edit:focus-visible,.rt-edit:focus-visible,.gr-edit:focus-visible,
+.math-edit:focus-visible,.var-edit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* menu rows: inset ring so the scrollable panel doesn't clip it (matches #bpop) */
+#file-menu .cmd-item:focus-visible,.mt-col-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+/* reduced motion (UXP-17): collapse every animation/transition to imperceptible.
+   Additive and global — subsumes the two earlier per-widget rules. */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
+}
 </style>
 </head>
 <body>
@@ -898,7 +909,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="tag-menu" role="listbox" aria-label="Tags"></div>
 <div id="brace-preview" aria-hidden="true"></div>
 <!-- inline-insert dialog (links / images) -->
-<div id="io-back"><div id="io-card"></div></div>
+<div id="io-back"><div id="io-card" role="dialog" aria-modal="true"></div></div>
 <!-- drag indicator -->
 <div id="drop-line"></div>
 <!-- multi-select action bar -->
@@ -978,11 +989,11 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, italic: false, underline: false, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [], seq: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [], seq: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -1015,6 +1026,8 @@ function deriveTypeFromText(text) {
   // any sequence (default TODO/NEXT/… or user-declared), markdown-first.
   // The type is a derived hint here exactly like headings — the markdown renders.
   if (TASK_FIRST_RE.test(text) || parseTodo(text).keyword) return 'todo';
+  // ol: first line matches OL_RE (any N. marks list-ness; UXP-25)
+  if (OL_RE.test(text.split('\n', 1)[0])) return 'ol';
   return null;
 }
 
@@ -1029,6 +1042,11 @@ function textForDisplay(node) {
   // divider: show the label only — the break line is the "prefix" here
   if (node.type === 'divider' && HR_RE.test(t.split('\n', 1)[0])) {
     return t.split('\n').slice(1).join('\n').trim();
+  }
+  // ol: strip the N. list prefix; the ordinal is display-computed from position (UXP-25)
+  if (node.type === 'ol') {
+    const m = t.match(/^\s*\d+\.\s+([\s\S]*)/);
+    if (m) return m[1];
   }
   t = t.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
   const pt = parseTodo(t);
@@ -1249,6 +1267,7 @@ function continuationPrefix(text, seqs = allSequences()) {
   // a done keyword restarts at its sequence's FIRST state (#DONE → #TODO)
   if (sq) return '#' + (keywordIsDone(km[1], seqs) ? sq.states[0] : km[1]) + ' ';
   if (TASK_FIRST_RE.test(s)) return '- [ ] ';
+  if (OL_RE.test(s.split('\n', 1)[0])) return '1. ';
   if (s.startsWith('> ')) return '> ';
   return '';
 }
@@ -1309,6 +1328,11 @@ function renderContentHTML(node) {
       // inject badges inside the first block-open tag so they flow inline with the text
       const m = bodyHtml.match(/^(<(?:p|li|h[1-6]|blockquote|div)[^>]*>)/);
       html = m ? m[1] + badge + chip + bodyHtml.slice(m[1].length) : badge + chip + bodyHtml;
+    } else if (node.type === 'ol') {
+      // Strip N. prefix before mdToHtml; the .ol-num DOM span provides the visual
+      // ordinal (display-computed from sibling position, UXP-25)
+      const om = node.text.match(/^\s*\d+\.\s+([\s\S]*)/);
+      html = mdToHtml(om ? om[1] : node.text);
     } else {
       html = mdToHtml(node.text);
     }
@@ -1417,9 +1441,36 @@ function collectVars(rootNode) {
 // (re-introducing the bare-word false-positive this syntax removes). Pre-release,
 // old bare-keyword to-dos simply become plain text; retype as `#KEYWORD` if meant
 // as statuses.
+// UXP-27: fold a legacy whole-node italic/underline flag into the text as inline
+// markdown (*…* / ++…++), per line, after any block prefix so headings/quotes/list
+// items keep their structure. Structural lines (blank, fences and fenced content,
+// thematic breaks, table rows, #+TBLFM recipes) are left untouched — emphasis has
+// no meaning there. Pure; returns the migrated text.
+function migrateEmphasisText(text, italic, underline) {
+  if (!italic && !underline) return text;
+  const open  = (italic ? '*' : '') + (underline ? '++' : '');
+  const close = (underline ? '++' : '') + (italic ? '*' : '');
+  let inFence = false;
+  return (text || '').split('\n').map(line => {
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
+    if (inFence || !line.trim()) return line;
+    if (HR_RE.test(line)) return line;
+    if (/^\s*\|/.test(line)) return line;                 // table row
+    if (/^#\+TBLFM:/i.test(line.trim())) return line;     // recipe line
+    const m = line.match(/^(\s*(?:#{1,6} |> |(?:[-*+]|\d+[.)]) (?:\[[ xX]\] )?)?)(.*)$/);
+    const pre = m[1] || '', body = m[2] || '';
+    if (!body.trim()) return line;
+    return pre + open + body + close;
+  }).join('\n');
+}
+
 function migrateNodePrefixes(n) {
   const prefix = BLOCK_PREFIX_MAP[n.type];
   if (prefix && !n.text.startsWith(prefix)) n.text = prefix + n.text;
+  // legacy whole-node italic/underline flags (UXP-27) — fold into the text as
+  // inline markdown, then drop the flags; OPML no longer writes them.
+  if (n.italic || n.underline) n.text = migrateEmphasisText(n.text, n.italic, n.underline);
+  delete n.italic; delete n.underline;
   // legacy `_type="todo"` carried to-do-ness in the type alone — write the marker
   // into the text so the node is self-consistent, then re-derive the checked cache
   if (n.type === 'todo') {
@@ -1431,6 +1482,11 @@ function migrateNodePrefixes(n) {
   // self-consistent (markdown-first, UXP-26), label preserved below the break
   if (n.type === 'divider' && !HR_RE.test(n.text.split('\n', 1)[0])) {
     n.text = n.text.trim() ? '---\n' + n.text : '---';
+  }
+  // legacy `_type="ol"` carried list-ness in the type alone — write 1. into
+  // the text so the node is self-consistent (markdown-first, UXP-25)
+  if (n.type === 'ol' && !OL_RE.test(n.text.split('\n', 1)[0])) {
+    n.text = '1. ' + n.text;
   }
   n.children.forEach(migrateNodePrefixes);
 }
@@ -1869,7 +1925,7 @@ function diceTotalStr(d) {
 function renderDicePill(key, d) {
   if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}" aria-label="Dice roll (missing data)">🎲 ?</span>`;
   const totalStr = diceTotalStr(d);
-  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll"`
+  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to re-roll"`
     + ` aria-label="Dice roll ${escQ(d.expr)} = ${escQ(totalStr)} — click to re-roll">`
     + `<span class="dice-ico"><i class="fa-solid fa-dice-d20"></i></span>`
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
@@ -1962,7 +2018,7 @@ function renderMarkovPill(key, mk) {
     .join('<span class="mk-arrow">→</span>')
     + (stoppedEarly ? `<span class="mk-arrow">→</span><span class="mk-terminal" title="Walk ended — last state has no outgoing transitions. Add more rules to continue.">…</span>` : '');
   const nameTag = mk.name ? `<span class="mk-name" title="Callable as {${escQ(mk.name)}}">${escHtml(mk.name)}</span>` : '';
-  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}"`
+  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}"`
     + ` aria-label="Markov chain${mk.name ? ' ' + escQ(mk.name) : ''}: ${escQ(mk.path.join(' → '))} — click to re-roll">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
     + nameTag
@@ -2479,8 +2535,6 @@ function toOpml(r) {
     const attrs = [
       `text="${ex(n.text)}"`,
       n.type && n.type !== 'ul' ? `_type="${n.type}"` : '',
-      n.italic    ? `_italic="true"` : '',
-      n.underline ? `_underline="true"` : '',
       n.checked   ? `_checked="true"` : '',
       n.collapsed ? `_collapsed="true"` : '',
       n.footnotes?.length ? `_footnotes="${ex(JSON.stringify(n.footnotes))}"` : '',
@@ -2531,6 +2585,8 @@ function fromOpml(xml) {
       text: el.getAttribute('text') || '',
       note: el.getAttribute('_note') || '',
       type: raw === 'text' ? 'ul' : raw,
+      // legacy whole-node emphasis flags — read for the UXP-27 load migration
+      // (migrateNodePrefixes folds them into the text), never written back
       italic: el.getAttribute('_italic') === 'true',
       underline: el.getAttribute('_underline') === 'true',
       checked: el.getAttribute('_checked') === 'true',
@@ -2563,7 +2619,7 @@ function fromOpml(xml) {
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
-  return { id: uid(), text: title, note: '', type: 'ul', italic: false, underline: false, checked: false, collapsed: false,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -2827,7 +2883,7 @@ function render() {
       vp.text = editableText(te);
       const zt = deriveTypeFromText(vp.text);
       if (zt) vp.type = zt;
-      else if (vp.type in BLOCK_PREFIX_MAP) vp.type = 'ul';
+      else if (vp.type in BLOCK_PREFIX_MAP || vp.type === 'ol') vp.type = 'ul';
       delete te.dataset.editing;
       te.innerHTML = renderContentHTML(vp);
       markDirty();
@@ -2877,10 +2933,19 @@ function render() {
     flatten(vp);
   }
 
-  // virtual-list scaffold: a relative container with two spacers framing the window
+  // virtual-list scaffold: a relative container with two spacers framing the window.
+  // UXP-19: the outline is a flat ARIA tree — rows are role="treeitem" direct children
+  // of the tree, with the hierarchy conveyed by aria-level/posinset/setsize (the
+  // virtualized-tree pattern: setsize/posinset report true positions even though only
+  // a window of rows is in the DOM). Spacers are presentational.
   vlist = document.createElement('div'); vlist.id = 'vlist';
+  vlist.setAttribute('role', 'tree');
+  vlist.setAttribute('aria-label', 'Outline');
+  vlist.setAttribute('aria-multiselectable', 'true');
   vTop = document.createElement('div'); vTop.className = 'vspacer';
   vBot = document.createElement('div'); vBot.className = 'vspacer';
+  vTop.setAttribute('role', 'presentation');
+  vBot.setAttribute('role', 'presentation');
   vlist.append(vTop, vBot);
   container.appendChild(vlist);
   appendGhostRow(vp, container);
@@ -2894,25 +2959,34 @@ function render() {
 
 // ─── virtual list ──────────────────────────────────────────────────────────────
 
-function pushRows(node, depth, parent) {
+// pos/size are the node's 1-based position among its VISIBLE siblings and that
+// sibling count — fed to aria-posinset/aria-setsize (UXP-19), computed over the
+// same visibility predicate that decides which rows exist.
+function pushRows(node, depth, parent, pos, size) {
   if (!isVisible(node)) return;
-  flatRows.push({ node, depth, parent });
-  if (!node.collapsed) for (const c of node.children) pushRows(c, depth + 1, node);
+  flatRows.push({ node, depth, parent, pos, size });
+  if (!node.collapsed) {
+    const vis = node.children.filter(isVisible);
+    vis.forEach((c, i) => pushRows(c, depth + 1, node, i + 1, vis.length));
+  }
 }
-function pushSearchRows(node, depth, parent) {
+function pushSearchRows(node, depth, parent, pos, size) {
   if (!searchMatchSet.has(node.id)) return;
   const self = nodeMatchesSearch(node);
-  flatRows.push({ node, depth, parent, searchCtx: !self, highlight: self });
-  for (const c of node.children) pushSearchRows(c, depth + 1, node); // search always expands
+  flatRows.push({ node, depth, parent, pos, size, searchCtx: !self, highlight: self });
+  const vis = node.children.filter(c => searchMatchSet.has(c.id));
+  vis.forEach((c, i) => pushSearchRows(c, depth + 1, node, i + 1, vis.length)); // search always expands
 }
 function flatten(vp) {
   flatRows = []; flatIndex = new Map();
   if (searchQuery) {
     searchMatchSet = new Set();
     vp.children.forEach(c => computeMatchSet(c, searchMatchSet));
-    vp.children.forEach(c => pushSearchRows(c, 0, vp));
+    const vis = vp.children.filter(c => searchMatchSet.has(c.id));
+    vis.forEach((c, i) => pushSearchRows(c, 0, vp, i + 1, vis.length));
   } else {
-    vp.children.forEach(c => pushRows(c, 0, vp));
+    const vis = vp.children.filter(isVisible);
+    vis.forEach((c, i) => pushRows(c, 0, vp, i + 1, vis.length));
   }
   for (let i = 0; i < flatRows.length; i++) flatIndex.set(flatRows[i].node.id, i);
 }
@@ -2971,7 +3045,12 @@ function renderWindow(force) {
   for (let i = s; i <= e; i++) {
     const r = flatRows[i];
     let el;
-    if (activeEl && r.node.id === liveId) { el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; el.style.setProperty('--depth-w', (r.depth * IND) + 'px'); }
+    if (activeEl && r.node.id === liveId) {
+      el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; el.style.setProperty('--depth-w', (r.depth * IND) + 'px');
+      // keep the reused row's tree position attributes fresh (UXP-19)
+      el.setAttribute('aria-level', String(r.depth + 1));
+      if (r.pos) { el.setAttribute('aria-posinset', String(r.pos)); el.setAttribute('aria-setsize', String(r.size)); }
+    }
     else el = renderRow(r);
     vlist.appendChild(el);
   }
@@ -3225,6 +3304,33 @@ function handleCellPill(node, pill, target) {
 // Build (or patch) the TBLFM formula for one column's footer aggregate. fn ∈
 // 'sum'|'avg'|'count'|'min'|'max'|'none'. Replaces any existing @>$col1= for
 // that column; preserves all other parts; returns the full updated string.
+// ── single-assignment TBLFM editing (UXP-3 Part B) ───────────────────────────
+// Both operate on the canonical lhs string ('$3' column · '@2$3' field), exact
+// match after trim — the forms parseTblfm accepts are already canonical (no
+// spaces, no negatives in targets), so string equality is the identity.
+function tblfmGetAssign(tblfm, lhs) {
+  for (const part of (tblfm || '').split('::')) {
+    const s = part.trim();
+    const eq = s.indexOf('=');
+    if (eq < 0) continue;
+    if (s.slice(0, eq).trim() === lhs) return s.slice(eq + 1).trim();
+  }
+  return null;
+}
+// Set/replace the assignment for lhs; an empty expr removes it. Returns the new
+// TBLFM string ('' when no assignments remain). Other assignments are preserved
+// in order; a replaced lhs keeps formulas' relative position stable by being
+// re-appended at the end (matching mtBuildAggFormula's remove-then-push shape).
+function tblfmSetAssign(tblfm, lhs, expr) {
+  const parts = (tblfm || '').split('::').map(s => s.trim()).filter(s => {
+    if (!s) return false;
+    const eq = s.indexOf('=');
+    return eq < 0 || s.slice(0, eq).trim() !== lhs;
+  });
+  if ((expr || '').trim()) parts.push(lhs + '=' + expr.trim());
+  return parts.join(' :: ');
+}
+
 function mtBuildAggFormula(tblfm, col1, fn) {
   const FN_MAP = { sum:'vsum', avg:'vmean', count:'vcount', min:'vmin', max:'vmax' };
   const parts = (tblfm || '').split('::').map(s => s.trim()).filter(s => {
@@ -3276,6 +3382,61 @@ function mtApplyAggregate(node, colIdx, fn) {
   markDirty();
   mtRecompute(node);
   refreshTable(node);
+}
+
+// Set (or clear, when expr is empty) one TBLFM assignment and recompute (UXP-3
+// Part B apply path). lhs is the canonical Org target ('$3' column, '@2$3' cell).
+// Footer-row management stays with Calculate — this path never adds/removes rows.
+function mtSetFormula(node, lhs, expr) {
+  const tblfm = extractTblfm(node.text);
+  const newTblfm = tblfmSetAssign(tblfm, lhs, expr);
+  const model = mtModel(node);
+  node.text = serializeTable(model) + (newTblfm ? '\n#+TBLFM: ' + newTblfm : '');
+  markDirty();
+  mtRecompute(node);
+  refreshTable(node);
+  flashHint((expr || '').trim() ? `Formula set: ${lhs} = ${expr.trim()}` : `Formula cleared (${lhs})`);
+}
+
+// The formula dialog (UXP-3 Part B): authors one column/cell formula with the
+// reference picker as chips — each column by NAME inserts its `$N`, plus the
+// relative forms — and a live computed preview of the target cell. The raw
+// `#+TBLFM:` line (markdown edit) stays the power path. disp = {r, c} model
+// coordinates of the cell whose computed value the preview shows.
+function openFormulaDialog(node, lhs, kindLabel, disp) {
+  const cur = tblfmGetAssign(extractTblfm(node.text), lhs);
+  const model = mtModel(node);
+  const colChips = model.rows[0].map((nm, i) => ({
+    label: (nm || '').trim() ? `${(nm || '').trim()} $${i + 1}` : `$${i + 1}`,
+    insert: `$${i + 1}`,
+  }));
+  const col1 = disp.c + 1;
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-calculator', fb: '=' },
+    title: `${kindLabel} formula — ${lhs}`,
+    submitLabel: cur != null ? 'Save' : 'Set formula',
+    fields: [{
+      key: 'expr',
+      label: 'Expression',
+      placeholder: 'e.g. $1*$2, vsum(@2$' + col1 + '..@-1$' + col1 + '), $2+tax',
+      value: cur || '',
+      chips: [...colChips,
+        { label: 'cell above @-1', insert: `@-1$${col1}` },
+        { label: 'row № @#', insert: '@#' },
+      ],
+      hint: 'References: $N = column N in this row · @R$C = a cell · @-1 = the row above · @2 / @> = first data / last row · vsum/vmean/vcount/vmin/vmax over a range like @2$' + col1 + '..@-1$' + col1 + '. Document variables and the full math grammar work. Leave empty to clear the formula.',
+      preview: src => {
+        src = (src || '').trim();
+        if (!src) return cur != null ? '<span class="io-preview-bad">Empty — saving clears this formula</span>' : '';
+        const probe = tblfmSetAssign(extractTblfm(node.text), lhs, src);
+        const rows = computeTable(model, probe, collectVars());
+        const val = rows[disp.r] ? rows[disp.r][disp.c] : '';
+        const bad = /^#ERR/.test(val);
+        return `<span class="${bad ? 'io-preview-bad' : ''}">${escHtml(lhs)} = ${escHtml(val)}</span>`;
+      },
+    }],
+    onSubmit: v => mtSetFormula(node, lhs, v.expr),
+  });
 }
 
 // ── column model ops (reuse the same model logic the header gestures used; now
@@ -3357,9 +3518,12 @@ function mtDeleteRow(node, rowIdx) {
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
 
+let mtPanelReturn = null;
 function hideColPanel() {
   const p = document.getElementById('mt-colpanel');
   if (p) p.classList.remove('on');
+  const ret = mtPanelReturn; mtPanelReturn = null;
+  if (ret) try { ret.focus(); } catch (_) {}
 }
 
 // Shared builders for the column/row dropdown menus (§7.1 menu pattern: role=menu/
@@ -3386,6 +3550,7 @@ function mtMenuBuilder(panel) {
   return { addSection, addItem };
 }
 function mtOpenMenu(panel, anchorEl) {
+  mtPanelReturn = document.activeElement;
   const rect = anchorEl.getBoundingClientRect();
   panel.style.left = rect.left + 'px';
   panel.style.top  = (rect.bottom + 2) + 'px';
@@ -3426,7 +3591,7 @@ function showRowPanel(node, rowIdx, anchorEl) {
 // The consolidated Column panel: Calculate · Alignment · Width · Insert · Move · Delete.
 // One panel, growing by section. Every column op lives here so the header stays clean
 // and nothing is drag/double-click-only.
-function showColPanel(node, colIdx, anchorEl) {
+function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const col1 = colIdx + 1;
@@ -3437,9 +3602,28 @@ function showColPanel(node, colIdx, anchorEl) {
   const curAlign = model.aligns[colIdx] || 'left';
   const { addSection, addItem } = mtMenuBuilder(panel);
 
+  // Row-section eligibility, also used by the Formula section (cell formulas
+  // target data rows only — Calculate owns the footer, headers hold names).
+  const lastDataRow = mtLastDataRow(node, model);
+  const rowOps = rowIdx != null && rowIdx >= 1 && rowIdx <= lastDataRow;
+
   addSection('Calculate');
   [['sum','Sum'],['avg','Average'],['count','Count'],['min','Min'],['max','Max'],['none','None']]
     .forEach(([fn, label]) => addItem(label, { active: fn === curAgg, onApply: () => mtApplyAggregate(node, colIdx, fn) }));
+
+  // Formula (UXP-3 Part B): the dialog front door for arbitrary #+TBLFM
+  // assignments. Opened a frame late so hideColPanel's focus-restore runs first —
+  // the dialog then captures the CELL as its return-focus target, not the
+  // about-to-vanish menu item.
+  addSection('Formula', true);
+  const colLhs = '$' + col1;
+  addItem('Column formula…', { active: tblfmGetAssign(tblfm, colLhs) != null,
+    onApply: () => requestAnimationFrame(() => openFormulaDialog(node, colLhs, 'Column', { r: 1, c: colIdx })) });
+  if (rowOps) {
+    const cellLhs = '@' + (rowIdx + 1) + '$' + col1;
+    addItem('Cell formula…', { active: tblfmGetAssign(tblfm, cellLhs) != null,
+      onApply: () => requestAnimationFrame(() => openFormulaDialog(node, cellLhs, 'Cell', { r: rowIdx, c: colIdx })) });
+  }
 
   addSection('Alignment', true);
   [['left','Left'],['center','Center'],['right','Right']]
@@ -3459,8 +3643,24 @@ function showColPanel(node, colIdx, anchorEl) {
   addItem('Move left',  { disabled: colIdx === 0,         onApply: () => mtMoveCol(node, colIdx, -1) });
   addItem('Move right', { disabled: colIdx === ncols - 1, onApply: () => mtMoveCol(node, colIdx,  1) });
 
-  addSection('Delete', true);
-  addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+  // Row sections — added when opened from a data cell (the Shift+F10 keyboard door),
+  // so the cell's context menu covers its row too; the row handle's click menu
+  // (showRowPanel) stays the pointer path. Header (r=0) and footer rows get none.
+  if (rowOps) {
+    const minRows = mtHasFooter(tblfm) ? 3 : 2;
+    addSection('Insert row', true);
+    addItem('Insert above', { onApply: () => mtInsertRow(node, rowIdx, 'above') });
+    addItem('Insert below', { onApply: () => mtInsertRow(node, rowIdx, 'below') });
+    addSection('Move row', true);
+    addItem('Move up',   { disabled: rowIdx <= 1,           onApply: () => mtMoveRow(node, rowIdx, -1) });
+    addItem('Move down', { disabled: rowIdx >= lastDataRow, onApply: () => mtMoveRow(node, rowIdx,  1) });
+    addSection('Delete', true);
+    addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+    addItem('Delete row',    { danger: true, disabled: model.rows.length <= minRows, onApply: () => mtDeleteRow(node, rowIdx) });
+  } else {
+    addSection('Delete', true);
+    addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
+  }
 
   mtOpenMenu(panel, anchorEl);
 }
@@ -3562,7 +3762,10 @@ function buildTableWidget(node, readOnly) {
     h += '<div class="mt-baseheader"><div class="mt-base-views"></div></div>';
   // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
   // the whole grid — a rowspan can't span the thead↔tbody boundary.
-  h += '<div class="mt-scroll"><table class="md-table">';
+  // UXP-19: the interactive base is role="grid" — HTML-AAM then maps its tr/th/td to
+  // row/columnheader/gridcell for free, so the role is the only attribute needed for
+  // the structure. The read-only render (search context) stays a native static table.
+  h += '<div class="mt-scroll"><table class="md-table"' + (readOnly ? '' : ' role="grid" aria-label="Base"') + '>';
   // Header row — the column-control surface (Bases PR 2c "name-pill" model). The
   // editable name lives in a `.mt-name-pill`, which is ALSO the row-0 grid cell
   // (`.mt-cell` + data-r/data-c), so every cell nav/edit handler applies to it
@@ -3571,12 +3774,14 @@ function buildTableWidget(node, readOnly) {
   // right border. A computed (formula-targeted) header stays a plain read-only cell:
   // it can't be renamed.
   h += '<tr class="mt-headrow" data-r="0">';
-  if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
+  // The row-handle gutter is a pointer-only UI strip (drag/click), not data — hidden
+  // from AT (the keyboard door to row ops is the cell context menu, Shift+F10).
+  if (!readOnly) h += '<th class="mt-rowh mt-rowh-head" aria-hidden="true"></th>';
   for (let c=0;c<nc;c++) {
     const ch0 = computedCells.has('0,'+c);
     const nm = model.rows[0][c] || '';
     if (readOnly || ch0) {
-      const ce = ch0 ? ' contenteditable="false" tabindex="0"' : '';
+      const ce = ch0 ? ' contenteditable="false" tabindex="0" aria-readonly="true"' : '';
       h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${colStyle(c)}${ce}>${mtInline(node, nm)}</th>`;
     } else {
       h += `<th class="mt-colhead${aCls(model.aligns[c])}" data-c="${c}" draggable="true"${colStyle(c)} title="Drag to reorder · click for column options">`
@@ -3592,8 +3797,8 @@ function buildTableWidget(node, readOnly) {
     // The Calculate footer row is data-only (computed) and stays pinned last — no
     // reorder/menu handle; a plain inert stub keeps the column count aligned.
     if (!readOnly) h += isTotal
-      ? '<th class="mt-rowh mt-rowh-foot"></th>'
-      : `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options"></th>`;
+      ? '<th class="mt-rowh mt-rowh-foot" aria-hidden="true"></th>'
+      : `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options" aria-hidden="true"></th>`;
     for (let c=0;c<nc;c++) {
       const cc = computedCells.has(r+','+c);
       // In the total row, an aggregated column's cell shows "<OpName> <value>" (the op
@@ -3601,13 +3806,13 @@ function buildTableWidget(node, readOnly) {
       // normal (blank) cell. Read-only is unchanged (it's still .mt-computed).
       const label = isTotal ? aggKindLabel(mtColAggKind(tblfmStr, c+1)) : '';
       if (label) {
-        h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" data-agg="${label}">${mtInline(node, model.rows[r][c]||'')}</td>`;
+        h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true" data-agg="${label}">${mtInline(node, model.rows[r][c]||'')}</td>`;
       } else if (isTotal) {
         // Footer row, non-aggregated column: data-only, never editable. Read-only like a
         // computed cell (so all the edit guards skip it) but blank and Σ-less.
-        h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0"></td>`;
+        h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
-        h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
+        h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
       }
     }
     h += '</tr>';
@@ -3752,15 +3957,16 @@ function buildTableWidget(node, readOnly) {
   host.addEventListener('keydown', e => {
     mtPointerFocus = false; // typing means any pointer-press gesture is over
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
-    // Shift+F10 / the Menu (ContextMenu) key on any focused cell → the Column menu for
-    // that cell's column (OS-standard "context menu of the focused element"). This is
-    // the keyboard door for column ops (replacing the dropped Cmd+M, which collided
-    // with macOS minimize). The base menu is reached from the base's bullet (Shift+F10
-    // there) — a clean split: cell focused → column menu, bullet focused → base menu.
+    // Shift+F10 / the Menu (ContextMenu) key on any focused cell → the cell's context
+    // menu: the Column sections plus, on a data row, the Row sections (insert/move/
+    // delete row) — the keyboard door for BOTH axes (replacing the dropped Cmd+M,
+    // which collided with macOS minimize). The base menu is reached from the base's
+    // bullet (Shift+F10 there) — a clean split: cell focused → cell context menu,
+    // bullet focused → base menu. The row handle's click menu stays the pointer path.
     if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
       e.preventDefault();
       const c = +cell.dataset.c;
-      showColPanel(node, c, host.querySelector(`th[data-c="${c}"]`) || cell);
+      showColPanel(node, c, host.querySelector(`th[data-c="${c}"]`) || cell, +cell.dataset.r);
       return;
     }
     if (slashState?.cell && slashState.content === cell && isSlashMenuOpen()) {
@@ -3922,12 +4128,21 @@ function renderRow(r) {
     visKids.length ? 'has-children' : '',
     node.collapsed  ? 'collapsed' : '',
     node.checked    ? 'checked' : '',
-    node.italic     ? 'nc-italic' : '',
-    node.underline  ? 'nc-underline' : '',
     opts.searchCtx  ? 'search-ctx' : '',
     selectedIds.has(node.id) ? 'node-selected' : '',
   ].filter(Boolean).join(' ');
   div.dataset.id = node.id;
+  // UXP-19: flat-tree treeitem semantics. Level/position attributes carry the
+  // hierarchy the flat virtualized DOM can't; aria-expanded only on parents;
+  // aria-selected mirrors multi-select (kept in sync by updateSelVisuals).
+  div.setAttribute('role', 'treeitem');
+  div.setAttribute('aria-level', String(depth + 1));
+  if (r.pos) {
+    div.setAttribute('aria-posinset', String(r.pos));
+    div.setAttribute('aria-setsize', String(r.size));
+  }
+  if (visKids.length) div.setAttribute('aria-expanded', String(!node.collapsed));
+  div.setAttribute('aria-selected', selectedIds.has(node.id) ? 'true' : 'false');
 
   const row = document.createElement('div');
   row.className = 'node-row';
@@ -4634,7 +4849,7 @@ function exitEdit(content, node) {
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
-  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider') node.type = 'ul';
+  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
@@ -4825,6 +5040,24 @@ function onKeyDown(e, id, content) {
       pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       return;
     }
+    // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
+    // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
+    // opens its editor exactly as a click would, via the content's pill-handler block.
+    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.seq-pill');
+    if (pillBody && e.target === pillBody) {
+      e.preventDefault();
+      const k = pillBody.dataset.key;
+      pillBody.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      // a re-roll repaints the content (innerHTML), destroying the focused pill —
+      // restore focus to its re-rendered self so keyboard re-rolls can chain. Only
+      // when focus actually fell to body: an opened edit dialog keeps its own focus.
+      requestAnimationFrame(() => {
+        const fresh = content.querySelector(`[data-key="${CSS.escape(k)}"]`);
+        const ae = document.activeElement;
+        if (fresh && (ae === document.body || ae === null)) try { fresh.focus(); } catch (_) {}
+      });
+      return;
+    }
   }
   // Point-actions menu: the OS-standard "context menu of the focused element" gesture
   // (Shift+F10 or the Menu/ContextMenu key) opens this point's bullet popup with the
@@ -4910,7 +5143,9 @@ function clearSelection() {
 function updateSelVisuals() {
   if (!vlist) return;
   vlist.querySelectorAll('.node[data-id]').forEach(el => {
-    el.classList.toggle('node-selected', selectedIds.has(el.dataset.id));
+    const sel = selectedIds.has(el.dataset.id);
+    el.classList.toggle('node-selected', sel);
+    el.setAttribute('aria-selected', sel ? 'true' : 'false'); // treeitem state (UXP-19)
   });
 }
 
@@ -6089,6 +6324,7 @@ function applyInlineReplace(nodeId, start, end, str) {
 const ioBack = document.getElementById('io-back');
 const ioCard = document.getElementById('io-card');
 let ioCancel = null;
+let ioReturnFocus = null;
 
 // Insert text at an input/textarea caret (used by the syntax-helper chips).
 function insertAtCaret(el, text) {
@@ -6241,7 +6477,7 @@ function openInsertDialog(opts) {
     inputs[f.key] = inp;
     inp.addEventListener('input', validate);
     inp.addEventListener('keydown', e => {
-      e.stopPropagation(); // don't let typing trigger global editor shortcuts
+      if (e.key !== 'Tab') e.stopPropagation(); // protect global shortcuts; Tab bubbles to the focus trap
       if (e.key === 'Escape') { e.preventDefault(); cancel(); }
       // textarea: Enter inserts a newline; Cmd/Ctrl+Enter submits
       else if (e.key === 'Enter' && (!area || e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
@@ -6288,11 +6524,29 @@ function openInsertDialog(opts) {
   function cancel() { closeIo(); }
   ioCancel = cancel;
   validate();
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', opts.title);
   ioBack.classList.add('on');
   requestAnimationFrame(() => { const f = ioCard.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
-function closeIo() { ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null; }
+function closeIo() {
+  ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null;
+  const ret = ioReturnFocus; ioReturnFocus = null;
+  if (ret) try { ret.focus(); } catch (_) {}
+}
 ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) closeIo(); });
+// Focus trap: Tab cycles within the dialog, never escaping to background content.
+ioBack.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  const focusable = [...ioCard.querySelectorAll('input,textarea,button:not(:disabled)')];
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey) {
+    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+  } else {
+    if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
 
 // Lightweight destructive-action confirmation. Returns a Promise that resolves
 // to true (confirmed) or false (cancelled). Reuses the io-back/io-card overlay.
@@ -6329,6 +6583,8 @@ function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'O
     }
     ioBack.addEventListener('keydown', onKey);
 
+    ioReturnFocus = document.activeElement;
+    ioCard.setAttribute('aria-label', title);
     ioBack.classList.add('on');
     cancelBtn.focus(); // focus Cancel so Enter doesn't accidentally discard
   });
@@ -6424,7 +6680,7 @@ function makeRolltableRoll(def, name) {
 function renderRolltablePill(key, rt) {
   if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}" aria-label="Roll table (missing data)">🎯 ?</span>`;
   const nameTag = rt.name ? `<span class="rt-name" title="Callable as {${escQ(rt.name)}}">${escHtml(rt.name)}</span>` : '';
-  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}"`
+  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}"`
     + ` aria-label="Roll table${rt.name ? ' ' + escQ(rt.name) : ''}: ${escQ(rt.result)} — click to re-roll">`
     + `<span class="rt-ico"><i class="fa-solid fa-table-list"></i></span>`
     + nameTag
@@ -6823,7 +7079,7 @@ function makeGrammarRoll(def, originInput) {
 
 function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-generate"`
+  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to re-generate"`
     + ` aria-label="Grammar: ${escQ(g.result)} — click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + `<span class="gr-result">${escHtml(g.result)}</span>`
@@ -7440,7 +7696,7 @@ function renderMathPill(key, m) {
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to edit"`
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
     + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
@@ -7464,7 +7720,7 @@ function renderVarPill(key, v) {
     if (shadowed) cls += ' var-shadowed';
     const title = shadowed ? 'Shadowed — a later declaration of this name takes effect'
       : 'Click to re-roll · pencil to edit';
-    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}"`
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
       + ` aria-label="Random variable ${escQ(v.name)} = ${escQ(rolled)} — click to re-roll">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
@@ -7481,7 +7737,7 @@ function renderVarPill(key, v) {
     const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
     const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found — click to edit`
       : `Variable ${escQ(v.name)} = ${escQ(display)}`;
-    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${refLabel}">`
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${refLabel}">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-val">${escHtml(display)}</span>`
@@ -7500,7 +7756,7 @@ function renderVarPill(key, v) {
     : 'Click to edit';
   const declLabel = cyclic ? `Variable ${escQ(v.name)}: circular reference — click to edit`
     : `Variable ${escQ(v.name)} = ${escQ(display)}${shadowed ? ' (shadowed by a later declaration)' : ''} — click to edit`;
-  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${declLabel}">`
+  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${declLabel}">`
     + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
     + `<span class="var-name">${escHtml(v.name)}</span>`
     + `<span class="var-eq">=</span>`
@@ -7534,7 +7790,7 @@ function renderSeqPill(key, sq) {
   const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
     + '<span class="seq-pipe">|</span>'
     + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
-  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" title="Sequence ${escQ(sq.name)} — click to edit"`
+  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Sequence ${escQ(sq.name)} — click to edit"`
     + ` aria-label="Sequence ${escQ(sq.name)} — active: ${escQ(sq.states.slice(0, sq.doneFrom).join(' '))}; done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))} — click to edit">`
     + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
     + `<span class="seq-name">${escHtml(sq.name)}</span>`
@@ -7825,7 +8081,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   [nameInp, exprInp].forEach(inp => {
     inp.addEventListener('input', () => { if (inp === exprInp) updatePrev(); validate(); });
     inp.addEventListener('keydown', e => {
-      e.stopPropagation();
+      if (e.key !== 'Tab') e.stopPropagation(); // protect global shortcuts; Tab bubbles to the focus trap
       if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
       else if (e.key === 'Enter') { e.preventDefault(); submit(); }
     });
@@ -7839,6 +8095,8 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
 
   ioCancel = () => closeIo();
   setMode(mode); // applies label/placeholder/hint/button text, then validates + previews
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Variable');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { nameInp.focus(); nameInp.select(); });
 }
@@ -8326,9 +8584,19 @@ function applyBlockCmd(id, nodeId, node, content) {
   if (node.type === 'divider' && HR_RE.test(cleanText.split('\n', 1)[0])) {
     cleanText = cleanText.split('\n').slice(1).join('\n');
   }
+  // converting away from an ol strips its N. list prefix (UXP-25 — otherwise the node
+  // would derive back to 'ol' from its text on the next edit)
+  if (node.type === 'ol') {
+    const om = cleanText.match(/^\s*\d+\.\s+([\s\S]*)/);
+    if (om) cleanText = om[1];
+  }
   // → divider is NON-destructive (UXP-26): existing content becomes the section
   // label below the break, never erased.
-  node.text = id === 'divider' ? (cleanText.trim() ? '---\n' + cleanText : '---') : newPrefix + cleanText;
+  // → ol gets a 1. prefix unless text is already a list item (UXP-25)
+  node.text = id === 'ol'
+    ? (OL_RE.test(cleanText.split('\n', 1)[0]) ? cleanText : '1. ' + cleanText)
+    : id === 'divider' ? (cleanText.trim() ? '---\n' + cleanText : '---')
+    : newPrefix + cleanText;
   node.type = id;
   node.checked = false;
   // if currently editing this node, sync the live contenteditable
@@ -9068,7 +9336,7 @@ function applyEntry(entry, intoStack, dir) {
       node.text = entry[dir];
       const rt = deriveTypeFromText(node.text);
       if (rt) node.type = rt;
-      else if (node.type in BLOCK_PREFIX_MAP) node.type = 'ul';
+      else if (node.type in BLOCK_PREFIX_MAP || node.type === 'ol') node.type = 'ul';
     }
     markDirty(); render();
     if (node) { ensureRowVisible(entry.nodeId); focusNode(entry.nodeId); }
@@ -10042,10 +10310,10 @@ const SHORTCUTS = [
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
-    { keys: ['@'],  desc: 'Insert link, image, footnote, dice, math, variable…' },
+    { keys: ['@'],  desc: 'Insert link, image, footnote, dice, roll table, Markov chain, grammar, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
-    { keys: ['⇧+F10'], desc: 'Open the menu for the focused point or base column' },
+    { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },
   ]},
