@@ -136,13 +136,15 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 These are **not new tickets** — they are the standard's P3 requirements mapped onto the existing accessibility phases, listed here so a11y is visible as part of the *one* conformance picture rather than a separate track. **Do not front-run the deferred items**; do satisfy the interim labels now.
 
-### UXP-13 ☐ Accessible names on icon-only controls — *a11y Phase 0*
+### UXP-13 ◐ Accessible names on icon-only controls — *a11y Phase 0 (in progress)*
 - **Violates:** P3-1. **Target:** `aria-label` on `#btn-done`, level buttons, pill pencils, table add buttons, search; decorative glyphs `aria-hidden`.
+- **Partial (chrome design pass):** toolbar controls are now named — `#btn-done` (`aria-label` + `aria-pressed`, "done points" vocabulary), `#level-ctl` (`role="group"` + per-button labels), `#search-box` (`aria-label="Search points"`), the logo button, `#sc-toggle`, the accent swatches (`aria-label` + `aria-pressed`), both dirty dots. **Remaining:** pill pencils, table add buttons.
 
 ### UXP-14 ◐ Keyboard operability on `<div>`/`<span>` controls — *a11y Phase 1 (in progress)*
 - **Violates:** P3-2. **Target:** `role`/`tabindex` + `keydown` **beside** existing `mousedown` (caret invariant) on file-menu items, collapse button, bullet, breadcrumb, slash-menu items, `#sc-toggle`→`<button>`, table handles, and the static-table `.mt-promote` button.
 - **✅ Done — the bullet / point-actions popup (the highest-leverage slice).** `.bullet` is now `role="button"`/`aria-haspopup="menu"`/`aria-label`/`tabindex="-1"` + Enter-Space keydown; `#bpop` is a full `role="menu"` (items `role="menuitem"` + `tabindex="-1"`, arrow/Home/End nav, Enter/Space activate, Esc closes + restores focus, focus-visible rings). The keyboard door is **`Shift+F10` / the Menu key** on the focused point (`onKeyDown`), added to §3. This makes **every per-point action keyboard-reachable in one stroke** — type switch, zoom, copy link, move, delete, and the static-table **convert-to-base** (which was filed here in PR 3 and is now operable). 
-- **☐ Remaining:** file-menu items, `.collapse-btn` (+`aria-expanded`), `.crumb`, slash-menu `.cmd-item`, `#sc-toggle`/`#storage-warn-close`→`<button>`, `.fn-key`, `.ghost-row`, table handles (`.mt-colh`/`.mt-rowh`/`.mt-delcol`/`.mt-delrow`), `.mt-promote` focus-reach (rides its `#bpop` menu entry, now live), `#sel-tb .cmd-icon` (selection-toolbar buttons — now also shown for base-cell selections; the typed markdown path covers the capability meanwhile).
+- **✅ Done — the file menu (chrome design pass).** `#logo-btn` is `role="button"`/`tabindex="0"`/`aria-haspopup`/`aria-expanded` + Enter/Space keydown beside the click handler; `#file-menu` is `role="menu"` with `role="menuitem"`/`tabindex="-1"` items, ↑/↓/Home/End roving focus, Enter/Space activate, Esc closes + restores focus to the logo (plus a global-Esc close). Also done in the same pass: `#sc-toggle` (button semantics + Enter/Space; the panel takes focus on open so keys scroll it), `.ghost-row` (`role="button"`/`tabindex="0"` + Enter/Space), and the slash menu's screen-reader path (`role="listbox"`/`option` + `aria-activedescendant` on the editing element — focus never leaves the caret).
+- **☐ Remaining:** `.collapse-btn` (+`aria-expanded`), `.crumb`, `#storage-warn-close`→`<button>`, `.fn-key`, table handles (`.mt-colh`/`.mt-rowh`/`.mt-delcol`/`.mt-delrow`), `.mt-promote` focus-reach (rides its `#bpop` menu entry, now live), `#sel-tb .cmd-icon` (selection-toolbar buttons — now also shown for base-cell selections; the typed markdown path covers the capability meanwhile).
 
 ### UXP-15 ☐ Pill labels + live announcements — *a11y Phase 2*
 - **Violates:** P3-5, P3-6 interim. **Target:** each pill `aria-label "{type}: {expr} = {result}"` updated on reroll; one `aria-live` region announces rerolls/changes. (Pill `tabindex` stays deferred.)
@@ -161,6 +163,14 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 ### UXP-19 ◐ Outline tree + table grid semantics — *deferred, dedicated pass*
 - **Problem:** the virtualized outline isn't a `role="tree"` and tables aren't a `role="grid"`; high-risk to keep in sync across `render()`.
 - **Violates:** P3 (full target). **Interim (required now):** per-row/per-pill `aria-label`s (UXP-15) so the deferral never means "unlabeled and silent." **Target (later):** `role="tree"`/`treeitem` + `role="grid"`/`gridcell` in a dedicated pass, sequenced in `accessibility.md`.
+
+### UXP-29 ✅ Chrome-pass conformance fixes (recorded, closed in the same pass)
+Defects found by the chrome design review, fixed together — recorded so the decisions don't silently regress:
+- **Vocabulary (V-1):** the ghost row said "New item…" and the multi-drag image "`N items`" — the standard's canonical term is **point**. Both fixed; "Show completed" titles moved to "done points" for the same reason.
+- **Blank icons (P4 silent failure):** seven referenced FA classes (`fa-shuffle`, `fa-list-check`, `fa-arrow-down-wide-short`, state-picker icons…) had no glyph in the embedded subset — the grammar/sequence pill icons and the bpop sort row painted empty boxes. Subset rebuilt (+`magnifying-glass`, `check`, `keyboard`), and `paintIcon` now self-heals: a class missing from the generated `FA_GLYPHS` set falls back to its unicode glyph instead of painting blank.
+- **Help-panel drift (P4/P2):** the `?` panel documented the retired `⌘+⇧+M` chord and omitted `⇧+F10`, `⌘+⇧+L`, `⌘+⇧+V`, multi-select, and the `{…}`/`[^key]` shorthand (P5-4). Content re-synced; the panel also gained a front door in the file menu, and the `?` toggle now restacks above the footnote panel instead of vanishing (P2-1). *Durable fix (open):* the `SHORTCUTS` array is still a hand-maintained parallel registry — single-sourcing it with the keybindings remains on the backlog.
+- **Theme toggle (recorded behavior change):** the binary Light/Dark flip silently lost System mode after one click; it now cycles **System → Light → Dark**, label shows the current mode, and the menu stays open while cycling.
+- **One red (design-language §3):** the bpop Delete row hardcoded `#e55` and `#storage-warn` hardcoded `#c0392b`/`#d68910` — all moved to the `--bad`/`--warn` token recipes.
 
 ---
 

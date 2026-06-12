@@ -38,6 +38,21 @@ Acceptable for incidental emphasis. The *quotation* voice gets the real italic b
 blockquotes to Fraunces italic instead. If emphasis-heavy prose ever becomes the norm,
 embed a true text italic rather than widening Fraunces' role.
 
+**Decision — the brand is a masthead.** The wordmark is Fraunces (17px / 640 /
+`'opsz' 28`) — a sanctioned display use under the role rule above. The isotype is the
+accent disc with a **point and a line** knocked out (the product's name and anatomy drawn
+literally); `updateFavicon` repaints the *same path*, and **the mark and the favicon must
+never diverge** — change both in the same commit or neither. No stock icon-font glyph may
+serve as the brand mark.
+
+**Decision — icon policy: one language per altitude.** Control affordances use the
+embedded Font Awesome subset through `setIcon`/`paintIcon`; typographic marks (¶, the
+`?` help glyph, ordinals, `H1`/`B` text-as-icon tiles) stay type. `paintIcon` checks the
+generated `FA_GLYPHS` set and falls back to the unicode glyph when a class isn't in the
+subset — **a referenced icon class with no embedded glyph must degrade, never paint a
+blank box** (P4). Adding an icon = the subset-rebuild workflow in
+`adding-an-artifact.md`, which regenerates `FA_GLYPHS` alongside the font.
+
 ## 2. Type system
 
 **Decision: opsz tracks rendered size — never inverted.** Fraunces' optical axis runs
@@ -143,7 +158,30 @@ two shapes, two meanings, shared vertical metrics (`.72em/600/.06em`, `padding:1
 **Decision: tables.** The **static** rendered table (`.md-table-static`) is editorial —
 horizontal rules only, 2px head rule, mono caps header, no vertical lines, no header fill.
 The **interactive base keeps its full editing grid** — cell borders aid editing; the skins
-are scoped and must stay separate.
+are scoped and must stay separate. The base *echoes* the editorial signature without
+merging the skins: 2px header bottom rule, header weight 600 (never 700), the table hugs
+its content (`width:auto;min-width:min(380px,100%)`) instead of stretching across the
+measure, and rows get a 3%-fg hover. Don't uppercase the base header — the name pill is
+editable content and `text-transform` would lie about it.
+
+**Decision: chrome control grammar.**
+- **Active toggles wear the tint recipe** (16% accent mix + accent ink + 35% border),
+  same as badges — **solid accent fill is reserved** for the focus outline, primary
+  dialog actions, and the brand mark. A filter toggle must never be the loudest object
+  on screen.
+- **Keycap chips are one rule** (`kbd`, `.cmd-key`, `#search-key`): `--mono` 11px, `--hbg`
+  fill, 1px `--bdr` border with a 2px bottom ledge, radius 4px, `--fg` ink. Keys never
+  change color on hover (a key's meaning doesn't change when pointed at). One notation
+  per platform via `fmtKey()` — `⌘S` on Mac, `Ctrl+S` elsewhere — everywhere a shortcut
+  is printed.
+- **One menu hover language:** every `.cmd-item` row hovers/highlights with the 10%
+  accent tint; menu icons are bare glyphs (transparent box, `--muted` ink, `--fg` on
+  row hover) — the filled icon tile is retired except the file-menu header's identity
+  chip. The slash-menu footer (description + mono syntax example + cross-teaching tip)
+  is the canonical teaching pattern; new menus adopt it rather than inventing another.
+- **Eyebrow labels are one recipe:** 10px / 600 / `.07em` caps in `--muted`, **never
+  opacity-faded** (§3's role-not-failing-ink rule applies to labels too).
+- **Toolbar controls share one 28px height.**
 
 **Decision: the indent thread.** Nesting depth gets a physical trace: a hairline at every
 indent step, painted per row via a repeating gradient clipped to `--depth-w` (set in
