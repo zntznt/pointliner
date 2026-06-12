@@ -42,7 +42,20 @@ Implemented:
   always returns a number.
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
-  and flagged (`↻`, `.var-cycle`).
+  and flagged (`↻`, `.var-cycle`). Two **value types**, chosen in the dialog:
+  - **Formula** (the default) — a math expression, evaluated live (`area = pi*r^2`).
+  - **Random pick** — a *grammar source* (`dragon|wyrm 2|drake`, `2d6`, a rule/table
+    name, or a template like `{color} {beast}`) expanded **once** via the grammar
+    engine and **frozen** on the record (`kind:'pick'`, `rolled`). Every `{name}`
+    reference document-wide shows the same frozen value; the declaration pill is a
+    generative pill (**body-click re-rolls** — all references update together —
+    pencil edits; re-roll announced via the `#a11y-live` region). The value is
+    **text**: used in math or dice it fails visibly (`?` / disabled dialog submit /
+    `#ERR`), never silently. `collectVars` returns the stored value unchanged on
+    every pass — the engine runs only at declaration and explicit re-roll
+    (`rollPickSource` is the pure core). Direction: `guidance/generation-direction.md`
+    (v1; inline `{a := …}` shorthand, modifiers, and per-reference re-roll are
+    explicitly deferred).
 - **Typed shorthand** — write `{2d6}`, `{= 2*r}`, `{a|b|c}`, `{knownRule}` and it
   promotes to the matching pill when you leave the node (and on paste); while
   editing it stays grammar-styled text. Invalid/unknown bodies stay literal text.

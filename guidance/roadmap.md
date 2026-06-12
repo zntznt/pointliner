@@ -166,8 +166,11 @@ Phase 1's weight is broken up.
 ## Generative / internal-engine ideas (the "balance" side)
 Self-contained, additive ideas for the generative engine — good interleaving material
 between the heavy PKM phases. (Shipped items removed: dice success pools, date math,
-and unit conversion are **done** — see `guidance/features.md`. The oracle was reverted and
-is listed below as pending.)
+unit conversion, and **random variables** — a variable whose value is a frozen,
+re-rollable grammar pick, the Perchance-style generation model — are **done**; see
+`guidance/features.md` and `guidance/generation-direction.md`. The earlier per-expansion
+*bound picks* attempt (`{a := …}`, PR #51) was **reverted** and is superseded by random
+variables — do not reintroduce it. The oracle was reverted and is listed below as pending.)
 - **Oracle (tunable yes/no) — pending:** a configurable odds-based oracle pill — pick a
   likelihood, get a yes/no (optionally with degrees of yes/no and a random-event nudge),
   straight off the artifact recipe. **IP guardrail:** the odds bands and any result/word

@@ -380,6 +380,15 @@ modifiers (`2d6+str_mod`). Both `collectVars(rootNode = root)` and
 `collectRules(rootNode = root)` take an optional root: no-arg = the live document
 with the per-generation cache (production); an explicit root walks that tree and
 bypasses the cache, making them pure functions of their argument (used by tests).
+A variable's value is **a number or a string**: a *formula* var evaluates its
+`expr` through `evalMath`; a **random pick** var (`kind:'pick'`) carries a frozen
+`rolled` string that `collectVars` returns **unchanged on every pass** — the
+grammar engine runs only at declaration and on explicit re-roll (`rollPickSource`),
+never on a render pass, or the value would change on every keystroke. Display any
+varMap value through `formatVarValue` (string-aware), never `formatMathResult`
+directly; in math/dice a string value fails to `null` visibly (the type-safety
+contract). Direction: `guidance/generation-direction.md` — the reverted
+per-expansion bound-picks model (`:=`/`ctx.binds`, PR #51) must not return.
 
 **Node links** are a third document-wide index, same shape as the above.
 `collectLinks(rootNode = root)` walks the tree for `[[#TARGETID|label]]` tokens and
@@ -429,7 +438,10 @@ redesign.
 ## Feature status
 
 Implemented: Dice (incl. success-counting pools) · Markov · Roll tables · Grammar ·
-Math (incl. unit conversion + date math) · Variables · Typed shorthand · Footnotes ·
+Math (incl. unit conversion + date math) ·
+Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
+pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
+Typed shorthand · Footnotes ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit ·

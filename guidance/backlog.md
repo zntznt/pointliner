@@ -73,6 +73,16 @@ Spreadsheet-style cell formulas in tables, via Org-mode `#+TBLFM:` conventions.
   `node.text` (round-trips for free). See `guidance/features.md` for the supported grammar and the
   explicit not-yet list (named columns, `#+CONSTANTS:`, `remote()`, hline-relative `@I`, `B3`).
 
+### ✓ Random variables (Perchance-style generation) — shipped
+A variable whose value is a **frozen random pick**: declared like any variable (dialog
+value-type choice), referenced `{name}` anywhere — every reference shows the same value —
+re-rolled from the declaration pill (all references update together).
+- **Fit — landed cleanly on the variable system** (`collectVars` + `[[var:key]]` + `{name}`),
+  zero new syntax. The pick rolls once through the grammar engine and freezes on the record.
+- **Supersedes** the reverted per-expansion bound-picks attempt (PR #51). Direction locked in
+  `guidance/generation-direction.md`; deferred there: inline `{a := …}` shorthand, modifiers
+  (`a/an`/plural/capitalize), picks in math, per-reference re-roll.
+
 ### ☐ Rich TODO states + priorities
 Custom task states (e.g. TODO → NEXT → WAITING → DONE) with cycling, plus A/B/C priorities.
 Today the todo is a binary checkbox.

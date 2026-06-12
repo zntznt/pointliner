@@ -442,6 +442,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* var-ref: display-only variant (no expression — reads from globalVarMap) */
 .var-pill.var-ref{border:1px solid var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--cbg))}
 .var-pill.var-undef{border-color:var(--del);border-style:dashed}
+.var-pill.var-rolled .var-val{display:inline-block;animation:rt-pop .28s cubic-bezier(.2,.8,.3,1)}
+/* visually-hidden polite live region for AT announcements (re-rolls) */
+#a11y-live{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .var-preview-result{font-weight:700;color:var(--acc);font-family:var(--mono);font-size:1.1em}
 /* variable picker grid inside the insert dialog */
 .var-pick-grid{display:flex;flex-wrap:wrap;gap:6px;max-height:110px;overflow-y:auto;padding:2px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
@@ -657,6 +660,10 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-field textarea::placeholder{color:var(--muted);opacity:.6}
 .io-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+.io-seg{display:flex;gap:5px;margin-bottom:2px}
+.io-seg-btn{font-size:12.5px;line-height:1;padding:6px 12px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.io-seg-btn:hover{border-color:var(--acc)}
+.io-seg-btn.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .io-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
 .io-chip{font-family:var(--mono);font-size:11.5px;line-height:1;padding:4px 9px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .io-chip:hover{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
@@ -905,6 +912,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="fn-panel-hd" id="bl-panel-hd">Linked from</div>
   <div id="bl-list"></div>
 </div>
+<!-- polite live region: announces value changes (e.g. pick re-rolls) to AT -->
+<div id="a11y-live" aria-live="polite" aria-atomic="true"></div>
 <!-- variables overview panel (Ctrl+Shift+V) -->
 <div id="var-panel" role="region" aria-label="Variables">
   <div id="var-panel-hd">Variables <button id="var-panel-close" aria-label="Close variables panel" title="Close">✕</button></div>
@@ -1309,6 +1318,7 @@ function collectVars(rootNode) {
   // and on a plain object those hit Object.prototype (`'constructor' in {}` is true,
   // `allKeysForName.constructor` is a truthy function — `||= []` skips, `.push` throws).
   const defs = Object.create(null);         // lowercase name -> expr string (last wins)
+  const pickVals = Object.create(null);     // lowercase name -> frozen rolled string (random picks only)
   const order = [];        // names in first-seen order, for deterministic resolution
   const lastKeyForName = Object.create(null); // name -> key of last declaration seen
   const allKeysForName = Object.create(null); // name -> [all keys seen]
@@ -1321,6 +1331,11 @@ function collectVars(rootNode) {
         const nm = v.name.toLowerCase();
         if (!(nm in defs)) order.push(nm);
         defs[nm] = v.expr;
+        // A random pick's value is its frozen `rolled` string, never an evaluation
+        // of expr (which holds the grammar source). Last declaration of a name wins
+        // across kinds, so a later formula clears an earlier pick and vice versa.
+        if (v.kind === 'pick') pickVals[nm] = String(v.rolled ?? '');
+        else delete pickVals[nm];
         lastKeyForName[nm] = v.key;
         (allKeysForName[nm] ||= []).push(v.key);
       }
@@ -1351,6 +1366,10 @@ function collectVars(rootNode) {
   });
   function resolve(name) {
     if (name in memo) return memo[name];
+    // Random pick: return the frozen rolled string as-is. The grammar engine ran
+    // at declaration / explicit re-roll time — resolution must never re-roll, or
+    // the value would change on every render pass.
+    if (name in pickVals) { memo[name] = pickVals[name]; resolved[name] = pickVals[name]; return memo[name]; }
     if (!(name in defs)) return undefined;
     const idx = stack.indexOf(name);
     if (idx !== -1) {                       // cycle: flag the whole loop, bail
@@ -2553,7 +2572,7 @@ const INSERT_CMDS = [
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value, or display an existing one. Leave expression blank to reference only.', ex:'r = 5 · area = pi*r^2', section:'Math' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value — a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
   // Organize — document-wide state sets
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Apply states via /.', ex:'Flow: BACKLOG DOING | SHIPPED', section:'Organize' },
 ];
@@ -3109,7 +3128,9 @@ function handleCellPill(node, pill, target) {
   } else if (pill.classList.contains('math-roll') && !pill.classList.contains('math-bad')) {
     editMath(node, key);
   } else if (pill.classList.contains('var-pill') && !pill.classList.contains('var-bad')) {
-    editVar(node, key);
+    const vRec = node.vars?.find(x => x.key === key);
+    if (vRec?.kind === 'pick' && !target.closest('.var-edit')) rerollPickVar(node, key);
+    else editVar(node, key);
   }
 }
 
@@ -4194,10 +4215,22 @@ function attachContentEvents(content, node) {
       editMath(node, mp.dataset.key); // opens a dialog; stays in display mode
       return;
     }
-    // var pill: click anywhere opens the editor
+    // var pill: a random-pick DECLARATION is a generative pill — body re-rolls,
+    // pencil edits (the dice/grammar gesture). Formula vars and display-only
+    // references keep click-anywhere = edit.
     const vp2 = e.target.closest?.('.var-pill');
     if (vp2 && !vp2.classList.contains('var-bad')) {
       e.preventDefault(); e.stopPropagation();
+      const vRec = node.vars?.find(x => x.key === vp2.dataset.key);
+      if (vRec?.kind === 'pick' && !e.target.closest('.var-edit')) {
+        if (content.dataset.editing) {
+          // mirror the dice edit-mode reroll: swap the buffer in place, keep the caret
+          const off = getCaretOffset(content); rerollPickVar(node, vp2.dataset.key, { repaintAll: false }); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {}
+        } else {
+          rerollPickVar(node, vp2.dataset.key); // re-renders: every {name} reference updates
+        }
+        return;
+      }
       if (content.dataset.editing) exitEdit(content, node); // commit any in-progress edit first
       editVar(node, vp2.dataset.key); // opens a dialog; stays in display mode
       return;
@@ -6340,7 +6373,7 @@ function resolveBrace(body, ctx) {
   if (/^[a-z_][\w]*$/i.test(body)) {
     const low = body.toLowerCase();
     if (ctx.rules[low]) return expandRule(low, ctx);
-    if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, low)) return formatMathResult(ctx.vars[low]);
+    if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, low)) return formatVarValue(ctx.vars[low]);
     return `{${body}?}`;
   }
   return body;
@@ -6386,6 +6419,24 @@ function runGrammar(def, origin, docRules = null, vars = null) {
 // call rules). A bare string with no braces comes back unchanged.
 function expandText(str) {
   return expandTemplate(str || '', { rules: collectRules(), vars: collectVars(), depth: 0, stack: [] });
+}
+
+// Expand a random-pick variable's source ONCE against the document namespace.
+// The source is either a brace body — alternation (`dragon|wyrm 2|drake`), dice
+// (`2d6`), or a bare rule/table/chain/variable name (`color`) — or a template
+// with embedded braces (`{color} {beast}`). Runs only at declaration and on
+// explicit re-roll; the result is frozen on the var record (see collectVars).
+// Pure when rules+vars are passed; the no-arg form reads the live document.
+// Returns the expanded string, or null for an empty source.
+function rollPickSource(source, rules = collectRules(), vars = collectVars()) {
+  source = (source || '').trim();
+  if (!source) return null;
+  const ctx = { rules, vars, depth: 0, stack: [] };
+  // Top-level alternation and brace-free sources are brace *bodies* (resolveBrace
+  // sniffs alternation / dice / bare names); a brace-bearing non-alternation is a
+  // template whose embedded {…} expand in place.
+  const isBody = splitTopLevel(source, '|').length > 1 || !source.includes('{');
+  return isBody ? resolveBrace(source, ctx) : expandTemplate(source, ctx);
 }
 
 // Document-wide rule map: walk the whole tree and merge into one namespace
@@ -7057,6 +7108,11 @@ function formatMathResult(n) {
   return parseFloat(n.toPrecision(8)).toString();
 }
 
+// A resolved variable value is a number (formula var) or a string (random pick).
+// Use this — not formatMathResult directly — anywhere a varMap value is displayed,
+// or a pick's text value renders as "NaN".
+function formatVarValue(v) { return typeof v === 'string' ? v : formatMathResult(v); }
+
 function mathKey() { return 'x' + Math.random().toString(36).slice(2, 9); }
 
 function makeMathResult(expr) {
@@ -7083,10 +7139,29 @@ function varKey() { return 'v' + Math.random().toString(36).slice(2, 9); }
 
 function renderVarPill(key, v) {
   if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}">$ ?</span>`;
+  // Random pick declaration: shows the FROZEN rolled value (never re-expanded at
+  // render — the engine runs only at declaration/re-roll). Generative-pill
+  // interaction: body-click re-rolls, pencil edits (like dice/grammar).
+  if (v.kind === 'pick') {
+    const shadowed = _varShadowedKeys.has(key);
+    const rolled = String(v.rolled ?? '');
+    let cls = 'var-pill var-pick';
+    if (shadowed) cls += ' var-shadowed';
+    const title = shadowed ? 'Shadowed — a later declaration of this name takes effect'
+      : 'Click to re-roll · pencil to edit';
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}"`
+      + ` aria-label="Random variable ${escQ(v.name)} = ${escQ(rolled)} — click to re-roll">`
+      + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
+      + `<span class="var-name">${escHtml(v.name)}</span>`
+      + `<span class="var-eq">=</span>`
+      + `<span class="var-val">${escHtml(rolled)}</span>`
+      + `<span class="var-edit" title="Edit random variable"><i class="fa-solid fa-pen"></i></span>`
+      + `</span>`;
+  }
   // Display-only mode: empty expr — read value from globalVarMap without declaring
   if (!v.expr) {
     const val = globalVarMap[(v.name || '').toLowerCase()];
-    const display = val !== undefined ? formatMathResult(val) : '—';
+    const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
     const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}">`
@@ -7278,11 +7353,12 @@ const VAR_CHIPS = [
   { label:'½',   insert: '0.5' },
 ];
 
-function openVarDialog({ title, submitLabel, name = '', expr = '', existing = null, onResult }) {
+function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefined, existing = null, onResult }) {
   const varMap  = collectVars();
   const allDefs = Object.keys(_varActiveExprs).sort().map(nm => ({
     name: nm, expr: _varActiveExprs[nm], val: varMap[nm],
   }));
+  let mode = kind === 'pick' ? 'pick' : 'formula'; // value type: formula | random pick
 
   ioCard.innerHTML = '';
 
@@ -7302,11 +7378,12 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
       const card = document.createElement('div'); card.className = 'var-pick-card';
       card.title = `${nm} = ${ex}`;
       const nameEl = document.createElement('div'); nameEl.className = 'var-pick-name'; nameEl.textContent = '$' + nm;
-      const valEl  = document.createElement('div'); valEl.className  = 'var-pick-val';  valEl.textContent  = val !== undefined ? formatMathResult(val) : '?';
+      const valEl  = document.createElement('div'); valEl.className  = 'var-pick-val';  valEl.textContent  = val !== undefined ? formatVarValue(val) : '?';
       card.append(nameEl, valEl);
       card.addEventListener('click', () => {
         cardEls.forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
+        setMode(typeof val === 'string' ? 'pick' : 'formula'); // pick values are strings
         nameInp.value = nm; exprInp.value = ex;
         nameInp.dispatchEvent(new Event('input')); exprInp.dispatchEvent(new Event('input'));
         validate();
@@ -7327,7 +7404,21 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
   nameHint.textContent = 'Used in math (2*pi*r) and dice (2d6+str_mod) throughout this document.';
   nameWrap.append(nameLab, nameInp, nameHint); ioCard.appendChild(nameWrap);
 
-  // Expression field
+  // Value-type selector: Formula (math expression) | Random pick (grammar source)
+  const segWrap = document.createElement('div'); segWrap.className = 'io-field';
+  const segLab  = document.createElement('label'); segLab.textContent = 'Value type';
+  const segRow  = document.createElement('div'); segRow.className = 'io-seg';
+  segRow.setAttribute('role', 'group'); segRow.setAttribute('aria-label', 'Value type');
+  const segFormula = document.createElement('button'); segFormula.type = 'button';
+  segFormula.className = 'io-seg-btn'; segFormula.textContent = 'Formula';
+  const segPick = document.createElement('button'); segPick.type = 'button';
+  segPick.className = 'io-seg-btn'; segPick.textContent = 'Random pick';
+  segRow.append(segFormula, segPick);
+  segWrap.append(segLab, segRow); ioCard.appendChild(segWrap);
+  segFormula.addEventListener('click', () => { setMode('formula'); exprInp.focus(); });
+  segPick.addEventListener('click', () => { setMode('pick'); exprInp.focus(); });
+
+  // Expression field (label/placeholder/hint/preview swap with the value type)
   const exprWrap = document.createElement('div'); exprWrap.className = 'io-field';
   const exprLab  = document.createElement('label'); exprLab.textContent = 'Value (optional)';
   const exprInp  = document.createElement('input'); exprInp.type = 'text';
@@ -7336,6 +7427,13 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
   const prev = document.createElement('div'); prev.className = 'io-preview';
   const updatePrev = () => {
     const v = exprInp.value.trim(); if (!v) { prev.innerHTML = ''; return; }
+    if (mode === 'pick') {
+      // sample expansion — display only; the real roll happens once, on submit
+      const sample = rollPickSource(v);
+      prev.innerHTML = sample === null ? ''
+        : `<span class="var-preview-result">${escHtml(sample)}</span> <span class="io-hint" style="display:inline">— sample; rolls fresh on ${existing ? 'save' : 'insert'}</span>`;
+      return;
+    }
     const r = evalMath(v, collectVars());
     prev.innerHTML = r === null ? '<span class="io-preview-bad">Invalid expression</span>'
       : `<span class="var-preview-result">${escHtml(formatMathResult(r))}</span>`;
@@ -7354,6 +7452,26 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
   exprHint.textContent = 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
   exprWrap.append(exprLab, exprInp, prev, chipsRow, exprHint); ioCard.appendChild(exprWrap);
 
+  // Swap the expression field between the two value types. A random pick's value
+  // is text rolled ONCE from a grammar source and frozen until re-rolled; it is
+  // not usable in math.
+  function setMode(m) {
+    mode = m;
+    const pick = m === 'pick';
+    segFormula.classList.toggle('on', !pick); segFormula.setAttribute('aria-pressed', String(!pick));
+    segPick.classList.toggle('on', pick);     segPick.setAttribute('aria-pressed', String(pick));
+    exprLab.textContent = pick ? 'Pick from' : 'Value (optional)';
+    exprInp.placeholder = pick
+      ? 'e.g. dragon|wyrm 2|drake · 2d6 · {color} {beast} · a table name'
+      : 'e.g. 5, 2*pi, sqrt(16) — leave blank to just display';
+    exprHint.textContent = pick
+      ? 'Options split on | (weights: dragon 2), dice (2d6), a rule/table name, or a template like {color} {beast}. Rolled once; every {name} reference shows the same value until you re-roll the pill.'
+      : 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
+    chipsRow.style.display = pick ? 'none' : '';
+    okBtn.textContent = pick ? (existing ? 'Save & roll' : 'Roll & insert') : (submitLabel || 'Insert');
+    updatePrev(); validate();
+  }
+
   // Footer
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
@@ -7364,13 +7482,24 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
 
   function valid() {
     const nm = nameInp.value.trim(), ex = exprInp.value.trim();
-    return VAR_NAME_RE.test(nm) && (ex === '' || evalMath(ex, collectVars()) !== null);
+    if (!VAR_NAME_RE.test(nm)) return false;
+    if (mode === 'pick') return ex !== '';                  // any non-empty grammar source
+    return ex === '' || evalMath(ex, collectVars()) !== null;
   }
   function validate() { okBtn.disabled = !valid(); }
   function submit() {
     if (!valid()) return;
+    const nm = nameInp.value.trim(), ex = exprInp.value.trim();
+    if (mode === 'pick') {
+      const rolled = rollPickSource(ex);                    // THE roll — once, here
+      if (rolled === null) return;
+      closeIo();
+      onResult({ key: existing || varKey(), name: nm, kind: 'pick', expr: ex, rolled });
+      return;
+    }
     closeIo();
-    onResult({ key: existing || varKey(), name: nameInp.value.trim(), expr: exprInp.value.trim() });
+    // kind/rolled explicitly undefined so editing a pick into a formula clears them
+    onResult({ key: existing || varKey(), name: nm, expr: ex, kind: undefined, rolled: undefined });
   }
 
   [nameInp, exprInp].forEach(inp => {
@@ -7389,7 +7518,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', existing = nu
   }
 
   ioCancel = () => closeIo();
-  validate(); updatePrev();
+  setMode(mode); // applies label/placeholder/hint/button text, then validates + previews
   ioBack.classList.add('on');
   requestAnimationFrame(() => { nameInp.focus(); nameInp.select(); });
 }
@@ -7398,15 +7527,46 @@ function editVar(node, key) {
   const v = node?.vars?.find(x => x.key === key);
   if (!v) return;
   openVarDialog({
-    title: 'Edit variable',
+    title: v.kind === 'pick' ? 'Edit random variable' : 'Edit variable',
     submitLabel: 'Save',
-    name: v.name, expr: v.expr, existing: key,
+    name: v.name, expr: v.expr, kind: v.kind, existing: key,
     onResult: result => {
-      Object.assign(v, { name: result.name, expr: result.expr });
+      // assign the full shape: a pick→formula save must clear kind+rolled
+      // (undefined fields drop out of the JSON sidecar on serialize)
+      Object.assign(v, { name: result.name, expr: result.expr, kind: result.kind, rolled: result.rolled });
       markDirty();
-      repaintNodeContent(node);
+      // a pick's value is document-wide ({name} references in other nodes) —
+      // re-render everything, not just the declaring node
+      if (result.kind === 'pick') render(); else repaintNodeContent(node);
     },
   });
+}
+
+// Re-roll a random-pick variable from its declaration pill: re-expand the stored
+// source ONCE, freeze the new value, and repaint so every {name} reference
+// document-wide shows it. This is the only place besides declaration/dialog-save
+// where the grammar engine runs for a pick.
+function rerollPickVar(node, key, opts) {
+  const v = node?.vars?.find(x => x.key === key);
+  if (!v || v.kind !== 'pick') return;
+  const rolled = rollPickSource(v.expr);
+  if (rolled === null) return;
+  v.rolled = rolled;
+  markDirty();
+  announce(`${v.name} re-rolled: ${rolled}`);
+  if (opts?.repaintAll === false) return; // edit-mode caller swaps its own buffer
+  render();
+  document.querySelector(`.var-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('var-rolled');
+}
+
+// Write a short message into the polite live region so screen readers hear
+// value changes (re-rolls) without focus moving. Cleared-then-set so repeating
+// the same text still announces.
+function announce(msg) {
+  const el = document.getElementById('a11y-live');
+  if (!el) return;
+  el.textContent = '';
+  requestAnimationFrame(() => { el.textContent = msg; });
 }
 
 function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashMenu.classList.remove('on'); slashState = null; }
@@ -7581,7 +7741,8 @@ function renderBraceMenu() {
     if (item.group === 'var' && item.val !== undefined) {
       const valEl = document.createElement('span');
       valEl.className = 'bm-val';
-      valEl.textContent = '= ' + (Number.isInteger(item.val) ? item.val : +item.val.toPrecision(6));
+      valEl.textContent = '= ' + (typeof item.val === 'string' ? item.val // random pick — frozen text
+        : Number.isInteger(item.val) ? item.val : +item.val.toPrecision(6));
       el.appendChild(valEl);
     }
     el.addEventListener('mouseenter', () => { braceState.activeIdx = i; renderBraceMenu(); });
@@ -8590,10 +8751,11 @@ function flattenArtifacts(text, node, varMap) {
       return fresh !== null ? formatMathResult(fresh) : m.result;
     }
     // var: show "name = value" for defining pills, or just "value" for display-only
+    // (a random pick's frozen text flows through formatVarValue unchanged)
     const rec = node.vars?.find(x => x.key === key);
     if (!rec) return '';
     const val = varMap[(rec.name || '').toLowerCase()];
-    const valStr = val !== undefined ? formatMathResult(val) : '?';
+    const valStr = val !== undefined ? formatVarValue(val) : '?';
     return rec.expr ? `${rec.name} = ${valStr}` : valStr;
   });
 }
@@ -9129,9 +9291,9 @@ function updateVarPanelContent() {
     } else {
       const val = vars[nm];
       const valEl = document.createElement('span'); valEl.className = 'vp-val';
-      valEl.textContent = val !== undefined
-        ? (Number.isInteger(val) ? String(val) : String(+val.toPrecision(6)))
-        : '?';
+      valEl.textContent = val === undefined ? '?'
+        : typeof val === 'string' ? val   // random pick — frozen text, not a number
+        : Number.isInteger(val) ? String(val) : String(+val.toPrecision(6));
       row.appendChild(valEl);
     }
     list.appendChild(row);
@@ -9408,6 +9570,7 @@ const SHORTCUTS = [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
+    { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
   ]},
   { sec: 'Format (markdown)', rows: [
