@@ -2199,6 +2199,40 @@ test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
     'pill-pencil keyboard activation selector not found in index.html');
 });
 
+// ── UXP-19: outline tree + base grid ARIA (the dedicated pass) ────────────────
+
+test('UXP-19: the outline is a flat ARIA tree (role + level/position attributes)', () => {
+  assert.ok(_src.includes(`vlist.setAttribute('role', 'tree')`), 'role=tree on #vlist');
+  assert.ok(_src.includes(`'aria-multiselectable'`), 'tree is multiselectable');
+  assert.ok(_src.includes(`div.setAttribute('role', 'treeitem')`), 'rows are treeitems');
+  assert.ok(_src.includes(`'aria-level'`), 'aria-level set');
+  assert.ok(_src.includes(`'aria-posinset'`), 'aria-posinset set');
+  assert.ok(_src.includes(`'aria-setsize'`), 'aria-setsize set');
+});
+
+test('UXP-19: the interactive base table is role="grid"; computed cells aria-readonly', () => {
+  assert.ok(_src.includes(`role="grid" aria-label="Base"`), 'role=grid on the base table');
+  assert.ok(_src.includes(`tabindex="0" aria-readonly="true"`), 'computed cells aria-readonly');
+});
+
+test('UXP-19: pills carry tabindex=-1 (programmatic/AT focus reach)', () => {
+  const dice = c.renderDicePill('k', { key: 'k', expr: '2d6', total: 7, parts: [] });
+  assert.ok(dice.includes('tabindex="-1"'), dice);
+  const mk = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'] });
+  assert.ok(mk.includes('tabindex="-1"'), mk);
+  const rt = c.renderRolltablePill('r', { key: 'r', def: 'x', result: 'a sword', name: 'loot' });
+  assert.ok(rt.includes('tabindex="-1"'), rt);
+  const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!' });
+  assert.ok(gr.includes('tabindex="-1"'), gr);
+  const sq = c.renderSeqPill('q', { key: 'q', name: 'Flow', states: ['A', 'B', 'C'], doneFrom: 2 });
+  assert.ok(sq.includes('tabindex="-1"'), sq);
+});
+
+test('UXP-19: pill-body keyboard activation (Enter/Space dispatch) is present', () => {
+  assert.ok(_src.includes('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.seq-pill'),
+    'pill-body keyboard activation selector not found in index.html');
+});
+
 // ── UXP-25: ol ordinals from text not type (markdown-lazy numbering) ──────────
 
 test('UXP-25: deriveTypeFromText detects ol from N. prefix', () => {

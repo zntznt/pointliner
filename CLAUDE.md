@@ -437,13 +437,15 @@ an `evalMath` primitive, not a new artifact or syntax.
 
 ## Accessibility
 
-Remediation is tracked in `guidance/accessibility.md` (phased plan, kept out of the
-always-loaded `CLAUDE.md` because it retires as the work ships). Accessibility is
-now also a **per-feature requirement** under the UX standard (`guidance/ux-discipline.md`
-§5 / P3): every feature satisfies its accessible-name, keyboard-operability, and
-announcement obligations **in the same pass that builds it**, rather than as a
-separate later track — `accessibility.md` still owns the *sequencing* of the
-larger items. The one durable invariant: **keyboard operability is added
+The remediation plan in `guidance/accessibility.md` is **complete** (phases 0–5 +
+the UXP-19 tree/grid/pill-focus pass; the file is retained for its durable
+guardrails). The outline is a flat ARIA tree (`role="tree"`, rows `role="treeitem"`
+with `aria-level`/`posinset`/`setsize` stamped in `renderRow` — the virtualized-tree
+pattern), interactive bases are `role="grid"`, and pills carry `tabindex="-1"` +
+Enter/Space activation. Accessibility is a **per-feature requirement** under the UX
+standard (`guidance/ux-discipline.md` §5 / P3): every feature satisfies its
+accessible-name, keyboard-operability, and announcement obligations **in the same
+pass that builds it**, never as a separate later track. The one durable invariant: **keyboard operability is added
 *alongside* `mousedown`+`preventDefault` handlers, never by replacing them** —
 bullets, pill pencils, the collapse button and the breadcrumb rely on `mousedown`
 to keep focus off the active contenteditable, so converting them to `click`

@@ -1925,7 +1925,7 @@ function diceTotalStr(d) {
 function renderDicePill(key, d) {
   if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}" aria-label="Dice roll (missing data)">🎲 ?</span>`;
   const totalStr = diceTotalStr(d);
-  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-roll"`
+  return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to re-roll"`
     + ` aria-label="Dice roll ${escQ(d.expr)} = ${escQ(totalStr)} — click to re-roll">`
     + `<span class="dice-ico"><i class="fa-solid fa-dice-d20"></i></span>`
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
@@ -2018,7 +2018,7 @@ function renderMarkovPill(key, mk) {
     .join('<span class="mk-arrow">→</span>')
     + (stoppedEarly ? `<span class="mk-arrow">→</span><span class="mk-terminal" title="Walk ended — last state has no outgoing transitions. Add more rules to continue.">…</span>` : '');
   const nameTag = mk.name ? `<span class="mk-name" title="Callable as {${escQ(mk.name)}}">${escHtml(mk.name)}</span>` : '';
-  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}"`
+  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}"`
     + ` aria-label="Markov chain${mk.name ? ' ' + escQ(mk.name) : ''}: ${escQ(mk.path.join(' → '))} — click to re-roll">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
     + nameTag
@@ -2933,10 +2933,19 @@ function render() {
     flatten(vp);
   }
 
-  // virtual-list scaffold: a relative container with two spacers framing the window
+  // virtual-list scaffold: a relative container with two spacers framing the window.
+  // UXP-19: the outline is a flat ARIA tree — rows are role="treeitem" direct children
+  // of the tree, with the hierarchy conveyed by aria-level/posinset/setsize (the
+  // virtualized-tree pattern: setsize/posinset report true positions even though only
+  // a window of rows is in the DOM). Spacers are presentational.
   vlist = document.createElement('div'); vlist.id = 'vlist';
+  vlist.setAttribute('role', 'tree');
+  vlist.setAttribute('aria-label', 'Outline');
+  vlist.setAttribute('aria-multiselectable', 'true');
   vTop = document.createElement('div'); vTop.className = 'vspacer';
   vBot = document.createElement('div'); vBot.className = 'vspacer';
+  vTop.setAttribute('role', 'presentation');
+  vBot.setAttribute('role', 'presentation');
   vlist.append(vTop, vBot);
   container.appendChild(vlist);
   appendGhostRow(vp, container);
@@ -2950,25 +2959,34 @@ function render() {
 
 // ─── virtual list ──────────────────────────────────────────────────────────────
 
-function pushRows(node, depth, parent) {
+// pos/size are the node's 1-based position among its VISIBLE siblings and that
+// sibling count — fed to aria-posinset/aria-setsize (UXP-19), computed over the
+// same visibility predicate that decides which rows exist.
+function pushRows(node, depth, parent, pos, size) {
   if (!isVisible(node)) return;
-  flatRows.push({ node, depth, parent });
-  if (!node.collapsed) for (const c of node.children) pushRows(c, depth + 1, node);
+  flatRows.push({ node, depth, parent, pos, size });
+  if (!node.collapsed) {
+    const vis = node.children.filter(isVisible);
+    vis.forEach((c, i) => pushRows(c, depth + 1, node, i + 1, vis.length));
+  }
 }
-function pushSearchRows(node, depth, parent) {
+function pushSearchRows(node, depth, parent, pos, size) {
   if (!searchMatchSet.has(node.id)) return;
   const self = nodeMatchesSearch(node);
-  flatRows.push({ node, depth, parent, searchCtx: !self, highlight: self });
-  for (const c of node.children) pushSearchRows(c, depth + 1, node); // search always expands
+  flatRows.push({ node, depth, parent, pos, size, searchCtx: !self, highlight: self });
+  const vis = node.children.filter(c => searchMatchSet.has(c.id));
+  vis.forEach((c, i) => pushSearchRows(c, depth + 1, node, i + 1, vis.length)); // search always expands
 }
 function flatten(vp) {
   flatRows = []; flatIndex = new Map();
   if (searchQuery) {
     searchMatchSet = new Set();
     vp.children.forEach(c => computeMatchSet(c, searchMatchSet));
-    vp.children.forEach(c => pushSearchRows(c, 0, vp));
+    const vis = vp.children.filter(c => searchMatchSet.has(c.id));
+    vis.forEach((c, i) => pushSearchRows(c, 0, vp, i + 1, vis.length));
   } else {
-    vp.children.forEach(c => pushRows(c, 0, vp));
+    const vis = vp.children.filter(isVisible);
+    vis.forEach((c, i) => pushRows(c, 0, vp, i + 1, vis.length));
   }
   for (let i = 0; i < flatRows.length; i++) flatIndex.set(flatRows[i].node.id, i);
 }
@@ -3027,7 +3045,12 @@ function renderWindow(force) {
   for (let i = s; i <= e; i++) {
     const r = flatRows[i];
     let el;
-    if (activeEl && r.node.id === liveId) { el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; el.style.setProperty('--depth-w', (r.depth * IND) + 'px'); }
+    if (activeEl && r.node.id === liveId) {
+      el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; el.style.setProperty('--depth-w', (r.depth * IND) + 'px');
+      // keep the reused row's tree position attributes fresh (UXP-19)
+      el.setAttribute('aria-level', String(r.depth + 1));
+      if (r.pos) { el.setAttribute('aria-posinset', String(r.pos)); el.setAttribute('aria-setsize', String(r.size)); }
+    }
     else el = renderRow(r);
     vlist.appendChild(el);
   }
@@ -3739,7 +3762,10 @@ function buildTableWidget(node, readOnly) {
     h += '<div class="mt-baseheader"><div class="mt-base-views"></div></div>';
   // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
   // the whole grid — a rowspan can't span the thead↔tbody boundary.
-  h += '<div class="mt-scroll"><table class="md-table">';
+  // UXP-19: the interactive base is role="grid" — HTML-AAM then maps its tr/th/td to
+  // row/columnheader/gridcell for free, so the role is the only attribute needed for
+  // the structure. The read-only render (search context) stays a native static table.
+  h += '<div class="mt-scroll"><table class="md-table"' + (readOnly ? '' : ' role="grid" aria-label="Base"') + '>';
   // Header row — the column-control surface (Bases PR 2c "name-pill" model). The
   // editable name lives in a `.mt-name-pill`, which is ALSO the row-0 grid cell
   // (`.mt-cell` + data-r/data-c), so every cell nav/edit handler applies to it
@@ -3748,12 +3774,14 @@ function buildTableWidget(node, readOnly) {
   // right border. A computed (formula-targeted) header stays a plain read-only cell:
   // it can't be renamed.
   h += '<tr class="mt-headrow" data-r="0">';
-  if (!readOnly) h += '<th class="mt-rowh mt-rowh-head"></th>';
+  // The row-handle gutter is a pointer-only UI strip (drag/click), not data — hidden
+  // from AT (the keyboard door to row ops is the cell context menu, Shift+F10).
+  if (!readOnly) h += '<th class="mt-rowh mt-rowh-head" aria-hidden="true"></th>';
   for (let c=0;c<nc;c++) {
     const ch0 = computedCells.has('0,'+c);
     const nm = model.rows[0][c] || '';
     if (readOnly || ch0) {
-      const ce = ch0 ? ' contenteditable="false" tabindex="0"' : '';
+      const ce = ch0 ? ' contenteditable="false" tabindex="0" aria-readonly="true"' : '';
       h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${colStyle(c)}${ce}>${mtInline(node, nm)}</th>`;
     } else {
       h += `<th class="mt-colhead${aCls(model.aligns[c])}" data-c="${c}" draggable="true"${colStyle(c)} title="Drag to reorder · click for column options">`
@@ -3769,8 +3797,8 @@ function buildTableWidget(node, readOnly) {
     // The Calculate footer row is data-only (computed) and stays pinned last — no
     // reorder/menu handle; a plain inert stub keeps the column count aligned.
     if (!readOnly) h += isTotal
-      ? '<th class="mt-rowh mt-rowh-foot"></th>'
-      : `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options"></th>`;
+      ? '<th class="mt-rowh mt-rowh-foot" aria-hidden="true"></th>'
+      : `<th class="mt-rowh" data-r="${r}" draggable="true" title="Drag to reorder · click for row options" aria-hidden="true"></th>`;
     for (let c=0;c<nc;c++) {
       const cc = computedCells.has(r+','+c);
       // In the total row, an aggregated column's cell shows "<OpName> <value>" (the op
@@ -3778,13 +3806,13 @@ function buildTableWidget(node, readOnly) {
       // normal (blank) cell. Read-only is unchanged (it's still .mt-computed).
       const label = isTotal ? aggKindLabel(mtColAggKind(tblfmStr, c+1)) : '';
       if (label) {
-        h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" data-agg="${label}">${mtInline(node, model.rows[r][c]||'')}</td>`;
+        h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true" data-agg="${label}">${mtInline(node, model.rows[r][c]||'')}</td>`;
       } else if (isTotal) {
         // Footer row, non-aggregated column: data-only, never editable. Read-only like a
         // computed cell (so all the edit guards skip it) but blank and Σ-less.
-        h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0"></td>`;
+        h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
-        h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
+        h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
       }
     }
     h += '</tr>';
@@ -4104,6 +4132,17 @@ function renderRow(r) {
     selectedIds.has(node.id) ? 'node-selected' : '',
   ].filter(Boolean).join(' ');
   div.dataset.id = node.id;
+  // UXP-19: flat-tree treeitem semantics. Level/position attributes carry the
+  // hierarchy the flat virtualized DOM can't; aria-expanded only on parents;
+  // aria-selected mirrors multi-select (kept in sync by updateSelVisuals).
+  div.setAttribute('role', 'treeitem');
+  div.setAttribute('aria-level', String(depth + 1));
+  if (r.pos) {
+    div.setAttribute('aria-posinset', String(r.pos));
+    div.setAttribute('aria-setsize', String(r.size));
+  }
+  if (visKids.length) div.setAttribute('aria-expanded', String(!node.collapsed));
+  div.setAttribute('aria-selected', selectedIds.has(node.id) ? 'true' : 'false');
 
   const row = document.createElement('div');
   row.className = 'node-row';
@@ -5001,6 +5040,24 @@ function onKeyDown(e, id, content) {
       pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       return;
     }
+    // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
+    // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
+    // opens its editor exactly as a click would, via the content's pill-handler block.
+    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.seq-pill');
+    if (pillBody && e.target === pillBody) {
+      e.preventDefault();
+      const k = pillBody.dataset.key;
+      pillBody.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      // a re-roll repaints the content (innerHTML), destroying the focused pill —
+      // restore focus to its re-rendered self so keyboard re-rolls can chain. Only
+      // when focus actually fell to body: an opened edit dialog keeps its own focus.
+      requestAnimationFrame(() => {
+        const fresh = content.querySelector(`[data-key="${CSS.escape(k)}"]`);
+        const ae = document.activeElement;
+        if (fresh && (ae === document.body || ae === null)) try { fresh.focus(); } catch (_) {}
+      });
+      return;
+    }
   }
   // Point-actions menu: the OS-standard "context menu of the focused element" gesture
   // (Shift+F10 or the Menu/ContextMenu key) opens this point's bullet popup with the
@@ -5086,7 +5143,9 @@ function clearSelection() {
 function updateSelVisuals() {
   if (!vlist) return;
   vlist.querySelectorAll('.node[data-id]').forEach(el => {
-    el.classList.toggle('node-selected', selectedIds.has(el.dataset.id));
+    const sel = selectedIds.has(el.dataset.id);
+    el.classList.toggle('node-selected', sel);
+    el.setAttribute('aria-selected', sel ? 'true' : 'false'); // treeitem state (UXP-19)
   });
 }
 
@@ -6621,7 +6680,7 @@ function makeRolltableRoll(def, name) {
 function renderRolltablePill(key, rt) {
   if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}" aria-label="Roll table (missing data)">🎯 ?</span>`;
   const nameTag = rt.name ? `<span class="rt-name" title="Callable as {${escQ(rt.name)}}">${escHtml(rt.name)}</span>` : '';
-  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}"`
+  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}"`
     + ` aria-label="Roll table${rt.name ? ' ' + escQ(rt.name) : ''}: ${escQ(rt.result)} — click to re-roll">`
     + `<span class="rt-ico"><i class="fa-solid fa-table-list"></i></span>`
     + nameTag
@@ -7020,7 +7079,7 @@ function makeGrammarRoll(def, originInput) {
 
 function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to re-generate"`
+  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to re-generate"`
     + ` aria-label="Grammar: ${escQ(g.result)} — click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + `<span class="gr-result">${escHtml(g.result)}</span>`
@@ -7637,7 +7696,7 @@ function renderMathPill(key, m) {
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to edit"`
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
     + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
@@ -7661,7 +7720,7 @@ function renderVarPill(key, v) {
     if (shadowed) cls += ' var-shadowed';
     const title = shadowed ? 'Shadowed — a later declaration of this name takes effect'
       : 'Click to re-roll · pencil to edit';
-    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}"`
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
       + ` aria-label="Random variable ${escQ(v.name)} = ${escQ(rolled)} — click to re-roll">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
@@ -7678,7 +7737,7 @@ function renderVarPill(key, v) {
     const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
     const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found — click to edit`
       : `Variable ${escQ(v.name)} = ${escQ(display)}`;
-    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${refLabel}">`
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${refLabel}">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-val">${escHtml(display)}</span>`
@@ -7697,7 +7756,7 @@ function renderVarPill(key, v) {
     : 'Click to edit';
   const declLabel = cyclic ? `Variable ${escQ(v.name)}: circular reference — click to edit`
     : `Variable ${escQ(v.name)} = ${escQ(display)}${shadowed ? ' (shadowed by a later declaration)' : ''} — click to edit`;
-  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" title="${title}" aria-label="${declLabel}">`
+  return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${declLabel}">`
     + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
     + `<span class="var-name">${escHtml(v.name)}</span>`
     + `<span class="var-eq">=</span>`
@@ -7731,7 +7790,7 @@ function renderSeqPill(key, sq) {
   const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
     + '<span class="seq-pipe">|</span>'
     + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
-  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" title="Sequence ${escQ(sq.name)} — click to edit"`
+  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Sequence ${escQ(sq.name)} — click to edit"`
     + ` aria-label="Sequence ${escQ(sq.name)} — active: ${escQ(sq.states.slice(0, sq.doneFrom).join(' '))}; done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))} — click to edit">`
     + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
     + `<span class="seq-name">${escHtml(sq.name)}</span>`

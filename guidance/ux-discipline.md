@@ -120,7 +120,7 @@ This principle **defers to `accessibility.md` for sequencing.** §5 states the t
 - **P3-3 (MUST):** Visible `:focus-visible` on every focus stop; honor `prefers-reduced-motion`.
 - **P3-4 (MUST):** Color is never the sole carrier of meaning (state badge, `#ERR`, highlight pair with text/icon).
 - **P3-5 (MUST):** State changes not tied to focus (reroll, autosave warning, `#ERR`) are announced via the `aria-live` region.
-- **P3-6 (deferred, tracked):** Full `role="tree"` on the outline and `tabindex` on pills are **high-risk against the virtual list and the caret invariant** and are sequenced in `accessibility.md`, not ordered here. **Interim requirement (MUST):** until they land, pills carry an accurate `aria-label` ("Dice: 2d6 = 9") updated on reroll, and the outline exposes per-row labels — so the deferral never means "unlabeled and silent."
+- **P3-6 (landed — UXP-19):** Full `role="tree"` on the outline (flat treeitems + `aria-level`/`posinset`/`setsize`, the virtualized-tree pattern), `role="grid"` on interactive bases, and `tabindex="-1"` + Enter/Space activation on pills shipped in the dedicated UXP-19 pass — additively, beside the existing `mousedown` paths (the caret invariant held). The interim labels (pill `aria-label` updated on reroll, per-row labels) remain in force as the ongoing P3-5 obligation.
 
 **Acceptance test:** the feature is operable by keyboard only, and a screen reader announces its name, state, and any result.
 
@@ -227,7 +227,7 @@ Restated as a per-feature requirement, deferring to `accessibility.md` for phase
 
 **Required now (every feature):** accessible names (P3-1), keyboard operability beside mousedown (P3-2), focus-visible + reduced-motion (P3-3), non-color signals (P3-4), `aria-live` for off-focus change (P3-5), and the **interim pill/row labels** of P3-6.
 
-**Sequenced in `accessibility.md` (don't front-run):** full `role="tree"`, `role="grid"` on tables, pill `tabindex`, dialog focus-trap, contrast retune. The standard's contribution is that these stop being a *separate track*: the conformance matrix (§9) and the DoD (`ux-definition-of-done.md`) tie each a11y requirement to the feature that introduces it, so discoverability and accessibility are satisfied **in the same pass on the same widget** — closing the "two disconnected passes" gap.
+**Sequenced in `accessibility.md` — all landed:** full `role="tree"`, `role="grid"` on tables, and pill `tabindex` (UXP-19); dialog focus-trap (UXP-16); contrast retune (UXP-18). The standard's contribution is that these stopped being a *separate track*: the conformance matrix (§9) and the DoD (`ux-definition-of-done.md`) tie each a11y requirement to the feature that introduces it, so discoverability and accessibility are satisfied **in the same pass on the same widget** — closing the "two disconnected passes" gap.
 
 ---
 
@@ -283,16 +283,16 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 
 | Feature | P1 predictable | P2 discoverable | P3 reachable | P4 responsive |
 |---|---|---|---|---|
-| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ | ⚠️ (row labels; collapse-btn + breadcrumb named/keyboard-operable — UXP-14; tree deferred) | ✅ |
+| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ | ✅ (flat ARIA tree: treeitem + level/posinset/setsize/expanded/selected — UXP-19; collapse-btn + breadcrumb named/keyboard-operable — UXP-14) | ✅ |
 | Paragraph block | ✅ (documented prose-mode exception) | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
-| Pills (dice/math/grammar/…) | ✅ | ✅ (all reachable via `@` menu — UXP-11 audit; SHORTCUTS names each type) | ⚠️ (labels + reroll announcements ✓ — UXP-15; pencils named + Enter/Space-operable — UXP-13/14; dialogs focus-trap + restore — UXP-16; pill focus/tabindex deferred to the UXP-19 pass) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
+| Pills (dice/math/grammar/…) | ✅ | ✅ (all reachable via `@` menu — UXP-11 audit; SHORTCUTS names each type) | ✅ (labels + reroll announcements — UXP-15; pencils named + Enter/Space-operable — UXP-13/14; dialogs focus-trap + restore — UXP-16; pill `tabindex="-1"` + Enter/Space body activation — UXP-19) | ✅ (gr-bad typo marker — UXP-6; live `#ERR` — UXP-34) |
 | Variables | ✅ | ✅ (`{` picker + variables panel; UXP-9) | ⚠️ | ⚠️ |
 | Inline `{…}` shorthand | ✅ | ✅ (live preview tooltip on `}` close: → dice/math/grammar/var — UXP-7) | ⚠️ | ✅ (gr-bad typo marker + AT announce — UXP-6) |
-| Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
+| Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ✅ (`role="grid"` + native row/columnheader/gridcell mapping; computed cells `aria-readonly` — UXP-19) | ✅ |
 | Table columns (ops) | ✅ (one Column panel: Calculate/Alignment/Insert/Move/Delete; no hidden double-click; UXP-21) | ✅ (one sized ▾ door; grip cue for drag; full-height "+") | ✅ (panel role=menu/menuitem keyboard-operable; sized targets + aria-labels; `Shift+F10` cell context menu covers row ops too — UXP-14) | ✅ (refresh reflects every op) |
-| Table formulas (`#+TBLFM:`) | ✅ (Calculate aggregates + the Formula dialog for arbitrary `$N=`/`@R$C=` assignments; UXP-3 A+B) | ✅ (Formula menu section; column-name chips ARE the reference picker; hint teaches the grammar; raw `#+TBLFM:` stays the power path) | ⚠️ (panel role=menu/menuitem; dialog focus-trapped — UXP-16; cell `aria-readonly` deferred — UXP-19) | ✅ (live computed preview in the dialog; footer auto-added/removed; reason-coded `#ERR (cycle/bad ref/non-numeric)` — UXP-8) |
+| Table formulas (`#+TBLFM:`) | ✅ (Calculate aggregates + the Formula dialog for arbitrary `$N=`/`@R$C=` assignments; UXP-3 A+B) | ✅ (Formula menu section; column-name chips ARE the reference picker; hint teaches the grammar; raw `#+TBLFM:` stays the power path) | ✅ (panel role=menu/menuitem; dialog focus-trapped — UXP-16; computed cells `aria-readonly` — UXP-19) | ✅ (live computed preview in the dialog; footer auto-added/removed; reason-coded `#ERR (cycle/bad ref/non-numeric)` — UXP-8) |
 | Links (`[[ ]]`) | ✅ | ✅ (`[[` picker live — UXP-4; Copy-link stays the power path) | ✅ (listbox/option + activedescendant) | ✅ (rename repaints on-screen links immediately) |
 | Footnotes / hashtags / emoji | ✅ | ✅ (`#` tag picker — UXP-10) | ⚠️ (fn-panel keys named + Enter/Space-operable — UXP-14) | ✅ |
 | Search | ✅ | ✅ | ⚠️ | ✅ |

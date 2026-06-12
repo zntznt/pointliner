@@ -1,5 +1,11 @@
 # Accessibility remediation
 
+> **Status: complete.** Phases 0–5 shipped (UXP-13…18), and the dedicated
+> tree/grid/pill-focus pass shipped as UXP-19 — see `ux-remediation.md` Tier 3.
+> This file is retained for the guardrails (which are durable) and as the record
+> of the phase decisions; new a11y obligations ride each feature per
+> `ux-discipline.md` §5/P3.
+
 Working tracker for incremental accessibility work. The goal is keyboard
 operability and screen-reader usability without any visual redesign — all
 changes are additive. Changes are phased so each is independently shippable and
@@ -126,14 +132,14 @@ Scope: dice/markov/rolltable/math/grammar/var pills.
   (e.g. `"Rolled 2d6: 9"`). This tells screen-reader users that something changed
   without requiring focus to move.
 
-**Do not add `tabindex` to pills (deferred).** Pill spans are
-`contenteditable="false"` inside an active `contenteditable` container. Adding
-`tabindex="0"` to them makes the Tab key land inside the contenteditable, which
-can disrupt the browser's own arrow-key caret navigation in ways that are hard to
-predict across browsers and screen readers. The original brief itself flags this
-as "test heavily" and "defer unless time allows." Strictly defer — Phase 2 is
-labels + live region only. Pill focusability can be revisited if a screen-reader
-user specifically requests it.
+**Pill `tabindex` (resolved in the UXP-19 dedicated pass — `tabindex="-1"`, not
+`0`).** The risk this section flagged was specifically `tabindex="0"`: Tab landing
+inside an active contenteditable disrupts caret navigation. The shipped form
+sidesteps it — pills carry `tabindex="-1"` (programmatic/AT focus reach, the
+pencil precedent; **not** in the Tab order, so Tab never lands inside the
+contenteditable) plus Enter/Space activation that dispatches the same bubbling
+`mousedown` the pencils use. The caret invariant holds because nothing about the
+mouse path changed.
 
 ## Phase 3 — Modal dialog semantics
 
@@ -198,9 +204,17 @@ explicitly rather than changing them silently. The two `--muted` definitions liv
 together at the top of the `<style>` block (`:root` light, the dark-mode media
 query); change both in the same edit.
 
-**Out of scope — `role="tree"`:** applying the ARIA tree pattern to the outline
-is explicitly deferred. The virtual-list render model means ARIA tree attributes
-(`role="tree"`, `role="treeitem"`, `aria-level`, `aria-setsize`,
-`aria-posinset`, `aria-expanded`) would need to be set and kept in sync across
-every `render()` call and every structural mutation. This is high-risk work that
-belongs in a dedicated pass — it is not part of phases 0–5.
+**The dedicated pass — `role="tree"` / `role="grid"` / pill `tabindex` — SHIPPED
+(UXP-19).** Originally deferred from phases 0–5 as high-risk; the risk dissolved
+by construction once examined: every structural mutation already funnels through
+`render()` → `flatten()` → `renderRow()`, so the tree attributes (`role="treeitem"`,
+`aria-level`, `aria-setsize`, `aria-posinset`, `aria-expanded`, `aria-selected`)
+are stamped in the single row builder and *can't* drift — the one out-of-band
+path (multi-select) syncs `aria-selected` in `updateSelVisuals` beside its class
+toggle. `aria-setsize`/`aria-posinset` are computed over the same visibility
+predicate that decides which rows exist, so AT hears true positions even though
+only a window of rows is in the DOM (the virtualized-tree pattern). The
+interactive base table is `role="grid"` (HTML-AAM maps its `tr`/`th`/`td` for
+free), computed cells are `aria-readonly`, and pills carry `tabindex="-1"` +
+Enter/Space activation via the same bubbling-`mousedown` dispatch the pencils
+use. Details in `ux-remediation.md` § UXP-19.
