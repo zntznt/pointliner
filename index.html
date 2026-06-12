@@ -375,34 +375,21 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mk-terminal{color:var(--muted);opacity:.5;font-style:italic;font-size:.9em}
 @keyframes mk-pop{0%{opacity:.35;transform:translateY(2px)}100%{opacity:1;transform:none}}
 .mk-roll.mk-rolled .mk-path{animation:mk-pop .25s ease}
-/* roll table pill */
-.rt-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
-.rt-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
-.rt-roll:active{transform:translateY(.5px)}
-.rt-roll .rt-ico{color:var(--acc);font-size:.92em;display:inline-flex;transition:transform .25s ease}
-.rt-roll:hover .rt-ico{transform:scale(1.15)}
-.rt-name{font-family:var(--mono);font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px}
-.rt-result{font-weight:600;color:var(--fg)}
-.rt-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
-.rt-roll:hover .rt-edit{opacity:.6}
-.rt-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
-.rt-roll.rt-bad{color:var(--del);border-style:dashed;cursor:default}
-.rt-roll.rt-bad:hover{box-shadow:none;border-color:var(--bdr)}
-@keyframes rt-pop{0%{opacity:.3;transform:scale(.88)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
-.rt-roll.rt-rolled .rt-result{display:inline-block;animation:rt-pop .28s cubic-bezier(.2,.8,.3,1)}
 /* grammar pill — generative recursive-substitution output */
 .gr-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .gr-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
 .gr-roll:active{transform:translateY(.5px)}
 .gr-roll .gr-ico{color:var(--acc);font-size:.9em;display:inline-flex;transition:transform .3s ease}
 .gr-roll:hover .gr-ico{transform:rotate(180deg)}
+.gr-name{font-family:var(--mono);font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px}
 .gr-result{font-weight:600;color:var(--fg)}
 .gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .gr-roll:hover .gr-edit{opacity:.6}
 .gr-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .gr-roll.gr-bad{color:var(--del);border-style:dashed;cursor:default}
 .gr-roll.gr-bad:hover{box-shadow:none;border-color:var(--bdr)}
-.gr-roll.gr-rolled .gr-result{display:inline-block;animation:rt-pop .28s cubic-bezier(.2,.8,.3,1)}
+@keyframes roll-pop{0%{opacity:.3;transform:scale(.88)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
+.gr-roll.gr-rolled .gr-result{display:inline-block;animation:roll-pop .28s cubic-bezier(.2,.8,.3,1)}
 .gr-preview-result{font-weight:600;color:var(--acc)}
 /* grammar source, shown while editing so {…} artifacts read as editable text */
 .gr-src{font-family:var(--mono);font-size:.92em;background:color-mix(in srgb,var(--acc) 12%,var(--cbg));color:var(--acc);border-radius:5px;padding:.5px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
@@ -449,7 +436,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* var-ref: display-only variant (no expression — reads from globalVarMap) */
 .var-pill.var-ref{border:1px solid var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--cbg))}
 .var-pill.var-undef{border-color:var(--del);border-style:dashed}
-.var-pill.var-rolled .var-val{display:inline-block;animation:rt-pop .28s cubic-bezier(.2,.8,.3,1)}
+.var-pill.var-rolled .var-val{display:inline-block;animation:roll-pop .28s cubic-bezier(.2,.8,.3,1)}
 /* visually-hidden polite live region for AT announcements (re-rolls) */
 #a11y-live{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .var-preview-result{font-weight:700;color:var(--acc);font-family:var(--mono);font-size:1.1em}
@@ -546,13 +533,13 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .todo-prio-c{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
    each widget kind is identifiable without turning the line into candy */
-.dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}.rt-roll{--pill:#5b3a6e}
+.dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}
 .gr-roll{--pill:#4a7a4d}.math-roll{--pill:#8a5300}.var-pill{--pill:#2a7f74}.seq-pill{--pill:#3d6280}
-.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.seq-pill{
+.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill{
   padding:1px 8px 1px 6px;gap:5px;
   background:color-mix(in srgb,var(--pill) 7%,var(--cbg));
   border-color:color-mix(in srgb,var(--pill) 22%,var(--bdr))}
-.dice-roll:focus-visible,.mk-roll:focus-visible,.rt-roll:focus-visible,.gr-roll:focus-visible,.math-roll:focus-visible,.var-pill:focus-visible,.seq-pill:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.dice-roll:focus-visible,.mk-roll:focus-visible,.gr-roll:focus-visible,.math-roll:focus-visible,.var-pill:focus-visible,.seq-pill:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 
 .children{padding-left:var(--ind)}
 /* indent thread: a hairline at every indent step, clipped to the row's depth gutter
@@ -798,7 +785,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
   /* edit pencils on pills are hover-revealed on desktop — always show on touch */
-  .dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit{
+  .dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit{
     opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr)}
   /* table row handle: wider tap target on touch, always show the grip cue */
   .mt-rowh{width:22px}
@@ -826,13 +813,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .fn-key{padding:6px 11px}
   #sc-toggle{width:36px;height:36px;font-size:15px}
   /* suppress the iOS long-press text/callout on tappable widgets */
-  .bullet,.collapse-btn,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.fn-ref{-webkit-touch-callout:none}
+  .bullet,.collapse-btn,.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.fn-ref{-webkit-touch-callout:none}
 }
 /* focus-visible sweep (UXP-17): every keyboard-focusable control shows the standard
    2px accent ring (the app's one focus indicator), instead of the per-browser default. */
 .collapse-btn:focus-visible,.crumb:focus-visible,.fn-key:focus-visible,#storage-warn-close:focus-visible,
 .bullet:focus-visible,.lvl-btn:focus-visible,#btn-done:focus-visible,.io-btn:focus-visible,.io-chip:focus-visible,
-.dice-edit:focus-visible,.mk-edit:focus-visible,.rt-edit:focus-visible,.gr-edit:focus-visible,
+.dice-edit:focus-visible,.mk-edit:focus-visible,.gr-edit:focus-visible,
 .math-edit:focus-visible,.var-edit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* menu rows: inset ring so the scrollable panel doesn't clip it (matches #bpop) */
 #file-menu .cmd-item:focus-visible,.mt-col-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
@@ -989,11 +976,11 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: [], seq: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], seq: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -1296,13 +1283,12 @@ function codeNodeHTML(node) {
   return `<pre class="md-code"><code${lang ? ` class="language-${escQ(lang)}"` : ''}>${esc}</code></pre>`;
 }
 
-// Render a node's display HTML with its dice/markov/rolltable data in scope so
+// Render a node's display HTML with its dice/markov/grammar data in scope so
 // inline tokens ([[dice:KEY]] etc.) can resolve. mdToHtml is synchronous, so
 // the globals are safe (no re-entrance).
 function renderContentHTML(node) {
   diceRenderList    = node.dice    || null;
   markovRenderList  = node.markov  || null;
-  rolltableRenderList = node.rolltable || null;
   mathRenderList    = node.math    || null;
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
@@ -1339,7 +1325,6 @@ function renderContentHTML(node) {
   }
   diceRenderList    = null;
   markovRenderList  = null;
-  rolltableRenderList = null;
   mathRenderList    = null;
   varRenderList     = null;
   grammarRenderList = null;
@@ -1488,6 +1473,9 @@ function migrateNodePrefixes(n) {
   if (n.type === 'ol' && !OL_RE.test(n.text.split('\n', 1)[0])) {
     n.text = '1. ' + n.text;
   }
+  // legacy [[rolltable:KEY]] artifacts collapse into grammar records (tables
+  // are one-rule grammars; frozen result preserved — see migrateRolltables)
+  migrateRolltables(n);
   n.children.forEach(migrateNodePrefixes);
 }
 
@@ -1615,17 +1603,17 @@ function mdEmph(s) {
 let _inlineDepth = 0;
 function renderNodeInline(node) {
   const saved = { dice: diceRenderList, markov: markovRenderList,
-                  rolltable: rolltableRenderList, math: mathRenderList,
+                  math: mathRenderList,
                   vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList };
   _inlineDepth++;
   diceRenderList = node.dice || null; markovRenderList = node.markov || null;
-  rolltableRenderList = node.rolltable || null; mathRenderList = node.math || null;
+  mathRenderList = node.math || null;
   varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
   seqRenderList = node.seq || null;
   // globalVarMap is document-wide — leave it.
   const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   diceRenderList = saved.dice; markovRenderList = saved.markov;
-  rolltableRenderList = saved.rolltable; mathRenderList = saved.math;
+  mathRenderList = saved.math;
   varRenderList = saved.vars; grammarRenderList = saved.grammar;
   seqRenderList = saved.seq;
   _inlineDepth--;
@@ -1679,9 +1667,6 @@ function mdInline(s) {
   // markov chains — [[markov:KEY]] resolves against the node's stored chain
   s = s.replace(/\[\[markov:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderMarkovPill(k, markovRenderList?.find(m => m.key === k))));
-  // roll tables — [[rolltable:KEY]] resolves against the node's stored table
-  s = s.replace(/\[\[rolltable:([a-z0-9]+)\]\]/gi, (_, k) =>
-    stash(renderRolltablePill(k, rolltableRenderList?.find(r => r.key === k))));
   // math expressions — [[math:KEY]] resolves against the node's stored expressions
   s = s.replace(/\[\[math:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderMathPill(k, mathRenderList?.find(m => m.key === k))));
@@ -1713,7 +1698,6 @@ function mdInline(s) {
 // handlers can access the node's per-feature data without extra arguments.
 let diceRenderList = null;
 let markovRenderList = null;
-let rolltableRenderList = null;
 let mathRenderList = null;
 let varRenderList    = null;
 let seqRenderList    = null;
@@ -2138,7 +2122,6 @@ function stripMd(text) {
     .replace(/\[\^[^\]]+\]/g,'')
     .replace(/\[\[dice:[a-z0-9]+\]\]/gi,'🎲')
     .replace(/\[\[markov:[a-z0-9]+\]\]/gi,'⛓')
-    .replace(/\[\[rolltable:[a-z0-9]+\]\]/gi,'🎯')
     .replace(/\[\[math:[a-z0-9]+\]\]/gi,'🖩')
     .replace(/\[\[var:[a-z0-9]+\]\]/gi,'$')
     .replace(/\[\[grammar:[a-z0-9]+\]\]/gi,'❖')
@@ -2540,7 +2523,6 @@ function toOpml(r) {
       n.footnotes?.length ? `_footnotes="${ex(JSON.stringify(n.footnotes))}"` : '',
       n.dice?.length ? `_dice="${ex(JSON.stringify(n.dice))}"` : '',
       n.markov?.length ? `_markov="${ex(JSON.stringify(n.markov))}"` : '',
-      n.rolltable?.length ? `_rolltable="${ex(JSON.stringify(n.rolltable))}"` : '',
       n.math?.length     ? `_math="${ex(JSON.stringify(n.math))}"` : '',
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
@@ -2594,6 +2576,8 @@ function fromOpml(xml) {
       footnotes: (() => { try { return JSON.parse(el.getAttribute('_footnotes') || '[]'); } catch(_) { return []; } })(),
       dice: (() => { try { return JSON.parse(el.getAttribute('_dice') || '[]'); } catch(_) { return []; } })(),
       markov: (() => { try { return JSON.parse(el.getAttribute('_markov') || '[]'); } catch(_) { return []; } })(),
+      // legacy roll tables: still read (migrateRolltables folds them into grammar
+      // records on load — see migrateNodePrefixes), never written back
       rolltable: (() => { try { return JSON.parse(el.getAttribute('_rolltable') || '[]'); } catch(_) { return []; } })(),
       math:      (() => { try { return JSON.parse(el.getAttribute('_math')      || '[]'); } catch(_) { return []; } })(),
       vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
@@ -2691,7 +2675,7 @@ const INSERT_CMDS = [
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
-  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'Pick a weighted entry; click to re-roll.',  ex:'1 sword · 2 shield',  section:'Random' },
+  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table — one grammar rule; click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
@@ -3191,14 +3175,13 @@ function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${i
 function mtInline(node, raw) {
   diceRenderList    = node.dice    || null;
   markovRenderList  = node.markov  || null;
-  rolltableRenderList = node.rolltable || null;
   mathRenderList    = node.math    || null;
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
   globalVarMap      = collectVars();
   const html = mdInline(raw || '');
-  diceRenderList = markovRenderList = rolltableRenderList = mathRenderList = varRenderList = grammarRenderList = seqRenderList = null;
+  diceRenderList = markovRenderList = mathRenderList = varRenderList = grammarRenderList = seqRenderList = null;
   return html;
 }
 // Select a cell's whole contents (type-to-overwrite) and remember the cell so the
@@ -3287,8 +3270,6 @@ function handleCellPill(node, pill, target) {
     if (target.closest('.dice-edit')) editDice(node, key); else rerollDice(node, key);
   } else if (pill.classList.contains('mk-roll') && !pill.classList.contains('mk-bad')) {
     if (target.closest('.mk-edit')) editMarkov(node, key); else rerollMarkov(node, key);
-  } else if (pill.classList.contains('rt-roll') && !pill.classList.contains('rt-bad')) {
-    if (target.closest('.rt-edit')) editRolltable(node, key); else rerollRolltable(node, key);
   } else if (pill.classList.contains('gr-roll') && !pill.classList.contains('gr-bad')) {
     if (target.closest('.gr-edit')) editGrammar(node, key); else rerollGrammar(node, key);
   } else if (pill.classList.contains('math-roll') && !pill.classList.contains('math-bad')) {
@@ -4248,8 +4229,8 @@ function renderRow(r) {
   // range select) are left untouched so multi-select still works.
   if (!opts.searchCtx && !isDivider && !isTable) {
     const INTERACTIVE = '.node-content,.bullet,.collapse-btn,'
-      + '.md-task-check,.node-link,.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,'
-      + '.var-pill,.dice-edit,.mk-edit,.rt-edit,.gr-edit,.math-edit,.var-edit,'
+      + '.md-task-check,.node-link,.dice-roll,.mk-roll,.gr-roll,.math-roll,'
+      + '.var-pill,.dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,'
       + '.hashtag,.fn-ref,.md-table-host,.todo-state';
     row.addEventListener('mousedown', e => {
       if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -4381,7 +4362,7 @@ function attachContentEvents(content, node) {
     content.addEventListener('mousedown', e => {
       if (content.dataset.editing) return;
       // artifact pills inside rendered cells stay live (reroll in place / open editor)
-      const pill = e.target.closest?.('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill');
+      const pill = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill');
       if (pill && e.target.closest('.mt-cell')) {
         e.preventDefault(); e.stopPropagation();
         mtPointerFocus = false; // focus was prevented — don't leave the flag armed
@@ -4483,20 +4464,6 @@ function attachContentEvents(content, node) {
         // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.mk-edit')) editMarkov(node, mk.dataset.key);
         else rerollMarkov(node, mk.dataset.key);
-      }
-      return;
-    }
-    // roll table pill: pencil opens the editor, body re-rolls
-    const rt = e.target.closest?.('.rt-roll');
-    if (rt && !rt.classList.contains('rt-bad')) {
-      e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) {
-        if (e.target.closest('.rt-edit')) { exitEdit(content, node); editRolltable(node, rt.dataset.key); }
-        else { const off = getCaretOffset(content); rerollRolltable(node, rt.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
-      } else {
-        // display mode: the pill is a live widget — act in place, stay rendered
-        if (e.target.closest('.rt-edit')) editRolltable(node, rt.dataset.key);
-        else rerollRolltable(node, rt.dataset.key);
       }
       return;
     }
@@ -4746,7 +4713,7 @@ function anchorEditInlines(html) {
 // form render as contenteditable=false pill spans (edited via the pencil/dialog);
 // inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|rolltable|math|var|grammar|seq):([a-z0-9]+)\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
   // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
   // the rule isn't currently defined in the document).
@@ -4760,7 +4727,6 @@ function editModeHTML(node) {
     let pill;
     if (type === 'dice')    pill = renderDicePill(key, node.dice?.find(d => d.key === key));
     else if (type === 'markov')    pill = renderMarkovPill(key, node.markov?.find(d => d.key === key));
-    else if (type === 'rolltable') pill = renderRolltablePill(key, node.rolltable?.find(d => d.key === key));
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
     else if (type === 'grammar')   pill = renderGrammarPill(key, node.grammar?.find(d => d.key === key));
     else if (type === 'seq')       pill = renderSeqPill(key, node.seq?.find(d => d.key === key));
@@ -4853,7 +4819,7 @@ function exitEdit(content, node) {
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
-  pruneDice(node); pruneMarkov(node); pruneRolltable(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); // drop data for deleted tokens
+  pruneDice(node); pruneMarkov(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); // drop data for deleted tokens
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
@@ -5034,7 +5000,7 @@ function onKeyDown(e, id, content) {
   // dispatches a mousedown that the content's existing pill-handler block already handles —
   // same action as a click, no duplicate logic.
   if (e.key === 'Enter' || e.key === ' ') {
-    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit');
+    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit');
     if (pencil) {
       e.preventDefault();
       pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
@@ -5043,7 +5009,7 @@ function onKeyDown(e, id, content) {
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
-    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.seq-pill');
+    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill');
     if (pillBody && e.target === pillBody) {
       e.preventDefault();
       const k = pillBody.dataset.key;
@@ -5190,7 +5156,6 @@ function deepCloneNodeNewIds(node) {
     footnotes: (node.footnotes || []).map(f => ({ ...f })),
     dice: (node.dice || []).map(d => ({ ...d, parts: (d.parts || []).map(p => ({ ...p, rolls: p.rolls ? [...p.rolls] : undefined })) })),
     markov: (node.markov || []).map(m => ({ ...m, path: [...(m.path || [])] })),
-    rolltable: (node.rolltable || []).map(r => ({ ...r })),
     math:      (node.math      || []).map(m => ({ ...m })),
     vars:      (node.vars      || []).map(v => ({ ...v })),
     grammar:   (node.grammar   || []).map(g => ({ ...g })),
@@ -6072,13 +6037,15 @@ function insertInlineArtifact(id, nodeId, content) {
       },
     });
   } else if (id === 'rolltable') {
-    openRolltableDialog({
+    // a roll table is a one-rule grammar — the table-flavored grammar dialog
+    openGrammarDialog({
       title: 'New roll table',
       submitLabel: 'Roll',
+      tableFlavor: true,
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
-        (n.rolltable ||= []).push(roll);
-        applyInlineInsertion(nodeId, offset, `[[rolltable:${roll.key}]]`);
+        (n.grammar ||= []).push(roll);
+        applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
       },
     });
   } else if (id === 'grammar') {
@@ -6215,10 +6182,12 @@ function insertCellArtifact(id, node, r, c, offset) {
       onResult: roll => { (node.markov ||= []).push(roll); splice(`[[markov:${roll.key}]]`); },
     });
   } else if (id === 'rolltable') {
-    openRolltableDialog({
+    // a roll table is a one-rule grammar — the table-flavored grammar dialog
+    openGrammarDialog({
       title: 'New roll table',
       submitLabel: 'Roll',
-      onResult: roll => { (node.rolltable ||= []).push(roll); splice(`[[rolltable:${roll.key}]]`); },
+      tableFlavor: true,
+      onResult: roll => { (node.grammar ||= []).push(roll); splice(`[[grammar:${roll.key}]]`); },
     });
   } else if (id === 'grammar') {
     openGrammarDialog({
@@ -6427,34 +6396,6 @@ const MARKOV_CHIPS = [
   { label:'+ target', insert: el => { caretEnd(el); insertAndSelect(el, ', ', 'Target', ' 1'); } },
 ];
 
-// Roll-table chips: + entry inserts a new line with a placeholder, then weight
-// chips append / bump a trailing weight number on the current last line.
-function rtAddWeight(el, delta) {
-  let v = el.value;
-  const lastNl = v.lastIndexOf('\n');
-  const lastLine = lastNl === -1 ? v : v.slice(lastNl + 1);
-  const wm = lastLine.match(/\s+(\d+)\s*$/);
-  if (wm) {
-    const cur = parseInt(wm[1], 10);
-    const nw = Math.max(1, cur + delta);
-    const pre = v.slice(0, v.length - wm[0].length);
-    el.value = pre + ' ' + nw;
-  } else {
-    // add a weight; strip trailing whitespace from the line first
-    const trimmed = v.replace(/[ \t]+$/, '');
-    el.value = trimmed + ' ' + Math.max(1, 1 + delta);
-  }
-  caretEnd(el);
-}
-const ROLLTABLE_CHIPS = [
-  { label:'+ entry', insert: el => {
-      const nl = el.value && !el.value.endsWith('\n') ? '\n' : '';
-      caretEnd(el);
-      insertAndSelect(el, nl, 'Entry text', '');
-    } },
-  { label:'+weight', insert: el => rtAddWeight(el, 1) },
-  { label:'−weight', insert: el => rtAddWeight(el, -1) },
-];
 
 function openInsertDialog(opts) {
   ioCard.innerHTML = '';
@@ -6637,13 +6578,14 @@ function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = ''
   });
 }
 
-// ─── roll tables ─────────────────────────────────────────────────────────────
-// A node carries a `rolltable` array of {key, def, result}; the text holds
-// [[rolltable:KEY]] tokens resolved against rolltableRenderList during render.
-// Definition format: one entry per line, optional trailing integer weight:
-//   Critical hit
-//   Miss         2
-//   Near miss    3
+// ─── roll tables (legacy → grammar migration) ────────────────────────────────
+// Roll tables collapsed into the grammar engine (June 2026): a named table IS a
+// one-rule grammar (`loot: sword | shield 2`), which collectRules was already
+// treating it as. The separate [[rolltable:KEY]] artifact, sidecar, and dialog
+// are retired; legacy records migrate on load (migrateRolltables, called from
+// migrateNodePrefixes) into grammar records with the frozen result preserved —
+// a migration never re-rolls. parseRolltable survives ONLY to read the legacy
+// definition format (one entry per line, optional trailing integer weight).
 
 function parseRolltable(def) {
   const lines = (def || '').split('\n').map(l => l.trim()).filter(Boolean);
@@ -6659,88 +6601,47 @@ function parseRolltable(def) {
   return entries.length ? entries : null;
 }
 
-// Pick a weighted entry, then expand its {…} through the grammar engine so an
-// entry can roll dice ({2d6} gold), call a rule, or reference another table.
-function rollTable(entries) {
-  const total = entries.reduce((a, e) => a + e.weight, 0);
-  let r = Math.random() * total, picked = entries[entries.length - 1].text;
-  for (const e of entries) { r -= e.weight; if (r < 0) { picked = e.text; break; } }
-  return expandText(picked);
-}
-
-function rolltableKey() { return 't' + Math.random().toString(36).slice(2, 9); }
-
-function makeRolltableRoll(def, name) {
+// Convert a legacy roll-table definition to a single grammar rule line:
+// "sword\nshield 2" + name "loot" → "loot: sword | shield 2". Returns null if
+// the def doesn't parse OR the produced line doesn't round-trip through
+// parseRules to the same alternatives (an entry containing a top-level `|` or
+// unbalanced braces would silently change meaning — refuse instead). Pure.
+function rolltableDefToRules(def, name) {
   const entries = parseRolltable(def);
   if (!entries) return null;
-  const nm = (name || '').trim();
-  return { key: rolltableKey(), def, name: nm || undefined, result: rollTable(entries) };
+  const ruleName = ((name || '').trim() || 'origin').toLowerCase();
+  if (!/^[a-z_][\w]*$/.test(ruleName)) return null;
+  const rhs = entries.map(e => e.weight === 1 ? e.text : `${e.text} ${e.weight}`).join(' | ');
+  const line = `${ruleName}: ${rhs}`;
+  const parsed = parseRules(line);
+  const alts = parsed?.rules[ruleName];
+  if (!alts || alts.length !== entries.length
+      || !alts.every((a, i) => a.template === entries[i].text && a.weight === entries[i].weight)) return null;
+  return line;
 }
 
-function renderRolltablePill(key, rt) {
-  if (!rt) return `<span class="rt-roll rt-bad" data-key="${escQ(key)}" aria-label="Roll table (missing data)">🎯 ?</span>`;
-  const nameTag = rt.name ? `<span class="rt-name" title="Callable as {${escQ(rt.name)}}">${escHtml(rt.name)}</span>` : '';
-  return `<span class="rt-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${rt.name ? `{${escQ(rt.name)}} — click to re-roll` : 'Click to re-roll'}"`
-    + ` aria-label="Roll table${rt.name ? ' ' + escQ(rt.name) : ''}: ${escQ(rt.result)} — click to re-roll">`
-    + `<span class="rt-ico"><i class="fa-solid fa-table-list"></i></span>`
-    + nameTag
-    + `<span class="rt-result">${escHtml(rt.result)}</span>`
-    + `<span class="rt-edit" role="button" tabindex="-1" aria-label="Edit table" title="Edit table"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
-    + `</span>`;
-}
-
-function openRolltableDialog({ title, submitLabel, def = '', name = '', existing = null, onResult }) {
-  openInsertDialog({
-    icon: { fa:'fa-solid fa-table-list', fb:'🎯' },
-    title,
-    submitLabel: submitLabel || 'Roll',
-    fields: [
-      { key:'def', label:'Table entries (one per line, optional weight)', type:'textarea', rows:6, value:def, chips: ROLLTABLE_CHIPS,
-        placeholder:'Critical hit\nHit\nNear miss  2\n{2d6} gold   3',
-        hint:'One entry per line; append a number for its weight. Entries may use {2d6}, {= expr}, {rule}.' },
-      { key:'name', label:'Name (optional)', placeholder:'e.g. loot — lets {loot} call this table anywhere', value:name,
-        hint:'Give the table a name to call it from grammar/shorthand as {name}.' },
-    ],
-    validate: v => !!parseRolltable(v.def) && (!v.name || VAR_NAME_RE.test(v.name)),
-    onSubmit: v => {
-      const roll = makeRolltableRoll(v.def, v.name);
-      if (!roll) return;
-      if (existing) roll.key = existing;
-      onResult(roll);
-    },
-  });
-}
-
-function rerollRolltable(node, key) {
-  const rt = node?.rolltable?.find(x => x.key === key);
-  if (!rt) return;
-  const entries = parseRolltable(rt.def);
-  if (!entries) return;
-  rt.result = rollTable(entries);
-  markDirty();
-  announce(`${rt.name || 'Table'} re-rolled: ${rt.result}`);
-  const el = repaintNodeContent(node);
-  el?.querySelector(`.rt-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('rt-rolled');
-}
-
-function editRolltable(node, key) {
-  const rt = node?.rolltable?.find(x => x.key === key);
-  if (!rt) return;
-  openRolltableDialog({
-    title: 'Edit roll table',
-    submitLabel: 'Save & roll',
-    def: rt.def, name: rt.name || '', existing: key,
-    onResult: roll => {
-      Object.assign(rt, { def: roll.def, name: roll.name, result: roll.result });
-      markDirty();
-      repaintNodeContent(node);
-    },
-  });
-}
-
-function pruneRolltable(node) {
-  if (!node.rolltable?.length) return;
-  node.rolltable = node.rolltable.filter(r => node.text.includes(`[[rolltable:${r.key}]]`));
+// Per-node legacy migration (called from migrateNodePrefixes, which recurses):
+// every rolltable record becomes a grammar record (same key — the token charset
+// is shared — frozen result preserved; unnamed tables get the synthetic `origin`
+// rule + anon flag, the UXP-33 rule, so they never register doc-wide). Every
+// [[rolltable:KEY]] token is rewritten to [[grammar:KEY]]; a record that can't
+// convert is dropped, so its token renders the standard dead-record `?` pill.
+// Safe to re-run (no-op without legacy data). Pure over the node.
+function migrateRolltables(n) {
+  if (n.rolltable?.length) {
+    for (const rt of n.rolltable) {
+      const nm = (rt.name || '').trim();
+      const rules = rolltableDefToRules(rt.def, nm);
+      if (rules) {
+        const origin = (nm || 'origin').toLowerCase();
+        const rec = { key: rt.key, def: rules, origin, result: rt.result ?? '' };
+        if (!nm) rec.anon = true;
+        (n.grammar ||= []).push(rec);
+      }
+    }
+    n.text = n.text.replace(/\[\[rolltable:([a-z0-9]+)\]\]/gi, '[[grammar:$1]]');
+  }
+  delete n.rolltable;
 }
 
 // ─── generative grammar engine ───────────────────────────────────────────────
@@ -6912,9 +6813,9 @@ function rollPickSource(source, rules = collectRules(), vars = collectVars()) {
 }
 
 // Document-wide rule map: walk the whole tree and merge into one namespace
-// (later declarations win) every grammar pill's named rules AND every *named*
-// roll table (its entries become a weighted alternation rule). This is what lets
-// `{ruleName}` / `{tableName}` resolve from any grammar or shorthand anywhere.
+// (later declarations win) every grammar pill's named rules — a named roll
+// table IS a one-rule grammar since the June 2026 collapse (migrateRolltables).
+// This is what lets `{ruleName}` resolve from any grammar or shorthand anywhere.
 // Cached per markDirty() generation, like collectVars(). Cycles are caught lazily
 // at expansion time, so no eager resolution is needed here.
 let _rulesCacheVer = -1, _rulesCached = {};
@@ -6932,13 +6833,6 @@ function collectRules(rootNode) {
         if (parsed) Object.assign(merged, parsed.rules);
       }
     }
-    if (node.rolltable?.length) {
-      for (const rt of node.rolltable) {
-        if (!rt.name || !node.text.includes(`[[rolltable:${rt.key}]]`)) continue;
-        const entries = parseRolltable(rt.def);
-        if (entries) merged[rt.name.toLowerCase()] = entries.map(e => ({ template: e.text, weight: e.weight }));
-      }
-    }
     if (node.markov?.length) {
       for (const mk of node.markov) {
         if (!mk.name || !node.text.includes(`[[markov:${mk.key}]]`)) continue;
@@ -6954,8 +6848,9 @@ function collectRules(rootNode) {
 }
 
 // Document-wide callable name index: variables (with resolved values), grammar
-// rules, named roll tables, and named markov chains — grouped for the brace
-// autocomplete picker. Cached on _varsVer like collectVars/collectRules.
+// rules (named roll tables ARE one-rule grammars since the collapse), and named
+// markov chains — grouped for the brace autocomplete picker. Cached on _varsVer
+// like collectVars/collectRules.
 let _callablesCacheVer = -1, _callablesCached = [];
 function collectCallables(rootNode) {
   const useCache = rootNode === undefined;
@@ -6963,16 +6858,13 @@ function collectCallables(rootNode) {
   const vars = collectVars(rootNode);
   const varList = Object.keys(vars).sort().map(nm => ({ group: 'var', name: nm, val: vars[nm] }));
   const useRoot = useCache ? root : rootNode;
-  const ruleSet = new Set(), tableSet = new Set(), chainSet = new Set();
+  const ruleSet = new Set(), chainSet = new Set();
   function gather(node) {
     for (const g of (node.grammar || [])) {
       if (g.anon) continue;  // anonymous shorthand pill — keep its `origin` out of the callable index (UXP-33)
       if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
       const p = parseRules(g.def);
       if (p) for (const nm of Object.keys(p.rules)) ruleSet.add(nm.toLowerCase());
-    }
-    for (const rt of (node.rolltable || [])) {
-      if (rt.name && node.text.includes(`[[rolltable:${rt.key}]]`)) tableSet.add(rt.name.toLowerCase());
     }
     for (const mk of (node.markov || [])) {
       if (mk.name && node.text.includes(`[[markov:${mk.key}]]`)) chainSet.add(mk.name.toLowerCase());
@@ -6981,9 +6873,8 @@ function collectCallables(rootNode) {
   }
   if (useRoot?.children) for (const c of useRoot.children) gather(c);
   const ruleList  = [...ruleSet ].sort().map(n => ({ group: 'rule',  name: n }));
-  const tableList = [...tableSet].sort().map(n => ({ group: 'table', name: n }));
   const chainList = [...chainSet].sort().map(n => ({ group: 'chain', name: n }));
-  const result = [...varList, ...ruleList, ...tableList, ...chainList];
+  const result = [...varList, ...ruleList, ...chainList];
   if (useCache) { _callablesCacheVer = _varsVer; _callablesCached = result; }
   return result;
 }
@@ -7079,9 +6970,14 @@ function makeGrammarRoll(def, originInput) {
 
 function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to re-generate"`
-    + ` aria-label="Grammar: ${escQ(g.result)} — click to re-generate">`
+  // a non-anon record's origin is a user-declared, doc-wide callable name —
+  // show it (the named-table affordance: tells you what {name} calls)
+  const name = !g.anon && g.origin ? g.origin : '';
+  const nameTag = name ? `<span class="gr-name" title="Callable as {${escQ(name)}}">${escHtml(name)}</span>` : '';
+  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}} — click to re-generate` : 'Click to re-generate'}"`
+    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)} — click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
+    + nameTag
     + `<span class="gr-result">${escHtml(g.result)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit grammar" title="Edit grammar"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
@@ -7095,15 +6991,22 @@ const GRAMMAR_CHIPS = [
   { label:'{= }',   insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
 ];
 
-function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing = null, onResult }) {
+// `tableFlavor` is the "Roll table" door: same dialog, same grammar record —
+// only the teaching copy changes (a roll table IS a one-rule grammar; the menu
+// teaches the syntax rather than minting a second one).
+function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing = null, tableFlavor = false, onResult }) {
   openInsertDialog({
-    icon: { fa:'fa-solid fa-shuffle', fb:'❖' },
+    icon: tableFlavor ? { fa:'fa-solid fa-table-list', fb:'🎯' } : { fa:'fa-solid fa-shuffle', fb:'❖' },
     title,
     submitLabel: submitLabel || 'Generate',
     fields: [
       { key:'def', label:'Rules (one per line: name: a | b | c)', type:'textarea', rows:6, value:def, chips: GRAMMAR_CHIPS,
-        placeholder:'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
-        hint:'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math. | separates weighted alternatives.',
+        placeholder: tableFlavor
+          ? 'loot: sword | shield 2 | {2d6} gold'
+          : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
+        hint: tableFlavor
+          ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math. | separates weighted alternatives.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -7233,6 +7136,11 @@ function artifactToShorthand(type, rec) {
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
   if (type === 'var')  return (!rec.expr && rec.name) ? `{${rec.name}}` : null; // display-only only
   if (type === 'grammar') {
+    // Only ANONYMOUS shorthand pills unfold. A named (non-anon) grammar is a
+    // declaration — its rule name is doc-wide callable config richer than the
+    // text (same principle as declaring variables), and unfolding would lose
+    // the name on edit (re-promotion is anonymous). It stays an atomic pill.
+    if (!rec.anon) return null;
     const def = (rec.def || '').trim();
     if (def.includes('\n')) return null; // multi-rule grammar → stays a pill
     const m = def.match(/^([a-z_][\w]*)\s*:\s*(.+)$/i);
@@ -8325,7 +8233,7 @@ function checkBraceTrigger(content, nodeId) {
   positionCaretMenu(braceMenu, content, braceStart);
 }
 
-const BM_GROUP_LABELS = { var: 'Variables', rule: 'Rules', table: 'Tables', chain: 'Chains' };
+const BM_GROUP_LABELS = { var: 'Variables', rule: 'Rules', chain: 'Chains' };
 
 function renderBraceMenu() {
   if (!braceState) return;
@@ -8739,7 +8647,7 @@ function rerollDice(node, key) {
 }
 
 // Open the editor for an existing dice token; on submit, replace its formula
-// and re-roll (mirrors editMarkov / editRolltable).
+// and re-roll (mirrors editMarkov / editGrammar).
 function editDice(node, key) {
   const d = node?.dice?.find(x => x.key === key);
   if (!d) return;
@@ -9462,7 +9370,7 @@ async function writeH(h) {
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
 function flattenArtifacts(text, node, varMap) {
-  return (text || '').replace(/\[\[(dice|markov|rolltable|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+  return (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
     type = type.toLowerCase();
     if (type === 'grammar') {
       const g = node.grammar?.find(x => x.key === key); if (!g) return '';
@@ -9481,10 +9389,6 @@ function flattenArtifacts(text, node, varMap) {
     if (type === 'markov') {
       const mk = node.markov?.find(x => x.key === key); if (!mk) return '';
       return mk.path.join(' → ');
-    }
-    if (type === 'rolltable') {
-      const rt = node.rolltable?.find(x => x.key === key); if (!rt) return '';
-      return rt.result;
     }
     if (type === 'math') {
       const m = node.math?.find(x => x.key === key); if (!m) return '';

@@ -9,6 +9,12 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 **Status:** ☐ open · ◐ in progress · ✓ closed (move the row out on close)
 **Severity:** 🔴 breaks the unified language outright · 🟡 partial / inconsistent · 🟢 cosmetic-but-tracked
 
+> **Current state (June 2026): every numbered defect is closed.** Tiers 1–3 and the
+> correctness batch are ✓; the only open row is **UXP-20**, the *standing* syntax-sprawl
+> guard, which by design never closes — it is the gate every future feature is checked
+> against, not a defect awaiting a fix. The closed entries below are retained as the
+> record of the decisions (and the regression tripwires) they encode.
+
 Each entry: the **problem**, the **rule** it violates, and the **target** (the conformant end-state the fix must reach). Verify the named symbol with grep before acting — some controls drift (per `accessibility.md`'s "verify before you label").
 
 ---
@@ -210,9 +216,31 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
 - **Problem:** the loudest symptom of the scattered direction is the steady flood of new authoring syntaxes and grammars, each invented per-feature. The architecture *encourages* it (`CLAUDE.md`: "a new token type / expression primitive fits very well"), so the pressure is structural and continuous — this guard never fully closes.
 - **Violates:** P5 (one authoring language).
+- **Decisions recorded (owner, 2026-06-12):**
+  - **Roll tables collapsed into grammar — the first executed P5-5 subsumption.** A named
+    roll table IS a one-rule grammar; the separate artifact, sidecar, dialog, and
+    `entry weight`-per-line syntax are retired (legacy records migrate on load, frozen
+    results preserved). The `@` menu keeps the "Roll table" door — it opens the
+    table-flavored grammar dialog. The §2 inventory **shrank** by one row.
+  - **`#+TBLFM:` `@row$col` stays the one formula form for BOTH static tables and bases.**
+    The named-column `{= expr}` migration idea was rejected: it would split the formula
+    language across the two table forms (bases named, static tables positional). Echoes
+    the standing `B3` rejection below.
+  - **Markov does NOT collapse.** Directed-walk semantics (`A -> B 2` = transition from a
+    current state) are genuinely different from weighted alternation; the calling side is
+    already unified (`{chainName}` via the typed-descriptor rule). The definition syntax
+    stays.
 - **Two live examples to police now** (both in `roadmap.md`):
   - a proposed **render-only `{= expr}` / `{NdM}` second syntax** "alongside `[[type:key]]`" → **P5-3 violation** unless it *replaces* the existing path; route it through the `{…}` engine, don't add a parallel one.
   - possible **`B3`-style table references** beside `@row$col` → reject; `@row$col` is "the one true form."
+- **Forward watch list (June 2026)** — the planned roadmap/backlog features that carry P5 risk, with the conformant route decided *before* build, not during:
+  - **Cross-file links `[[docId#nodeId|label]]`** (Phase 2 step 5) — an *extension of an existing inventory row* (the node-link token grows a doc-id segment), not a new delimiter. Conformant via P5-5 (subsume, don't sibling) — but it is still an inventory-row **edit** and must be recorded in §2 + the `?` panel in the same PR (P5-4), not slipped in as a side effect.
+  - **Dates + agenda** (backlog Tier 1) — the highest sprawl risk on the list. Do **not** import Org's `<2026-06-12 Wed>` / `SCHEDULED:` notation — that's two new syntaxes. The engine already speaks dates (`date(y,m,d)`, `today`, epoch-day numbers in `evalMath`); the design question is *where a due date lives*, and the answer must come from the existing inventory (a `{…}`/math form, the status-headline row, or a declared artifact via `@`) — decided with sign-off before any agenda work starts.
+  - **Aggregations over children** (roadmap generative ideas) — the roadmap sketch says "a new token type"; the UXP-20-preferred route is an `evalMath` primitive or `resolveBrace` branch (e.g. a children-scope function) so it rides `{…}`. A new token type needs the explicit-decision path.
+  - **Progress cookies `[2/5]` / `[40%]`** (backlog) — Org's cookie notation is a new inline token. Either route it through `{…}` (an aggregation primitive renders the cookie) or take the recorded-decision path; don't copy the Org form by default.
+  - **Properties / per-node metadata** (backlog) — Logseq-style `key:: value` would be a new top-level syntax. If/when built, prefer a declared artifact (`@` + pill, like vars/sequences) over a typed sigil.
+  - **Boolean tag queries** (backlog "Tag power") — a query grammar is a new language. If built, it must reuse an existing form (e.g. `evalMath`-style operators) and live behind a front door, not a bare typed mini-language.
+  - **Oracle / decks / bags** (roadmap generative ideas) — conformant by construction *if* they register as grammar-engine callables the way markov does (`{name}` resolution via a typed descriptor in `collectRules`); flag any version that wants its own inline notation.
 - **Target / standing rule:** every new generative or computed feature plugs into the `{…}` grammar engine or extends `evalMath`; no new top-level delimiter ships without sign-off **and** the retirement of what it overlaps. The §2/P5 inventory is the closed set; growing it is an explicit, recorded decision, never a side effect of a feature. This row stays open permanently as the gate the AI checks against — it is the antidote to "new ways of doing syntax pulled out of thin air."
 
 ### UXP-21 ✓ Column header overloaded / hidden / under-sized controls (P1/P2/P3) — **RESOLVED**
@@ -325,7 +353,7 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
    outlives a blur are always folded — see UXP-30/31) which future edit-path work must preserve.
    UXP-35 (caret-restore typing race) closed via the `_highlightGen` generation counter.
 2. **Tier 1** (UXP-3…5) — the breaks-the-language defects. **All closed** (UXP-3 ✓ both parts, UXP-4 ✓, UXP-5 ✓).
-3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 7, 8, 10, 11, 12 closed.)
+3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. **All closed.**
 4. **Tier 3** (UXP-13…19) — followed `accessibility.md`'s phase order. (All closed: UXP-13…18 plus UXP-19, the dedicated tree/grid ARIA pass — Tier 3 is complete.)
 
-When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. The register is empty when the app speaks one language.
+When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. **That point has been reached:** the app speaks one language; what remains is keeping it that way (UXP-20). New defects found from here enter as new numbered rows; UXP-20 is checked against every proposal *before* it becomes a defect.

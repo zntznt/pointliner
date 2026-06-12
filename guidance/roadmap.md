@@ -94,9 +94,11 @@ Independent of the storage refactor; keeps the "balance" promise while Phase 1 i
   `evalMath` for live table calc; the reference layer is translated onto the existing math
   engine (pure, test-pinned). Formula rides in `node.text`, no new sidecar. See
   `guidance/features.md`. *(backlog: Table formulas)*
-- **TODO states + priorities** — extend the `todo` type with a state cycle
-  (TODO→NEXT→WAITING→DONE) and `[#A]/[#B]/[#C]` priorities. Mostly model + small UI.
-  *(backlog: Rich TODO states + priorities)*
+- **TODO states + priorities** — ✓ **shipped, and superseded by sequences.** Status
+  states + `[#A]` priorities landed as `#KEYWORD [#A] body` (the `#` reuses the hashtag
+  sigil), and the fixed TODO→NEXT→WAITING→DONE cycle became just the *default* **sequence** —
+  user-definable state sets declared via `@sequence`, applied via `/`. Zero new syntax.
+  See `guidance/features.md`. *(backlog: Rich TODO states + priorities)*
 
 ### Phase 1 — Multi-document foundation (the big lift; Chromium, real disk folder)
 The largest, least-test-covered phase. Restructures the core single-`root`/single-autosave
@@ -118,22 +120,22 @@ assumptions into a workspace + current-document model.
 no Phase 1 dependency). **Only step 5 (cross-file) requires the gated workspace.** This means
 same-document Zettelkasten ships first and everywhere; the multi-file network rides on Phase 1.
 
-> **Status:** steps 1–3 + a bonus mirror are **shipped** (same-document). `collectLinks` index
+> **Status:** steps 1–4 + a bonus mirror are **shipped** (same-document). `collectLinks` index
 > + backlinks panel + `[[#id|label]]` token + copy-link + keyboard-first creation are in; the
 > **mirror** (`[[#id|]]` transcludes the target's live rendered content, display-only, inline) is
-> a real partial slice of the shelved "mirror" feature. Step 4 (picker) is built but **gated off**
-> as a future opt-in overlay; step 5 (cross-file) waits on Phase 1. See `guidance/features.md`.
+> a real partial slice of the shelved "mirror" feature. Step 4 (the `[[` picker) is **live**
+> (un-gated by UXP-4; `LINK_PICKER_ENABLED` remains as a kill switch defaulting on); step 5
+> (cross-file) waits on Phase 1. See `guidance/features.md`.
 
 1. ✅ **Same-file link token** `[[#nodeId|label]]` + resolver (click → zoom to target). Links are
    plain editable text in edit mode (not atomic pills); render as a widget in display mode.
 2. ✅ **In-memory link index** — `collectLinks(rootNode)` tree-walk, cached on `_varsVer`
    (generalizes the `collectVars`/`collectRules` pattern); returns `{outgoing, backlinks, broken}`.
 3. ✅ **Backlink index + backlinks panel** for the current node.
-4. ◐ **Quick-switcher / `[[` picker** — built but gated off (`LINK_PICKER_ENABLED = false`);
-   re-enable as an opt-in guidance overlay later. **UX status:** tracked as a discoverability
-   non-conformance (`guidance/ux-remediation.md` UXP-4) — the *staging* is this roadmap's call,
-   but it must reach at least the Guided floor; "gated off with no front door" is not a
-   conformant end state. *(backlog: Node links & backlinks)*
+4. ✅ **Quick-switcher / `[[` picker** — **live** (UXP-4 resolved): typing `[[` opens the
+   picker (pure `linkCandidates` core); apply writes the live-title form `[[#id|]]`;
+   `LINK_PICKER_ENABLED` survives only as a kill switch defaulting on.
+   *(backlog: Node links & backlinks)*
 5. **Generalize to cross-file** — `[[docId#nodeId|label]]` once Phase 1 lands; the index now
    spans all docs in the folder. **(This step — and only this step — needs the gated
    workspace.)** *(backlog: Node links & backlinks)*
@@ -157,8 +159,11 @@ Phase 1's weight is broken up.
 - Confirm the two foundation defaults above (global addressing, in-memory index).
 - Phase 1 fallback UX: how gracefully does the app degrade for non-Chromium users — hide the
   workspace UI entirely, or show it disabled with an explanation?
-- Link display: how does a `[[node]]` link render (title snapshot vs live title) and behave on
-  click (zoom in current view vs open the target doc)?
+- ~~Link display: how does a `[[node]]` link render (title snapshot vs live title) and behave on
+  click (zoom in current view vs open the target doc)?~~ **Resolved for same-document:** live
+  title (`[[#id|]]`), fixed caption (`[[#id|text]]`), or full content mirror (empty label);
+  click zooms in the current view. The cross-doc half (open the target doc?) re-opens with
+  Phase 2 step 5.
 - Where do these docs live long-term — alongside `CLAUDE.md` in the repo, or separate?
 
 ---
@@ -185,14 +190,22 @@ variables — do not reintroduce it. The oracle was reverted and is listed below
 - **Inline quick syntax** `{= expr}` / `{NdM}` that evaluates at render *without* a stored
   record — an additive second syntax alongside `[[type:key]]`. (Distinct from typed `{…}`
   shorthand, which *promotes* to a stored pill; this would be the render-only variant.)
-- **Aggregations over children** (`sum`/`count`/`avg` of a subtree) — a new token type + a
-  render-time subtree walk; reuse `markDirty`/`_varsVer` invalidation. *(heavier)*
+  **⚠ UXP-20 flag:** as written this is a P5-3 violation — a second path for the same
+  capability. It ships only if it *replaces/subsumes* the promote behavior (one `{…}`
+  semantics, not two), with the inventory updated; see `ux-remediation.md` UXP-20.
+- **Aggregations over children** (`sum`/`count`/`avg` of a subtree) — a render-time subtree
+  walk; reuse `markDirty`/`_varsVer` invalidation. **⚠ UXP-20 route:** prefer an `evalMath`
+  primitive / `resolveBrace` branch (children-scope functions inside `{…}`) over the
+  "new token type" sketch — a new token needs the explicit-decision path. *(heavier)*
 - **Decks / bags** (draw without replacement) — the first feature needing **persisted
   per-instance state**; decide OPML-record (portable, ugly) vs. sidecar. Breaks the
   stateless purity. *(heavier)*
-- **Retire the legacy per-feature cores** (`parseDice`/`parseMarkov`/`parseRolltable`) now
+- **Retire the legacy per-feature cores** (`parseDice`/`parseMarkov`) now
   that composition runs through the unified grammar engine — a cleanup refactor that removes
   duplicated code, not a capability add. Defer until the duplication causes friction.
+  **Roll tables: done** (June 2026) — the artifact collapsed into grammar entirely (a named
+  table IS a one-rule grammar; legacy records migrate on load; `parseRolltable` survives
+  migration-only). The decision record is in `ux-remediation.md` UXP-20.
 - **Out of scope:** a `{query: tag=…}` / saved-views database layer. (The *links + backlinks*
   half of the old "Tier 3" is now the planned direction — see the phases above; only the
   query/DB part remains out of scope.)

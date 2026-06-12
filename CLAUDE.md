@@ -30,10 +30,11 @@ in a browser and it runs.
 
 - **`node.text` is plain text, always.** Never store HTML in it.
 - **Three edit-mode treatments for `[[…]]` tokens — pick the right one:**
-  (1) **Complex artifacts** (roll tables, markov, multi-rule grammar, *declaring* vars)
-  stay **atomic** in edit mode (`contenteditable=false`, `data-token`); caret math counts
+  (1) **Complex artifacts** (markov, multi-rule or **named** grammar — a name is doc-wide
+  callable config the text can't carry, so unfolding would lose it on edit — and *declaring*
+  vars) stay **atomic** in edit mode (`contenteditable=false`, `data-token`); caret math counts
   them as their token length. Don't make a pill's internals editable.
-  (2) **Inline-able artifacts** (dice, math, display-only vars, single-line grammar)
+  (2) **Inline-able artifacts** (dice, math, display-only vars, *anonymous* single-line grammar)
   *unfold* to plain editable `{…}` text (a `.gr-src` span, counted as ordinary characters).
   (3) **Text-reference tokens** (node **links** `[[#id|label]]`, footnote refs `[^key]`)
   are **plain editable text** in edit mode — the token carries everything, no sidecar, no
@@ -117,7 +118,7 @@ canonical shape:
   checked, collapsed,                   // checked is a derived cache (todoDoneFromText)
   children: [],                         // nested nodes
   footnotes: [],                        // [{key, text}]
-  dice: [], markov: [], rolltable: [], math: [], vars: [], grammar: []  // artifact sidecars
+  dice: [], markov: [], math: [], vars: [], grammar: []  // artifact sidecars (legacy `rolltable` migrates into `grammar` on load)
 }
 ```
 
@@ -198,11 +199,11 @@ mode:
   `\x00N\x00` placeholder so later passes (emphasis, emoji, hashtags, autolink)
   can't reach inside the pill markup. Placeholders are un-stashed at the end.
 - **Edit mode:** `editModeHTML(node)` renders two ways depending on the
-  artifact. **Complex artifacts** with no clean inline form (roll tables, markov
-  chains, multi-rule grammars, *declaring* variables) emit the *same* pill HTML
+  artifact. **Complex artifacts** with no clean inline form (markov chains,
+  multi-rule or *named* grammars, *declaring* variables) emit the *same* pill HTML
   wrapped in `<span contenteditable="false" data-token="[[type:key]]">…</span>` —
   atomic, uneditable, edited via the pencil/dialog. **Inline-able artifacts**
-  (dice, math, display-only variables, single-line grammars) are *unfolded* to
+  (dice, math, display-only variables, *anonymous* single-line grammars) are *unfolded* to
   their editable `{…}` grammar source instead (see "Unfold" below), styled with a
   `.gr-src` span so they read as grammar, not prose. Either way the user **never
   sees raw `[[…]]` syntax.**
@@ -236,7 +237,7 @@ exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
 
 `mdInline`'s pill handlers need each node's sidecar data but take no arguments.
 `renderContentHTML` sets module-level globals (`diceRenderList`,
-`markovRenderList`, `rolltableRenderList`, `mathRenderList`, `varRenderList`,
+`markovRenderList`, `mathRenderList`, `varRenderList`,
 `grammarRenderList`, `globalVarMap`) immediately before calling
 `mdToHtml`, then clears them after.
 This is safe **only because `mdToHtml` is fully synchronous** — there is no
@@ -300,7 +301,7 @@ tools.
 one-way interchange** formats for reading/sharing, not re-import. The key step is
 `flattenArtifacts(text, node, varMap)`: every `[[type:key]]` token is replaced
 with the *frozen* result it currently shows (dice → `expr = total`, markov →
-`a → b → c`, rolltable → its entry, math/var/varref → the resolved value) because
+`a → b → c`, grammar → its expansion, math/var/varref → the resolved value) because
 a flat file can't re-roll or recompute. Markdown emits a nested bullet list (2
 spaces/level, todos as `- [ ]`, ol numbered, headings bolded, tables as raw md
 blocks); plain text is tab-indented with `stripInlineMd()` removing emphasis
@@ -315,26 +316,33 @@ when proposing features:
 
 **Engine 1 — generative / random.** Two layers:
 
-- *Legacy per-feature cores* (`dice`, `markov`, `rolltable`): each is a parse step
-  (`parseDice`, `parseMarkov`, `parseRolltable`) producing a structured form, plus
-  a roll/walk step producing displayed state. These still back their own pills.
+- *Legacy per-feature cores* (`dice`, `markov`): each is a parse step
+  (`parseDice`, `parseMarkov`) producing a structured form, plus a roll/walk step
+  producing displayed state. These still back their own pills. **Roll tables are
+  no longer one of them** — collapsed into grammar (June 2026): a named table IS a
+  one-rule grammar (`loot: sword | shield 2`); the `[[rolltable:KEY]]` artifact,
+  sidecar, and dialog are retired, legacy records migrate on load
+  (`migrateRolltables`, frozen result preserved — a migration never re-rolls), and
+  `parseRolltable` survives solely to read the legacy entries-per-line format. The
+  `@` menu keeps the "Roll table" door: it opens the **table-flavored grammar
+  dialog** (same record, teaching copy oriented to tables).
 - *Unified grammar engine* (`runGrammar`, `expandTemplate`, `resolveBrace`,
   `expandRule`, `parseRules`, `expandText`) — a recursive-substitution engine
   (Tracery-style) that **is** the composition layer. One brace syntax `{...}`
   covers everything, content-sniffed inside `resolveBrace`: top-level `|` →
   weighted alternation (`{a|b 2|c}`); leading `=` → expression (`{= 2*r}`, calls
   `evalMath`); a dice pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`);
-  a bare identifier → a named rule/table (`{color}`) if one exists, else a
+  a bare identifier → a named rule (`{color}`) if one exists, else a
   document **variable's** value (`{strength}`), else a `{name?}` marker. Names are
   **document-wide**: `collectRules()` walks the tree (mirroring `collectVars`,
-  cached on `_varsVer`) and merges into one namespace both every grammar pill's
-  rules *and* every **named roll table** (its entries become a weighted
-  alternation rule), so `{rule}`/`{table}` resolve across nodes. Cycles (`a→b→a`)
+  cached on `_varsVer`) and merges every grammar pill's rules into one namespace
+  (a named roll table IS one of these — see the collapse above), so `{rule}`
+  resolves across nodes. Cycles (`a→b→a`)
   and runaway depth are caught lazily during expansion (`↻`/`…` markers) — no
   eager resolution. `expandText(str)` runs `{...}` in any plain string against the
-  doc namespace; **roll-table entries flow through it**, so an entry can roll dice
+  doc namespace, so any rule alternative can roll dice
   (`{2d6} gold`), call a rule, or reference another table. The `[[grammar:KEY]]`
-  pill freezes its expansion like dice/rolltable; click re-generates. Pure and
+  pill freezes its expansion like dice; click re-generates. Pure and
   Node-testable.
 
   > **UX note (P5):** this engine is also the *reason the UX standard can hold the
@@ -355,7 +363,8 @@ when proposing features:
   left as literal text — that's the escape hatch.
 
   Dice, roll tables, and markov chains all resolve through this one engine: a
-  table picks a weighted entry then `expandText`s it; dice is a `{NdM}` primitive;
+  roll table is literally a one-rule grammar (weighted alternation — the collapse
+  made the engine identity the storage identity too); dice is a `{NdM}` primitive;
   a **named** markov chain registers in `collectRules` as a typed descriptor
   `{kind:'markov', parsed, start, steps}` and `expandRule` branches on it — an
   array rule is alternation, a `kind:'markov'` rule runs `walkMarkov` and joins
@@ -457,7 +466,10 @@ redesign.
 
 ## Feature status
 
-Implemented: Dice (incl. success-counting pools) · Markov · Roll tables · Grammar ·
+Implemented: Dice (incl. success-counting pools) · Markov · Roll tables (one-rule
+grammars since the collapse — the `@` door opens the table-flavored grammar dialog;
+legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
+callable name; named = atomic in edit mode, anonymous unfolds) ·
 Math (incl. unit conversion + date math) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·

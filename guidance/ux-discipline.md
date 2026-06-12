@@ -161,9 +161,8 @@ The project already has the **reference pattern**: the storage-quota warning (pr
 | Artifact token | `[[type:key]]` | stored pill reference (internal — users never type it) |
 | **Grammar engine** | `{…}` → `{= expr}`, `{NdM}`, `{a\|b 2\|c}`, `{rule}`/`{table}`/`{chain}`, `{var}` | **ALL** generative / computed inline content |
 | Dice notation | `NdM[!][kh\|kl\|dl\|dh N][>=…]` | dice (inside `@dice` and `{…}`) |
-| Grammar rules | `name: a \| b 2 \| c` | named grammar rules |
+| Grammar rules | `name: a \| b 2 \| c` | named grammar rules — **a roll table IS one of these** (one rule = a weighted table; the `entry weight`-per-line roll-table syntax was **retired** by the June 2026 collapse, legacy records migrate on load) |
 | Markov | `State -> Target weight, …` | markov chains |
-| Roll table | `entry  weight` (one per line) | roll tables |
 | Table formula | `#+TBLFM:` with `@row$col` + ranges | table calc (the one true form) |
 | Status headline | `#TODO [#A] body` (any sequence keyword; `#` reuses the hashtag sigil) | task state + priority — the keyword may be any state of any **sequence** (default or user-declared); bare `TODO` without `#` is plain text |
 

@@ -18,18 +18,22 @@ Implemented:
 - **Markov chains** — `@markov`: weighted transition rules, walk N steps from a
   start state; click to re-walk. An optional **name** registers the chain so
   `{name}` runs a fresh walk from any grammar or shorthand (joined with ` → `).
-- **Roll tables** — `@rolltable`: weighted entries; click to re-roll. Entries
-  **compose through the grammar engine** (`{2d6} gold`, `{rule}`, `{= expr}`). An
-  optional **name** registers the table as a document-wide rule so `{name}` calls
-  it from any grammar or shorthand.
+- **Roll tables** — `@rolltable`: **a one-rule grammar** (the June 2026 collapse:
+  the separate artifact/sidecar/dialog retired; the `@` door opens the
+  **table-flavored grammar dialog**). `loot: sword | shield 2 | {2d6} gold` —
+  entries compose through the grammar engine, the name is callable anywhere as
+  `{name}`, click re-rolls. Legacy `[[rolltable:]]` records migrate on load
+  (`migrateRolltables`; frozen result preserved — a migration never re-rolls).
 - **Grammar** — `@grammar`: recursive-substitution generator (`runGrammar`).
   Named rules `name: a | b 2 | c`, one per line; one brace syntax `{...}` for rule
   refs `{color}`, named tables `{loot}`, named markov chains `{weather}`, variables
   `{strength}`, dice `{2d6}`, expressions `{= 2*r}`, and inline alternation `{a|b}`,
-  all nestable. Names are **document-wide** (`collectRules()` — grammar rules +
-  named tables + named chains), so any pill can call anything declared anywhere.
-  Cycles/depth caught at expansion (`↻`/`…`). Freezes its expansion like dice;
-  click to re-generate.
+  all nestable. Names are **document-wide** (`collectRules()` — grammar rules,
+  which include collapsed roll tables, + named chains), so any pill can call
+  anything declared anywhere. Cycles/depth caught at expansion (`↻`/`…`). Freezes
+  its expansion like dice; click to re-generate. **Named pills show their callable
+  name** and stay atomic in edit mode (the name is doc-wide config — unfolding
+  would lose it); anonymous shorthand pills unfold to editable `{…}`.
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
   **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,

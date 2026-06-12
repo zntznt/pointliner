@@ -417,6 +417,66 @@ test('collectRules — a NAMED grammar with an explicit origin: rule still regis
   assert.ok('origin' in c.collectRules(root), 'a deliberately-named origin rule still registers');
 });
 
+// ── roll-table → grammar collapse (June 2026) ────────────────────────────────
+// A named roll table IS a one-rule grammar. The separate artifact retired;
+// legacy records migrate on load. Pins: the def conversion (incl. the
+// round-trip refusal guard), the per-node migration (token rewrite, frozen
+// result preserved, anon for unnamed), and end-to-end {name} resolution.
+
+test('rolltableDefToRules — entries+weights convert to one weighted-alternation rule', () => {
+  assert.equal(c.rolltableDefToRules('sword\nshield 2\n{2d6} gold 3', 'loot'),
+    'loot: sword | shield 2 | {2d6} gold 3');
+  assert.equal(c.rolltableDefToRules('boo', ''), 'origin: boo');       // unnamed → synthetic origin
+  assert.equal(c.rolltableDefToRules('', 'loot'), null);               // empty def
+  assert.equal(c.rolltableDefToRules('a', '9bad'), null);              // invalid rule name
+  // round-trip refusal: an entry with a top-level | would silently change meaning
+  assert.equal(c.rolltableDefToRules('this | that\nother', 'risky'), null);
+});
+
+test('migrateRolltables — record → grammar (frozen result kept), token rewritten, sidecar dropped', () => {
+  const n = c.mkNode('pick: [[rolltable:rt1]]');
+  n.rolltable = [{ key: 'rt1', name: 'loot', def: 'sword\nshield 2', result: 'a sword' }];
+  c.migrateRolltables(n);
+  assert.equal(n.text, 'pick: [[grammar:rt1]]');
+  assert.equal(n.rolltable, undefined);
+  const g = n.grammar.find(x => x.key === 'rt1');
+  assert.equal(g.def, 'loot: sword | shield 2');
+  assert.equal(g.origin, 'loot');
+  assert.equal(g.result, 'a sword');          // a migration NEVER re-rolls
+  assert.ok(!g.anon, 'named table registers doc-wide');
+});
+
+test('migrateRolltables — unnamed table becomes an anon grammar (UXP-33 rule)', () => {
+  const n = c.mkNode('[[rolltable:rt2]]');
+  n.rolltable = [{ key: 'rt2', def: 'a\nb', result: 'a' }];
+  c.migrateRolltables(n);
+  const g = n.grammar.find(x => x.key === 'rt2');
+  assert.equal(g.anon, true);
+  assert.equal(g.def, 'origin: a | b');
+});
+
+test('migrateRolltables — unconvertible record drops (dead ? pill), token still rewritten', () => {
+  const n = c.mkNode('[[rolltable:rt3]]');
+  n.rolltable = [{ key: 'rt3', name: 'risky', def: 'this | that\nother', result: 'x' }];
+  c.migrateRolltables(n);
+  assert.equal(n.text, '[[grammar:rt3]]');
+  assert.ok(!(n.grammar || []).some(x => x.key === 'rt3'));
+});
+
+test('collapse end-to-end — a migrated named table resolves as {name} document-wide', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('[[rolltable:rt1]]');
+  n.rolltable = [{ key: 'rt1', name: 'loot', def: 'gold\nsilver', result: 'gold' }];
+  root.children.push(n);
+  c.migrateRolltables(n);
+  const rules = c.collectRules(root);
+  assert.ok('loot' in rules, 'migrated table registers as a grammar rule');
+  c.seedSequence([0.1]);
+  try {
+    assert.equal(c.runGrammar('out: {loot}!', 'out', rules, {}), 'gold!');
+  } finally { c.resetRandom(); }
+});
+
 test('collectCallables — an anonymous pill does not advertise `origin` as a callable (UXP-33)', () => {
   const root = c.mkRoot();
   const n = c.mkNode('shorthand [[grammar:a1]]');
@@ -1139,7 +1199,7 @@ test('aggKindLabel: maps each aggregate kind to its footer label', () => {
 const { mtApplyAggregate } = c;
 // Helper: minimal node object matching what mtApplyAggregate expects.
 function makeTblNode(text) {
-  return { id: 'n1', text, dice:[], markov:[], rolltable:[], math:[], vars:[], grammar:[] };
+  return { id: 'n1', text, dice:[], markov:[], math:[], vars:[], grammar:[] };
 }
 // Table with two summed columns; footer row has computed values 8 and 10.
 const TWO_SUM_TEXT =
@@ -1375,8 +1435,9 @@ const mkCallablesRoot = () => {
   const gramNode = c.mkNode('[[grammar:g1]]');
   gramNode.grammar = [{ key: 'g1', def: 'color: red | blue', origin: 'color', result: 'red' }];
   root.children.push(gramNode);
-  const rtNode = c.mkNode('[[rolltable:rt1]]');
-  rtNode.rolltable = [{ key: 'rt1', name: 'loot', def: '1 gold\n2 silver' }];
+  // a "roll table" is a one-rule grammar since the collapse — registers as a rule
+  const rtNode = c.mkNode('[[grammar:rt1]]');
+  rtNode.grammar = [{ key: 'rt1', def: 'loot: 1 gold | 2 silver', origin: 'loot', result: '1 gold' }];
   root.children.push(rtNode);
   const chainNode = c.mkNode('[[markov:mk1]]');
   chainNode.markov = [{ key: 'mk1', name: 'weather', def: 'sunny -> cloudy\ncloudy -> rainy', start: 'sunny', steps: 3 }];
@@ -1384,11 +1445,11 @@ const mkCallablesRoot = () => {
   return root;
 };
 
-test('callables: four groups present, each with expected name', () => {
+test('callables: three groups present, each with expected name (tables are rules since the rolltable collapse)', () => {
   const all = host(c.collectCallables(mkCallablesRoot()));
   assert.ok(all.some(x => x.group === 'var'   && x.name === 'strength'), 'var: strength');
   assert.ok(all.some(x => x.group === 'rule'  && x.name === 'color'),    'rule: color');
-  assert.ok(all.some(x => x.group === 'table' && x.name === 'loot'),     'table: loot');
+  assert.ok(all.some(x => x.group === 'rule'  && x.name === 'loot'),     'rule: loot (a named table IS a rule)');
   assert.ok(all.some(x => x.group === 'chain' && x.name === 'weather'),  'chain: weather');
 });
 
@@ -1398,15 +1459,15 @@ test('callables: var entry carries the resolved numeric value', () => {
   assert.equal(v.val, 18);
 });
 
-test('callables: group order is vars, rules, tables, chains', () => {
+test('callables: group order is vars, rules, chains', () => {
   const groups = [...new Set(host(c.collectCallables(mkCallablesRoot())).map(x => x.group))];
-  assert.deepEqual(groups, ['var', 'rule', 'table', 'chain']);
+  assert.deepEqual(groups, ['var', 'rule', 'chain']);
 });
 
 test('callables: a record without its token in node.text is excluded (pruned-data rule)', () => {
   const root = c.mkRoot();
   const n = c.mkNode('no token here');
-  n.rolltable = [{ key: 'rt9', name: 'ghost', def: '1 boo' }];
+  n.grammar = [{ key: 'rt9', def: 'ghost: 1 boo', origin: 'ghost', result: '1 boo' }];
   root.children.push(n);
   assert.ok(!host(c.collectCallables(root)).some(x => x.name === 'ghost'));
 });
@@ -1847,8 +1908,12 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     assert.equal(c.artifactToShorthand('math', { expr: '2*r' }), '{= 2*r}');
     assert.equal(c.artifactToShorthand('var', { name: 'str', expr: '' }), '{str}');   // display-only unfolds
     assert.equal(c.artifactToShorthand('var', { name: 'str', expr: '5' }), null);     // declaring stays atomic
-    assert.equal(c.artifactToShorthand('grammar', { def: 'color: red | blue', origin: 'color' }), '{red | blue}');
-    assert.equal(c.artifactToShorthand('grammar', { def: 'a: x\nb: y', origin: 'a' }), null); // multi-rule stays atomic
+    // only ANONYMOUS grammar shorthand unfolds — a named grammar (incl. a
+    // collapsed roll table) is a declaration: unfolding would lose the doc-wide
+    // name on edit (re-promotion is anonymous), so it stays atomic
+    assert.equal(c.artifactToShorthand('grammar', { def: 'origin: red | blue', origin: 'origin', anon: true }), '{red | blue}');
+    assert.equal(c.artifactToShorthand('grammar', { def: 'color: red | blue', origin: 'color' }), null);       // named stays atomic
+    assert.equal(c.artifactToShorthand('grammar', { def: 'a: x\nb: y', origin: 'a', anon: true }), null);      // multi-rule stays atomic
   });
 
   test('unfoldArtifacts ⇄ foldedTextForSave — untouched shorthand folds back verbatim', () => {
@@ -1903,12 +1968,13 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     assert.equal(c.foldedOffsetFor(n, 17), 27);  // end ↔ end
   });
 
-  test('foldedOffsetFor — atomic tokens (declaring var / rolltable) are identity', () => {
+  test('foldedOffsetFor — atomic tokens (declaring var / named grammar) are identity', () => {
     const n = c.mkNode('x [[var:v1]] y');
     n.vars = [{ key: 'v1', name: 'str', expr: '5' }]; // declaring → no unfold
     assert.equal(c.foldedOffsetFor(n, 14), 14);
-    const n2 = c.mkNode('x [[rolltable:r1]] y');      // not in the inline-able set at all
-    assert.equal(c.foldedOffsetFor(n2, 20), 20);
+    const n2 = c.mkNode('x [[grammar:r1]] y');        // named grammar → atomic, no unfold
+    n2.grammar = [{ key: 'r1', def: 'loot: a | b', origin: 'loot', result: 'a' }];
+    assert.equal(c.foldedOffsetFor(n2, 18), 18);
   });
 
   test('foldedOffsetFor ∘ unfoldedPrefixLen — round-trips folded boundary offsets', () => {
@@ -2115,9 +2181,11 @@ test('pill aria-labels: each renderer emits an accurate label', () => {
   assert.ok(mk.includes('aria-label="Markov chain: a → b — click to re-roll"'), mk);
   const named = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'], name: 'walk' });
   assert.ok(named.includes('aria-label="Markov chain walk: a → b'), named);
-  const rt = c.renderRolltablePill('r', { key: 'r', def: 'x', result: 'a sword', name: 'loot' });
-  assert.ok(rt.includes('aria-label="Roll table loot: a sword — click to re-roll"'), rt);
-  const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!' });
+  // a named (non-anon) grammar — incl. a collapsed roll table — speaks its callable name
+  const namedGr = c.renderGrammarPill('r', { key: 'r', def: 'loot: a sword', origin: 'loot', result: 'a sword' });
+  assert.ok(namedGr.includes('aria-label="Grammar loot: a sword — click to re-generate"'), namedGr);
+  assert.ok(namedGr.includes('Callable as {loot}'), namedGr);
+  const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!', anon: true });
   assert.ok(gr.includes('aria-label="Grammar: x! — click to re-generate"'), gr);
   const sq = c.renderSeqPill('q', { key: 'q', name: 'Flow', states: ['A', 'B', 'C'], doneFrom: 2 });
   assert.ok(sq.includes('aria-label="Sequence Flow — active: A B; done: C — click to edit"'), sq);
@@ -2195,7 +2263,7 @@ test('UXP-36: toggleVarPanel shortcut handler is present', () => {
 });
 
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
-  assert.ok(_src.includes('.dice-edit,.mk-edit,.rt-edit,.math-edit,.gr-edit,.var-edit'),
+  assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
 });
 
@@ -2220,8 +2288,6 @@ test('UXP-19: pills carry tabindex=-1 (programmatic/AT focus reach)', () => {
   assert.ok(dice.includes('tabindex="-1"'), dice);
   const mk = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'] });
   assert.ok(mk.includes('tabindex="-1"'), mk);
-  const rt = c.renderRolltablePill('r', { key: 'r', def: 'x', result: 'a sword', name: 'loot' });
-  assert.ok(rt.includes('tabindex="-1"'), rt);
   const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!' });
   assert.ok(gr.includes('tabindex="-1"'), gr);
   const sq = c.renderSeqPill('q', { key: 'q', name: 'Flow', states: ['A', 'B', 'C'], doneFrom: 2 });
@@ -2229,7 +2295,7 @@ test('UXP-19: pills carry tabindex=-1 (programmatic/AT focus reach)', () => {
 });
 
 test('UXP-19: pill-body keyboard activation (Enter/Space dispatch) is present', () => {
-  assert.ok(_src.includes('.dice-roll,.mk-roll,.rt-roll,.gr-roll,.math-roll,.var-pill,.seq-pill'),
+  assert.ok(_src.includes('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill'),
     'pill-body keyboard activation selector not found in index.html');
 });
 
