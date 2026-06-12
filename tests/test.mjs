@@ -1771,3 +1771,92 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     assert.equal(mathErrorReason('missing + beast', { beast: 'dragon' }), 'bad ref');
   });
 }
+
+// ── unfold/refold + offset translation (UXP-30 / UXP-31) ───────────────────────
+// In edit mode, inline-able [[type:key]] tokens unfold to their {…} source; the
+// token form is LONGER, so any offset captured against the edit buffer must be
+// translated before it touches the folded text. foldedOffsetFor is that inverse
+// (of unfoldedPrefixLen); foldedTextForSave is what undo entries must record.
+{
+  const diceNode = (text) => {
+    const n = c.mkNode(text);
+    n.dice = [{ key: 'k1', expr: '2d6', result: 7 }];
+    return n;
+  };
+
+  test('artifactToShorthand — inline-able forms and atomic nulls', () => {
+    assert.equal(c.artifactToShorthand('dice', { expr: '2d6' }), '{2d6}');
+    assert.equal(c.artifactToShorthand('math', { expr: '2*r' }), '{= 2*r}');
+    assert.equal(c.artifactToShorthand('var', { name: 'str', expr: '' }), '{str}');   // display-only unfolds
+    assert.equal(c.artifactToShorthand('var', { name: 'str', expr: '5' }), null);     // declaring stays atomic
+    assert.equal(c.artifactToShorthand('grammar', { def: 'color: red | blue', origin: 'color' }), '{red | blue}');
+    assert.equal(c.artifactToShorthand('grammar', { def: 'a: x\nb: y', origin: 'a' }), null); // multi-rule stays atomic
+  });
+
+  test('unfoldArtifacts ⇄ foldedTextForSave — untouched shorthand folds back verbatim', () => {
+    const n = diceNode('a [[dice:k1]] b');
+    c.unfoldArtifacts(n);
+    assert.equal(n.text, 'a {2d6} b');
+    assert.equal(c.foldedTextForSave(n), 'a [[dice:k1]] b'); // the token, frozen roll intact
+    assert.equal(n.text, 'a {2d6} b');                       // non-mutating
+    n.text = 'a {2d6} b plus prose';                         // typing elsewhere
+    assert.equal(c.foldedTextForSave(n), 'a [[dice:k1]] b plus prose');
+    c.refoldArtifacts(n);
+    assert.equal(n.text, 'a [[dice:k1]] b plus prose');
+  });
+
+  test('foldedTextForSave — an EDITED shorthand is left literal (promote owns it)', () => {
+    const n = diceNode('a [[dice:k1]] b');
+    c.unfoldArtifacts(n);
+    n.text = 'a {3d8} b'; // user rewrote the dice source
+    assert.equal(c.foldedTextForSave(n), 'a {3d8} b');
+    c.refoldArtifacts(n);
+  });
+
+  test('foldedOffsetFor — identity on token-free text', () => {
+    const n = c.mkNode('plain prose only');
+    assert.equal(c.foldedOffsetFor(n, 0), 0);
+    assert.equal(c.foldedOffsetFor(n, 7), 7);
+  });
+
+  test('foldedOffsetFor — before / after / inside an unfolded span', () => {
+    // folded 'a [[dice:k1]] b' (token at 2..13) ⇄ unfolded 'a {2d6} b' (span at 2..7)
+    const n = diceNode('a [[dice:k1]] b');
+    assert.equal(c.foldedOffsetFor(n, 0), 0);
+    assert.equal(c.foldedOffsetFor(n, 2), 2);   // just before the span
+    assert.equal(c.foldedOffsetFor(n, 7), 13);  // just after the span → just after the token
+    assert.equal(c.foldedOffsetFor(n, 4), 13);  // INSIDE the span → snaps after the token
+    assert.equal(c.foldedOffsetFor(n, 9), 15);  // end of buffer → end of folded text
+  });
+
+  test('foldedOffsetFor — the UXP-30 repro: stale offset would land inside the token', () => {
+    // unfolded buffer 'a {2d6} b ' caret at end (10); folded 'a [[dice:k1]] b ' —
+    // raw 10 falls inside [[dice:k1]] (2..13): the corruption. Translated → 16 (end).
+    const n = diceNode('a [[dice:k1]] b ');
+    assert.equal(c.foldedOffsetFor(n, 10), 16);
+  });
+
+  test('foldedOffsetFor — accumulates across multiple inline-able tokens', () => {
+    const n = c.mkNode('[[dice:a1]]+[[math:m1]] end');
+    n.dice = [{ key: 'a1', expr: '2d6' }];
+    n.math = [{ key: 'm1', expr: '2*r' }];
+    // unfolded: '{2d6}+{= 2*r} end' (17) ⇄ folded (27)
+    assert.equal(c.foldedOffsetFor(n, 6), 12);   // between the two tokens
+    assert.equal(c.foldedOffsetFor(n, 17), 27);  // end ↔ end
+  });
+
+  test('foldedOffsetFor — atomic tokens (declaring var / rolltable) are identity', () => {
+    const n = c.mkNode('x [[var:v1]] y');
+    n.vars = [{ key: 'v1', name: 'str', expr: '5' }]; // declaring → no unfold
+    assert.equal(c.foldedOffsetFor(n, 14), 14);
+    const n2 = c.mkNode('x [[rolltable:r1]] y');      // not in the inline-able set at all
+    assert.equal(c.foldedOffsetFor(n2, 20), 20);
+  });
+
+  test('foldedOffsetFor ∘ unfoldedPrefixLen — round-trips folded boundary offsets', () => {
+    const n = diceNode('a [[dice:k1]] b');
+    for (const p of [0, 1, 2, 13, 14, 15]) { // every plain-text/boundary offset
+      assert.equal(c.foldedOffsetFor(n, c.unfoldedPrefixLen(n, n.text.slice(0, p))), p);
+    }
+  });
+}

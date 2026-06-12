@@ -154,6 +154,8 @@ export function loadCores() {
     'migrateTodoText','textForDisplay',
     'collectCallables','filterBraceCandidates',
     'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason',
+    'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
+    'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
   ];

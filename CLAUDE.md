@@ -216,7 +216,13 @@ JSON/OPML. Because the edit buffer transiently holds `{…}` instead of tokens,
 `toOpml`, `toMarkdown`/`toPlainText`, undo `snapshot`) — it folds the active
 node's text just for the serialize, so a mid-edit save/refresh never persists raw
 `{…}` for an untouched artifact. `unfoldedPrefixLen` translates a folded caret
-offset into unfolded coordinates for the insert path. Typed `{…}` shorthand is no
+offset into unfolded coordinates for the insert path; `foldedOffsetFor` is its
+inverse — any offset captured against the edit buffer that outlives a blur (the
+`@` menu / selection-toolbar dialogs) must go through it before splicing into the
+refolded text, which `applyInlineReplace` does centrally (UXP-30). **The folded-
+coordinates invariant:** undo entries and `dataset.prevText` always hold folded
+text — `flushActiveTextEdit` records `foldedTextForSave(node)`, never the raw
+buffer (UXP-31). Typed `{…}` shorthand is no
 longer promoted live; it stays grammar-styled text while editing and promotes on
 exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
 

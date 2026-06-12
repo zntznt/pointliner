@@ -85,36 +85,52 @@ From the engine audit; each re-verified live against the current code (June 2026
 engine bugs, but they violate P4 the same way a missing toast does — the user's data or the
 data shown to the user is silently wrong — so they're tracked here, not in a separate list.
 
-### UXP-30 ☐ 🔴 `@`-menu insertion corrupts text when an unfolded artifact precedes the caret
-- **Problem:** `insertInlineArtifact` captures the caret offset against the **unfolded** edit
-  buffer (`getCaretOffset` while `{…}` text is live), then opens a dialog — which blurs the
+### UXP-30 ✓ 🔴 `@`-menu insertion corrupts text when an unfolded artifact precedes the caret — **RESOLVED**
+- **Problem:** `insertInlineArtifact` captured the caret offset against the **unfolded** edit
+  buffer (`getCaretOffset` while `{…}` text is live), then opened a dialog — which blurs the
   editor, firing `exitEdit` → `refoldArtifacts`, so `node.text` reverts to the **longer folded**
-  token form. The dialog's `onResult` then calls `applyInlineInsertion` with the stale unfolded
+  token form. The dialog's `onResult` then called `applyInlineInsertion` with the stale unfolded
   offset, splicing the new `[[type:key]]` at the wrong position — possibly *inside* an existing
-  token, corrupting it. (`applyInlineReplace` already knows its text is folded — it translates
-  the *post-insert* caret via `unfoldedPrefixLen` — but the *incoming* offset is never
-  translated folded-ward.)
-- **Violates:** P4 (silent data corruption).
-- **Repro:** point containing a dice pill → edit (pill unfolds to `{2d6}`) → caret after it →
-  `@` → Math → submit. The math token lands inside the refolded `[[dice:…]]`.
-- **Target:** translate the captured offset into folded coordinates before the splice (the
-  inverse of `unfoldedPrefixLen`), or capture it post-blur against the folded text.
+  token, corrupting it. Same family: the selection-toolbar link path and the `@table`
+  size-picker's newline-padding peek.
+- **Violated:** P4 (silent data corruption).
+- **Resolved (pure core `foldedOffsetFor(node, offset)`, pinned):** the exact inverse of
+  `unfoldedPrefixLen` — walks the folded text's inline-able tokens accumulating each one's
+  `{…}` length, translating an unfolded offset into folded coordinates; an offset *inside* an
+  unfolded span snaps to just after its token (a splice must never land inside a token).
+  Applied centrally in `applyInlineReplace` — the choke point all three caller families flow
+  through — at **splice time** rather than capture time, so it also absorbs
+  `promoteInlineShorthand`'s length changes (a capture-time translation against the refold
+  pairs alone could not). The contract is documented on the function: `start`/`end` are
+  unfolded (edit-buffer) coordinates, which every caller satisfies since the `@` menu and
+  selection toolbar exist only in edit mode. `applyInlineReplace` also now blurs a
+  still-editing node first (the createBaseAt hazard), making it self-sufficient. The `@table`
+  padding peek translates locally and passes the raw offset through.
 
-### UXP-31 ☐ 🔴 Mid-edit undo entries record the unfolded buffer
+### UXP-31 ✓ 🔴 Mid-edit undo entries record the unfolded buffer — **RESOLVED**
 - **Problem:** `flushActiveTextEdit` (called by `pushUndo` before any structural op, and by
-  `undo()`) records `editableText(el)` — the live **unfolded** `{…}` buffer — as a text-undo
-  entry's `next`, and resets `dataset.prevText` to it, so the *following* `exitEdit` entry mixes
+  `undo()`) recorded `editableText(el)` — the live **unfolded** `{…}` buffer — as a text-undo
+  entry's `next`, and reset `dataset.prevText` to it, so the *following* `exitEdit` entry mixed
   coordinate systems too (`prev` unfolded, `next` folded). Undoing past that boundary after
-  exiting edit restores raw unfolded `{…}` into `node.text` outside edit mode: the WeakMap
-  refold data no longer applies, so the artifact's frozen roll + key are lost — the next
-  edit/exit re-promotes it as a *fresh* pill with a new roll. (`snapshot()` and the normal
-  `exitEdit` entry are already folded via `withFoldedActive` / recording after
-  `refoldArtifacts` — only the flush path leaks.)
-- **Violates:** P4 (silent data corruption; frozen state silently re-rolled).
-- **Repro:** edit a point with a dice pill → Tab (indent = `pushUndo` → flush) → exit edit →
-  `⌘Z` twice. The point now shows literal `{2d6}` text; re-editing mints a new roll.
-- **Target:** fold the buffer when recording (`foldedTextForSave`-style translation in
-  `flushActiveTextEdit`), keeping `prevText` and the entry in folded coordinates throughout.
+  exiting edit restored raw unfolded `{…}` into `node.text` outside edit mode: the WeakMap
+  refold data no longer applies, so the artifact's frozen roll + key were lost — the next
+  edit/exit re-promoted it as a *fresh* pill with a new roll.
+- **Violated:** P4 (silent data corruption; frozen state silently re-rolled).
+- **Resolved (the invariant: undo entries and `dataset.prevText` are ALWAYS folded):**
+  - `flushActiveTextEdit` records `foldedTextForSave(node)` as the entry's `next` and the new
+    `prevText` baseline (the live `node.text` stays the unfolded buffer — the editing contract
+    is untouched). `prevText` was already folded at the other end (`enterEdit` sets it *before*
+    `unfoldArtifacts`; `exitEdit` records *after* `refoldArtifacts`), so every entry is now
+    folded↔folded.
+  - The multi-line **paste** path's baseline reset (`handlePaste`) leaked the same way — now
+    also `foldedTextForSave`.
+  - `applyEntry`'s strip-editing-state path abandoned an active session with `node.text` still
+    holding the unfolded buffer (exitEdit never runs for it — the editing flag is deleted
+    before render); it now calls `refoldArtifacts` on the abandoned node, so an undo/redo
+    landing on a *different* node can't leave raw `{…}` in the model either.
+  - New/edited shorthand in a flushed entry stays literal text (it had no frozen state at that
+    moment) — faithful, and consistent with the promote-on-exit escape-hatch semantic. Pinned:
+    `unfoldArtifacts ⇄ foldedTextForSave` round-trip, edited-shorthand passthrough.
 
 ### UXP-32 ✓ 🟡 File → Open / New serves the previous document's caches — **RESOLVED**
 - **Problem:** `newFile` and `openFile` replaced `root` and called `markClean()` — but never bumped
@@ -267,12 +283,10 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
 
 ## Closing order (recommended)
 
-1. **Correctness defects** — the silently-wrong-data set. The two 🔴 data-corruption bugs
-   **UXP-30 / UXP-31** (unfold/refold coordinate leaks) are now the highest-priority open items.
-   The 🟡 set (UXP-32 caches, UXP-33 phantom `origin`, UXP-34 stale math) shipped **first** as a
-   low-risk quick-win batch — a deliberate sequencing choice, not the recommended order; the 🔴
-   pair was deferred because it needs coordinated changes across `insertInlineArtifact` /
-   `flushActiveTextEdit` / the unfold boundary.
+1. **Correctness defects** — ✓ all closed (UXP-30…34). The engine-audit batch is done; the
+   durable residue is the **folded-coordinates invariant** (undo entries, `dataset.prevText`,
+   and any offset that outlives a blur are always folded — see UXP-30/31) which future
+   edit-path work must preserve.
 2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
 3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-8 closed.)
 4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.

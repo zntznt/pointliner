@@ -4589,7 +4589,8 @@ function handlePaste(e, node, content) {
   if (!parent) { document.execCommand('insertText', false, text); return; }
   pushUndo(); // flush the in-progress text edit + snapshot the pre-paste tree (undoable as a unit)
   node.text += parsed[0].text; content.textContent = node.text;
-  content.dataset.prevText = node.text; // keep the edit baseline in sync so blur won't re-record
+  // baseline stays in FOLDED coordinates (UXP-31) — the buffer may hold unfolded {…}
+  content.dataset.prevText = foldedTextForSave(node);
   const idx = parent.children.findIndex(c => c.id === node.id);
   const newNodes = [];
   function insDeep(item, par) {
@@ -5443,8 +5444,12 @@ function slashApply() {
       const off = Math.min(ed ? getCaretOffset(ed) : n.text.length, n.text.length);
       if (ed) ed.blur();
       const cur = nodeById(nodeId); if (!cur) return;
-      // keep the table block on its own line(s) so PR 1's static path detects it
-      const before = cur.text.slice(0, off), after = cur.text.slice(off);
+      // keep the table block on its own line(s) so PR 1's static path detects it.
+      // `off` is unfolded (captured pre-blur) but cur.text is folded now — translate
+      // for the padding peek; applyInlineInsertion does the same translation for the
+      // splice itself, so keep passing the raw unfolded `off` (UXP-30).
+      const offF = foldedOffsetFor(cur, off);
+      const before = cur.text.slice(0, offF), after = cur.text.slice(offF);
       let ins = starterTableText(rows, cols);
       if (before && !/\n$/.test(before)) ins = '\n' + ins;
       if (after && !/^\n/.test(after)) ins = ins + '\n';
@@ -5883,9 +5888,23 @@ function applyInlineInsertion(nodeId, offset, str) { applyInlineReplace(nodeId, 
 
 // Replace the text span [start,end) of a node with `str`, then drop back into
 // edit mode with the caret parked right after it so typing can continue.
+// `start`/`end` are UNFOLDED (edit-buffer) coordinates: every caller captures them
+// while the node is in edit mode (the @ menu and selection toolbar exist only there).
 function applyInlineReplace(nodeId, start, end, str) {
   const node = nodeById(nodeId);
   if (!node) return;
+  // If the node is somehow still in edit mode, leave it first: the render() below
+  // would fire its blur mid-rebuild and exitEdit would clobber node.text back to
+  // the pre-splice buffer (the same hazard the @table path guards — createBaseAt).
+  const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+  if (ed) ed.blur();
+  // By now the blur has refolded + promoted node.text back to token form, which is
+  // LONGER than the {…} the user saw — splicing at the raw captured offset could
+  // land inside a token, corrupting it (UXP-30). Translate into folded coordinates
+  // against the post-blur text + sidecars (this also absorbs promotions, which the
+  // capture-time refold pairs alone could not).
+  start = foldedOffsetFor(node, start);
+  end = foldedOffsetFor(node, end);
   const len = node.text.length;
   const a = Math.min(Math.max(Math.min(start, end), 0), len);
   const b = Math.min(Math.max(Math.max(start, end), 0), len);
@@ -6785,6 +6804,29 @@ function unfoldedPrefixLen(node, prefix) {
     last = m.index + m[0].length;
   }
   return len + (prefix.length - last);
+}
+
+// The inverse: translate an offset captured against the UNFOLDED edit buffer into
+// the equivalent offset in the node's current FOLDED text (UXP-30). Walks the
+// folded text's inline-able tokens, accumulating each one's unfolded ({…}) length;
+// an offset that falls *inside* an unfolded span snaps to just after its token —
+// a caret can sit inside editable {…} text but a splice must never land inside a
+// token. Pure; offsets are monotonic, so [start,end) ranges stay ordered.
+function foldedOffsetFor(node, offset) {
+  const RE = /\[\[(dice|math|var|grammar):([a-z0-9]+)\]\]/gi;
+  const text = node.text;
+  let u = 0, last = 0, m;
+  while ((m = RE.exec(text)) !== null) {
+    const gap = m.index - last;
+    if (offset <= u + gap) return last + (offset - u);
+    u += gap;
+    const arr = node[m[1] === 'var' ? 'vars' : m[1]];
+    const sh = artifactToShorthand(m[1], arr?.find(r => r.key === m[2]));
+    u += sh == null ? m[0].length : sh.length;
+    last = m.index + m[0].length;
+    if (offset < u) return last; // inside the unfolded span → after the token
+  }
+  return Math.min(last + (offset - u), text.length);
 }
 
 // While a node is in edit mode its text transiently holds {…} grammar source in
@@ -8633,8 +8675,15 @@ function flushActiveTextEdit() {
   if (!node) return;
   const prev = el.dataset.prevText ?? '';
   node.text = editableText(el);
-  recordTextEdit(activeContentId, prev, node.text);
-  el.dataset.prevText = node.text; // reset baseline so exitEdit won't double-record
+  // Undo entries live in FOLDED coordinates (UXP-31): the live buffer transiently
+  // holds {…} for unfolded artifacts, and recording it would let a later undo
+  // restore raw shorthand into node.text outside edit mode — the refold pairs no
+  // longer apply there, so the artifact's frozen roll + key would be lost and the
+  // next edit/exit would re-promote it as a fresh pill. prevText is folded too
+  // (enterEdit sets it before unfoldArtifacts), so entries stay folded↔folded.
+  const next = foldedTextForSave(node);
+  recordTextEdit(activeContentId, prev, next);
+  el.dataset.prevText = next; // folded baseline so exitEdit won't double-record
 }
 
 // structural ops: flush any in-progress text edit, then snapshot the whole tree
@@ -8655,6 +8704,13 @@ function applyEntry(entry, intoStack, dir) {
     if (activeContentId != null) {
       const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
       if (el) { delete el.dataset.editing; delete el.dataset.prevText; }
+      // The abandoned session's model text may still be the unfolded {…} buffer
+      // (flushActiveTextEdit syncs it from the DOM); exitEdit will never run for it
+      // now, so refold here or raw shorthand leaks into node.text — losing the
+      // frozen roll/key on the next edit/exit re-promotion (UXP-31). A no-op when
+      // the entry targets this same node: its text is overwritten just below.
+      const abandoned = nodeById(activeContentId);
+      if (abandoned) refoldArtifacts(abandoned);
       activeContentId = null;
     }
     if (node) {
