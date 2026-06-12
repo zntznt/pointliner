@@ -96,6 +96,20 @@ Implemented:
   (`focusedId` or root). Toolbar segmented control `1·2·3·All`; keyboard
   `Ctrl/Cmd+1..6` is a best-effort accelerator (browsers may claim those chords
   for tab switching, so the toolbar is the reliable path).
+- **Per-point notes** — a secondary, muted plain-text block under a point
+  (`node.note`, `_note` OPML attr). **Plain text only by design** — a note is
+  annotation, not content: no markdown, no pills, so none of the unfold/prune/
+  promotion machinery applies. Doors: the bullet menu's "Add note"/"Edit note"
+  (hover, long-press on touch, `Shift+F10` keyboard) and click-the-note to edit
+  in place (the display IS the editor — no raw/pretty split for plain text).
+  Enter = line break (a prose *field*, like a dialog textarea or table cell);
+  Esc or blur commits; clearing all text deletes the note. Notes are searched
+  (`nodeMatchesSearch`), highlighted, exported as indented continuation lines
+  (markdown + plain text), and ride snapshots/clones for free. Layout: a second
+  mirrored flex row with invisible gutter clones (collapse-btn / bullet / ol-num)
+  keeps the note aligned with the content at every viewport and touch size; the
+  live editor survives window re-renders via the `forceIncludeId` base-cell
+  pattern.
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like

@@ -266,6 +266,36 @@ test('toOpml — escapes text and encodes newlines as &#10;', () => {
   assert.ok(xml.includes('<opml version="2.0">'));
 });
 
+// ── per-point notes ──────────────────────────────────────────────────────────
+test('note — toOpml writes _note (newline-encoded) only when non-empty', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('point');
+  n.note = 'a note\nsecond line';
+  root.children.push(n);
+  root.children.push(c.mkNode('no note here'));
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_note="a note&#10;second line"'), 'note serialized with encoded newline');
+  assert.equal(xml.match(/_note=/g).length, 1, 'empty notes write no attribute');
+});
+
+test('note — markdown export emits note as indented continuation lines', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('item');
+  n.note = 'context line';
+  root.children.push(n);
+  const md = c.toMarkdown(root);
+  assert.ok(md.includes('- item\n  context line'), md);
+});
+
+test('note — plain-text export emits note indented under the item', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('item');
+  n.note = 'why this matters';
+  root.children.push(n);
+  const txt = c.toPlainText(root);
+  assert.ok(txt.includes('item\n\twhy this matters'), txt);
+});
+
 test('toOpml — encodes tabs/CRs as char refs (would otherwise collapse to spaces)', () => {
   const root = c.mkRoot();
   root.children.push(c.mkNode('a\tb\rc'));

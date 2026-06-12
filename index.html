@@ -209,6 +209,15 @@ body.base-zoom #outline{max-width:none}
 .node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
 .node-content:focus{box-shadow:0 0 0 2px var(--ring)}
 .node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
+/* ── per-point note: a second mirrored flex row (invisible gutter clones keep the
+   note aligned with the content across every media query) ── */
+.node-note-row{padding-top:0}
+.node-note-row>.collapse-btn,.node-note-row>.bullet,.node-note-row>.ol-num{visibility:hidden}
+.node-note{flex:1;min-width:0;outline:none;word-break:break-word;white-space:pre-wrap;
+  font-size:.86em;line-height:1.45;color:var(--muted);padding:0 3px 2px;border-radius:3px;cursor:text}
+.node-note[data-editing]{color:var(--fg);box-shadow:0 0 0 2px var(--ring)}
+.node-note:empty::before{content:attr(data-ph);color:var(--muted);opacity:.7;pointer-events:none}
+.node-note:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .node-content strong{font-weight:700}
 .node-content em{font-style:italic}
 .node-content u{text-decoration:underline}
@@ -2527,6 +2536,7 @@ function toOpml(r) {
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
       n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
+      n.note             ? `_note="${ex(n.note)}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
@@ -4228,7 +4238,7 @@ function renderRow(r) {
   // listed interactive elements keep their own behavior; modifier clicks (shift =
   // range select) are left untouched so multi-select still works.
   if (!opts.searchCtx && !isDivider && !isTable) {
-    const INTERACTIVE = '.node-content,.bullet,.collapse-btn,'
+    const INTERACTIVE = '.node-content,.node-note,.bullet,.collapse-btn,'
       + '.md-task-check,.node-link,.dice-roll,.mk-roll,.gr-roll,.math-roll,'
       + '.var-pill,.dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,'
       + '.hashtag,.fn-ref,.md-table-host,.todo-state';
@@ -4266,14 +4276,98 @@ function renderRow(r) {
     row.append(colBtn, bullet, content);
   }
   div.appendChild(row);
+  // per-point note: render when present, or when this point's note editor was just
+  // opened (noteEditId) so an empty editor can appear before any text exists
+  if (node.note || noteEditId === node.id) div.appendChild(buildNoteRow(node, opts));
   return div;
+}
+
+// ─── per-point notes ──────────────────────────────────────────────────────────
+// A secondary plain-text block under a point (`node.note`): muted display,
+// click-to-edit in place. Plain text only (escaped; no markdown, no pills) — a
+// note is annotation, not content; Enter = line break (it's a prose field, like
+// a dialog textarea), Esc or blur commits. Clearing all text deletes the note.
+// Persistence: `_note` OPML attribute (parse already existed; write added with
+// it). Undo: a commit is a structural snapshot (pushUndo), not a text entry.
+let noteEditId = null; // point whose (possibly empty) note editor is open
+
+function buildNoteRow(node, opts = {}) {
+  const noteRow = document.createElement('div');
+  noteRow.className = 'node-row node-note-row';
+  // invisible gutter clones — same flex slots as the main row, so the note
+  // aligns with the content at every viewport / touch size
+  const gutterCol = document.createElement('span'); gutterCol.className = 'collapse-btn';
+  const gutterBul = document.createElement('span'); gutterBul.className = 'bullet';
+  gutterBul.innerHTML = '<span class="bullet-dot"></span>'; // width must match the real bullet
+  gutterCol.setAttribute('aria-hidden', 'true'); gutterBul.setAttribute('aria-hidden', 'true');
+  noteRow.append(gutterCol, gutterBul);
+  if (node.type === 'ol') {
+    const gutterNum = document.createElement('span'); gutterNum.className = 'ol-num';
+    gutterNum.textContent = '0.'; gutterNum.setAttribute('aria-hidden', 'true');
+    noteRow.appendChild(gutterNum);
+  }
+  const noteEl = document.createElement('div');
+  noteEl.className = 'node-note';
+  noteEl.dataset.id = node.id;
+  noteEl.setAttribute('aria-label', 'Note');
+  noteEl.dataset.ph = 'Note…';
+  noteEl.textContent = node.note || '';
+  if (!opts.searchCtx) {
+    noteEl.contentEditable = 'plaintext-only';
+    if (noteEl.contentEditable !== 'plaintext-only') noteEl.contentEditable = 'true'; // non-Chromium fallback
+    noteEl.addEventListener('focus', () => {
+      noteEl.dataset.editing = '1'; noteEditId = node.id;
+      forceIncludeId = node.id; // keep this row's live DOM across window re-renders (the base-cell pattern)
+    });
+    noteEl.addEventListener('blur', () => { forceIncludeId = null; commitNote(noteEl, node); });
+    noteEl.addEventListener('keydown', e => {
+      // a prose field: Enter = line break (native), Esc = commit + focus the point
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        noteEl.blur();
+        document.querySelector(`.node-content[data-id="${node.id}"]`)?.focus();
+      }
+    });
+    noteEl.addEventListener('input', () => scheduleReconcile());
+  }
+  if (opts.highlight) highlightContent(noteEl, searchQuery);
+  noteRow.appendChild(noteEl);
+  return noteRow;
+}
+
+function commitNote(noteEl, node) {
+  delete noteEl.dataset.editing;
+  if (noteEditId === node.id) noteEditId = null;
+  const next = (noteEl.innerText || '').replace(/\n+$/, '');
+  const prev = node.note || '';
+  if (next === prev) { if (!next) render(); return; } // unchanged; drop an abandoned empty editor
+  pushUndo();
+  node.note = next;
+  markDirty();
+  render();
+}
+
+// The bullet-menu door: open (creating if absent) the note editor for a point.
+function openNoteEditor(nodeId) {
+  noteEditId = nodeId;
+  render();
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.node-note[data-id="${nodeId}"]`);
+    if (!el) return;
+    el.focus();
+    const s = window.getSelection(), rng = document.createRange();
+    rng.selectNodeContents(el); rng.collapse(false);
+    s.removeAllRanges(); s.addRange(rng);
+  });
 }
 
 // ─── search ───────────────────────────────────────────────────────────────────
 
 function nodeMatchesSearch(node) {
   if (!searchQueryLC) return false;
-  return stripMd(textForDisplay(node)).toLowerCase().includes(searchQueryLC);
+  return stripMd(textForDisplay(node)).toLowerCase().includes(searchQueryLC)
+    || (!!node.note && node.note.toLowerCase().includes(searchQueryLC));
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
@@ -5495,6 +5589,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // actions
   const actions = [
     { icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
+    { icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
+      fn: () => { hideBpop(); openNoteEditor(nodeId); } },
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
@@ -9454,6 +9550,8 @@ function toMarkdown(rootNode) {
         for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}`);
       }
     }
+    // the point's note: plain continuation lines indented under the item
+    if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}  ${l}`));
     // footnote definitions in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -9488,6 +9586,8 @@ function toPlainText(rootNode) {
       out.push(`${indent}${lines[0]}`);
       for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);
     }
+    // the point's note: continuation lines indented under the item
+    if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}\t${l}`));
     // footnote text in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);

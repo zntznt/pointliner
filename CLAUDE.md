@@ -479,6 +479,9 @@ Footnotes · Hashtags (incl. the `#` tag picker sourced from `collectTags`) ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror" and the `[[` picker) ·
 Click-anywhere-to-edit ·
+Per-point notes (`node.note` + `_note` OPML attr: a muted plain-text block under the
+point — bullet-menu door, click-to-edit in place, Esc/blur commits, clearing deletes;
+plain text only by design, searched, exported as continuation lines) ·
 Status states + priorities (`#TODO [#A] body` — the `#` prefix reuses the hashtag sigil;
 bare `TODO` without `#` is plain text; to-do-ness fully derives from the text — task marker
 or `#keyword` — see the node model above) ·
