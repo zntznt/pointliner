@@ -1049,6 +1049,51 @@ test('mtBuildAggFormula: preserves unrelated column formulas', () => {
   assert.ok(result.includes('@>$2=vcount(@2$2..@-1$2)'));
 });
 
+// ── tblfmGetAssign / tblfmSetAssign (UXP-3 Part B: the formula dialog's core) ─
+
+test('tblfmSetAssign: set on empty TBLFM', () => {
+  assert.equal(c.tblfmSetAssign('', '$3', '$1*$2'), '$3=$1*$2');
+  assert.equal(c.tblfmSetAssign(null, '@2$3', '@2$1+10'), '@2$3=@2$1+10');
+});
+
+test('tblfmSetAssign: replaces the assignment with the same lhs, keeps others', () => {
+  const existing = '$3=$1*$2 :: @>$3=vsum(@2$3..@-1$3)';
+  assert.equal(c.tblfmSetAssign(existing, '$3', '$1+$2'),
+    '@>$3=vsum(@2$3..@-1$3) :: $3=$1+$2');
+});
+
+test('tblfmSetAssign: empty expr removes the assignment ("" when none left)', () => {
+  assert.equal(c.tblfmSetAssign('$3=$1*$2', '$3', ''), '');
+  assert.equal(c.tblfmSetAssign('$3=$1*$2 :: @2$1=5', '$3', '  '), '@2$1=5');
+});
+
+test('tblfmSetAssign: exact-lhs match — "$3" never touches "@>$3"', () => {
+  const footer = '@>$3=vsum(@2$3..@-1$3)';
+  assert.equal(c.tblfmSetAssign(footer, '$3', '$1*$2'), footer + ' :: $3=$1*$2');
+});
+
+test('tblfmGetAssign: returns the expr for the exact lhs, null otherwise', () => {
+  const t = '$3=$1*$2 :: @2$1=10 :: @>$2=vsum(@2$2..@-1$2)';
+  assert.equal(c.tblfmGetAssign(t, '$3'), '$1*$2');
+  assert.equal(c.tblfmGetAssign(t, '@2$1'), '10');
+  assert.equal(c.tblfmGetAssign(t, '@>$2'), 'vsum(@2$2..@-1$2)');
+  assert.equal(c.tblfmGetAssign(t, '$1'), null);
+  assert.equal(c.tblfmGetAssign('', '$1'), null);
+});
+
+test('tblfmSetAssign round-trips through parseTblfm and computeTable', () => {
+  const model = { aligns: ['left','left','left'], rows: [['A','B','C'], ['2','3',''], ['4','5','']] };
+  const tblfm = c.tblfmSetAssign('', '$3', '$1*$2');
+  const rows = JSON.parse(JSON.stringify(c.computeTable(model, tblfm, {})));
+  assert.equal(rows[1][2], '6');
+  assert.equal(rows[2][2], '20');
+  // a cell formula overrides the column formula for just that cell (Org rule)
+  const tblfm2 = c.tblfmSetAssign(tblfm, '@3$3', '99');
+  const rows2 = JSON.parse(JSON.stringify(c.computeTable(model, tblfm2, {})));
+  assert.equal(rows2[1][2], '6');
+  assert.equal(rows2[2][2], '99');
+});
+
 test('mtHasFooter: false when empty or null', () => {
   assert.equal(mtHasFooter(''), false);
   assert.equal(mtHasFooter(null), false);

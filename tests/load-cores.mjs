@@ -146,6 +146,7 @@ export function loadCores() {
     'tableDelimCells', 'renderStaticTable', 'starterTableText', 'planBaseConvert', 'planTablePromote', 'findFirstTableRange',
     'tableBlockEnd', 'splitPastedPoints',
     'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtApplyAggregate', 'aggKindLabel',
+    'tblfmGetAssign', 'tblfmSetAssign',
     'mtModelText', 'baseFrozenMarkdown', 'baseRecipeMarkdown',
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',

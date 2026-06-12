@@ -3238,6 +3238,33 @@ function handleCellPill(node, pill, target) {
 // Build (or patch) the TBLFM formula for one column's footer aggregate. fn ∈
 // 'sum'|'avg'|'count'|'min'|'max'|'none'. Replaces any existing @>$col1= for
 // that column; preserves all other parts; returns the full updated string.
+// ── single-assignment TBLFM editing (UXP-3 Part B) ───────────────────────────
+// Both operate on the canonical lhs string ('$3' column · '@2$3' field), exact
+// match after trim — the forms parseTblfm accepts are already canonical (no
+// spaces, no negatives in targets), so string equality is the identity.
+function tblfmGetAssign(tblfm, lhs) {
+  for (const part of (tblfm || '').split('::')) {
+    const s = part.trim();
+    const eq = s.indexOf('=');
+    if (eq < 0) continue;
+    if (s.slice(0, eq).trim() === lhs) return s.slice(eq + 1).trim();
+  }
+  return null;
+}
+// Set/replace the assignment for lhs; an empty expr removes it. Returns the new
+// TBLFM string ('' when no assignments remain). Other assignments are preserved
+// in order; a replaced lhs keeps formulas' relative position stable by being
+// re-appended at the end (matching mtBuildAggFormula's remove-then-push shape).
+function tblfmSetAssign(tblfm, lhs, expr) {
+  const parts = (tblfm || '').split('::').map(s => s.trim()).filter(s => {
+    if (!s) return false;
+    const eq = s.indexOf('=');
+    return eq < 0 || s.slice(0, eq).trim() !== lhs;
+  });
+  if ((expr || '').trim()) parts.push(lhs + '=' + expr.trim());
+  return parts.join(' :: ');
+}
+
 function mtBuildAggFormula(tblfm, col1, fn) {
   const FN_MAP = { sum:'vsum', avg:'vmean', count:'vcount', min:'vmin', max:'vmax' };
   const parts = (tblfm || '').split('::').map(s => s.trim()).filter(s => {
@@ -3289,6 +3316,61 @@ function mtApplyAggregate(node, colIdx, fn) {
   markDirty();
   mtRecompute(node);
   refreshTable(node);
+}
+
+// Set (or clear, when expr is empty) one TBLFM assignment and recompute (UXP-3
+// Part B apply path). lhs is the canonical Org target ('$3' column, '@2$3' cell).
+// Footer-row management stays with Calculate — this path never adds/removes rows.
+function mtSetFormula(node, lhs, expr) {
+  const tblfm = extractTblfm(node.text);
+  const newTblfm = tblfmSetAssign(tblfm, lhs, expr);
+  const model = mtModel(node);
+  node.text = serializeTable(model) + (newTblfm ? '\n#+TBLFM: ' + newTblfm : '');
+  markDirty();
+  mtRecompute(node);
+  refreshTable(node);
+  flashHint((expr || '').trim() ? `Formula set: ${lhs} = ${expr.trim()}` : `Formula cleared (${lhs})`);
+}
+
+// The formula dialog (UXP-3 Part B): authors one column/cell formula with the
+// reference picker as chips — each column by NAME inserts its `$N`, plus the
+// relative forms — and a live computed preview of the target cell. The raw
+// `#+TBLFM:` line (markdown edit) stays the power path. disp = {r, c} model
+// coordinates of the cell whose computed value the preview shows.
+function openFormulaDialog(node, lhs, kindLabel, disp) {
+  const cur = tblfmGetAssign(extractTblfm(node.text), lhs);
+  const model = mtModel(node);
+  const colChips = model.rows[0].map((nm, i) => ({
+    label: (nm || '').trim() ? `${(nm || '').trim()} $${i + 1}` : `$${i + 1}`,
+    insert: `$${i + 1}`,
+  }));
+  const col1 = disp.c + 1;
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-calculator', fb: '=' },
+    title: `${kindLabel} formula — ${lhs}`,
+    submitLabel: cur != null ? 'Save' : 'Set formula',
+    fields: [{
+      key: 'expr',
+      label: 'Expression',
+      placeholder: 'e.g. $1*$2, vsum(@2$' + col1 + '..@-1$' + col1 + '), $2+tax',
+      value: cur || '',
+      chips: [...colChips,
+        { label: 'cell above @-1', insert: `@-1$${col1}` },
+        { label: 'row № @#', insert: '@#' },
+      ],
+      hint: 'References: $N = column N in this row · @R$C = a cell · @-1 = the row above · @2 / @> = first data / last row · vsum/vmean/vcount/vmin/vmax over a range like @2$' + col1 + '..@-1$' + col1 + '. Document variables and the full math grammar work. Leave empty to clear the formula.',
+      preview: src => {
+        src = (src || '').trim();
+        if (!src) return cur != null ? '<span class="io-preview-bad">Empty — saving clears this formula</span>' : '';
+        const probe = tblfmSetAssign(extractTblfm(node.text), lhs, src);
+        const rows = computeTable(model, probe, collectVars());
+        const val = rows[disp.r] ? rows[disp.r][disp.c] : '';
+        const bad = /^#ERR/.test(val);
+        return `<span class="${bad ? 'io-preview-bad' : ''}">${escHtml(lhs)} = ${escHtml(val)}</span>`;
+      },
+    }],
+    onSubmit: v => mtSetFormula(node, lhs, v.expr),
+  });
 }
 
 // ── column model ops (reuse the same model logic the header gestures used; now
@@ -3454,9 +3536,28 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   const curAlign = model.aligns[colIdx] || 'left';
   const { addSection, addItem } = mtMenuBuilder(panel);
 
+  // Row-section eligibility, also used by the Formula section (cell formulas
+  // target data rows only — Calculate owns the footer, headers hold names).
+  const lastDataRow = mtLastDataRow(node, model);
+  const rowOps = rowIdx != null && rowIdx >= 1 && rowIdx <= lastDataRow;
+
   addSection('Calculate');
   [['sum','Sum'],['avg','Average'],['count','Count'],['min','Min'],['max','Max'],['none','None']]
     .forEach(([fn, label]) => addItem(label, { active: fn === curAgg, onApply: () => mtApplyAggregate(node, colIdx, fn) }));
+
+  // Formula (UXP-3 Part B): the dialog front door for arbitrary #+TBLFM
+  // assignments. Opened a frame late so hideColPanel's focus-restore runs first —
+  // the dialog then captures the CELL as its return-focus target, not the
+  // about-to-vanish menu item.
+  addSection('Formula', true);
+  const colLhs = '$' + col1;
+  addItem('Column formula…', { active: tblfmGetAssign(tblfm, colLhs) != null,
+    onApply: () => requestAnimationFrame(() => openFormulaDialog(node, colLhs, 'Column', { r: 1, c: colIdx })) });
+  if (rowOps) {
+    const cellLhs = '@' + (rowIdx + 1) + '$' + col1;
+    addItem('Cell formula…', { active: tblfmGetAssign(tblfm, cellLhs) != null,
+      onApply: () => requestAnimationFrame(() => openFormulaDialog(node, cellLhs, 'Cell', { r: rowIdx, c: colIdx })) });
+  }
 
   addSection('Alignment', true);
   [['left','Left'],['center','Center'],['right','Right']]
@@ -3479,8 +3580,6 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   // Row sections — added when opened from a data cell (the Shift+F10 keyboard door),
   // so the cell's context menu covers its row too; the row handle's click menu
   // (showRowPanel) stays the pointer path. Header (r=0) and footer rows get none.
-  const lastDataRow = mtLastDataRow(node, model);
-  const rowOps = rowIdx != null && rowIdx >= 1 && rowIdx <= lastDataRow;
   if (rowOps) {
     const minRows = mtHasFooter(tblfm) ? 3 : 2;
     addSection('Insert row', true);

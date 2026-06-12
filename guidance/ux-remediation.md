@@ -19,11 +19,11 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 *Note: UXP-2 (table cell keyboard navigation) shipped conformant — `Tab`/`Shift+Tab` wrap across rows, `Tab` at the last cell adds a row, `Enter` moves down and stops at the last row, landing cells select-on-entry; §3 grammar + §9 matrix updated.*
 
-### UXP-3 ☐ Org `#+TBLFM:` formulas have no front door  *(Part A shipped — column aggregate panel)*
+### UXP-3 ✓ Org `#+TBLFM:` formulas have no front door — **RESOLVED**
 - **Problem:** table formulas are entered only by typing a raw `#+TBLFM:` line in markdown — no affordance, no menu path. Built but undiscoverable.
 - **Violates:** P2-1, P2-3.
 - **Part A (done):** column ▾ button on each column handle opens a "Calculate" panel (Sum / Average / Count / Min / Max / None). Selecting a function writes `@>$N=vKIND(@2$N..@-1$N)` in `#+TBLFM:`, auto-adds/removes the footer row, and marks computed cells read-only with a Σ prefix. Keyboard: `↑↓` navigate, `Enter`/`Space` apply, `Esc` closes. Touch: ▾ always visible.
-- **Part B (open):** a cell-reference picker that writes the `@row$col` syntax for the user (for arbitrary field formulas). The Org syntax stays as the power path.
+- **Part B (done):** a **Formula** section in the cell context menu (`Shift+F10` on a cell, or the column-header click) — **Column formula…** (`$N=`) always, **Cell formula…** (`@R$C=`) on data rows — opens the formula dialog (the standard io dialog: focus-trapped, Esc/Enter, UXP-16). The **reference picker is the chip row**: every column by *name* inserts its `$N`, plus `cell above (@-1$C)` and `row № (@#)`; the hint teaches the full reference grammar (P2-2 — the menu teaches the syntax). A **live preview** computes the target cell through the real `computeTable` on every keystroke, reason-coded `#ERR` included (P4). Saving writes the assignment through the pure `tblfmSetAssign` (exact-lhs replace/append/remove — empty expression clears the formula); `mtSetFormula` recomputes and confirms via `flashHint`. Footer-row management stays with Calculate; the raw `#+TBLFM:` line (markdown edit) stays the power path. Pinned: `tblfmGetAssign`/`tblfmSetAssign` incl. the exact-lhs rule (`$3` never touches `@>$3`) and a round-trip through `parseTblfm`/`computeTable`.
 
 ### UXP-4 ✓ `[[` link picker is gated entirely off — **RESOLVED**
 - **Problem:** `LINK_PICKER_ENABLED = false` shipped the most intuitive linking gesture with **no front door at any verbosity**.
@@ -242,6 +242,7 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 - **Problem:** a numbered point's ordinal comes from `node.type === 'ol'` + sibling position; the text carries no `1.` — the same type-as-renderer pattern UXP-24 just retired for to-dos.
 - **Violates:** P1/P2 (markdown-first node model — only `paragraph` and `base` are special types).
 - **Target:** list-ness derives from the text; the type stays a derived hint. (Auto-renumbering is the design question to solve first.)
+- **Decision (owner, 2026-06-12): markdown-lazy numbering.** The text carries a literal `N.` prefix; *any* `N.` marks list-ness, and the **display renumbers visually** regardless of the literal value — exactly how every markdown renderer treats `1. 1. 1.`. No sibling-text rewriting on insert/move/delete; the text round-trips as valid markdown. Unblocked — ready to build.
 
 ### UXP-26 ✓ `divider` is type-only and destroys its text — **RESOLVED**
 - **Problem:** typing `---` converted immediately (`checkMdBlockPrefix`) and **cleared `node.text`**; worse, `/divider` on a content-bearing point **erased its text outright** (`node.text = ''`) — real data loss, same family as UXP-23. The render depended wholly on the type flag. The audit also found the divider's **section-label feature was unreachable**: the hover reveal was gated on `node.text` being non-empty, but every creation path cleared the text — a built-but-dead capability.
@@ -252,6 +253,7 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 - **Problem:** `node.italic`/`node.underline` are per-node formatting booleans (`nc-italic`/`nc-underline` CSS) with no markdown trace — formatting state the text can't express or round-trip.
 - **Violates:** P2/P5 (formatting belongs in the one markdown language: `*…*`, etc.).
 - **Target:** retire the flags in favor of inline markdown (with an OPML migration), or document them as a sanctioned exception.
+- **Decision (owner, 2026-06-12): retire both flags; underline is dropped.** `node.italic` migrates to `*…*` markdown on load; `node.underline` is removed entirely (markdown has no underline syntax and minting one would violate P5 — the owner accepted that existing underline formatting is lost on migration). Unblocked — ready to build; the migration rides `migrateNodePrefixes`.
 
 ### UXP-28 ✓ Style bleed after an editable `.gr-src` `{name}` span — **RESOLVED** (attempt #3)
 - **Problem:** in edit mode, after a completed promotable `{name}`/`{…}` the browser merged subsequently typed text *into* the trailing `.gr-src` span, so the space and following prose rendered grammar-styled. On the **picker path** (`braceApply`) the caret landed inside the span's text node, bleeding from the first keystroke; reproduction proved a caret placed *after* the span (DIV boundary) **still bled** — Chrome extends the trailing inline element on insertion — so no caret-placement fix alone could work.
@@ -318,7 +320,7 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
    **folded-coordinates invariant** (undo entries, `dataset.prevText`, and any offset that
    outlives a blur are always folded — see UXP-30/31) which future edit-path work must preserve.
    UXP-35 (caret-restore typing race) closed via the `_highlightGen` generation counter.
-2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
+2. **Tier 1** (UXP-3…5) — the breaks-the-language defects. **All closed** (UXP-3 ✓ both parts, UXP-4 ✓, UXP-5 ✓).
 3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 7, 8, 10, 11, 12 closed.)
 4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order. (UXP-13, 14, 15, 16, 17, 18 closed; UXP-19 — the dedicated tree/grid ARIA pass — is the one open item.)
 
