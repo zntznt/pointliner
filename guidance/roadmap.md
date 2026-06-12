@@ -200,9 +200,12 @@ variables — do not reintroduce it. The oracle was reverted and is listed below
 - **Decks / bags** (draw without replacement) — the first feature needing **persisted
   per-instance state**; decide OPML-record (portable, ugly) vs. sidecar. Breaks the
   stateless purity. *(heavier)*
-- **Retire the legacy per-feature cores** (`parseDice`/`parseMarkov`/`parseRolltable`) now
+- **Retire the legacy per-feature cores** (`parseDice`/`parseMarkov`) now
   that composition runs through the unified grammar engine — a cleanup refactor that removes
   duplicated code, not a capability add. Defer until the duplication causes friction.
+  **Roll tables: done** (June 2026) — the artifact collapsed into grammar entirely (a named
+  table IS a one-rule grammar; legacy records migrate on load; `parseRolltable` survives
+  migration-only). The decision record is in `ux-remediation.md` UXP-20.
 - **Out of scope:** a `{query: tag=…}` / saved-views database layer. (The *links + backlinks*
   half of the old "Tier 3" is now the planned direction — see the phases above; only the
   query/DB part remains out of scope.)

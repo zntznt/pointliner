@@ -216,6 +216,20 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
 - **Problem:** the loudest symptom of the scattered direction is the steady flood of new authoring syntaxes and grammars, each invented per-feature. The architecture *encourages* it (`CLAUDE.md`: "a new token type / expression primitive fits very well"), so the pressure is structural and continuous — this guard never fully closes.
 - **Violates:** P5 (one authoring language).
+- **Decisions recorded (owner, 2026-06-12):**
+  - **Roll tables collapsed into grammar — the first executed P5-5 subsumption.** A named
+    roll table IS a one-rule grammar; the separate artifact, sidecar, dialog, and
+    `entry weight`-per-line syntax are retired (legacy records migrate on load, frozen
+    results preserved). The `@` menu keeps the "Roll table" door — it opens the
+    table-flavored grammar dialog. The §2 inventory **shrank** by one row.
+  - **`#+TBLFM:` `@row$col` stays the one formula form for BOTH static tables and bases.**
+    The named-column `{= expr}` migration idea was rejected: it would split the formula
+    language across the two table forms (bases named, static tables positional). Echoes
+    the standing `B3` rejection below.
+  - **Markov does NOT collapse.** Directed-walk semantics (`A -> B 2` = transition from a
+    current state) are genuinely different from weighted alternation; the calling side is
+    already unified (`{chainName}` via the typed-descriptor rule). The definition syntax
+    stays.
 - **Two live examples to police now** (both in `roadmap.md`):
   - a proposed **render-only `{= expr}` / `{NdM}` second syntax** "alongside `[[type:key]]`" → **P5-3 violation** unless it *replaces* the existing path; route it through the `{…}` engine, don't add a parallel one.
   - possible **`B3`-style table references** beside `@row$col` → reject; `@row$col` is "the one true form."
