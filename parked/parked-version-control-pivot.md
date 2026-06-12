@@ -16,7 +16,7 @@
 
 ## 1. Where this came from
 
-A frontier analysis of offline outliners (`outliner-frontier-report.md`) found seven genuinely
+A frontier analysis of offline outliners (`guidance/outliner-frontier-report.md`) found seven genuinely
 unbuilt capabilities. **F1 — tree-aware version control** (branch a subtree, structurally diff with
 moves understood as moves, three-way merge, scrub node history) was the largest prize: *nobody ships
 it.* The reason is an architectural fork — plain-file tools (org, Obsidian) can't cheaply have stable
