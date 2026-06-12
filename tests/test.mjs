@@ -2014,3 +2014,32 @@ test('diceTotalStr: success pools and Fate totals format like the pill', () => {
   assert.equal(c.diceTotalStr({ total: 2, parts: [{ kind: 'dice', sides: 'F' }] }), '+2');
   assert.equal(c.diceTotalStr({ total: -1, parts: [{ kind: 'dice', sides: 'F' }] }), '-1');
 });
+
+// ── linkCandidates (UXP-4: the [[ picker's source) ───────────────────────────
+
+test('linkCandidates: substring match on titles, excludes self and title-less points', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Alpha section');
+  const b = c.mkNode('beta notes');
+  const child = c.mkNode('alphabet child');
+  const empty = c.mkNode('');
+  a.children.push(child);
+  root.children.push(a, b, empty);
+  const plain = x => JSON.parse(JSON.stringify(x));
+  // case-insensitive substring, walked depth-first
+  assert.deepEqual(plain(c.linkCandidates('alpha', 'none', root)).map(t => t.title),
+    ['Alpha section', 'alphabet child']);
+  // the linking point itself is excluded
+  assert.deepEqual(plain(c.linkCandidates('alpha', a.id, root)).map(t => t.title),
+    ['alphabet child']);
+  // empty query lists every titled point (empty-title point skipped)
+  assert.equal(c.linkCandidates('', 'none', root).length, 3);
+});
+
+test('linkCandidates: titles come through textForDisplay (prefixes stripped)', () => {
+  const root = c.mkRoot();
+  const h = c.mkNode('# Heading title'); h.type = 'h1';
+  root.children.push(h);
+  const out = JSON.parse(JSON.stringify(c.linkCandidates('heading', 'none', root)));
+  assert.deepEqual(out.map(t => t.title), ['Heading title']);
+});

@@ -101,7 +101,7 @@ Each carries: the **law**, **normative rules**, and an **acceptance test** the A
 
 This is fully compatible with `ux.md`'s lean-first model: the *capability* must never be syntax-only at the **floor** (`ux.md`'s own rule: "a complete reference is reachable from every mode"), but the *visible affordance* MAY be a verbosity-gated overlay that Lean mode quiets. Discoverable ≠ loud; it means *a way in exists without prior knowledge*.
 
-- **P2-1 (MUST):** Every capability satisfies all three doors. A capability that is built but reachable only by syntax (or gated entirely off with no visible path at any verbosity) is **non-conformant**. *(The `[[` link picker is the canonical example: it exists but is gated off; under this standard its front door must surface at least in Guided mode — its staging belongs to `ux.md`/roadmap, but "no front door at any level" is not a conformant end state.)*
+- **P2-1 (MUST):** Every capability satisfies all three doors. A capability that is built but reachable only by syntax (or gated entirely off with no visible path at any verbosity) is **non-conformant**. *(The `[[` link picker was the canonical example — built but gated off; it is now un-gated (UXP-4). The rule stands for the next case: "no front door at any level" is never a conformant end state.)*
 - **P2-2 (MUST):** Menu items show **label + one-line description + the typed syntax** (the `/`/`@` menus already do this — it is now the standard for every menu).
 - **P2-3 (MUST):** A power feature entered only through raw markdown MUST also have an affordance. *(Org `#+TBLFM:` formulas are entered today by typing a raw line with no UI — non-conformant; a formula affordance is required, syntax retained as the power path.)*
 - **P2-4 (SHOULD):** Stateful generative state is inspectable — variables and tags get an overview surface. *(Both shipped: the variables panel + `{` picker — UXP-9; the `#` tag picker sourced from the document-wide tag index — UXP-10.)*
@@ -293,7 +293,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
 | Table columns (ops) | ✅ (one Column panel: Calculate/Alignment/Insert/Move/Delete; no hidden double-click; UXP-21) | ✅ (one sized ▾ door; grip cue for drag; full-height "+") | ✅ (panel role=menu/menuitem keyboard-operable; sized targets + aria-labels) | ✅ (refresh reflects every op) |
 | Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; reason-coded `#ERR (cycle/bad ref/non-numeric)` — UXP-8) |
-| Links (`[[ ]]`) | ✅ | ❌ (P2-1 picker gated off, no floor door) | ⚠️ | ✅ |
+| Links (`[[ ]]`) | ✅ | ✅ (`[[` picker live — UXP-4; Copy-link stays the power path) | ✅ (listbox/option + activedescendant) | ✅ (rename repaints on-screen links immediately) |
 | Footnotes / hashtags / emoji | ✅ | ✅ (`#` tag picker — UXP-10) | ⚠️ | ✅ |
 | Search | ✅ | ✅ | ⚠️ | ✅ |
 | Autosave / storage | n/a | ✅ | ✅ (`role="alert"` on the warning — UXP-18) | ✅ (reference pattern) |

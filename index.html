@@ -889,9 +889,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="mt-colpanel" role="menu" aria-label="Column options"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
-<div id="lp-menu"></div>
-<div id="brace-menu" role="menu" aria-label="Callable names"></div>
-<div id="tag-menu" role="menu" aria-label="Tags"></div>
+<div id="lp-menu" role="listbox" aria-label="Points to link"></div>
+<div id="brace-menu" role="listbox" aria-label="Callable names"></div>
+<div id="tag-menu" role="listbox" aria-label="Tags"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card"></div></div>
 <!-- drag indicator -->
@@ -4596,6 +4596,17 @@ function exitEdit(content, node) {
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
   markDirty();
+  // Live-title links and mirrors pointing here re-render NOW, not at the next
+  // full render() — an edit must not leave stale captions/transclusions on
+  // screen (UXP-4). Off-screen sources have no DOM and render fresh on scroll.
+  if (node.text !== prevText) {
+    const bl = collectLinks().backlinks[node.id];
+    if (bl) for (const srcId of bl) {
+      if (srcId === node.id) continue;
+      const src = nodeById(srcId);
+      if (src) repaintNodeContent(src);
+    }
+  }
   if (activeContentId === node.id) activeContentId = null;
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
@@ -7804,18 +7815,35 @@ function announce(msg) {
 function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashMenu.classList.remove('on'); slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
-// Opt-in guidance overlay, OFF by default. The base linking path is keyboard-first:
-// type or paste a [[#id]] token directly (LINK_RE + renderLinkPill handle it), or use
-// "Copy link to this node" (bullet menu / Ctrl-Shift-L) and paste. The auto-picker is
-// a discoverability layer on top of that — never the only way, and it must never
-// intercept normal typing. Flip this to true to surface it.
-const LINK_PICKER_ENABLED = false;
+// ON by default (UXP-4 — a built capability with no front door at any verbosity is
+// non-conformant; this flag is now a kill switch, not a gate). The picker is a
+// discoverability layer over the keyboard-first base path — type/paste a [[#id]]
+// token directly (LINK_RE + renderLinkPill), or "Copy link to this node" (bullet
+// menu / Ctrl-Shift-L) and paste — never the only way, and the trigger regex
+// excludes `#` so typing/pasting a raw token is never intercepted.
+const LINK_PICKER_ENABLED = true;
 const lpMenu = document.getElementById('lp-menu');
 let lpState = null;
 function isLpMenuOpen() { return lpMenu.classList.contains('on'); }
 lpMenu.addEventListener('mousedown', e => e.preventDefault());
 
-function hideLinkMenu() { lpMenu.classList.remove('on'); lpState = null; }
+function hideLinkMenu() { lpState?.content?.removeAttribute('aria-activedescendant'); lpMenu.classList.remove('on'); lpState = null; }
+
+// Link-target candidates: every point whose title contains the query (case-
+// insensitive), excluding the linking point itself and title-less points. Pure
+// over rootNode (tests pass an explicit tree); no-arg = the live document.
+function linkCandidates(query, excludeId, rootNode = root) {
+  const out = [];
+  function walk(n) {
+    if (n.id !== excludeId) {
+      const title = textForDisplay(n);
+      if (title && (query === '' || title.toLowerCase().includes(query))) out.push({ id: n.id, title });
+    }
+    for (const c of n.children) walk(c);
+  }
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  return out;
+}
 
 function checkLinkTrigger(content, nodeId) {
   if (isSlashMenuOpen()) { hideLinkMenu(); return; }
@@ -7825,15 +7853,7 @@ function checkLinkTrigger(content, nodeId) {
   if (!m) { hideLinkMenu(); return; }
   const query = m[1].toLowerCase();
   const triggerOffset = m.index;
-  const candidates = [];
-  function walkForLinks(n) {
-    if (n.id !== nodeId) {
-      const title = textForDisplay(n);
-      if (title && (query === '' || title.toLowerCase().includes(query))) candidates.push({ id: n.id, title });
-    }
-    for (const c of n.children) walkForLinks(c);
-  }
-  if (root?.children) for (const c of root.children) walkForLinks(c);
+  const candidates = linkCandidates(query, nodeId);
   if (!candidates.length) { hideLinkMenu(); return; }
   lpState = { nodeId, content, triggerOffset, query, activeIdx: 0, matches: candidates.slice(0, 20) };
   hideSlashMenu();
@@ -7848,10 +7868,16 @@ function renderLinkMenu() {
     const item = document.createElement('div');
     item.className = 'lp-item' + (i === lpState.activeIdx ? ' hi' : '');
     item.textContent = nd.title;
+    item.setAttribute('role', 'option');
+    item.id = 'lp-opt-' + i;
+    item.setAttribute('aria-selected', String(i === lpState.activeIdx));
     item.addEventListener('mouseenter', () => { lpState.activeIdx = i; renderLinkMenu(); });
     item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = i; lpApply(); });
     lpMenu.appendChild(item);
   });
+  // focus stays at the caret — the active option is exposed via activedescendant
+  // (the slash menu's screen-reader pattern, shared by all caret pickers)
+  lpState.content?.setAttribute('aria-activedescendant', 'lp-opt-' + lpState.activeIdx);
   lpMenu.classList.add('on');
   lpMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
@@ -7869,7 +7895,9 @@ function lpApply() {
   const chosen = matches[activeIdx];
   hideLinkMenu();
   const fullText = editableText(content);
-  const token = `[[#${chosen.id}|${chosen.title}]]`;
+  // Empty label = the target's LIVE title (the same form "Copy link" produces) —
+  // the link follows a rename instead of freezing the title as typed today.
+  const token = `[[#${chosen.id}|]]`;
   const newText = fullText.slice(0, triggerOffset) + token + fullText.slice(triggerOffset + 2 + query.length);
   const node = nodeById(nodeId); if (!node) return;
   node.text = newText;
@@ -7921,7 +7949,7 @@ function positionLinkMenu(content, offset) {
 const braceMenu = document.getElementById('brace-menu');
 let braceState = null;
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
-function hideBraceMenu() { braceMenu.classList.remove('on'); braceState = null; }
+function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceMenu.classList.remove('on'); braceState = null; }
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
 
 function checkBraceTrigger(content, nodeId) {
@@ -7965,7 +7993,9 @@ function renderBraceMenu() {
     }
     const el = document.createElement('div');
     el.className = 'bm-item' + (i === braceState.activeIdx ? ' hi' : '');
-    el.setAttribute('role', 'menuitem');
+    el.setAttribute('role', 'option');
+    el.id = 'bm-opt-' + i;
+    el.setAttribute('aria-selected', String(i === braceState.activeIdx));
     const nameEl = document.createElement('span');
     nameEl.className = 'bm-name';
     nameEl.textContent = item.name;
@@ -7981,6 +8011,8 @@ function renderBraceMenu() {
     el.addEventListener('mousedown', e => { e.preventDefault(); braceState.activeIdx = i; braceApply(); });
     braceMenu.appendChild(el);
   });
+  // focus stays at the caret — active option exposed via activedescendant (UXP-14)
+  braceState.content?.setAttribute('aria-activedescendant', 'bm-opt-' + braceState.activeIdx);
   braceMenu.classList.add('on');
   braceMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
@@ -8053,7 +8085,7 @@ function braceApply() {
 const tagMenu = document.getElementById('tag-menu');
 let tagState = null;
 function isTagMenuOpen() { return tagMenu.classList.contains('on'); }
-function hideTagMenu() { tagMenu.classList.remove('on'); tagState = null; }
+function hideTagMenu() { tagState?.content?.removeAttribute('aria-activedescendant'); tagMenu.classList.remove('on'); tagState = null; }
 tagMenu.addEventListener('mousedown', e => e.preventDefault());
 
 function checkTagTrigger(content, nodeId) {
@@ -8080,7 +8112,9 @@ function renderTagMenu() {
   tagState.matches.forEach((item, i) => {
     const el = document.createElement('div');
     el.className = 'bm-item' + (i === tagState.activeIdx ? ' hi' : '');
-    el.setAttribute('role', 'menuitem');
+    el.setAttribute('role', 'option');
+    el.id = 'tm-opt-' + i;
+    el.setAttribute('aria-selected', String(i === tagState.activeIdx));
     const nameEl = document.createElement('span');
     nameEl.className = 'bm-name';
     nameEl.textContent = '#' + item.name;
@@ -8093,6 +8127,8 @@ function renderTagMenu() {
     el.addEventListener('mousedown', e => { e.preventDefault(); tagState.activeIdx = i; tagApply(); });
     tagMenu.appendChild(el);
   });
+  // focus stays at the caret — active option exposed via activedescendant (UXP-14)
+  tagState.content?.setAttribute('aria-activedescendant', 'tm-opt-' + tagState.activeIdx);
   tagMenu.classList.add('on');
   tagMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
@@ -9914,6 +9950,7 @@ const SHORTCUTS = [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, dice, math, variable…' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
+    { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point or base column' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },

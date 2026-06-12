@@ -411,10 +411,13 @@ attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption fo
 `[[#id|text]]`, the target's **live** title for `[[#id|]]`, or — when the label is empty
 — *mirrors* the target by transcluding its rendered content (display-only, inline; see
 the re-entrancy note above). Missing target → `.node-link-broken`. Same-document only
-(cross-document waits on the multi-doc workspace). The `[[` picker is gated off
-(`LINK_PICKER_ENABLED`); keyboard-first creation is "Copy link" → `[[#id|]]` + paste.
-**(UX: a built-but-fully-gated feature with no front door at any verbosity is a P2
-non-conformance — tracked as UXP-4 in `guidance/ux-remediation.md`.)**
+(cross-document waits on the multi-doc workspace). Creation paths: typing `[[`
+opens the **link picker** (`LINK_PICKER_ENABLED`, now a kill switch defaulting on —
+UXP-4; candidates via the pure `linkCandidates`, applied as the live-title form
+`[[#id|]]`; the trigger regex excludes `#` so a raw token is never intercepted), or
+"Copy link" → `[[#id|]]` + paste (the keyboard-first power path). Because live
+titles are render-time values, `exitEdit` repaints on-screen backlink sources when
+a node's text changes, so a rename never leaves stale captions/mirrors visible.
 
 ---
 
@@ -457,7 +460,7 @@ Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodie
 `classifyBraceBody` keeps edit-mode styling and exit promotion in agreement) ·
 Footnotes · Hashtags (incl. the `#` tag picker sourced from `collectTags`) ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
-Node links (same-doc, incl. live-title "mirror") ·
+Node links (same-doc, incl. live-title "mirror" and the `[[` picker) ·
 Click-anywhere-to-edit ·
 Status states + priorities (`#TODO [#A] body` — the `#` prefix reuses the hashtag sigil;
 bare `TODO` without `#` is plain text; to-do-ness fully derives from the text — task marker

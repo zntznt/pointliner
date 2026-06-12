@@ -139,7 +139,7 @@ export function loadCores() {
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'parseMarkov', 'walkMarkov', 'weightedPick',
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace',
-    'collectVars', 'collectRules', 'collectLinks',
+    'collectVars', 'collectRules', 'collectLinks', 'linkCandidates',
     'mkRoot', 'mkNode', 'toOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
