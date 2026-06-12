@@ -419,6 +419,8 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .math-roll.math-bad{color:var(--del);border-style:dashed;cursor:default}
 .math-roll.math-bad:hover{box-shadow:none;border-color:var(--bdr)}
+.math-roll.math-err{border-color:var(--bad);border-style:dashed}
+.math-roll.math-err .math-result{color:var(--bad);font-weight:600}
 @keyframes math-pop{0%{opacity:.35;transform:scale(.88)}60%{transform:scale(1.05)}100%{opacity:1;transform:scale(1)}}
 .math-roll.math-edited .math-result{display:inline-block;animation:math-pop .25s cubic-bezier(.2,.8,.3,1)}
 /* variable pill */
@@ -2225,8 +2227,39 @@ function parseTblfm(str, dims) {
   return out;
 }
 
+// Bare-word evalMath atoms that are NOT document-variable references (they need no
+// declaration). Used by mathErrorReason to avoid flagging them as bad refs.
+const MATH_CONST_NAMES = new Set(['pi', 'e', 'tau', 'inf', 'infinity', 'today']);
+
+// Classify *why* evalMath(expr, vars) returned null / non-finite, for the
+// `#ERR (reason)` surface (UXP-8 table cells, UXP-34 math pills). Pure: inspects the
+// value-position identifiers in `expr` against the resolved `vars` map and the set of
+// cyclic names. Mirrors evalMath's own rule — an identifier directly followed by `(`
+// is a function call, not a variable — so function names need no enumeration.
+//   'cycle'       — an identifier names a variable caught in a reference cycle
+//   'non-numeric' — an identifier names a variable whose value is a string (e.g. a pick)
+//   'bad ref'     — an identifier names nothing resolvable (deleted / never declared)
+//   ''            — no offending identifier; a generic malformed expression
+function mathErrorReason(expr, vars = {}, cycles = new Set()) {
+  const s = String(expr || '');
+  const re = /[A-Za-z_]\w*/g;
+  let m, sawNonNumeric = false, sawBadRef = false;
+  while ((m = re.exec(s)) !== null) {
+    if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;  // followed by '(' → function call, not a var
+    const id = m[0].toLowerCase();
+    if (MATH_CONST_NAMES.has(id)) continue;
+    if (cycles.has(id)) return 'cycle';                  // cycle is the most specific reason
+    if (id in vars) { if (typeof vars[id] === 'string') sawNonNumeric = true; }
+    else sawBadRef = true;
+  }
+  if (sawBadRef) return 'bad ref';
+  if (sawNonNumeric) return 'non-numeric';
+  return '';
+}
+
 // Apply TBLFM formulas to a table model, returning a new rows grid with every
-// formula target replaced by its computed display value ('#ERR' on cycle/invalid).
+// formula target replaced by its computed display value ('#ERR (reason)' on
+// cycle / bad ref / non-numeric / invalid).
 function computeTable(model, tblfm, vars = {}) {
   const rows = (model.rows || []).map(r => r.slice());
   const nrows = rows.length, ncols = rows[0] ? rows[0].length : 0;
@@ -2320,8 +2353,11 @@ function computeTable(model, tblfm, vars = {}) {
     let disp;
     try {
       const v = valueAt(r, c);
-      disp = (v === null || !isFinite(v)) ? '#ERR' : formatMathResult(v);
-    } catch (_) { disp = '#ERR'; }
+      if (v === null || !isFinite(v)) {
+        const reason = mathErrorReason(fmap.get(key), vars);
+        disp = reason ? `#ERR (${reason})` : '#ERR';
+      } else disp = formatMathResult(v);
+    } catch (e) { disp = (e && e.message === 'CYCLE') ? '#ERR (cycle)' : '#ERR'; }
     if (out[r]) out[r][c] = disp;
   }
   return out;
@@ -4711,8 +4747,10 @@ function onKeyDown(e, id, content) {
   }
   else if (e.key==='ArrowUp'   && e.altKey)  { e.preventDefault(); moveNode(id,-1); }
   else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
-  else if (e.key==='ArrowUp'   && ctrl) { e.preventDefault(); setCollapsed(id,true); }
-  else if (e.key==='ArrowDown' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
+  // Collapse/expand on Ctrl/⌘+. / , (UXP-5) — frees Ctrl+Arrow for the native
+  // caret-to-document-edge, which the old binding clobbered.
+  else if (e.key==='.' && ctrl) { e.preventDefault(); setCollapsed(id,true); }
+  else if (e.key===',' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
   else if (e.key==='ArrowUp'   && !e.altKey && !ctrl && !e.shiftKey) {
     if (isAtFirstLine(content)) { e.preventDefault(); navigateToPrev(id); }
   }
@@ -6454,6 +6492,7 @@ function collectRules(rootNode) {
   function gather(node) {
     if (node.grammar?.length) {
       for (const g of node.grammar) {
+        if (g.anon) continue;  // anonymous shorthand pill — its synthetic `origin` is not document-wide (UXP-33)
         if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
         const parsed = parseRules(g.def);
         if (parsed) Object.assign(merged, parsed.rules);
@@ -6493,6 +6532,7 @@ function collectCallables(rootNode) {
   const ruleSet = new Set(), tableSet = new Set(), chainSet = new Set();
   function gather(node) {
     for (const g of (node.grammar || [])) {
+      if (g.anon) continue;  // anonymous shorthand pill — keep its `origin` out of the callable index (UXP-33)
       if (!node.text.includes(`[[grammar:${g.key}]]`)) continue;
       const p = parseRules(g.def);
       if (p) for (const nm of Object.keys(p.rules)) ruleSet.add(nm.toLowerCase());
@@ -6664,10 +6704,12 @@ function promoteBraceBody(node, body) {
     const roll = makeDiceRoll(body);
     if (roll) { (node.dice ||= []).push(roll); return `[[dice:${roll.key}]]`; }
   }
-  // inline alternation: {a | b 2 | c} → an anonymous grammar
+  // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
+  // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
+  // never declared `origin`, so it must not become a callable `{origin}` elsewhere.
   if (splitTopLevel(body, '|').length > 1) {
     const roll = makeGrammarRoll(`origin: ${body}`, 'origin');
-    if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // bare identifier: {color} → grammar that expands a known rule/table; else
   // {strength} → a display-only variable pill if it's a defined variable. A
@@ -6676,7 +6718,7 @@ function promoteBraceBody(node, body) {
     const low = body.toLowerCase();
     if (collectRules()[low]) {
       const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
-      if (roll) { (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+      if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
     }
     if (low in collectVars()) {
       const rec = { key: varKey(), name: body, expr: '' };
@@ -7123,10 +7165,27 @@ function makeMathResult(expr) {
 
 function renderMathPill(key, m) {
   if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}">🖩 ?</span>`;
-  // Recompute with current vars so math stays live when variables change
+  // Recompute with current vars so math stays live when variables change.
   const fresh = evalMath(m.expr, globalVarMap);
-  const display = fresh !== null ? formatMathDisplay(fresh, m.expr) : m.result;
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to edit">`
+  if (fresh === null) {
+    // The live recompute failed — a referenced variable became unresolvable (deleted,
+    // cyclic, or redeclared non-numeric). Surface the failure with its reason rather
+    // than the stale last-good m.result (UXP-34); the pill stays clickable so the user
+    // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
+    const reason = mathErrorReason(m.expr, globalVarMap, _varCycles);
+    const label = reason ? `#ERR (${reason})` : '#ERR';
+    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" title="Click to edit — reference unresolved"`
+      + ` aria-label="Math ${escQ(m.expr)} — ${escQ(label)} — click to edit">`
+      + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
+      + `<span class="math-expr">${escHtml(m.expr)}</span>`
+      + `<span class="math-eq">=</span>`
+      + `<span class="math-result">${escHtml(label)}</span>`
+      + `<span class="math-edit" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `</span>`;
+  }
+  const display = formatMathDisplay(fresh, m.expr);
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" title="Click to edit"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
@@ -8514,6 +8573,13 @@ function performMultiDrop(ids, targetId, position) {
 
 // ─── dirty ────────────────────────────────────────────────────────────────────
 
+// Invalidate every _varsVer-keyed document cache (collectVars/Rules/Links/
+// Sequences/Callables, state commands). markDirty does this on every edit, but a
+// fresh document load (newFile/openFile/restore) replaces `root` without an edit —
+// so the previous document's caches would be served until the first keystroke
+// (UXP-32). Call beside every buildIndex(root, null) that swaps the tree.
+function resetDocCaches() { _varsVer++; }
+
 function markDirty() {
   dirty = true;
   _varsVer++; // invalidate collectVars() cache
@@ -8546,7 +8612,7 @@ function trimStack(stack) {
 function restoreSnapshot(snap) {
   root = JSON.parse(snap.root);
   focusedId = snap.focusedId;
-  buildIndex(root, null);
+  buildIndex(root, null); resetDocCaches();
 }
 
 // Text edits are recorded as tiny {prev,next} entries instead of full-tree
@@ -8645,7 +8711,7 @@ async function newFile() {
   document.getElementById('search-box').value = '';
   document.getElementById('search-clear').classList.remove('on');
   migrateNodePrefixes(root);
-  buildIndex(root, null);
+  buildIndex(root, null); resetDocCaches();
   markClean(); render();
 }
 
@@ -8662,7 +8728,7 @@ async function openFile() {
       fileName = file.name;
       root = fromOpml(await file.text());
       migrateNodePrefixes(root);
-      buildIndex(root, null);
+      buildIndex(root, null); resetDocCaches();
       focusedId = null; searchQuery = ''; searchQueryLC = '';
       undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
       document.getElementById('file-name').textContent = fileName;
@@ -8677,7 +8743,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
+      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); resetDocCaches(); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -9542,7 +9608,7 @@ const MOD = IS_MAC ? '⌘' : 'Ctrl';
 const SHORTCUTS = [
   { sec: 'Navigate', rows: [
     { keys: ['↑', '↓'],            desc: 'Move between points' },
-    { keys: [`${MOD}+↑`, '↓'],    desc: 'Collapse / expand point' },
+    { keys: [`${MOD}+.`, ','],    desc: 'Collapse / expand point' },
     { keys: [`${MOD}+1`, '…', '6'], desc: 'Show first N levels (or use the toolbar 1·2·3·All)' },
     { keys: [`${MOD}+Enter`],     desc: 'Zoom into point' },
     { keys: ['Esc'],              desc: 'Zoom out / deselect — from search or a menu, returns to your edit' },
@@ -9742,7 +9808,7 @@ function scheduleAutosave() {
     if (data.root) {
       root = data.root;
       migrateNodePrefixes(root);
-      buildIndex(root, null);
+      buildIndex(root, null); resetDocCaches();
       focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
       if (data.fileName) {
         fileName = data.fileName;
@@ -9771,7 +9837,7 @@ function scheduleAutosave() {
 })();
 
 migrateNodePrefixes(root);
-buildIndex(root, null);
+buildIndex(root, null); resetDocCaches();
 render();
 updateTitle();
 refreshIcons();

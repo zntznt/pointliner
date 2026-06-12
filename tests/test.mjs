@@ -391,6 +391,38 @@ test('collectRules — a grammar pill registers its named rules document-wide', 
   assert.ok('color' in c.collectRules(root), 'named grammar rule should be registered');
 });
 
+test('collectRules — an anonymous shorthand pill does NOT leak its synthetic `origin` (UXP-33)', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('shorthand [[grammar:a1]] plus named [[grammar:n1]]');
+  n.grammar = [
+    { key: 'a1', def: 'origin: red | blue', origin: 'origin', result: 'red', anon: true },
+    { key: 'n1', def: 'color: green | yellow', origin: 'color', result: 'green' },
+  ];
+  root.children.push(n);
+  const rules = c.collectRules(root);
+  assert.ok(!('origin' in rules), 'synthetic origin from an anonymous pill must not be document-wide');
+  assert.ok('color' in rules, 'a co-located named rule still registers');
+});
+
+test('collectRules — a NAMED grammar with an explicit origin: rule still registers it', () => {
+  // the dialog example literally uses `origin:` — a user-named `origin` rule (no anon
+  // flag) must stay callable, so UXP-33 keys on the flag, never the name.
+  const root = c.mkRoot();
+  const n = c.mkNode('[[grammar:g1]]');
+  n.grammar = [{ key: 'g1', def: 'origin: a {x}\nx: b | c', origin: 'origin', result: 'a b' }];
+  root.children.push(n);
+  assert.ok('origin' in c.collectRules(root), 'a deliberately-named origin rule still registers');
+});
+
+test('collectCallables — an anonymous pill does not advertise `origin` as a callable (UXP-33)', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('shorthand [[grammar:a1]]');
+  n.grammar = [{ key: 'a1', def: 'origin: red | blue', origin: 'origin', result: 'red', anon: true }];
+  root.children.push(n);
+  assert.ok(!c.collectCallables(root).some(x => x.name === 'origin'),
+    'the { autocomplete must not list a phantom origin rule');
+});
+
 // ── success-counting dice pools (with exploding) ────────────────────────────
 // A comparison suffix (>=,<=,>,<,=) turns the term into "count dice that match".
 // In a pool each rolled face is its own die — exploding adds independently-
@@ -670,8 +702,8 @@ test('table: a cell formula can reference a document variable', () => {
   const out = computeTable(m, '$2=$1*tax', { tax: 1.2 });
   assert.equal(out[1][1], '120');
   assert.equal(out[2][1], '300');
-  // without the variable in scope the reference is unresolved → #ERR (not silently 0)
-  assert.equal(computeTable(m, '$2=$1*tax', {})[1][1], '#ERR');
+  // without the variable in scope the reference is unresolved → reason-coded #ERR (not silently 0)
+  assert.equal(computeTable(m, '$2=$1*tax', {})[1][1], '#ERR (bad ref)');
 });
 
 test('table: range aggregates vmean/vmax/vmin/vcount/vmedian', () => {
@@ -716,10 +748,10 @@ test('table: $< / $> immutable first/last column references', () => {
   assert.equal(computeTable(m, '@2$2=$<+$>')[1][1], '11');
 });
 
-test('table: cycle detection yields #ERR, not a hang', () => {
+test('table: cycle detection yields #ERR (cycle), not a hang', () => {
   const out = computeTable(tblModel(), '@2$1=@2$2 :: @2$2=@2$1');
-  assert.equal(out[1][0], '#ERR');
-  assert.equal(out[1][1], '#ERR');
+  assert.equal(out[1][0], '#ERR (cycle)');
+  assert.equal(out[1][1], '#ERR (cycle)');
 });
 
 test('table: field formula overrides column formula regardless of source order', () => {
@@ -1700,3 +1732,42 @@ test('regression: formula-only variables are untouched by the pick branch', () =
   assert.equal(vars.r, 5);
   assert.ok(Math.abs(vars.area - Math.PI * 25) < 1e-9);
 });
+
+// ── mathErrorReason — reason-coded #ERR (UXP-8 table cells, UXP-34 math pills) ──
+// Classifies why evalMath(expr, vars) returned null, so the failure carries a cause
+// instead of a bare #ERR or (worse) a stale last-good value.
+{
+  const { mathErrorReason } = c;
+
+  test('mathErrorReason — an undeclared identifier is a bad ref', () => {
+    assert.equal(mathErrorReason('x * 2', {}), 'bad ref');
+    assert.equal(mathErrorReason('$1 * tax', {}), 'bad ref'); // table-style: tax undeclared
+  });
+
+  test('mathErrorReason — a string-valued (pick) variable is non-numeric', () => {
+    assert.equal(mathErrorReason('beast * 2', { beast: 'dragon' }), 'non-numeric');
+  });
+
+  test('mathErrorReason — a cyclic identifier reports cycle (most specific)', () => {
+    assert.equal(mathErrorReason('a + 1', {}, new Set(['a'])), 'cycle');
+  });
+
+  test('mathErrorReason — constants and function calls are not flagged', () => {
+    assert.equal(mathErrorReason('2*pi', {}), '');            // pi is a constant, not a var
+    assert.equal(mathErrorReason('sqrt(16) + e', {}), '');    // sqrt( → fn, e → constant
+    assert.equal(mathErrorReason('c2f(20)', {}), '');         // unit-conversion fn, no enumeration needed
+    assert.equal(mathErrorReason('asdate(today + 90)', {}), '');
+  });
+
+  test('mathErrorReason — a resolvable numeric variable is not flagged', () => {
+    assert.equal(mathErrorReason('r * 2', { r: 5 }), '');
+  });
+
+  test('mathErrorReason — a malformed expression with no bad identifier is generic', () => {
+    assert.equal(mathErrorReason('2 + * 3', {}), '');  // syntactic garbage → bare #ERR, no parenthetical
+  });
+
+  test('mathErrorReason — bad ref wins over non-numeric when both are present', () => {
+    assert.equal(mathErrorReason('missing + beast', { beast: 'dragon' }), 'bad ref');
+  });
+}

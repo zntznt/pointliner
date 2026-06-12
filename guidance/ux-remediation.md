@@ -30,10 +30,10 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 - **Violates:** P2-1 ("built ≠ shipped-discoverable").
 - **Target:** the picker surfaces at least at the Guided floor (its rollout/verbosity staging is owned by `ux.md`/roadmap, but "no door at any level" is not a conformant end-state). Copy-link + paste remains the power path.
 
-### UXP-5 ☐ `Ctrl/⌘ + ↑/↓` collapse collides with caret-to-edges
-- **Problem:** collapse/expand sits on `Ctrl+Arrow`, which conflicts with the near-universal "caret to start/end of document" and is one modifier away from `Alt+Arrow` (move).
-- **Violates:** P1-2, keyboard grammar §3.
-- **Target:** rebind collapse/expand to `Ctrl/⌘ + . / ,`; keep the chevron affordance; update `?` panel + tests.
+### UXP-5 ✓ `Ctrl/⌘ + ↑/↓` collapse collides with caret-to-edges — **RESOLVED**
+- **Problem:** collapse/expand sat on `Ctrl+Arrow`, which conflicts with the near-universal "caret to start/end of document" and is one modifier away from `Alt+Arrow` (move).
+- **Violated:** P1-2, keyboard grammar §3.
+- **Resolved:** collapse/expand rebound to `Ctrl/⌘ + . / ,` (`.` collapse, `,` expand) in `onKeyDown`; `Ctrl+Arrow` now falls through to the native caret-to-document-edge. The chevron affordance is unchanged; the `?` panel (`SHORTCUTS`) row updated to match. This binding was already specified in `ux-discipline.md` §3 — the code was the laggard, now in conformance.
 
 ---
 
@@ -49,10 +49,10 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 - **Violates:** P2-5.
 - **Target:** live preview of the resulting pill while editing.
 
-### UXP-8 ☐ Table `#ERR` gives no reason
-- **Problem:** formula errors render a bare `#ERR` with no cause (cycle vs bad ref vs non-numeric).
-- **Violates:** P4-2.
-- **Target:** `#ERR (cycle)` / `(bad ref)` / `(non-numeric)` in the cell text and its `aria-label`.
+### UXP-8 ✓ Table `#ERR` gives no reason — **RESOLVED**
+- **Problem:** formula errors rendered a bare `#ERR` with no cause (cycle vs bad ref vs non-numeric).
+- **Violated:** P4-2.
+- **Resolved (shared pure core `mathErrorReason`, pinned):** `computeTable` now emits `#ERR (cycle)` (cell self-reference, from the `CYCLE` throw), `#ERR (bad ref)` (an identifier names nothing declared), `#ERR (non-numeric)` (an identifier names a string-valued/pick variable), or a bare `#ERR` for generic malformed syntax. `mathErrorReason(expr, vars, cycles)` mirrors `evalMath`'s own rule — an identifier directly followed by `(` is a function call, not a variable — so function names need no enumeration. The same helper powers UXP-34 (math pills), so both surfaces report identically.
 
 ### UXP-9 ✓ Variables have no overview — **RESOLVED**
 - **Problem:** variables affect math document-wide but there was no surface listing what exists and their resolved values — and more broadly, no way to discover *any* callable name (variable, grammar rule, named table, named chain) without reading every node.
@@ -116,44 +116,50 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 - **Target:** fold the buffer when recording (`foldedTextForSave`-style translation in
   `flushActiveTextEdit`), keeping `prevText` and the entry in folded coordinates throughout.
 
-### UXP-32 ☐ 🟡 File → Open / New serves the previous document's caches
-- **Problem:** `newFile` and `openFile` replace `root` and call `markClean()` — but never bump
+### UXP-32 ✓ 🟡 File → Open / New serves the previous document's caches — **RESOLVED**
+- **Problem:** `newFile` and `openFile` replaced `root` and called `markClean()` — but never bumped
   `_varsVer` (only `markDirty` does). Every `_varsVer`-keyed cache — `collectVars`,
   `collectRules`, `collectLinks`, `collectSequences`, `collectCallables`, state commands —
-  keeps serving the **previous** document's data until the first edit: the variables panel,
-  backlinks, `{`-autocomplete, and status-badge state sets are silently wrong on a fresh open.
-- **Violates:** P4 (silently wrong data presented as current).
-- **Target:** bump `_varsVer` (or call a shared invalidation) wherever `root` is replaced —
-  `newFile`, both `openFile` branches, and any future load path. Cheapest durable fix: a
-  `resetDocCaches()` helper called beside every `buildIndex(root, null)`.
+  kept serving the **previous** document's data until the first edit: the variables panel,
+  backlinks, `{`-autocomplete, and status-badge state sets were silently wrong on a fresh open.
+- **Violated:** P4 (silently wrong data presented as current).
+- **Resolved:** a `resetDocCaches()` helper (`_varsVer++`, the same invalidation `markDirty`
+  performs) is called beside **every** `buildIndex(root, null)` that swaps the tree — `newFile`,
+  both `openFile` branches, `restoreSnapshot` (undo/redo), and both init load paths — so a fresh
+  document never serves a stale cache. The can't-forget pattern (every tree swap pairs with the
+  reset) is the durable guard for future load paths.
 
-### UXP-33 ☐ 🟡 Anonymous `{a|b}` pills register a phantom doc-wide rule named `origin`
-- **Problem:** `promoteBraceBody` wraps inline alternation as `origin: a | b` and bare-name
-  references as `origin: {name}`; `collectRules` and `collectCallables` merge **every** pill's
-  rules unconditionally, so each anonymous pill registers (and clobbers) a document-wide rule
-  named `origin` the user never declared. `{origin}` typed anywhere resolves to whichever
-  anonymous pill was gathered last — and since UXP-9, the `{`-autocomplete *advertises*
+### UXP-33 ✓ 🟡 Anonymous `{a|b}` pills register a phantom doc-wide rule named `origin` — **RESOLVED**
+- **Problem:** `promoteBraceBody` wrapped inline alternation as `origin: a | b` and bare-name
+  references as `origin: {name}`; `collectRules` and `collectCallables` merged **every** pill's
+  rules unconditionally, so each anonymous pill registered (and clobbered) a document-wide rule
+  named `origin` the user never declared. `{origin}` typed anywhere resolved to whichever
+  anonymous pill was gathered last — and since UXP-9, the `{`-autocomplete *advertised*
   `origin` as a callable rule.
-- **Violates:** P4 (phantom name, surprising resolution), P5 (the namespace is polluted by an
+- **Violated:** P4 (phantom name, surprising resolution), P5 (the namespace is polluted by an
   implementation detail).
-- **Target:** mark anonymous grammar records (e.g. an `anon` flag, or a reserved non-identifier
-  rule name) and skip them in `collectRules`/`collectCallables`; named pills keep registering
-  as today. The dialog-example `origin:` convention for *named* grammars is unaffected.
+- **Resolved:** shorthand-promoted grammar records carry an `anon: true` flag (set at the two
+  `promoteBraceBody` synthetic-`origin` call sites); `collectRules` and `collectCallables` skip
+  any flagged record, so the synthetic `origin` never enters the document-wide namespace or the
+  `{`-autocomplete. A pill's own expansion is unaffected — `runGrammar` merges the pill's own
+  `def` rules last, so its `origin` still resolves locally. Keying on the **flag**, never the
+  name, leaves the dialog-example `origin:` convention for *named* grammars fully callable
+  (pinned by a regression test). Pre-flag records in old saves aren't migrated — pre-release,
+  consistent with the bare-keyword non-migration philosophy.
 
-### UXP-34 ☐ 🟡 Math pill shows a stale value instead of an error on an unresolvable reference
-- **Problem:** when a math pill's referenced variable becomes unresolvable — deleted, cyclic, or
-  redeclared as a non-numeric kind (e.g. a random/pick variable) — the pill falls back to its
+### UXP-34 ✓ 🟡 Math pill shows a stale value instead of an error on an unresolvable reference — **RESOLVED**
+- **Problem:** when a math pill's referenced variable became unresolvable — deleted, cyclic, or
+  redeclared as a non-numeric kind (e.g. a random/pick variable) — the pill fell back to its
   last-good `m.result` rather than surfacing the failure (`renderMathPill`: a `null` recompute
-  against `globalVarMap` renders the stored result). The stale number reads as still-valid.
-- **Violates:** P4-2 (errors explain the cause; no silent stale result).
-- **Note:** pre-existing behavior, NOT introduced by the random-variables PR (#62) — but #62 makes
-  it slightly easier to hit, since redeclaring a name from a formula var to a pick var now turns a
-  numeric reference into text. (New pills can't be created in this state — the dialog validates
-  and typed shorthand stays literal — only an *existing* pill whose reference later breaks.)
-- **Target:** an unresolvable math-pill reference renders a visible marker (`?` / `#ERR (bad ref)`)
-  with an accurate `aria-label`, instead of the last good value — consistent with how other
-  unresolvable states surface (the formula-var pill already renders `?`; pairs with UXP-8's
-  reason-coded `#ERR` work).
+  against `globalVarMap` rendered the stored result). The stale number read as still-valid.
+- **Violated:** P4-2 (errors explain the cause; no silent stale result).
+- **Resolved:** when the live recompute is `null`, the pill now renders a reason-coded
+  `#ERR (cycle | bad ref | non-numeric)` (via the shared `mathErrorReason`, the same helper as
+  UXP-8) with an accurate `aria-label`, never the stale `m.result`. The error pill uses a new
+  `math-err` class (dashed `--bad` border, red result) that — unlike the dead-record `math-bad` —
+  **keeps the click-to-edit affordance**, so the user can fix the broken reference. Healthy pills
+  also gained an `aria-label` in the same pass (incidental progress toward UXP-15; that item is
+  not yet closed). Was pre-existing, not introduced by #62.
 
 ---
 
@@ -261,9 +267,14 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
 
 ## Closing order (recommended)
 
-1. **Correctness defects** (UXP-30…31 first — silent data corruption; then 32…33) — these damage user data or trust directly and gate everything else.
-2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency.
-3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps.
+1. **Correctness defects** — the silently-wrong-data set. The two 🔴 data-corruption bugs
+   **UXP-30 / UXP-31** (unfold/refold coordinate leaks) are now the highest-priority open items.
+   The 🟡 set (UXP-32 caches, UXP-33 phantom `origin`, UXP-34 stale math) shipped **first** as a
+   low-risk quick-win batch — a deliberate sequencing choice, not the recommended order; the 🔴
+   pair was deferred because it needs coordinated changes across `insertInlineArtifact` /
+   `flushActiveTextEdit` / the unfold boundary.
+2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
+3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-8 closed.)
 4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
 
 When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. The register is empty when the app speaks one language.

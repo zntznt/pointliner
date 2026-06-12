@@ -283,7 +283,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 
 | Feature | P1 predictable | P2 discoverable | P3 reachable | P4 responsive |
 |---|---|---|---|---|
-| Outline nav / move / indent | ⚠️ (P1-2 collapse binding) | ✅ | ⚠️ (row labels; tree deferred) | ✅ |
+| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ | ⚠️ (row labels; tree deferred) | ✅ |
 | Paragraph block | ✅ (documented prose-mode exception) | ✅ | ⚠️ | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ⚠️ (menu ARIA — a11y Ph1) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ⚠️ (P3-4 color) | ✅ |
@@ -292,7 +292,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Inline `{…}` shorthand | ✅ | ⚠️ | ⚠️ | ❌ (P4-1/P4-2) |
 | Tables (cells) | ✅ (Tab/Shift+Tab/Enter nav; computed cells read-only + Σ-tagged) | ⚠️ | ⚠️ (grid ARIA deferred — UXP-19) | ✅ |
 | Table columns (ops) | ✅ (one Column panel: Calculate/Alignment/Insert/Move/Delete; no hidden double-click; UXP-21) | ✅ (one sized ▾ door; grip cue for drag; full-height "+") | ✅ (panel role=menu/menuitem keyboard-operable; sized targets + aria-labels) | ✅ (refresh reflects every op) |
-| Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; `#ERR` on invalid formula) |
+| Table formulas (`#+TBLFM:`) | ✅ (column ▾ panel: Sum/Average/Count/Min/Max/None; UXP-3 part A) | ✅ (▾ button hover + touch-visible) | ⚠️ (panel role=menu/menuitem; cell `aria-readonly` deferred — UXP-19) | ✅ (footer auto-added/removed; reason-coded `#ERR (cycle/bad ref/non-numeric)` — UXP-8) |
 | Links (`[[ ]]`) | ✅ | ❌ (P2-1 picker gated off, no floor door) | ⚠️ | ✅ |
 | Footnotes / hashtags / emoji | ✅ | ⚠️ (tag index P2-4) | ⚠️ | ✅ |
 | Search | ✅ | ✅ | ⚠️ | ✅ |

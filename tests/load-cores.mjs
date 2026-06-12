@@ -153,7 +153,7 @@ export function loadCores() {
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
     'migrateTodoText','textForDisplay',
     'collectCallables','filterBraceCandidates',
-    'rollPickSource','formatVarValue','flattenArtifacts',
+    'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
   ];
