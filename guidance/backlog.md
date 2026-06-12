@@ -25,9 +25,10 @@ hashtag tags with click-to-filter; OPML / Markdown / plain-text export; theming 
 Link any node to any other and see what links back. Anchors a whole cluster — quick-switcher,
 link-and-create, aliases, unlinked references, graph view.
 - **Shipped (same-document):** `[[#id|label]]` token + `collectLinks` index + backlinks panel
-  + copy-link + keyboard-first creation; plus a **live-title/content "mirror"** (`[[#id|]]`). The
-  `[[` picker is built but gated off. **Remaining:** cross-document (needs the workspace), and the
-  Org-roam cluster below (aliases, unlinked refs, graph). See `guidance/features.md` / `guidance/roadmap.md`.
+  + copy-link + keyboard-first creation + the **`[[` picker** (live — UXP-4); plus a
+  **live-title/content "mirror"** (`[[#id|]]`). **Remaining:** cross-document (needs the
+  workspace), and the Org-roam cluster below (aliases, unlinked refs, graph). See
+  `guidance/features.md` / `guidance/roadmap.md`.
 - **Why:** turns the tree into a navigable web — the core of PKM / Zettelkasten work.
 - **Foundation present:** every node already has a stable id that round-trips through OPML
   (`_id`), so addressable targets exist; only the link + index + backlink layer is missing.
@@ -53,12 +54,17 @@ due-dates, deadlines/scheduling, and daily-notes/journaling.
 - **Why:** task + time management; the most-wanted view beyond the raw outline.
 - **Fit — medium-hard.** A date field/token + an agenda view that filters & sorts. Builds
   directly on the date math already shipped.
+- **P5 gate (UXP-20 watch list):** do *not* import Org's `<2026-06-12 Wed>` / `SCHEDULED:`
+  notation — where the date lives must be decided from the existing syntax inventory
+  (with sign-off) before any agenda work starts. See `guidance/ux-remediation.md` UXP-20.
 
 ### ◐ Tag power
-Tag *filtering* already works (click a `#tag` to filter). Missing: saved/pinned searches, tag
-autocomplete, tag inheritance, and boolean queries (`A AND NOT B`).
-- **Fit — medium.** Persist saved queries; build a tag set via tree-walk for autocomplete;
-  inheritance + boolean evaluation layered on the existing filter.
+Tag *filtering* already works (click a `#tag` to filter), and **tag autocomplete shipped**
+(the `#` picker, sourced from `collectTags`, most-used-first — UXP-10). Missing: saved/pinned
+searches, tag inheritance, and boolean queries (`A AND NOT B`).
+- **Fit — medium.** Persist saved queries; inheritance + boolean evaluation layered on the
+  existing filter. **P5 note:** a boolean query grammar is a new language — route it per the
+  UXP-20 watch list (`guidance/ux-remediation.md`) before building.
 
 ---
 
@@ -83,11 +89,12 @@ re-rolled from the declaration pill (all references update together).
   `guidance/generation-direction.md`; deferred there: inline `{a := …}` shorthand, modifiers
   (`a/an`/plural/capitalize), picks in math, per-reference re-roll.
 
-### ☐ Rich TODO states + priorities
-Custom task states (e.g. TODO → NEXT → WAITING → DONE) with cycling, plus A/B/C priorities.
-Today the todo is a binary checkbox.
-- **Fit — medium.** Extend the `todo` type with a state field + cycle action; priority = marker
-  + sort key.
+### ✓ Rich TODO states + priorities — shipped (as sequences)
+Custom task states with priorities landed as `#KEYWORD [#A] body` (the `#` reuses the hashtag
+sigil), and went *beyond* the fixed cycle: **sequences** are user-definable state sets
+(`@sequence` declares; `/` applies; done-ness = the keyword's side of the sequence's `|`),
+with `TODO NEXT WAITING | DONE` as the built-in default. Zero new syntax. See
+`guidance/features.md`.
 
 ### ☐ Properties / structured per-node metadata
 Per-node key-value metadata, enabling property-based filtering and a future column view.
