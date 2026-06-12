@@ -1433,10 +1433,20 @@ test('highlightGrammarText: a promotable {…} is bounded at }, with NO sentinel
   assert.equal(tail, 'say <span class="gr-src">{a|b}</span>');
 });
 
-test('highlightGrammarText: a non-promotable {…} stays literal (no span, no bleed)', () => {
-  // {nope} matches no rule/var and isn't dice/expr/alternation -> literal text
-  const out = c.highlightGrammarText('{nope} tail').split(SENT).join('').split(ZWSP).join('');
-  assert.ok(!out.includes('gr-src'), 'no gr-src span for an unrecognized body');
+test('highlightGrammarText: an attempted-but-unknown {name} is marked gr-bad (UXP-6)', () => {
+  // {nope} reads as a reference attempt but matches no rule/var — it will NOT
+  // promote, and that must be visible (a typo signal), not silent.
+  const out = c.highlightGrammarText('{nope} tail');
+  assert.ok(out.includes('class="gr-src gr-bad"'), 'unknown-name brace gets the gr-bad marker');
+  assert.ok(out.includes('>{nope}</span> tail'), 'marker is bounded at }; tail stays plain');
+  assert.ok(!out.includes(SENT) && !out.includes(ZWSP), 'no sentinel/anchor after the span');
+});
+
+test('highlightGrammarText: prose braces stay literal (no span, no marker)', () => {
+  // a body that reads as plain prose (spaces, no formula shape) is the deliberate
+  // escape hatch — it gets neither gr-src styling nor the gr-bad marker
+  const out = c.highlightGrammarText('{hello world} tail').split(SENT).join('').split(ZWSP).join('');
+  assert.ok(!out.includes('gr-src'), 'no span for an intentional literal brace');
 });
 
 // ── grSrcSpanClean (UXP-28 normalization predicate) ──
@@ -1860,3 +1870,78 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     }
   });
 }
+
+// ── classifyBraceBody (UXP-6: the typo signal) ───────────────────────────────
+// Classifies a {body} the way promoteBraceBody will treat it on exit, with
+// explicit rules/vars (pure). 'invalid' is the set that used to fail SILENTLY:
+// styled as valid grammar (or as nothing) but left as literal text on exit.
+
+test('classifyBraceBody: valid artifact bodies classify artifact', () => {
+  assert.equal(c.classifyBraceBody('2d6', {}, {}), 'artifact');           // dice
+  assert.equal(c.classifyBraceBody('= 2*3', {}, {}), 'artifact');         // expression
+  assert.equal(c.classifyBraceBody('= x', {}, { x: 5 }), 'artifact');     // expr over a var
+  assert.equal(c.classifyBraceBody('a|b 2|c', {}, {}), 'artifact');       // alternation
+  assert.equal(c.classifyBraceBody('color', { color: ['red'] }, {}), 'artifact'); // known rule
+  assert.equal(c.classifyBraceBody('str', {}, { str: 3 }), 'artifact');   // known var
+});
+
+test('classifyBraceBody: attempted-but-broken bodies classify invalid (no more silent failure)', () => {
+  assert.equal(c.classifyBraceBody('2d6kh', {}, {}), 'invalid');  // dice sniff passes, parse fails
+  assert.equal(c.classifyBraceBody('= 2*', {}, {}), 'invalid');   // malformed expression
+  assert.equal(c.classifyBraceBody('=', {}, {}), 'invalid');      // empty expression attempt
+  assert.equal(c.classifyBraceBody('= x', {}, {}), 'invalid');    // expr over an unknown var
+  assert.equal(c.classifyBraceBody('colr', { color: ['red'] }, {}), 'invalid'); // unknown name (typo)
+});
+
+test('classifyBraceBody: prose braces stay literal (the escape hatch)', () => {
+  assert.equal(c.classifyBraceBody('hello world', {}, {}), 'literal');
+  assert.equal(c.classifyBraceBody('', {}, {}), 'literal');
+  assert.equal(c.classifyBraceBody('  ', {}, {}), 'literal');
+});
+
+test('classifyBraceBody: a dice-looking body that fails parseDice still falls through like promoteBraceBody', () => {
+  // promoteBraceBody does NOT stop at the failed dice branch — '2d6|1d4' then
+  // promotes as alternation. The classifier must mirror that fall-through.
+  assert.equal(c.classifyBraceBody('2d6|1d4', {}, {}), 'artifact');
+});
+
+// ── collectTags / filterTagCandidates (UXP-10: hashtag autocomplete) ─────────
+// (vm-realm arrays/objects fail deepEqual on prototype identity — JSON-normalize)
+const plainTags = x => JSON.parse(JSON.stringify(x));
+
+test('collectTags: counts #tags across the tree, most-used first then alpha', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('see #alpha and #beta');
+  const b = c.mkNode('#alpha again');
+  a.children.push(b);
+  root.children.push(a);
+  assert.deepEqual(plainTags(c.collectTags(root)), [
+    { name: 'alpha', count: 2 },
+    { name: 'beta',  count: 1 },
+  ]);
+});
+
+test('collectTags: link tokens, headings, and mid-word # are not tags', () => {
+  const root = c.mkRoot();
+  // [[#abc12|x]] is a node link (token stripped before the scan); '# heading' has
+  // no word right after #; 'not#tag' has the sigil mid-word (mdInline rule).
+  root.children.push(c.mkNode('[[#abc12|x]] # heading not#tag #real'));
+  assert.deepEqual(plainTags(c.collectTags(root)), [{ name: 'real', count: 1 }]);
+});
+
+test('collectTags: status keywords (#TODO) count deliberately; explicit root bypasses the cache', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('#TODO ship it'));
+  assert.deepEqual(plainTags(c.collectTags(root)), [{ name: 'TODO', count: 1 }]);
+  const other = c.mkRoot();
+  other.children.push(c.mkNode('#different'));
+  assert.deepEqual(plainTags(c.collectTags(other)), [{ name: 'different', count: 1 }]);
+});
+
+test('filterTagCandidates: case-insensitive prefix; a lone exact match offers nothing', () => {
+  const tags = [{ name: 'alpha', count: 2 }, { name: 'Alps', count: 1 }, { name: 'beta', count: 1 }];
+  assert.deepEqual(c.filterTagCandidates(tags, 'al').map(t => t.name), ['alpha', 'Alps']);
+  assert.deepEqual(plainTags(c.filterTagCandidates(tags, '')), tags); // bare # → full list
+  assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'beta')), []);        // fully typed → dismiss
+  assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'x')), []);           // no match
+});

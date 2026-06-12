@@ -406,6 +406,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-preview-result{font-weight:600;color:var(--acc)}
 /* grammar source, shown while editing so {…} artifacts read as editable text */
 .gr-src{font-family:var(--mono);font-size:.92em;background:color-mix(in srgb,var(--acc) 12%,var(--cbg));color:var(--acc);border-radius:5px;padding:.5px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.gr-src.gr-bad{background:color-mix(in srgb,var(--warn) 13%,var(--cbg));color:var(--warn);text-decoration:underline dotted;text-underline-offset:2px}
 /* math expression pill */
 .math-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .math-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -768,9 +769,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #lp-menu.on{display:block}
 .lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
-/* ── brace / callable-name picker ({ trigger) ── */
-#brace-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
-#brace-menu.on{display:block}
+/* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
+#brace-menu,#tag-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
+#brace-menu.on,#tag-menu.on{display:block}
 .bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
 .bm-item{display:flex;align-items:baseline;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px}
 .bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
@@ -889,6 +890,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="slash-menu"></div>
 <div id="lp-menu"></div>
 <div id="brace-menu" role="menu" aria-label="Callable names"></div>
+<div id="tag-menu" role="menu" aria-label="Tags"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card"></div></div>
 <!-- drag indicator -->
@@ -2700,6 +2702,12 @@ function flashHint(msg) {
   clearTimeout(_hintTimer);
   _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
 }
+// Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
+// announces what it touched via flashHint — counts include descendants, since a
+// subtree op moves/destroys them too. Destructive toasts teach the undo route.
+function ptsLabel(n) { return n === 1 ? '1 point' : `${n} points`; }
+function countPoints(node) { let c = 1; for (const ch of node.children || []) c += countPoints(ch); return c; }
+
 function fallbackCopy(text, after) {
   try {
     const ta = document.createElement('textarea');
@@ -4328,15 +4336,16 @@ function attachContentEvents(content, node) {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
-    if (checkInlineHighlight(content, node)) { hideBraceMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
+    if (checkInlineHighlight(content, node)) { hideBraceMenu(); hideTagMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
     // Re-bind any .gr-src span the browser merged typed text into (UXP-28) —
     // skipped mid-IME-composition (re-render would drop the composed text;
     // the compositionend listener below catches up on commit).
-    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); return; }
+    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); return; }
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id);
     if (LINK_PICKER_ENABLED) checkLinkTrigger(content, node.id);
     checkBraceTrigger(content, node.id);
+    checkTagTrigger(content, node.id);
     updateSelToolbar();
     updateFnPanel(node);
   });
@@ -4345,7 +4354,7 @@ function attachContentEvents(content, node) {
   content.addEventListener('compositionend', () => {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
-    if (normalizeGrSrcSpans(content, node)) hideBraceMenu();
+    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); }
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
   content.addEventListener('paste', e => handlePaste(e, node, content));
@@ -4361,20 +4370,36 @@ function attachContentEvents(content, node) {
   });
 }
 
-// Would a {body} promote to an artifact pill on exit? Pure mirror of
-// promoteBraceBody's success conditions (no side effects) — used to decide which
-// {…} get the grammar-source styling while editing.
-function braceWouldPromote(body) {
-  body = body.trim();
-  if (!body) return false;
-  if (body[0] === '=') return body.slice(1).trim().length > 0;          // {= expr}
-  if (DICE_SNIFF.test(body.replace(/\s/g, ''))) return true;            // {2d6}
-  if (splitTopLevel(body, '|').length > 1) return true;                 // {a|b}
+// Classify a {body} the way promoteBraceBody will treat it on exitEdit. Pure —
+// rules/vars are explicit arguments (live callers pass collectRules()/collectVars())
+// and the branch order mirrors promoteBraceBody INCLUDING its fall-throughs: a
+// dice-looking body that doesn't parse still gets the alternation/identifier checks.
+//   'artifact' — promotes to a pill on exit
+//   'invalid'  — reads as an attempted formula/roll/reference but will NOT promote;
+//                styled as the gr-bad typo signal so the failure isn't silent (UXP-6)
+//   'literal'  — plain prose braces, left alone (the deliberate escape hatch)
+function classifyBraceBody(body, rules, vars) {
+  body = (body || '').trim();
+  if (!body) return 'literal';
+  if (body[0] === '=') {                                                // {= expr}
+    const expr = body.slice(1).trim();
+    return expr && evalMath(expr, vars) !== null ? 'artifact' : 'invalid';
+  }
+  const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
+  if (diceish && parseDice(body, vars)) return 'artifact';
+  if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
-    return !!collectRules()[low] || Object.prototype.hasOwnProperty.call(collectVars(), low);
+    return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
   }
-  return false;
+  return diceish ? 'invalid' : 'literal'; // dice-looking but unparseable → attempted roll
+}
+
+// Would a {body} promote to an artifact pill on exit? (Thin doc-context wrapper —
+// see classifyBraceBody. Now also catches the bodies that used to style as valid
+// but fail promotion, e.g. {2d6kh} or {= 2*}: those classify 'invalid', not true.)
+function braceWouldPromote(body) {
+  return classifyBraceBody(body, collectRules(), collectVars()) === 'artifact';
 }
 
 // Escape a plain-text segment for edit mode, wrapping each top-level {…} that
@@ -4385,20 +4410,27 @@ function braceWouldPromote(body) {
 // the rule isn't defined yet in this document).
 function highlightGrammarText(str, unfoldedSet) {
   let out = '', run = '', i = 0;
+  const rules = collectRules(), vars = collectVars();
   const flush = () => { if (run) { out += escHtml(run); run = ''; } };
   while (i < str.length) {
     if (str[i] === '{') {
       const j = matchBrace(str, i);
       if (j > i) {
         const brace = str.slice(i, j + 1);
-        if ((unfoldedSet && unfoldedSet.has(brace)) || braceWouldPromote(str.slice(i + 1, j))) {
+        const cls = (unfoldedSet && unfoldedSet.has(brace)) ? 'artifact'
+          : classifyBraceBody(str.slice(i + 1, j), rules, vars);
+        if (cls !== 'literal') {
           flush();
           // NO caret anchor after a .gr-src span (unlike atomic pills below). The span
           // is editable text; an anchor here interacts with checkInlineHighlight's
           // re-render to make the reference UNDELETABLE on the picker-apply path
           // (Backspace eats the ZWSP, the re-render regenerates it — a no-op loop).
           // The style-bleed this leaves unsolved is tracked as UXP-28.
-          out += `<span class="gr-src">${escHtml(brace)}</span>`;
+          // 'invalid' = an attempted formula that will NOT promote — marked gr-bad so
+          // the user can tell a typo from intended literal text (UXP-6).
+          out += cls === 'artifact'
+            ? `<span class="gr-src">${escHtml(brace)}</span>`
+            : `<span class="gr-src gr-bad" title="Not recognized — stays plain text">${escHtml(brace)}</span>`;
           i = j + 1; continue;
         }
       }
@@ -4542,7 +4574,7 @@ function exitEdit(content, node) {
   if (activeContentId === node.id) activeContentId = null;
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
-  hideSlashMenu(); hideBraceMenu(); updateSelToolbar(); scheduleReconcile();
+  hideSlashMenu(); hideBraceMenu(); hideTagMenu(); updateSelToolbar(); scheduleReconcile();
 }
 
 function caretFromPoint(x, y) {
@@ -4607,7 +4639,10 @@ function handlePaste(e, node, content) {
   ins(parsed.slice(1), parent, idx);
   buildIndex(root, null);
   markDirty(); render();
-  if (newNodes.length) focusNode(newNodes[newNodes.length-1].id);
+  if (newNodes.length) {
+    focusNode(newNodes[newNodes.length-1].id);
+    flashHint(`Pasted as ${ptsLabel(newNodes.length + 1)}`); // +1: the first line merged into this point
+  }
 }
 
 // Shared GFM table-block detector (the ONE detector — reused by findFirstTableRange,
@@ -4735,6 +4770,12 @@ function onKeyDown(e, id, content) {
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); braceApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideBraceMenu(); return; }
   }
+  if (tagState && isTagMenuOpen()) {
+    if (e.key==='ArrowDown') { e.preventDefault(); tagMove(1); return; }
+    if (e.key==='ArrowUp')   { e.preventDefault(); tagMove(-1); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); tagApply(); return; }
+    if (e.key==='Escape')    { e.preventDefault(); hideTagMenu(); return; }
+  }
   // Paragraph is the sanctioned prose-mode exception (P1-1): Enter = line break, Shift+Enter = new point.
   const isPara = nodeById(id)?.type === 'para';
   if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); isPara ? insertSiblingAfter(id) : insertLineBreak(content); }
@@ -4845,15 +4886,17 @@ function copySelection() {
   const text = serializeNodesToText(tops);
   navigator.clipboard?.writeText(text).catch(() => {});
   clearSelection();
+  flashHint(`Copied ${ptsLabel(tops.reduce((n, t) => n + countPoints(t), 0))}`);
 }
 
-function deleteSelected() {
+function deleteSelected(verb = 'Deleted') {  // verb: 'Cut' on the Ctrl+X path (UXP-12)
   if (selectedIds.size === 0) return;
   pushUndo();
   const toDelete = [...flatRows]
     .filter(r => selectedIds.has(r.node.id))
     .map(r => r.node.id)
     .reverse();
+  let removed = 0;
   for (const id of toDelete) {
     const parent = parentOf(id);
     if (!parent) continue;
@@ -4861,16 +4904,19 @@ function deleteSelected() {
     if (idx < 0) continue;
     const [removedNode] = parent.children.splice(idx, 1);
     deregisterSubtree(removedNode);
+    removed += countPoints(removedNode);
   }
   clearSelection();
   markDirty();
   render();
+  if (removed) flashHint(`${verb} ${ptsLabel(removed)} — ${MOD}+Z to undo`);
 }
 
 function indentSelected() {
   if (selectedIds.size === 0) return;
   pushUndo();
   const toIndent = flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node.id);
+  let moved = 0;
   for (const id of toIndent) {
     const parent = parentOf(id);
     if (!parent) continue;
@@ -4882,17 +4928,20 @@ function indentSelected() {
     np.children.push(node);
     parentMap.set(node.id, np);
     if (np.collapsed) np.collapsed = false;
+    moved++;
   }
   markDirty();
   render();
   updateSelVisuals();
   updateNodeSelBar();
+  if (moved) flashHint(`Indented ${ptsLabel(moved)}`);
 }
 
 function outdentSelected() {
   if (selectedIds.size === 0) return;
   pushUndo();
   const toOutdent = flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node.id).reverse();
+  let moved = 0;
   for (const id of toOutdent) {
     const parent = parentOf(id);
     if (!parent || parent === root) continue;
@@ -4904,11 +4953,13 @@ function outdentSelected() {
     const pi = gp.children.findIndex(c => c.id === parent.id);
     gp.children.splice(pi + 1, 0, node);
     parentMap.set(node.id, gp);
+    moved++;
   }
   markDirty();
   render();
   updateSelVisuals();
   updateNodeSelBar();
+  if (moved) flashHint(`Outdented ${ptsLabel(moved)}`);
 }
 
 function pasteFromNodeClipboard(atId) {
@@ -4922,7 +4973,10 @@ function pasteFromNodeClipboard(atId) {
   buildIndex(root, null);
   markDirty();
   render();
-  if (newNodes.length) focusNode(newNodes[newNodes.length - 1].id);
+  if (newNodes.length) {
+    focusNode(newNodes[newNodes.length - 1].id);
+    flashHint(`Pasted ${ptsLabel(newNodes.reduce((n, t) => n + countPoints(t), 0))}`);
+  }
 }
 
 // ─── selection toolbar ───────────────────────────────────────────────────────
@@ -6581,6 +6635,43 @@ function filterBraceCandidates(callables, prefix) {
   return callables.filter(c => c.name.startsWith(lo));
 }
 
+// ─── hashtag index ───────────────────────────────────────────────────────────
+// Document-wide tag list for the # autocomplete (UXP-10): every #word the hashtag
+// renderer (mdInline) would produce, counted across the tree — same sigil rule,
+// `#` not preceded by a letter/digit. [[…]] tokens are stripped first so link
+// targets ([[#id|…]]) and artifact tokens never read as tags; status keywords
+// (#TODO) count deliberately — completing them is useful. Sorted most-used first.
+// Pure over rootNode (tests); no-arg = the live document, cached on _varsVer.
+let _tagsCacheVer = -1, _tagsCached = null;
+function collectTags(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _tagsCacheVer === _varsVer && _tagsCached) return _tagsCached;
+  const counts = new Map();
+  const TAG_RE = /(?<![a-zA-Z0-9])#(\w+)/g; // mirror mdInline's hashtag rule
+  function walk(n) {
+    const text = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
+    let m; TAG_RE.lastIndex = 0;
+    while ((m = TAG_RE.exec(text)) !== null) counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+    for (const c of n.children || []) walk(c);
+  }
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  const result = [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  if (useCache) { _tagsCacheVer = _varsVer; _tagsCached = result; }
+  return result;
+}
+
+// Filter a collectTags() list by prefix (case-insensitive, anchored at start).
+// A lone match that IS the typed prefix offers nothing to complete → empty
+// (the menu dismisses itself once the tag is fully typed). Pure.
+function filterTagCandidates(tags, prefix) {
+  const lo = (prefix || '').toLowerCase();
+  const out = lo ? tags.filter(t => t.name.toLowerCase().startsWith(lo)) : tags;
+  return (out.length === 1 && out[0].name.toLowerCase() === lo) ? [] : out;
+}
+
 // ─── node links (same-document) ──────────────────────────────────────────────
 // A link is a [[#TARGETID|label]] token in node.text pointing at another node by id.
 // `label` is only a fallback caption — display resolves the target's LIVE title.
@@ -6958,7 +7049,10 @@ function checkInlineHighlight(content, node) {
     if (node.text[k] === '}') depth++;
     else if (node.text[k] === '{') { depth--; if (depth === 0) { start = k; break; } }
   }
-  if (start < 0 || !braceWouldPromote(node.text.slice(start + 1, off - 1))) return false;
+  if (start < 0) return false;
+  // Re-render for 'invalid' too — the gr-bad typo marker must appear live as the
+  // closing } lands, not on the next incidental re-render (UXP-6).
+  if (classifyBraceBody(node.text.slice(start + 1, off - 1), collectRules(), collectVars()) === 'literal') return false;
   content.innerHTML = editModeHTML(node);
   requestAnimationFrame(() => {
     content.focus();
@@ -7815,7 +7909,7 @@ function checkBraceTrigger(content, nodeId) {
   // last character that offset points past end-of-text, the DOM walk finds no node
   // and the menu falls back to 0,0 until the next keystroke. The `{` always exists,
   // so the menu lands at the caret on the very first trigger.
-  positionBraceMenu(content, braceStart);
+  positionCaretMenu(braceMenu, content, braceStart);
 }
 
 const BM_GROUP_LABELS = { var: 'Variables', rule: 'Rules', table: 'Tables', chain: 'Chains' };
@@ -7854,7 +7948,9 @@ function renderBraceMenu() {
   braceMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
 
-function positionBraceMenu(content, offset) {
+// Position a caret-anchored picker (the { and # menus share this) at the logical
+// text offset, flipping above the caret when it would clip the viewport bottom.
+function positionCaretMenu(menu, content, offset) {
   let rem = offset, targetNode = null, targetRawOff = 0;
   function walkDom(node) {
     if (targetNode) return;
@@ -7874,17 +7970,17 @@ function positionBraceMenu(content, offset) {
     for (const c of node.childNodes) walkDom(c);
   }
   for (const c of content.childNodes) walkDom(c);
-  if (!targetNode) { braceMenu.style.left = '0'; braceMenu.style.top = '0'; return; }
+  if (!targetNode) { menu.style.left = '0'; menu.style.top = '0'; return; }
   const range = document.createRange();
   range.setStart(targetNode, targetRawOff);
   range.setEnd(targetNode, Math.min(targetRawOff + 1, targetNode.length));
   const rect = range.getBoundingClientRect();
-  braceMenu.style.left = rect.left + 'px';
-  braceMenu.style.top  = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+  menu.style.top  = (rect.bottom + 4) + 'px';
   requestAnimationFrame(() => {
-    const mr = braceMenu.getBoundingClientRect();
-    if (mr.right  > window.innerWidth - 8) braceMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
-    if (mr.bottom > window.innerHeight - 8) braceMenu.style.top  = (rect.top - mr.height - 4) + 'px';
+    const mr = menu.getBoundingClientRect();
+    if (mr.right  > window.innerWidth - 8) menu.style.left = (window.innerWidth - mr.width - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) menu.style.top  = (rect.top - mr.height - 4) + 'px';
   });
 }
 
@@ -7907,6 +8003,82 @@ function braceApply() {
   node.text = newText;
   content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(content, braceStart + inserted.length); } catch(_) {}
+  markDirty();
+}
+
+// ─── # hashtag autocomplete (tag picker) ──────────────────────────────────────
+// Same §7.1 menu pattern as the { picker: trigger → narrow as you type →
+// ↑/↓/Enter/Tab/Esc, mouse via mousedown (caret invariant). Sourced from
+// collectTags() so tags stop drifting (#todo vs #todos) — the menu shows what
+// already exists, with usage counts (UXP-10). Fires on #prefix at the caret,
+// mirroring mdInline's sigil rule; never inside a [[#id|…]] link token.
+
+const tagMenu = document.getElementById('tag-menu');
+let tagState = null;
+function isTagMenuOpen() { return tagMenu.classList.contains('on'); }
+function hideTagMenu() { tagMenu.classList.remove('on'); tagState = null; }
+tagMenu.addEventListener('mousedown', e => e.preventDefault());
+
+function checkTagTrigger(content, nodeId) {
+  const pos = getCaretOffset(content);
+  const before = editableText(content).slice(0, pos);
+  const m = before.match(/(?<![a-zA-Z0-9])#(\w*)$/);
+  if (!m) { hideTagMenu(); return; }
+  const hashAt = pos - m[1].length - 1;
+  if (before.slice(Math.max(0, hashAt - 2), hashAt) === '[[') { hideTagMenu(); return; } // link token target, not a tag
+  // The prefix being typed is itself already indexed (the input handler wrote
+  // node.text before this ran) — a count-1 exact match is that self-occurrence,
+  // not a real tag, so it must not offer itself.
+  const matches = filterTagCandidates(collectTags(), m[1])
+    .filter(t => !(t.count === 1 && t.name === m[1]));
+  if (!matches.length) { hideTagMenu(); return; }
+  tagState = { nodeId, content, hashAt, prefix: m[1], activeIdx: 0, matches };
+  renderTagMenu();
+  positionCaretMenu(tagMenu, content, hashAt); // anchor at the #, which always exists
+}
+
+function renderTagMenu() {
+  if (!tagState) return;
+  tagMenu.innerHTML = '';
+  tagState.matches.forEach((item, i) => {
+    const el = document.createElement('div');
+    el.className = 'bm-item' + (i === tagState.activeIdx ? ' hi' : '');
+    el.setAttribute('role', 'menuitem');
+    const nameEl = document.createElement('span');
+    nameEl.className = 'bm-name';
+    nameEl.textContent = '#' + item.name;
+    el.appendChild(nameEl);
+    const valEl = document.createElement('span');
+    valEl.className = 'bm-val';
+    valEl.textContent = '×' + item.count; // occurrences across the document
+    el.appendChild(valEl);
+    el.addEventListener('mouseenter', () => { tagState.activeIdx = i; renderTagMenu(); });
+    el.addEventListener('mousedown', e => { e.preventDefault(); tagState.activeIdx = i; tagApply(); });
+    tagMenu.appendChild(el);
+  });
+  tagMenu.classList.add('on');
+  tagMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+}
+
+function tagMove(dir) {
+  if (!tagState) return;
+  const n = tagState.matches.length;
+  tagState.activeIdx = (tagState.activeIdx + dir + n) % n;
+  renderTagMenu();
+}
+
+function tagApply() {
+  if (!tagState) return;
+  const { nodeId, content, hashAt, prefix, activeIdx, matches } = tagState;
+  const chosen = matches[activeIdx];
+  hideTagMenu();
+  const fullText = editableText(content);
+  const inserted = `#${chosen.name}`;
+  const newText = fullText.slice(0, hashAt) + inserted + fullText.slice(hashAt + 1 + prefix.length);
+  const node = nodeById(nodeId); if (!node) return;
+  node.text = newText;
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, hashAt + inserted.length); } catch(_) {}
   markDirty();
 }
 
@@ -8250,6 +8422,11 @@ function deleteNode(id) {
   const [removedNode] = parent.children.splice(idx,1);
   deregisterSubtree(removedNode);
   markDirty();
+  // Confirm destruction of real content (UXP-12). Backspace on an empty leaf is
+  // an editing-flow delete — visible at the caret — and stays quiet.
+  if (removedNode.children.length || removedNode.text.trim()) {
+    flashHint(`Deleted ${ptsLabel(countPoints(removedNode))} — ${MOD}+Z to undo`);
+  }
   let ft = null;
   if (idx > 0) ft = lastVis(parent.children[idx-1]).id;
   else if (parent.id !== root.id && parent.id !== focusedId) ft = parent.id;
@@ -9684,6 +9861,7 @@ const SHORTCUTS = [
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, dice, math, variable…' },
+    { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point or base column' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },
@@ -9772,7 +9950,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     const tops = getTopLevelSelected();
     nodeClipboard = { nodes: tops.map(n => JSON.parse(JSON.stringify(n))) };
-    deleteSelected();
+    deleteSelected('Cut');
   }
   if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {
     e.preventDefault();

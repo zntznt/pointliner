@@ -39,10 +39,10 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
 
 ## Tier 2 — 🟡 Partial / inconsistent
 
-### UXP-6 ☐ Inline `{…}` shorthand fails silently
-- **Problem:** an invalid/unrecognized brace body just stays as plain text with no signal — the user can't tell a typo from intended literal text.
-- **Violates:** P4-1.
-- **Target:** a subtle "not recognized as a formula" inline marker; pairs with the live-preview-before-promote target (UXP-7).
+### UXP-6 ✓ Inline `{…}` shorthand fails silently — **RESOLVED**
+- **Problem:** an invalid/unrecognized brace body just stayed as plain text with no signal — the user couldn't tell a typo from intended literal text. Worse, two bodies **styled as valid** but silently failed to promote: a dice-looking body that doesn't parse (`{2d6kh}` — `DICE_SNIFF` passed, `parseDice` failed) and a malformed expression (`{= 2*}` — `braceWouldPromote` only checked non-emptiness).
+- **Violated:** P4-1.
+- **Resolved (pure core `classifyBraceBody(body, rules, vars)`, pinned):** classifies a brace body the way `promoteBraceBody` will actually treat it on exit — `'artifact'` (promotes), `'invalid'` (reads as an attempted formula/roll/reference but will NOT promote), `'literal'` (prose braces, the deliberate escape hatch) — mirroring promoteBraceBody's branch order *including* its fall-throughs (`{2d6|1d4}` fails the dice parse but promotes as alternation). `braceWouldPromote` is now a thin wrapper on it, so edit-mode styling can never again disagree with promotion. In edit mode an `'invalid'` body renders as `.gr-src.gr-bad` — warn-toned dotted underline + "Not recognized — stays plain text" title — applied **live** as the closing `}` lands (`checkInlineHighlight` re-renders for invalid too, not just promotable). Intentional literal braces (`{hello world}`) get no marker. UXP-7 (preview of what a *valid* body becomes) remains open and pairs with this.
 
 ### UXP-7 ☐ Shorthand has no preview before it commits
 - **Problem:** `{…}` promotes to a pill on exit with no preview of what it will become.
@@ -62,20 +62,20 @@ Each entry: the **problem**, the **rule** it violates, and the **target** (the c
   - **Variables panel** — `Ctrl/⌘+Shift+V` toggles a read-only slide-up panel (fn/bl-panel pattern) listing every declared variable with its resolved value (`↻ cycle` for cyclic refs); re-renders on `markDirty` while open. `role="region"`, labeled, close button.
 - **Pure cores:** `collectCallables(rootNode)`, `filterBraceCandidates(callables, prefix)` — pinned in `tests/test.mjs`.
 
-### UXP-10 ☐ Hashtags have no index / autocomplete
-- **Problem:** no tag list or completion, so tags drift (`#todo` vs `#todos`). (Already noted in backlog "Tag power.")
-- **Violates:** P2-4.
-- **Target:** tag autocomplete built from a tree-walk tag set.
+### UXP-10 ✓ Hashtags have no index / autocomplete — **RESOLVED**
+- **Problem:** no tag list or completion, so tags drifted (`#todo` vs `#todos`). (Was backlog "Tag power.")
+- **Violated:** P2-4.
+- **Resolved (pure cores `collectTags(rootNode)` + `filterTagCandidates(tags, prefix)`, pinned):** a `#` tag picker on the §7.1 menu pattern (trigger → narrow → `↑/↓`/`Enter`/`Tab`/`Esc`, `role="menu"`/`menuitem`, caret-anchored via the now-shared `positionCaretMenu`). `collectTags` walks the tree with **mdInline's own sigil rule** (`#` not preceded by a letter/digit) after stripping `[[…]]` tokens — so link targets (`[[#id|…]]`) never read as tags — counts occurrences, sorts most-used first, and caches on `_varsVer`. Status keywords (`#TODO`) count deliberately: completing them is useful. The trigger fires on `#prefix` at the caret (never inside a `[[` link token); the in-progress tag's own count-1 self-occurrence is excluded, and a fully-typed lone exact match dismisses the menu. Applying writes the existing `#tag` syntax — zero new syntax (P5). The `?` panel gained the `#` row beside `/` and `@`.
 
 ### UXP-11 ☐ Some pills are reachable only via the insert dialog
 - **Problem:** certain generators are creatable only through `@`/dialog, with no shorthand path, so authoring is inconsistent across pill types.
 - **Violates:** P2-1 (three doors).
 - **Target:** every inline-able generator has both a dialog and a shorthand; complex ones keep the dialog but appear in the `@` menu with a described entry.
 
-### UXP-12 ☐ Structural/destructive actions don't all confirm
-- **Problem:** delete-subtree, paste-points, cut, and bulk indent don't consistently surface a confirmation toast the way copy-link does.
-- **Violates:** P4-3.
-- **Target:** the existing toast fires for every structural/destructive action.
+### UXP-12 ✓ Structural/destructive actions don't all confirm — **RESOLVED**
+- **Problem:** delete-subtree, paste-points, cut, and bulk indent didn't consistently surface a confirmation toast the way copy-link does.
+- **Violated:** P4-3.
+- **Resolved:** the existing `flashHint` toast now fires for every structural/destructive action, with descendant-inclusive counts (`countPoints`/`ptsLabel`, vocabulary "point(s)"): delete-point/subtree (`Deleted N points — ⌘/Ctrl+Z to undo` — quiet for the Backspace-on-empty-leaf editing flow, where the effect is visible at the caret), multi-select delete and cut (`Cut …`, via `deleteSelected(verb)`), copy (`Copied N points`), paste from the node clipboard (`Pasted N points`), multi-line text paste (`Pasted as N points`), and bulk indent/outdent (`Indented/Outdented N points`). Destructive toasts teach the undo route in the same breath.
 
 ---
 
@@ -288,7 +288,7 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
    and any offset that outlives a blur are always folded — see UXP-30/31) which future
    edit-path work must preserve.
 2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
-3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-8 closed.)
+3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 8, 10, 12 closed; UXP-7 and UXP-11 remain.)
 4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.
 
 When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and delete its row here. The register is empty when the app speaks one language.

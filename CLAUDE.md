@@ -396,7 +396,10 @@ directly; in math/dice a string value fails to `null` visibly (the type-safety
 contract). Direction: `guidance/generation-direction.md` — the reverted
 per-expansion bound-picks model (`:=`/`ctx.binds`, PR #51) must not return.
 
-**Node links** are a third document-wide index, same shape as the above.
+**Node links** are a third document-wide index, same shape as the above — and
+**hashtags** a fourth: `collectTags(rootNode = root)` walks the tree with mdInline's
+sigil rule (`[[…]]` tokens stripped first so link targets never read as tags), cached
+on `_varsVer`; it sources the `#` tag-picker menu (same §7.1 pattern as the `{` picker).
 `collectLinks(rootNode = root)` walks the tree for `[[#TARGETID|label]]` tokens and
 returns `{ outgoing, backlinks, broken }`, cached on `_varsVer`. A link is **token-in-
 text, not a sidecar artifact** — the target id lives directly in `node.text` (like a
@@ -447,7 +450,9 @@ Implemented: Dice (incl. success-counting pools) · Markov · Roll tables · Gra
 Math (incl. unit conversion + date math) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
-Typed shorthand · Footnotes ·
+Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodies —
+`classifyBraceBody` keeps edit-mode styling and exit promotion in agreement) ·
+Footnotes · Hashtags (incl. the `#` tag picker sourced from `collectTags`) ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc, incl. live-title "mirror") ·
 Click-anywhere-to-edit ·

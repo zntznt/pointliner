@@ -153,6 +153,7 @@ export function loadCores() {
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
     'migrateTodoText','textForDisplay',
     'collectCallables','filterBraceCandidates',
+    'classifyBraceBody','collectTags','filterTagCandidates',
     'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
