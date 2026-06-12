@@ -177,6 +177,29 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   also gained an `aria-label` in the same pass (incidental progress toward UXP-15; that item is
   not yet closed). Was pre-existing, not introduced by #62.
 
+### UXP-35 ☐ 🟡 Fast typing across a completing `}` garbles the buffer (caret-restore race)
+- **Problem:** `checkInlineHighlight` re-renders the edit buffer when a typed `}` completes a
+  classifiable `{…}` and restores the caret **a frame later** (`requestAnimationFrame`, because
+  the browser resets the selection after an input handler). Keystrokes landing in that gap
+  splice at a stale caret position, scrambling the typed text (e.g. zero-delay automation, very
+  fast typists, key autorepeat). Reproduced and confirmed **pre-existing** on the pre-UXP-6 base
+  — the invalid-body re-render added by UXP-6 widens the trigger set but did not create the race.
+- **Violates:** P4 (silent text corruption while typing).
+- **Target:** make the re-render caret-safe — e.g. capture the offset *at re-render time* and
+  re-apply synchronously where possible, queue intervening input, or only re-style the affected
+  span in place instead of re-rendering the whole buffer (the UXP-28 normalization machinery may
+  be reusable). Must keep the IME guard and the no-anchor rule (UXP-28).
+
+### UXP-36 ☐ 🟢 The `?` panel's `SHORTCUTS` array is a hand-maintained parallel registry
+- **Problem:** keybindings live in `onKeyDown`/document handlers; their documentation lives in a
+  separate hand-edited `SHORTCUTS` array. The two have already drifted once (UXP-29 found a
+  retired chord still documented and five live ones missing). Every keyboard change risks silent
+  help-panel rot. (Carried from UXP-29's "durable fix open" note, now tracked with a number so it
+  is visible to the closing process.)
+- **Violates:** P2/P4 (the help surface silently lies when it drifts).
+- **Target:** single-source the registry — bindings declared in one table that both the handlers
+  and the `?` panel read, or a test that pins the documented chords against the handler source.
+
 ---
 
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
@@ -215,10 +238,10 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 - **Violates:** P1/P2 (markdown-first node model — only `paragraph` and `base` are special types).
 - **Target:** list-ness derives from the text; the type stays a derived hint. (Auto-renumbering is the design question to solve first.)
 
-### UXP-26 ☐ `divider` is type-only and destroys its text
-- **Problem:** typing `---` converts immediately (`checkMdBlockPrefix`) and **clears `node.text`** — the one block whose markdown trace is erased; the render then depends wholly on the type flag.
-- **Violates:** P1/P2 (markdown-first), P4-adjacent (the typed source is silently discarded).
-- **Target:** `---` stays in the text (mdToHtml already renders `<hr>` from it); the type stays a derived hint.
+### UXP-26 ✓ `divider` is type-only and destroys its text — **RESOLVED**
+- **Problem:** typing `---` converted immediately (`checkMdBlockPrefix`) and **cleared `node.text`**; worse, `/divider` on a content-bearing point **erased its text outright** (`node.text = ''`) — real data loss, same family as UXP-23. The render depended wholly on the type flag. The audit also found the divider's **section-label feature was unreachable**: the hover reveal was gated on `node.text` being non-empty, but every creation path cleared the text — a built-but-dead capability.
+- **Violated:** P1/P2 (markdown-first), P4 (the typed source and converted content were silently discarded).
+- **Resolved (text model: first line = thematic break, lines below = label):** `deriveTypeFromText` now derives `divider` when the **first line** matches `HR_RE` (`---`/`***`/`___` — the same rule `mdToHtml` renders `<hr>` from), so the type is a derived hint like headings. Typing a break keeps it in `node.text` (still converts immediately — the divider row hides its content element, so staying in edit isn't useful — but nothing is erased). `/divider` is now **non-destructive**: existing content becomes the section label below the break (`---\ncontent`). Converting *away* strips the break line (like to-do markers); deleting the break in raw edit demotes to a plain point with the label preserved. Legacy `_type="divider"` nodes are migrated on load (`migrateNodePrefixes` writes the break in, label kept). Side effect: the label feature is **alive again** — hover reveals the content, click edits the raw markdown (`---` + label), the same edit-raw/render-pretty model as headings. Exports now include the label. Pinned: derive forms, migration, `textForDisplay` label-only, `mdToHtml` `<hr>`.
 
 ### UXP-27 ☐ Whole-node `italic`/`underline` flags live outside the text
 - **Problem:** `node.italic`/`node.underline` are per-node formatting booleans (`nc-italic`/`nc-underline` CSS) with no markdown trace — formatting state the text can't express or round-trip.
@@ -244,10 +267,11 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 - **Violates:** P3-2. **Target:** `role`/`tabindex` + `keydown` **beside** existing `mousedown` (caret invariant) on file-menu items, collapse button, bullet, breadcrumb, slash-menu items, `#sc-toggle`→`<button>`, table handles, and the static-table `.mt-promote` button.
 - **✅ Done — the bullet / point-actions popup (the highest-leverage slice).** `.bullet` is now `role="button"`/`aria-haspopup="menu"`/`aria-label`/`tabindex="-1"` + Enter-Space keydown; `#bpop` is a full `role="menu"` (items `role="menuitem"` + `tabindex="-1"`, arrow/Home/End nav, Enter/Space activate, Esc closes + restores focus, focus-visible rings). The keyboard door is **`Shift+F10` / the Menu key** on the focused point (`onKeyDown`), added to §3. This makes **every per-point action keyboard-reachable in one stroke** — type switch, zoom, copy link, move, delete, and the static-table **convert-to-base** (which was filed here in PR 3 and is now operable). 
 - **✅ Done — the file menu (chrome design pass).** `#logo-btn` is `role="button"`/`tabindex="0"`/`aria-haspopup="dialog"`/`aria-expanded` + Enter/Space keydown beside the click handler; `#file-menu` is a `role="dialog"` (per §7.1 it is a settings dialog, **not** a menu) with `role="button"`/`tabindex="-1"` rows, ↑/↓/Home/End roving focus as a convenience, Enter/Space activate, Esc closes + restores focus — to the **interrupted edit at its exact caret offset** when one was armed (`restoreChromeReturn`), else to the logo. Also done in the same pass: `#sc-toggle` (button semantics + Enter/Space; the panel takes focus on open so keys scroll it), `.ghost-row` (`role="button"`/`tabindex="0"` + Enter/Space), and the slash menu's screen-reader path (`role="listbox"`/`option` + `aria-activedescendant` on the editing element — focus never leaves the caret).
-- **☐ Remaining:** `.collapse-btn` (+`aria-expanded`), `.crumb`, `#storage-warn-close`→`<button>`, `.fn-key`, table handles (`.mt-colh`/`.mt-rowh`/`.mt-delcol`/`.mt-delrow`), `.mt-promote` focus-reach (rides its `#bpop` menu entry, now live), `#sel-tb .cmd-icon` (selection-toolbar buttons — now also shown for base-cell selections; the typed markdown path covers the capability meanwhile).
+- **☐ Remaining:** `.collapse-btn` (+`aria-expanded`), `.crumb`, `#storage-warn-close`→`<button>`, `.fn-key`, table handles (`.mt-colh`/`.mt-rowh`/`.mt-delcol`/`.mt-delrow`), `.mt-promote` focus-reach (rides its `#bpop` menu entry, now live), `#sel-tb .cmd-icon` (selection-toolbar buttons — now also shown for base-cell selections; the typed markdown path covers the capability meanwhile). **Also: the `{` and `#` pickers are AT-silent** — the slash menu got `aria-activedescendant` wiring on the editing element (screen reader hears the menu open and the active item); the brace and tag menus mirror its visuals and keys but not that wiring. Bring both up to the slash menu's level (ids on items + `aria-activedescendant`, same §7.1 pattern).
 
-### UXP-15 ☐ Pill labels + live announcements — *a11y Phase 2*
-- **Violates:** P3-5, P3-6 interim. **Target:** each pill `aria-label "{type}: {expr} = {result}"` updated on reroll; one `aria-live` region announces rerolls/changes. (Pill `tabindex` stays deferred.)
+### UXP-15 ◐ Pill labels + live announcements — *a11y Phase 2*
+- **Violates:** P3-5, P3-6 interim. **Target:** each pill `aria-label "{type}: {expr} = {result}"` updated on reroll; the `#a11y-live` region announces rerolls/changes. (Pill `tabindex` stays deferred.)
+- **Partial:** the `#a11y-live` region + `announce()` exist; math pills carry labels (UXP-34); **every `flashHint` toast now routes through `announce()`**, so all UXP-12 confirmations reach assistive tech. **Remaining:** labels on the other six pill types, reroll announcements, and an announcement for the `gr-bad` shorthand typo marker (UXP-6's AT story rides here).
 
 ### UXP-16 ☐ Dialog focus-trap + restore — *a11y Phase 3*
 - **Violates:** P3-2/P3-3. **Target:** `role="dialog"` + `aria-modal`, focus trap, focus restore on close for the insert/edit dialogs.
@@ -256,9 +280,9 @@ These are **not new tickets** — they are the standard's P3 requirements mapped
 - **Violates:** P3-3. **Target:** the two additive CSS rules (`:focus-visible`, `prefers-reduced-motion`).
 - **Partial (design pass 2):** `:focus-visible` rules added for the search field, zoom title, and all seven artifact pills (solid accent outline; the soft `--ring` glow is now decoration, not the focus indicator). Pills still lack `tabindex`, so the pill rules arm only once UXP-15's keyboard reach lands. Full sweep remains.
 
-### UXP-18 ◐ Storage alert + muted contrast — *a11y Phase 5*
-- **Violates:** P3-4/P3-5. **Target:** `role="alert"` on `#storage-warn`; raise `--muted` to pass WCAG AA in both themes (owner sign-off on the tone shift).
-- **Partial (design pass 2):** `--muted` now passes AA in both themes (light `#6b665c` ≈4.9:1, dark `#a39a8d` ≈6.4:1), in CSS **and** the `applyTheme` forced-theme strings; status badges, priority chips, and hashtags also moved to AA-passing theme-paired tokens (`--ok/--warn/--bad/--info`), and `--acc-fg` fixed the white-on-pastel-accent dark-mode failure. `role="alert"` on `#storage-warn` remains open.
+### UXP-18 ✓ Storage alert + muted contrast — *a11y Phase 5* — **RESOLVED**
+- **Violated:** P3-4/P3-5.
+- **Resolved:** `--muted` passes AA in both themes (light `#6b665c` ≈4.9:1, dark `#a39a8d` ≈6.4:1), in CSS **and** the `applyTheme` forced-theme strings; status badges, priority chips, and hashtags moved to AA-passing theme-paired tokens (`--ok/--warn/--bad/--info`); `--acc-fg` fixed the white-on-pastel-accent dark-mode failure (all design pass 2). `role="alert"` is now on `#storage-warn`, so the storage warning is announced when shown — Phase 5 complete.
 
 ### UXP-19 ◐ Outline tree + table grid semantics — *deferred, dedicated pass*
 - **Problem:** the virtualized outline isn't a `role="tree"` and tables aren't a `role="grid"`; high-risk to keep in sync across `render()`.
@@ -283,10 +307,10 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
 
 ## Closing order (recommended)
 
-1. **Correctness defects** — ✓ all closed (UXP-30…34). The engine-audit batch is done; the
-   durable residue is the **folded-coordinates invariant** (undo entries, `dataset.prevText`,
-   and any offset that outlives a blur are always folded — see UXP-30/31) which future
-   edit-path work must preserve.
+1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
+   **folded-coordinates invariant** (undo entries, `dataset.prevText`, and any offset that
+   outlives a blur are always folded — see UXP-30/31) which future edit-path work must preserve.
+   UXP-35 (caret-restore typing race, pre-existing) is the one correctness item still open.
 2. **Tier 1** (UXP-3…5) — the breaks-the-language defects; cheap, high-trust, mostly keyboard/affordance consistency. (UXP-5 closed.)
 3. **Tier 2** (UXP-6…12) — discoverability + feedback gaps. (UXP-6, 8, 10, 12 closed; UXP-7 and UXP-11 remain.)
 4. **Tier 3** (UXP-13…19) — follows `accessibility.md`'s existing phase order; interim labels (UXP-15) ship alongside whatever feature touches a pill.

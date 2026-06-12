@@ -296,7 +296,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 | Links (`[[ ]]`) | ✅ | ❌ (P2-1 picker gated off, no floor door) | ⚠️ | ✅ |
 | Footnotes / hashtags / emoji | ✅ | ✅ (`#` tag picker — UXP-10) | ⚠️ | ✅ |
 | Search | ✅ | ✅ | ⚠️ | ✅ |
-| Autosave / storage | n/a | ✅ | ⚠️ (P3-5 alert — a11y Ph5) | ✅ (reference pattern) |
+| Autosave / storage | n/a | ✅ | ✅ (`role="alert"` on the warning — UXP-18) | ✅ (reference pattern) |
 
 **Syntax conformance (P5) — read this whenever proposing a feature.** The inventory in §2/P5 **is** the current authoring language; today's set is the baseline, not a problem. The rule is **no growth without sign-off**. The standing risk is *new* sprawl — and the roadmap already contains two examples to police: a proposed render-only `{= expr}`/`{NdM}` "second syntax alongside `[[type:key]]`," and possible `B3`-style table refs. Both are **P5-3 violations unless they replace** what they overlap; route them through the `{…}` engine / `@row$col` instead. Tracked as a standing guard in `ux-remediation.md`.
 

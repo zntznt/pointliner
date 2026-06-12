@@ -506,6 +506,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .nt-divider>.node-row{padding:8px 0;cursor:default;user-select:none}
 .nt-divider>.node-row::after{content:'';display:block;height:1px;background:var(--bdr-ui);flex:1;align-self:center;margin-left:8px}
 .nt-divider>.node-row>.collapse-btn,.nt-divider>.node-row>.node-content{display:none}
+.nt-divider>.node-row>.node-content[data-editing]{display:block;flex:1} /* an open editor is never hidden (markdown-first divider) */
 .nt-divider>.node-row>.bullet{cursor:pointer}
 .nt-divider>.node-row>.bullet .bullet-dot{opacity:0;transition:opacity .12s}
 .nt-divider>.node-row>.bullet:hover .bullet-dot{opacity:.55}
@@ -924,7 +925,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div id="var-panel-list"></div>
 </div>
 
-<div id="storage-warn">
+<div id="storage-warn" role="alert">
   <span id="storage-warn-msg"></span>
   <button id="storage-warn-save">Save to file</button>
   <span id="storage-warn-close" title="Dismiss">✕</span>
@@ -1000,6 +1001,11 @@ function deriveTypeFromText(text) {
   if (text.startsWith('# '))   return 'h1';
   if (text.startsWith('> '))   return 'quote';
   if (text.startsWith('```'))  return 'code';
+  // divider: first line is a thematic break (---/***/___ — HR_RE, the same rule
+  // mdToHtml renders <hr> from). Markdown-first (UXP-26): the break lives in the
+  // text; any lines below it are the divider's hover-reveal section label. Note
+  // the order ABOVE matters only for prefixes — a break can't collide with them.
+  if (HR_RE.test(text.split('\n', 1)[0])) return 'divider';
   // to-do: task form (`- [ ]` first line) or state-keyword form — any state of
   // any sequence (default TODO/NEXT/… or user-declared), markdown-first.
   // The type is a derived hint here exactly like headings — the markdown renders.
@@ -1015,6 +1021,10 @@ function textForDisplay(node) {
   let t = node.text;
   const prefix = BLOCK_PREFIX_MAP[node.type];
   if (prefix && t.startsWith(prefix)) return t.slice(prefix.length);
+  // divider: show the label only — the break line is the "prefix" here
+  if (node.type === 'divider' && HR_RE.test(t.split('\n', 1)[0])) {
+    return t.split('\n').slice(1).join('\n').trim();
+  }
   t = t.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
   const pt = parseTodo(t);
   if (pt.keyword) t = pt.body;
@@ -1410,6 +1420,12 @@ function migrateNodePrefixes(n) {
   if (n.type === 'todo') {
     n.text = migrateTodoText(n.text, n.checked);
     n.checked = todoDoneFromText(n.text);
+  }
+  // legacy `_type="divider"` carried the rule in the type alone (text = optional
+  // hover label) — write the thematic break into the text so the node is
+  // self-consistent (markdown-first, UXP-26), label preserved below the break
+  if (n.type === 'divider' && !HR_RE.test(n.text.split('\n', 1)[0])) {
+    n.text = n.text.trim() ? '---\n' + n.text : '---';
   }
   n.children.forEach(migrateNodePrefixes);
 }
@@ -2698,6 +2714,7 @@ function flashHint(msg) {
     document.body.appendChild(el);
   }
   el.textContent = msg;
+  announce(msg); // every toast also reaches assistive tech via the #a11y-live region
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   clearTimeout(_hintTimer);
   _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
@@ -4562,7 +4579,7 @@ function exitEdit(content, node) {
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
-  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo') node.type = 'ul';
+  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider') node.type = 'ul';
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
@@ -8084,16 +8101,18 @@ function tagApply() {
 
 function checkMdBlockPrefix(content, node) {
   const text = editableText(content);
-  // Divider is the only type that converts immediately (no persistent prefix)
-  if (/^---\s*$/.test(text)) {
-    node.type = 'divider'; node.text = '';
+  // Divider still converts immediately (its row hides the content element, so
+  // staying in edit mode isn't useful) — but the break now STAYS in node.text
+  // (markdown-first, UXP-26): the text is the source, the type a derived hint.
+  if (node.type !== 'divider' && HR_RE.test(text)) {
+    node.type = 'divider'; node.text = text.trimEnd();
     delete content.dataset.editing;
     rerenderNode(node.id);
     return true;
   }
   // For all other block types: prefix stays in text, just update type + CSS live
   const newType = deriveTypeFromText(text)
-    ?? (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' ? 'ul' : node.type);
+    ?? (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' ? 'ul' : node.type);
   if (newType !== node.type) {
     const nodeEl = content.closest('.node');
     if (nodeEl) { nodeEl.classList.remove(`nt-${node.type}`); nodeEl.classList.add(`nt-${newType}`); }
@@ -8156,7 +8175,14 @@ function applyBlockCmd(id, nodeId, node, content) {
   cleanText = cleanText.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
   const pt = parseTodo(cleanText);
   if (pt.keyword) cleanText = pt.body;
-  node.text = id === 'divider' ? '' : newPrefix + cleanText;
+  // converting away from a divider strips its break line (like to-do markers above —
+  // otherwise the node would just derive back to 'divider' on the next edit)
+  if (node.type === 'divider' && HR_RE.test(cleanText.split('\n', 1)[0])) {
+    cleanText = cleanText.split('\n').slice(1).join('\n');
+  }
+  // → divider is NON-destructive (UXP-26): existing content becomes the section
+  // label below the break, never erased.
+  node.text = id === 'divider' ? (cleanText.trim() ? '---\n' + cleanText : '---') : newPrefix + cleanText;
   node.type = id;
   node.checked = false;
   // if currently editing this node, sync the live contenteditable
@@ -9085,6 +9111,8 @@ function toMarkdown(rootNode) {
       body.split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}- ---`);
+      const dlabel = textForDisplay(node);
+      if (dlabel) out.push(`${indent}  ${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos carry their own markdown (`- [ ]` marker / Org keyword) in node.text —
       // export it verbatim instead of synthesizing a marker from type+checked.
@@ -9129,6 +9157,8 @@ function toPlainText(rootNode) {
       stripInlineMd(flattenArtifacts(node.text, node, varMap)).split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
+      const dlabel = stripInlineMd(textForDisplay(node));
+      if (dlabel) out.push(`${indent}${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.

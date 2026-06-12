@@ -151,7 +151,7 @@ export function loadCores() {
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
-    'migrateTodoText','textForDisplay',
+    'migrateTodoText','migrateNodePrefixes','textForDisplay',
     'collectCallables','filterBraceCandidates',
     'classifyBraceBody','collectTags','filterTagCandidates',
     'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason',

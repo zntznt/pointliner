@@ -1945,3 +1945,41 @@ test('filterTagCandidates: case-insensitive prefix; a lone exact match offers no
   assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'beta')), []);        // fully typed → dismiss
   assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'x')), []);           // no match
 });
+
+// ── divider derives from the text (UXP-26: markdown-first, no destruction) ───
+// The break (---/***/___, HR_RE) lives in node.text; lines below it are the
+// hover-reveal section label; node.type is a derived hint like headings.
+
+test('deriveTypeFromText: a first-line thematic break derives divider', () => {
+  assert.equal(c.deriveTypeFromText('---'), 'divider');
+  assert.equal(c.deriveTypeFromText('***'), 'divider');
+  assert.equal(c.deriveTypeFromText('___'), 'divider');
+  assert.equal(c.deriveTypeFromText('---\nsection label'), 'divider'); // label below the break
+  assert.equal(c.deriveTypeFromText('--- x'), null);   // trailing text → not a break
+  assert.equal(c.deriveTypeFromText('a\n---'), null);  // break must be the FIRST line
+  assert.equal(c.deriveTypeFromText('--'), null);      // two dashes are prose
+});
+
+test('migrateNodePrefixes: legacy type-only divider gets its break written in, label preserved', () => {
+  const root = c.mkRoot();
+  const bare = c.mkNode('');                bare.type = 'divider';
+  const labeled = c.mkNode('north wing');   labeled.type = 'divider';
+  const modern = c.mkNode('---\nkeep');     modern.type = 'divider';
+  root.children.push(bare, labeled, modern);
+  c.migrateNodePrefixes(root);
+  assert.equal(bare.text, '---');
+  assert.equal(labeled.text, '---\nnorth wing');  // the old hidden label survives below the break
+  assert.equal(modern.text, '---\nkeep');         // already self-consistent — untouched
+});
+
+test('textForDisplay: divider shows the label only (break line stripped)', () => {
+  const labeled = c.mkNode('---\nnorth wing'); labeled.type = 'divider';
+  assert.equal(c.textForDisplay(labeled), 'north wing');
+  const bare = c.mkNode('---'); bare.type = 'divider';
+  assert.equal(c.textForDisplay(bare), '');
+});
+
+test('mdToHtml: a thematic break line renders a real <hr> (the divider visual source)', () => {
+  assert.ok(c.mdToHtml('---').includes('<hr class="md-hr">'));
+  assert.ok(c.mdToHtml('---\nlabel').includes('<hr class="md-hr">'));
+});

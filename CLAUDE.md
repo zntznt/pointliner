@@ -171,8 +171,11 @@ canonical shape:
   change, re-introducing the bare-word false-positive the `#` form removes. `textForDisplay()` (prefix-, marker- and keyword-
   stripped) is used for breadcrumb/search, not for the main render; to-do exports
   emit the raw text since it carries its own marker. Remaining type-driven
-  stragglers (`ol` ordinals, `divider`, whole-node italic/underline) are tracked
-  as UXP-25…27 in `guidance/ux-remediation.md`. Inline emphasis supports both
+  stragglers (`ol` ordinals, whole-node italic/underline) are tracked
+  as UXP-25/27 in `guidance/ux-remediation.md`; dividers derive from the text since
+  UXP-26 (first line a thematic break `---`/`***`/`___`; lines below it are the
+  hover-reveal section label — `migrateNodePrefixes` writes the break into legacy
+  type-only dividers on load). Inline emphasis supports both
   `**`/`__` (bold), `*`/`_` (italic), `***`/`___` (both); underscore forms are
   word-boundary-guarded so `snake_case` stays literal.
 - **Artifact sidecars** (`dice`, `markov`, etc.) are arrays of records keyed by a
