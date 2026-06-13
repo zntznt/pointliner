@@ -711,7 +711,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-title{font-size:14.5px;font-weight:600}
 .io-field{margin-bottom:11px}
 .io-field label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
-.io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
+.io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
 .io-field input::placeholder{color:var(--muted);opacity:.7}
 .io-field input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
@@ -722,7 +722,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-btn.primary:disabled{opacity:.4;cursor:not-allowed;filter:none}
 .io-btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .io-btn.danger:hover{filter:brightness(1.08)}
-.io-field textarea{width:100%;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:7px;padding:8px 11px;outline:none;resize:vertical;line-height:1.5;transition:border-color .12s,box-shadow .12s}
+.io-field textarea{width:100%;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;resize:vertical;line-height:1.5;transition:border-color .12s,box-shadow .12s}
 .io-field textarea.io-mono{font-family:var(--mono)}
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-field textarea::placeholder{color:var(--muted);opacity:.6}
@@ -3143,8 +3143,19 @@ function mkCmdItem(icon, label, desc, onClick, active = false) {
 
 // ─── zoom / breadcrumb ───────────────────────────────────────────────────────
 
-function zoomInto(id) { focusedId = id; render(); }
-function zoomTo(id)   { focusedId = id; render(); }
+// Commit any in-progress edit (flush text + refold artifacts via exitEdit's blur
+// path) before a navigation. Without this, zooming away from a node whose inline
+// artifacts are unfolded to {…} shorthand leaves that shorthand in node.text — it
+// then renders as raw text, not a pill. The footer panels mousedown-preventDefault
+// to preserve focus, which suppresses the blur that normally refolds, so the
+// backlink/footnote click would navigate with the edit uncommitted. No-op if
+// nothing is editing, or if the natural blur already fired (not [data-editing]).
+function commitActiveEdit() {
+  if (activeContentId == null) return;
+  document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
+}
+function zoomInto(id) { commitActiveEdit(); focusedId = id; render(); }
+function zoomTo(id)   { commitActiveEdit(); focusedId = id; render(); }
 
 // Copy a ready-to-paste link token for a node onto the clipboard. Always uses the
 // empty-label form ([[#id|]]) — the empty label renders the target's live title,
@@ -11825,14 +11836,9 @@ function mkAgChip(it, kind) {
   // mousedown + preventDefault (the caret invariant): a plain click would let the
   // mousedown blur the active edit first — that fires markDirty → renderAgenda,
   // which rebuilds the strip and destroys this chip before its click lands,
-  // dropping the navigation. preventDefault keeps focus put, so we commit any
-  // in-progress edit ourselves (blur → exitEdit's full cleanup), then zoom.
-  const navigate = () => {
-    if (activeContentId != null) {
-      document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
-    }
-    zoomInto(it.id);
-  };
+  // dropping the navigation. preventDefault keeps focus put; zoomInto commits any
+  // in-progress edit (refold) before re-rendering.
+  const navigate = () => { zoomInto(it.id); };
   chip.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
   chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
   return chip;
@@ -11845,9 +11851,11 @@ function renderAgenda() {
 
   // left control group — complexity toggles (calendar / timeline views land here later)
   const controls = document.createElement('div'); controls.className = 'ag-controls';
-  const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); });
+  // scheduleAutosave (not markDirty) persists the view pref to localStorage
+  // without flagging the document as having unsaved changes.
+  const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); scheduleAutosave(); });
   runT.title = 'Show the running row (started points)';
-  const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); });
+  const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); scheduleAutosave(); });
   doneT.title = 'Include completed points';
   controls.append(runT, doneT);
   strip.appendChild(controls);
@@ -12357,7 +12365,7 @@ function scheduleAutosave() {
   if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaShowRunning, agendaShowDone }));
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -12395,6 +12403,8 @@ function scheduleAutosave() {
         btn.setAttribute('aria-pressed', String(showDone));
       }
       if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
+      if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
+      if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
       if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) {
         accentId = data.accentId;
       }
