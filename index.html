@@ -735,6 +735,16 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .tpl-pick:hover,.tpl-pick:focus-visible{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);outline:none}
 .tpl-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tpl-count{flex-shrink:0;font-size:11px;color:var(--muted);font-family:var(--mono)}
+/* refile quick-switcher dialog: search input + filtered, keyboard-navigable list */
+.rf-search{width:100%;font-family:var(--font);font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:9px 11px;outline:none;margin-bottom:10px;transition:border-color .12s,box-shadow .12s}
+.rf-search:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.rf-list{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto;margin-bottom:6px}
+.rf-item{display:flex;flex-direction:column;gap:1px;padding:7px 10px;border-radius:var(--r-md);cursor:pointer;border:1px solid transparent}
+.rf-item.hi{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
+.rf-item-title{font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rf-item-top{font-weight:600}
+.rf-item-path{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
 .zoom-props-row{display:flex;align-items:flex-start;margin-bottom:12px;padding-top:2px}
 .zoom-props-row>.note-mark{width:auto;margin:4px 7px 0 0;flex-shrink:0}
 .io-seg{display:flex;gap:5px;margin-bottom:2px}
@@ -4858,6 +4868,156 @@ function stampTemplate(nodeId, name) {
   flashHint(`Stamped “${tpl.name}” (${ptsLabel(countPoints(clone))})`);
 }
 
+// ─── refile ────────────────────────────────────────────────────────────────────
+// Move a point's whole subtree to become the last child of another point chosen via
+// a search picker (vs. drag / indent). Org-mode's refile.
+
+// Candidate targets: every point except the moved subtree itself, each with its
+// ancestor-title path for disambiguation. Title-matched (case-insensitive), like
+// linkCandidates — predictable. Pure over rootNode (tests pass an explicit tree).
+function refileCandidates(query, moveId, rootNode = root) {
+  const q = (query || '').toLowerCase();
+  const out = [];
+  function walk(n, path) {
+    if (n.id === moveId) return; // skip the moved subtree entirely (and its descendants)
+    // a base shows a clean label, not its raw table markdown (mirrors crumbLabel)
+    const title = n.type === 'base' ? 'Base' : (textForDisplay(n) || '(untitled)');
+    if (q === '' || title.toLowerCase().includes(q)) out.push({ id: n.id, title, path: path.slice() });
+    const childPath = path.concat(title);
+    for (const c of n.children) walk(c, childPath);
+  }
+  for (const c of (rootNode?.children || [])) walk(c, []);
+  return out;
+}
+
+// Move moveId's subtree under targetId (becomes targetId's last child). targetId ===
+// root.id refiles to the top level. Guards self + own-descendant (would orphan the tree).
+function refileNodeTo(moveId, targetId) {
+  if (moveId === targetId || isDescOf(moveId, targetId)) return;
+  const node = nodeById(moveId);
+  const fromParent = parentOf(moveId);
+  const target = nodeById(targetId);
+  if (!node || !fromParent || !target) return;
+  // leave edit mode on the moved node first (blur-during-render would clobber text)
+  if (activeContentId === moveId) {
+    const el = document.querySelector(`.node-content[data-id="${moveId}"][data-editing]`);
+    if (el) el.blur();
+  }
+  if (!nodeById(moveId) || !nodeById(targetId)) return;
+  pushUndo();
+  const idx = fromParent.children.findIndex(c => c.id === moveId);
+  fromParent.children.splice(idx, 1);
+  if (target.collapsed) target.collapsed = false;
+  target.children.push(node);
+  parentMap.set(node.id, target);
+  markDirty();
+  render();
+  focusNode(moveId);
+  const where = targetId === root.id ? 'Top level' : crumbLabel(target);
+  flashHint(`Refiled ${ptsLabel(countPoints(node))} → ${where}`);
+}
+
+// The refile picker: a modal quick-switcher. Type to filter, ↑/↓ to move, Enter to
+// refile, Esc to cancel. "Top level" is always the first option (refile out of nesting).
+let rfState = null;
+function openRefileDialog(moveId) {
+  const node = nodeById(moveId);
+  if (!node) return;
+  ioCard.innerHTML = '';
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' });
+  const ttl = document.createElement('div'); ttl.className = 'io-title';
+  ttl.textContent = 'Refile to…';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const search = document.createElement('input');
+  search.className = 'rf-search'; search.type = 'text';
+  search.placeholder = 'Search points…';
+  search.setAttribute('aria-label', 'Search for a destination point');
+  search.autocomplete = 'off'; search.spellcheck = false;
+  ioCard.appendChild(search);
+
+  const listEl = document.createElement('div'); listEl.className = 'rf-list';
+  listEl.setAttribute('role', 'listbox');
+  listEl.setAttribute('aria-label', 'Destination points');
+  ioCard.appendChild(listEl);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', closeIo);
+  foot.append(cancelBtn); ioCard.appendChild(foot);
+
+  // "Top level" (root) is always offered first; then the title-matched candidates.
+  function itemsFor(q) {
+    const cands = refileCandidates(q, moveId).slice(0, 60);
+    const showTop = q === '' || 'top level'.includes(q.toLowerCase());
+    return showTop ? [{ id: root.id, title: 'Top level', path: [], top: true }, ...cands] : cands;
+  }
+  rfState = { moveId, items: itemsFor(''), activeIdx: 0 };
+
+  function renderList() {
+    listEl.innerHTML = '';
+    if (!rfState.items.length) {
+      const empty = document.createElement('div'); empty.className = 'rf-empty';
+      empty.textContent = 'No matching points.';
+      listEl.appendChild(empty);
+      search.removeAttribute('aria-activedescendant');
+      return;
+    }
+    rfState.items.forEach((it, i) => {
+      const row = document.createElement('div');
+      row.className = 'rf-item' + (i === rfState.activeIdx ? ' hi' : '');
+      row.id = 'rf-opt-' + i;
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(i === rfState.activeIdx));
+      const t = document.createElement('div');
+      t.className = 'rf-item-title' + (it.top ? ' rf-item-top' : '');
+      t.textContent = it.title;
+      row.appendChild(t);
+      if (it.path && it.path.length) {
+        const p = document.createElement('div'); p.className = 'rf-item-path';
+        p.textContent = it.path.join(' › ');
+        row.appendChild(p);
+      }
+      row.setAttribute('aria-label', `${it.title}${it.path && it.path.length ? ', in ' + it.path.join(', ') : ''}`);
+      row.addEventListener('mouseenter', () => { rfState.activeIdx = i; renderList(); });
+      row.addEventListener('mousedown', e => { e.preventDefault(); rfState.activeIdx = i; apply(); });
+      listEl.appendChild(row);
+    });
+    search.setAttribute('aria-activedescendant', 'rf-opt-' + rfState.activeIdx);
+    listEl.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function apply() {
+    const it = rfState.items[rfState.activeIdx];
+    if (!it) return;
+    const target = it.id;
+    closeIo();
+    refileNodeTo(moveId, target);
+  }
+
+  search.addEventListener('input', () => {
+    rfState.items = itemsFor(search.value.trim());
+    rfState.activeIdx = 0;
+    renderList();
+  });
+  search.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (rfState.items.length) { rfState.activeIdx = (rfState.activeIdx + 1) % rfState.items.length; renderList(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (rfState.items.length) { rfState.activeIdx = (rfState.activeIdx - 1 + rfState.items.length) % rfState.items.length; renderList(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); apply(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+  });
+
+  renderList();
+  ioCancel = closeIo;
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Refile to');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => search.focus());
+}
+
 // ─── search ───────────────────────────────────────────────────────────────────
 // The search box speaks a small operator language (UXP-20-routed: operators over
 // the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
@@ -6233,6 +6393,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { icon: TEMPLATE_ICON, label:'Save as template',
       fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
+    { icon:{ fa:'fa-solid fa-arrow-right-arrow-left', fb:'⇄' }, label:'Refile…',
+      fn: () => { hideBpop(); openRefileDialog(nodeId); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
@@ -7218,7 +7380,7 @@ function openInsertDialog(opts) {
   requestAnimationFrame(() => { const f = ioCard.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
 function closeIo() {
-  ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null;
+  ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null; rfState = null;
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }
@@ -11113,6 +11275,7 @@ const SHORTCUTS = [
     { keys: ['⇧+Enter'],         desc: 'Line break inside a point' },
     { keys: ['Tab', '⇧+Tab'],    desc: 'Indent / outdent' },
     { keys: ['Alt+↑', '↓'],      desc: 'Move point up / down' },
+    { keys: ['Refile…'],         desc: 'Move a point (and its subtree) anywhere via search — in the bullet menu (⇧+F10)' },
   ]},
   { sec: 'TODO state & priority', rows: [
     { keys: ['#TODO'],            desc: 'Click a badge to open the state / priority picker' },

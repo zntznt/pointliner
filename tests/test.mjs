@@ -2723,6 +2723,65 @@ test('templates: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('buildIndex(root, null); // re-index the whole stamped subtree'), 'reindex after stamp missing');
 });
 
+// ─── refile ────────────────────────────────────────────────────────────────────
+
+test('refile: refileCandidates lists every point except the moved subtree, with paths', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Alpha');
+  const b = c.mkNode('Beta');
+  const bChild = c.mkNode('Beta child');
+  b.children.push(bChild);
+  const moved = c.mkNode('Movable');
+  const movedKid = c.mkNode('Movable kid');
+  moved.children.push(movedKid);
+  root.children.push(a, b, moved);
+
+  const all = c.refileCandidates('', moved.id, root);
+  const titles = all.map(x => x.title);
+  assert.ok(titles.includes('Alpha') && titles.includes('Beta') && titles.includes('Beta child'));
+  // the moved node AND its descendants are excluded (can't refile into yourself)
+  assert.ok(!titles.includes('Movable'), 'moved node must be excluded');
+  assert.ok(!titles.includes('Movable kid'), 'moved descendants must be excluded');
+  // nested candidate carries its ancestor path for disambiguation
+  const bc = all.find(x => x.title === 'Beta child');
+  assert.deepEqual(host(bc.path), ['Beta']);
+  const al = all.find(x => x.title === 'Alpha');
+  assert.deepEqual(host(al.path), []); // top-level point: empty path
+});
+
+test('refile: refileCandidates filters by title, case-insensitive', () => {
+  const root = c.mkRoot();
+  const moved = c.mkNode('X');
+  root.children.push(c.mkNode('Groceries'), c.mkNode('Garage'), moved);
+  assert.deepEqual(host(c.refileCandidates('gar', moved.id, root).map(x => x.title)), ['Garage']);
+  assert.deepEqual(host(c.refileCandidates('GRO', moved.id, root).map(x => x.title)), ['Groceries']);
+  assert.equal(c.refileCandidates('zzz', moved.id, root).length, 0);
+});
+
+test('refile: untitled / base targets still surface with a label', () => {
+  const root = c.mkRoot();
+  const moved = c.mkNode('m');
+  const blank = c.mkNode('');
+  const base = c.mkNode('| a |', 'base');
+  root.children.push(blank, base, moved);
+  const all = c.refileCandidates('', moved.id, root);
+  const titles = all.map(x => x.title);
+  assert.ok(titles.includes('(untitled)'), 'blank point gets a placeholder label');
+  assert.ok(titles.includes('Base'), 'base gets a Base label');
+});
+
+test('refile: UI wiring + ancestor guard present (src pins)', () => {
+  assert.ok(_src.includes('openRefileDialog'),  'refile dialog missing');
+  assert.ok(_src.includes('function refileNodeTo'), 'mover missing');
+  assert.ok(_src.includes("label:'Refile…'"),   'bullet menu door missing');
+  // self / own-descendant guard (would orphan the subtree)
+  assert.ok(_src.includes('moveId === targetId || isDescOf(moveId, targetId)'), 'ancestor guard missing');
+  // keyboard-navigable quick-switcher (↑/↓/Enter on the search input)
+  assert.ok(_src.includes("e.key === 'ArrowDown'") && _src.includes("e.key === 'ArrowUp'"), 'list keyboard nav missing');
+  // top-level (root) refile option
+  assert.ok(_src.includes("title: 'Top level'"), 'top-level option missing');
+});
+
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
   assert.deepEqual(host(c.tallyMarkers('- [ ] a\n- [x] b\n- [ ] c')), { done: 1, total: 3 });
   assert.deepEqual(host(c.tallyMarkers('* [x] a\n+ [x] b')),          { done: 2, total: 2 });

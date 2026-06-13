@@ -166,6 +166,7 @@ export function loadCores() {
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
+    'refileCandidates',
   ];
   const cores = {};
   const missing = [];

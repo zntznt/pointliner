@@ -524,7 +524,11 @@ Templates (named subtree snapshots stored doc-level on `root.templates = [{name,
 updates); stamp door is the `/template` slash verb → a picker dialog that deep-clones the chosen
 subtree (`deepCloneNodeNewIds`, now also deep-copying the `seq`/`props` sidecars) with fresh ids and
 inserts it — replacing the invoking point when empty/childless, else as the next sibling; pure cores
-`upsertTemplate`/`removeTemplate`/`findTemplate`).
+`upsertTemplate`/`removeTemplate`/`findTemplate`) ·
+Refile (move a point's subtree to become another point's last child via a "Refile…" bullet-menu
+door → a modal quick-switcher: search input + filtered, keyboard-navigable candidate list with
+breadcrumb paths, "Top level" offered first; reuses `performDrop`'s reparent + `isDescOf` for the
+self/own-descendant guard; pure core `refileCandidates`, mover `refileNodeTo`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

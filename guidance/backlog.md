@@ -146,9 +146,14 @@ A point shows how many of its tasks are done.
 Fast capture of a task/note into a chosen inbox node without navigating there.
 - **Fit — medium.** Pairs well with templates.
 
-### ☐ Refile (move a subtree via search)
+### ✓ Refile (move a subtree via search) — shipped
 Move a subtree to another location through a search picker (vs. drag/indent).
-- **Fit — medium.** Reuses the search index; add a "move to…" picker.
+- **Shipped:** a "Refile…" bullet-menu door opens a modal quick-switcher (search input +
+  filtered, keyboard-navigable list of candidate targets with breadcrumb paths; "Top level"
+  always offered first). Selecting a target moves the subtree to become its last child;
+  reuses `performDrop`'s reparent semantics + `isDescOf` for the self/own-descendant guard.
+  Pure core `refileCandidates` (title-matched, excludes the moved subtree); mover `refileNodeTo`.
+- **Fit — medium (as predicted).** Reused the reparent infra + the picker pattern; no new syntax.
 
 ### ⊘ Archive done items — *shelved (decision, 2026-06-13)*
 Move completed items to an archive (vs. just hide-done).

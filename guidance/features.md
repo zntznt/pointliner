@@ -219,6 +219,19 @@ Implemented:
   the **next sibling**. Every action toasts what it touched (P4). Pure cores:
   `upsertTemplate` / `removeTemplate` / `findTemplate` (all return new arrays, never
   mutate).
+- **Refile** — move a point's whole subtree to another location through a search
+  picker, instead of dragging or repeatedly indenting. **Door:** the bullet menu
+  "Refile…" opens a **modal quick-switcher** — a search input over a filtered,
+  keyboard-navigable list of candidate destinations (↑/↓ to move, Enter to refile,
+  Esc to cancel), each row showing the target's title plus its **breadcrumb path**
+  for disambiguation. **"Top level"** is always the first option (refile *out* of
+  deep nesting). Selecting a target moves the subtree to become that point's **last
+  child**, reusing the same reparent semantics as drag-drop (`performDrop`) and the
+  `isDescOf` **self / own-descendant guard** (you can't refile a point into its own
+  subtree — that would orphan the tree). The move toasts what it touched (P4) and
+  focus follows the moved point. Pure core `refileCandidates(query, moveId, root)` —
+  title-matched (case-insensitive, like `linkCandidates`), excludes the moved subtree,
+  returns `{id, title, path}`; mover `refileNodeTo(moveId, targetId)`. No new syntax.
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like
