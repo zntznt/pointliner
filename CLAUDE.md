@@ -517,7 +517,14 @@ serialize+parse-in-one-change rule; dialog editor from bullet menu "Add property
 and chip click; chips render below the note row (gutter mark reuses `.note-mark`), also in the zoom
 view; `has:key` / `key:value` search operators added to `parseSearchQuery`/`termMatchesNode` —
 `is:` stays a reserved prefix and `is:unrecognised` falls through to text; exported as
-`[key: val · …]` continuation lines in markdown/plain text).
+`[key: val · …]` continuation lines in markdown/plain text) ·
+Templates (named subtree snapshots stored doc-level on `root.templates = [{name, node}]` — the
+`<_templates>` OPML **head element**, the second underscore-prefixed custom element beside
+`<_savedSearches>`; save door is the bullet menu "Save as template" (name dialog, save-over-name
+updates); stamp door is the `/template` slash verb → a picker dialog that deep-clones the chosen
+subtree (`deepCloneNodeNewIds`, now also deep-copying the `seq`/`props` sidecars) with fresh ids and
+inserts it — replacing the invoking point when empty/childless, else as the next sibling; pure cores
+`upsertTemplate`/`removeTemplate`/`findTemplate`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

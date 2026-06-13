@@ -121,9 +121,15 @@ persisted); hidden notes leave a whisper-level indicator on the point — click/
 Space reveals that one note. Typography conforms to `design-language.md` (existing
 type steps, `--muted`, no italic, no opacity-faded placeholder).
 
-### ☐ Templates
+### ✓ Templates — shipped
 Reusable subtree templates.
-- **Fit — easy.** Reuses the copy / deep-clone infra; "save this subtree, stamp copies."
+- **Shipped:** named subtree snapshots on `root.templates` (`<_templates>` OPML head element);
+  "Save as template" bullet-menu door (name dialog, save-over-name updates); `/template` slash verb
+  opens a picker that deep-clones (`deepCloneNodeNewIds`, fresh ids) and stamps the chosen subtree —
+  replacing an empty invoking point, else inserting after. Pure cores `upsertTemplate` /
+  `removeTemplate` / `findTemplate`.
+- **Fit — easy (as predicted).** Reused the copy / deep-clone infra + the saved-search OPML-head
+  config pattern.
 
 ### ✓ Checkbox progress cookies `[2/5]` / `[40%]` — shipped
 A point shows how many of its tasks are done.

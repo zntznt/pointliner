@@ -2608,6 +2608,89 @@ test('saved searches: UI wiring + parse-side present (src pins)', () => {
   assert.ok(_src.includes("getElementById('search-save').addEventListener('mousedown', e => e.preventDefault())"), 'star mousedown guard missing');
 });
 
+// ─── templates ─────────────────────────────────────────────────────────────────
+
+test('templates: mkRoot initialises templates as an empty array', () => {
+  assert.deepEqual(host(c.mkRoot().templates), []);
+});
+
+test('templates: upsertTemplate appends, updates by trim-exact name, returns new array', () => {
+  const n1 = c.mkNode('one');
+  const n2 = c.mkNode('two');
+  const a = c.upsertTemplate([], 'Review', n1);
+  assert.equal(a.length, 1);
+  assert.equal(a[0].name, 'Review');
+  assert.equal(a[0].node, n1);
+  // saving over the same name (with surrounding space) updates in place, not appends
+  const b = c.upsertTemplate(a, '  Review  ', n2);
+  assert.equal(b.length, 1);
+  assert.equal(b[0].node, n2);
+  // a distinct name appends
+  const d = c.upsertTemplate(b, 'Other', n1);
+  assert.equal(d.length, 2);
+  // empty name or missing node is a no-op copy (never mutates input)
+  assert.deepEqual(host(c.upsertTemplate(d, '', n1)).length, 2);
+  assert.deepEqual(host(c.upsertTemplate(d, 'x', null)).length, 2);
+  assert.notEqual(c.upsertTemplate(d, 'z', n1), d); // new array
+});
+
+test('templates: removeTemplate / findTemplate are trim-exact and pure', () => {
+  const list = [{ name: 'A', node: c.mkNode('a') }, { name: 'B', node: c.mkNode('b') }];
+  assert.equal(c.findTemplate(list, 'A').name, 'A');
+  assert.equal(c.findTemplate(list, '  A  ').name, 'A'); // trim-exact
+  assert.equal(c.findTemplate(list, 'C'), null);
+  const after = c.removeTemplate(list, 'A');
+  assert.equal(after.length, 1);
+  assert.equal(after[0].name, 'B');
+  assert.equal(list.length, 2);                          // input untouched
+  assert.equal(c.removeTemplate(list, 'missing').length, 2);
+});
+
+test('templates: deepCloneNodeNewIds gives fresh ids and unshared sidecars (incl. seq + props)', () => {
+  const src = c.mkNode('parent');
+  src.props = [{ key: 'status', val: 'active' }];
+  src.seq = [{ key: 'k1', name: 'Flow', states: ['TODO', 'DONE'], doneFrom: 1 }];
+  const child = c.mkNode('child');
+  src.children.push(child);
+
+  const clone = c.deepCloneNodeNewIds(src);
+  // fresh ids top and down
+  assert.notEqual(clone.id, src.id);
+  assert.notEqual(clone.children[0].id, src.children[0].id);
+  assert.equal(clone.text, 'parent');
+  // sidecars are copied, not shared — mutating the clone must not touch the source
+  assert.notEqual(clone.props, src.props);
+  assert.notEqual(clone.seq, src.seq);
+  clone.props[0].val = 'done';
+  assert.equal(src.props[0].val, 'active');
+  clone.seq[0].states.push('X');
+  assert.equal(src.seq[0].states.length, 2);
+});
+
+test('templates: OPML head round-trips templates (serialize + structure)', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('doc'));
+  assert.ok(!c.toOpml(root).includes('_templates'), 'empty list must not emit');
+  const tnode = c.mkNode('Weekly review');
+  tnode.children.push(c.mkNode('- [ ] inbox zero'));
+  root.templates = [{ name: 'Review', node: tnode }];
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_templates>'), 'head element missing');
+  assert.ok(xml.includes('Weekly review'), 'template node text not serialized');
+});
+
+test('templates: UI wiring + front doors present (src pins)', () => {
+  assert.ok(_src.includes("querySelector('head > _templates')"), 'fromOpml parse missing');
+  assert.ok(_src.includes('templates: []'), 'mkRoot default missing');
+  assert.ok(_src.includes('openSaveTemplateDialog'), 'save door missing');
+  assert.ok(_src.includes('openTemplatePicker'),     'stamp picker missing');
+  assert.ok(_src.includes('stampTemplate'),          'stamp impl missing');
+  assert.ok(_src.includes("id:'template'"),          '/ menu entry missing');
+  assert.ok(_src.includes("label:'Save as template'"), 'bullet menu door missing');
+  // stamp re-indexes the whole cloned subtree
+  assert.ok(_src.includes('buildIndex(root, null); // re-index the whole stamped subtree'), 'reindex after stamp missing');
+});
+
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
   assert.deepEqual(host(c.tallyMarkers('- [ ] a\n- [x] b\n- [ ] c')), { done: 1, total: 3 });
   assert.deepEqual(host(c.tallyMarkers('* [x] a\n+ [x] b')),          { done: 2, total: 2 });

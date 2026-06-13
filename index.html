@@ -729,6 +729,12 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .props-input.key-in{width:110px;flex-shrink:0}
 .props-input.val-in{flex:1}
 .io-btn.xsm{padding:4px 8px;font-size:12px}
+.tpl-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:260px;overflow-y:auto}
+.tpl-row{display:flex;align-items:center;gap:6px}
+.tpl-pick{flex:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 11px;cursor:pointer;text-align:left;transition:border-color .12s,background .12s}
+.tpl-pick:hover,.tpl-pick:focus-visible{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);outline:none}
+.tpl-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpl-count{flex-shrink:0;font-size:11px;color:var(--muted);font-family:var(--mono)}
 .zoom-props-row{display:flex;align-items:flex-start;margin-bottom:12px;padding-top:2px}
 .zoom-props-row>.note-mark{width:auto;margin:4px 7px 0 0;flex-shrink:0}
 .io-seg{display:flex;gap:5px;margin-bottom:2px}
@@ -1068,7 +1074,7 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [], templates: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
@@ -2676,12 +2682,14 @@ function toOpml(r) {
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
-  // saved searches are doc-level config, so they live in the head (the one
-  // underscore-prefixed custom ELEMENT — outlines carry custom attributes)
+  // saved searches + templates are doc-level config, so they live in the head as
+  // underscore-prefixed custom ELEMENTS (outlines carry custom attributes; the head
+  // carries custom elements — same serialize+parse-in-one-change rule)
   const saved = r.savedSearches?.length ? `<_savedSearches>${ex(JSON.stringify(r.savedSearches))}</_savedSearches>` : '';
+  const tpls  = r.templates?.length    ? `<_templates>${ex(JSON.stringify(r.templates))}</_templates>` : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
-  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${saved}</head>
+  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${saved}${tpls}</head>
   <body>
 ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
@@ -2756,7 +2764,13 @@ function fromOpml(xml) {
       return Array.isArray(a) ? a.filter(s => typeof s === 'string') : [];
     } catch(_) { return []; }
   })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches,
+  const templates = (() => {
+    try {
+      const a = JSON.parse(doc.querySelector('head > _templates')?.textContent || '[]');
+      return Array.isArray(a) ? a.filter(t => t && typeof t.name === 'string' && t.node) : [];
+    } catch(_) { return []; }
+  })();
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -2778,6 +2792,7 @@ const BLOCK_CMDS = [
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
+  { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -4725,6 +4740,124 @@ function openPropsDialog(nodeId) {
   });
 }
 
+// ─── templates ─────────────────────────────────────────────────────────────────
+// Save a point's subtree as a named, reusable template (doc-level config on
+// root.templates), then stamp fresh copies elsewhere via the /template picker.
+const TEMPLATE_ICON = { fa: 'fa-solid fa-clone', fb: '⧉' };
+
+// Save-as-template door (bullet menu): name dialog defaulting to the point's text.
+function openSaveTemplateDialog(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  const dflt = (textForDisplay(node) || '').split('\n')[0].trim().slice(0, 40);
+  const exists = name => isSavedTemplateName(name);
+  openInsertDialog({
+    icon: TEMPLATE_ICON,
+    title: 'Save as template',
+    submitLabel: 'Save',
+    fields: [
+      { key: 'name', label: 'Template name', placeholder: 'e.g. Weekly review', value: dflt,
+        hint: 'Saving over an existing name updates that template.' },
+    ],
+    validate: v => !!v.name,
+    onSubmit: v => {
+      const name = v.name.trim();
+      const updating = exists(name);
+      pushUndo();
+      root.templates = upsertTemplate(root.templates, name, deepCloneNodeNewIds(node));
+      markDirty();
+      flashHint(`${updating ? 'Updated' : 'Saved'} template “${name}” (${ptsLabel(countPoints(node))})`);
+    },
+  });
+}
+function isSavedTemplateName(name) { return !!findTemplate(root.templates, name); }
+
+// /template door: a picker dialog listing saved templates; click stamps one here.
+function openTemplatePicker(nodeId) {
+  const list = root.templates || [];
+  ioCard.innerHTML = '';
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, TEMPLATE_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title';
+  ttl.textContent = 'Stamp a template';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 14px;line-height:1.55';
+    empty.textContent = 'No templates yet. Save a point as a template from its bullet menu, then stamp copies here.';
+    ioCard.appendChild(empty);
+  } else {
+    const tlist = document.createElement('div'); tlist.className = 'tpl-list';
+    list.forEach(tpl => {
+      const row = document.createElement('div'); row.className = 'tpl-row';
+      const pick = document.createElement('button');
+      pick.className = 'tpl-pick'; pick.type = 'button';
+      pick.setAttribute('aria-label', `Stamp template ${tpl.name}`);
+      const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = tpl.name;
+      const cnt = document.createElement('span'); cnt.className = 'tpl-count';
+      cnt.textContent = ptsLabel(countPoints(tpl.node));
+      pick.append(nm, cnt);
+      pick.addEventListener('click', () => { closeIo(); stampTemplate(nodeId, tpl.name); });
+      const del = document.createElement('button');
+      del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
+      del.title = 'Forget'; del.setAttribute('aria-label', `Forget template ${tpl.name}`);
+      del.addEventListener('click', () => {
+        pushUndo();
+        root.templates = removeTemplate(root.templates, tpl.name);
+        markDirty();
+        flashHint(`Forgot template “${tpl.name}”`);
+        openTemplatePicker(nodeId); // re-render the picker in place
+      });
+      row.append(pick, del);
+      tlist.appendChild(row);
+    });
+    ioCard.appendChild(tlist);
+  }
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', closeIo);
+  foot.append(closeBtn); ioCard.appendChild(foot);
+  ioCancel = closeIo;
+
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Stamp a template');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
+}
+
+// Stamp a fresh copy of a saved template as a new point. Replaces the invoking
+// point when it's empty and childless (typed /template on a blank line); otherwise
+// inserts as the next sibling. Mirrors createBaseAt's blur-before-mutate discipline.
+function stampTemplate(nodeId, name) {
+  const tpl = findTemplate(root.templates, name);
+  if (!tpl) return;
+  const node = nodeById(nodeId);
+  if (!node) return;
+  // leave text-edit first; a still-editing node's blur-during-render would clobber text
+  if (activeContentId === nodeId) {
+    const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (el) el.blur();
+  }
+  const cur = nodeById(nodeId); if (!cur) return;
+  const parent = parentOf(nodeId);
+  if (!parent) return;
+  const clone = deepCloneNodeNewIds(tpl.node);
+  pushUndo();
+  const idx = parent.children.findIndex(c => c.id === nodeId);
+  if (cur.text.trim() === '' && !cur.children.length) parent.children.splice(idx, 1, clone); // replace empty point
+  else parent.children.splice(idx + 1, 0, clone);                                            // else insert after
+  buildIndex(root, null); // re-index the whole stamped subtree (clone + descendants)
+  markDirty();
+  render();
+  focusNode(clone.id);
+  flashHint(`Stamped “${tpl.name}” (${ptsLabel(countPoints(clone))})`);
+}
+
 // ─── search ───────────────────────────────────────────────────────────────────
 // The search box speaks a small operator language (UXP-20-routed: operators over
 // the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
@@ -4835,6 +4968,28 @@ function toggleSavedSearch(list, q) {
 function isSavedSearch(list, q) {
   const v = (q || '').trim();
   return !!v && (list || []).some(s => (s || '').trim() === v);
+}
+
+// ─── templates (pure cores) ────────────────────────────────────────────────────
+// A template is { name, node } — a named subtree snapshot stored doc-level on
+// root.templates. Names are trim-exact unique (saving over an existing name
+// updates that template, mirroring the saved-search toggle's trim-exact match).
+// All three return a NEW array / value and never mutate the input. Pure.
+function upsertTemplate(list, name, node) {
+  const v = (name || '').trim();
+  const cur = list || [];
+  if (!v || !node) return cur.slice();
+  const out = cur.filter(t => (t.name || '').trim() !== v);
+  out.push({ name: v, node });
+  return out;
+}
+function removeTemplate(list, name) {
+  const v = (name || '').trim();
+  return (list || []).filter(t => (t.name || '').trim() !== v);
+}
+function findTemplate(list, name) {
+  const v = (name || '').trim();
+  return (list || []).find(t => (t.name || '').trim() === v) || null;
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
@@ -5733,7 +5888,9 @@ function deepCloneNodeNewIds(node) {
     math:      (node.math      || []).map(m => ({ ...m })),
     vars:      (node.vars      || []).map(v => ({ ...v })),
     grammar:   (node.grammar   || []).map(g => ({ ...g })),
-    children: node.children.map(c => deepCloneNodeNewIds(c)),
+    seq:       (node.seq       || []).map(s => ({ ...s, states: [...(s.states || [])] })),
+    props:     (node.props     || []).map(p => ({ ...p })),
+    children: (node.children   || []).map(c => deepCloneNodeNewIds(c)),
   };
 }
 
@@ -6073,6 +6230,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
     { icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
+    { icon: TEMPLATE_ICON, label:'Save as template',
+      fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
@@ -6367,6 +6526,12 @@ function slashApply() {
   // popup) before creating anything; the confirm callback does the actual work.
   if (trigger !== '@' && cmd.id === 'base') {
     openSizePicker(content, slashOffset, (rows, cols) => createBaseAt(nodeId, rows, cols));
+    return;
+  }
+  // /template opens the template picker (a dialog), which stamps the chosen subtree
+  // as a new point here. Structural, like /base — the picker callback does the work.
+  if (trigger !== '@' && cmd.id === 'template') {
+    openTemplatePicker(nodeId);
     return;
   }
   if (trigger === '@' && cmd.id === 'table') {
@@ -10952,7 +11117,7 @@ const SHORTCUTS = [
     { keys: ['/todo', '/next', '…'],   desc: 'Slash menu sets the to-do state too' },
   ]},
   { sec: 'Insert & commands', rows: [
-    { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
+    { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table, base, or stamp a saved template…' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },

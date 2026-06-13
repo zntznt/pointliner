@@ -189,6 +189,36 @@ Implemented:
   other artifact in a one-way snapshot. P5: a recorded syntax-inventory decision
   — reuses the `[…]` bracket authoring family rather than minting a sigil
   (`guidance/ux-remediation.md` UXP-20).
+- **Properties** — per-point structured key:value metadata. `node.props = [{key, val}]`
+  is a sidecar array persisted as the `_props` OPML attribute (JSON; serialize +
+  parse in the same change, like every sidecar). **Editor:** a dialog from the
+  bullet menu ("Add property" / "Edit properties") or by clicking any chip — a
+  dynamic key:value list with add/remove rows (Enter in a key field jumps to its
+  value; Enter on the last value adds a row). **Display:** chips render in a row
+  below the point's note (gutter mark reuses `.note-mark`), and again under the
+  title in the zoom view; empty keys are dropped on save. **Search:** two operators
+  added to `parseSearchQuery` / `termMatchesNode` — `has:key` (the point carries a
+  property with that key) and `key:value` (key equals value), both case-insensitive;
+  `is:` stays a reserved prefix so `is:tomorrow` and other unknown `is:` values fall
+  through to literal text (the escape-hatch rule). **Export:** properties appear as a
+  single `[key: val · …]` continuation line in the markdown and plain-text snapshots.
+- **Templates** — save a point's subtree as a named, reusable snapshot and stamp
+  fresh copies elsewhere. Templates are **doc-level config** on `root.templates =
+  [{name, node}]`, serialized as the `<_templates>` **OPML head element** (the
+  second underscore-prefixed custom *element*, beside `<_savedSearches>` — outlines
+  carry custom attributes, the head carries custom elements). **Save door:** the
+  bullet menu "Save as template" opens a name dialog defaulting to the point's text;
+  saving over an existing name **updates** that template (trim-exact, mirroring the
+  saved-search toggle). **Stamp door:** the `/template` slash verb opens a picker
+  dialog listing saved templates (point counts shown, each with a "forget" ✕); an
+  empty library shows guidance pointing at the save door (P2). Stamping
+  **deep-clones** the stored subtree (`deepCloneNodeNewIds` — fresh ids top-to-leaf,
+  now also deep-copying the `seq`/`props` sidecars so a stamp never shares mutable
+  state with the saved template) and inserts it: **replacing** the invoking point
+  when it's empty and childless (you typed `/template` on a blank line), otherwise as
+  the **next sibling**. Every action toasts what it touched (P4). Pure cores:
+  `upsertTemplate` / `removeTemplate` / `findTemplate` (all return new arrays, never
+  mutate).
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like
