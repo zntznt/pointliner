@@ -101,9 +101,13 @@ sigil), and went *beyond* the fixed cycle: **sequences** are user-definable stat
 with `TODO NEXT WAITING | DONE` as the built-in default. Zero new syntax. See
 `guidance/features.md`.
 
-### ☐ Properties / structured per-node metadata
+### ✓ Properties / structured per-node metadata — shipped
 Per-node key-value metadata, enabling property-based filtering and a future column view.
-- **Fit — medium.** A new per-node `props` sidecar + serialize.
+- **Shipped:** `node.props` array of `{key, val}` pairs; `_props` OPML attribute (JSON);
+  dialog editor from bullet menu ("Add property" / "Edit properties") and chip click;
+  chips render below the note row (also in zoom view); `has:key` / `key:value` search operators
+  wired into `parseSearchQuery` / `termMatchesNode`; exported as `[key: val · …]`
+  continuation lines in markdown + plain text.
 
 ### ✓ Per-bullet notes — shipped
 A secondary note under a point. Muted plain-text block (no markdown/pills by design —
@@ -117,21 +121,47 @@ persisted); hidden notes leave a whisper-level indicator on the point — click/
 Space reveals that one note. Typography conforms to `design-language.md` (existing
 type steps, `--muted`, no italic, no opacity-faded placeholder).
 
-### ☐ Templates
+### ✓ Templates — shipped
 Reusable subtree templates.
-- **Fit — easy.** Reuses the copy / deep-clone infra; "save this subtree, stamp copies."
+- **Shipped:** named subtree snapshots on `root.templates` (`<_templates>` OPML head element);
+  "Save as template" bullet-menu door (name dialog, save-over-name updates); `/template` slash verb
+  opens a picker that deep-clones (`deepCloneNodeNewIds`, fresh ids) and stamps the chosen subtree —
+  replacing an empty invoking point, else inserting after. Pure cores `upsertTemplate` /
+  `removeTemplate` / `findTemplate`.
+- **Fit — easy (as predicted).** Reused the copy / deep-clone infra + the saved-search OPML-head
+  config pattern.
 
-### ☐ Checkbox progress cookies `[2/5]` / `[40%]`
-A parent shows how many child checkboxes are done.
-- **Fit — easy.** Reuses the `countDescendants`-style walk over `todo` children.
+### ✓ Checkbox progress cookies `[2/5]` / `[40%]` — shipped
+A point shows how many of its tasks are done.
+- **Shipped (2026-06-13):** the Org `[/]` (fraction) / `[%]` (percent) cookie — plain text in
+  `node.text`, computed at render (the edit-raw/render-pretty model, like `#+TBLFM:`; no sidecar,
+  OPML round-trips for free). Counts every checkbox marker individually + each keyword/sequenced
+  child once (done-ness sequence-aware via `todoDoneFromText`); scope = own text + direct children
+  (recursion deferred). Goes success-hued when complete; live-updates on child toggle. Front door:
+  `@progress`. Pure cores `tallyMarkers`/`progressCount`/`formatProgressCookie` test-pinned. P5:
+  recorded syntax-inventory decision (reuses the `[…]` bracket family) — `ux-remediation.md` UXP-20.
+- **Fit — easy.** Reused the task-marker scan + a one-level child walk.
 
-### ☐ Capture / quick inbox
+### ✓ Capture / quick inbox — shipped
 Fast capture of a task/note into a chosen inbox node without navigating there.
-- **Fit — medium.** Pairs well with templates.
+- **Shipped:** a toolbar inbox button (`#btn-capture`) opens a Capture dialog that overlays
+  wherever you are (capturing never moves you). A designated inbox (`root.inboxId`, persisted
+  as the `<_inbox>` OPML head element) is chosen via an inline point picker (reuses
+  `refileCandidates`); each capture appends one **markdown-aware** point (a typed `- [ ]`
+  becomes a to-do) as the inbox's last child. The dialog stays open after each capture (the
+  brain-dump flow) with a running "✓ Captured N" confirmation. Enter captures, Shift+Enter is
+  a line break.
+- **Fit — medium (as predicted).** Reused the refile picker + the OPML-head config pattern; no
+  new syntax.
 
-### ☐ Refile (move a subtree via search)
+### ✓ Refile (move a subtree via search) — shipped
 Move a subtree to another location through a search picker (vs. drag/indent).
-- **Fit — medium.** Reuses the search index; add a "move to…" picker.
+- **Shipped:** a "Refile…" bullet-menu door opens a modal quick-switcher (search input +
+  filtered, keyboard-navigable list of candidate targets with breadcrumb paths; "Top level"
+  always offered first). Selecting a target moves the subtree to become its last child;
+  reuses `performDrop`'s reparent semantics + `isDescOf` for the self/own-descendant guard.
+  Pure core `refileCandidates` (title-matched, excludes the moved subtree); mover `refileNodeTo`.
+- **Fit — medium (as predicted).** Reused the reparent infra + the picker pattern; no new syntax.
 
 ### ⊘ Archive done items — *shelved (decision, 2026-06-13)*
 Move completed items to an archive (vs. just hide-done).

@@ -112,7 +112,7 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 button{cursor:pointer;border:1px solid transparent;background:transparent;color:var(--fg);font-family:inherit;font-size:12.5px;padding:4px 10px;border-radius:var(--r-sm);transition:background .1s;white-space:nowrap;flex-shrink:0}
 button:hover{background:var(--bdr)}
 button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
-#btn-done,#btn-notes{height:28px;min-width:30px}
+#btn-done,#btn-notes,#btn-capture{height:28px;min-width:30px}
 /* hidden-note indicator: a whisper-level trailing mark after the point text
    (the .fn-ref metrics, but muted ink — accent would read as a link-jump) */
 .note-ind{color:var(--muted);font-size:.72em;vertical-align:super;cursor:pointer;line-height:0;margin-left:.35em;user-select:none}
@@ -586,6 +586,19 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .todo-prio-c{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
+/* progress cookie [/]/[%] — a muted monospace tally; goes success-hued when complete */
+.cookie{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 5px;border-radius:4px;vertical-align:baseline;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
+.cookie-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+/* per-node properties — a row of key:value chips below the content */
+.props-area{display:flex;flex-wrap:wrap;gap:4px;padding:1px 3px 3px;flex:1;min-width:0}
+.prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:4px;padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
+.prop-chip:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.prop-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
+.prop-key{color:var(--muted);font-weight:600}
+.prop-sep{color:var(--muted);margin:0 3px}
+.prop-val{color:var(--fg)}
+.node-props-row>.collapse-btn,.node-props-row>.ol-num{visibility:hidden}
+.node-props-row>.bullet{cursor:default}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
    each widget kind is identifiable without turning the line into candy */
 .dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}
@@ -708,6 +721,42 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-field textarea::placeholder{color:var(--muted);opacity:.6}
 .io-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+.props-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:200px;overflow-y:auto}
+.props-list-row{display:flex;align-items:center;gap:6px}
+.props-list-sep{color:var(--muted);font-size:13px;flex-shrink:0}
+.props-input{font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:7px 9px;outline:none;transition:border-color .12s,box-shadow .12s;min-width:0}
+.props-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.props-input.key-in{width:110px;flex-shrink:0}
+.props-input.val-in{flex:1}
+.io-btn.xsm{padding:4px 8px;font-size:12px}
+.tpl-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:260px;overflow-y:auto}
+.tpl-row{display:flex;align-items:center;gap:6px}
+.tpl-pick{flex:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 11px;cursor:pointer;text-align:left;transition:border-color .12s,background .12s}
+.tpl-pick:hover,.tpl-pick:focus-visible{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);outline:none}
+.tpl-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpl-count{flex-shrink:0;font-size:11px;color:var(--muted);font-family:var(--mono)}
+/* refile quick-switcher dialog: search input + filtered, keyboard-navigable list */
+.rf-search{width:100%;font-family:var(--font);font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:9px 11px;outline:none;margin-bottom:10px;transition:border-color .12s,box-shadow .12s}
+.rf-search:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.rf-list{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto;margin-bottom:6px}
+.rf-item{display:flex;flex-direction:column;gap:1px;padding:7px 10px;border-radius:var(--r-md);cursor:pointer;border:1px solid transparent}
+.rf-item.hi{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
+.rf-item-title{font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rf-item-top{font-weight:600}
+.rf-item-path{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
+/* capture / quick inbox dialog */
+.cap-dest{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+.cap-dest-name{color:var(--fg);font-weight:500;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-dest-name.unset{color:var(--warn)}
+.cap-change{font-size:12px;color:var(--acc);background:none;border:none;cursor:pointer;padding:2px 5px;border-radius:4px}
+.cap-change:hover,.cap-change:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);outline:none}
+.cap-textarea{width:100%;min-height:74px;resize:vertical;font-family:var(--font);font-size:14px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:9px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
+.cap-textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.cap-hint{font-size:11px;color:var(--muted);margin:6px 2px 0}
+.cap-confirm{font-size:12px;color:var(--ok);margin-top:6px;min-height:1.1em;font-weight:500}
+.zoom-props-row{display:flex;align-items:flex-start;margin-bottom:12px;padding-top:2px}
+.zoom-props-row>.note-mark{width:auto;margin:4px 7px 0 0;flex-shrink:0}
 .io-seg{display:flex;gap:5px;margin-bottom:2px}
 .io-seg-btn{font-size:12.5px;line-height:1;padding:6px 12px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .io-seg-btn:hover{border-color:var(--acc)}
@@ -855,7 +904,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .nt-ol>.node-row>.bullet .bullet-dot,.nt-divider>.node-row>.bullet .bullet-dot{opacity:.45}
   .md-task{gap:.6em}
   /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
-  .io-field input,.io-field textarea{font-size:16px}
+  .io-field input,.io-field textarea,.props-input{font-size:16px}
   #search-box{font-size:16px}
   .nt-base>.node-row>.node-content[data-editing]{font-size:16px}
   /* roomier action targets in menus / dialogs / bars */
@@ -914,6 +963,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
+    <button id="btn-capture" title="Capture to inbox" aria-label="Capture to inbox"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-done" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
     <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
@@ -1045,11 +1095,11 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [], templates: [], inboxId: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], seq: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], seq: [], props: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -1104,7 +1154,7 @@ function textForDisplay(node) {
     const m = t.match(/^\s*\d+\.\s+([\s\S]*)/);
     if (m) return m[1];
   }
-  t = t.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
+  t = t.replace(TASK_STRIP_RE, '');
   const pt = parseTodo(t);
   if (pt.keyword) t = pt.body;
   return t;
@@ -1294,7 +1344,28 @@ function setTodoPriority(text, priority) {
 //                 (bare `TODO` without the `#` is plain text, never a badge)
 // node.type==='todo' and node.checked are DERIVED HINTS computed from these,
 // never independent state. Pure: no DOM.
-const TASK_FIRST_RE = /^[-*+]\s+\[[ xX]\](\s|$)/;   // first line is a task item
+// ── Task-checkbox grammar — single source of truth (code-review F4) ───────────
+// A GFM checkbox is `[ ]`, `[x]`, or `[X]`. Every task-aware site composes TASK_BOX
+// (or TASK_BOX_CAP, capturing the state) via its .source so the token is spelled
+// ONCE — re-spelling it is exactly how the empty-`- [ ]` bug recurred across
+// renderListItem / toggleTaskInNode / stripMd / migrateEmphasisText. Canonical rule:
+// a checkbox is a task marker only when followed by a SPACE or END OF LINE, so an
+// EMPTY `- [ ]` is a valid (empty) task — the consistency test in test.mjs pins that
+// every function below agrees. Sites composing this grammar:
+//   TASK_RE/renderListItem · TASK_LINE_RE/toggleTaskInNode · TASK_FIRST_RE/isTaskFirst
+//   TASK_DONE_G/todoDoneFromText · TASK_TALLY_G/tallyMarkers · TASK_STRIP_*/stripMd,
+//   textForDisplay, applyBlockCmd, export · migrateEmphasisText (its own prefix regex).
+const TASK_BOX      = /\[[ xX]\]/;        // [ ] [x] [X]
+const TASK_BOX_CAP  = /\[([ xX])\]/;      // …capturing the state char
+const TASK_DONE_BOX = /\[[xX]\]$/;        // a matched marker that is CHECKED (ends in [x]/[X])
+const TASK_RE       = new RegExp('^' + TASK_BOX_CAP.source + '(?:\\s+(.*))?$');                       // a list item's INNER text → [, state, content?]
+const TASK_FIRST_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '(?:\\s|$)');                       // first line is a (UL) task item
+const TASK_LINE_RE  = new RegExp('^(\\s*(?:[-*+]|\\d+\\.)\\s+)' + TASK_BOX_CAP.source + '(\\s.*)?$');  // a FULL line → [, prefix, state, tail?]
+const TASK_DONE_G   = new RegExp('^\\s*(?:[-*+]|\\d+\\.)\\s+' + TASK_BOX.source, 'gm');                // todoDoneFromText marker scan
+const TASK_TALLY_G  = new RegExp('^[ \\t]*(?:[-*+]|\\d+\\.)[ \\t]+' + TASK_BOX.source, 'gm');          // tallyMarkers marker scan
+const TASK_STRIP_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '\\s*');                             // strip a UL task marker (textForDisplay/applyBlockCmd)
+const TASK_STRIP_G  = new RegExp('^\\s*[-*+]\\s+(?:' + TASK_BOX.source + '\\s*)?', 'gm');              // stripMd (per line)
+const TASK_KEEP_RE  = new RegExp('^[-*+]\\s+(' + TASK_BOX.source + ')\\s*');                           // strip lead but KEEP the box (export)
 function isTaskFirst(text) { return TASK_FIRST_RE.test(text == null ? '' : String(text)); }
 
 // Node-level done-ness from the text: keyword wins — done iff it sits right of
@@ -1306,8 +1377,40 @@ function todoDoneFromText(text, seqs = allSequences()) {
   const km = s.match(LEAD_WORD_RE);
   if (km && sequenceForKeyword(km[1], seqs)) return keywordIsDone(km[1], seqs);
   if (!TASK_FIRST_RE.test(s)) return false;
-  const markers = s.match(/^\s*(?:[-*+]|\d+\.)\s+\[[ xX]\]/gm) || [];
-  return markers.length > 0 && markers.every(m => /\[[xX]\]$/.test(m));
+  const markers = s.match(TASK_DONE_G) || [];
+  return markers.length > 0 && markers.every(m => TASK_DONE_BOX.test(m));
+}
+
+// ── progress cookies ([/] and [%]) ───────────────────────────────────────────
+// A `[/]` (fraction) or `[%]` (percent) cookie in a point's text renders as a
+// live tally of the tasks it contains. Counted: every checkbox marker in the
+// point's OWN text plus its DIRECT child points — each marker counted
+// individually (so several checkboxes in one point each count) — and any
+// keyword/sequenced child point with no marker counted as a single item, its
+// done-ness from the sequence-aware keyword (right of the | = done). Scope is
+// own text + direct children (recursion deferred). The cookie token stays plain
+// text in node.text (the recipe); the count is computed at render, the same
+// edit-raw / render-pretty model as #+TBLFM:. Pure: no DOM.
+function tallyMarkers(text) {
+  const ms = (text == null ? '' : String(text)).match(TASK_TALLY_G) || [];
+  let done = 0;
+  for (const m of ms) if (TASK_DONE_BOX.test(m)) done++;
+  return { done, total: ms.length };
+}
+function progressCount(node, seqs = allSequences()) {
+  let { done, total } = tallyMarkers(node?.text || '');
+  for (const c of (node?.children || [])) {
+    const t = tallyMarkers(c.text || '');
+    if (t.total > 0) { done += t.done; total += t.total; continue; }
+    // no checkbox markers → a keyword/sequenced task counts as one item
+    const km = (c.text || '').match(LEAD_WORD_RE);
+    if (km && sequenceForKeyword(km[1], seqs)) { total++; if (keywordIsDone(km[1], seqs)) done++; }
+  }
+  return { done, total };
+}
+function formatProgressCookie(kind, done, total) {
+  if (kind === 'pct') return '[' + (total ? Math.round(100 * done / total) : 0) + '%]';
+  return '[' + done + '/' + total + ']';
 }
 
 // Format-continuation aid for Enter: the markdown PREFIX a new sibling should
@@ -1362,6 +1465,7 @@ function renderContentHTML(node) {
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
+  cookieNode        = node;
   globalVarMap      = collectVars();
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
   // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
@@ -1398,6 +1502,7 @@ function renderContentHTML(node) {
   varRenderList     = null;
   grammarRenderList = null;
   seqRenderList     = null;
+  cookieNode        = null;
   return html;
 }
 
@@ -1505,13 +1610,17 @@ function migrateEmphasisText(text, italic, underline) {
   const open  = (italic ? '*' : '') + (underline ? '++' : '');
   const close = (underline ? '++' : '') + (italic ? '*' : '');
   let inFence = false;
+  // Block-prefix matcher: heading/quote/list-lead, then a task box that is a prefix
+  // only when followed by a space OR end-of-line (so an empty `- [ ]` stays a task and
+  // its bracket isn't emphasised — the empty-todo grammar's 4th site). Shares TASK_BOX.
+  const prefixRe = new RegExp('^(\\s*(?:#{1,6} |> |(?:[-*+]|\\d+[.)]) (?:' + TASK_BOX.source + '(?: |$))?)?)(.*)$');
   return (text || '').split('\n').map(line => {
     if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
     if (inFence || !line.trim()) return line;
     if (HR_RE.test(line)) return line;
     if (/^\s*\|/.test(line)) return line;                 // table row
     if (/^#\+TBLFM:/i.test(line.trim())) return line;     // recipe line
-    const m = line.match(/^(\s*(?:#{1,6} |> |(?:[-*+]|\d+[.)]) (?:\[[ xX]\] )?)?)(.*)$/);
+    const m = line.match(prefixRe);
     const pre = m[1] || '', body = m[2] || '';
     if (!body.trim()) return line;
     return pre + open + body + close;
@@ -1673,18 +1782,21 @@ let _inlineDepth = 0;
 function renderNodeInline(node) {
   const saved = { dice: diceRenderList, markov: markovRenderList,
                   math: mathRenderList,
-                  vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList };
+                  vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList,
+                  cookie: cookieNode };
   _inlineDepth++;
   diceRenderList = node.dice || null; markovRenderList = node.markov || null;
   mathRenderList = node.math || null;
   varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
   seqRenderList = node.seq || null;
+  cookieNode = node;
   // globalVarMap is document-wide — leave it.
   const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   diceRenderList = saved.dice; markovRenderList = saved.markov;
   mathRenderList = saved.math;
   varRenderList = saved.vars; grammarRenderList = saved.grammar;
   seqRenderList = saved.seq;
+  cookieNode = saved.cookie;
   _inlineDepth--;
   return html;
 }
@@ -1753,6 +1865,14 @@ function mdInline(s) {
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:)
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
     (_, pre, url) => pre + stash(`<a href="${escQ(url)}" target="_blank" rel="noopener">${url}</a>`));
+  // progress cookies — [/] (fraction) and [%] (percent) tally the point's tasks.
+  // Computed against the node being rendered (cookieNode); literal text otherwise.
+  if (cookieNode) s = s.replace(/\[(\/|%)\]/g, (_, k) => {
+    const { done, total } = progressCount(cookieNode);
+    const txt = formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
+    const full = total > 0 && done === total ? ' cookie-full' : '';
+    return stash(`<span class="cookie${full}" aria-label="${done} of ${total} done">${txt}</span>`);
+  });
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
@@ -1771,6 +1891,10 @@ let mathRenderList = null;
 let varRenderList    = null;
 let seqRenderList    = null;
 let grammarRenderList = null;
+// The node currently being rendered, so mdInline can compute a [/] / [%]
+// progress cookie against its tasks. Null outside a node render → cookies stay
+// literal text in any other mdInline caller (breadcrumbs, search, etc.).
+let cookieNode = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
@@ -2082,7 +2206,7 @@ function renderMarkovPill(key, mk) {
 
 const UL_RE = /^\s*[-*+]\s+(.*)$/;
 const OL_RE = /^\s*\d+\.\s+(.*)$/;
-const TASK_RE = /^\[([ xX])\]\s+(.*)$/;   // applied to a list item's inner text
+// TASK_RE is defined with the task-checkbox grammar block (search "single source of truth")
 const DD_RE = /^:\s+(.*)$/;               // definition-list "  : definition"
 const ATX_RE = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;       // ATX heading "## Text", trailing #'s optional
 const HR_RE  = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;       // thematic break --- *** ___
@@ -2095,7 +2219,7 @@ function renderListItem(inner, taskNo) {
   const tm = inner.match(TASK_RE);
   if (tm) {
     const checked = tm[1].toLowerCase() === 'x';
-    return `<li class="md-task"><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2])}</li>`;
+    return `<li class="md-task"><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
   }
   return `<li>${mdInline(inner)}</li>`;
 }
@@ -2202,7 +2326,7 @@ function stripMd(text) {
     .replace(/\+\+([\s\S]*?)\+\+/g,'$1')
     .replace(/~(?!~)([^~\s]+?)~/g,'$1')
     .replace(/\^([^\^\s]+?)\^/g,'$1')
-    .replace(/^\s*[-*+]\s+(?:\[[ xX]\]\s+)?/gm,'')
+    .replace(TASK_STRIP_G,'')   // strip list+task marker; an empty `- [ ]` strips clean (no leftover [ ])
     .replace(/^\s*\d+\.\s+/gm,'')
     .replace(/^:\s+/gm,'');
 }
@@ -2581,6 +2705,22 @@ function renderStaticTable(block, l0, l1) {
 
 // ─── OPML ─────────────────────────────────────────────────────────────────────
 
+// Doc-level config rides the <head> as underscore-prefixed custom ELEMENTS
+// (savedSearches/templates/inbox). One serialize + one parse helper keep the three
+// in lockstep (F6): an array serializes as JSON, a scalar (inbox id) as plain text,
+// and both skip emission when empty. headJSONArray reads an array element back with
+// a per-item validator; scalar elements read directly via textContent.
+function headEl(tag, value) {
+  if (Array.isArray(value)) return value.length ? `<${tag}>${ex(JSON.stringify(value))}</${tag}>` : '';
+  return value ? `<${tag}>${ex(String(value))}</${tag}>` : '';
+}
+function headJSONArray(doc, tag, valid) {
+  try {
+    const a = JSON.parse(doc.querySelector('head > ' + tag)?.textContent || '[]');
+    return Array.isArray(a) ? (valid ? a.filter(valid) : a) : [];
+  } catch (_) { return []; }
+}
+
 function toOpml(r) {
   function nx(n, d) {
     const pad = '  '.repeat(d);
@@ -2597,18 +2737,18 @@ function toOpml(r) {
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
       n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
       n.note             ? `_note="${ex(n.note)}"` : '',
+      n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
-  // saved searches are doc-level config, so they live in the head (the one
-  // underscore-prefixed custom ELEMENT — outlines carry custom attributes)
-  const saved = r.savedSearches?.length ? `<_savedSearches>${ex(JSON.stringify(r.savedSearches))}</_savedSearches>` : '';
+  // doc-level config in the head, each via the shared headEl serializer (F6)
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
-  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${saved}</head>
+  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
   <body>
 ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
@@ -2656,6 +2796,7 @@ function fromOpml(xml) {
       vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
       grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
       seq:       (() => { try { return JSON.parse(el.getAttribute('_seq')       || '[]'); } catch(_) { return []; } })(),
+      props:     (() => { try { const p = JSON.parse(el.getAttribute('_props')  || '[]'); return Array.isArray(p) ? p : []; } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
@@ -2676,13 +2817,10 @@ function fromOpml(xml) {
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
-  const savedSearches = (() => {
-    try {
-      const a = JSON.parse(doc.querySelector('head > _savedSearches')?.textContent || '[]');
-      return Array.isArray(a) ? a.filter(s => typeof s === 'string') : [];
-    } catch(_) { return []; }
-  })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches,
+  const savedSearches = headJSONArray(doc, '_savedSearches', s => typeof s === 'string');
+  const templates     = headJSONArray(doc, '_templates', t => t && typeof t.name === 'string' && t.node);
+  const inboxId       = doc.querySelector('head > _inbox')?.textContent?.trim() || null;
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -2704,6 +2842,7 @@ const BLOCK_CMDS = [
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
+  { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -2751,6 +2890,7 @@ const INSERT_CMDS = [
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
+  { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and child tasks. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
@@ -3002,6 +3142,16 @@ function render() {
       container.appendChild(znRow);
     } else if (vp.note) {
       appendNoteIndicator(te, vp);
+    }
+    if (vp.props?.length) {
+      const zpRow = document.createElement('div');
+      zpRow.className = 'zoom-props-row';
+      const zmark = document.createElement('span');
+      zmark.className = 'note-mark';
+      zmark.setAttribute('aria-hidden', 'true');
+      setIcon(zmark, PROPS_ICON);
+      zpRow.append(zmark, buildPropsArea(vp));
+      container.appendChild(zpRow);
     }
     } // end non-table branch
   }
@@ -3278,9 +3428,11 @@ function mtInline(node, raw) {
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
+  cookieNode        = node;
   globalVarMap      = collectVars();
   const html = mdInline(raw || '');
   diceRenderList = markovRenderList = mathRenderList = varRenderList = grammarRenderList = seqRenderList = null;
+  cookieNode = null;
   return html;
 }
 // Select a cell's whole contents (type-to-overwrite) and remember the cell so the
@@ -4376,6 +4528,9 @@ function renderRow(r) {
     // the content from node.text, so it can never leak into the edit buffer.
     appendNoteIndicator(content, node);
   }
+  if (node.props?.length) {
+    div.appendChild(buildPropsRow(node, opts));
+  }
   return div;
 }
 
@@ -4435,7 +4590,8 @@ function buildNoteRow(node, opts = {}) {
 
 // The note glyph everywhere it appears (gutter mark, hidden-note indicator):
 // one spec, FA when healthy, unicode fallback when not (the paintIcon contract).
-const NOTE_ICON = { fa: 'fa-regular fa-file-lines', fb: '🗒' };
+const NOTE_ICON  = { fa: 'fa-regular fa-file-lines', fb: '🗒' };
+const PROPS_ICON = { fa: 'fa-solid fa-tag',          fb: '🏷' };
 
 // The note editor element itself (no row wrapper) — shared by the outline row
 // (buildNoteRow) and the zoom view (rendered under the zoom title).
@@ -4502,6 +4658,515 @@ function openNoteEditor(nodeId) {
   });
 }
 
+// ─── properties ──────────────────────────────────────────────────────────────
+
+// Build just the .props-area chip list (shared by outline row and zoom view).
+function buildPropsArea(node) {
+  const area = document.createElement('div');
+  area.className = 'props-area';
+  area.dataset.id = node.id;
+  (node.props || []).forEach(({ key, val }) => {
+    const chip = document.createElement('span');
+    chip.className = 'prop-chip';
+    chip.setAttribute('role', 'button');
+    chip.setAttribute('tabindex', '-1');
+    chip.setAttribute('aria-label', `${key}: ${val} — click to edit properties`);
+    chip.title = 'Edit properties';
+    chip.dataset.propsId = node.id;
+    const k = document.createElement('span'); k.className = 'prop-key'; k.textContent = key;
+    const s = document.createElement('span'); s.className = 'prop-sep';  s.textContent = ':';
+    const v = document.createElement('span'); v.className = 'prop-val';  v.textContent = val;
+    chip.append(k, s, v);
+    area.appendChild(chip);
+  });
+  return area;
+}
+
+// Full outline row: invisible gutter clones + the props-area.
+function buildPropsRow(node, opts = {}) {
+  const row = document.createElement('div');
+  row.className = 'node-row node-props-row';
+  const gutterCol = document.createElement('span'); gutterCol.className = 'collapse-btn';
+  const gutterBul = document.createElement('span'); gutterBul.className = 'bullet';
+  const mark = document.createElement('span');
+  mark.className = 'note-mark';
+  setIcon(mark, PROPS_ICON);
+  gutterBul.appendChild(mark);
+  gutterCol.setAttribute('aria-hidden', 'true'); gutterBul.setAttribute('aria-hidden', 'true');
+  row.append(gutterCol, gutterBul);
+  if (node.type === 'ol') {
+    const gutterNum = document.createElement('span'); gutterNum.className = 'ol-num';
+    gutterNum.textContent = '0.'; gutterNum.setAttribute('aria-hidden', 'true');
+    row.appendChild(gutterNum);
+  }
+  row.appendChild(buildPropsArea(node));
+  return row;
+}
+
+// Properties editor dialog — opens from bullet menu or chip click.
+function openPropsDialog(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  let props = (node.props || []).map(p => ({ key: p.key, val: p.val }));
+
+  ioCard.innerHTML = '';
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, PROPS_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title';
+  ttl.textContent = 'Properties';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const list = document.createElement('div'); list.className = 'props-list';
+  ioCard.appendChild(list);
+
+  function renderRows(focusLast = false) {
+    list.innerHTML = '';
+    props.forEach((p, i) => {
+      const row = document.createElement('div'); row.className = 'props-list-row';
+      const keyIn = document.createElement('input');
+      keyIn.className = 'props-input key-in'; keyIn.type = 'text';
+      keyIn.placeholder = 'key'; keyIn.value = p.key;
+      keyIn.setAttribute('aria-label', 'Property key');
+      keyIn.addEventListener('input', () => { props[i].key = keyIn.value; });
+      keyIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); valIn.focus(); } });
+      const sep = document.createElement('span'); sep.className = 'props-list-sep'; sep.textContent = ':';
+      const valIn = document.createElement('input');
+      valIn.className = 'props-input val-in'; valIn.type = 'text';
+      valIn.placeholder = 'value'; valIn.value = p.val;
+      valIn.setAttribute('aria-label', 'Property value');
+      valIn.addEventListener('input', () => { props[i].val = valIn.value; });
+      valIn.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (i === props.length - 1) { props.push({ key: '', val: '' }); renderRows(true); }
+          else list.querySelectorAll('.props-list-row')[i + 1]?.querySelector('.key-in')?.focus();
+        }
+      });
+      const del = document.createElement('button');
+      del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
+      del.setAttribute('aria-label', 'Remove property');
+      del.addEventListener('click', () => { props.splice(i, 1); renderRows(); });
+      row.append(keyIn, sep, valIn, del);
+      list.appendChild(row);
+    });
+    if (focusLast) {
+      requestAnimationFrame(() => list.querySelector('.props-list-row:last-child .key-in')?.focus());
+    }
+  }
+  renderRows();
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'io-btn'; addBtn.type = 'button';
+  addBtn.style.cssText = 'margin-bottom:12px;display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 11px';
+  setIcon(addBtn, { fa: 'fa-solid fa-plus', fb: '+' });
+  addBtn.append(document.createTextNode(' Add property'));
+  addBtn.addEventListener('click', () => { props.push({ key: '', val: '' }); renderRows(true); });
+  ioCard.appendChild(addBtn);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
+  const saveBtn   = document.createElement('button'); saveBtn.className   = 'io-btn primary'; saveBtn.textContent = 'Save';
+  foot.append(cancelBtn, saveBtn); ioCard.appendChild(foot);
+
+  function save() {
+    const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
+    pushUndo();
+    node.props = cleaned;
+    markDirty(); render(); closeIo();
+  }
+  cancelBtn.addEventListener('click', closeIo);
+  saveBtn.addEventListener('click', save);
+  ioCancel = closeIo;
+
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Properties');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => {
+    if (!props.length) addBtn.focus();
+    else list.querySelector('.props-input')?.focus();
+  });
+}
+
+// ─── templates ─────────────────────────────────────────────────────────────────
+// Save a point's subtree as a named, reusable template (doc-level config on
+// root.templates), then stamp fresh copies elsewhere via the /template picker.
+const TEMPLATE_ICON = { fa: 'fa-solid fa-clone', fb: '⧉' };
+
+// Save-as-template door (bullet menu): name dialog defaulting to the point's text.
+function openSaveTemplateDialog(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  const dflt = (textForDisplay(node) || '').split('\n')[0].trim().slice(0, 40);
+  const exists = name => isSavedTemplateName(name);
+  openInsertDialog({
+    icon: TEMPLATE_ICON,
+    title: 'Save as template',
+    submitLabel: 'Save',
+    fields: [
+      { key: 'name', label: 'Template name', placeholder: 'e.g. Weekly review', value: dflt,
+        hint: 'Saving over an existing name updates that template.' },
+    ],
+    validate: v => !!v.name,
+    onSubmit: v => {
+      const name = v.name.trim();
+      const updating = exists(name);
+      pushUndo();
+      root.templates = upsertTemplate(root.templates, name, deepCloneNodeNewIds(node));
+      markDirty();
+      flashHint(`${updating ? 'Updated' : 'Saved'} template “${name}” (${ptsLabel(countPoints(node))})`);
+    },
+  });
+}
+function isSavedTemplateName(name) { return !!findTemplate(root.templates, name); }
+
+// /template door: a picker dialog listing saved templates; click stamps one here.
+function openTemplatePicker(nodeId) {
+  const list = root.templates || [];
+  ioCard.innerHTML = '';
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, TEMPLATE_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title';
+  ttl.textContent = 'Stamp a template';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 14px;line-height:1.55';
+    empty.textContent = 'No templates yet. Save a point as a template from its bullet menu, then stamp copies here.';
+    ioCard.appendChild(empty);
+  } else {
+    const tlist = document.createElement('div'); tlist.className = 'tpl-list';
+    list.forEach(tpl => {
+      const row = document.createElement('div'); row.className = 'tpl-row';
+      const pick = document.createElement('button');
+      pick.className = 'tpl-pick'; pick.type = 'button';
+      pick.setAttribute('aria-label', `Stamp template ${tpl.name}`);
+      const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = tpl.name;
+      const cnt = document.createElement('span'); cnt.className = 'tpl-count';
+      cnt.textContent = ptsLabel(countPoints(tpl.node));
+      pick.append(nm, cnt);
+      pick.addEventListener('click', () => { closeIo(); stampTemplate(nodeId, tpl.name); });
+      const del = document.createElement('button');
+      del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
+      del.title = 'Forget'; del.setAttribute('aria-label', `Forget template ${tpl.name}`);
+      del.addEventListener('click', () => {
+        pushUndo();
+        root.templates = removeTemplate(root.templates, tpl.name);
+        markDirty();
+        flashHint(`Forgot template “${tpl.name}”`);
+        openTemplatePicker(nodeId); // re-render the picker in place
+      });
+      row.append(pick, del);
+      tlist.appendChild(row);
+    });
+    ioCard.appendChild(tlist);
+  }
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', closeIo);
+  foot.append(closeBtn); ioCard.appendChild(foot);
+  ioCancel = closeIo;
+
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Stamp a template');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
+}
+
+// Stamp a fresh copy of a saved template as a new point. Replaces the invoking
+// point when it's empty and childless (typed /template on a blank line); otherwise
+// inserts as the next sibling. Mirrors createBaseAt's blur-before-mutate discipline.
+function stampTemplate(nodeId, name) {
+  const tpl = findTemplate(root.templates, name);
+  if (!tpl) return;
+  const node = nodeById(nodeId);
+  if (!node) return;
+  // leave text-edit first; a still-editing node's blur-during-render would clobber text
+  if (activeContentId === nodeId) {
+    const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (el) el.blur();
+  }
+  const cur = nodeById(nodeId); if (!cur) return;
+  const parent = parentOf(nodeId);
+  if (!parent) return;
+  const clone = deepCloneNodeNewIds(tpl.node);
+  pushUndo();
+  const idx = parent.children.findIndex(c => c.id === nodeId);
+  if (idx === -1) return; // invoking point not under its parent (shouldn't happen) — don't splice blind
+  if (cur.text.trim() === '' && !cur.children.length) parent.children.splice(idx, 1, clone); // replace empty point
+  else parent.children.splice(idx + 1, 0, clone);                                            // else insert after
+  buildIndex(root, null); // re-index the whole stamped subtree (clone + descendants)
+  markDirty();
+  render();
+  focusNode(clone.id);
+  flashHint(`Stamped “${tpl.name}” (${ptsLabel(countPoints(clone))})`);
+}
+
+// ─── refile ────────────────────────────────────────────────────────────────────
+// Move a point's whole subtree to become the last child of another point chosen via
+// a search picker (vs. drag / indent). Org-mode's refile.
+
+// Candidate targets: every point except the moved subtree itself, each with its
+// ancestor-title path for disambiguation. Title-matched (case-insensitive), like
+// linkCandidates — predictable. Pure over rootNode (tests pass an explicit tree).
+function refileCandidates(query, moveId, rootNode = root) {
+  const q = (query || '').toLowerCase();
+  const out = [];
+  function walk(n, path) {
+    if (n.id === moveId) return; // skip the moved subtree entirely (and its descendants)
+    // a base shows a clean label, not its raw table markdown (mirrors crumbLabel)
+    const title = n.type === 'base' ? 'Base' : (textForDisplay(n) || '(untitled)');
+    if (q === '' || title.toLowerCase().includes(q)) out.push({ id: n.id, title, path: path.slice() });
+    const childPath = path.concat(title);
+    for (const c of n.children) walk(c, childPath);
+  }
+  for (const c of (rootNode?.children || [])) walk(c, []);
+  return out;
+}
+
+// Move moveId's subtree under targetId (becomes targetId's last child). targetId ===
+// root.id refiles to the top level. Guards self + own-descendant (would orphan the tree).
+function refileNodeTo(moveId, targetId) {
+  if (moveId === targetId || isDescOf(moveId, targetId)) return;
+  const node = nodeById(moveId);
+  const fromParent = parentOf(moveId);
+  const target = nodeById(targetId);
+  if (!node || !fromParent || !target) return;
+  // leave edit mode on the moved node first (blur-during-render would clobber text)
+  if (activeContentId === moveId) {
+    const el = document.querySelector(`.node-content[data-id="${moveId}"][data-editing]`);
+    if (el) el.blur();
+  }
+  if (!nodeById(moveId) || !nodeById(targetId)) return;
+  pushUndo();
+  const idx = fromParent.children.findIndex(c => c.id === moveId);
+  if (idx === -1) return; // moved point not under its parent (shouldn't happen) — don't splice blind
+  fromParent.children.splice(idx, 1);
+  if (target.collapsed) target.collapsed = false;
+  target.children.push(node);
+  parentMap.set(node.id, target);
+  markDirty();
+  render();
+  focusNode(moveId);
+  const where = targetId === root.id ? 'Top level' : crumbLabel(target);
+  flashHint(`Refiled ${ptsLabel(countPoints(node))} → ${where}`);
+}
+
+// Shared modal point-picker (F5): a search box over a filtered, keyboard-navigable
+// list of points, rendered into ioCard. Type to filter, ↑/↓ move, Enter picks, Esc
+// runs onFoot. The CALLER owns ioBack/ioReturnFocus — refile opens a fresh dialog,
+// while capture's "Change inbox" swaps this view into an already-open one. opts:
+//   { icon, title, placeholder?, searchAria, listAria, emptyText?,
+//     itemsFor(query) -> [{id, title, path, top?}], onPick(item), footLabel, onFoot }
+function buildPointPicker(opts) {
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, opts.icon);
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title;
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const search = document.createElement('input');
+  search.className = 'rf-search'; search.type = 'text'; search.placeholder = opts.placeholder || 'Search points…';
+  search.setAttribute('aria-label', opts.searchAria || 'Search points');
+  search.autocomplete = 'off'; search.spellcheck = false;
+  ioCard.appendChild(search);
+
+  const listEl = document.createElement('div'); listEl.className = 'rf-list';
+  listEl.setAttribute('role', 'listbox'); listEl.setAttribute('aria-label', opts.listAria || 'Points');
+  ioCard.appendChild(listEl);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const footBtn = document.createElement('button'); footBtn.className = 'io-btn'; footBtn.type = 'button';
+  footBtn.textContent = opts.footLabel; footBtn.addEventListener('click', () => opts.onFoot());
+  foot.append(footBtn); ioCard.appendChild(foot);
+
+  let items = opts.itemsFor('');
+  let activeIdx = 0;
+  function renderList() {
+    listEl.innerHTML = '';
+    if (!items.length) {
+      const empty = document.createElement('div'); empty.className = 'rf-empty';
+      empty.textContent = opts.emptyText || 'No matching points.';
+      listEl.appendChild(empty); search.removeAttribute('aria-activedescendant'); return;
+    }
+    items.forEach((it, i) => {
+      const row = document.createElement('div');
+      row.className = 'rf-item' + (i === activeIdx ? ' hi' : '');
+      row.id = 'pp-opt-' + i; row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(i === activeIdx));
+      const t = document.createElement('div');
+      t.className = 'rf-item-title' + (it.top ? ' rf-item-top' : '');
+      t.textContent = it.title; row.appendChild(t);
+      if (it.path?.length) { const p = document.createElement('div'); p.className = 'rf-item-path'; p.textContent = it.path.join(' › '); row.appendChild(p); }
+      row.setAttribute('aria-label', `${it.title}${it.path?.length ? ', in ' + it.path.join(', ') : ''}`);
+      row.addEventListener('mouseenter', () => { activeIdx = i; renderList(); });
+      row.addEventListener('mousedown', e => { e.preventDefault(); activeIdx = i; pick(); });
+      listEl.appendChild(row);
+    });
+    search.setAttribute('aria-activedescendant', 'pp-opt-' + activeIdx);
+    listEl.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+  }
+  function pick() { const it = items[activeIdx]; if (it) opts.onPick(it); }
+  search.addEventListener('input', () => { items = opts.itemsFor(search.value.trim()); activeIdx = 0; renderList(); });
+  search.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx + 1) % items.length; renderList(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx - 1 + items.length) % items.length; renderList(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(); }
+    else if (e.key === 'Escape') { e.preventDefault(); opts.onFoot(); }
+  });
+  renderList();
+  requestAnimationFrame(() => search.focus());
+}
+
+// The refile picker: a modal quick-switcher. "Top level" is always the first option
+// (refile out of nesting); picking moves the subtree and closes.
+function openRefileDialog(moveId) {
+  const node = nodeById(moveId);
+  if (!node) return;
+  ioReturnFocus = document.activeElement;
+  ioCancel = closeIo;
+  buildPointPicker({
+    icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },
+    title: 'Refile to…',
+    searchAria: 'Search for a destination point',
+    listAria: 'Destination points',
+    itemsFor: q => {
+      const cands = refileCandidates(q, moveId).slice(0, 60);
+      const showTop = q === '' || 'top level'.includes(q.toLowerCase());
+      return showTop ? [{ id: root.id, title: 'Top level', path: [], top: true }, ...cands] : cands;
+    },
+    onPick: it => { closeIo(); refileNodeTo(moveId, it.id); },
+    footLabel: 'Cancel',
+    onFoot: closeIo,
+  });
+  ioCard.setAttribute('aria-label', 'Refile to');
+  ioBack.classList.add('on');
+}
+
+// ─── capture / quick inbox ─────────────────────────────────────────────────────
+// Fast-add a point into a designated inbox from anywhere, without navigating there.
+// The inbox is a doc-level pointer (root.inboxId → a point's id, persisted in the
+// OPML head); the capture dialog overlays wherever you are, so capturing never moves
+// you. A capture appends one point as the inbox's last child (markdown-aware: a typed
+// `- [ ]` becomes a to-do, `# x` a heading). The dialog stays open after each capture
+// (the brain-dump flow) — clear, re-focus, ready for the next.
+let captureDraft = '';
+let captureCount = 0;
+function resolveInbox() { return root.inboxId ? nodeById(root.inboxId) : null; }
+
+function openCaptureDialog() {
+  captureDraft = '';
+  captureCount = 0;
+  ioReturnFocus = document.activeElement;
+  ioCancel = closeIo;
+  renderCaptureMain();
+  ioCard.setAttribute('aria-label', 'Capture to inbox');
+  ioBack.classList.add('on');
+}
+
+function renderCaptureMain() {
+  ioCard.innerHTML = '';
+  const inbox = resolveInbox();
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, { fa: 'fa-solid fa-inbox', fb: '⤓' });
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Capture';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  // destination line
+  const dest = document.createElement('div'); dest.className = 'cap-dest';
+  const to = document.createElement('span'); to.textContent = 'To:';
+  const name = document.createElement('span');
+  name.className = 'cap-dest-name' + (inbox ? '' : ' unset');
+  name.textContent = inbox ? crumbLabel(inbox) : 'choose a destination';
+  const change = document.createElement('button');
+  change.className = 'cap-change'; change.type = 'button';
+  change.textContent = inbox ? 'Change' : 'Choose…';
+  change.setAttribute('aria-label', inbox ? 'Change capture destination' : 'Choose capture destination');
+  change.addEventListener('click', () => renderCaptureDest());
+  dest.append(to, name, change); ioCard.appendChild(dest);
+
+  // text
+  const ta = document.createElement('textarea');
+  ta.className = 'cap-textarea'; ta.value = captureDraft;
+  ta.placeholder = 'Type a point to capture…';
+  ta.setAttribute('aria-label', 'Text to capture');
+  ta.spellcheck = true;
+  ta.addEventListener('input', () => { captureDraft = ta.value; });
+  ioCard.appendChild(ta);
+
+  const hint = document.createElement('div'); hint.className = 'cap-hint';
+  hint.textContent = 'Enter to capture · Shift+Enter for a line break';
+  ioCard.appendChild(hint);
+
+  const confirm = document.createElement('div'); confirm.className = 'cap-confirm';
+  confirm.setAttribute('aria-live', 'polite');
+  if (captureCount > 0) confirm.textContent = `✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'}`;
+  ioCard.appendChild(confirm);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const capBtn = document.createElement('button');
+  capBtn.className = 'io-btn primary'; capBtn.textContent = 'Capture'; capBtn.type = 'button';
+  capBtn.disabled = !inbox;
+  capBtn.addEventListener('click', () => doCapture());
+  const doneBtn = document.createElement('button');
+  doneBtn.className = 'io-btn'; doneBtn.textContent = 'Done'; doneBtn.type = 'button';
+  doneBtn.addEventListener('click', closeIo);
+  foot.append(doneBtn, capBtn); ioCard.appendChild(foot);
+
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCapture(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+  });
+
+  requestAnimationFrame(() => ta.focus());
+}
+
+// "Change destination" view — an inline point picker (reuses refileCandidates,
+// excluding nothing). Picking sets the inbox and returns to the capture view with
+// the draft preserved.
+function renderCaptureDest() {
+  buildPointPicker({
+    icon: { fa: 'fa-solid fa-inbox', fb: '⤓' },
+    title: 'Choose inbox',
+    searchAria: 'Search for an inbox point',
+    listAria: 'Inbox candidates',
+    itemsFor: q => refileCandidates(q, '', root).slice(0, 60),
+    onPick: it => { root.inboxId = it.id; markDirty(); renderCaptureMain(); },
+    footLabel: 'Back',
+    onFoot: () => renderCaptureMain(),
+  });
+}
+
+function doCapture() {
+  const inbox = resolveInbox();
+  const text = (captureDraft || '').replace(/\s+$/, ''); // drop trailing blank lines/space
+  if (!inbox) { renderCaptureDest(); return; }            // no destination → make them pick
+  if (!text.trim()) return;
+  pushUndo();
+  const n = mkNode(text);
+  n.type = deriveTypeFromText(text) || 'ul';
+  n.checked = todoDoneFromText(text);
+  if (inbox.collapsed) inbox.collapsed = false;
+  inbox.children.push(n);
+  nodeMap.set(n.id, n); parentMap.set(n.id, inbox);
+  markDirty();
+  render();
+  captureCount++;
+  captureDraft = '';
+  flashHint(`Captured to ${crumbLabel(inbox)}`);
+  renderCaptureMain(); // clear + keep open for the next capture (brain-dump flow)
+}
+
 // ─── search ───────────────────────────────────────────────────────────────────
 // The search box speaks a small operator language (UXP-20-routed: operators over
 // the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
@@ -4532,8 +5197,10 @@ function parseSearchQuery(q) {
     }
     const tok = m[3];
     let t;
-    if ((t = tok.match(/^#(\w+)$/)))                     terms.push({ neg, kind: 'tag', value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note)$/i)))  terms.push({ neg, kind: 'is',  value: t[1].toLowerCase() });
+    if ((t = tok.match(/^#(\w+)$/)))                            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note)$/i)))         terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^([\w][\w-]*):([\w][\w-]*)$/)) && t[1].toLowerCase() !== 'is') terms.push({ neg, kind: 'prop', key: t[1].toLowerCase(), value: t[2].toLowerCase() });
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
   }
   return terms;
@@ -4554,6 +5221,12 @@ function termMatchesNode(term, node, seqs) {
     if (!isTodo) return false;
     const done = todoDoneFromText(node.text, seqs);
     return term.value === 'done' ? done : !done;
+  }
+  if (term.kind === 'has') {
+    return (node.props || []).some(p => p.key.toLowerCase() === term.value);
+  }
+  if (term.kind === 'prop') {
+    return (node.props || []).some(p => p.key.toLowerCase() === term.key && p.val.toLowerCase() === term.value);
   }
   return stripMd(textForDisplay(node)).toLowerCase().includes(term.value)
     || (!!node.note && node.note.toLowerCase().includes(term.value));
@@ -4604,6 +5277,28 @@ function toggleSavedSearch(list, q) {
 function isSavedSearch(list, q) {
   const v = (q || '').trim();
   return !!v && (list || []).some(s => (s || '').trim() === v);
+}
+
+// ─── templates (pure cores) ────────────────────────────────────────────────────
+// A template is { name, node } — a named subtree snapshot stored doc-level on
+// root.templates. Names are trim-exact unique (saving over an existing name
+// updates that template, mirroring the saved-search toggle's trim-exact match).
+// All three return a NEW array / value and never mutate the input. Pure.
+function upsertTemplate(list, name, node) {
+  const v = (name || '').trim();
+  const cur = list || [];
+  if (!v || !node) return cur.slice();
+  const out = cur.filter(t => (t.name || '').trim() !== v);
+  out.push({ name: v, node });
+  return out;
+}
+function removeTemplate(list, name) {
+  const v = (name || '').trim();
+  return (list || []).filter(t => (t.name || '').trim() !== v);
+}
+function findTemplate(list, name) {
+  const v = (name || '').trim();
+  return (list || []).find(t => (t.name || '').trim() === v) || null;
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
@@ -5347,6 +6042,8 @@ function onKeyDown(e, id, content) {
     // hidden-note indicator: Enter/Space reveals the note (the keyboard twin of its click)
     const nind = e.target.closest?.('.note-ind');
     if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
+    const pchip = e.target.closest?.('.prop-chip');
+    if (pchip) { e.preventDefault(); openPropsDialog(pchip.dataset.propsId); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
@@ -5500,7 +6197,9 @@ function deepCloneNodeNewIds(node) {
     math:      (node.math      || []).map(m => ({ ...m })),
     vars:      (node.vars      || []).map(v => ({ ...v })),
     grammar:   (node.grammar   || []).map(g => ({ ...g })),
-    children: node.children.map(c => deepCloneNodeNewIds(c)),
+    seq:       (node.seq       || []).map(s => ({ ...s, states: [...(s.states || [])] })),
+    props:     (node.props     || []).map(p => ({ ...p })),
+    children: (node.children   || []).map(c => deepCloneNodeNewIds(c)),
   };
 }
 
@@ -5838,7 +6537,13 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
+    { icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
+      fn: () => { hideBpop(); openPropsDialog(nodeId); } },
+    { icon: TEMPLATE_ICON, label:'Save as template',
+      fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
+    { icon:{ fa:'fa-solid fa-arrow-right-arrow-left', fb:'⇄' }, label:'Refile…',
+      fn: () => { hideBpop(); openRefileDialog(nodeId); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
@@ -6132,6 +6837,12 @@ function slashApply() {
   // popup) before creating anything; the confirm callback does the actual work.
   if (trigger !== '@' && cmd.id === 'base') {
     openSizePicker(content, slashOffset, (rows, cols) => createBaseAt(nodeId, rows, cols));
+    return;
+  }
+  // /template opens the template picker (a dialog), which stamps the chosen subtree
+  // as a new point here. Structural, like /base — the picker callback does the work.
+  if (trigger !== '@' && cmd.id === 'template') {
+    openTemplatePicker(nodeId);
     return;
   }
   if (trigger === '@' && cmd.id === 'table') {
@@ -6432,6 +7143,10 @@ function insertInlineArtifact(id, nodeId, content) {
         applyInlineInsertion(nodeId, offset, `[[seq:${rec.key}]]`);
       },
     });
+  } else if (id === 'progress') {
+    // a cookie is plain computed text (no sidecar) — insert the [/] recipe; it
+    // renders as a live [done/total] tally. Type [%] by hand for the percent form.
+    applyInlineInsertion(nodeId, offset, '[/]');
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -8827,7 +9542,7 @@ function applyBlockCmd(id, nodeId, node, content) {
   const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
   const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
   let cleanText = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
-  cleanText = cleanText.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
+  cleanText = cleanText.replace(TASK_STRIP_RE, '');
   const pt = parseTodo(cleanText);
   if (pt.keyword) cleanText = pt.body;
   // converting away from a divider strips its break line (like to-do markers above —
@@ -8957,11 +9672,14 @@ function toggleTaskInNode(node, taskIndex) {
   let n = 0;
   const lines = node.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*(?:[-*+]|\d+\.)\s+)\[([ xX])\](\s.*)$/);
+    // TASK_LINE_RE shares the checkbox token with TASK_RE/renderListItem, so the
+    // data-task index here can't desync from the rendered checkboxes (the empty-todo
+    // bug's twin). m → [, prefix, state, tail?].
+    const m = lines[i].match(TASK_LINE_RE);
     if (!m) continue;
     if (n === taskIndex) {
       const checked = m[2].toLowerCase() === 'x';
-      lines[i] = `${m[1]}[${checked ? ' ' : 'x'}]${m[3]}`;
+      lines[i] = `${m[1]}[${checked ? ' ' : 'x'}]${m[3] || ''}`;
       break;
     }
     n++;
@@ -8971,8 +9689,16 @@ function toggleTaskInNode(node, taskIndex) {
   node.checked = todoDoneFromText(node.text);
   markDirty();
   if (node.checked !== wasDone) { render(); return; }
+  // done-ness unchanged → targeted repaint of this node (skips a full render)…
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+  // …plus the parent if it carries a progress cookie counting this child, so the
+  // tally stays live when a multi-marker child only partly completes (P4).
+  const par = parentOf(node.id);
+  if (par && /\[(?:\/|%)\]/.test(par.text || '')) {
+    const pel = document.querySelector(`.node-content[data-id="${par.id}"]`);
+    if (pel && !pel.dataset.editing) pel.innerHTML = renderContentHTML(par);
+  }
 }
 
 // Re-roll a dice token in place (click handler), keeping its formula.
@@ -9713,7 +10439,7 @@ async function writeH(h) {
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
 function flattenArtifacts(text, node, varMap) {
-  return (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
     type = type.toLowerCase();
     if (type === 'grammar') {
       const g = node.grammar?.find(x => x.key === key); if (!g) return '';
@@ -9745,6 +10471,11 @@ function flattenArtifacts(text, node, varMap) {
     const val = varMap[(rec.name || '').toLowerCase()];
     const valStr = val !== undefined ? formatVarValue(val) : '?';
     return rec.expr ? `${rec.name} = ${valStr}` : valStr;
+  });
+  // progress cookies freeze to their computed tally in a one-way snapshot
+  return flat.replace(/\[(\/|%)\]/g, (_, k) => {
+    const { done, total } = progressCount(node);
+    return formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
   });
 }
 
@@ -9799,6 +10530,8 @@ function toMarkdown(rootNode) {
     }
     // the point's note: plain continuation lines indented under the item
     if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}  ${l}`));
+    // per-node properties as a single continuation line
+    if (node.props?.length) out.push(`${indent}  [${node.props.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
     // footnote definitions in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -9828,13 +10561,15 @@ function toPlainText(rootNode) {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
       let body = stripInlineMd(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap));
-      if (node.type === 'todo') body = body.replace(/^[-*+]\s+(\[[ xX]\])\s*/, '$1 ');
+      if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
       for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);
     }
     // the point's note: continuation lines indented under the item
     if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}\t${l}`));
+    // per-node properties as a single continuation line
+    if (node.props?.length) out.push(`${indent}\t[${node.props.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
     // footnote text in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -10020,6 +10755,8 @@ document.getElementById('outline').addEventListener('mousedown', e => {
 document.getElementById('outline').addEventListener('click', e => {
   const ind = e.target.closest('.note-ind');
   if (ind) openNoteEditor(ind.dataset.noteId);
+  const chip = e.target.closest('.prop-chip');
+  if (chip) openPropsDialog(chip.dataset.propsId);
 });
 
 // ─── footnotes ────────────────────────────────────────────────────────────────
@@ -10658,6 +11395,7 @@ document.getElementById('btn-notes').addEventListener('click', () => {
   scheduleAutosave();
   render();
 });
+document.getElementById('btn-capture').addEventListener('click', () => openCaptureDialog());
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. The modifier
 // key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
@@ -10676,6 +11414,8 @@ const SHORTCUTS = [
     { keys: ['word word'], desc: 'Every term must match (AND)' },
     { keys: ['#tag'],      desc: 'Points carrying a tag — state keywords too (#todo, #waiting)' },
     { keys: ['is:todo', 'is:done', 'is:note'], desc: 'Open to-dos / finished to-dos / points with a note' },
+    { keys: ['has:key'], desc: 'Points carrying a property with that key — e.g. has:status' },
+    { keys: ['key:value'], desc: 'Points where key equals value — e.g. status:done, author:alice' },
     { keys: ['-term', '-#tag'], desc: 'Exclude matches' },
     { keys: ['"a b"'],     desc: 'Exact phrase' },
     { keys: ['★'],         desc: 'Star a search to save it with the document — saved searches appear under the box while it has focus' },
@@ -10685,6 +11425,8 @@ const SHORTCUTS = [
     { keys: ['⇧+Enter'],         desc: 'Line break inside a point' },
     { keys: ['Tab', '⇧+Tab'],    desc: 'Indent / outdent' },
     { keys: ['Alt+↑', '↓'],      desc: 'Move point up / down' },
+    { keys: ['Refile…'],         desc: 'Move a point (and its subtree) anywhere via search — in the bullet menu (⇧+F10)' },
+    { keys: ['⤓ Capture'],       desc: 'Toolbar inbox button: fast-add a point to a chosen inbox from anywhere, without navigating' },
   ]},
   { sec: 'TODO state & priority', rows: [
     { keys: ['#TODO'],            desc: 'Click a badge to open the state / priority picker' },
@@ -10692,8 +11434,8 @@ const SHORTCUTS = [
     { keys: ['/todo', '/next', '…'],   desc: 'Slash menu sets the to-do state too' },
   ]},
   { sec: 'Insert & commands', rows: [
-    { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
-    { keys: ['@'],  desc: 'Insert link, image, footnote, dice, roll table, Markov chain, grammar, math, variable, sequence' },
+    { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table, base, or stamp a saved template…' },
+    { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
@@ -10706,6 +11448,7 @@ const SHORTCUTS = [
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
+    { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },
   ]},
   { sec: 'Format (markdown)', rows: [
     { keys: ['#', '…', '######'], desc: 'Headings (any line, h1–h6)' },

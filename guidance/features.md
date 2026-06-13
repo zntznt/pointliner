@@ -166,6 +166,87 @@ Implemented:
   (still `:focus-within`, so the panel stays open). Saving marks the doc dirty
   (autosave + OPML); chips refresh on box focus so they're current after a
   file load.
+- **Progress cookies** — a `[/]` (fraction) or `[%]` (percent) cookie in a
+  point's text renders as a **live tally** of the tasks it contains. Counted:
+  every checkbox marker `[ ]`/`[x]` in the point's **own text** plus its
+  **direct child points** — each marker counted individually (so several
+  checkboxes in one point each count) — and any keyword/sequenced child point
+  with no marker counted as a single item, its done-ness from the
+  **sequence-aware** `todoDoneFromText` (right of the `|` = done). Scope is own
+  text + direct children (recursion deferred). The cookie is **plain text** in
+  `node.text` (the recipe, like `#+TBLFM:`): edit mode shows `[/]`, display mode
+  shows the computed `[2/5]` — no sidecar, no OPML attribute, round-trips for
+  free. It goes **success-hued** (`.cookie-full`) when complete and is
+  **live-updating** — toggling a checkbox repaints the cookie's point (own-text
+  case) and, when a multi-marker child only partly completes, the parent too
+  (the `toggleTaskInNode` parent-repaint branch; full state changes already
+  `render()`). A literal `[/]`/`[%]` only becomes a cookie when the rendering
+  point owns tasks (`cookieNode` is set); elsewhere it stays text — the
+  escape-hatch rule. **Front door:** `@progress` (inserts `[/]`; the menu teaches
+  `[%]`). Pure cores: `tallyMarkers` (text → {done,total}), `progressCount`
+  (node × seqs → {done,total}), `formatProgressCookie`. Export
+  (`flattenArtifacts`) freezes the cookie to its computed tally, like every
+  other artifact in a one-way snapshot. P5: a recorded syntax-inventory decision
+  — reuses the `[…]` bracket authoring family rather than minting a sigil
+  (`guidance/ux-remediation.md` UXP-20).
+- **Properties** — per-point structured key:value metadata. `node.props = [{key, val}]`
+  is a sidecar array persisted as the `_props` OPML attribute (JSON; serialize +
+  parse in the same change, like every sidecar). **Editor:** a dialog from the
+  bullet menu ("Add property" / "Edit properties") or by clicking any chip — a
+  dynamic key:value list with add/remove rows (Enter in a key field jumps to its
+  value; Enter on the last value adds a row). **Display:** chips render in a row
+  below the point's note (gutter mark reuses `.note-mark`), and again under the
+  title in the zoom view; empty keys are dropped on save. **Search:** two operators
+  added to `parseSearchQuery` / `termMatchesNode` — `has:key` (the point carries a
+  property with that key) and `key:value` (key equals value), both case-insensitive;
+  `is:` stays a reserved prefix so `is:tomorrow` and other unknown `is:` values fall
+  through to literal text (the escape-hatch rule). **Export:** properties appear as a
+  single `[key: val · …]` continuation line in the markdown and plain-text snapshots.
+- **Templates** — save a point's subtree as a named, reusable snapshot and stamp
+  fresh copies elsewhere. Templates are **doc-level config** on `root.templates =
+  [{name, node}]`, serialized as the `<_templates>` **OPML head element** (the
+  second underscore-prefixed custom *element*, beside `<_savedSearches>` — outlines
+  carry custom attributes, the head carries custom elements). **Save door:** the
+  bullet menu "Save as template" opens a name dialog defaulting to the point's text;
+  saving over an existing name **updates** that template (trim-exact, mirroring the
+  saved-search toggle). **Stamp door:** the `/template` slash verb opens a picker
+  dialog listing saved templates (point counts shown, each with a "forget" ✕); an
+  empty library shows guidance pointing at the save door (P2). Stamping
+  **deep-clones** the stored subtree (`deepCloneNodeNewIds` — fresh ids top-to-leaf,
+  now also deep-copying the `seq`/`props` sidecars so a stamp never shares mutable
+  state with the saved template) and inserts it: **replacing** the invoking point
+  when it's empty and childless (you typed `/template` on a blank line), otherwise as
+  the **next sibling**. Every action toasts what it touched (P4). Pure cores:
+  `upsertTemplate` / `removeTemplate` / `findTemplate` (all return new arrays, never
+  mutate).
+- **Refile** — move a point's whole subtree to another location through a search
+  picker, instead of dragging or repeatedly indenting. **Door:** the bullet menu
+  "Refile…" opens a **modal quick-switcher** — a search input over a filtered,
+  keyboard-navigable list of candidate destinations (↑/↓ to move, Enter to refile,
+  Esc to cancel), each row showing the target's title plus its **breadcrumb path**
+  for disambiguation. **"Top level"** is always the first option (refile *out* of
+  deep nesting). Selecting a target moves the subtree to become that point's **last
+  child**, reusing the same reparent semantics as drag-drop (`performDrop`) and the
+  `isDescOf` **self / own-descendant guard** (you can't refile a point into its own
+  subtree — that would orphan the tree). The move toasts what it touched (P4) and
+  focus follows the moved point. Pure core `refileCandidates(query, moveId, root)` —
+  title-matched (case-insensitive, like `linkCandidates`), excludes the moved subtree,
+  returns `{id, title, path}`; mover `refileNodeTo(moveId, targetId)`. No new syntax.
+- **Capture / quick inbox** — fast-add a point into a designated inbox **from
+  anywhere, without navigating there**. **Door:** the toolbar inbox button
+  (`#btn-capture`) opens a **Capture dialog** that overlays wherever you are — so a
+  capture never moves you off what you're doing. The **inbox** is a doc-level pointer
+  (`root.inboxId` → a point's id, persisted as the `<_inbox>` **OPML head element**;
+  node ids round-trip via `_id`, so the pointer survives reload; a deleted inbox is
+  treated as unset). You pick / change the inbox via an **inline point picker** (reuses
+  `refileCandidates`, search + keyboard nav) that swaps into the same card and returns
+  with your draft preserved. Each **Capture** appends **one markdown-aware point** —
+  type derived from the text, so a typed `- [ ]` lands as a to-do, `# x` a heading — as
+  the inbox's **last child**, then **clears and keeps the dialog open** (the brain-dump
+  flow) with a running **"✓ Captured N"** confirmation and a toast. **Enter** captures,
+  **Shift+Enter** is a line break. Until an inbox is set the Capture button is disabled
+  and the action routes to the picker (no silent no-op — P4). Helpers `openCaptureDialog`
+  / `doCapture` / `resolveInbox`. No new syntax.
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like

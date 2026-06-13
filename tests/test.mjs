@@ -256,6 +256,69 @@ test('mdToHtml — ATX heading becomes a real <h1>', () => {
   assert.equal(c.mdToHtml('# Title'), '<h1 class="md-h">Title</h1>');
 });
 
+// Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
+// backspaced its label and the space) must still render a checkbox, not a literal
+// `[ ]`. The bug was TASK_RE requiring `\s+` after the bracket; the fix makes the
+// trailing content optional. Render and the click-toggle regex must agree on which
+// lines are tasks, or data-task indices desync.
+test('mdToHtml — empty `- [ ]` / `- [x]` render as checkboxes, not literal brackets', () => {
+  const empty = c.mdToHtml('- [ ]');
+  assert.ok(empty.includes('md-task-check'), 'empty - [ ] must render a checkbox');
+  assert.ok(!/<li>\[/.test(empty), 'must not fall through to a literal [ ] list item');
+  const emptyX = c.mdToHtml('- [x]');
+  assert.ok(emptyX.includes('md-task-check') && emptyX.includes('checked'), 'empty - [x] is a checked checkbox');
+  // GFM still needs the space: `- [ ]bar` (no space) stays a plain list item
+  assert.ok(!c.mdToHtml('- [ ]bar').includes('md-task-check'), '- [ ]bar (no space) is not a task');
+  // data-task numbering is contiguous across an empty middle task (render↔toggle align)
+  const mixed = c.mdToHtml('- [ ] first\n- [ ]\n- [x] third');
+  const tasks = [...mixed.matchAll(/data-task="(\d+)"/g)].map(m => m[1]);
+  assert.deepEqual(host(tasks), ['0', '1', '2']);
+  // the toggle path shares the checkbox token with render via TASK_LINE_RE (F4), so
+  // its data-task index can't desync from the rendered checkboxes
+  assert.ok(_src.includes('const TASK_LINE_RE'), 'TASK_LINE_RE must be defined in the grammar block');
+  assert.ok(_src.includes('TASK_BOX_CAP.source'), 'TASK_LINE_RE / TASK_RE must compose the shared box token');
+  assert.ok(_src.includes('lines[i].match(TASK_LINE_RE)'), 'toggleTaskInNode must use the shared TASK_LINE_RE');
+  // search/breadcrumb stripping doesn't leak a literal [ ] for an empty to-do
+  assert.equal(c.stripMd('- [ ]'), '');
+  assert.equal(c.stripMd('- [ ] foo'), 'foo');
+});
+
+// Cross-site guardrail (code-review F4): the empty-`- [ ]` bug recurred because each
+// task-aware function re-spelled the checkbox grammar and one drifted. This pins that
+// EVERY task-aware pure function agrees an empty `- [ ]` / `- [x]` is a task — if a
+// future edit (or a missed site) drifts the boundary rule again, this fails.
+test('task grammar: all task-aware functions agree an empty `- [ ]` is a task (F4)', () => {
+  for (const box of ['- [ ]', '- [x]']) {
+    assert.ok(c.isTaskFirst(box), `isTaskFirst should accept ${box}`);
+    assert.ok(c.mdToHtml(box).includes('md-task-check'), `mdToHtml should render a checkbox for ${box}`);
+    assert.equal(c.tallyMarkers(box).total, 1, `tallyMarkers should count ${box} as one marker`);
+    assert.equal(c.stripMd(box), '', `stripMd should strip ${box} clean`);
+    assert.equal(c.migrateEmphasisText(box, true, false), box, `migrateEmphasisText must not wrap ${box}`);
+    assert.equal(c.textForDisplay({ text: box, type: 'todo' }), '', `textForDisplay should strip ${box}'s marker`);
+  }
+  // done-ness still derives correctly: empty box = open, checked box = done
+  assert.equal(c.todoDoneFromText('- [ ]'), false);
+  assert.equal(c.todoDoneFromText('- [x]'), true);
+  // ordered tasks count too, and a checked one tallies as done
+  assert.deepEqual(host(c.tallyMarkers('1. [ ]\n2. [x]')), { done: 1, total: 2 });
+});
+
+// Regression (code-review F1): the 4th task-marker regex — legacy italic/underline
+// migration — also required a trailing space, so an empty `- [ ]` had its bracket
+// wrapped in emphasis (`- *[ ]*`) instead of staying a task. The marker is a prefix
+// only when followed by a space OR end-of-line.
+test('migrateEmphasisText — empty `- [ ]` keeps its task marker, never wraps the bracket', () => {
+  // empty task: nothing to emphasise → line unchanged (bracket NOT wrapped)
+  assert.equal(c.migrateEmphasisText('- [ ]', true, false), '- [ ]');
+  assert.equal(c.migrateEmphasisText('- [x]', false, true), '- [x]');
+  // a task WITH a body still wraps only the body, keeping the marker as prefix
+  assert.equal(c.migrateEmphasisText('- [ ] buy milk', true, false), '- [ ] *buy milk*');
+  // a non-task `[ ]bar` (no space) is ordinary body and wraps whole (no regression)
+  assert.equal(c.migrateEmphasisText('- [ ]bar', true, false), '- *[ ]bar*');
+  // plain bullet unaffected
+  assert.equal(c.migrateEmphasisText('- hello', true, false), '- *hello*');
+});
+
 // ── OPML serialization ─────────────────────────────────────────────────────
 test('toOpml — escapes text and encodes newlines as &#10;', () => {
   const root = c.mkRoot();
@@ -2482,6 +2545,91 @@ test('search query: front doors + wiring are present (src pins)', () => {
   assert.ok(_src.includes('searchTerms = parseSearchQuery(q)'), 'applySearch does not parse the query');
 });
 
+// ─── per-node properties ─────────────────────────────────────────────────────
+
+test('properties: mkNode initialises props as an empty array', () => {
+  const n = c.mkNode('hello');
+  assert.deepEqual(host(n.props), []);
+});
+
+test('properties: parseSearchQuery parses has: and key:value operators', () => {
+  assert.deepEqual(host(c.parseSearchQuery('has:status')),
+    [{ neg: false, kind: 'has', value: 'status' }]);
+  assert.deepEqual(host(c.parseSearchQuery('status:done')),
+    [{ neg: false, kind: 'prop', key: 'status', value: 'done' }]);
+  assert.deepEqual(host(c.parseSearchQuery('-has:priority')),
+    [{ neg: true, kind: 'has', value: 'priority' }]);
+  assert.deepEqual(host(c.parseSearchQuery('author:alice')),
+    [{ neg: false, kind: 'prop', key: 'author', value: 'alice' }]);
+  // is: with unrecognised value still stays literal text
+  assert.deepEqual(host(c.parseSearchQuery('is:tomorrow')),
+    [{ neg: false, kind: 'text', value: 'is:tomorrow' }]);
+});
+
+test('properties: queryMatchesNode — has: and key:value matching', () => {
+  const q = s => c.parseSearchQuery(s);
+  const n = c.mkNode('a task');
+  n.props = [{ key: 'status', val: 'done' }, { key: 'author', val: 'alice' }];
+
+  assert.equal(c.queryMatchesNode(q('has:status'), n), true);
+  assert.equal(c.queryMatchesNode(q('has:priority'), n), false);
+  assert.equal(c.queryMatchesNode(q('status:done'), n), true);
+  assert.equal(c.queryMatchesNode(q('status:open'), n), false);
+  assert.equal(c.queryMatchesNode(q('author:alice'), n), true);
+  assert.equal(c.queryMatchesNode(q('author:bob'), n), false);
+  // negation
+  assert.equal(c.queryMatchesNode(q('-has:status'), n), false);
+  assert.equal(c.queryMatchesNode(q('-has:priority'), n), true);
+  assert.equal(c.queryMatchesNode(q('-status:open'), n), true);
+  // AND with other terms
+  assert.equal(c.queryMatchesNode(q('task status:done'), n), true);
+  assert.equal(c.queryMatchesNode(q('task status:open'), n), false);
+  // no props at all
+  const bare = c.mkNode('no props');
+  assert.equal(c.queryMatchesNode(q('has:status'), bare), false);
+});
+
+test('properties: key:value search is case-insensitive on both sides', () => {
+  const q = s => c.parseSearchQuery(s);
+  const n = c.mkNode('x');
+  n.props = [{ key: 'Status', val: 'Done' }];
+  assert.equal(c.queryMatchesNode(q('status:done'), n), true);
+  assert.equal(c.queryMatchesNode(q('STATUS:DONE'), n), true);
+  assert.equal(c.queryMatchesNode(q('has:status'), n), true);
+  assert.equal(c.queryMatchesNode(q('has:STATUS'), n), true);
+});
+
+test('properties: OPML round-trip via toMarkdown preserves props as continuation line', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('My task');
+  n.props = [{ key: 'status', val: 'done' }, { key: 'author', val: 'alice' }];
+  root.children.push(n);
+  const md = c.toMarkdown(root);
+  assert.ok(md.includes('[status: done · author: alice]'), `markdown export missing props: ${md}`);
+  const pt = c.toPlainText(root);
+  assert.ok(pt.includes('[status: done · author: alice]'), `plain text export missing props: ${pt}`);
+});
+
+test('properties: wiring and front doors are present (src pins)', () => {
+  assert.ok(_src.includes("kind: 'has'"),   "has: query kind missing");
+  assert.ok(_src.includes("kind: 'prop'"),  "prop: query kind missing");
+  assert.ok(_src.includes('openPropsDialog'), 'openPropsDialog missing');
+  assert.ok(_src.includes("'Add property'"), "bullet menu 'Add property' label missing");
+  assert.ok(_src.includes('buildPropsRow'),  'buildPropsRow missing');
+  assert.ok(_src.includes('buildPropsArea'), 'buildPropsArea missing');
+  assert.ok(_src.includes("has:key"),        '? panel has:key missing');
+  assert.ok(_src.includes('_props'),         'OPML _props attribute missing');
+  assert.ok(_src.includes('node.props'),     'props sidecar not referenced');
+});
+
+// Regression guard for the dialog crash: the canonical node lookup is nodeById().
+// A `findById(` reference is a typo that throws only when the dialog is opened —
+// invisible to src-pin greps and pure-core tests, caught here instead. (The real
+// fix is running the UI; this is the cheap backstop for this specific typo class.)
+test('no undefined node-lookup helper (findById is not a function)', () => {
+  assert.ok(!_src.includes('findById('), 'use nodeById() — findById is not defined');
+});
+
 // ─── saved searches ───────────────────────────────────────────────────────────
 
 test('saved searches: toggleSavedSearch adds, removes, trims, returns new arrays', () => {
@@ -2519,8 +2667,10 @@ test('saved searches: toOpml emits the head element only when non-empty', () => 
 });
 
 test('saved searches: UI wiring + parse-side present (src pins)', () => {
-  // serialize + parse land in the same change (the OPML invariant)
-  assert.ok(_src.includes("querySelector('head > _savedSearches')"), 'fromOpml parse missing');
+  // serialize + parse land in the same change (the OPML invariant); the head-config
+  // helpers (F6) carry both sides — serialize via headEl, parse via headJSONArray
+  assert.ok(_src.includes("headJSONArray(doc, '_savedSearches'"), 'fromOpml parse missing');
+  assert.ok(_src.includes("headEl('_savedSearches'"), 'toOpml serialize missing');
   assert.ok(_src.includes('savedSearches: []'), 'mkRoot default missing');
   // P2 front doors: the star button + the saved chips section in the panel
   assert.ok(_src.includes('id="search-save"'), 'star button missing');
@@ -2529,4 +2679,254 @@ test('saved searches: UI wiring + parse-side present (src pins)', () => {
   assert.ok(_src.includes("e.key === 'Delete' || e.key === 'Backspace'"), 'chip Delete branch missing');
   // P1/caret: star + chips swallow mousedown so the box keeps its caret
   assert.ok(_src.includes("getElementById('search-save').addEventListener('mousedown', e => e.preventDefault())"), 'star mousedown guard missing');
+});
+
+// ─── templates ─────────────────────────────────────────────────────────────────
+
+test('templates: mkRoot initialises templates as an empty array', () => {
+  assert.deepEqual(host(c.mkRoot().templates), []);
+});
+
+test('templates: upsertTemplate appends, updates by trim-exact name, returns new array', () => {
+  const n1 = c.mkNode('one');
+  const n2 = c.mkNode('two');
+  const a = c.upsertTemplate([], 'Review', n1);
+  assert.equal(a.length, 1);
+  assert.equal(a[0].name, 'Review');
+  assert.equal(a[0].node, n1);
+  // saving over the same name (with surrounding space) updates in place, not appends
+  const b = c.upsertTemplate(a, '  Review  ', n2);
+  assert.equal(b.length, 1);
+  assert.equal(b[0].node, n2);
+  // a distinct name appends
+  const d = c.upsertTemplate(b, 'Other', n1);
+  assert.equal(d.length, 2);
+  // empty name or missing node is a no-op copy (never mutates input)
+  assert.deepEqual(host(c.upsertTemplate(d, '', n1)).length, 2);
+  assert.deepEqual(host(c.upsertTemplate(d, 'x', null)).length, 2);
+  assert.notEqual(c.upsertTemplate(d, 'z', n1), d); // new array
+});
+
+test('templates: removeTemplate / findTemplate are trim-exact and pure', () => {
+  const list = [{ name: 'A', node: c.mkNode('a') }, { name: 'B', node: c.mkNode('b') }];
+  assert.equal(c.findTemplate(list, 'A').name, 'A');
+  assert.equal(c.findTemplate(list, '  A  ').name, 'A'); // trim-exact
+  assert.equal(c.findTemplate(list, 'C'), null);
+  const after = c.removeTemplate(list, 'A');
+  assert.equal(after.length, 1);
+  assert.equal(after[0].name, 'B');
+  assert.equal(list.length, 2);                          // input untouched
+  assert.equal(c.removeTemplate(list, 'missing').length, 2);
+});
+
+test('templates: deepCloneNodeNewIds gives fresh ids and unshared sidecars (incl. seq + props)', () => {
+  const src = c.mkNode('parent');
+  src.props = [{ key: 'status', val: 'active' }];
+  src.seq = [{ key: 'k1', name: 'Flow', states: ['TODO', 'DONE'], doneFrom: 1 }];
+  const child = c.mkNode('child');
+  src.children.push(child);
+
+  const clone = c.deepCloneNodeNewIds(src);
+  // fresh ids top and down
+  assert.notEqual(clone.id, src.id);
+  assert.notEqual(clone.children[0].id, src.children[0].id);
+  assert.equal(clone.text, 'parent');
+  // sidecars are copied, not shared — mutating the clone must not touch the source
+  assert.notEqual(clone.props, src.props);
+  assert.notEqual(clone.seq, src.seq);
+  clone.props[0].val = 'done';
+  assert.equal(src.props[0].val, 'active');
+  clone.seq[0].states.push('X');
+  assert.equal(src.seq[0].states.length, 2);
+});
+
+test('templates: OPML head round-trips templates (serialize + structure)', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('doc'));
+  assert.ok(!c.toOpml(root).includes('_templates'), 'empty list must not emit');
+  const tnode = c.mkNode('Weekly review');
+  tnode.children.push(c.mkNode('- [ ] inbox zero'));
+  root.templates = [{ name: 'Review', node: tnode }];
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_templates>'), 'head element missing');
+  assert.ok(xml.includes('Weekly review'), 'template node text not serialized');
+});
+
+test('templates: UI wiring + front doors present (src pins)', () => {
+  assert.ok(_src.includes("headJSONArray(doc, '_templates'"), 'fromOpml parse missing');
+  assert.ok(_src.includes("headEl('_templates'"), 'toOpml serialize missing');
+  assert.ok(_src.includes('templates: []'), 'mkRoot default missing');
+  assert.ok(_src.includes('openSaveTemplateDialog'), 'save door missing');
+  assert.ok(_src.includes('openTemplatePicker'),     'stamp picker missing');
+  assert.ok(_src.includes('stampTemplate'),          'stamp impl missing');
+  assert.ok(_src.includes("id:'template'"),          '/ menu entry missing');
+  assert.ok(_src.includes("label:'Save as template'"), 'bullet menu door missing');
+  // stamp re-indexes the whole cloned subtree
+  assert.ok(_src.includes('buildIndex(root, null); // re-index the whole stamped subtree'), 'reindex after stamp missing');
+});
+
+// ─── refile ────────────────────────────────────────────────────────────────────
+
+test('refile: refileCandidates lists every point except the moved subtree, with paths', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Alpha');
+  const b = c.mkNode('Beta');
+  const bChild = c.mkNode('Beta child');
+  b.children.push(bChild);
+  const moved = c.mkNode('Movable');
+  const movedKid = c.mkNode('Movable kid');
+  moved.children.push(movedKid);
+  root.children.push(a, b, moved);
+
+  const all = c.refileCandidates('', moved.id, root);
+  const titles = all.map(x => x.title);
+  assert.ok(titles.includes('Alpha') && titles.includes('Beta') && titles.includes('Beta child'));
+  // the moved node AND its descendants are excluded (can't refile into yourself)
+  assert.ok(!titles.includes('Movable'), 'moved node must be excluded');
+  assert.ok(!titles.includes('Movable kid'), 'moved descendants must be excluded');
+  // nested candidate carries its ancestor path for disambiguation
+  const bc = all.find(x => x.title === 'Beta child');
+  assert.deepEqual(host(bc.path), ['Beta']);
+  const al = all.find(x => x.title === 'Alpha');
+  assert.deepEqual(host(al.path), []); // top-level point: empty path
+});
+
+test('refile: refileCandidates filters by title, case-insensitive', () => {
+  const root = c.mkRoot();
+  const moved = c.mkNode('X');
+  root.children.push(c.mkNode('Groceries'), c.mkNode('Garage'), moved);
+  assert.deepEqual(host(c.refileCandidates('gar', moved.id, root).map(x => x.title)), ['Garage']);
+  assert.deepEqual(host(c.refileCandidates('GRO', moved.id, root).map(x => x.title)), ['Groceries']);
+  assert.equal(c.refileCandidates('zzz', moved.id, root).length, 0);
+});
+
+test('refile: untitled / base targets still surface with a label', () => {
+  const root = c.mkRoot();
+  const moved = c.mkNode('m');
+  const blank = c.mkNode('');
+  const base = c.mkNode('| a |', 'base');
+  root.children.push(blank, base, moved);
+  const all = c.refileCandidates('', moved.id, root);
+  const titles = all.map(x => x.title);
+  assert.ok(titles.includes('(untitled)'), 'blank point gets a placeholder label');
+  assert.ok(titles.includes('Base'), 'base gets a Base label');
+});
+
+test('refile: UI wiring + ancestor guard present (src pins)', () => {
+  assert.ok(_src.includes('openRefileDialog'),  'refile dialog missing');
+  assert.ok(_src.includes('function refileNodeTo'), 'mover missing');
+  assert.ok(_src.includes("label:'Refile…'"),   'bullet menu door missing');
+  // self / own-descendant guard (would orphan the subtree)
+  assert.ok(_src.includes('moveId === targetId || isDescOf(moveId, targetId)'), 'ancestor guard missing');
+  // keyboard-navigable quick-switcher (↑/↓/Enter on the search input)
+  assert.ok(_src.includes("e.key === 'ArrowDown'") && _src.includes("e.key === 'ArrowUp'"), 'list keyboard nav missing');
+  // top-level (root) refile option
+  assert.ok(_src.includes("title: 'Top level'"), 'top-level option missing');
+});
+
+// ─── capture / quick inbox ─────────────────────────────────────────────────────
+
+test('capture: mkRoot initialises inboxId as null', () => {
+  assert.strictEqual(c.mkRoot().inboxId, null);
+});
+
+test('capture: inboxId round-trips through the OPML head', () => {
+  const root = c.mkRoot();
+  const inbox = c.mkNode('Inbox');
+  root.children.push(inbox);
+  // unset → no element emitted
+  assert.ok(!c.toOpml(root).includes('_inbox'), 'must not emit when unset');
+  root.inboxId = inbox.id;
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_inbox>' + inbox.id + '</_inbox>'), 'head element / id not serialized');
+  // the inbox point's own id must serialize too (so the pointer stays valid after a
+  // reload — node ids round-trip via _id). fromOpml needs DOMParser (no vm sandbox),
+  // so the parse side is pinned in the wiring test below, mirroring saved searches.
+  assert.ok(xml.includes('_id="' + inbox.id + '"'), 'inbox point _id must round-trip');
+});
+
+test('capture: UI wiring + front doors present (src pins)', () => {
+  assert.ok(_src.includes("querySelector('head > _inbox')"), 'fromOpml parse missing');
+  assert.ok(_src.includes('inboxId: null'), 'mkRoot default missing');
+  assert.ok(_src.includes('openCaptureDialog'), 'capture dialog missing');
+  assert.ok(_src.includes('function doCapture'), 'capture action missing');
+  assert.ok(_src.includes('id="btn-capture"'), 'toolbar button missing');
+  assert.ok(_src.includes("getElementById('btn-capture').addEventListener"), 'button not wired');
+  // no destination yet → the capture action routes to the picker, never silently no-ops (P4)
+  assert.ok(_src.includes('if (!inbox) { renderCaptureDest(); return; }'), 'unset-inbox path missing');
+  // captured text is markdown-aware (a typed - [ ] becomes a to-do)
+  assert.ok(_src.includes('deriveTypeFromText(text)') && _src.includes('todoDoneFromText(text)'), 'capture not markdown-aware');
+});
+
+test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
+  assert.deepEqual(host(c.tallyMarkers('- [ ] a\n- [x] b\n- [ ] c')), { done: 1, total: 3 });
+  assert.deepEqual(host(c.tallyMarkers('* [x] a\n+ [x] b')),          { done: 2, total: 2 });
+  assert.deepEqual(host(c.tallyMarkers('1. [ ] a\n2. [x] b')),        { done: 1, total: 2 }); // ordered tasks
+  assert.deepEqual(host(c.tallyMarkers('no tasks here')),             { done: 0, total: 0 });
+  assert.deepEqual(host(c.tallyMarkers('')),                          { done: 0, total: 0 });
+});
+
+test('progress cookies: progressCount — own-text checkboxes + direct child tasks', () => {
+  // own-text checklist (cookie + boxes in the SAME point)
+  const a = c.mkNode('Shopping [/]\n- [ ] milk\n- [x] eggs\n- [ ] bread');
+  assert.deepEqual(host(c.progressCount(a)), { done: 1, total: 3 });
+  // direct child task points — each marker counts individually
+  const p = c.mkNode('Project [/]');
+  p.children.push(c.mkNode('- [x] design'));
+  p.children.push(c.mkNode('- [ ] build\n- [ ] ship'));   // one child point, two markers
+  assert.deepEqual(host(c.progressCount(p)), { done: 1, total: 3 });
+});
+
+test('progress cookies: keyword/sequenced child points count once, done-aware', () => {
+  const seqs = [DEFAULT_SEQ, FLOW];
+  const p = c.mkNode('Roadmap [/]');
+  p.children.push(c.mkNode('#TODO a'));      // open (default)
+  p.children.push(c.mkNode('#DONE b'));      // done (default)
+  p.children.push(c.mkNode('#DOING c'));     // open (Flow)
+  p.children.push(c.mkNode('#SHIPPED d'));   // done (Flow)
+  p.children.push(c.mkNode('plain note'));   // not a task → ignored
+  assert.deepEqual(host(c.progressCount(p, seqs)), { done: 2, total: 4 });
+});
+
+test('progress cookies: a child with markers counts its markers (the granular unit)', () => {
+  const p = c.mkNode('[/]');
+  p.children.push(c.mkNode('#TODO sub\n- [x] one\n- [ ] two'));  // has markers → count them
+  assert.deepEqual(host(c.progressCount(p)), { done: 1, total: 2 });
+});
+
+test('progress cookies: scope is one level — grandchildren are not counted', () => {
+  const p = c.mkNode('[/]');
+  const child = c.mkNode('- [ ] direct');
+  child.children.push(c.mkNode('- [x] grandchild'));  // deeper → excluded
+  p.children.push(child);
+  assert.deepEqual(host(c.progressCount(p)), { done: 0, total: 1 });
+});
+
+test('progress cookies: formatProgressCookie — fraction and rounded percent', () => {
+  assert.equal(c.formatProgressCookie('frac', 1, 3), '[1/3]');
+  assert.equal(c.formatProgressCookie('frac', 0, 0), '[0/0]');
+  assert.equal(c.formatProgressCookie('pct',  1, 3), '[33%]');   // rounds
+  assert.equal(c.formatProgressCookie('pct',  2, 4), '[50%]');
+  assert.equal(c.formatProgressCookie('pct',  0, 0), '[0%]');    // no divide-by-zero
+  assert.equal(c.formatProgressCookie('pct',  3, 3), '[100%]');
+});
+
+test('progress cookies: flattenArtifacts freezes the tally for one-way export', () => {
+  const flat = c._context.flattenArtifacts;
+  const p = c.mkNode('Project [/] — [%] done');
+  p.children.push(c.mkNode('- [x] a'));
+  p.children.push(c.mkNode('- [ ] b'));
+  p.children.push(c.mkNode('- [ ] c'));
+  assert.equal(flat(p.text, p, {}), 'Project [1/3] — [33%] done');
+});
+
+test('progress cookies: render + front-door wiring (src pins)', () => {
+  assert.ok(_src.includes('progressCount(cookieNode)'), 'mdInline cookie pass missing');
+  assert.ok(_src.includes('let cookieNode = null'), 'cookieNode global missing');
+  assert.ok(_src.includes("id:'progress'"), 'progress @ entry missing');
+  assert.ok(_src.includes("applyInlineInsertion(nodeId, offset, '[/]')"), 'progress insert missing');
+  // P5-4: the syntax also lives in the ? panel, not only the @ menu
+  assert.ok(_src.includes("keys: ['[/]', '[%]']"), 'progress ? panel row missing');
+  // P4: a child partial-toggle refreshes a cookie-bearing parent
+  assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
 });

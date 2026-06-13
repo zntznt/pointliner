@@ -505,7 +505,36 @@ Saved searches (star the query to save it doc-level — the raw string is the la
 `root.savedSearches` + the `<_savedSearches>` OPML **head element** (doc-level config; the
 one underscore-prefixed custom element — outlines carry custom attributes); chips in the
 focus-shown panel apply/forget by mouse or keyboard; pure cores `toggleSavedSearch`/
-`isSavedSearch`).
+`isSavedSearch`) ·
+Progress cookies (`[/]` fraction / `[%]` percent — a live task tally rendered against the
+point's own checkboxes + direct child tasks, each checkbox counted individually and each
+keyword/sequenced child once with sequence-aware done-ness; plain text in `node.text` computed
+at render like `#+TBLFM:` — no sidecar, OPML round-trips for free; `@progress` front door;
+recorded P5 syntax-inventory decision reusing the `[…]` bracket family — UXP-20; pure cores
+`tallyMarkers`/`progressCount`/`formatProgressCookie`) ·
+Properties (`node.props = [{key, val}]` sidecar array — `_props` OPML attribute (JSON), same
+serialize+parse-in-one-change rule; dialog editor from bullet menu "Add property"/"Edit properties"
+and chip click; chips render below the note row (gutter mark reuses `.note-mark`), also in the zoom
+view; `has:key` / `key:value` search operators added to `parseSearchQuery`/`termMatchesNode` —
+`is:` stays a reserved prefix and `is:unrecognised` falls through to text; exported as
+`[key: val · …]` continuation lines in markdown/plain text) ·
+Templates (named subtree snapshots stored doc-level on `root.templates = [{name, node}]` — the
+`<_templates>` OPML **head element**, the second underscore-prefixed custom element beside
+`<_savedSearches>`; save door is the bullet menu "Save as template" (name dialog, save-over-name
+updates); stamp door is the `/template` slash verb → a picker dialog that deep-clones the chosen
+subtree (`deepCloneNodeNewIds`, now also deep-copying the `seq`/`props` sidecars) with fresh ids and
+inserts it — replacing the invoking point when empty/childless, else as the next sibling; pure cores
+`upsertTemplate`/`removeTemplate`/`findTemplate`) ·
+Refile (move a point's subtree to become another point's last child via a "Refile…" bullet-menu
+door → a modal quick-switcher: search input + filtered, keyboard-navigable candidate list with
+breadcrumb paths, "Top level" offered first; reuses `performDrop`'s reparent + `isDescOf` for the
+self/own-descendant guard; pure core `refileCandidates`, mover `refileNodeTo`) ·
+Capture / quick inbox (a toolbar inbox button `#btn-capture` opens a Capture dialog that overlays
+wherever you are — capturing never navigates you; a designated inbox `root.inboxId` (persisted as the
+`<_inbox>` OPML **head element**) is chosen via an inline point picker reusing `refileCandidates`;
+each capture appends one **markdown-aware** point — a typed `- [ ]` becomes a to-do — as the inbox's
+last child; the dialog stays open after each capture with a running "✓ Captured N" confirmation,
+Enter captures / Shift+Enter is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog
