@@ -5354,9 +5354,6 @@ function renderCaptureDest() {
     searchAria: 'Search for an inbox point',
     listAria: 'Inbox candidates',
     itemsFor: q => refileCandidates(q, '', root).slice(0, 60),
-    // A row commits on mousedown, then this rebuilds the dialog IN PLACE — so the
-    // trailing mouseup/click would otherwise land on the freshly-built main view.
-    // Defer the swap one frame: the trailing events fall on the (now inert) picker.
     onPick: it => { root.inboxId = it.id; markDirty(); requestAnimationFrame(renderCaptureMain); },
     footLabel: 'Back',
     onFoot: () => renderCaptureMain(),
