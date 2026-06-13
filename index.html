@@ -1468,7 +1468,8 @@ function parseDueDate(val) {
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) {
     const y = +iso[1], mo = +iso[2], d = +iso[3];
-    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    // sane scheduling window — a due date in the year 3331 is a typo, not a plan
+    if (y < 1900 || y > 2200 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
     const ms = Date.UTC(y, mo - 1, d);
     if (isNaN(ms)) return null;
     const back = new Date(ms);
@@ -5340,7 +5341,10 @@ function renderCaptureDest() {
     searchAria: 'Search for an inbox point',
     listAria: 'Inbox candidates',
     itemsFor: q => refileCandidates(q, '', root).slice(0, 60),
-    onPick: it => { root.inboxId = it.id; markDirty(); renderCaptureMain(); },
+    // A row commits on mousedown, then this rebuilds the dialog IN PLACE — so the
+    // trailing mouseup/click would otherwise land on the freshly-built main view.
+    // Defer the swap one frame: the trailing events fall on the (now inert) picker.
+    onPick: it => { root.inboxId = it.id; markDirty(); requestAnimationFrame(renderCaptureMain); },
     footLabel: 'Back',
     onFoot: () => renderCaptureMain(),
   });
@@ -6763,6 +6767,13 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-right-arrow-left', fb:'⇄' }, label:'Refile…',
       fn: () => { hideBpop(); openRefileDialog(nodeId); } },
+    { icon:{ fa:'fa-solid fa-inbox', fb:'⤓' },
+      label: root.inboxId === nodeId ? 'Unset as inbox' : 'Set as inbox',
+      fn: () => {
+        hideBpop();
+        if (root.inboxId === nodeId) { root.inboxId = null; markDirty(); flashHint('Inbox cleared'); }
+        else { root.inboxId = nodeId; markDirty(); flashHint('Inbox set to ' + crumbLabel(node)); }
+      } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',

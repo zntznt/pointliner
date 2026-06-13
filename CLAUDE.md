@@ -531,11 +531,15 @@ breadcrumb paths, "Top level" offered first; reuses `performDrop`'s reparent + `
 self/own-descendant guard; pure core `refileCandidates`, mover `refileNodeTo`) ·
 Capture / quick inbox (a toolbar inbox button `#btn-capture` opens a Capture dialog that overlays
 wherever you are — capturing never navigates you; a designated inbox `root.inboxId` (persisted as the
-`<_inbox>` OPML **head element**) is chosen via an inline point picker reusing `refileCandidates`;
-each capture appends one **markdown-aware** point — a typed `- [ ]` becomes a to-do — as the inbox's
-last child; the dialog stays open after each capture with a running "✓ Captured N" confirmation,
-Enter captures / Shift+Enter is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`) ·
-Due dates + Agenda (dates live as a `due` property in `node.props`, value `YYYY-MM-DD` or `today`/`today+N`/`today-N`; zero new authoring syntax — reuses the existing properties system; date-smart chips color-coded by urgency: Today (green) / Tomorrow & this week (accent) / Later (muted) / Overdue (red); Agenda panel toggled by toolbar calendar button — groups all dated points Overdue / Today / Coming up / Later, click any entry to zoom in; `/due` slash verb + bullet menu "Set / Edit due date" as front doors; search operators `due:today`, `due:overdue`, `due:<date`, `due:>date`; pure cores `parseDueDate`, `formatDueDate`, `collectDueDates`; UXP-20 decision recorded: date lives in properties, `due:` is a date-aware extension of `key:value`).
+`<_inbox>` OPML **head element**) is set two ways: the bullet-menu **"Set as inbox"** door (the
+direct front door — toggles to "Unset as inbox" on the current inbox, flashes a confirmation) or the
+Capture dialog's inline **"Choose…"** point picker (reuses `refileCandidates`); each capture appends
+one **markdown-aware** point — a typed `- [ ]` becomes a to-do — as the inbox's last child; the dialog
+stays open after each capture with a running "✓ Captured N" confirmation, Enter captures / Shift+Enter
+is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`. NB the capture-dest picker rebuilds
+the dialog *in place* on pick, so it defers the rebuild a frame — the trailing mouseup/click lands on
+the inert picker, not the freshly-built main view) ·
+Due dates + Agenda (dates live as a `due` property in `node.props`, value `YYYY-MM-DD` or `today`/`today+N`/`today-N`; zero new authoring syntax — reuses the existing properties system; `parseDueDate` round-trips the parsed epoch back to y/m/d to reject impossible calendar dates — Feb 30, day 32, month 13 — that `Date.UTC` would silently overflow-normalize, and bounds the year to a sane 1900–2200 scheduling window; date-smart chips color-coded by urgency: Today (green) / Tomorrow & this week (accent) / Later (muted) / Overdue (red); Agenda panel toggled by toolbar calendar button — groups all dated points Overdue / Today / Coming up / Later, click any entry to zoom in; `/due` slash verb + bullet menu "Set / Edit due date" as front doors; search operators `due:today`, `due:overdue`, `due:<date`, `due:>date`; pure cores `parseDueDate`, `formatDueDate`, `collectDueDates`; UXP-20 decision recorded: date lives in properties, `due:` is a date-aware extension of `key:value`. The agenda + `/due` icons (`fa-calendar-day(s)`) and the capture `fa-inbox` were added to the embedded Font Awesome subset — `FA_GLYPHS` + the `::before` content rules + the solid woff2 re-subset from FA 6.7.2; a glyph missing from the subset paints blank in a raw `<i>` (toolbar buttons bypass the `setIcon` emoji self-heal), so any new icon MUST go through the subset rebuild).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

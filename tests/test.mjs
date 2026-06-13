@@ -2975,6 +2975,17 @@ test('parseDueDate — impossible calendar dates are rejected (no overflow-norma
   assert.ok(c.parseDueDate('2026-12-31') !== null);
 });
 
+test('parseDueDate — absurd years outside the scheduling window are rejected', () => {
+  assert.equal(c.parseDueDate('3331-07-15'), null); // year 3331 is a typo, not a plan
+  assert.equal(c.parseDueDate('3334-07-15'), null);
+  assert.equal(c.parseDueDate('0349-07-01'), null); // year 349
+  assert.equal(c.parseDueDate('1899-12-31'), null); // just below the floor
+  assert.equal(c.parseDueDate('2201-01-01'), null); // just above the ceiling
+  // boundaries are inclusive
+  assert.ok(c.parseDueDate('1900-01-01') !== null);
+  assert.ok(c.parseDueDate('2200-12-31') !== null);
+});
+
 test('formatDueDate — state classification', () => {
   const today = c.dueDateToday();
   assert.equal(c.formatDueDate(today).state,     'today');
