@@ -2952,11 +2952,27 @@ test('parseDueDate — relative forms', () => {
 });
 
 test('parseDueDate — invalid values return null', () => {
-  assert.equal(c.parseDueDate(null),        null);
-  assert.equal(c.parseDueDate(''),          null);
-  assert.equal(c.parseDueDate('foo'),       null);
+  assert.equal(c.parseDueDate(null),         null);
+  assert.equal(c.parseDueDate(''),           null);
+  assert.equal(c.parseDueDate('foo'),        null);
   assert.equal(c.parseDueDate('26-06-13'),   null); // not 4-digit year
   assert.equal(c.parseDueDate('tomorrow+1'), null); // unsupported form
+});
+
+test('parseDueDate — impossible calendar dates are rejected (no overflow-normalize)', () => {
+  // Date.UTC silently rolls these over; round-trip validation must catch them.
+  assert.equal(c.parseDueDate('2026-02-30'), null); // Feb has 28/29 days
+  assert.equal(c.parseDueDate('2026-02-29'), null); // 2026 is not a leap year
+  assert.equal(c.parseDueDate('2026-04-31'), null); // April has 30 days
+  assert.equal(c.parseDueDate('2026-13-01'), null); // month 13
+  assert.equal(c.parseDueDate('2026-00-15'), null); // month 0
+  assert.equal(c.parseDueDate('2026-07-32'), null); // day 32
+  assert.equal(c.parseDueDate('2026-07-00'), null); // day 0
+  // sanity: real dates still parse, incl. a genuine leap day
+  assert.ok(c.parseDueDate('2026-02-28') !== null);
+  assert.ok(c.parseDueDate('2024-02-29') !== null); // 2024 IS a leap year
+  assert.ok(c.parseDueDate('2026-04-30') !== null);
+  assert.ok(c.parseDueDate('2026-12-31') !== null);
 });
 
 test('formatDueDate — state classification', () => {
