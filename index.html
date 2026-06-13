@@ -2160,7 +2160,7 @@ function renderMarkovPill(key, mk) {
 
 const UL_RE = /^\s*[-*+]\s+(.*)$/;
 const OL_RE = /^\s*\d+\.\s+(.*)$/;
-const TASK_RE = /^\[([ xX])\]\s+(.*)$/;   // applied to a list item's inner text
+const TASK_RE = /^\[([ xX])\](?:\s+(.*))?$/;   // list item's inner text; content optional so an empty `- [ ]` still renders a checkbox
 const DD_RE = /^:\s+(.*)$/;               // definition-list "  : definition"
 const ATX_RE = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;       // ATX heading "## Text", trailing #'s optional
 const HR_RE  = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;       // thematic break --- *** ___
@@ -2173,7 +2173,7 @@ function renderListItem(inner, taskNo) {
   const tm = inner.match(TASK_RE);
   if (tm) {
     const checked = tm[1].toLowerCase() === 'x';
-    return `<li class="md-task"><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2])}</li>`;
+    return `<li class="md-task"><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
   }
   return `<li>${mdInline(inner)}</li>`;
 }
@@ -2280,7 +2280,7 @@ function stripMd(text) {
     .replace(/\+\+([\s\S]*?)\+\+/g,'$1')
     .replace(/~(?!~)([^~\s]+?)~/g,'$1')
     .replace(/\^([^\^\s]+?)\^/g,'$1')
-    .replace(/^\s*[-*+]\s+(?:\[[ xX]\]\s+)?/gm,'')
+    .replace(/^\s*[-*+]\s+(?:\[[ xX]\]\s*)?/gm,'')   // \s* not \s+ → an empty `- [ ]` strips clean, no leftover [ ]
     .replace(/^\s*\d+\.\s+/gm,'')
     .replace(/^:\s+/gm,'');
 }
@@ -9361,11 +9361,14 @@ function toggleTaskInNode(node, taskIndex) {
   let n = 0;
   const lines = node.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*(?:[-*+]|\d+\.)\s+)\[([ xX])\](\s.*)$/);
+    // Trailing content is optional so an empty `- [ ]` counts as a task here too —
+    // it MUST mirror renderListItem/TASK_RE or the data-task indices desync and a
+    // click flips the wrong line (the empty-todo render bug's twin).
+    const m = lines[i].match(/^(\s*(?:[-*+]|\d+\.)\s+)\[([ xX])\](\s.*)?$/);
     if (!m) continue;
     if (n === taskIndex) {
       const checked = m[2].toLowerCase() === 'x';
-      lines[i] = `${m[1]}[${checked ? ' ' : 'x'}]${m[3]}`;
+      lines[i] = `${m[1]}[${checked ? ' ' : 'x'}]${m[3] || ''}`;
       break;
     }
     n++;

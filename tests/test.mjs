@@ -256,6 +256,30 @@ test('mdToHtml — ATX heading becomes a real <h1>', () => {
   assert.equal(c.mdToHtml('# Title'), '<h1 class="md-h">Title</h1>');
 });
 
+// Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
+// backspaced its label and the space) must still render a checkbox, not a literal
+// `[ ]`. The bug was TASK_RE requiring `\s+` after the bracket; the fix makes the
+// trailing content optional. Render and the click-toggle regex must agree on which
+// lines are tasks, or data-task indices desync.
+test('mdToHtml — empty `- [ ]` / `- [x]` render as checkboxes, not literal brackets', () => {
+  const empty = c.mdToHtml('- [ ]');
+  assert.ok(empty.includes('md-task-check'), 'empty - [ ] must render a checkbox');
+  assert.ok(!/<li>\[/.test(empty), 'must not fall through to a literal [ ] list item');
+  const emptyX = c.mdToHtml('- [x]');
+  assert.ok(emptyX.includes('md-task-check') && emptyX.includes('checked'), 'empty - [x] is a checked checkbox');
+  // GFM still needs the space: `- [ ]bar` (no space) stays a plain list item
+  assert.ok(!c.mdToHtml('- [ ]bar').includes('md-task-check'), '- [ ]bar (no space) is not a task');
+  // data-task numbering is contiguous across an empty middle task (render↔toggle align)
+  const mixed = c.mdToHtml('- [ ] first\n- [ ]\n- [x] third');
+  const tasks = [...mixed.matchAll(/data-task="(\d+)"/g)].map(m => m[1]);
+  assert.deepEqual(host(tasks), ['0', '1', '2']);
+  // the toggle path mirrors the optional-content form (so it counts the empty task too)
+  assert.ok(_src.includes('\\[([ xX])\\](\\s.*)?$/'), 'toggleTaskInNode regex must allow optional content');
+  // search/breadcrumb stripping doesn't leak a literal [ ] for an empty to-do
+  assert.equal(c.stripMd('- [ ]'), '');
+  assert.equal(c.stripMd('- [ ] foo'), 'foo');
+});
+
 // ── OPML serialization ─────────────────────────────────────────────────────
 test('toOpml — escapes text and encodes newlines as &#10;', () => {
   const root = c.mkRoot();
