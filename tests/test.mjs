@@ -3097,6 +3097,33 @@ test('parseSearchQuery / termMatchesNode — start: operator mirrors due:', () =
   assert.ok(!c.termMatchesNode({ kind: 'due', op: '=', epochDay: ep }, n, []));
 });
 
+test('calendarMonthGrid — 42 contiguous days, Sunday-aligned, month present', () => {
+  const mid = c.parseDueDate('2026-06-15');         // June 2026
+  const grid = c.calendarMonthGrid(mid);
+  assert.equal(grid.length, 42);
+  // contiguous: each cell is the previous + 1
+  for (let i = 1; i < grid.length; i++) assert.equal(grid[i], grid[i - 1] + 1);
+  // starts on a Sunday (getUTCDay 0)
+  assert.equal(new Date(grid[0] * 86400000).getUTCDay(), 0);
+  // the 1st of June sits at index === its day-of-week
+  const first = c.parseDueDate('2026-06-01');
+  assert.equal(grid.indexOf(first), new Date(first * 86400000).getUTCDay());
+  // every day of June is in the grid
+  for (let d = 1; d <= 30; d++) {
+    assert.ok(grid.includes(c.parseDueDate('2026-06-' + String(d).padStart(2, '0'))));
+  }
+});
+
+test('addMonths — clamps the day to the target month length', () => {
+  const jan31 = c.parseDueDate('2026-01-31');
+  // +1 month → Feb (2026 not leap) clamps to the 28th, never overflows to March
+  assert.equal(c.addMonths(jan31, 1), c.parseDueDate('2026-02-28'));
+  // -2 months → Nov 30 (Nov has 30 days, 31 clamps to 30)
+  assert.equal(c.addMonths(jan31, -2), c.parseDueDate('2025-11-30'));
+  // a safe day round-trips exactly
+  assert.equal(c.addMonths(c.parseDueDate('2026-06-15'), 1), c.parseDueDate('2026-07-15'));
+});
+
 test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
   const today = c.dueDateToday();
   const q1 = host(c.parseSearchQuery('due:today'));

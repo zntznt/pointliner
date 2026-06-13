@@ -705,7 +705,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #io-back{position:fixed;inset:0;z-index:800;background:rgba(30,24,18,.38);display:none;align-items:flex-start;justify-content:center}
 #io-back.on{display:flex;animation:io-fade .14s ease}
 @keyframes io-fade{from{opacity:0}to{opacity:1}}
-#io-card{margin-top:16vh;width:400px;max-width:calc(100vw - 32px);background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);padding:16px 17px 14px;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
+#io-card{margin-top:16vh;width:400px;max-width:calc(100vw - 32px);max-height:82vh;overflow-y:auto;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);padding:16px 17px 14px;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1);scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 .io-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .io-head .cmd-icon{width:30px;height:30px;font-size:14px}
 .io-title{font-size:14.5px;font-weight:600}
@@ -727,7 +727,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-field textarea::placeholder{color:var(--muted);opacity:.6}
 .io-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
-.props-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:200px;overflow-y:auto}
+.props-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
 .props-list-row{display:flex;align-items:center;gap:6px}
 .props-list-sep{color:var(--muted);font-size:13px;flex-shrink:0}
 .props-input{font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:7px 9px;outline:none;transition:border-color .12s,box-shadow .12s;min-width:0}
@@ -765,6 +765,25 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .cap-textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .cap-hint{font-size:11px;color:var(--muted);margin:6px 2px 0}
 .cap-confirm{font-size:12px;color:var(--ok);margin-top:6px;min-height:1.1em;font-weight:500}
+/* ── inline date-picker calendar (Schedule dialog + date properties) ── */
+.cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:max-content;max-width:100%}
+.cal-open>.cal,.cal-open .cal{display:block}
+.cal-head{display:flex;align-items:center;gap:4px;margin-bottom:6px}
+.cal-title{flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.cal-nav{flex:0 0 auto;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;border-radius:var(--r-sm);font-size:15px;line-height:1;user-select:none}
+.cal-nav:hover{color:var(--fg);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.cal-nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px}
+.cal-dow span{text-align:center;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:2px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-week{display:contents}
+.cal-day{width:32px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:var(--r-sm);font-size:12.5px;color:var(--fg);cursor:pointer;font-variant-numeric:tabular-nums;user-select:none}
+.cal-day.oom{color:var(--muted)}
+.cal-day:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.cal-day.today{box-shadow:inset 0 0 0 1px var(--bdr-ui)}
+.cal-day.sel{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--acc);font-weight:600}
+.cal-day:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+@media(hover:none){.cal-day{width:36px;height:36px;font-size:14px}.cal-nav{width:32px;height:32px}}
 .zoom-props-row{display:flex;align-items:flex-start;margin-bottom:12px;padding-top:2px}
 .zoom-props-row>.note-mark{width:auto;margin:4px 7px 0 0;flex-shrink:0}
 .io-seg{display:flex;gap:5px;margin-bottom:2px}
@@ -1560,7 +1579,29 @@ function collectDueDates(rootNode = root) {
   return items;
 }
 
-// Format-continuation aid for Enter: the markdown PREFIX a new sibling should
+// Pure: given any epoch-day, return the 42 epoch-days (6 weeks × 7 columns) of
+// that month's calendar grid, starting on the Sunday on/before the 1st. Used by
+// the date-picker calendar; Node-testable without the DOM.
+function calendarMonthGrid(epochDay) {
+  const d = new Date((epochDay || 0) * 86400000);
+  const first = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 86400000);
+  const firstDow = new Date(first * 86400000).getUTCDay(); // 0=Sun … 6=Sat
+  const start = first - firstDow;
+  const grid = [];
+  for (let i = 0; i < 42; i++) grid.push(start + i);
+  return grid;
+}
+
+// Pure: shift an epoch-day by whole months, clamping the day to the target
+// month's length (Jan 31 + 1 → Feb 28/29, not Mar 3). Used for calendar month nav.
+function addMonths(epochDay, delta) {
+  const d = new Date((epochDay || 0) * 86400000);
+  const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
+  const lastOfTarget = new Date(Date.UTC(y, m + delta + 1, 0)).getUTCDate();
+  return Math.floor(Date.UTC(y, m + delta, Math.min(day, lastOfTarget)) / 86400000);
+}
+
+
 // start with so the format continues (a new to-do gets its `- [ ]`, a new quote
 // its `> `). Keyword form continues with the same #keyword; #DONE restarts as
 // #FIRST (the new task isn't done). '' = no aid — plain text, type markdown yourself.
@@ -4890,6 +4931,7 @@ function openPropsDialog(nodeId) {
   function renderRows(focusLast = false) {
     list.innerHTML = '';
     props.forEach((p, i) => {
+      const wrap = document.createElement('div'); wrap.className = 'props-row-wrap';
       const row = document.createElement('div'); row.className = 'props-list-row';
       const keyIn = document.createElement('input');
       keyIn.className = 'props-input key-in'; keyIn.type = 'text';
@@ -4916,10 +4958,14 @@ function openPropsDialog(nodeId) {
       del.setAttribute('aria-label', 'Remove property');
       del.addEventListener('click', () => { props.splice(i, 1); renderRows(); });
       row.append(keyIn, sep, valIn, del);
-      list.appendChild(row);
+      wrap.appendChild(row);
+      // a date-keyed row (due/start) gets the inline calendar; toggling the key live-updates it
+      const cal = attachDateCalendar(valIn, wrap, () => DATE_KEYS.has(keyIn.value.trim().toLowerCase()));
+      keyIn.addEventListener('input', () => cal.refresh());
+      list.appendChild(wrap);
     });
     if (focusLast) {
-      requestAnimationFrame(() => list.querySelector('.props-list-row:last-child .key-in')?.focus());
+      requestAnimationFrame(() => list.querySelector('.props-row-wrap:last-child .key-in')?.focus());
     }
   }
   renderRows();
@@ -4943,9 +4989,9 @@ function openPropsDialog(nodeId) {
 
   function save() {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
-    const badIdx = props.findIndex(p => p.key.trim().toLowerCase() === 'due' && p.val.trim() && parseDueDate(p.val.trim()) === null);
+    const badIdx = props.findIndex(p => DATE_KEYS.has(p.key.trim().toLowerCase()) && p.val.trim() && parseDueDate(p.val.trim()) === null);
     if (badIdx >= 0) {
-      errDiv.textContent = 'Invalid due date — use YYYY-MM-DD, today, today+7';
+      errDiv.textContent = 'Invalid date — use YYYY-MM-DD, today, today+7';
       errDiv.style.display = '';
       list.querySelectorAll('.val-in')[badIdx]?.focus();
       return;
@@ -4968,10 +5014,133 @@ function openPropsDialog(nodeId) {
   });
 }
 
+// ─── inline date-picker calendar ─────────────────────────────────────────────
+// A reusable month calendar bound to a date text input. The caret stays in the
+// field; ArrowDown moves focus into the grid; arrows navigate; Enter/click picks
+// → writes the ISO date back and returns the caret to the field. Day cells act on
+// mousedown+preventDefault (the caret invariant) so clicking never blurs the field.
+// role="grid" + roving tabindex for accessibility. Returns { el, sync, focusGrid }.
+const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL_DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+const CAL_DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+// Property keys that hold a date — these get the inline calendar in the props dialog.
+const DATE_KEYS = new Set(['due', 'start']);
+
+function buildDatePicker(opts) {
+  const onPick = opts.onPick || (() => {});
+  const onEscape = opts.onEscape || (() => {});
+  let view, sel, focusEp;
+  const init = opts.initialEpoch;
+  view = init != null ? init : dueDateToday();
+  sel = init != null ? init : null;
+  focusEp = init != null ? init : dueDateToday();
+
+  const el = document.createElement('div'); el.className = 'cal';
+  const head = document.createElement('div'); head.className = 'cal-head';
+  const prev = document.createElement('span'); prev.className = 'cal-nav'; prev.textContent = '‹';
+  prev.setAttribute('role', 'button'); prev.setAttribute('tabindex', '0'); prev.setAttribute('aria-label', 'Previous month');
+  const title = document.createElement('div'); title.className = 'cal-title'; title.setAttribute('aria-live', 'polite');
+  const next = document.createElement('span'); next.className = 'cal-nav'; next.textContent = '›';
+  next.setAttribute('role', 'button'); next.setAttribute('tabindex', '0'); next.setAttribute('aria-label', 'Next month');
+  head.append(prev, title, next);
+
+  const dow = document.createElement('div'); dow.className = 'cal-dow'; dow.setAttribute('role', 'row');
+  CAL_DOW.forEach((d, i) => { const s = document.createElement('span'); s.textContent = d; s.setAttribute('role', 'columnheader'); s.setAttribute('aria-label', CAL_DOW_FULL[i]); dow.appendChild(s); });
+
+  const grid = document.createElement('div'); grid.className = 'cal-grid'; grid.setAttribute('role', 'grid'); grid.setAttribute('aria-label', 'Choose a date');
+  el.append(head, dow, grid);
+
+  function renderGrid() {
+    const vd = new Date(view * 86400000);
+    title.textContent = CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear();
+    const vm = vd.getUTCMonth();
+    const today = dueDateToday();
+    grid.innerHTML = '';
+    let row;
+    calendarMonthGrid(view).forEach((ep, i) => {
+      if (i % 7 === 0) { row = document.createElement('div'); row.className = 'cal-week'; row.setAttribute('role', 'row'); grid.appendChild(row); }
+      const d = new Date(ep * 86400000);
+      const cell = document.createElement('div');
+      cell.className = 'cal-day' + (d.getUTCMonth() !== vm ? ' oom' : '') + (ep === sel ? ' sel' : '') + (ep === today ? ' today' : '');
+      cell.textContent = String(d.getUTCDate());
+      cell.dataset.ep = String(ep);
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('tabindex', ep === focusEp ? '0' : '-1');
+      const df = formatDueDate(ep);
+      cell.setAttribute('aria-label', CAL_DOW_FULL[d.getUTCDay()] + ', ' + CAL_MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear() + (ep === today ? ' (today)' : ''));
+      if (ep === sel) cell.setAttribute('aria-selected', 'true');
+      row.appendChild(cell);
+    });
+  }
+  function moveFocus(ep) { focusEp = ep; view = ep; renderGrid(); grid.querySelector(`[data-ep="${ep}"]`)?.focus(); }
+  function navMonth(delta) { view = addMonths(view, delta); focusEp = addMonths(focusEp, delta); renderGrid(); }
+  function pick(ep) { sel = ep; view = ep; focusEp = ep; renderGrid(); onPick(ep); }
+
+  grid.addEventListener('mousedown', e => { const cell = e.target.closest('.cal-day'); if (!cell) return; e.preventDefault(); pick(+cell.dataset.ep); });
+  grid.addEventListener('keydown', e => {
+    const cur = focusEp; let nx = null;
+    if (e.key === 'ArrowRight') nx = cur + 1;
+    else if (e.key === 'ArrowLeft') nx = cur - 1;
+    else if (e.key === 'ArrowDown') nx = cur + 7;
+    else if (e.key === 'ArrowUp') nx = cur - 7;
+    else if (e.key === 'Home') nx = cur - new Date(cur * 86400000).getUTCDay();
+    else if (e.key === 'End') nx = cur + (6 - new Date(cur * 86400000).getUTCDay());
+    else if (e.key === 'PageUp') nx = addMonths(cur, -1);
+    else if (e.key === 'PageDown') nx = addMonths(cur, 1);
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(cur); return; }
+    else if (e.key === 'Escape') { e.preventDefault(); onEscape(); return; }
+    else return;
+    e.preventDefault(); moveFocus(nx);
+  });
+  prev.addEventListener('mousedown', e => { e.preventDefault(); navMonth(-1); });
+  next.addEventListener('mousedown', e => { e.preventDefault(); navMonth(1); });
+  prev.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navMonth(-1); } });
+  next.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navMonth(1); } });
+
+  renderGrid();
+  return {
+    el,
+    sync(ep) { sel = ep != null ? ep : null; if (ep != null) { view = ep; focusEp = ep; } else { focusEp = dueDateToday(); view = dueDateToday(); } renderGrid(); },
+    focusGrid() { (grid.querySelector(`[data-ep="${focusEp}"]`) || grid.querySelector('.cal-day'))?.focus(); },
+  };
+}
+
+// Wire an inline calendar to a date text input. The calendar lives in `host` and
+// shows while host has focus AND isDate() is true; picking writes the ISO date to
+// the input (firing 'input' so the field's own listeners update) and refocuses it.
+function attachDateCalendar(input, host, isDate) {
+  isDate = isDate || (() => true);
+  const picker = buildDatePicker({
+    initialEpoch: parseDueDate(input.value.trim()),
+    onPick: ep => { input.value = formatEpochDays(ep); input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); },
+    onEscape: () => input.focus(),
+  });
+  host.appendChild(picker.el);
+  const open = () => {
+    if (isDate() && host.contains(document.activeElement)) {
+      const wasOpen = host.classList.contains('cal-open');
+      host.classList.add('cal-open');
+      if (!wasOpen) requestAnimationFrame(() => picker.el.scrollIntoView({ block: 'nearest' }));
+    } else host.classList.remove('cal-open');
+  };
+  const sync = () => picker.sync(parseDueDate(input.value.trim()));
+  input.addEventListener('focus', () => { sync(); open(); });
+  input.addEventListener('input', () => { sync(); open(); });
+  host.addEventListener('focusin', open);
+  // Defer the close check: navigating the grid rebuilds it (innerHTML), which
+  // transiently blurs the focused cell to <body> before re-focusing the new one.
+  // Checking synchronously would close the calendar mid-navigation; on the next
+  // tick focus is back inside the host, so only a genuine focus-leave closes it.
+  host.addEventListener('focusout', () => { setTimeout(() => { if (!host.contains(document.activeElement)) host.classList.remove('cal-open'); }, 0); });
+  input.addEventListener('keydown', e => { if (e.key === 'ArrowDown' && isDate()) { e.preventDefault(); host.classList.add('cal-open'); picker.focusGrid(); } });
+  return { refresh: open, sync };
+}
+
 // ─── schedule dialog ─────────────────────────────────────────────────────────
 // A two-field dialog for setting / clearing the "start" and "due" properties — a
 // point can carry a start→due range. Each field accepts YYYY-MM-DD, "today",
-// "today+N", "today-N", "tomorrow"; blank clears that date.
+// "today+N", "today-N", "tomorrow"; blank clears that date. Each field carries an
+// inline calendar (see attachDateCalendar) shown while the field is focused.
 const DUE_ICON = { fa: 'fa-solid fa-calendar-day', fb: '📅' };
 
 function openDueDateDialog(nodeId) {
@@ -4993,7 +5162,7 @@ function openDueDateDialog(nodeId) {
   function dateField(labelText, initVal, ariaLabel) {
     const f = document.createElement('div');
     const lbl = document.createElement('div');
-    lbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px';
+    lbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px';
     lbl.textContent = labelText;
     const inp = document.createElement('input');
     inp.type = 'text'; inp.className = 'props-input val-in';
@@ -5015,6 +5184,8 @@ function openDueDateDialog(nodeId) {
     inp.addEventListener('input', updatePreview);
     updatePreview();
     f.append(lbl, inp, preview);
+    // inline calendar — always a date field here, so isDate is implicitly true
+    attachDateCalendar(inp, f);
     return { f, inp, valid: () => { const v = inp.value.trim(); return !v || parseDueDate(v) !== null; } };
   }
 
