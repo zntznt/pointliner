@@ -11632,12 +11632,18 @@ function mkAgChip(it, kind) {
   const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
   chip.appendChild(titleEl);
   chip.title = aria; chip.setAttribute('aria-label', aria);
-  // Navigate on mousedown + preventDefault (the caret invariant): a plain click
-  // would let the mousedown blur the active edit first — that fires
-  // markDirty → renderAgenda, which rebuilds the strip and destroys this chip
-  // before its click lands, dropping the navigation. preventDefault keeps focus
-  // put; focusNode then does its own controlled focus transfer.
-  const navigate = () => { focusNode(it.id); };
+  // Clicking a chip ZOOMS into the point (does not enter edit mode). Navigate on
+  // mousedown + preventDefault (the caret invariant): a plain click would let the
+  // mousedown blur the active edit first — that fires markDirty → renderAgenda,
+  // which rebuilds the strip and destroys this chip before its click lands,
+  // dropping the navigation. preventDefault keeps focus put, so we commit any
+  // in-progress edit ourselves (blur → exitEdit's full cleanup), then zoom.
+  const navigate = () => {
+    if (activeContentId != null) {
+      document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
+    }
+    zoomInto(it.id);
+  };
   chip.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
   chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
   return chip;
