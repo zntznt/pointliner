@@ -511,7 +511,13 @@ point's own checkboxes + direct child tasks, each checkbox counted individually 
 keyword/sequenced child once with sequence-aware done-ness; plain text in `node.text` computed
 at render like `#+TBLFM:` — no sidecar, OPML round-trips for free; `@progress` front door;
 recorded P5 syntax-inventory decision reusing the `[…]` bracket family — UXP-20; pure cores
-`tallyMarkers`/`progressCount`/`formatProgressCookie`).
+`tallyMarkers`/`progressCount`/`formatProgressCookie`) ·
+Properties (`node.props = [{key, val}]` sidecar array — `_props` OPML attribute (JSON), same
+serialize+parse-in-one-change rule; dialog editor from bullet menu "Add property"/"Edit properties"
+and chip click; chips render below the note row (gutter mark reuses `.note-mark`), also in the zoom
+view; `has:key` / `key:value` search operators added to `parseSearchQuery`/`termMatchesNode` —
+`is:` stays a reserved prefix and `is:unrecognised` falls through to text; exported as
+`[key: val · …]` continuation lines in markdown/plain text).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

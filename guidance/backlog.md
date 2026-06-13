@@ -101,9 +101,13 @@ sigil), and went *beyond* the fixed cycle: **sequences** are user-definable stat
 with `TODO NEXT WAITING | DONE` as the built-in default. Zero new syntax. See
 `guidance/features.md`.
 
-### ☐ Properties / structured per-node metadata
+### ✓ Properties / structured per-node metadata — shipped
 Per-node key-value metadata, enabling property-based filtering and a future column view.
-- **Fit — medium.** A new per-node `props` sidecar + serialize.
+- **Shipped:** `node.props` array of `{key, val}` pairs; `_props` OPML attribute (JSON);
+  dialog editor from bullet menu ("Add property" / "Edit properties") and chip click;
+  chips render below the note row (also in zoom view); `has:key` / `key:value` search operators
+  wired into `parseSearchQuery` / `termMatchesNode`; exported as `[key: val · …]`
+  continuation lines in markdown + plain text.
 
 ### ✓ Per-bullet notes — shipped
 A secondary note under a point. Muted plain-text block (no markdown/pills by design —

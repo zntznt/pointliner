@@ -589,6 +589,16 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* progress cookie [/]/[%] — a muted monospace tally; goes success-hued when complete */
 .cookie{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 5px;border-radius:4px;vertical-align:baseline;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
 .cookie-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+/* per-node properties — a row of key:value chips below the content */
+.props-area{display:flex;flex-wrap:wrap;gap:4px;padding:1px 3px 3px;flex:1;min-width:0}
+.prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:4px;padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
+.prop-chip:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.prop-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
+.prop-key{color:var(--muted);font-weight:600}
+.prop-sep{color:var(--muted);margin:0 3px}
+.prop-val{color:var(--fg)}
+.node-props-row>.collapse-btn,.node-props-row>.ol-num{visibility:hidden}
+.node-props-row>.bullet{cursor:default}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
    each widget kind is identifiable without turning the line into candy */
 .dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}
@@ -711,6 +721,16 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-field textarea::placeholder{color:var(--muted);opacity:.6}
 .io-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+.props-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:200px;overflow-y:auto}
+.props-list-row{display:flex;align-items:center;gap:6px}
+.props-list-sep{color:var(--muted);font-size:13px;flex-shrink:0}
+.props-input{font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:7px 9px;outline:none;transition:border-color .12s,box-shadow .12s;min-width:0}
+.props-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.props-input.key-in{width:110px;flex-shrink:0}
+.props-input.val-in{flex:1}
+.io-btn.xsm{padding:4px 8px;font-size:12px}
+.zoom-props-row{display:flex;align-items:flex-start;margin-bottom:12px;padding-top:2px}
+.zoom-props-row>.note-mark{width:auto;margin:4px 7px 0 0;flex-shrink:0}
 .io-seg{display:flex;gap:5px;margin-bottom:2px}
 .io-seg-btn{font-size:12.5px;line-height:1;padding:6px 12px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .io-seg-btn:hover{border-color:var(--acc)}
@@ -858,7 +878,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .nt-ol>.node-row>.bullet .bullet-dot,.nt-divider>.node-row>.bullet .bullet-dot{opacity:.45}
   .md-task{gap:.6em}
   /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
-  .io-field input,.io-field textarea{font-size:16px}
+  .io-field input,.io-field textarea,.props-input{font-size:16px}
   #search-box{font-size:16px}
   .nt-base>.node-row>.node-content[data-editing]{font-size:16px}
   /* roomier action targets in menus / dialogs / bars */
@@ -1052,7 +1072,7 @@ function mkRoot() {
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], seq: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], seq: [], props: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -2649,6 +2669,7 @@ function toOpml(r) {
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
       n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
       n.note             ? `_note="${ex(n.note)}"` : '',
+      n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
@@ -2708,6 +2729,7 @@ function fromOpml(xml) {
       vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
       grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
       seq:       (() => { try { return JSON.parse(el.getAttribute('_seq')       || '[]'); } catch(_) { return []; } })(),
+      props:     (() => { try { const p = JSON.parse(el.getAttribute('_props')  || '[]'); return Array.isArray(p) ? p : []; } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
@@ -3055,6 +3077,16 @@ function render() {
       container.appendChild(znRow);
     } else if (vp.note) {
       appendNoteIndicator(te, vp);
+    }
+    if (vp.props?.length) {
+      const zpRow = document.createElement('div');
+      zpRow.className = 'zoom-props-row';
+      const zmark = document.createElement('span');
+      zmark.className = 'note-mark';
+      zmark.setAttribute('aria-hidden', 'true');
+      setIcon(zmark, PROPS_ICON);
+      zpRow.append(zmark, buildPropsArea(vp));
+      container.appendChild(zpRow);
     }
     } // end non-table branch
   }
@@ -4431,6 +4463,9 @@ function renderRow(r) {
     // the content from node.text, so it can never leak into the edit buffer.
     appendNoteIndicator(content, node);
   }
+  if (node.props?.length) {
+    div.appendChild(buildPropsRow(node, opts));
+  }
   return div;
 }
 
@@ -4490,7 +4525,8 @@ function buildNoteRow(node, opts = {}) {
 
 // The note glyph everywhere it appears (gutter mark, hidden-note indicator):
 // one spec, FA when healthy, unicode fallback when not (the paintIcon contract).
-const NOTE_ICON = { fa: 'fa-regular fa-file-lines', fb: '🗒' };
+const NOTE_ICON  = { fa: 'fa-regular fa-file-lines', fb: '🗒' };
+const PROPS_ICON = { fa: 'fa-solid fa-tag',          fb: '🏷' };
 
 // The note editor element itself (no row wrapper) — shared by the outline row
 // (buildNoteRow) and the zoom view (rendered under the zoom title).
@@ -4557,6 +4593,138 @@ function openNoteEditor(nodeId) {
   });
 }
 
+// ─── properties ──────────────────────────────────────────────────────────────
+
+// Build just the .props-area chip list (shared by outline row and zoom view).
+function buildPropsArea(node) {
+  const area = document.createElement('div');
+  area.className = 'props-area';
+  area.dataset.id = node.id;
+  (node.props || []).forEach(({ key, val }) => {
+    const chip = document.createElement('span');
+    chip.className = 'prop-chip';
+    chip.setAttribute('role', 'button');
+    chip.setAttribute('tabindex', '-1');
+    chip.setAttribute('aria-label', `${key}: ${val} — click to edit properties`);
+    chip.title = 'Edit properties';
+    chip.dataset.propsId = node.id;
+    const k = document.createElement('span'); k.className = 'prop-key'; k.textContent = key;
+    const s = document.createElement('span'); s.className = 'prop-sep';  s.textContent = ':';
+    const v = document.createElement('span'); v.className = 'prop-val';  v.textContent = val;
+    chip.append(k, s, v);
+    area.appendChild(chip);
+  });
+  return area;
+}
+
+// Full outline row: invisible gutter clones + the props-area.
+function buildPropsRow(node, opts = {}) {
+  const row = document.createElement('div');
+  row.className = 'node-row node-props-row';
+  const gutterCol = document.createElement('span'); gutterCol.className = 'collapse-btn';
+  const gutterBul = document.createElement('span'); gutterBul.className = 'bullet';
+  const mark = document.createElement('span');
+  mark.className = 'note-mark';
+  setIcon(mark, PROPS_ICON);
+  gutterBul.appendChild(mark);
+  gutterCol.setAttribute('aria-hidden', 'true'); gutterBul.setAttribute('aria-hidden', 'true');
+  row.append(gutterCol, gutterBul);
+  if (node.type === 'ol') {
+    const gutterNum = document.createElement('span'); gutterNum.className = 'ol-num';
+    gutterNum.textContent = '0.'; gutterNum.setAttribute('aria-hidden', 'true');
+    row.appendChild(gutterNum);
+  }
+  row.appendChild(buildPropsArea(node));
+  return row;
+}
+
+// Properties editor dialog — opens from bullet menu or chip click.
+function openPropsDialog(nodeId) {
+  const node = findById(nodeId);
+  if (!node) return;
+  let props = (node.props || []).map(p => ({ key: p.key, val: p.val }));
+
+  ioCard.innerHTML = '';
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, PROPS_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title';
+  ttl.textContent = 'Properties';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const list = document.createElement('div'); list.className = 'props-list';
+  ioCard.appendChild(list);
+
+  function renderRows(focusLast = false) {
+    list.innerHTML = '';
+    props.forEach((p, i) => {
+      const row = document.createElement('div'); row.className = 'props-list-row';
+      const keyIn = document.createElement('input');
+      keyIn.className = 'props-input key-in'; keyIn.type = 'text';
+      keyIn.placeholder = 'key'; keyIn.value = p.key;
+      keyIn.setAttribute('aria-label', 'Property key');
+      keyIn.addEventListener('input', () => { props[i].key = keyIn.value; });
+      keyIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); valIn.focus(); } });
+      const sep = document.createElement('span'); sep.className = 'props-list-sep'; sep.textContent = ':';
+      const valIn = document.createElement('input');
+      valIn.className = 'props-input val-in'; valIn.type = 'text';
+      valIn.placeholder = 'value'; valIn.value = p.val;
+      valIn.setAttribute('aria-label', 'Property value');
+      valIn.addEventListener('input', () => { props[i].val = valIn.value; });
+      valIn.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (i === props.length - 1) { props.push({ key: '', val: '' }); renderRows(true); }
+          else list.querySelectorAll('.props-list-row')[i + 1]?.querySelector('.key-in')?.focus();
+        }
+      });
+      const del = document.createElement('button');
+      del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
+      del.setAttribute('aria-label', 'Remove property');
+      del.addEventListener('click', () => { props.splice(i, 1); renderRows(); });
+      row.append(keyIn, sep, valIn, del);
+      list.appendChild(row);
+    });
+    if (focusLast) {
+      requestAnimationFrame(() => list.querySelector('.props-list-row:last-child .key-in')?.focus());
+    }
+  }
+  renderRows();
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'io-btn'; addBtn.type = 'button';
+  addBtn.style.cssText = 'margin-bottom:12px;display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 11px';
+  setIcon(addBtn, { fa: 'fa-solid fa-plus', fb: '+' });
+  addBtn.append(document.createTextNode(' Add property'));
+  addBtn.addEventListener('click', () => { props.push({ key: '', val: '' }); renderRows(true); });
+  ioCard.appendChild(addBtn);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
+  const saveBtn   = document.createElement('button'); saveBtn.className   = 'io-btn primary'; saveBtn.textContent = 'Save';
+  foot.append(cancelBtn, saveBtn); ioCard.appendChild(foot);
+
+  function save() {
+    const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
+    pushUndo();
+    node.props = cleaned;
+    markDirty(); render(); closeIo();
+  }
+  cancelBtn.addEventListener('click', closeIo);
+  saveBtn.addEventListener('click', save);
+  ioCancel = closeIo;
+
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Properties');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => {
+    if (!props.length) addBtn.focus();
+    else list.querySelector('.props-input')?.focus();
+  });
+}
+
 // ─── search ───────────────────────────────────────────────────────────────────
 // The search box speaks a small operator language (UXP-20-routed: operators over
 // the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
@@ -4587,8 +4755,10 @@ function parseSearchQuery(q) {
     }
     const tok = m[3];
     let t;
-    if ((t = tok.match(/^#(\w+)$/)))                     terms.push({ neg, kind: 'tag', value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note)$/i)))  terms.push({ neg, kind: 'is',  value: t[1].toLowerCase() });
+    if ((t = tok.match(/^#(\w+)$/)))                            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note)$/i)))         terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^([\w][\w-]*):([\w][\w-]*)$/)) && t[1].toLowerCase() !== 'is') terms.push({ neg, kind: 'prop', key: t[1].toLowerCase(), value: t[2].toLowerCase() });
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
   }
   return terms;
@@ -4609,6 +4779,12 @@ function termMatchesNode(term, node, seqs) {
     if (!isTodo) return false;
     const done = todoDoneFromText(node.text, seqs);
     return term.value === 'done' ? done : !done;
+  }
+  if (term.kind === 'has') {
+    return (node.props || []).some(p => p.key.toLowerCase() === term.value);
+  }
+  if (term.kind === 'prop') {
+    return (node.props || []).some(p => p.key.toLowerCase() === term.key && p.val.toLowerCase() === term.value);
   }
   return stripMd(textForDisplay(node)).toLowerCase().includes(term.value)
     || (!!node.note && node.note.toLowerCase().includes(term.value));
@@ -5402,6 +5578,8 @@ function onKeyDown(e, id, content) {
     // hidden-note indicator: Enter/Space reveals the note (the keyboard twin of its click)
     const nind = e.target.closest?.('.note-ind');
     if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
+    const pchip = e.target.closest?.('.prop-chip');
+    if (pchip) { e.preventDefault(); openPropsDialog(pchip.dataset.propsId); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
@@ -5893,6 +6071,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
+    { icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
+      fn: () => { hideBpop(); openPropsDialog(nodeId); } },
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
@@ -9871,6 +10051,8 @@ function toMarkdown(rootNode) {
     }
     // the point's note: plain continuation lines indented under the item
     if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}  ${l}`));
+    // per-node properties as a single continuation line
+    if (node.props?.length) out.push(`${indent}  [${node.props.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
     // footnote definitions in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -9907,6 +10089,8 @@ function toPlainText(rootNode) {
     }
     // the point's note: continuation lines indented under the item
     if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}\t${l}`));
+    // per-node properties as a single continuation line
+    if (node.props?.length) out.push(`${indent}\t[${node.props.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
     // footnote text in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -10092,6 +10276,8 @@ document.getElementById('outline').addEventListener('mousedown', e => {
 document.getElementById('outline').addEventListener('click', e => {
   const ind = e.target.closest('.note-ind');
   if (ind) openNoteEditor(ind.dataset.noteId);
+  const chip = e.target.closest('.prop-chip');
+  if (chip) openPropsDialog(chip.dataset.propsId);
 });
 
 // ─── footnotes ────────────────────────────────────────────────────────────────
@@ -10748,6 +10934,8 @@ const SHORTCUTS = [
     { keys: ['word word'], desc: 'Every term must match (AND)' },
     { keys: ['#tag'],      desc: 'Points carrying a tag — state keywords too (#todo, #waiting)' },
     { keys: ['is:todo', 'is:done', 'is:note'], desc: 'Open to-dos / finished to-dos / points with a note' },
+    { keys: ['has:key'], desc: 'Points carrying a property with that key — e.g. has:status' },
+    { keys: ['key:value'], desc: 'Points where key equals value — e.g. status:done, author:alice' },
     { keys: ['-term', '-#tag'], desc: 'Exclude matches' },
     { keys: ['"a b"'],     desc: 'Exact phrase' },
     { keys: ['★'],         desc: 'Star a search to save it with the document — saved searches appear under the box while it has focus' },

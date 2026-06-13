@@ -2482,6 +2482,83 @@ test('search query: front doors + wiring are present (src pins)', () => {
   assert.ok(_src.includes('searchTerms = parseSearchQuery(q)'), 'applySearch does not parse the query');
 });
 
+// ─── per-node properties ─────────────────────────────────────────────────────
+
+test('properties: mkNode initialises props as an empty array', () => {
+  const n = c.mkNode('hello');
+  assert.deepEqual(host(n.props), []);
+});
+
+test('properties: parseSearchQuery parses has: and key:value operators', () => {
+  assert.deepEqual(host(c.parseSearchQuery('has:status')),
+    [{ neg: false, kind: 'has', value: 'status' }]);
+  assert.deepEqual(host(c.parseSearchQuery('status:done')),
+    [{ neg: false, kind: 'prop', key: 'status', value: 'done' }]);
+  assert.deepEqual(host(c.parseSearchQuery('-has:priority')),
+    [{ neg: true, kind: 'has', value: 'priority' }]);
+  assert.deepEqual(host(c.parseSearchQuery('author:alice')),
+    [{ neg: false, kind: 'prop', key: 'author', value: 'alice' }]);
+  // is: with unrecognised value still stays literal text
+  assert.deepEqual(host(c.parseSearchQuery('is:tomorrow')),
+    [{ neg: false, kind: 'text', value: 'is:tomorrow' }]);
+});
+
+test('properties: queryMatchesNode — has: and key:value matching', () => {
+  const q = s => c.parseSearchQuery(s);
+  const n = c.mkNode('a task');
+  n.props = [{ key: 'status', val: 'done' }, { key: 'author', val: 'alice' }];
+
+  assert.equal(c.queryMatchesNode(q('has:status'), n), true);
+  assert.equal(c.queryMatchesNode(q('has:priority'), n), false);
+  assert.equal(c.queryMatchesNode(q('status:done'), n), true);
+  assert.equal(c.queryMatchesNode(q('status:open'), n), false);
+  assert.equal(c.queryMatchesNode(q('author:alice'), n), true);
+  assert.equal(c.queryMatchesNode(q('author:bob'), n), false);
+  // negation
+  assert.equal(c.queryMatchesNode(q('-has:status'), n), false);
+  assert.equal(c.queryMatchesNode(q('-has:priority'), n), true);
+  assert.equal(c.queryMatchesNode(q('-status:open'), n), true);
+  // AND with other terms
+  assert.equal(c.queryMatchesNode(q('task status:done'), n), true);
+  assert.equal(c.queryMatchesNode(q('task status:open'), n), false);
+  // no props at all
+  const bare = c.mkNode('no props');
+  assert.equal(c.queryMatchesNode(q('has:status'), bare), false);
+});
+
+test('properties: key:value search is case-insensitive on both sides', () => {
+  const q = s => c.parseSearchQuery(s);
+  const n = c.mkNode('x');
+  n.props = [{ key: 'Status', val: 'Done' }];
+  assert.equal(c.queryMatchesNode(q('status:done'), n), true);
+  assert.equal(c.queryMatchesNode(q('STATUS:DONE'), n), true);
+  assert.equal(c.queryMatchesNode(q('has:status'), n), true);
+  assert.equal(c.queryMatchesNode(q('has:STATUS'), n), true);
+});
+
+test('properties: OPML round-trip via toMarkdown preserves props as continuation line', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode('My task');
+  n.props = [{ key: 'status', val: 'done' }, { key: 'author', val: 'alice' }];
+  root.children.push(n);
+  const md = c.toMarkdown(root);
+  assert.ok(md.includes('[status: done · author: alice]'), `markdown export missing props: ${md}`);
+  const pt = c.toPlainText(root);
+  assert.ok(pt.includes('[status: done · author: alice]'), `plain text export missing props: ${pt}`);
+});
+
+test('properties: wiring and front doors are present (src pins)', () => {
+  assert.ok(_src.includes("kind: 'has'"),   "has: query kind missing");
+  assert.ok(_src.includes("kind: 'prop'"),  "prop: query kind missing");
+  assert.ok(_src.includes('openPropsDialog'), 'openPropsDialog missing');
+  assert.ok(_src.includes("'Add property'"), "bullet menu 'Add property' label missing");
+  assert.ok(_src.includes('buildPropsRow'),  'buildPropsRow missing');
+  assert.ok(_src.includes('buildPropsArea'), 'buildPropsArea missing');
+  assert.ok(_src.includes("has:key"),        '? panel has:key missing');
+  assert.ok(_src.includes('_props'),         'OPML _props attribute missing');
+  assert.ok(_src.includes('node.props'),     'props sidecar not referenced');
+});
+
 // ─── saved searches ───────────────────────────────────────────────────────────
 
 test('saved searches: toggleSavedSearch adds, removes, trims, returns new arrays', () => {
