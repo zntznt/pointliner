@@ -1595,7 +1595,10 @@ function migrateEmphasisText(text, italic, underline) {
     if (HR_RE.test(line)) return line;
     if (/^\s*\|/.test(line)) return line;                 // table row
     if (/^#\+TBLFM:/i.test(line.trim())) return line;     // recipe line
-    const m = line.match(/^(\s*(?:#{1,6} |> |(?:[-*+]|\d+[.)]) (?:\[[ xX]\] )?)?)(.*)$/);
+    // The task marker is a prefix only when followed by a space OR end-of-line, so an
+    // empty `- [ ]` stays a task (its bracket isn't wrapped in emphasis) — mirrors
+    // TASK_RE's optional-content rule (the empty-todo fix's 4th site).
+    const m = line.match(/^(\s*(?:#{1,6} |> |(?:[-*+]|\d+[.)]) (?:\[[ xX]\](?: |$))?)?)(.*)$/);
     const pre = m[1] || '', body = m[2] || '';
     if (!body.trim()) return line;
     return pre + open + body + close;
@@ -4872,6 +4875,7 @@ function stampTemplate(nodeId, name) {
   const clone = deepCloneNodeNewIds(tpl.node);
   pushUndo();
   const idx = parent.children.findIndex(c => c.id === nodeId);
+  if (idx === -1) return; // invoking point not under its parent (shouldn't happen) — don't splice blind
   if (cur.text.trim() === '' && !cur.children.length) parent.children.splice(idx, 1, clone); // replace empty point
   else parent.children.splice(idx + 1, 0, clone);                                            // else insert after
   buildIndex(root, null); // re-index the whole stamped subtree (clone + descendants)
@@ -4919,6 +4923,7 @@ function refileNodeTo(moveId, targetId) {
   if (!nodeById(moveId) || !nodeById(targetId)) return;
   pushUndo();
   const idx = fromParent.children.findIndex(c => c.id === moveId);
+  if (idx === -1) return; // moved point not under its parent (shouldn't happen) — don't splice blind
   fromParent.children.splice(idx, 1);
   if (target.collapsed) target.collapsed = false;
   target.children.push(node);

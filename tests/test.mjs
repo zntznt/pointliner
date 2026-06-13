@@ -280,6 +280,22 @@ test('mdToHtml — empty `- [ ]` / `- [x]` render as checkboxes, not literal bra
   assert.equal(c.stripMd('- [ ] foo'), 'foo');
 });
 
+// Regression (code-review F1): the 4th task-marker regex — legacy italic/underline
+// migration — also required a trailing space, so an empty `- [ ]` had its bracket
+// wrapped in emphasis (`- *[ ]*`) instead of staying a task. The marker is a prefix
+// only when followed by a space OR end-of-line.
+test('migrateEmphasisText — empty `- [ ]` keeps its task marker, never wraps the bracket', () => {
+  // empty task: nothing to emphasise → line unchanged (bracket NOT wrapped)
+  assert.equal(c.migrateEmphasisText('- [ ]', true, false), '- [ ]');
+  assert.equal(c.migrateEmphasisText('- [x]', false, true), '- [x]');
+  // a task WITH a body still wraps only the body, keeping the marker as prefix
+  assert.equal(c.migrateEmphasisText('- [ ] buy milk', true, false), '- [ ] *buy milk*');
+  // a non-task `[ ]bar` (no space) is ordinary body and wraps whole (no regression)
+  assert.equal(c.migrateEmphasisText('- [ ]bar', true, false), '- *[ ]bar*');
+  // plain bullet unaffected
+  assert.equal(c.migrateEmphasisText('- hello', true, false), '- *hello*');
+});
+
 // ── OPML serialization ─────────────────────────────────────────────────────
 test('toOpml — escapes text and encodes newlines as &#10;', () => {
   const root = c.mkRoot();
