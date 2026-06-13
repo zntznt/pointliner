@@ -11555,10 +11555,15 @@ function renderAgenda() {
       chip.setAttribute('role', 'button'); chip.setAttribute('tabindex', '0');
       chip.setAttribute('aria-label', it.title + ' — due ' + it.label + (it.path.length ? ' · ' + it.path.join(' › ') : ''));
       chip.title = it.title + (it.path.length ? ' · ' + it.path.join(' › ') : '');
-      const dateEl = document.createElement('span'); dateEl.className = 'ag-chip-date'; dateEl.textContent = it.label;
+      // The date badge repeats the section label in the Today group ("Today"
+      // under "Today") — the green chip already carries that, so drop it there.
+      if (it.state !== 'today') {
+        const dateEl = document.createElement('span'); dateEl.className = 'ag-chip-date'; dateEl.textContent = it.label;
+        chip.appendChild(dateEl);
+      }
       const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
-      chip.append(dateEl, titleEl);
-      const navigate = () => { closeAgenda(); focusNode(it.id); };
+      chip.appendChild(titleEl);
+      const navigate = () => { focusNode(it.id); };
       chip.addEventListener('click', navigate);
       chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
       strip.appendChild(chip);
