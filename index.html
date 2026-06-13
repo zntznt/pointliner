@@ -1154,7 +1154,7 @@ function textForDisplay(node) {
     const m = t.match(/^\s*\d+\.\s+([\s\S]*)/);
     if (m) return m[1];
   }
-  t = t.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
+  t = t.replace(TASK_STRIP_RE, '');
   const pt = parseTodo(t);
   if (pt.keyword) t = pt.body;
   return t;
@@ -1344,7 +1344,28 @@ function setTodoPriority(text, priority) {
 //                 (bare `TODO` without the `#` is plain text, never a badge)
 // node.type==='todo' and node.checked are DERIVED HINTS computed from these,
 // never independent state. Pure: no DOM.
-const TASK_FIRST_RE = /^[-*+]\s+\[[ xX]\](\s|$)/;   // first line is a task item
+// ── Task-checkbox grammar — single source of truth (code-review F4) ───────────
+// A GFM checkbox is `[ ]`, `[x]`, or `[X]`. Every task-aware site composes TASK_BOX
+// (or TASK_BOX_CAP, capturing the state) via its .source so the token is spelled
+// ONCE — re-spelling it is exactly how the empty-`- [ ]` bug recurred across
+// renderListItem / toggleTaskInNode / stripMd / migrateEmphasisText. Canonical rule:
+// a checkbox is a task marker only when followed by a SPACE or END OF LINE, so an
+// EMPTY `- [ ]` is a valid (empty) task — the consistency test in test.mjs pins that
+// every function below agrees. Sites composing this grammar:
+//   TASK_RE/renderListItem · TASK_LINE_RE/toggleTaskInNode · TASK_FIRST_RE/isTaskFirst
+//   TASK_DONE_G/todoDoneFromText · TASK_TALLY_G/tallyMarkers · TASK_STRIP_*/stripMd,
+//   textForDisplay, applyBlockCmd, export · migrateEmphasisText (its own prefix regex).
+const TASK_BOX      = /\[[ xX]\]/;        // [ ] [x] [X]
+const TASK_BOX_CAP  = /\[([ xX])\]/;      // …capturing the state char
+const TASK_DONE_BOX = /\[[xX]\]$/;        // a matched marker that is CHECKED (ends in [x]/[X])
+const TASK_RE       = new RegExp('^' + TASK_BOX_CAP.source + '(?:\\s+(.*))?$');                       // a list item's INNER text → [, state, content?]
+const TASK_FIRST_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '(?:\\s|$)');                       // first line is a (UL) task item
+const TASK_LINE_RE  = new RegExp('^(\\s*(?:[-*+]|\\d+\\.)\\s+)' + TASK_BOX_CAP.source + '(\\s.*)?$');  // a FULL line → [, prefix, state, tail?]
+const TASK_DONE_G   = new RegExp('^\\s*(?:[-*+]|\\d+\\.)\\s+' + TASK_BOX.source, 'gm');                // todoDoneFromText marker scan
+const TASK_TALLY_G  = new RegExp('^[ \\t]*(?:[-*+]|\\d+\\.)[ \\t]+' + TASK_BOX.source, 'gm');          // tallyMarkers marker scan
+const TASK_STRIP_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '\\s*');                             // strip a UL task marker (textForDisplay/applyBlockCmd)
+const TASK_STRIP_G  = new RegExp('^\\s*[-*+]\\s+(?:' + TASK_BOX.source + '\\s*)?', 'gm');              // stripMd (per line)
+const TASK_KEEP_RE  = new RegExp('^[-*+]\\s+(' + TASK_BOX.source + ')\\s*');                           // strip lead but KEEP the box (export)
 function isTaskFirst(text) { return TASK_FIRST_RE.test(text == null ? '' : String(text)); }
 
 // Node-level done-ness from the text: keyword wins — done iff it sits right of
@@ -1356,8 +1377,8 @@ function todoDoneFromText(text, seqs = allSequences()) {
   const km = s.match(LEAD_WORD_RE);
   if (km && sequenceForKeyword(km[1], seqs)) return keywordIsDone(km[1], seqs);
   if (!TASK_FIRST_RE.test(s)) return false;
-  const markers = s.match(/^\s*(?:[-*+]|\d+\.)\s+\[[ xX]\]/gm) || [];
-  return markers.length > 0 && markers.every(m => /\[[xX]\]$/.test(m));
+  const markers = s.match(TASK_DONE_G) || [];
+  return markers.length > 0 && markers.every(m => TASK_DONE_BOX.test(m));
 }
 
 // ── progress cookies ([/] and [%]) ───────────────────────────────────────────
@@ -1371,9 +1392,9 @@ function todoDoneFromText(text, seqs = allSequences()) {
 // text in node.text (the recipe); the count is computed at render, the same
 // edit-raw / render-pretty model as #+TBLFM:. Pure: no DOM.
 function tallyMarkers(text) {
-  const ms = (text == null ? '' : String(text)).match(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+\[[ xX]\]/gm) || [];
+  const ms = (text == null ? '' : String(text)).match(TASK_TALLY_G) || [];
   let done = 0;
-  for (const m of ms) if (/\[[xX]\]$/.test(m)) done++;
+  for (const m of ms) if (TASK_DONE_BOX.test(m)) done++;
   return { done, total: ms.length };
 }
 function progressCount(node, seqs = allSequences()) {
@@ -1589,16 +1610,17 @@ function migrateEmphasisText(text, italic, underline) {
   const open  = (italic ? '*' : '') + (underline ? '++' : '');
   const close = (underline ? '++' : '') + (italic ? '*' : '');
   let inFence = false;
+  // Block-prefix matcher: heading/quote/list-lead, then a task box that is a prefix
+  // only when followed by a space OR end-of-line (so an empty `- [ ]` stays a task and
+  // its bracket isn't emphasised — the empty-todo grammar's 4th site). Shares TASK_BOX.
+  const prefixRe = new RegExp('^(\\s*(?:#{1,6} |> |(?:[-*+]|\\d+[.)]) (?:' + TASK_BOX.source + '(?: |$))?)?)(.*)$');
   return (text || '').split('\n').map(line => {
     if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
     if (inFence || !line.trim()) return line;
     if (HR_RE.test(line)) return line;
     if (/^\s*\|/.test(line)) return line;                 // table row
     if (/^#\+TBLFM:/i.test(line.trim())) return line;     // recipe line
-    // The task marker is a prefix only when followed by a space OR end-of-line, so an
-    // empty `- [ ]` stays a task (its bracket isn't wrapped in emphasis) — mirrors
-    // TASK_RE's optional-content rule (the empty-todo fix's 4th site).
-    const m = line.match(/^(\s*(?:#{1,6} |> |(?:[-*+]|\d+[.)]) (?:\[[ xX]\](?: |$))?)?)(.*)$/);
+    const m = line.match(prefixRe);
     const pre = m[1] || '', body = m[2] || '';
     if (!body.trim()) return line;
     return pre + open + body + close;
@@ -2184,7 +2206,7 @@ function renderMarkovPill(key, mk) {
 
 const UL_RE = /^\s*[-*+]\s+(.*)$/;
 const OL_RE = /^\s*\d+\.\s+(.*)$/;
-const TASK_RE = /^\[([ xX])\](?:\s+(.*))?$/;   // list item's inner text; content optional so an empty `- [ ]` still renders a checkbox
+// TASK_RE is defined with the task-checkbox grammar block (search "single source of truth")
 const DD_RE = /^:\s+(.*)$/;               // definition-list "  : definition"
 const ATX_RE = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;       // ATX heading "## Text", trailing #'s optional
 const HR_RE  = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;       // thematic break --- *** ___
@@ -2304,7 +2326,7 @@ function stripMd(text) {
     .replace(/\+\+([\s\S]*?)\+\+/g,'$1')
     .replace(/~(?!~)([^~\s]+?)~/g,'$1')
     .replace(/\^([^\^\s]+?)\^/g,'$1')
-    .replace(/^\s*[-*+]\s+(?:\[[ xX]\]\s*)?/gm,'')   // \s* not \s+ → an empty `- [ ]` strips clean, no leftover [ ]
+    .replace(TASK_STRIP_G,'')   // strip list+task marker; an empty `- [ ]` strips clean (no leftover [ ])
     .replace(/^\s*\d+\.\s+/gm,'')
     .replace(/^:\s+/gm,'');
 }
@@ -9578,7 +9600,7 @@ function applyBlockCmd(id, nodeId, node, content) {
   const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
   const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
   let cleanText = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
-  cleanText = cleanText.replace(/^[-*+]\s+\[[ xX]\]\s*/, '');
+  cleanText = cleanText.replace(TASK_STRIP_RE, '');
   const pt = parseTodo(cleanText);
   if (pt.keyword) cleanText = pt.body;
   // converting away from a divider strips its break line (like to-do markers above —
@@ -9708,10 +9730,10 @@ function toggleTaskInNode(node, taskIndex) {
   let n = 0;
   const lines = node.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    // Trailing content is optional so an empty `- [ ]` counts as a task here too —
-    // it MUST mirror renderListItem/TASK_RE or the data-task indices desync and a
-    // click flips the wrong line (the empty-todo render bug's twin).
-    const m = lines[i].match(/^(\s*(?:[-*+]|\d+\.)\s+)\[([ xX])\](\s.*)?$/);
+    // TASK_LINE_RE shares the checkbox token with TASK_RE/renderListItem, so the
+    // data-task index here can't desync from the rendered checkboxes (the empty-todo
+    // bug's twin). m → [, prefix, state, tail?].
+    const m = lines[i].match(TASK_LINE_RE);
     if (!m) continue;
     if (n === taskIndex) {
       const checked = m[2].toLowerCase() === 'x';
@@ -10597,7 +10619,7 @@ function toPlainText(rootNode) {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
       let body = stripInlineMd(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap));
-      if (node.type === 'todo') body = body.replace(/^[-*+]\s+(\[[ xX]\])\s*/, '$1 ');
+      if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
       for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);

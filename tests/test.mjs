@@ -273,11 +273,34 @@ test('mdToHtml — empty `- [ ]` / `- [x]` render as checkboxes, not literal bra
   const mixed = c.mdToHtml('- [ ] first\n- [ ]\n- [x] third');
   const tasks = [...mixed.matchAll(/data-task="(\d+)"/g)].map(m => m[1]);
   assert.deepEqual(host(tasks), ['0', '1', '2']);
-  // the toggle path mirrors the optional-content form (so it counts the empty task too)
-  assert.ok(_src.includes('\\[([ xX])\\](\\s.*)?$/'), 'toggleTaskInNode regex must allow optional content');
+  // the toggle path shares the checkbox token with render via TASK_LINE_RE (F4), so
+  // its data-task index can't desync from the rendered checkboxes
+  assert.ok(_src.includes('const TASK_LINE_RE'), 'TASK_LINE_RE must be defined in the grammar block');
+  assert.ok(_src.includes('TASK_BOX_CAP.source'), 'TASK_LINE_RE / TASK_RE must compose the shared box token');
+  assert.ok(_src.includes('lines[i].match(TASK_LINE_RE)'), 'toggleTaskInNode must use the shared TASK_LINE_RE');
   // search/breadcrumb stripping doesn't leak a literal [ ] for an empty to-do
   assert.equal(c.stripMd('- [ ]'), '');
   assert.equal(c.stripMd('- [ ] foo'), 'foo');
+});
+
+// Cross-site guardrail (code-review F4): the empty-`- [ ]` bug recurred because each
+// task-aware function re-spelled the checkbox grammar and one drifted. This pins that
+// EVERY task-aware pure function agrees an empty `- [ ]` / `- [x]` is a task — if a
+// future edit (or a missed site) drifts the boundary rule again, this fails.
+test('task grammar: all task-aware functions agree an empty `- [ ]` is a task (F4)', () => {
+  for (const box of ['- [ ]', '- [x]']) {
+    assert.ok(c.isTaskFirst(box), `isTaskFirst should accept ${box}`);
+    assert.ok(c.mdToHtml(box).includes('md-task-check'), `mdToHtml should render a checkbox for ${box}`);
+    assert.equal(c.tallyMarkers(box).total, 1, `tallyMarkers should count ${box} as one marker`);
+    assert.equal(c.stripMd(box), '', `stripMd should strip ${box} clean`);
+    assert.equal(c.migrateEmphasisText(box, true, false), box, `migrateEmphasisText must not wrap ${box}`);
+    assert.equal(c.textForDisplay({ text: box, type: 'todo' }), '', `textForDisplay should strip ${box}'s marker`);
+  }
+  // done-ness still derives correctly: empty box = open, checked box = done
+  assert.equal(c.todoDoneFromText('- [ ]'), false);
+  assert.equal(c.todoDoneFromText('- [x]'), true);
+  // ordered tasks count too, and a checked one tallies as done
+  assert.deepEqual(host(c.tallyMarkers('1. [ ]\n2. [x]')), { done: 1, total: 2 });
 });
 
 // Regression (code-review F1): the 4th task-marker regex — legacy italic/underline
