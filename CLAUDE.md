@@ -534,7 +534,8 @@ wherever you are — capturing never navigates you; a designated inbox `root.inb
 `<_inbox>` OPML **head element**) is chosen via an inline point picker reusing `refileCandidates`;
 each capture appends one **markdown-aware** point — a typed `- [ ]` becomes a to-do — as the inbox's
 last child; the dialog stays open after each capture with a running "✓ Captured N" confirmation,
-Enter captures / Shift+Enter is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`).
+Enter captures / Shift+Enter is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`) ·
+Due dates + Agenda (dates live as a `due` property in `node.props`, value `YYYY-MM-DD` or `today`/`today+N`/`today-N`; zero new authoring syntax — reuses the existing properties system; date-smart chips color-coded by urgency: Today (green) / Tomorrow & this week (accent) / Later (muted) / Overdue (red); Agenda panel toggled by toolbar calendar button — groups all dated points Overdue / Today / Coming up / Later, click any entry to zoom in; `/due` slash verb + bullet menu "Set / Edit due date" as front doors; search operators `due:today`, `due:overdue`, `due:<date`, `due:>date`; pure cores `parseDueDate`, `formatDueDate`, `collectDueDates`; UXP-20 decision recorded: date lives in properties, `due:` is a date-aware extension of `key:value`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

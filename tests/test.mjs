@@ -2930,3 +2930,141 @@ test('progress cookies: render + front-door wiring (src pins)', () => {
   // P4: a child partial-toggle refreshes a cookie-bearing parent
   assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
 });
+
+// ── due dates ─────────────────────────────────────────────────────────────────
+
+test('parseDueDate — ISO date parses to epoch day', () => {
+  // 2026-06-13 = days since 1970-01-01
+  const ep = c.parseDueDate('2026-06-13');
+  assert.equal(typeof ep, 'number');
+  assert.ok(Number.isInteger(ep));
+  // Verify round-trip via formatEpochDays
+  assert.equal(c.formatEpochDays(ep), '2026-06-13');
+});
+
+test('parseDueDate — relative forms', () => {
+  const today = c.dueDateToday();
+  assert.equal(c.parseDueDate('today'),     today);
+  assert.equal(c.parseDueDate('tomorrow'),  today + 1);
+  assert.equal(c.parseDueDate('today+7'),   today + 7);
+  assert.equal(c.parseDueDate('today-1'),   today - 1);
+  assert.equal(c.parseDueDate('today+0'),   today);
+});
+
+test('parseDueDate — invalid values return null', () => {
+  assert.equal(c.parseDueDate(null),        null);
+  assert.equal(c.parseDueDate(''),          null);
+  assert.equal(c.parseDueDate('foo'),       null);
+  assert.equal(c.parseDueDate('26-06-13'),   null); // not 4-digit year
+  assert.equal(c.parseDueDate('tomorrow+1'), null); // unsupported form
+});
+
+test('formatDueDate — state classification', () => {
+  const today = c.dueDateToday();
+  assert.equal(c.formatDueDate(today).state,     'today');
+  assert.equal(c.formatDueDate(today).label,     'Today');
+  assert.equal(c.formatDueDate(today + 1).state, 'soon');
+  assert.equal(c.formatDueDate(today + 1).label, 'Tomorrow');
+  assert.equal(c.formatDueDate(today - 1).state, 'overdue');
+  assert.equal(c.formatDueDate(today - 1).label, 'Yesterday');
+  assert.equal(c.formatDueDate(today - 5).state, 'overdue');
+  assert.ok(c.formatDueDate(today - 5).label.includes('overdue'));
+  assert.equal(c.formatDueDate(today + 3).state, 'soon');
+  assert.equal(c.formatDueDate(today + 10).state,'future');
+});
+
+test('formatDueDate — iso is always YYYY-MM-DD', () => {
+  const ep = c.parseDueDate('2026-06-15');
+  const { iso } = c.formatDueDate(ep);
+  assert.match(iso, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(iso, '2026-06-15');
+});
+
+test('collectDueDates — returns sorted dated nodes', () => {
+  const r = c.mkRoot();
+  const a = c.mkNode('alpha'); a.props = [{ key: 'due', val: '2026-08-01' }];
+  const b = c.mkNode('beta');  b.props = [{ key: 'due', val: '2026-06-15' }];
+  const x = c.mkNode('no date'); // no due prop
+  r.children.push(a, b, x);
+  const items = host(c.collectDueDates(r));
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, 'beta');   // earlier date first
+  assert.equal(items[0].iso,   '2026-06-15');
+  assert.equal(items[1].title, 'alpha');
+  assert.equal(items[1].iso,   '2026-08-01');
+});
+
+test('collectDueDates — unparseable due prop ignored', () => {
+  const r = c.mkRoot();
+  const n = c.mkNode('bad date'); n.props = [{ key: 'due', val: 'not-a-date' }];
+  r.children.push(n);
+  assert.equal(c.collectDueDates(r).length, 0);
+});
+
+test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
+  const today = c.dueDateToday();
+  const q1 = host(c.parseSearchQuery('due:today'));
+  assert.equal(q1.length, 1);
+  assert.equal(q1[0].kind, 'due');
+  assert.equal(q1[0].op,   '=');
+  assert.equal(q1[0].epochDay, today);
+
+  const q2 = host(c.parseSearchQuery('due:overdue'));
+  assert.equal(q2[0].kind, 'due');
+  assert.equal(q2[0].op,   'overdue');
+  assert.ok(!('epochDay' in q2[0]));
+
+  const q3 = host(c.parseSearchQuery('due:<2026-06-15'));
+  const ep = c.parseDueDate('2026-06-15');
+  assert.equal(q3[0].kind, 'due');
+  assert.equal(q3[0].op,   '<');
+  assert.equal(q3[0].epochDay, ep);
+
+  const q4 = host(c.parseSearchQuery('due:>today+7'));
+  assert.equal(q4[0].kind, 'due');
+  assert.equal(q4[0].op,   '>');
+  assert.equal(q4[0].epochDay, today + 7);
+});
+
+test('termMatchesNode — due: search operators', () => {
+  const ep2026 = c.parseDueDate('2026-06-15');
+  const n = c.mkNode('task');
+  n.props = [{ key: 'due', val: '2026-06-15' }];
+
+  const eqTerm   = { kind: 'due', op: '=',  epochDay: ep2026 };
+  const ltTerm   = { kind: 'due', op: '<',  epochDay: ep2026 + 1 };
+  const gtTerm   = { kind: 'due', op: '>',  epochDay: ep2026 - 1 };
+  const missTerm = { kind: 'due', op: '=',  epochDay: ep2026 + 1 };
+
+  assert.ok( c.termMatchesNode(eqTerm,   n, []));
+  assert.ok( c.termMatchesNode(ltTerm,   n, []));
+  assert.ok( c.termMatchesNode(gtTerm,   n, []));
+  assert.ok(!c.termMatchesNode(missTerm, n, []));
+
+  // node with no due prop
+  const bare = c.mkNode('no props');
+  assert.ok(!c.termMatchesNode(eqTerm, bare, []));
+
+  // overdue term — compare against today
+  const today = c.dueDateToday();
+  const pastEp = today - 5;
+  const pastN = c.mkNode('old'); pastN.props = [{ key: 'due', val: c.formatEpochDays(pastEp) }];
+  const overdTerm = { kind: 'due', op: 'overdue' };
+  assert.ok(c.termMatchesNode(overdTerm, pastN, []));
+  const futN = c.mkNode('future'); futN.props = [{ key: 'due', val: '2099-01-01' }];
+  assert.ok(!c.termMatchesNode(overdTerm, futN, []));
+});
+
+test('due dates: front-door wiring (src pins)', () => {
+  const _src = readFileSync(
+    new URL('../index.html', import.meta.url),
+    'utf8'
+  );
+  assert.ok(_src.includes("id:'due'") || _src.includes("id:’due’"), '/due slash entry missing');
+  assert.ok(_src.includes('openDueDateDialog'), 'openDueDateDialog missing');
+  assert.ok(_src.includes('parseDueDate'), 'parseDueDate missing');
+  assert.ok(_src.includes('collectDueDates'), 'collectDueDates missing');
+  assert.ok(_src.includes('btn-agenda'), 'agenda button missing');
+  assert.ok(_src.includes('renderAgenda'), 'renderAgenda missing');
+  assert.ok(_src.includes("kind: 'due'"), 'due search kind missing');
+});

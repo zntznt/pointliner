@@ -167,6 +167,7 @@ export function loadCores() {
     'tallyMarkers','progressCount','formatProgressCookie',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'refileCandidates','migrateEmphasisText',
+    'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
   ];
   const cores = {};
   const missing = [];

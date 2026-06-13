@@ -48,15 +48,15 @@ A workspace of many docs instead of one file at a time.
 - **Fit — hard.** The core storage refactor; gated power tier. Storage + durability decisions
   are settled in `guidance/roadmap.md`.
 
-### ☐ Dates on items + agenda / calendar view
-Give a node a due/scheduled date; aggregate dated items into an agenda or calendar. Merges
-due-dates, deadlines/scheduling, and daily-notes/journaling.
-- **Why:** task + time management; the most-wanted view beyond the raw outline.
-- **Fit — medium-hard.** A date field/token + an agenda view that filters & sorts. Builds
-  directly on the date math already shipped.
-- **P5 gate (UXP-20 watch list):** do *not* import Org's `<2026-06-12 Wed>` / `SCHEDULED:`
-  notation — where the date lives must be decided from the existing syntax inventory
-  (with sign-off) before any agenda work starts. See `guidance/ux-remediation.md` UXP-20.
+### ✓ Dates on items + agenda / calendar view (2026-06-13)
+Due dates live as a `due` property in `node.props` (value: `YYYY-MM-DD`, `today`, `today+N`).
+Date-smart chips (Today / Tomorrow / Mon / 3d overdue, colour-coded by urgency). Agenda
+panel (toolbar calendar button) groups all dated points: Overdue / Today / Coming up / Later;
+click to zoom in. `/due` slash verb + bullet menu "Set due date" front door. Search operators:
+`due:today`, `due:overdue`, `due:<date`, `due:>date`. Pure cores `parseDueDate`,
+`formatDueDate`, `collectDueDates`. Zero new authoring syntax — reuses `node.props` and the
+existing `key:value` search operator family. P5 gate signed off (recorded UXP-20 decision,
+2026-06-13: `due` property is the home; inventory row added to `ux-discipline.md`).
 
 ### ◐ Tag power
 Tag *filtering* already works (click a `#tag` to filter), **tag autocomplete shipped**
