@@ -2481,3 +2481,52 @@ test('search query: front doors + wiring are present (src pins)', () => {
   // wiring: applySearch parses once per query
   assert.ok(_src.includes('searchTerms = parseSearchQuery(q)'), 'applySearch does not parse the query');
 });
+
+// ─── saved searches ───────────────────────────────────────────────────────────
+
+test('saved searches: toggleSavedSearch adds, removes, trims, returns new arrays', () => {
+  const a = c.toggleSavedSearch([], '#work -is:done');
+  assert.deepEqual(host(a), ['#work -is:done']);
+  const b = c.toggleSavedSearch(a, 'is:todo');
+  assert.deepEqual(host(b), ['#work -is:done', 'is:todo']);
+  const d = c.toggleSavedSearch(b, ' #work -is:done ');       // trim-exact match removes
+  assert.deepEqual(host(d), ['is:todo']);
+  assert.deepEqual(host(c.toggleSavedSearch(d, '')), ['is:todo']);   // empty is a no-op
+  assert.deepEqual(host(c.toggleSavedSearch(d, '  ')), ['is:todo']);
+  assert.deepEqual(host(c.toggleSavedSearch(undefined, 'x')), ['x']); // tolerates missing list
+  assert.notEqual(c.toggleSavedSearch(d, 'y'), d);                    // never mutates in place
+  assert.deepEqual(host(d), ['is:todo']);
+});
+
+test('saved searches: isSavedSearch — trim-exact membership, empty never saved', () => {
+  const list = ['#work -is:done', 'is:todo'];
+  assert.equal(c.isSavedSearch(list, '#work -is:done'), true);
+  assert.equal(c.isSavedSearch(list, '  is:todo '), true);
+  assert.equal(c.isSavedSearch(list, '#work'), false);
+  assert.equal(c.isSavedSearch(list, ''), false);
+  assert.equal(c.isSavedSearch(undefined, 'x'), false);
+});
+
+test('saved searches: toOpml emits the head element only when non-empty', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('item'));
+  assert.ok(!c.toOpml(root).includes('_savedSearches'), 'empty list must not emit');
+  root.savedSearches = ['#work -is:done', '"exact phrase"'];
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_savedSearches>'), 'head element missing');
+  // JSON's \" then ex()'s &quot; compose: ["…","\"exact phrase\""]
+  assert.ok(xml.includes('\\&quot;exact phrase\\&quot;'), 'JSON content not ex()-escaped');
+});
+
+test('saved searches: UI wiring + parse-side present (src pins)', () => {
+  // serialize + parse land in the same change (the OPML invariant)
+  assert.ok(_src.includes("querySelector('head > _savedSearches')"), 'fromOpml parse missing');
+  assert.ok(_src.includes('savedSearches: []'), 'mkRoot default missing');
+  // P2 front doors: the star button + the saved chips section in the panel
+  assert.ok(_src.includes('id="search-save"'), 'star button missing');
+  assert.ok(_src.includes('id="sh-saved"'), 'saved section missing');
+  // P3: chips carry a keyboard path (Enter/Space apply, Delete forgets)
+  assert.ok(_src.includes("e.key === 'Delete' || e.key === 'Backspace'"), 'chip Delete branch missing');
+  // P1/caret: star + chips swallow mousedown so the box keeps its caret
+  assert.ok(_src.includes("getElementById('search-save').addEventListener('mousedown', e => e.preventDefault())"), 'star mousedown guard missing');
+});

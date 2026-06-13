@@ -289,7 +289,9 @@ changes.
 `toOpml(root)` / `fromOpml(xml)`. Standard OPML `<outline>` elements;
 all app-specific data rides on **underscore-prefixed custom attributes**
 (`_type`, `_dice`, `_vars`, `_id`, …). Sidecar arrays are `JSON.stringify`'d into
-an attribute. `ex()` encodes `\n` as `&#10;` because XML attribute normalization
+an attribute. **Doc-level config rides the `<head>`** as underscore-prefixed custom
+*elements* (`<_savedSearches>` — JSON content, same serialize+parse-in-one-change
+rule). `ex()` encodes `\n` as `&#10;` because XML attribute normalization
 would otherwise collapse literal newlines to spaces on re-parse. **OPML here is a
 storage format, not an interchange format** — the app owns the files, so inventing
 attributes is fine, but the data won't survive a round-trip through other OPML
@@ -498,7 +500,12 @@ escape-hatch rule; OR deferred; no `state:` operator — `#KEYWORD` states are h
 so `#waiting` filters by state for free; pure cores `parseSearchQuery`/`queryMatchesNode`;
 doors: the focus-shown legend under the search box + the `?` panel's "Search & filter"
 section; the search path ignores the show-done toggle as it always has, so `is:done`/
-`-is:done` are the explicit override).
+`-is:done` are the explicit override) ·
+Saved searches (star the query to save it doc-level — the raw string is the label;
+`root.savedSearches` + the `<_savedSearches>` OPML **head element** (doc-level config; the
+one underscore-prefixed custom element — outlines carry custom attributes); chips in the
+focus-shown panel apply/forget by mouse or keyboard; pure cores `toggleSavedSearch`/
+`isSavedSearch`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

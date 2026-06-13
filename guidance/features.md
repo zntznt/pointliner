@@ -149,6 +149,23 @@ Implemented:
   CSS `:focus-within`, non-interactive, `aria-describedby` on the input) and a
   **"Search & filter" section in the `?` panel**. Hashtag click still writes
   `#tag` into the box — same language, now word-anchored instead of substring.
+- **Saved searches** — star the current query to save it with the document.
+  A saved search is the **raw query string** (no naming dialog — queries are
+  short and self-describing), stored doc-level (`root.savedSearches`,
+  `<_savedSearches>` element in the OPML head — doc-level config lives in the
+  head as the one underscore-prefixed custom *element*; outlines carry custom
+  *attributes*) so it travels with the file: saved queries reference the doc's
+  own tags/states. Pure cores `toggleSavedSearch`/`isSavedSearch` (trim-exact
+  membership, new-array discipline). UI: the `#search-save` star (☆/★ unicode
+  via `setIcon` — bookmark model: filled = saved, click again forgets;
+  `aria-pressed`; mousedown swallowed so the box keeps its caret) appears
+  beside the clear ✕ whenever the box has a query; saved queries render as
+  chips in a "Saved" section at the top of the focus-shown panel (the one
+  `pointer-events:auto` island) — click/Enter/Space applies, the ✕ or
+  Delete/Backspace forgets, Esc returns to the box; chips are Tab-reachable
+  (still `:focus-within`, so the panel stays open). Saving marks the doc dirty
+  (autosave + OPML); chips refresh on box focus so they're current after a
+  file load.
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like
