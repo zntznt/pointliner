@@ -162,6 +162,7 @@ export function loadCores() {
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
+    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles',
   ];
   const cores = {};
   const missing = [];

@@ -157,6 +157,17 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #search-wrap::before{content:'\f002';font-family:'Font Awesome 6 Free';font-weight:900;position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px;pointer-events:none}
 #search-key{position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none}
 #search-wrap:focus-within #search-key,#search-wrap:has(#search-clear.on) #search-key{display:none}
+/* operator legend: a non-interactive cheat sheet shown while the box has focus
+   (the front door that teaches the typed syntax — P2). pointer-events:none keeps
+   it from stealing the caret; it's purely informational. */
+#search-hint{display:none;position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  min-width:max-content;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
+  padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted);pointer-events:none}
+#search-wrap:focus-within #search-hint{display:block}
+.sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:nowrap}
+.sh-row kbd{font-size:10px;color:var(--fg);font-family:var(--mono);background:var(--bg);border:1px solid var(--bdr);border-radius:4px;padding:0 4px;line-height:1.6}
+.sh-row code{font-family:var(--mono);font-size:10px}
+@media(max-width:560px){#search-hint{left:0;right:0;transform:none;min-width:0}.sh-row{white-space:normal}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
 #search-clear.on{display:block}
@@ -862,9 +873,15 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <span class="dirty-dot" id="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
     <span class="spacer"></span>
     <div id="search-wrap">
-      <input id="search-box" type="text" placeholder="Search…" aria-label="Search points" autocomplete="off" spellcheck="false">
+      <input id="search-box" type="text" placeholder="Search…" aria-label="Search points" aria-describedby="search-hint" autocomplete="off" spellcheck="false">
       <kbd id="search-key">⌘F</kbd>
       <button id="search-clear" title="Clear search">✕</button>
+      <div id="search-hint" role="note" aria-label="Search filters">
+        <div class="sh-row"><kbd>#tag</kbd><span>points with a tag — state keywords too (<code>#todo</code>)</span></div>
+        <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
+        <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
+        <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase — terms combine (AND)</span></div>
+      </div>
     </div>
     <span class="spacer"></span>
     <div id="level-ctl" role="group" aria-label="Show outline levels" title="Show first N levels (collapse deeper)">
@@ -974,6 +991,7 @@ let showDone  = false;
 let showNotes = true;   // global notes visibility (the header toggle); hidden notes leave a .note-ind mark
 let searchQuery = '';
 let searchQueryLC = '';        // lowercased once, reused per node during a search
+let searchTerms = [];          // parseSearchQuery(searchQuery) — parsed once per applySearch
 let searchMatchSet = null;     // ids whose subtree (incl self) contains a match
 
 // ─── virtualization state ──────────────────────────────────────────────────────
@@ -4452,11 +4470,84 @@ function openNoteEditor(nodeId) {
 }
 
 // ─── search ───────────────────────────────────────────────────────────────────
+// The search box speaks a small operator language (UXP-20-routed: operators over
+// the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
+// the universal search convention, `is:` is one new field-prefix pattern):
+//   word word   every term must match (AND)
+//   "a b"       exact phrase
+//   #tag        point carries the tag (word-anchored, mirrors collectTags; the
+//               #KEYWORD state form is hashtag-shaped, so #todo / #waiting filter
+//               by state for free)
+//   is:todo     open to-do   ·  is:done  finished to-do  ·  is:note  has a note
+//   -term       negation — works on any term form (-word, -#tag, -is:done, -"a b")
+// Anything malformed (unknown is: value, lone -, #non-word) stays a literal text
+// term — the same invalid-body escape hatch as {…} shorthand, so a query never
+// silently matches everything. OR is deliberately absent (precedence isn't worth
+// deciding until real queries demand it).
+
+// Parse a query string into terms: [{neg, kind:'text'|'tag'|'is', value}].
+// Values are lowercased (search is case-insensitive throughout). Pure.
+function parseSearchQuery(q) {
+  const terms = [];
+  const re = /(-)?(?:"([^"]*)"|(\S+))/g;
+  let m;
+  while ((m = re.exec(q || '')) !== null) {
+    const neg = !!m[1];
+    if (m[2] !== undefined) {                       // quoted phrase (spaces kept)
+      if (m[2]) terms.push({ neg, kind: 'text', value: m[2].toLowerCase() });
+      continue;
+    }
+    const tok = m[3];
+    let t;
+    if ((t = tok.match(/^#(\w+)$/)))                     terms.push({ neg, kind: 'tag', value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note)$/i)))  terms.push({ neg, kind: 'is',  value: t[1].toLowerCase() });
+    else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
+  }
+  return terms;
+}
+
+// Does one term hit this node (negation NOT applied here)? Pure given seqs.
+function termMatchesNode(term, node, seqs) {
+  if (term.kind === 'tag') {
+    // mirror collectTags: hashtags live in node.text with [[…]] tokens blanked
+    // (so link targets never read as tags); word-anchored both sides so #todo
+    // never matches #todos. term.value is \w+ by construction — regex-safe.
+    const text = (node.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
+    return new RegExp('(?<![a-zA-Z0-9])#' + term.value + '(?![\\w])', 'i').test(text);
+  }
+  if (term.kind === 'is') {
+    if (term.value === 'note') return !!node.note;
+    const isTodo = deriveTypeFromText(node.text) === 'todo';
+    if (!isTodo) return false;
+    const done = todoDoneFromText(node.text, seqs);
+    return term.value === 'done' ? done : !done;
+  }
+  return stripMd(textForDisplay(node)).toLowerCase().includes(term.value)
+    || (!!node.note && node.note.toLowerCase().includes(term.value));
+}
+
+// AND of all terms; a negated term must NOT match. Empty term list matches
+// nothing (callers gate on the raw query string anyway). Pure given seqs.
+function queryMatchesNode(terms, node, seqs = allSequences()) {
+  if (!terms || !terms.length) return false;
+  return terms.every(t => termMatchesNode(t, node, seqs) === !t.neg);
+}
+
+// The strings worth <mark>ing for a parsed query: positive text terms plus
+// positive tags (as `#tag`, how they appear in the text). is: terms are
+// structural — nothing to highlight. Pure.
+function searchHighlightNeedles(terms) {
+  const out = [];
+  for (const t of terms || []) {
+    if (t.neg || t.kind === 'is') continue;
+    out.push(t.kind === 'tag' ? '#' + t.value : t.value);
+  }
+  return out;
+}
 
 function nodeMatchesSearch(node) {
-  if (!searchQueryLC) return false;
-  return stripMd(textForDisplay(node)).toLowerCase().includes(searchQueryLC)
-    || (!!node.note && node.note.toLowerCase().includes(searchQueryLC));
+  if (!searchQueryLC || !searchTerms.length) return false;
+  return queryMatchesNode(searchTerms, node);
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
@@ -4470,21 +4561,29 @@ function computeMatchSet(node, set) {
 
 function highlightContent(el, query) {
   if (!query) return;
-  const q = query.toLowerCase();
+  // mark the earliest occurrence of any positive term per text node (the
+  // pre-operator behavior, generalized from one needle to the term list)
+  const needles = searchHighlightNeedles(searchTerms);
+  if (!needles.length) return;
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   const nodes = [];
   let n;
   while ((n = walker.nextNode())) nodes.push(n);
   for (const tn of nodes) {
     const text = tn.textContent;
-    const idx = text.toLowerCase().indexOf(q);
+    const lo = text.toLowerCase();
+    let idx = -1, len = 0;
+    for (const nd of needles) {
+      const i = lo.indexOf(nd);
+      if (i !== -1 && (idx === -1 || i < idx)) { idx = i; len = nd.length; }
+    }
     if (idx === -1) continue;
     const mark = document.createElement('mark');
-    mark.textContent = text.slice(idx, idx + query.length);
+    mark.textContent = text.slice(idx, idx + len);
     const frag = document.createDocumentFragment();
     frag.appendChild(document.createTextNode(text.slice(0, idx)));
     frag.appendChild(mark);
-    frag.appendChild(document.createTextNode(text.slice(idx + query.length)));
+    frag.appendChild(document.createTextNode(text.slice(idx + len)));
     tn.parentNode.replaceChild(frag, tn);
   }
 }
@@ -9475,7 +9574,7 @@ async function newFile() {
     message: 'Your current outline has unsaved changes. Starting a new file will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
-  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = ''; searchQueryLC = '';
+  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
   document.getElementById('file-name').textContent = fileName;
   updateTitle();
@@ -9500,7 +9599,7 @@ async function openFile() {
       root = fromOpml(await file.text());
       migrateNodePrefixes(root);
       buildIndex(root, null); resetDocCaches();
-      focusedId = null; searchQuery = ''; searchQueryLC = '';
+      focusedId = null; searchQuery = ''; searchQueryLC = ''; searchTerms = [];
       undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
       document.getElementById('file-name').textContent = fileName;
       updateTitle();
@@ -9514,7 +9613,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); resetDocCaches(); focusedId=null; searchQuery=''; searchQueryLC=''; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
+      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); resetDocCaches(); focusedId=null; searchQuery=''; searchQueryLC=''; searchTerms=[]; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -9713,6 +9812,7 @@ function applySearch(q) {
   clearTimeout(searchDebounce);
   searchQuery = q;
   searchQueryLC = q.toLowerCase();
+  searchTerms = parseSearchQuery(q);
   document.getElementById('search-clear').classList.toggle('on', !!q);
   render();
 }
@@ -10415,6 +10515,13 @@ const SHORTCUTS = [
     { keys: [`${MOD}+Enter`],     desc: 'Zoom into point' },
     { keys: ['Esc'],              desc: 'Zoom out / deselect — from search or a menu, returns to your edit' },
     { keys: ['↓'],                desc: 'From the search field: jump to the first matching point' },
+  ]},
+  { sec: 'Search & filter', rows: [
+    { keys: ['word word'], desc: 'Every term must match (AND)' },
+    { keys: ['#tag'],      desc: 'Points carrying a tag — state keywords too (#todo, #waiting)' },
+    { keys: ['is:todo', 'is:done', 'is:note'], desc: 'Open to-dos / finished to-dos / points with a note' },
+    { keys: ['-term', '-#tag'], desc: 'Exclude matches' },
+    { keys: ['"a b"'],     desc: 'Exact phrase' },
   ]},
   { sec: 'Edit structure', rows: [
     { keys: ['Enter'],            desc: 'New point' },

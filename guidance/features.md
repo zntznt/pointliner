@@ -125,6 +125,30 @@ Implemented:
   `line-height:1.5` (the sanctioned step), `--muted` ink, regular upright (no
   italic — that's the blockquote register), no border-left, and the placeholder
   uses plain `--muted` (the `opacity:.7` contrast-floor violation was fixed).
+- **Search query operators** — the search box speaks a small filter language
+  (the UXP-20-routed decision, 2026-06-13): bare terms AND together (the
+  pre-existing behavior, now per-term), `"a b"` matches an exact phrase, `-term`
+  negates any term form, `#tag` matches a tag **word-anchored** (mirrors
+  `collectTags`' rule — `[[…]]` tokens blanked so link targets never read as
+  tags; `#work` ≠ `#workshops`) — and because `#KEYWORD` states are
+  hashtag-shaped, `#waiting` filters by state with no `state:` operator —
+  and `is:todo` / `is:done` / `is:note` filter structurally (open to-do /
+  finished to-do / has a note; done-ness derives from the text via
+  `todoDoneFromText`, sequence-aware). Anything malformed (unknown `is:` value,
+  lone `-`, `#non-word`) stays a **literal text term** — the `{…}` invalid-body
+  escape-hatch rule, so a query never silently matches everything. `OR` is
+  deliberately absent (no precedence rule until real queries demand one). Pure
+  cores: `parseSearchQuery` (string → terms), `termMatchesNode` /
+  `queryMatchesNode` (terms × node → bool, seqs injectable),
+  `searchHighlightNeedles` (what `<mark>` highlights — positive text + tag terms;
+  `is:` is structural). Wiring: `applySearch` parses once per query into
+  `searchTerms`; `nodeMatchesSearch` delegates; `highlightContent` marks the
+  earliest needle per text node. The search path ignores the show-done toggle
+  (as it always has), so `is:done` / `-is:done` are the explicit override.
+  Doors (P2): a **focus-shown legend** under the search box (`#search-hint`,
+  CSS `:focus-within`, non-interactive, `aria-describedby` on the input) and a
+  **"Search & filter" section in the `?` panel**. Hashtag click still writes
+  `#tag` into the box — same language, now word-anchored instead of substring.
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like

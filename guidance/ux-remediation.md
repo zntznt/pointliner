@@ -230,6 +230,19 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
     current state) are genuinely different from weighted alternation; the calling side is
     already unified (`{chainName}` via the typed-descriptor rule). The definition syntax
     stays.
+- **Decision recorded (owner, 2026-06-13) — search queries ship as search-box operators.**
+  The "Boolean tag queries" watch item below is resolved: the query language is operators
+  over the **existing** vocabulary — implicit AND, `-` negation, `"a b"` phrases, `#tag`
+  (the hashtag row reused, word-anchored), and `is:done`/`is:todo`/`is:note` (the one new
+  field-prefix pattern, a closed set). **OR is deferred** (precedence isn't worth deciding
+  until real queries demand it). **No `state:` operator** — `#KEYWORD` states are
+  hashtag-shaped, so `#waiting` already filters by state. The `evalMath` route
+  (`tag("x") and not done()`) was **rejected** for v1 — predicates over nodes are not math
+  on numbers, and function-call syntax lives nowhere else in the app; a future `={expr}`
+  per-point predicate stays reserved as the power-user escape hatch (e.g. date queries)
+  and must not be foreclosed by the parser. Malformed tokens (unknown `is:` value, lone
+  `-`, `#non-word`) stay **literal text terms** — the `{…}` invalid-body escape-hatch rule,
+  so a query never silently matches everything. §2 inventory row added in the same change.
 - **Two live examples to police now** (both in `roadmap.md`):
   - a proposed **render-only `{= expr}` / `{NdM}` second syntax** "alongside `[[type:key]]`" → **P5-3 violation** unless it *replaces* the existing path; route it through the `{…}` engine, don't add a parallel one.
   - possible **`B3`-style table references** beside `@row$col` → reject; `@row$col` is "the one true form."
@@ -239,7 +252,7 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   - **Aggregations over children** (roadmap generative ideas) — the roadmap sketch says "a new token type"; the UXP-20-preferred route is an `evalMath` primitive or `resolveBrace` branch (e.g. a children-scope function) so it rides `{…}`. A new token type needs the explicit-decision path.
   - **Progress cookies `[2/5]` / `[40%]`** (backlog) — Org's cookie notation is a new inline token. Either route it through `{…}` (an aggregation primitive renders the cookie) or take the recorded-decision path; don't copy the Org form by default.
   - **Properties / per-node metadata** (backlog) — Logseq-style `key:: value` would be a new top-level syntax. If/when built, prefer a declared artifact (`@` + pill, like vars/sequences) over a typed sigil.
-  - **Boolean tag queries** (backlog "Tag power") — a query grammar is a new language. If built, it must reuse an existing form (e.g. `evalMath`-style operators) and live behind a front door, not a bare typed mini-language.
+  - ~~**Boolean tag queries** (backlog "Tag power")~~ — **decided + shipped 2026-06-13** (see the decision record above): search-box operators over the existing vocabulary, with the focus-shown legend + `?` panel as front doors.
   - **Oracle / decks / bags** (roadmap generative ideas) — conformant by construction *if* they register as grammar-engine callables the way markov does (`{name}` resolution via a typed descriptor in `collectRules`); flag any version that wants its own inline notation.
 - **Target / standing rule:** every new generative or computed feature plugs into the `{…}` grammar engine or extends `evalMath`; no new top-level delimiter ships without sign-off **and** the retirement of what it overlaps. The §2/P5 inventory is the closed set; growing it is an explicit, recorded decision, never a side effect of a feature. This row stays open permanently as the gate the AI checks against — it is the antidote to "new ways of doing syntax pulled out of thin air."
 
