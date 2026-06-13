@@ -3144,18 +3144,19 @@ function mkCmdItem(icon, label, desc, onClick, active = false) {
 // ─── zoom / breadcrumb ───────────────────────────────────────────────────────
 
 // Commit any in-progress edit (flush text + refold artifacts via exitEdit's blur
-// path) before a navigation. Without this, zooming away from a node whose inline
-// artifacts are unfolded to {…} shorthand leaves that shorthand in node.text — it
-// then renders as raw text, not a pill. The footer panels mousedown-preventDefault
-// to preserve focus, which suppresses the blur that normally refolds, so the
-// backlink/footnote click would navigate with the edit uncommitted. No-op if
-// nothing is editing, or if the natural blur already fired (not [data-editing]).
+// path). Called centrally at the top of render() so no restructure/navigation can
+// strand a node's unfolded {…} shorthand in node.text as raw text — the focus-
+// preserving panels/controls (footer backlinks, bullets, collapse carets) suppress
+// the blur that normally refolds, and a full render destroys the editing element.
+// No-op if nothing is editing, or if the natural blur already fired (not
+// [data-editing]). exitEdit for normal nodes does not call render(), so calling
+// this from render() is not re-entrant.
 function commitActiveEdit() {
   if (activeContentId == null) return;
   document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
 }
-function zoomInto(id) { commitActiveEdit(); focusedId = id; render(); }
-function zoomTo(id)   { commitActiveEdit(); focusedId = id; render(); }
+function zoomInto(id) { focusedId = id; render(); } // render() commits any active edit
+function zoomTo(id)   { focusedId = id; render(); }
 
 // Copy a ready-to-paste link token for a node onto the clipboard. Always uses the
 // empty-label form ([[#id|]]) — the empty label renders the target's live title,
@@ -3248,6 +3249,15 @@ function mkSep() { const s=document.createElement('span'); s.className='crumb-se
 // ─── render ──────────────────────────────────────────────────────────────────
 
 function render() {
+  // Self-protect (the single guard for the whole "navigate/restructure while
+  // editing" bug class): a full render destroys the live editing element below
+  // (container.innerHTML=''; a fresh vlist). Unless the trigger re-enters edit
+  // (focusNode), the node would re-render in DISPLAY mode with its unfolded {…}
+  // artifact shorthand still sitting in node.text — stranding it as raw text
+  // (and losing any uncommitted text). Committing here refolds + flushes first;
+  // triggers that keep editing (move/indent/collapse-self) re-enter afterward.
+  // Safe: exitEdit for normal nodes does not call render() (no re-entrancy).
+  if (activeContentId != null) commitActiveEdit();
   renderBreadcrumb();
   const container = document.getElementById('outline');
   container.innerHTML = '';
