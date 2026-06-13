@@ -491,7 +491,14 @@ bare `TODO` without `#` is plain text; to-do-ness fully derives from the text �
 or `#keyword` — see the node model above) ·
 Sequences (user-definable state sets: the built-in `TODO NEXT WAITING | DONE` is the default;
 `@sequence` declares a `[[seq:key]]` pill + `node.seq` sidecar; `/` applies any state as
-`#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`).
+`#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) ·
+Search query operators (the UXP-20-routed decision: implicit AND, `-` NOT, `"a b"` phrases,
+`#tag` word-anchored, `is:done/todo/note`; malformed tokens stay literal text — the `{…}`
+escape-hatch rule; OR deferred; no `state:` operator — `#KEYWORD` states are hashtag-shaped
+so `#waiting` filters by state for free; pure cores `parseSearchQuery`/`queryMatchesNode`;
+doors: the focus-shown legend under the search box + the `?` panel's "Search & filter"
+section; the search path ignores the show-done toggle as it always has, so `is:done`/
+`-is:done` are the explicit override).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

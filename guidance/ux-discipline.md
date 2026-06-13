@@ -165,6 +165,7 @@ The project already has the **reference pattern**: the storage-quota warning (pr
 | Markov | `State -> Target weight, …` | markov chains |
 | Table formula | `#+TBLFM:` with `@row$col` + ranges | table calc (the one true form) |
 | Status headline | `#TODO [#A] body` (any sequence keyword; `#` reuses the hashtag sigil) | task state + priority — the keyword may be any state of any **sequence** (default or user-declared); bare `TODO` without `#` is plain text |
+| Search query | `term term` (AND), `"a b"`, `-term`, `#tag`, `is:done`/`is:todo`/`is:note` | search-box filtering only — never node text. Recorded UXP-20 decision (2026-06-13): operators over the **existing** vocabulary (`#tag` IS the hashtag row; `-`/quotes are the universal search convention; `is:` is the one new field-prefix pattern). AND-only; OR deferred; no `state:` operator — `#KEYWORD` states are hashtag-shaped, so `#waiting` already filters by state. Malformed tokens stay literal text (the `{…}` escape-hatch rule). Front doors: the focus-shown legend under the box + the `?` panel |
 
 **Note — sequences add NO new syntax.** User-definable state sets (sequences) ship entirely on existing rows: declared via `@` (an artifact-token `[[seq:key]]` pill, like `@var`), applied via `/` (writes `#KEYWORD` into the status-headline position), and the `#keyword`-in-text IS the existing hashtag sigil reused. The `#` prevents bare capitalized words from accidentally becoming badges; `#word` that is not a known state is a normal clickable hashtag. The inventory does not grow.
 

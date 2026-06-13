@@ -59,12 +59,16 @@ due-dates, deadlines/scheduling, and daily-notes/journaling.
   (with sign-off) before any agenda work starts. See `guidance/ux-remediation.md` UXP-20.
 
 ### ◐ Tag power
-Tag *filtering* already works (click a `#tag` to filter), and **tag autocomplete shipped**
-(the `#` picker, sourced from `collectTags`, most-used-first — UXP-10). Missing: saved/pinned
-searches, tag inheritance, and boolean queries (`A AND NOT B`).
-- **Fit — medium.** Persist saved queries; inheritance + boolean evaluation layered on the
-  existing filter. **P5 note:** a boolean query grammar is a new language — route it per the
-  UXP-20 watch list (`guidance/ux-remediation.md`) before building.
+Tag *filtering* already works (click a `#tag` to filter), **tag autocomplete shipped**
+(the `#` picker, sourced from `collectTags`, most-used-first — UXP-10), and **search query
+operators shipped** (2026-06-13, the UXP-20-routed decision): implicit AND, `-` negation,
+`"a b"` phrases, `#tag` (word-anchored), `is:done`/`is:todo`/`is:note` — with the
+focus-shown legend under the search box + the `?` panel as front doors, and pure cores
+(`parseSearchQuery`/`queryMatchesNode`) pinned in tests. Because `#KEYWORD` states are
+hashtag-shaped, `#waiting` filters by state with no `state:` operator. Missing: saved/pinned
+searches, tag inheritance, and `OR` (deferred until real queries demand a precedence rule).
+- **Fit — medium.** Persist saved queries (just strings now — the parser is the substrate);
+  inheritance layered on the tag-term matcher.
 
 ---
 
@@ -128,9 +132,13 @@ Fast capture of a task/note into a chosen inbox node without navigating there.
 Move a subtree to another location through a search picker (vs. drag/indent).
 - **Fit — medium.** Reuses the search index; add a "move to…" picker.
 
-### ☐ Archive done items
+### ⊘ Archive done items — *shelved (decision, 2026-06-13)*
 Move completed items to an archive (vs. just hide-done).
-- **Fit — easy.**
+- **Decision: not built.** Redundant with hide-done today and superseded by queries/filters:
+  search already surfaces done items regardless of the toggle, and `is:done` / `-is:done`
+  give explicit control. A structural archive *move* would destroy the location context
+  that filters use; the at-scale version (archive to another document) waits on the
+  multi-doc workspace.
 
 ---
 

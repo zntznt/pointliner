@@ -2382,3 +2382,102 @@ test('UXP-25: migrateNodePrefixes adds 1. to legacy type-only ol nodes', () => {
   assert.equal(already.text, '1. already has prefix'); // unchanged
   assert.equal(two.text, '2. different number');       // unchanged (already has N.)
 });
+
+// ─── search query language (operators over the existing vocabulary) ──────────
+
+test('search query: parseSearchQuery — words, phrases, tags, is:, negation', () => {
+  assert.deepEqual(host(c.parseSearchQuery('alpha Beta')), [
+    { neg: false, kind: 'text', value: 'alpha' },
+    { neg: false, kind: 'text', value: 'beta' }]);
+  assert.deepEqual(host(c.parseSearchQuery('"two words"')),
+    [{ neg: false, kind: 'text', value: 'two words' }]);
+  assert.deepEqual(host(c.parseSearchQuery('#Work')),
+    [{ neg: false, kind: 'tag', value: 'work' }]);
+  assert.deepEqual(host(c.parseSearchQuery('is:DONE')),
+    [{ neg: false, kind: 'is', value: 'done' }]);
+  assert.deepEqual(host(c.parseSearchQuery('-#work -is:done -"a b" -word')), [
+    { neg: true, kind: 'tag',  value: 'work' },
+    { neg: true, kind: 'is',   value: 'done' },
+    { neg: true, kind: 'text', value: 'a b' },
+    { neg: true, kind: 'text', value: 'word' }]);
+  assert.deepEqual(host(c.parseSearchQuery('')), []);
+  assert.deepEqual(host(c.parseSearchQuery('""')), []);   // empty phrase contributes nothing
+});
+
+test('search query: malformed tokens stay literal text (the escape hatch)', () => {
+  assert.deepEqual(host(c.parseSearchQuery('is:tomorrow')),
+    [{ neg: false, kind: 'text', value: 'is:tomorrow' }]);  // unknown is: value
+  assert.deepEqual(host(c.parseSearchQuery('-')),
+    [{ neg: false, kind: 'text', value: '-' }]);            // lone dash is literal
+  assert.deepEqual(host(c.parseSearchQuery('#')),
+    [{ neg: false, kind: 'text', value: '#' }]);
+  assert.deepEqual(host(c.parseSearchQuery('#foo-bar')),
+    [{ neg: false, kind: 'text', value: '#foo-bar' }]);     // non-\w tag form is literal
+});
+
+test('search query: tag terms are word-anchored and token-blind', () => {
+  const q = s => c.parseSearchQuery(s);
+  const n = c.mkNode('ship the #work item');
+  assert.equal(c.queryMatchesNode(q('#work'), n), true);
+  assert.equal(c.queryMatchesNode(q('#wor'), n), false);     // no prefix match
+  assert.equal(c.queryMatchesNode(q('#WORK'), n), true);     // case-insensitive
+  const n2 = c.mkNode('about #workshops');
+  assert.equal(c.queryMatchesNode(q('#work'), n2), false);   // #work ≠ #workshops
+  const n3 = c.mkNode('see [[#abc123|label]]');
+  assert.equal(c.queryMatchesNode(q('#abc123'), n3), false); // link targets aren't tags
+  const n4 = c.mkNode('#TODO ship it');
+  assert.equal(c.queryMatchesNode(q('#todo'), n4), true);    // state keywords are hashtag-shaped
+});
+
+test('search query: is:todo / is:done / is:note', () => {
+  const q = s => c.parseSearchQuery(s);
+  const open     = c.mkNode('#TODO write tests');
+  const done     = c.mkNode('#DONE shipped');
+  const task     = c.mkNode('- [ ] buy milk');
+  const taskDone = c.mkNode('- [x] bought');
+  const plain    = c.mkNode('plain prose');
+  const noted    = c.mkNode('point'); noted.note = 'context';
+  assert.equal(c.queryMatchesNode(q('is:todo'), open), true);
+  assert.equal(c.queryMatchesNode(q('is:todo'), task), true);
+  assert.equal(c.queryMatchesNode(q('is:todo'), done), false);
+  assert.equal(c.queryMatchesNode(q('is:todo'), plain), false);
+  assert.equal(c.queryMatchesNode(q('is:done'), done), true);
+  assert.equal(c.queryMatchesNode(q('is:done'), taskDone), true);
+  assert.equal(c.queryMatchesNode(q('is:done'), open), false);
+  assert.equal(c.queryMatchesNode(q('is:done'), plain), false);
+  assert.equal(c.queryMatchesNode(q('is:note'), noted), true);
+  assert.equal(c.queryMatchesNode(q('is:note'), plain), false);
+});
+
+test('search query: AND of all terms; negation; notes searched by text terms', () => {
+  const q = s => c.parseSearchQuery(s);
+  const n = c.mkNode('#TODO ship the #work report');
+  assert.equal(c.queryMatchesNode(q('report #work'), n), true);
+  assert.equal(c.queryMatchesNode(q('report #home'), n), false);
+  assert.equal(c.queryMatchesNode(q('report -#work'), n), false);
+  assert.equal(c.queryMatchesNode(q('report -#home'), n), true);
+  assert.equal(c.queryMatchesNode(q('report -is:done'), n), true);
+  assert.equal(c.queryMatchesNode(q('report is:todo'), n), true);
+  const noted = c.mkNode('title'); noted.note = 'hidden detail';
+  assert.equal(c.queryMatchesNode(q('hidden'), noted), true);
+  assert.equal(c.queryMatchesNode(q('"hidden detail"'), noted), true);
+  assert.equal(c.queryMatchesNode(q('"detail hidden"'), noted), false);
+  assert.equal(c.queryMatchesNode([], n), false);  // empty query matches nothing
+});
+
+test('search query: searchHighlightNeedles — positive text + tags only', () => {
+  const terms = c.parseSearchQuery('alpha #work -beta is:done "a b"');
+  assert.deepEqual(host(c.searchHighlightNeedles(terms)), ['alpha', '#work', 'a b']);
+  assert.deepEqual(host(c.searchHighlightNeedles([])), []);
+});
+
+test('search query: front doors + wiring are present (src pins)', () => {
+  // P2: the focus-shown legend under the search box, described to AT
+  assert.ok(_src.includes('id="search-hint"'), 'search hint legend missing');
+  assert.ok(_src.includes('aria-describedby="search-hint"'), 'input not described by the hint');
+  assert.ok(_src.includes('#search-wrap:focus-within #search-hint'), 'hint not shown on focus');
+  // the ? reference panel documents the operators
+  assert.ok(_src.includes("sec: 'Search & filter'"), '? panel section missing');
+  // wiring: applySearch parses once per query
+  assert.ok(_src.includes('searchTerms = parseSearchQuery(q)'), 'applySearch does not parse the query');
+});
