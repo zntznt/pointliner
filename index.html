@@ -217,7 +217,12 @@ body.base-zoom #outline{max-width:none}
 /* ── per-point note: a second mirrored flex row (invisible gutter clones keep the
    note aligned with the content across every media query) ── */
 .node-note-row{padding-top:0}
-.node-note-row>.collapse-btn,.node-note-row>.bullet,.node-note-row>.ol-num{visibility:hidden}
+.node-note-row>.collapse-btn,.node-note-row>.ol-num{visibility:hidden}
+/* the note's gutter mark: a whisper-level glyph in the bullet column (decorative —
+   the note itself is the editor). Constrained to the dot's 6px slot so the note
+   text's left edge matches the content exactly; the glyph centers over it. */
+.node-note-row>.bullet{cursor:default}
+.note-mark{width:6px;display:flex;justify-content:center;color:var(--muted);font-size:9px;line-height:0;flex-shrink:0}
 .node-note{flex:1;min-width:0;outline:none;word-break:break-word;white-space:pre-wrap;
   font-size:.88em;line-height:1.5;color:var(--muted);padding:1px 3px 2px;border-radius:3px;cursor:text}
 .node-note[data-editing]{color:var(--fg);box-shadow:0 0 0 2px var(--ring)}
@@ -4348,7 +4353,9 @@ function buildNoteRow(node, opts = {}) {
   // aligns with the content at every viewport / touch size
   const gutterCol = document.createElement('span'); gutterCol.className = 'collapse-btn';
   const gutterBul = document.createElement('span'); gutterBul.className = 'bullet';
-  gutterBul.innerHTML = '<span class="bullet-dot"></span>'; // width must match the real bullet
+  // the note's gutter mark sits in the dot's 6px slot (width preserved → the
+  // note text's left edge matches the content at every viewport)
+  gutterBul.innerHTML = '<span class="note-mark"><i class="fa-regular fa-file-lines"></i></span>';
   gutterCol.setAttribute('aria-hidden', 'true'); gutterBul.setAttribute('aria-hidden', 'true');
   noteRow.append(gutterCol, gutterBul);
   if (node.type === 'ol') {

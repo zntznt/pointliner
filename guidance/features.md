@@ -109,7 +109,11 @@ Implemented:
   mirrored flex row with invisible gutter clones (collapse-btn / bullet / ol-num)
   keeps the note aligned with the content at every viewport and touch size; the
   live editor survives window re-renders via the `forceIncludeId` base-cell
-  pattern. The **zoom view** renders the zoomed point's note under its title
+  pattern. The note row's bullet slot carries a **gutter mark** — a small
+  `fa-file-lines` glyph in `--muted`, constrained to the dot's 6px slot so the
+  text edge is untouched — centered on the parent's bullet column, saying
+  "this line is a note" (decorative, `aria-hidden`; the note's accessible name
+  lives on the editor). The **zoom view** renders the zoomed point's note under its title
   (`.zoom-note`, same editor; Esc there just commits — focusing the title would
   flip it into raw edit). **Global toggle:** `#btn-notes` in the header (beside
   show-done; shown by default, persisted in the autosave payload) hides all
