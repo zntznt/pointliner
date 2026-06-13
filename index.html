@@ -799,29 +799,29 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #agenda-strip.on{display:flex}
 /* left control group: complexity toggles now; calendar / timeline views later */
 .ag-controls{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;gap:3px;padding-right:8px;border-right:1px solid var(--bdr)}
-.ag-toggle{font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--muted);background:transparent;border:1px solid var(--bdr);border-radius:var(--r-md);padding:1px 7px;cursor:pointer;white-space:nowrap;line-height:1.5;min-width:62px;text-align:left}
+.ag-toggle{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}
 .ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
-.ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 32%,transparent)}
-.ag-toggle:focus-visible{outline:2px solid var(--ring);outline-offset:1px}
+.ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.ag-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* the two stacked, independently-scrollable rows */
 .ag-rows{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;justify-content:center}
 .ag-row{display:flex;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;min-height:22px}
 .ag-row::-webkit-scrollbar{display:none}
-.ag-rowlabel{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;flex-shrink:0;width:50px}
-.ag-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--r-lg);cursor:pointer;border:1px solid;flex-shrink:0;max-width:210px;white-space:nowrap}
+.ag-rowlabel{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;flex-shrink:0;width:54px}
+.ag-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--r-sm);cursor:pointer;border:1px solid;flex-shrink:0;max-width:210px;white-space:nowrap}
 .ag-chip:hover{opacity:.82}
-.ag-chip:focus-visible{outline:2px solid var(--ring);outline-offset:1px;opacity:1}
+.ag-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px;opacity:1}
 .ag-chip.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
 .ag-chip.today{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
 .ag-chip.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
 .ag-chip.future,.ag-chip.none{background:color-mix(in srgb,var(--fg) 4%,transparent);border-color:var(--bdr)}
 .ag-chip.done{opacity:.55}
-.ag-badge{font-size:10px;font-weight:700;flex-shrink:0}
+.ag-badge{font-size:11px;font-weight:600;flex-shrink:0}
 .ag-chip.overdue .ag-badge.deadline{color:var(--bad)}
 .ag-chip.today .ag-badge.deadline{color:var(--ok)}
 .ag-chip.soon .ag-badge.deadline{color:var(--acc)}
 .ag-chip.future .ag-badge.deadline,.ag-chip.none .ag-badge.deadline{color:var(--muted)}
-.ag-run{font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0}
+.ag-run{font-size:11px;font-weight:600;color:var(--muted);flex-shrink:0}
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
 .ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
 .ag-mini{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-style:normal}
