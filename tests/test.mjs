@@ -2765,51 +2765,67 @@ test('templates: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('buildIndex(root, null); // re-index the whole stamped subtree'), 'reindex after stamp missing');
 });
 
-// ─── refile ────────────────────────────────────────────────────────────────────
+// ─── refile / point-tree navigator ──────────────────────────────────────────────
 
-test('refile: refileCandidates lists every point except the moved subtree, with paths', () => {
+test('treeRows: browse mode flattens with depth, honoring the expanded set', () => {
   const root = c.mkRoot();
   const a = c.mkNode('Alpha');
   const b = c.mkNode('Beta');
   const bChild = c.mkNode('Beta child');
   b.children.push(bChild);
+  root.children.push(a, b);
+  // nothing expanded → only top-level points; Beta flagged hasChildren + collapsed
+  let rows = c.treeRows(root, { expanded: new Set() });
+  assert.deepEqual(host(rows.map(r => r.title)), ['Alpha', 'Beta']);
+  const beta = rows.find(r => r.title === 'Beta');
+  assert.equal(beta.hasChildren, true);
+  assert.equal(beta.expanded, false);
+  assert.equal(beta.depth, 0);
+  // expand Beta → its child appears at depth 1, in order
+  rows = c.treeRows(root, { expanded: new Set([b.id]) });
+  assert.deepEqual(host(rows.map(r => r.title)), ['Alpha', 'Beta', 'Beta child']);
+  assert.equal(rows.find(r => r.title === 'Beta child').depth, 1);
+});
+
+test('treeRows: excludeId drops the moved point and its whole subtree', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Alpha');
   const moved = c.mkNode('Movable');
   const movedKid = c.mkNode('Movable kid');
   moved.children.push(movedKid);
-  root.children.push(a, b, moved);
-
-  const all = c.refileCandidates('', moved.id, root);
-  const titles = all.map(x => x.title);
-  assert.ok(titles.includes('Alpha') && titles.includes('Beta') && titles.includes('Beta child'));
-  // the moved node AND its descendants are excluded (can't refile into yourself)
-  assert.ok(!titles.includes('Movable'), 'moved node must be excluded');
+  root.children.push(a, moved);
+  const titles = c.treeRows(root, { expanded: new Set([moved.id]), excludeId: moved.id }).map(r => r.title);
+  assert.ok(titles.includes('Alpha'));
+  assert.ok(!titles.includes('Movable'), 'moved point must be excluded');
   assert.ok(!titles.includes('Movable kid'), 'moved descendants must be excluded');
-  // nested candidate carries its ancestor path for disambiguation
-  const bc = all.find(x => x.title === 'Beta child');
-  assert.deepEqual(host(bc.path), ['Beta']);
-  const al = all.find(x => x.title === 'Alpha');
-  assert.deepEqual(host(al.path), []); // top-level point: empty path
 });
 
-test('refile: refileCandidates filters by title, case-insensitive', () => {
+test('treeRows: filter keeps matches plus their ancestors (auto-expanded), case-insensitive', () => {
   const root = c.mkRoot();
-  const moved = c.mkNode('X');
-  root.children.push(c.mkNode('Groceries'), c.mkNode('Garage'), moved);
-  assert.deepEqual(host(c.refileCandidates('gar', moved.id, root).map(x => x.title)), ['Garage']);
-  assert.deepEqual(host(c.refileCandidates('GRO', moved.id, root).map(x => x.title)), ['Groceries']);
-  assert.equal(c.refileCandidates('zzz', moved.id, root).length, 0);
+  const groc = c.mkNode('Groceries');
+  const milk = c.mkNode('Milk');
+  groc.children.push(milk);
+  root.children.push(groc, c.mkNode('Garage'));
+  // a nested leaf matches → its ancestor (Groceries) is kept as context, flagged non-match
+  const rows = c.treeRows(root, { query: 'milk' });
+  assert.deepEqual(host(rows.map(r => r.title)), ['Groceries', 'Milk']);
+  assert.equal(rows.find(r => r.title === 'Groceries').match, false, 'ancestor is context, not a match');
+  assert.equal(rows.find(r => r.title === 'Milk').match, true, 'leaf is the match');
+  assert.equal(rows.find(r => r.title === 'Groceries').expanded, true, 'ancestors auto-expand in filter mode');
+  // case-insensitive top-level match; no match → empty
+  assert.deepEqual(host(c.treeRows(root, { query: 'GARAGE' }).map(r => r.title)), ['Garage']);
+  assert.equal(c.treeRows(root, { query: 'zzz' }).length, 0);
 });
 
-test('refile: untitled / base targets still surface with a label', () => {
+test('treeRows: untitled / base targets still surface with a label (pickerTitle)', () => {
   const root = c.mkRoot();
-  const moved = c.mkNode('m');
   const blank = c.mkNode('');
   const base = c.mkNode('| a |', 'base');
-  root.children.push(blank, base, moved);
-  const all = c.refileCandidates('', moved.id, root);
-  const titles = all.map(x => x.title);
+  root.children.push(blank, base);
+  const titles = c.treeRows(root, { expanded: new Set() }).map(r => r.title);
   assert.ok(titles.includes('(untitled)'), 'blank point gets a placeholder label');
   assert.ok(titles.includes('Base'), 'base gets a Base label');
+  assert.equal(c.pickerTitle(base), 'Base');
 });
 
 test('refile: UI wiring + ancestor guard present (src pins)', () => {

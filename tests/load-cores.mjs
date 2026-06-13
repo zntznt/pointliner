@@ -166,7 +166,7 @@ export function loadCores() {
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
-    'refileCandidates','migrateEmphasisText',
+    'pickerTitle','treeRows','migrateEmphasisText',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
   ];
   const cores = {};

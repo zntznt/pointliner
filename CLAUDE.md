@@ -526,14 +526,18 @@ subtree (`deepCloneNodeNewIds`, now also deep-copying the `seq`/`props` sidecars
 inserts it — replacing the invoking point when empty/childless, else as the next sibling; pure cores
 `upsertTemplate`/`removeTemplate`/`findTemplate`) ·
 Refile (move a point's subtree to become another point's last child via a "Refile…" bullet-menu
-door → a modal quick-switcher: search input + filtered, keyboard-navigable candidate list with
-breadcrumb paths, "Top level" offered first; reuses `performDrop`'s reparent + `isDescOf` for the
-self/own-descendant guard; pure core `refileCandidates`, mover `refileNodeTo`) ·
+door → the **point-tree navigator**: a search box over the outline shown as an indented,
+expand/collapsible tree — browse with ↑/↓ + →/← (expand-collapse / dive-parent, when the box is
+empty), type to filter to matches + their ancestors (auto-expanded), Enter picks; "Top level" is the
+leading option and the moved subtree is excluded; reuses `performDrop`'s reparent + `isDescOf` for the
+self/own-descendant guard; pure model `treeRows` + `pickerTitle`, DOM `renderTreeRows`/`buildTreePicker`,
+mover `refileNodeTo`. The tree picker is a reusable component — `treeRows` (pure) and `renderTreeRows`
+(DOM) are deliberately decoupled from the modal so a future structural sidebar can reuse them) ·
 Capture / quick inbox (a toolbar inbox button `#btn-capture` opens a Capture dialog that overlays
 wherever you are — capturing never navigates you; a designated inbox `root.inboxId` (persisted as the
 `<_inbox>` OPML **head element**) is set two ways: the bullet-menu **"Set as inbox"** door (the
 direct front door — toggles to "Unset as inbox" on the current inbox, flashes a confirmation) or the
-Capture dialog's inline **"Choose…"** point picker (reuses `refileCandidates`); each capture appends
+Capture dialog's inline **"Choose…"** point picker (the same `buildTreePicker` tree navigator); each capture appends
 one **markdown-aware** point — a typed `- [ ]` becomes a to-do — as the inbox's last child; the dialog
 stays open after each capture with a running "✓ Captured N" confirmation, Enter captures / Shift+Enter
 is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`. NB the capture-dest picker rebuilds

@@ -741,12 +741,16 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* refile quick-switcher dialog: search input + filtered, keyboard-navigable list */
 .rf-search{width:100%;font-family:var(--font);font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:9px 11px;outline:none;margin-bottom:10px;transition:border-color .12s,box-shadow .12s}
 .rf-search:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
-.rf-list{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto;margin-bottom:6px}
-.rf-item{display:flex;flex-direction:column;gap:1px;padding:7px 10px;border-radius:var(--r-md);cursor:pointer;border:1px solid transparent}
-.rf-item.hi{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
-.rf-item-title{font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rf-item-top{font-weight:600}
-.rf-item-path{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rf-list{display:flex;flex-direction:column;gap:1px;max-height:340px;overflow-y:auto;margin-bottom:6px}
+/* point-tree navigator rows (refile / inbox pickers, reusable) */
+.tp-row{display:flex;align-items:center;gap:3px;padding:5px 10px;border-radius:var(--r-md);cursor:pointer;border:1px solid transparent;min-width:0}
+.tp-row.hi{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
+.tp-twist{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);transition:transform .12s;user-select:none}
+.tp-twist.open{transform:rotate(90deg)}
+.tp-twist:empty{visibility:hidden}
+.tp-title{font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
+.tp-row.tp-top .tp-title{font-weight:600}
+.tp-title.tp-anc{color:var(--muted)}
 .rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
 /* capture / quick inbox dialog */
 .cap-dest{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
@@ -5125,21 +5129,51 @@ function stampTemplate(nodeId, name) {
 // Move a point's whole subtree to become the last child of another point chosen via
 // a search picker (vs. drag / indent). Org-mode's refile.
 
-// Candidate targets: every point except the moved subtree itself, each with its
-// ancestor-title path for disambiguation. Title-matched (case-insensitive), like
-// linkCandidates — predictable. Pure over rootNode (tests pass an explicit tree).
-function refileCandidates(query, moveId, rootNode = root) {
-  const q = (query || '').toLowerCase();
+// The one display label for a point inside any picker / navigator: a base shows a
+// clean "Base" (not its raw table markdown — mirrors crumbLabel), a blank point a
+// placeholder. Centralized so the flat and tree views never disagree.
+function pickerTitle(n) {
+  return n.type === 'base' ? 'Base' : (textForDisplay(n) || '(untitled)');
+}
+
+// Pure model behind the point-tree navigator (the reusable tree powering the refile
+// and inbox pickers, and any future structural sidebar). Flattens the outline into an
+// ordered list of *visible* rows. Two modes, content-sniffed on `query`:
+//   • browse (empty query): honor `expanded` (a Set of ids whose children are shown);
+//     a row is a leaf when it has no non-excluded children.
+//   • filter (non-empty): show every point whose title matches, PLUS the ancestors
+//     that lead down to a match (structure/context preserved); all auto-expanded,
+//     non-matching ancestors flagged `match:false` so the view can dim them.
+// `excludeId` drops that point and its whole subtree (the refile self-guard; '' = none).
+// Returns [{ id, title, depth, hasChildren, expanded, match }]. Pure over rootNode.
+function treeRows(rootNode, opts) {
+  opts = opts || {};
+  const expanded  = opts.expanded || new Set();
+  const excludeId = opts.excludeId || '';
+  const q = (opts.query || '').trim().toLowerCase();
   const out = [];
-  function walk(n, path) {
-    if (n.id === moveId) return; // skip the moved subtree entirely (and its descendants)
-    // a base shows a clean label, not its raw table markdown (mirrors crumbLabel)
-    const title = n.type === 'base' ? 'Base' : (textForDisplay(n) || '(untitled)');
-    if (q === '' || title.toLowerCase().includes(q)) out.push({ id: n.id, title, path: path.slice() });
-    const childPath = path.concat(title);
-    for (const c of n.children) walk(c, childPath);
+  if (q) {
+    // filter: a node is kept iff it matches or has a kept descendant.
+    const collect = (n, depth) => {
+      if (n.id === excludeId) return null;
+      const title = pickerTitle(n);
+      const selfMatch = title.toLowerCase().includes(q);
+      const kids = [];
+      for (const c of n.children) { const r = collect(c, depth + 1); if (r) kids.push(...r); }
+      if (!selfMatch && !kids.length) return null;
+      return [{ id: n.id, title, depth, hasChildren: kids.length > 0, expanded: true, match: selfMatch }, ...kids];
+    };
+    for (const c of (rootNode?.children || [])) { const r = collect(c, 0); if (r) out.push(...r); }
+  } else {
+    const walk = (n, depth) => {
+      if (n.id === excludeId) return;
+      const kids = n.children.filter(c => c.id !== excludeId);
+      const isExp = expanded.has(n.id);
+      out.push({ id: n.id, title: pickerTitle(n), depth, hasChildren: kids.length > 0, expanded: isExp, match: false });
+      if (kids.length && isExp) for (const c of kids) walk(c, depth + 1);
+    };
+    for (const c of (rootNode?.children || [])) walk(c, 0);
   }
-  for (const c of (rootNode?.children || [])) walk(c, []);
   return out;
 }
 
@@ -5171,13 +5205,68 @@ function refileNodeTo(moveId, targetId) {
   flashHint(`Refiled ${ptsLabel(countPoints(node))} → ${where}`);
 }
 
-// Shared modal point-picker (F5): a search box over a filtered, keyboard-navigable
-// list of points, rendered into ioCard. Type to filter, ↑/↓ move, Enter picks, Esc
-// runs onFoot. The CALLER owns ioBack/ioReturnFocus — refile opens a fresh dialog,
-// while capture's "Change inbox" swaps this view into an already-open one. opts:
+// Render a treeRows() result into `listEl` (role="tree"). The reusable DOM half of the
+// point-tree navigator — a modal picker and a future structural sidebar both call it.
+// Keeps the search-combobox focus model: mousedown preventDefault leaves focus in the
+// search box, click picks, the twist (chevron) toggles expand. `h` = handlers:
+//   { activeIdx, filtering, emptyText?, onHover(i), onToggle(i), onPick(i) }
+const TP_INDENT = 15; // px per depth level (modal-narrow; the main outline uses IND)
+function renderTreeRows(listEl, rows, h) {
+  listEl.innerHTML = '';
+  if (!rows.length) {
+    const empty = document.createElement('div'); empty.className = 'rf-empty';
+    empty.textContent = h.emptyText || 'No matching points.';
+    listEl.appendChild(empty); return;
+  }
+  rows.forEach((r, i) => {
+    const active = i === h.activeIdx;
+    const row = document.createElement('div');
+    row.className = 'tp-row' + (active ? ' hi' : '') + (r.top ? ' tp-top' : '');
+    row.id = 'tp-opt-' + i;
+    row.setAttribute('role', 'treeitem');
+    row.setAttribute('aria-level', String((r.depth || 0) + 1));
+    row.setAttribute('aria-selected', String(active));
+    row.setAttribute('aria-label', r.title);
+    if (r.hasChildren) row.setAttribute('aria-expanded', String(!!r.expanded));
+    row.style.paddingLeft = (8 + (r.depth || 0) * TP_INDENT) + 'px';
+
+    const twist = document.createElement('span');
+    twist.className = 'tp-twist' + (r.expanded ? ' open' : '');
+    if (r.hasChildren) {
+      twist.textContent = '▶';
+      // In filter mode the tree is force-expanded; the twist is a static structure
+      // hint, not a control (toggling it would be a no-op the model overrides).
+      if (!h.filtering) {
+        twist.setAttribute('role', 'button'); twist.setAttribute('tabindex', '-1');
+        twist.setAttribute('aria-label', r.expanded ? 'Collapse' : 'Expand');
+        twist.addEventListener('mousedown', e => e.preventDefault());
+        twist.addEventListener('click', e => { e.stopPropagation(); h.onToggle(i); });
+      }
+    }
+    row.appendChild(twist);
+
+    const title = document.createElement('span');
+    title.className = 'tp-title' + (h.filtering && !r.match ? ' tp-anc' : '');
+    title.textContent = r.title;
+    row.appendChild(title);
+
+    row.addEventListener('mouseenter', () => h.onHover(i));
+    row.addEventListener('mousedown', e => { e.preventDefault(); h.onHover(i); });
+    row.addEventListener('click', () => h.onPick(i));
+    listEl.appendChild(row);
+  });
+  listEl.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+}
+
+// Modal point-TREE picker (supersedes the old flat list): a search box over the
+// outline shown as an indented, expand/collapsible tree, rendered into ioCard. Browse
+// with ↑/↓ (move), →/← (expand/collapse or dive/parent, when the box is empty), Enter
+// picks, Esc runs onFoot; typing filters to matches + their ancestors (auto-expanded).
+// The CALLER owns ioBack/ioReturnFocus — refile opens a fresh dialog, capture's "Change
+// inbox" swaps this view into an already-open one. opts:
 //   { icon, title, placeholder?, searchAria, listAria, emptyText?,
-//     itemsFor(query) -> [{id, title, path, top?}], onPick(item), footLabel, onFoot }
-function buildPointPicker(opts) {
+//     rootNode?, excludeId?, leading?:[{id,title}], onPick(item), footLabel, onFoot }
+function buildTreePicker(opts) {
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
@@ -5188,11 +5277,13 @@ function buildPointPicker(opts) {
   const search = document.createElement('input');
   search.className = 'rf-search'; search.type = 'text'; search.placeholder = opts.placeholder || 'Search points…';
   search.setAttribute('aria-label', opts.searchAria || 'Search points');
+  search.setAttribute('role', 'combobox'); search.setAttribute('aria-expanded', 'true');
   search.autocomplete = 'off'; search.spellcheck = false;
   ioCard.appendChild(search);
 
-  const listEl = document.createElement('div'); listEl.className = 'rf-list';
-  listEl.setAttribute('role', 'listbox'); listEl.setAttribute('aria-label', opts.listAria || 'Points');
+  const listEl = document.createElement('div'); listEl.className = 'rf-list'; listEl.id = 'tp-list';
+  listEl.setAttribute('role', 'tree'); listEl.setAttribute('aria-label', opts.listAria || 'Points');
+  search.setAttribute('aria-controls', 'tp-list');
   ioCard.appendChild(listEl);
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
@@ -5200,62 +5291,100 @@ function buildPointPicker(opts) {
   footBtn.textContent = opts.footLabel; footBtn.addEventListener('click', () => opts.onFoot());
   foot.append(footBtn); ioCard.appendChild(foot);
 
-  let items = opts.itemsFor('');
-  let activeIdx = 0;
-  function renderList() {
-    listEl.innerHTML = '';
-    if (!items.length) {
-      const empty = document.createElement('div'); empty.className = 'rf-empty';
-      empty.textContent = opts.emptyText || 'No matching points.';
-      listEl.appendChild(empty); search.removeAttribute('aria-activedescendant'); return;
-    }
-    items.forEach((it, i) => {
-      const row = document.createElement('div');
-      row.className = 'rf-item' + (i === activeIdx ? ' hi' : '');
-      row.id = 'pp-opt-' + i; row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', String(i === activeIdx));
-      const t = document.createElement('div');
-      t.className = 'rf-item-title' + (it.top ? ' rf-item-top' : '');
-      t.textContent = it.title; row.appendChild(t);
-      if (it.path?.length) { const p = document.createElement('div'); p.className = 'rf-item-path'; p.textContent = it.path.join(' › '); row.appendChild(p); }
-      row.setAttribute('aria-label', `${it.title}${it.path?.length ? ', in ' + it.path.join(', ') : ''}`);
-      row.addEventListener('mouseenter', () => { activeIdx = i; renderList(); });
-      row.addEventListener('mousedown', e => { e.preventDefault(); activeIdx = i; });
-      row.addEventListener('click', () => { pick(); });
-      listEl.appendChild(row);
-    });
-    search.setAttribute('aria-activedescendant', 'pp-opt-' + activeIdx);
-    listEl.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+  const rootNode  = opts.rootNode || root;
+  const excludeId = opts.excludeId || '';
+  const leading   = opts.leading || [];
+  const expanded  = new Set();
+  let activeIdx = 0, rows = [];
+
+  // Initial expansion: small trees open fully (immediate overview); big ones start
+  // collapsed to top-level points only (drill via twist / →, or just search). The
+  // excluded subtree is ignored when counting. The 40-node threshold is a heuristic.
+  {
+    const parents = []; let count = 0;
+    const seed = n => {
+      if (n.id === excludeId) return;
+      const kids = n.children.filter(c => c.id !== excludeId);
+      count++;
+      if (kids.length) parents.push(n.id);
+      kids.forEach(seed);
+    };
+    (rootNode.children || []).forEach(seed);
+    if (count <= 40) parents.forEach(id => expanded.add(id));
   }
-  function pick() { const it = items[activeIdx]; if (it) opts.onPick(it); }
-  search.addEventListener('input', () => { items = opts.itemsFor(search.value.trim()); activeIdx = 0; renderList(); });
+
+  function pick() { const it = rows[activeIdx]; if (it) opts.onPick(it); }
+  function paintActive() {
+    const els = listEl.querySelectorAll('.tp-row');
+    els.forEach((el, i) => { el.classList.toggle('hi', i === activeIdx); el.setAttribute('aria-selected', String(i === activeIdx)); });
+    if (rows.length) search.setAttribute('aria-activedescendant', 'tp-opt-' + activeIdx);
+    else search.removeAttribute('aria-activedescendant');
+    els[activeIdx]?.scrollIntoView({ block: 'nearest' });
+  }
+  function rebuild() {
+    const q = search.value.trim();
+    const ql = q.toLowerCase();
+    const lead = leading
+      .filter(l => q === '' || l.title.toLowerCase().includes(ql))
+      .map(l => ({ id: l.id, title: l.title, depth: 0, hasChildren: false, expanded: false, match: true, top: true }));
+    rows = [...lead, ...treeRows(rootNode, { expanded, excludeId, query: q })];
+    if (activeIdx >= rows.length) activeIdx = Math.max(0, rows.length - 1);
+    renderTreeRows(listEl, rows, {
+      activeIdx, filtering: q !== '', emptyText: opts.emptyText,
+      onHover: i => { if (i !== activeIdx) { activeIdx = i; paintActive(); } },
+      onToggle: i => toggleRow(i),
+      onPick: i => { activeIdx = i; pick(); },
+    });
+    if (rows.length) search.setAttribute('aria-activedescendant', 'tp-opt-' + activeIdx);
+    else search.removeAttribute('aria-activedescendant');
+  }
+  function toggleRow(i) {
+    const r = rows[i]; if (!r || !r.hasChildren) return;
+    if (expanded.has(r.id)) expanded.delete(r.id); else expanded.add(r.id);
+    activeIdx = i; rebuild();
+  }
+
+  search.addEventListener('input', () => { activeIdx = 0; rebuild(); });
   search.addEventListener('keydown', e => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx + 1) % items.length; renderList(); } }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx - 1 + items.length) % items.length; renderList(); } }
-    else if (e.key === 'Enter') { e.preventDefault(); pick(); }
+    const browsing = search.value.trim() === '';
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (rows.length) { activeIdx = (activeIdx + 1) % rows.length; paintActive(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (rows.length) { activeIdx = (activeIdx - 1 + rows.length) % rows.length; paintActive(); } }
+    else if (e.key === 'Enter')  { e.preventDefault(); pick(); }
     else if (e.key === 'Escape') { e.preventDefault(); opts.onFoot(); }
+    // →/← drive the tree only while the box is empty (otherwise they move the text
+    // caret as usual — when filtering, the tree is auto-expanded so they're moot).
+    else if (browsing && e.key === 'ArrowRight') {
+      const r = rows[activeIdx]; if (!r || !r.hasChildren) return;
+      e.preventDefault();
+      if (!r.expanded) { expanded.add(r.id); rebuild(); }
+      else if (activeIdx + 1 < rows.length) { activeIdx++; paintActive(); }
+    }
+    else if (browsing && e.key === 'ArrowLeft') {
+      const r = rows[activeIdx]; if (!r) return;
+      if (r.hasChildren && r.expanded) { e.preventDefault(); expanded.delete(r.id); rebuild(); }
+      else { // jump to the parent row (nearest earlier row one level shallower)
+        for (let j = activeIdx - 1; j >= 0; j--) { if (rows[j].depth === r.depth - 1) { e.preventDefault(); activeIdx = j; paintActive(); break; } }
+      }
+    }
   });
-  renderList();
+  rebuild();
   requestAnimationFrame(() => search.focus());
 }
 
-// The refile picker: a modal quick-switcher. "Top level" is always the first option
-// (refile out of nesting); picking moves the subtree and closes.
+// The refile picker: a modal tree navigator. "Top level" is the leading option
+// (refile out of nesting); the moved subtree is excluded; picking moves and closes.
 function openRefileDialog(moveId) {
   const node = nodeById(moveId);
   if (!node) return;
   ioReturnFocus = document.activeElement;
   ioCancel = closeIo;
-  buildPointPicker({
+  buildTreePicker({
     icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },
     title: 'Refile to…',
     searchAria: 'Search for a destination point',
     listAria: 'Destination points',
-    itemsFor: q => {
-      const cands = refileCandidates(q, moveId).slice(0, 60);
-      const showTop = q === '' || 'top level'.includes(q.toLowerCase());
-      return showTop ? [{ id: root.id, title: 'Top level', path: [], top: true }, ...cands] : cands;
-    },
+    excludeId: moveId,
+    leading: [{ id: root.id, title: 'Top level' }],
     onPick: it => { closeIo(); refileNodeTo(moveId, it.id); },
     footLabel: 'Cancel',
     onFoot: closeIo,
@@ -5344,16 +5473,14 @@ function renderCaptureMain() {
   requestAnimationFrame(() => ta.focus());
 }
 
-// "Change destination" view — an inline point picker (reuses refileCandidates,
-// excluding nothing). Picking sets the inbox and returns to the capture view with
-// the draft preserved.
+// "Change destination" view — an inline tree navigator over the whole outline.
+// Picking sets the inbox and returns to the capture view with the draft preserved.
 function renderCaptureDest() {
-  buildPointPicker({
+  buildTreePicker({
     icon: { fa: 'fa-solid fa-inbox', fb: '⤓' },
     title: 'Choose inbox',
     searchAria: 'Search for an inbox point',
     listAria: 'Inbox candidates',
-    itemsFor: q => refileCandidates(q, '', root).slice(0, 60),
     onPick: it => { root.inboxId = it.id; markDirty(); requestAnimationFrame(renderCaptureMain); },
     footLabel: 'Back',
     onFoot: () => renderCaptureMain(),

@@ -146,8 +146,8 @@ A point shows how many of its tasks are done.
 Fast capture of a task/note into a chosen inbox node without navigating there.
 - **Shipped:** a toolbar inbox button (`#btn-capture`) opens a Capture dialog that overlays
   wherever you are (capturing never moves you). A designated inbox (`root.inboxId`, persisted
-  as the `<_inbox>` OPML head element) is chosen via an inline point picker (reuses
-  `refileCandidates`); each capture appends one **markdown-aware** point (a typed `- [ ]`
+  as the `<_inbox>` OPML head element) is chosen via the inline tree navigator (the same
+  `buildTreePicker` used by refile); each capture appends one **markdown-aware** point (a typed `- [ ]`
   becomes a to-do) as the inbox's last child. The dialog stays open after each capture (the
   brain-dump flow) with a running "✓ Captured N" confirmation. Enter captures, Shift+Enter is
   a line break.
@@ -156,12 +156,15 @@ Fast capture of a task/note into a chosen inbox node without navigating there.
 
 ### ✓ Refile (move a subtree via search) — shipped
 Move a subtree to another location through a search picker (vs. drag/indent).
-- **Shipped:** a "Refile…" bullet-menu door opens a modal quick-switcher (search input +
-  filtered, keyboard-navigable list of candidate targets with breadcrumb paths; "Top level"
-  always offered first). Selecting a target moves the subtree to become its last child;
+- **Shipped:** a "Refile…" bullet-menu door opens the **point-tree navigator** — a search box
+  over the outline shown as an indented, expand/collapsible tree (↑/↓ move, →/← expand-collapse /
+  dive-parent when the box is empty, type to filter to matches + ancestors; "Top level" leading,
+  the moved subtree excluded). Selecting a target moves the subtree to become its last child;
   reuses `performDrop`'s reparent semantics + `isDescOf` for the self/own-descendant guard.
-  Pure core `refileCandidates` (title-matched, excludes the moved subtree); mover `refileNodeTo`.
-- **Fit — medium (as predicted).** Reused the reparent infra + the picker pattern; no new syntax.
+  Pure model `treeRows` + `pickerTitle`; DOM `renderTreeRows`/`buildTreePicker` (decoupled from the
+  modal, reusable by a future sidebar); mover `refileNodeTo`.
+- **Fit — medium (as predicted).** Reused the reparent infra; later upgraded the flat picker to a
+  reusable tree navigator; no new syntax.
 
 ### ⊘ Archive done items — *shelved (decision, 2026-06-13)*
 Move completed items to an archive (vs. just hide-done).
