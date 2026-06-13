@@ -766,7 +766,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .cap-hint{font-size:11px;color:var(--muted);margin:6px 2px 0}
 .cap-confirm{font-size:12px;color:var(--ok);margin-top:6px;min-height:1.1em;font-weight:500}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
-.cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:max-content;max-width:100%}
+.cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:100%;box-sizing:border-box}
 .cal-open>.cal,.cal-open .cal{display:block}
 .cal-head{display:flex;align-items:center;gap:4px;margin-bottom:6px}
 .cal-title{flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
@@ -777,13 +777,13 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .cal-dow span{text-align:center;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:2px 0}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .cal-week{display:contents}
-.cal-day{width:32px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:var(--r-sm);font-size:12.5px;color:var(--fg);cursor:pointer;font-variant-numeric:tabular-nums;user-select:none}
+.cal-day{min-width:0;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:var(--r-sm);font-size:12.5px;color:var(--fg);cursor:pointer;font-variant-numeric:tabular-nums;user-select:none}
 .cal-day.oom{color:var(--muted)}
 .cal-day:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .cal-day.today{box-shadow:inset 0 0 0 1px var(--bdr-ui)}
 .cal-day.sel{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--acc);font-weight:600}
 .cal-day:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-@media(hover:none){.cal-day{width:36px;height:36px;font-size:14px}.cal-nav{width:32px;height:32px}}
+@media(hover:none){.cal-day{height:38px;font-size:14px}.cal-nav{width:32px;height:32px}}
 .zoom-props-row{display:flex;align-items:flex-start;margin-bottom:12px;padding-top:2px}
 .zoom-props-row>.note-mark{width:auto;margin:4px 7px 0 0;flex-shrink:0}
 .io-seg{display:flex;gap:5px;margin-bottom:2px}
@@ -4862,6 +4862,7 @@ function buildPropsArea(node) {
     chip.dataset.propsId = node.id;
     let displayVal = val;
     const propK = key.toLowerCase();
+    chip.dataset.propKey = propK; // routes date chips to the Schedule dialog
     if (propK === 'due' || propK === 'start') {
       const ep = parseDueDate(val);
       if (ep !== null) {
@@ -4914,7 +4915,10 @@ function buildPropsRow(node, opts = {}) {
 function openPropsDialog(nodeId) {
   const node = nodeById(nodeId);
   if (!node) return;
-  let props = (node.props || []).map(p => ({ key: p.key, val: p.val }));
+  // Date properties (due/start) are managed by the Schedule dialog, not here —
+  // hide them from the generic editor and merge them back untouched on save.
+  let props = (node.props || []).filter(p => !DATE_KEYS.has(p.key.trim().toLowerCase())).map(p => ({ key: p.key, val: p.val }));
+  const dateProps = (node.props || []).filter(p => DATE_KEYS.has(p.key.trim().toLowerCase()));
 
   ioCard.innerHTML = '';
 
@@ -4959,9 +4963,6 @@ function openPropsDialog(nodeId) {
       del.addEventListener('click', () => { props.splice(i, 1); renderRows(); });
       row.append(keyIn, sep, valIn, del);
       wrap.appendChild(row);
-      // a date-keyed row (due/start) gets the inline calendar; toggling the key live-updates it
-      const cal = attachDateCalendar(valIn, wrap, () => DATE_KEYS.has(keyIn.value.trim().toLowerCase()));
-      keyIn.addEventListener('input', () => cal.refresh());
       list.appendChild(wrap);
     });
     if (focusLast) {
@@ -4998,7 +4999,11 @@ function openPropsDialog(nodeId) {
     }
     errDiv.style.display = 'none';
     pushUndo();
-    node.props = cleaned;
+    // merge the preserved date props back; a date key typed into the generic
+    // editor overrides the preserved one (kept dates are those NOT re-typed here)
+    const typed = new Set(cleaned.filter(p => DATE_KEYS.has(p.key.toLowerCase())).map(p => p.key.toLowerCase()));
+    const keptDates = dateProps.filter(p => !typed.has(p.key.toLowerCase()));
+    node.props = [...keptDates, ...cleaned];
     markDirty(); render(); closeIo();
   }
   cancelBtn.addEventListener('click', closeIo);
@@ -6621,7 +6626,7 @@ function onKeyDown(e, id, content) {
     const nind = e.target.closest?.('.note-ind');
     if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
     const pchip = e.target.closest?.('.prop-chip');
-    if (pchip) { e.preventDefault(); openPropsDialog(pchip.dataset.propsId); return; }
+    if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
@@ -11348,8 +11353,15 @@ document.getElementById('outline').addEventListener('click', e => {
   const ind = e.target.closest('.note-ind');
   if (ind) openNoteEditor(ind.dataset.noteId);
   const chip = e.target.closest('.prop-chip');
-  if (chip) openPropsDialog(chip.dataset.propsId);
+  if (chip) openPropChip(chip);
 });
+
+// A property chip opens its editor: a date chip (due/start) → the Schedule
+// dialog (with the calendar); any other property → the generic Properties dialog.
+function openPropChip(chip) {
+  if (DATE_KEYS.has(chip.dataset.propKey)) openDueDateDialog(chip.dataset.propsId);
+  else openPropsDialog(chip.dataset.propsId);
+}
 
 // ─── footnotes ────────────────────────────────────────────────────────────────
 
