@@ -2765,51 +2765,67 @@ test('templates: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('buildIndex(root, null); // re-index the whole stamped subtree'), 'reindex after stamp missing');
 });
 
-// ─── refile ────────────────────────────────────────────────────────────────────
+// ─── refile / point-tree navigator ──────────────────────────────────────────────
 
-test('refile: refileCandidates lists every point except the moved subtree, with paths', () => {
+test('treeRows: browse mode flattens with depth, honoring the expanded set', () => {
   const root = c.mkRoot();
   const a = c.mkNode('Alpha');
   const b = c.mkNode('Beta');
   const bChild = c.mkNode('Beta child');
   b.children.push(bChild);
+  root.children.push(a, b);
+  // nothing expanded → only top-level points; Beta flagged hasChildren + collapsed
+  let rows = c.treeRows(root, { expanded: new Set() });
+  assert.deepEqual(host(rows.map(r => r.title)), ['Alpha', 'Beta']);
+  const beta = rows.find(r => r.title === 'Beta');
+  assert.equal(beta.hasChildren, true);
+  assert.equal(beta.expanded, false);
+  assert.equal(beta.depth, 0);
+  // expand Beta → its child appears at depth 1, in order
+  rows = c.treeRows(root, { expanded: new Set([b.id]) });
+  assert.deepEqual(host(rows.map(r => r.title)), ['Alpha', 'Beta', 'Beta child']);
+  assert.equal(rows.find(r => r.title === 'Beta child').depth, 1);
+});
+
+test('treeRows: excludeId drops the moved point and its whole subtree', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Alpha');
   const moved = c.mkNode('Movable');
   const movedKid = c.mkNode('Movable kid');
   moved.children.push(movedKid);
-  root.children.push(a, b, moved);
-
-  const all = c.refileCandidates('', moved.id, root);
-  const titles = all.map(x => x.title);
-  assert.ok(titles.includes('Alpha') && titles.includes('Beta') && titles.includes('Beta child'));
-  // the moved node AND its descendants are excluded (can't refile into yourself)
-  assert.ok(!titles.includes('Movable'), 'moved node must be excluded');
+  root.children.push(a, moved);
+  const titles = c.treeRows(root, { expanded: new Set([moved.id]), excludeId: moved.id }).map(r => r.title);
+  assert.ok(titles.includes('Alpha'));
+  assert.ok(!titles.includes('Movable'), 'moved point must be excluded');
   assert.ok(!titles.includes('Movable kid'), 'moved descendants must be excluded');
-  // nested candidate carries its ancestor path for disambiguation
-  const bc = all.find(x => x.title === 'Beta child');
-  assert.deepEqual(host(bc.path), ['Beta']);
-  const al = all.find(x => x.title === 'Alpha');
-  assert.deepEqual(host(al.path), []); // top-level point: empty path
 });
 
-test('refile: refileCandidates filters by title, case-insensitive', () => {
+test('treeRows: filter keeps matches plus their ancestors (auto-expanded), case-insensitive', () => {
   const root = c.mkRoot();
-  const moved = c.mkNode('X');
-  root.children.push(c.mkNode('Groceries'), c.mkNode('Garage'), moved);
-  assert.deepEqual(host(c.refileCandidates('gar', moved.id, root).map(x => x.title)), ['Garage']);
-  assert.deepEqual(host(c.refileCandidates('GRO', moved.id, root).map(x => x.title)), ['Groceries']);
-  assert.equal(c.refileCandidates('zzz', moved.id, root).length, 0);
+  const groc = c.mkNode('Groceries');
+  const milk = c.mkNode('Milk');
+  groc.children.push(milk);
+  root.children.push(groc, c.mkNode('Garage'));
+  // a nested leaf matches → its ancestor (Groceries) is kept as context, flagged non-match
+  const rows = c.treeRows(root, { query: 'milk' });
+  assert.deepEqual(host(rows.map(r => r.title)), ['Groceries', 'Milk']);
+  assert.equal(rows.find(r => r.title === 'Groceries').match, false, 'ancestor is context, not a match');
+  assert.equal(rows.find(r => r.title === 'Milk').match, true, 'leaf is the match');
+  assert.equal(rows.find(r => r.title === 'Groceries').expanded, true, 'ancestors auto-expand in filter mode');
+  // case-insensitive top-level match; no match → empty
+  assert.deepEqual(host(c.treeRows(root, { query: 'GARAGE' }).map(r => r.title)), ['Garage']);
+  assert.equal(c.treeRows(root, { query: 'zzz' }).length, 0);
 });
 
-test('refile: untitled / base targets still surface with a label', () => {
+test('treeRows: untitled / base targets still surface with a label (pickerTitle)', () => {
   const root = c.mkRoot();
-  const moved = c.mkNode('m');
   const blank = c.mkNode('');
   const base = c.mkNode('| a |', 'base');
-  root.children.push(blank, base, moved);
-  const all = c.refileCandidates('', moved.id, root);
-  const titles = all.map(x => x.title);
+  root.children.push(blank, base);
+  const titles = c.treeRows(root, { expanded: new Set() }).map(r => r.title);
   assert.ok(titles.includes('(untitled)'), 'blank point gets a placeholder label');
   assert.ok(titles.includes('Base'), 'base gets a Base label');
+  assert.equal(c.pickerTitle(base), 'Base');
 });
 
 test('refile: UI wiring + ancestor guard present (src pins)', () => {
@@ -2929,4 +2945,252 @@ test('progress cookies: render + front-door wiring (src pins)', () => {
   assert.ok(_src.includes("keys: ['[/]', '[%]']"), 'progress ? panel row missing');
   // P4: a child partial-toggle refreshes a cookie-bearing parent
   assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
+});
+
+// ── due dates ─────────────────────────────────────────────────────────────────
+
+test('parseDueDate — ISO date parses to epoch day', () => {
+  // 2026-06-13 = days since 1970-01-01
+  const ep = c.parseDueDate('2026-06-13');
+  assert.equal(typeof ep, 'number');
+  assert.ok(Number.isInteger(ep));
+  // Verify round-trip via formatEpochDays
+  assert.equal(c.formatEpochDays(ep), '2026-06-13');
+});
+
+test('parseDueDate — relative forms', () => {
+  const today = c.dueDateToday();
+  assert.equal(c.parseDueDate('today'),     today);
+  assert.equal(c.parseDueDate('tomorrow'),  today + 1);
+  assert.equal(c.parseDueDate('today+7'),   today + 7);
+  assert.equal(c.parseDueDate('today-1'),   today - 1);
+  assert.equal(c.parseDueDate('today+0'),   today);
+});
+
+test('parseDueDate — invalid values return null', () => {
+  assert.equal(c.parseDueDate(null),         null);
+  assert.equal(c.parseDueDate(''),           null);
+  assert.equal(c.parseDueDate('foo'),        null);
+  assert.equal(c.parseDueDate('26-06-13'),   null); // not 4-digit year
+  assert.equal(c.parseDueDate('tomorrow+1'), null); // unsupported form
+});
+
+test('parseDueDate — impossible calendar dates are rejected (no overflow-normalize)', () => {
+  // Date.UTC silently rolls these over; round-trip validation must catch them.
+  assert.equal(c.parseDueDate('2026-02-30'), null); // Feb has 28/29 days
+  assert.equal(c.parseDueDate('2026-02-29'), null); // 2026 is not a leap year
+  assert.equal(c.parseDueDate('2026-04-31'), null); // April has 30 days
+  assert.equal(c.parseDueDate('2026-13-01'), null); // month 13
+  assert.equal(c.parseDueDate('2026-00-15'), null); // month 0
+  assert.equal(c.parseDueDate('2026-07-32'), null); // day 32
+  assert.equal(c.parseDueDate('2026-07-00'), null); // day 0
+  // sanity: real dates still parse, incl. a genuine leap day
+  assert.ok(c.parseDueDate('2026-02-28') !== null);
+  assert.ok(c.parseDueDate('2024-02-29') !== null); // 2024 IS a leap year
+  assert.ok(c.parseDueDate('2026-04-30') !== null);
+  assert.ok(c.parseDueDate('2026-12-31') !== null);
+});
+
+test('parseDueDate — absurd years outside the scheduling window are rejected', () => {
+  assert.equal(c.parseDueDate('3331-07-15'), null); // year 3331 is a typo, not a plan
+  assert.equal(c.parseDueDate('3334-07-15'), null);
+  assert.equal(c.parseDueDate('0349-07-01'), null); // year 349
+  assert.equal(c.parseDueDate('1899-12-31'), null); // just below the floor
+  assert.equal(c.parseDueDate('2201-01-01'), null); // just above the ceiling
+  // boundaries are inclusive
+  assert.ok(c.parseDueDate('1900-01-01') !== null);
+  assert.ok(c.parseDueDate('2200-12-31') !== null);
+});
+
+test('formatDueDate — state classification', () => {
+  const today = c.dueDateToday();
+  assert.equal(c.formatDueDate(today).state,     'today');
+  assert.equal(c.formatDueDate(today).label,     'Today');
+  assert.equal(c.formatDueDate(today + 1).state, 'soon');
+  assert.equal(c.formatDueDate(today + 1).label, 'Tomorrow');
+  assert.equal(c.formatDueDate(today - 1).state, 'overdue');
+  assert.equal(c.formatDueDate(today - 1).label, 'Yesterday');
+  assert.equal(c.formatDueDate(today - 5).state, 'overdue');
+  assert.ok(c.formatDueDate(today - 5).label.includes('overdue'));
+  assert.equal(c.formatDueDate(today + 3).state, 'soon');
+  assert.equal(c.formatDueDate(today + 10).state,'future');
+});
+
+test('formatDueDate — iso is always YYYY-MM-DD', () => {
+  const ep = c.parseDueDate('2026-06-15');
+  const { iso } = c.formatDueDate(ep);
+  assert.match(iso, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(iso, '2026-06-15');
+});
+
+test('collectDueDates — returns sorted dated nodes', () => {
+  const r = c.mkRoot();
+  const a = c.mkNode('alpha'); a.props = [{ key: 'due', val: '2026-08-01' }];
+  const b = c.mkNode('beta');  b.props = [{ key: 'due', val: '2026-06-15' }];
+  const x = c.mkNode('no date'); // no due prop
+  r.children.push(a, b, x);
+  const items = host(c.collectDueDates(r));
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, 'beta');   // earlier date first
+  assert.equal(items[0].iso,   '2026-06-15');
+  assert.equal(items[1].title, 'alpha');
+  assert.equal(items[1].iso,   '2026-08-01');
+});
+
+test('collectDueDates — unparseable due prop ignored', () => {
+  const r = c.mkRoot();
+  const n = c.mkNode('bad date'); n.props = [{ key: 'due', val: 'not-a-date' }];
+  r.children.push(n);
+  assert.equal(c.collectDueDates(r).length, 0);
+});
+
+test('collectDueDates — start date: started vs not-yet-started + range', () => {
+  const r = c.mkRoot();
+  // started yesterday, due in a week → started=true, runningDays=1
+  const running = c.mkNode('running task');
+  running.props = [{ key: 'start', val: 'today-1' }, { key: 'due', val: 'today+7' }];
+  // starts next week (future start), due later → not started, has a due
+  const upcoming = c.mkNode('upcoming task');
+  upcoming.props = [{ key: 'start', val: 'today+7' }, { key: 'due', val: 'today+14' }];
+  // start-only, started today → started=true, no due
+  const startedOnly = c.mkNode('started only');
+  startedOnly.props = [{ key: 'start', val: 'today' }];
+  r.children.push(running, upcoming, startedOnly);
+
+  const items = host(c.collectDueDates(r));
+  const by = title => items.find(i => i.title === title);
+
+  assert.equal(by('running task').started, true);
+  assert.equal(by('running task').runningDays, 1);
+  assert.ok(by('running task').due !== null && by('running task').start !== null);
+
+  assert.equal(by('upcoming task').started, false);   // future start
+  assert.ok(by('upcoming task').due !== null);
+
+  assert.equal(by('started only').started, true);
+  assert.equal(by('started only').runningDays, 0);    // started today
+  assert.equal(by('started only').due, null);
+});
+
+test('collectDueDates — done flag is derived from the node text', () => {
+  const r = c.mkRoot();
+  const open = c.mkNode('- [ ] open');   open.props = [{ key: 'due', val: 'today' }];
+  const done = c.mkNode('- [x] finished'); done.props = [{ key: 'due', val: 'today' }];
+  r.children.push(open, done);
+  const items = host(c.collectDueDates(r));
+  assert.equal(items.find(i => i.title === 'open').done,     false);
+  assert.equal(items.find(i => i.title === 'finished').done, true);
+});
+
+test('parseSearchQuery / termMatchesNode — start: operator mirrors due:', () => {
+  const q = host(c.parseSearchQuery('start:today'));
+  assert.equal(q[0].kind, 'start');
+  assert.equal(q[0].op, '=');
+  assert.equal(q[0].epochDay, c.dueDateToday());
+
+  const n = c.mkNode('task');
+  n.props = [{ key: 'start', val: '2026-06-15' }];
+  const ep = c.parseDueDate('2026-06-15');
+  assert.ok( c.termMatchesNode({ kind: 'start', op: '=', epochDay: ep }, n, []));
+  assert.ok(!c.termMatchesNode({ kind: 'start', op: '=', epochDay: ep + 1 }, n, []));
+  // a due: term must NOT match a node that only carries a start prop
+  assert.ok(!c.termMatchesNode({ kind: 'due', op: '=', epochDay: ep }, n, []));
+});
+
+test('calendarMonthGrid — 42 contiguous days, Sunday-aligned, month present', () => {
+  const mid = c.parseDueDate('2026-06-15');         // June 2026
+  const grid = c.calendarMonthGrid(mid);
+  assert.equal(grid.length, 42);
+  // contiguous: each cell is the previous + 1
+  for (let i = 1; i < grid.length; i++) assert.equal(grid[i], grid[i - 1] + 1);
+  // starts on a Sunday (getUTCDay 0)
+  assert.equal(new Date(grid[0] * 86400000).getUTCDay(), 0);
+  // the 1st of June sits at index === its day-of-week
+  const first = c.parseDueDate('2026-06-01');
+  assert.equal(grid.indexOf(first), new Date(first * 86400000).getUTCDay());
+  // every day of June is in the grid
+  for (let d = 1; d <= 30; d++) {
+    assert.ok(grid.includes(c.parseDueDate('2026-06-' + String(d).padStart(2, '0'))));
+  }
+});
+
+test('addMonths — clamps the day to the target month length', () => {
+  const jan31 = c.parseDueDate('2026-01-31');
+  // +1 month → Feb (2026 not leap) clamps to the 28th, never overflows to March
+  assert.equal(c.addMonths(jan31, 1), c.parseDueDate('2026-02-28'));
+  // -2 months → Nov 30 (Nov has 30 days, 31 clamps to 30)
+  assert.equal(c.addMonths(jan31, -2), c.parseDueDate('2025-11-30'));
+  // a safe day round-trips exactly
+  assert.equal(c.addMonths(c.parseDueDate('2026-06-15'), 1), c.parseDueDate('2026-07-15'));
+});
+
+test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
+  const today = c.dueDateToday();
+  const q1 = host(c.parseSearchQuery('due:today'));
+  assert.equal(q1.length, 1);
+  assert.equal(q1[0].kind, 'due');
+  assert.equal(q1[0].op,   '=');
+  assert.equal(q1[0].epochDay, today);
+
+  const q2 = host(c.parseSearchQuery('due:overdue'));
+  assert.equal(q2[0].kind, 'due');
+  assert.equal(q2[0].op,   'overdue');
+  assert.ok(!('epochDay' in q2[0]));
+
+  const q3 = host(c.parseSearchQuery('due:<2026-06-15'));
+  const ep = c.parseDueDate('2026-06-15');
+  assert.equal(q3[0].kind, 'due');
+  assert.equal(q3[0].op,   '<');
+  assert.equal(q3[0].epochDay, ep);
+
+  const q4 = host(c.parseSearchQuery('due:>today+7'));
+  assert.equal(q4[0].kind, 'due');
+  assert.equal(q4[0].op,   '>');
+  assert.equal(q4[0].epochDay, today + 7);
+});
+
+test('termMatchesNode — due: search operators', () => {
+  const ep2026 = c.parseDueDate('2026-06-15');
+  const n = c.mkNode('task');
+  n.props = [{ key: 'due', val: '2026-06-15' }];
+
+  const eqTerm   = { kind: 'due', op: '=',  epochDay: ep2026 };
+  const ltTerm   = { kind: 'due', op: '<',  epochDay: ep2026 + 1 };
+  const gtTerm   = { kind: 'due', op: '>',  epochDay: ep2026 - 1 };
+  const missTerm = { kind: 'due', op: '=',  epochDay: ep2026 + 1 };
+
+  assert.ok( c.termMatchesNode(eqTerm,   n, []));
+  assert.ok( c.termMatchesNode(ltTerm,   n, []));
+  assert.ok( c.termMatchesNode(gtTerm,   n, []));
+  assert.ok(!c.termMatchesNode(missTerm, n, []));
+
+  // node with no due prop
+  const bare = c.mkNode('no props');
+  assert.ok(!c.termMatchesNode(eqTerm, bare, []));
+
+  // overdue term — compare against today
+  const today = c.dueDateToday();
+  const pastEp = today - 5;
+  const pastN = c.mkNode('old'); pastN.props = [{ key: 'due', val: c.formatEpochDays(pastEp) }];
+  const overdTerm = { kind: 'due', op: 'overdue' };
+  assert.ok(c.termMatchesNode(overdTerm, pastN, []));
+  const futN = c.mkNode('future'); futN.props = [{ key: 'due', val: '2099-01-01' }];
+  assert.ok(!c.termMatchesNode(overdTerm, futN, []));
+});
+
+test('due dates: front-door wiring (src pins)', () => {
+  const _src = readFileSync(
+    new URL('../index.html', import.meta.url),
+    'utf8'
+  );
+  assert.ok(_src.includes("id:'due'") || _src.includes("id:’due’"), '/due slash entry missing');
+  assert.ok(_src.includes('openDueDateDialog'), 'openDueDateDialog missing');
+  assert.ok(_src.includes('parseDueDate'), 'parseDueDate missing');
+  assert.ok(_src.includes('collectDueDates'), 'collectDueDates missing');
+  assert.ok(_src.includes('btn-agenda'), 'agenda button missing');
+  assert.ok(_src.includes('renderAgenda'), 'renderAgenda missing');
+  assert.ok(_src.includes("/^(due|start):"), 'due/start search operator missing');
+  assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
+  assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
+  assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
 });

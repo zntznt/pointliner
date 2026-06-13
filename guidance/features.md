@@ -221,26 +221,32 @@ Implemented:
   mutate).
 - **Refile** — move a point's whole subtree to another location through a search
   picker, instead of dragging or repeatedly indenting. **Door:** the bullet menu
-  "Refile…" opens a **modal quick-switcher** — a search input over a filtered,
-  keyboard-navigable list of candidate destinations (↑/↓ to move, Enter to refile,
-  Esc to cancel), each row showing the target's title plus its **breadcrumb path**
-  for disambiguation. **"Top level"** is always the first option (refile *out* of
-  deep nesting). Selecting a target moves the subtree to become that point's **last
+  "Refile…" opens the **point-tree navigator** — a search box over the outline shown
+  as an **indented, expand/collapsible tree** (not a flat list), so you pick a
+  destination by reading the actual structure. Browse with **↑/↓** (move) and **→/←**
+  (expand-collapse a parent, or dive-to-child / jump-to-parent — active only while the
+  box is empty, so they move the text caret otherwise); **type to filter** to matching
+  points **plus their ancestors** (auto-expanded, ancestors dimmed as context); **Enter**
+  refiles, **Esc** cancels; the chevron twist also expands/collapses by mouse. **"Top
+  level"** is the leading option (refile *out* of deep nesting) and the **moved subtree
+  is excluded**. Selecting a target moves the subtree to become that point's **last
   child**, reusing the same reparent semantics as drag-drop (`performDrop`) and the
   `isDescOf` **self / own-descendant guard** (you can't refile a point into its own
   subtree — that would orphan the tree). The move toasts what it touched (P4) and
-  focus follows the moved point. Pure core `refileCandidates(query, moveId, root)` —
-  title-matched (case-insensitive, like `linkCandidates`), excludes the moved subtree,
-  returns `{id, title, path}`; mover `refileNodeTo(moveId, targetId)`. No new syntax.
+  focus follows the moved point. The navigator is a **reusable component**: pure model
+  `treeRows(rootNode, {expanded, excludeId, query})` → ordered visible rows; DOM
+  `renderTreeRows` (row builder) + `buildTreePicker` (modal wrapper) are decoupled from
+  the modal so a future structural sidebar can reuse the same two halves. Label via
+  `pickerTitle`; mover `refileNodeTo(moveId, targetId)`. No new syntax.
 - **Capture / quick inbox** — fast-add a point into a designated inbox **from
   anywhere, without navigating there**. **Door:** the toolbar inbox button
   (`#btn-capture`) opens a **Capture dialog** that overlays wherever you are — so a
   capture never moves you off what you're doing. The **inbox** is a doc-level pointer
   (`root.inboxId` → a point's id, persisted as the `<_inbox>` **OPML head element**;
   node ids round-trip via `_id`, so the pointer survives reload; a deleted inbox is
-  treated as unset). You pick / change the inbox via an **inline point picker** (reuses
-  `refileCandidates`, search + keyboard nav) that swaps into the same card and returns
-  with your draft preserved. Each **Capture** appends **one markdown-aware point** —
+  treated as unset). You pick / change the inbox via an **inline tree navigator** (the
+  same `buildTreePicker`) that swaps into the same card and returns with your draft
+  preserved. Each **Capture** appends **one markdown-aware point** —
   type derived from the text, so a typed `- [ ]` lands as a to-do, `# x` a heading — as
   the inbox's **last child**, then **clears and keeps the dialog open** (the brain-dump
   flow) with a running **"✓ Captured N"** confirmation and a toast. **Enter** captures,

@@ -48,15 +48,15 @@ A workspace of many docs instead of one file at a time.
 - **Fit — hard.** The core storage refactor; gated power tier. Storage + durability decisions
   are settled in `guidance/roadmap.md`.
 
-### ☐ Dates on items + agenda / calendar view
-Give a node a due/scheduled date; aggregate dated items into an agenda or calendar. Merges
-due-dates, deadlines/scheduling, and daily-notes/journaling.
-- **Why:** task + time management; the most-wanted view beyond the raw outline.
-- **Fit — medium-hard.** A date field/token + an agenda view that filters & sorts. Builds
-  directly on the date math already shipped.
-- **P5 gate (UXP-20 watch list):** do *not* import Org's `<2026-06-12 Wed>` / `SCHEDULED:`
-  notation — where the date lives must be decided from the existing syntax inventory
-  (with sign-off) before any agenda work starts. See `guidance/ux-remediation.md` UXP-20.
+### ✓ Dates on items + agenda / calendar view (2026-06-13)
+Due dates live as a `due` property in `node.props` (value: `YYYY-MM-DD`, `today`, `today+N`).
+Date-smart chips (Today / Tomorrow / Mon / 3d overdue, colour-coded by urgency). Agenda
+panel (toolbar calendar button) groups all dated points: Overdue / Today / Coming up / Later;
+click to zoom in. `/due` slash verb + bullet menu "Set due date" front door. Search operators:
+`due:today`, `due:overdue`, `due:<date`, `due:>date`. Pure cores `parseDueDate`,
+`formatDueDate`, `collectDueDates`. Zero new authoring syntax — reuses `node.props` and the
+existing `key:value` search operator family. P5 gate signed off (recorded UXP-20 decision,
+2026-06-13: `due` property is the home; inventory row added to `ux-discipline.md`).
 
 ### ◐ Tag power
 Tag *filtering* already works (click a `#tag` to filter), **tag autocomplete shipped**
@@ -146,8 +146,8 @@ A point shows how many of its tasks are done.
 Fast capture of a task/note into a chosen inbox node without navigating there.
 - **Shipped:** a toolbar inbox button (`#btn-capture`) opens a Capture dialog that overlays
   wherever you are (capturing never moves you). A designated inbox (`root.inboxId`, persisted
-  as the `<_inbox>` OPML head element) is chosen via an inline point picker (reuses
-  `refileCandidates`); each capture appends one **markdown-aware** point (a typed `- [ ]`
+  as the `<_inbox>` OPML head element) is chosen via the inline tree navigator (the same
+  `buildTreePicker` used by refile); each capture appends one **markdown-aware** point (a typed `- [ ]`
   becomes a to-do) as the inbox's last child. The dialog stays open after each capture (the
   brain-dump flow) with a running "✓ Captured N" confirmation. Enter captures, Shift+Enter is
   a line break.
@@ -156,12 +156,15 @@ Fast capture of a task/note into a chosen inbox node without navigating there.
 
 ### ✓ Refile (move a subtree via search) — shipped
 Move a subtree to another location through a search picker (vs. drag/indent).
-- **Shipped:** a "Refile…" bullet-menu door opens a modal quick-switcher (search input +
-  filtered, keyboard-navigable list of candidate targets with breadcrumb paths; "Top level"
-  always offered first). Selecting a target moves the subtree to become its last child;
+- **Shipped:** a "Refile…" bullet-menu door opens the **point-tree navigator** — a search box
+  over the outline shown as an indented, expand/collapsible tree (↑/↓ move, →/← expand-collapse /
+  dive-parent when the box is empty, type to filter to matches + ancestors; "Top level" leading,
+  the moved subtree excluded). Selecting a target moves the subtree to become its last child;
   reuses `performDrop`'s reparent semantics + `isDescOf` for the self/own-descendant guard.
-  Pure core `refileCandidates` (title-matched, excludes the moved subtree); mover `refileNodeTo`.
-- **Fit — medium (as predicted).** Reused the reparent infra + the picker pattern; no new syntax.
+  Pure model `treeRows` + `pickerTitle`; DOM `renderTreeRows`/`buildTreePicker` (decoupled from the
+  modal, reusable by a future sidebar); mover `refileNodeTo`.
+- **Fit — medium (as predicted).** Reused the reparent infra; later upgraded the flat picker to a
+  reusable tree navigator; no new syntax.
 
 ### ⊘ Archive done items — *shelved (decision, 2026-06-13)*
 Move completed items to an archive (vs. just hide-done).
