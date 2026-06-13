@@ -3143,8 +3143,19 @@ function mkCmdItem(icon, label, desc, onClick, active = false) {
 
 // ─── zoom / breadcrumb ───────────────────────────────────────────────────────
 
-function zoomInto(id) { focusedId = id; render(); }
-function zoomTo(id)   { focusedId = id; render(); }
+// Commit any in-progress edit (flush text + refold artifacts via exitEdit's blur
+// path) before a navigation. Without this, zooming away from a node whose inline
+// artifacts are unfolded to {…} shorthand leaves that shorthand in node.text — it
+// then renders as raw text, not a pill. The footer panels mousedown-preventDefault
+// to preserve focus, which suppresses the blur that normally refolds, so the
+// backlink/footnote click would navigate with the edit uncommitted. No-op if
+// nothing is editing, or if the natural blur already fired (not [data-editing]).
+function commitActiveEdit() {
+  if (activeContentId == null) return;
+  document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
+}
+function zoomInto(id) { commitActiveEdit(); focusedId = id; render(); }
+function zoomTo(id)   { commitActiveEdit(); focusedId = id; render(); }
 
 // Copy a ready-to-paste link token for a node onto the clipboard. Always uses the
 // empty-label form ([[#id|]]) — the empty label renders the target's live title,
@@ -11825,14 +11836,9 @@ function mkAgChip(it, kind) {
   // mousedown + preventDefault (the caret invariant): a plain click would let the
   // mousedown blur the active edit first — that fires markDirty → renderAgenda,
   // which rebuilds the strip and destroys this chip before its click lands,
-  // dropping the navigation. preventDefault keeps focus put, so we commit any
-  // in-progress edit ourselves (blur → exitEdit's full cleanup), then zoom.
-  const navigate = () => {
-    if (activeContentId != null) {
-      document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
-    }
-    zoomInto(it.id);
-  };
+  // dropping the navigation. preventDefault keeps focus put; zoomInto commits any
+  // in-progress edit (refold) before re-rendering.
+  const navigate = () => { zoomInto(it.id); };
   chip.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
   chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
   return chip;
