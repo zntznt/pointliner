@@ -2944,7 +2944,7 @@ function render() {
       const mark = document.createElement('span');
       mark.className = 'note-mark';
       mark.setAttribute('aria-hidden', 'true');
-      mark.innerHTML = '<i class="fa-regular fa-file-lines"></i>';
+      setIcon(mark, NOTE_ICON);
       const zn = buildNoteEl(vp);
       zn.classList.add('zoom-note');
       znRow.append(mark, zn);
@@ -4340,10 +4340,7 @@ function appendNoteIndicator(content, node) {
   ind.setAttribute('aria-label', 'Show note');
   ind.title = 'Show note';
   ind.dataset.noteId = node.id;
-  const i = document.createElement('i');
-  i.className = 'fa-regular fa-file-lines';
-  i.setAttribute('aria-hidden', 'true');
-  ind.appendChild(i);
+  setIcon(ind, NOTE_ICON);
   // sit inline after the text: append into the last block element when there is one
   const last = content.lastElementChild;
   (last && /^(P|LI|H[1-6]|BLOCKQUOTE)$/.test(last.tagName) ? last : content).appendChild(ind);
@@ -4366,8 +4363,12 @@ function buildNoteRow(node, opts = {}) {
   const gutterCol = document.createElement('span'); gutterCol.className = 'collapse-btn';
   const gutterBul = document.createElement('span'); gutterBul.className = 'bullet';
   // the note's gutter mark sits in the dot's 6px slot (width preserved → the
-  // note text's left edge matches the content at every viewport)
-  gutterBul.innerHTML = '<span class="note-mark"><i class="fa-regular fa-file-lines"></i></span>';
+  // note text's left edge matches the content at every viewport). Built via
+  // setIcon so a missing FA glyph degrades to the unicode mark, never to blank.
+  const mark = document.createElement('span');
+  mark.className = 'note-mark';
+  setIcon(mark, NOTE_ICON);
+  gutterBul.appendChild(mark);
   gutterCol.setAttribute('aria-hidden', 'true'); gutterBul.setAttribute('aria-hidden', 'true');
   noteRow.append(gutterCol, gutterBul);
   if (node.type === 'ol') {
@@ -4380,6 +4381,10 @@ function buildNoteRow(node, opts = {}) {
   noteRow.appendChild(noteEl);
   return noteRow;
 }
+
+// The note glyph everywhere it appears (gutter mark, hidden-note indicator):
+// one spec, FA when healthy, unicode fallback when not (the paintIcon contract).
+const NOTE_ICON = { fa: 'fa-regular fa-file-lines', fb: '🗒' };
 
 // The note editor element itself (no row wrapper) — shared by the outline row
 // (buildNoteRow) and the zoom view (rendered under the zoom title).
