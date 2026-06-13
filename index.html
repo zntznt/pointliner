@@ -4655,7 +4655,7 @@ function buildPropsRow(node, opts = {}) {
 
 // Properties editor dialog — opens from bullet menu or chip click.
 function openPropsDialog(nodeId) {
-  const node = findById(nodeId);
+  const node = nodeById(nodeId);
   if (!node) return;
   let props = (node.props || []).map(p => ({ key: p.key, val: p.val }));
 

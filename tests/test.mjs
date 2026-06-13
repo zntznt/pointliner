@@ -2559,6 +2559,14 @@ test('properties: wiring and front doors are present (src pins)', () => {
   assert.ok(_src.includes('node.props'),     'props sidecar not referenced');
 });
 
+// Regression guard for the dialog crash: the canonical node lookup is nodeById().
+// A `findById(` reference is a typo that throws only when the dialog is opened —
+// invisible to src-pin greps and pure-core tests, caught here instead. (The real
+// fix is running the UI; this is the cheap backstop for this specific typo class.)
+test('no undefined node-lookup helper (findById is not a function)', () => {
+  assert.ok(!_src.includes('findById('), 'use nodeById() — findById is not defined');
+});
+
 // ─── saved searches ───────────────────────────────────────────────────────────
 
 test('saved searches: toggleSavedSearch adds, removes, trims, returns new arrays', () => {
