@@ -11579,10 +11579,16 @@ let agendaShowRunning = true;   // bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
 
 function mkAgToggle(label, on, onToggle) {
-  const b = document.createElement('button');
-  b.type = 'button'; b.className = 'ag-toggle' + (on ? ' on' : '');
-  b.textContent = label; b.setAttribute('aria-pressed', String(on));
-  b.addEventListener('click', onToggle);
+  const b = document.createElement('span');
+  b.className = 'ag-toggle' + (on ? ' on' : '');
+  b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0');
+  b.setAttribute('aria-pressed', String(on));
+  b.textContent = label;
+  // mousedown + preventDefault (caret invariant) so toggling doesn't blur an
+  // active edit and rebuild the strip out from under the click; keydown is the
+  // keyboard path (a role=button span has no native Enter/Space activation).
+  b.addEventListener('mousedown', e => { e.preventDefault(); onToggle(); });
+  b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } });
   return b;
 }
 
@@ -11626,8 +11632,13 @@ function mkAgChip(it, kind) {
   const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
   chip.appendChild(titleEl);
   chip.title = aria; chip.setAttribute('aria-label', aria);
+  // Navigate on mousedown + preventDefault (the caret invariant): a plain click
+  // would let the mousedown blur the active edit first — that fires
+  // markDirty → renderAgenda, which rebuilds the strip and destroys this chip
+  // before its click lands, dropping the navigation. preventDefault keeps focus
+  // put; focusNode then does its own controlled focus transfer.
   const navigate = () => { focusNode(it.id); };
-  chip.addEventListener('click', navigate);
+  chip.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
   chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
   return chip;
 }
