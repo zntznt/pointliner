@@ -2782,6 +2782,40 @@ test('refile: UI wiring + ancestor guard present (src pins)', () => {
   assert.ok(_src.includes("title: 'Top level'"), 'top-level option missing');
 });
 
+// ─── capture / quick inbox ─────────────────────────────────────────────────────
+
+test('capture: mkRoot initialises inboxId as null', () => {
+  assert.strictEqual(c.mkRoot().inboxId, null);
+});
+
+test('capture: inboxId round-trips through the OPML head', () => {
+  const root = c.mkRoot();
+  const inbox = c.mkNode('Inbox');
+  root.children.push(inbox);
+  // unset → no element emitted
+  assert.ok(!c.toOpml(root).includes('_inbox'), 'must not emit when unset');
+  root.inboxId = inbox.id;
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_inbox>' + inbox.id + '</_inbox>'), 'head element / id not serialized');
+  // the inbox point's own id must serialize too (so the pointer stays valid after a
+  // reload — node ids round-trip via _id). fromOpml needs DOMParser (no vm sandbox),
+  // so the parse side is pinned in the wiring test below, mirroring saved searches.
+  assert.ok(xml.includes('_id="' + inbox.id + '"'), 'inbox point _id must round-trip');
+});
+
+test('capture: UI wiring + front doors present (src pins)', () => {
+  assert.ok(_src.includes("querySelector('head > _inbox')"), 'fromOpml parse missing');
+  assert.ok(_src.includes('inboxId: null'), 'mkRoot default missing');
+  assert.ok(_src.includes('openCaptureDialog'), 'capture dialog missing');
+  assert.ok(_src.includes('function doCapture'), 'capture action missing');
+  assert.ok(_src.includes('id="btn-capture"'), 'toolbar button missing');
+  assert.ok(_src.includes("getElementById('btn-capture').addEventListener"), 'button not wired');
+  // no destination yet → the capture action routes to the picker, never silently no-ops (P4)
+  assert.ok(_src.includes('if (!inbox) { renderCaptureDest(); return; }'), 'unset-inbox path missing');
+  // captured text is markdown-aware (a typed - [ ] becomes a to-do)
+  assert.ok(_src.includes('deriveTypeFromText(text)') && _src.includes('todoDoneFromText(text)'), 'capture not markdown-aware');
+});
+
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
   assert.deepEqual(host(c.tallyMarkers('- [ ] a\n- [x] b\n- [ ] c')), { done: 1, total: 3 });
   assert.deepEqual(host(c.tallyMarkers('* [x] a\n+ [x] b')),          { done: 2, total: 2 });

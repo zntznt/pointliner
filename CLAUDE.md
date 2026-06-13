@@ -528,7 +528,13 @@ inserts it — replacing the invoking point when empty/childless, else as the ne
 Refile (move a point's subtree to become another point's last child via a "Refile…" bullet-menu
 door → a modal quick-switcher: search input + filtered, keyboard-navigable candidate list with
 breadcrumb paths, "Top level" offered first; reuses `performDrop`'s reparent + `isDescOf` for the
-self/own-descendant guard; pure core `refileCandidates`, mover `refileNodeTo`).
+self/own-descendant guard; pure core `refileCandidates`, mover `refileNodeTo`) ·
+Capture / quick inbox (a toolbar inbox button `#btn-capture` opens a Capture dialog that overlays
+wherever you are — capturing never navigates you; a designated inbox `root.inboxId` (persisted as the
+`<_inbox>` OPML **head element**) is chosen via an inline point picker reusing `refileCandidates`;
+each capture appends one **markdown-aware** point — a typed `- [ ]` becomes a to-do — as the inbox's
+last child; the dialog stays open after each capture with a running "✓ Captured N" confirmation,
+Enter captures / Shift+Enter is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

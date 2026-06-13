@@ -142,9 +142,17 @@ A point shows how many of its tasks are done.
   recorded syntax-inventory decision (reuses the `[…]` bracket family) — `ux-remediation.md` UXP-20.
 - **Fit — easy.** Reused the task-marker scan + a one-level child walk.
 
-### ☐ Capture / quick inbox
+### ✓ Capture / quick inbox — shipped
 Fast capture of a task/note into a chosen inbox node without navigating there.
-- **Fit — medium.** Pairs well with templates.
+- **Shipped:** a toolbar inbox button (`#btn-capture`) opens a Capture dialog that overlays
+  wherever you are (capturing never moves you). A designated inbox (`root.inboxId`, persisted
+  as the `<_inbox>` OPML head element) is chosen via an inline point picker (reuses
+  `refileCandidates`); each capture appends one **markdown-aware** point (a typed `- [ ]`
+  becomes a to-do) as the inbox's last child. The dialog stays open after each capture (the
+  brain-dump flow) with a running "✓ Captured N" confirmation. Enter captures, Shift+Enter is
+  a line break.
+- **Fit — medium (as predicted).** Reused the refile picker + the OPML-head config pattern; no
+  new syntax.
 
 ### ✓ Refile (move a subtree via search) — shipped
 Move a subtree to another location through a search picker (vs. drag/indent).

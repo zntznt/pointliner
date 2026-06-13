@@ -112,7 +112,7 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 button{cursor:pointer;border:1px solid transparent;background:transparent;color:var(--fg);font-family:inherit;font-size:12.5px;padding:4px 10px;border-radius:var(--r-sm);transition:background .1s;white-space:nowrap;flex-shrink:0}
 button:hover{background:var(--bdr)}
 button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
-#btn-done,#btn-notes{height:28px;min-width:30px}
+#btn-done,#btn-notes,#btn-capture{height:28px;min-width:30px}
 /* hidden-note indicator: a whisper-level trailing mark after the point text
    (the .fn-ref metrics, but muted ink — accent would read as a link-jump) */
 .note-ind{color:var(--muted);font-size:.72em;vertical-align:super;cursor:pointer;line-height:0;margin-left:.35em;user-select:none}
@@ -745,6 +745,16 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .rf-item-top{font-weight:600}
 .rf-item-path{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
+/* capture / quick inbox dialog */
+.cap-dest{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+.cap-dest-name{color:var(--fg);font-weight:500;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-dest-name.unset{color:var(--warn)}
+.cap-change{font-size:12px;color:var(--acc);background:none;border:none;cursor:pointer;padding:2px 5px;border-radius:4px}
+.cap-change:hover,.cap-change:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);outline:none}
+.cap-textarea{width:100%;min-height:74px;resize:vertical;font-family:var(--font);font-size:14px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:9px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
+.cap-textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.cap-hint{font-size:11px;color:var(--muted);margin:6px 2px 0}
+.cap-confirm{font-size:12px;color:var(--ok);margin-top:6px;min-height:1.1em;font-weight:500}
 .zoom-props-row{display:flex;align-items:flex-start;margin-bottom:12px;padding-top:2px}
 .zoom-props-row>.note-mark{width:auto;margin:4px 7px 0 0;flex-shrink:0}
 .io-seg{display:flex;gap:5px;margin-bottom:2px}
@@ -953,6 +963,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
+    <button id="btn-capture" title="Capture to inbox" aria-label="Capture to inbox"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-done" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
     <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
@@ -1084,7 +1095,7 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [], templates: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [], templates: [], inboxId: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
@@ -2697,9 +2708,10 @@ function toOpml(r) {
   // carries custom elements — same serialize+parse-in-one-change rule)
   const saved = r.savedSearches?.length ? `<_savedSearches>${ex(JSON.stringify(r.savedSearches))}</_savedSearches>` : '';
   const tpls  = r.templates?.length    ? `<_templates>${ex(JSON.stringify(r.templates))}</_templates>` : '';
+  const inbox = r.inboxId              ? `<_inbox>${ex(r.inboxId)}</_inbox>` : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
-  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${saved}${tpls}</head>
+  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${saved}${tpls}${inbox}</head>
   <body>
 ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
@@ -2780,7 +2792,8 @@ function fromOpml(xml) {
       return Array.isArray(a) ? a.filter(t => t && typeof t.name === 'string' && t.node) : [];
     } catch(_) { return []; }
   })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates,
+  const inboxId = doc.querySelector('head > _inbox')?.textContent?.trim() || null;
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -5016,6 +5029,173 @@ function openRefileDialog(moveId) {
   ioCard.setAttribute('aria-label', 'Refile to');
   ioBack.classList.add('on');
   requestAnimationFrame(() => search.focus());
+}
+
+// ─── capture / quick inbox ─────────────────────────────────────────────────────
+// Fast-add a point into a designated inbox from anywhere, without navigating there.
+// The inbox is a doc-level pointer (root.inboxId → a point's id, persisted in the
+// OPML head); the capture dialog overlays wherever you are, so capturing never moves
+// you. A capture appends one point as the inbox's last child (markdown-aware: a typed
+// `- [ ]` becomes a to-do, `# x` a heading). The dialog stays open after each capture
+// (the brain-dump flow) — clear, re-focus, ready for the next.
+let captureDraft = '';
+let captureCount = 0;
+function resolveInbox() { return root.inboxId ? nodeById(root.inboxId) : null; }
+
+function openCaptureDialog() {
+  captureDraft = '';
+  captureCount = 0;
+  ioReturnFocus = document.activeElement;
+  ioCancel = closeIo;
+  renderCaptureMain();
+  ioCard.setAttribute('aria-label', 'Capture to inbox');
+  ioBack.classList.add('on');
+}
+
+function renderCaptureMain() {
+  ioCard.innerHTML = '';
+  const inbox = resolveInbox();
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, { fa: 'fa-solid fa-inbox', fb: '⤓' });
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Capture';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  // destination line
+  const dest = document.createElement('div'); dest.className = 'cap-dest';
+  const to = document.createElement('span'); to.textContent = 'To:';
+  const name = document.createElement('span');
+  name.className = 'cap-dest-name' + (inbox ? '' : ' unset');
+  name.textContent = inbox ? crumbLabel(inbox) : 'choose a destination';
+  const change = document.createElement('button');
+  change.className = 'cap-change'; change.type = 'button';
+  change.textContent = inbox ? 'Change' : 'Choose…';
+  change.setAttribute('aria-label', inbox ? 'Change capture destination' : 'Choose capture destination');
+  change.addEventListener('click', () => renderCaptureDest());
+  dest.append(to, name, change); ioCard.appendChild(dest);
+
+  // text
+  const ta = document.createElement('textarea');
+  ta.className = 'cap-textarea'; ta.value = captureDraft;
+  ta.placeholder = 'Type a point to capture…';
+  ta.setAttribute('aria-label', 'Text to capture');
+  ta.spellcheck = true;
+  ta.addEventListener('input', () => { captureDraft = ta.value; });
+  ioCard.appendChild(ta);
+
+  const hint = document.createElement('div'); hint.className = 'cap-hint';
+  hint.textContent = 'Enter to capture · Shift+Enter for a line break';
+  ioCard.appendChild(hint);
+
+  const confirm = document.createElement('div'); confirm.className = 'cap-confirm';
+  confirm.setAttribute('aria-live', 'polite');
+  if (captureCount > 0) confirm.textContent = `✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'}`;
+  ioCard.appendChild(confirm);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const capBtn = document.createElement('button');
+  capBtn.className = 'io-btn primary'; capBtn.textContent = 'Capture'; capBtn.type = 'button';
+  capBtn.disabled = !inbox;
+  capBtn.addEventListener('click', () => doCapture());
+  const doneBtn = document.createElement('button');
+  doneBtn.className = 'io-btn'; doneBtn.textContent = 'Done'; doneBtn.type = 'button';
+  doneBtn.addEventListener('click', closeIo);
+  foot.append(doneBtn, capBtn); ioCard.appendChild(foot);
+
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCapture(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+  });
+
+  requestAnimationFrame(() => ta.focus());
+}
+
+// "Change destination" view — an inline point picker (reuses refileCandidates,
+// excluding nothing). Picking sets the inbox and returns to the capture view with
+// the draft preserved.
+function renderCaptureDest() {
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, { fa: 'fa-solid fa-inbox', fb: '⤓' });
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Choose inbox';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const search = document.createElement('input');
+  search.className = 'rf-search'; search.type = 'text'; search.placeholder = 'Search points…';
+  search.setAttribute('aria-label', 'Search for an inbox point');
+  search.autocomplete = 'off'; search.spellcheck = false;
+  ioCard.appendChild(search);
+
+  const listEl = document.createElement('div'); listEl.className = 'rf-list';
+  listEl.setAttribute('role', 'listbox'); listEl.setAttribute('aria-label', 'Inbox candidates');
+  ioCard.appendChild(listEl);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const back = document.createElement('button'); back.className = 'io-btn'; back.textContent = 'Back'; back.type = 'button';
+  back.addEventListener('click', () => renderCaptureMain());
+  foot.append(back); ioCard.appendChild(foot);
+
+  let items = refileCandidates('', '', root).slice(0, 60);
+  let activeIdx = 0;
+  function renderList() {
+    listEl.innerHTML = '';
+    if (!items.length) {
+      const empty = document.createElement('div'); empty.className = 'rf-empty';
+      empty.textContent = 'No matching points.'; listEl.appendChild(empty);
+      search.removeAttribute('aria-activedescendant'); return;
+    }
+    items.forEach((it, i) => {
+      const row = document.createElement('div');
+      row.className = 'rf-item' + (i === activeIdx ? ' hi' : '');
+      row.id = 'cap-opt-' + i; row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(i === activeIdx));
+      const t = document.createElement('div'); t.className = 'rf-item-title'; t.textContent = it.title;
+      row.appendChild(t);
+      if (it.path?.length) { const p = document.createElement('div'); p.className = 'rf-item-path'; p.textContent = it.path.join(' › '); row.appendChild(p); }
+      row.setAttribute('aria-label', `${it.title}${it.path?.length ? ', in ' + it.path.join(', ') : ''}`);
+      row.addEventListener('mouseenter', () => { activeIdx = i; renderList(); });
+      row.addEventListener('mousedown', e => { e.preventDefault(); activeIdx = i; pick(); });
+      listEl.appendChild(row);
+    });
+    search.setAttribute('aria-activedescendant', 'cap-opt-' + activeIdx);
+    listEl.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+  }
+  function pick() {
+    const it = items[activeIdx]; if (!it) return;
+    root.inboxId = it.id; markDirty();
+    renderCaptureMain();
+  }
+  search.addEventListener('input', () => { items = refileCandidates(search.value.trim(), '', root).slice(0, 60); activeIdx = 0; renderList(); });
+  search.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx + 1) % items.length; renderList(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx - 1 + items.length) % items.length; renderList(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(); }
+    else if (e.key === 'Escape') { e.preventDefault(); renderCaptureMain(); }
+  });
+  renderList();
+  requestAnimationFrame(() => search.focus());
+}
+
+function doCapture() {
+  const inbox = resolveInbox();
+  const text = (captureDraft || '').replace(/\s+$/, ''); // drop trailing blank lines/space
+  if (!inbox) { renderCaptureDest(); return; }            // no destination → make them pick
+  if (!text.trim()) return;
+  pushUndo();
+  const n = mkNode(text);
+  n.type = deriveTypeFromText(text) || 'ul';
+  n.checked = todoDoneFromText(text);
+  if (inbox.collapsed) inbox.collapsed = false;
+  inbox.children.push(n);
+  nodeMap.set(n.id, n); parentMap.set(n.id, inbox);
+  markDirty();
+  render();
+  captureCount++;
+  captureDraft = '';
+  flashHint(`Captured to ${crumbLabel(inbox)}`);
+  renderCaptureMain(); // clear + keep open for the next capture (brain-dump flow)
 }
 
 // ─── search ───────────────────────────────────────────────────────────────────
@@ -11246,6 +11426,7 @@ document.getElementById('btn-notes').addEventListener('click', () => {
   scheduleAutosave();
   render();
 });
+document.getElementById('btn-capture').addEventListener('click', () => openCaptureDialog());
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. The modifier
 // key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
@@ -11276,6 +11457,7 @@ const SHORTCUTS = [
     { keys: ['Tab', '⇧+Tab'],    desc: 'Indent / outdent' },
     { keys: ['Alt+↑', '↓'],      desc: 'Move point up / down' },
     { keys: ['Refile…'],         desc: 'Move a point (and its subtree) anywhere via search — in the bullet menu (⇧+F10)' },
+    { keys: ['⤓ Capture'],       desc: 'Toolbar inbox button: fast-add a point to a chosen inbox from anywhere, without navigating' },
   ]},
   { sec: 'TODO state & priority', rows: [
     { keys: ['#TODO'],            desc: 'Click a badge to open the state / priority picker' },

@@ -232,6 +232,21 @@ Implemented:
   focus follows the moved point. Pure core `refileCandidates(query, moveId, root)` —
   title-matched (case-insensitive, like `linkCandidates`), excludes the moved subtree,
   returns `{id, title, path}`; mover `refileNodeTo(moveId, targetId)`. No new syntax.
+- **Capture / quick inbox** — fast-add a point into a designated inbox **from
+  anywhere, without navigating there**. **Door:** the toolbar inbox button
+  (`#btn-capture`) opens a **Capture dialog** that overlays wherever you are — so a
+  capture never moves you off what you're doing. The **inbox** is a doc-level pointer
+  (`root.inboxId` → a point's id, persisted as the `<_inbox>` **OPML head element**;
+  node ids round-trip via `_id`, so the pointer survives reload; a deleted inbox is
+  treated as unset). You pick / change the inbox via an **inline point picker** (reuses
+  `refileCandidates`, search + keyboard nav) that swaps into the same card and returns
+  with your draft preserved. Each **Capture** appends **one markdown-aware point** —
+  type derived from the text, so a typed `- [ ]` lands as a to-do, `# x` a heading — as
+  the inbox's **last child**, then **clears and keeps the dialog open** (the brain-dump
+  flow) with a running **"✓ Captured N"** confirmation and a toast. **Enter** captures,
+  **Shift+Enter** is a line break. Until an inbox is set the Capture button is disabled
+  and the action routes to the picker (no silent no-op — P4). Helpers `openCaptureDialog`
+  / `doCapture` / `resolveInbox`. No new syntax.
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like
