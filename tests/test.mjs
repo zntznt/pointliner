@@ -3044,6 +3044,59 @@ test('collectDueDates — unparseable due prop ignored', () => {
   assert.equal(c.collectDueDates(r).length, 0);
 });
 
+test('collectDueDates — start date: started vs not-yet-started + range', () => {
+  const r = c.mkRoot();
+  // started yesterday, due in a week → started=true, runningDays=1
+  const running = c.mkNode('running task');
+  running.props = [{ key: 'start', val: 'today-1' }, { key: 'due', val: 'today+7' }];
+  // starts next week (future start), due later → not started, has a due
+  const upcoming = c.mkNode('upcoming task');
+  upcoming.props = [{ key: 'start', val: 'today+7' }, { key: 'due', val: 'today+14' }];
+  // start-only, started today → started=true, no due
+  const startedOnly = c.mkNode('started only');
+  startedOnly.props = [{ key: 'start', val: 'today' }];
+  r.children.push(running, upcoming, startedOnly);
+
+  const items = host(c.collectDueDates(r));
+  const by = title => items.find(i => i.title === title);
+
+  assert.equal(by('running task').started, true);
+  assert.equal(by('running task').runningDays, 1);
+  assert.ok(by('running task').due !== null && by('running task').start !== null);
+
+  assert.equal(by('upcoming task').started, false);   // future start
+  assert.ok(by('upcoming task').due !== null);
+
+  assert.equal(by('started only').started, true);
+  assert.equal(by('started only').runningDays, 0);    // started today
+  assert.equal(by('started only').due, null);
+});
+
+test('collectDueDates — done flag is derived from the node text', () => {
+  const r = c.mkRoot();
+  const open = c.mkNode('- [ ] open');   open.props = [{ key: 'due', val: 'today' }];
+  const done = c.mkNode('- [x] finished'); done.props = [{ key: 'due', val: 'today' }];
+  r.children.push(open, done);
+  const items = host(c.collectDueDates(r));
+  assert.equal(items.find(i => i.title === 'open').done,     false);
+  assert.equal(items.find(i => i.title === 'finished').done, true);
+});
+
+test('parseSearchQuery / termMatchesNode — start: operator mirrors due:', () => {
+  const q = host(c.parseSearchQuery('start:today'));
+  assert.equal(q[0].kind, 'start');
+  assert.equal(q[0].op, '=');
+  assert.equal(q[0].epochDay, c.dueDateToday());
+
+  const n = c.mkNode('task');
+  n.props = [{ key: 'start', val: '2026-06-15' }];
+  const ep = c.parseDueDate('2026-06-15');
+  assert.ok( c.termMatchesNode({ kind: 'start', op: '=', epochDay: ep }, n, []));
+  assert.ok(!c.termMatchesNode({ kind: 'start', op: '=', epochDay: ep + 1 }, n, []));
+  // a due: term must NOT match a node that only carries a start prop
+  assert.ok(!c.termMatchesNode({ kind: 'due', op: '=', epochDay: ep }, n, []));
+});
+
 test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
   const today = c.dueDateToday();
   const q1 = host(c.parseSearchQuery('due:today'));
@@ -3109,5 +3162,8 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes('collectDueDates'), 'collectDueDates missing');
   assert.ok(_src.includes('btn-agenda'), 'agenda button missing');
   assert.ok(_src.includes('renderAgenda'), 'renderAgenda missing');
-  assert.ok(_src.includes("kind: 'due'"), 'due search kind missing');
+  assert.ok(_src.includes("/^(due|start):"), 'due/start search operator missing');
+  assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
+  assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
+  assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
 });

@@ -600,6 +600,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .prop-chip.prop-due-overdue .prop-val{color:var(--bad)}
 .prop-chip.prop-due-today .prop-val{color:var(--ok)}
 .prop-chip.prop-due-soon .prop-val{color:var(--acc)}
+/* start-date chip — neutral/accent ink (a start is never "overdue"-urgent) */
+.prop-chip.prop-start-overdue .prop-val,.prop-chip.prop-start-today .prop-val,.prop-chip.prop-start-soon .prop-val{color:var(--acc)}
+.prop-chip.prop-start-future .prop-val{color:var(--muted)}
 .node-props-row>.collapse-btn,.node-props-row>.ol-num{visibility:hidden}
 .node-props-row>.bullet{cursor:default}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
@@ -791,27 +794,37 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* keep the help affordance from colliding with the footnote panel */
 #fn-panel.on ~ #sc-toggle{bottom:calc(256px + env(safe-area-inset-bottom))}
 #fn-panel.on ~ .sc-panel{bottom:calc(296px + env(safe-area-inset-bottom))}
-/* ── agenda strip (horizontal scroll, sits inside the toolbar) ── */
-#agenda-strip{display:none;overflow-x:auto;align-items:center;gap:4px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg);scrollbar-width:none;min-height:0}
+/* ── agenda strip (two horizontal rows, sits inside the toolbar) ── */
+#agenda-strip{display:none;align-items:stretch;gap:8px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
 #agenda-strip.on{display:flex}
-#agenda-strip::-webkit-scrollbar{display:none}
-.ag-sep{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;flex-shrink:0;user-select:none;padding:0 2px 0 6px}
-.ag-sep:first-child{padding-left:0}
-.ag-sep:not(:first-child)::before{content:'·';margin-right:6px;color:var(--bdr);font-weight:400}
-.ag-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px 2px 6px;border-radius:var(--r-lg);cursor:pointer;border:1px solid;flex-shrink:0;max-width:164px;white-space:nowrap}
-.ag-chip:hover{opacity:.8}
+/* left control group: complexity toggles now; calendar / timeline views later */
+.ag-controls{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;gap:3px;padding-right:8px;border-right:1px solid var(--bdr)}
+.ag-toggle{font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--muted);background:transparent;border:1px solid var(--bdr);border-radius:var(--r-md);padding:1px 7px;cursor:pointer;white-space:nowrap;line-height:1.5;min-width:62px;text-align:left}
+.ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
+.ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 32%,transparent)}
+.ag-toggle:focus-visible{outline:2px solid var(--ring);outline-offset:1px}
+/* the two stacked, independently-scrollable rows */
+.ag-rows{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;justify-content:center}
+.ag-row{display:flex;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;min-height:22px}
+.ag-row::-webkit-scrollbar{display:none}
+.ag-rowlabel{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;flex-shrink:0;width:50px}
+.ag-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--r-lg);cursor:pointer;border:1px solid;flex-shrink:0;max-width:210px;white-space:nowrap}
+.ag-chip:hover{opacity:.82}
 .ag-chip:focus-visible{outline:2px solid var(--ring);outline-offset:1px;opacity:1}
 .ag-chip.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
 .ag-chip.today{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
 .ag-chip.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
-.ag-chip.future{background:color-mix(in srgb,var(--fg) 4%,transparent);border-color:var(--bdr)}
-.ag-chip-date{font-size:10px;font-weight:700;flex-shrink:0}
-.ag-chip.overdue .ag-chip-date{color:var(--bad)}
-.ag-chip.today .ag-chip-date{color:var(--ok)}
-.ag-chip.soon .ag-chip-date{color:var(--acc)}
-.ag-chip.future .ag-chip-date{color:var(--muted)}
+.ag-chip.future,.ag-chip.none{background:color-mix(in srgb,var(--fg) 4%,transparent);border-color:var(--bdr)}
+.ag-chip.done{opacity:.55}
+.ag-badge{font-size:10px;font-weight:700;flex-shrink:0}
+.ag-chip.overdue .ag-badge.deadline{color:var(--bad)}
+.ag-chip.today .ag-badge.deadline{color:var(--ok)}
+.ag-chip.soon .ag-badge.deadline{color:var(--acc)}
+.ag-chip.future .ag-badge.deadline,.ag-chip.none .ag-badge.deadline{color:var(--muted)}
+.ag-run{font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0}
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
-.ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;flex-shrink:0}
+.ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
+.ag-mini{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-style:normal}
 #btn-agenda.active{color:var(--acc)}
 
 /* storage warning banner */
@@ -981,7 +994,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         </div>
         <div class="sh-row"><kbd>#tag</kbd><span>points with a tag — state keywords too (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
-        <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>due:&lt;date</kbd><span>dated points — <code>YYYY-MM-DD</code>, <code>today±N</code></span></div>
+        <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points — <code>YYYY-MM-DD</code>, <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase — terms combine (AND)</span></div>
       </div>
@@ -999,7 +1012,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
   <div id="breadcrumb-row"></div>
-  <div id="agenda-strip" role="region" aria-label="Agenda" aria-live="polite"></div>
+  <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
 <div id="file-menu" role="dialog" aria-label="Pointliner menu">
   <div class="fm-head">
@@ -1444,10 +1457,11 @@ function formatProgressCookie(kind, done, total) {
   return '[' + done + '/' + total + ']';
 }
 
-// ─── due dates ───────────────────────────────────────────────────────────────
-// Dates live as a property with key "due" and value YYYY-MM-DD (or relative
-// expressions: "today", "today+N", "today-N", "tomorrow"). Epoch-day numbers
-// are the internal currency — the same integer unit evalMath uses for `today`.
+// ─── dates: start + due ────────────────────────────────────────────────────────
+// Dates live as properties with key "start" and/or "due", value YYYY-MM-DD (or
+// relative expressions: "today", "today+N", "today-N", "tomorrow") — a point can
+// carry a start→due range. Epoch-day numbers are the internal currency — the same
+// integer unit evalMath uses for `today`. Both keys parse through parseDueDate.
 
 function dueDateToday() {
   const d = new Date();
@@ -1505,23 +1519,38 @@ function formatDueDate(epochDay) {
   return { iso, label, state };
 }
 
-// Walk the tree and collect every node that has a parseable "due" property.
-// Returns [{ id, title, path, epochDay, iso, label, state }] sorted ascending.
+// Walk the tree and collect every point with a parseable "start" and/or "due"
+// property — a point can carry a date range (start → due, project-management
+// style). Each item carries both epoch dates plus derived running/done state;
+// the agenda render splits them into the Due row (deadlines not yet started) and
+// the Running row (started points, with elapsed time + their deadline).
+// `epochDay`/`iso`/`label`/`state` describe the PRIMARY date (the due if present,
+// else the start), so the legacy due-only callers/tests are unchanged. Pure
+// given root.
+// Returns [{ id, title, path, start, due, started, done, runningDays,
+//            epochDay, iso, label, state }] sorted by primary date ascending.
 function collectDueDates(rootNode = root) {
+  const today = dueDateToday();
   const items = [];
   function walk(n, path) {
-    const dueProp = (n.props || []).find(p => p.key.toLowerCase() === 'due');
-    if (dueProp) {
-      const ep = parseDueDate(dueProp.val);
-      if (ep !== null) {
-        const { iso, label, state } = formatDueDate(ep);
-        items.push({
-          id: n.id,
-          title: textForDisplay(n) || '(untitled)',
-          path: path.slice(),
-          epochDay: ep, iso, label, state,
-        });
-      }
+    const props = n.props || [];
+    const dueProp   = props.find(p => p.key.toLowerCase() === 'due');
+    const startProp = props.find(p => p.key.toLowerCase() === 'start');
+    const due   = dueProp   ? parseDueDate(dueProp.val)   : null;
+    const start = startProp ? parseDueDate(startProp.val) : null;
+    if (due !== null || start !== null) {
+      const started = start !== null && start <= today;
+      const primary = due !== null ? due : start; // deadline drives display when present
+      const { iso, label, state } = formatDueDate(primary);
+      items.push({
+        id: n.id,
+        title: textForDisplay(n) || '(untitled)',
+        path: path.slice(),
+        start, due, started,
+        done: todoDoneFromText(n.text),
+        runningDays: started ? today - start : null,
+        epochDay: primary, iso, label, state,
+      });
     }
     const childPath = path.concat(textForDisplay(n) || '(untitled)');
     for (const c of (n.children || [])) walk(c, childPath);
@@ -2961,7 +2990,7 @@ const BLOCK_CMDS = [
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
-  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Due date',   desc:'Set or clear the due date on this point. Shows in the Agenda.', ex:'due: YYYY-MM-DD', section:'Organize' },
+  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Shows in the Agenda.', ex:'start → due', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -4791,14 +4820,15 @@ function buildPropsArea(node) {
     chip.setAttribute('tabindex', '-1');
     chip.dataset.propsId = node.id;
     let displayVal = val;
-    if (key.toLowerCase() === 'due') {
+    const propK = key.toLowerCase();
+    if (propK === 'due' || propK === 'start') {
       const ep = parseDueDate(val);
       if (ep !== null) {
         const df = formatDueDate(ep);
-        displayVal = df.label;
-        chip.classList.add('prop-due-' + df.state);
+        displayVal = (propK === 'start' ? '▸ ' : '') + df.label;
+        chip.classList.add('prop-' + propK + '-' + df.state);
         chip.title = df.iso + ' — click to edit';
-        chip.setAttribute('aria-label', `due: ${df.label} (${df.iso}) — click to edit properties`);
+        chip.setAttribute('aria-label', `${propK}: ${df.label} (${df.iso}) — click to edit properties`);
       }
     }
     if (!chip.title) chip.title = 'Edit properties';
@@ -4932,75 +4962,89 @@ function openPropsDialog(nodeId) {
   });
 }
 
-// ─── due date dialog ─────────────────────────────────────────────────────────
-// A focused single-field dialog for setting / clearing the "due" property.
-// Accepts YYYY-MM-DD, "today", "today+N", "today-N", "tomorrow".
+// ─── schedule dialog ─────────────────────────────────────────────────────────
+// A two-field dialog for setting / clearing the "start" and "due" properties — a
+// point can carry a start→due range. Each field accepts YYYY-MM-DD, "today",
+// "today+N", "today-N", "tomorrow"; blank clears that date.
 const DUE_ICON = { fa: 'fa-solid fa-calendar-day', fb: '📅' };
 
 function openDueDateDialog(nodeId) {
   const node = nodeById(nodeId);
   if (!node) return;
-  const existing = (node.props || []).find(p => p.key.toLowerCase() === 'due');
-  const initVal = existing ? existing.val : formatEpochDays(dueDateToday());
+  const propVal = k => ((node.props || []).find(p => p.key.toLowerCase() === k) || {}).val || '';
+  const startInit = propVal('start');
+  const dueInit   = propVal('due') || (startInit ? '' : formatEpochDays(dueDateToday()));
 
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, DUE_ICON);
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Due date';
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Schedule';
   head.append(ic, ttl); ioCard.appendChild(head);
 
-  const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px';
-  const inp = document.createElement('input');
-  inp.type = 'text'; inp.className = 'props-input val-in';
-  inp.style.cssText = 'width:100%;box-sizing:border-box';
-  inp.value = initVal;
-  inp.placeholder = 'YYYY-MM-DD, today, today+7…';
-  inp.setAttribute('aria-label', 'Due date');
-  const preview = document.createElement('div');
-  preview.style.cssText = 'font-size:11px;color:var(--muted);margin-top:5px;min-height:16px';
-  function updatePreview() {
-    const ep = parseDueDate(inp.value.trim());
-    if (!inp.value.trim()) { preview.textContent = 'Leave blank to clear the due date'; return; }
-    if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date — try YYYY-MM-DD'; return; }
-    const df = formatDueDate(ep);
-    preview.style.color = df.state === 'overdue' ? 'var(--bad)' : df.state === 'today' ? 'var(--ok)' : 'var(--muted)';
-    preview.textContent = df.label + ' · ' + df.iso;
+  const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px;display:flex;flex-direction:column;gap:12px';
+
+  // One labelled date field with a live preview. Returns { inp, valid() }.
+  function dateField(labelText, initVal, ariaLabel) {
+    const f = document.createElement('div');
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px';
+    lbl.textContent = labelText;
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.className = 'props-input val-in';
+    inp.style.cssText = 'width:100%;box-sizing:border-box';
+    inp.value = initVal;
+    inp.placeholder = 'YYYY-MM-DD, today, today+7…';
+    inp.setAttribute('aria-label', ariaLabel);
+    const preview = document.createElement('div');
+    preview.style.cssText = 'font-size:11px;color:var(--muted);margin-top:5px;min-height:16px';
+    function updatePreview() {
+      const v = inp.value.trim();
+      if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank to clear'; return; }
+      const ep = parseDueDate(v);
+      if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date — try YYYY-MM-DD'; return; }
+      const df = formatDueDate(ep);
+      preview.style.color = df.state === 'overdue' ? 'var(--bad)' : df.state === 'today' ? 'var(--ok)' : 'var(--muted)';
+      preview.textContent = df.label + ' · ' + df.iso;
+    }
+    inp.addEventListener('input', updatePreview);
+    updatePreview();
+    f.append(lbl, inp, preview);
+    return { f, inp, valid: () => { const v = inp.value.trim(); return !v || parseDueDate(v) !== null; } };
   }
-  inp.addEventListener('input', updatePreview);
-  updatePreview();
-  wrap.append(inp, preview); ioCard.appendChild(wrap);
+
+  const startF = dateField('Start', startInit, 'Start date');
+  const dueF   = dateField('Due',   dueInit,   'Due date');
+  wrap.append(startF.f, dueF.f); ioCard.appendChild(wrap);
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const clearBtn = document.createElement('button'); clearBtn.className = 'io-btn'; clearBtn.textContent = 'Clear';
-  const setBtn = document.createElement('button'); setBtn.className = 'io-btn primary'; setBtn.textContent = 'Set';
-  foot.append(cancelBtn, clearBtn, setBtn); ioCard.appendChild(foot);
+  const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
+  foot.append(cancelBtn, saveBtn); ioCard.appendChild(foot);
 
-  function save(valToSet) {
+  function save() {
+    if (!startF.valid()) { startF.inp.focus(); return; }
+    if (!dueF.valid())   { dueF.inp.focus();   return; }
     pushUndo();
-    const other = (node.props || []).filter(p => p.key.toLowerCase() !== 'due');
-    node.props = valToSet ? [...other, { key: 'due', val: valToSet }] : other;
+    const sv = startF.inp.value.trim(), dv = dueF.inp.value.trim();
+    const props = (node.props || []).filter(p => { const k = p.key.toLowerCase(); return k !== 'start' && k !== 'due'; });
+    if (sv) props.push({ key: 'start', val: sv });
+    if (dv) props.push({ key: 'due',   val: dv });
+    node.props = props;
     markDirty(); render();
     if (agendaOpen) renderAgenda();
     closeIo();
   }
   cancelBtn.addEventListener('click', closeIo);
-  clearBtn.addEventListener('click', () => save(null));
-  setBtn.addEventListener('click', () => {
-    const v = inp.value.trim();
-    if (!v) { save(null); return; }
-    if (parseDueDate(v) === null) { inp.focus(); return; }
-    save(v);
-  });
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); setBtn.click(); }
+  saveBtn.addEventListener('click', save);
+  [startF.inp, dueF.inp].forEach(inp => inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
     if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
-  });
+  }));
   ioCancel = closeIo;
   ioReturnFocus = document.activeElement;
-  ioCard.setAttribute('aria-label', 'Due date');
+  ioCard.setAttribute('aria-label', 'Schedule');
   ioBack.classList.add('on');
-  requestAnimationFrame(() => { inp.select(); inp.focus(); });
+  requestAnimationFrame(() => { dueF.inp.select(); dueF.inp.focus(); });
 }
 
 // ─── templates ─────────────────────────────────────────────────────────────────
@@ -5537,13 +5581,15 @@ function parseSearchQuery(q) {
     if ((t = tok.match(/^#(\w+)$/)))                            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^is:(done|todo|note)$/i)))         terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^due:(.+)$/i))) {
-      // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date
-      const raw = t[1]; let op = '=', dval = raw;
+    else if ((t = tok.match(/^(due|start):(.+)$/i))) {
+      // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
+      // same forms for start: (date-aware extensions of key:value, one per key).
+      const kind = t[1].toLowerCase();           // 'due' | 'start'
+      const raw = t[2]; let op = '=', dval = raw;
       if (raw[0] === '<') { op = '<'; dval = raw.slice(1); }
       else if (raw[0] === '>') { op = '>'; dval = raw.slice(1); }
-      if (dval.toLowerCase() === 'overdue') { terms.push({ neg, kind: 'due', op: 'overdue' }); }
-      else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind: 'due', op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
+      if (dval.toLowerCase() === 'overdue') { terms.push({ neg, kind, op: 'overdue' }); }
+      else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
     }
     else if ((t = tok.match(/^([\w][\w-]*):([\w][\w-]*)$/)) && t[1].toLowerCase() !== 'is') terms.push({ neg, kind: 'prop', key: t[1].toLowerCase(), value: t[2].toLowerCase() });
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
@@ -5573,10 +5619,10 @@ function termMatchesNode(term, node, seqs) {
   if (term.kind === 'prop') {
     return (node.props || []).some(p => p.key.toLowerCase() === term.key && p.val.toLowerCase() === term.value);
   }
-  if (term.kind === 'due') {
-    const dueProp = (node.props || []).find(p => p.key.toLowerCase() === 'due');
-    if (!dueProp) return false;
-    const ep = parseDueDate(dueProp.val);
+  if (term.kind === 'due' || term.kind === 'start') {
+    const prop = (node.props || []).find(p => p.key.toLowerCase() === term.kind);
+    if (!prop) return false;
+    const ep = parseDueDate(prop.val);
     if (ep === null) return false;
     if (term.op === 'overdue') return ep < dueDateToday();
     if (term.op === '<') return ep < term.epochDay;
@@ -6892,7 +6938,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
-    { icon: DUE_ICON, label: (node.props || []).some(p => p.key.toLowerCase() === 'due') ? 'Edit due date' : 'Set due date',
+    { icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
       fn: () => { hideBpop(); openDueDateDialog(nodeId); } },
     { icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
@@ -11520,54 +11566,115 @@ function updateVarPanelContent() {
 document.getElementById('var-panel-close').addEventListener('click', closeVarPanel);
 varPanelEl.addEventListener('mousedown', e => e.stopPropagation());
 
-// ─── agenda panel ─────────────────────────────────────────────────────────────
-// Shows all points with a "due" property containing a valid date, grouped and
-// sorted by date. Toggled via the toolbar calendar button; re-renders when open.
+// ─── agenda strip ──────────────────────────────────────────────────────────────
+// A two-row horizontal strip inside the toolbar (no vertical sidebar — stays
+// mobile-friendly). The TOP row shows upcoming deadlines (points with a due date
+// not yet started); the BOTTOM "Running" row shows started points (start ≤ today)
+// with how long they've been running plus their deadline. A left control group
+// holds complexity toggles (Running row, Done items); calendar / timeline view
+// buttons will join it later. Re-renders on edit while open.
 
 let agendaOpen = false;
+let agendaShowRunning = true;   // bottom row visible by default
+let agendaShowDone = false;     // completed dated points hidden by default
+
+function mkAgToggle(label, on, onToggle) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'ag-toggle' + (on ? ' on' : '');
+  b.textContent = label; b.setAttribute('aria-pressed', String(on));
+  b.addEventListener('click', onToggle);
+  return b;
+}
+
+function mkAgRow(label) {
+  const row = document.createElement('div');
+  row.className = 'ag-row'; row.setAttribute('role', 'group'); row.setAttribute('aria-label', label);
+  const l = document.createElement('span'); l.className = 'ag-rowlabel'; l.textContent = label; l.setAttribute('aria-hidden', 'true');
+  row.appendChild(l);
+  return row;
+}
+
+function agMini(text) {
+  const s = document.createElement('span'); s.className = 'ag-mini'; s.textContent = text; return s;
+}
+
+function mkAgChip(it, kind) {
+  const chip = document.createElement('div');
+  chip.setAttribute('role', 'button'); chip.setAttribute('tabindex', '0');
+  const pathStr = it.path.length ? ' · ' + it.path.join(' › ') : '';
+  let aria;
+  if (kind === 'run') {
+    // started point: running duration + deadline (if any), deadline drives color
+    chip.className = 'ag-chip ' + (it.due !== null ? it.state : 'none') + (it.done ? ' done' : '');
+    const elapsed = it.runningDays === 0 ? 'today' : it.runningDays + 'd';
+    const run = document.createElement('span'); run.className = 'ag-run'; run.textContent = '▶ ' + elapsed;
+    chip.appendChild(run);
+    let deadlineTxt = '';
+    if (it.due !== null) {
+      const dl = document.createElement('span'); dl.className = 'ag-badge deadline'; dl.textContent = 'due ' + it.label;
+      chip.appendChild(dl); deadlineTxt = ', due ' + it.label;
+    }
+    const runTxt = it.runningDays === 0 ? 'started today' : 'running ' + it.runningDays + 'd';
+    aria = it.title + ' — ' + runTxt + deadlineTxt + pathStr;
+  } else {
+    // upcoming deadline
+    chip.className = 'ag-chip ' + it.state + (it.done ? ' done' : '');
+    const badge = document.createElement('span'); badge.className = 'ag-badge deadline'; badge.textContent = it.label;
+    chip.appendChild(badge);
+    aria = it.title + ' — due ' + it.label + pathStr;
+  }
+  const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
+  chip.appendChild(titleEl);
+  chip.title = aria; chip.setAttribute('aria-label', aria);
+  const navigate = () => { focusNode(it.id); };
+  chip.addEventListener('click', navigate);
+  chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
+  return chip;
+}
 
 function renderAgenda() {
   const strip = document.getElementById('agenda-strip');
   if (!strip) return;
   strip.innerHTML = '';
-  const items = collectDueDates(root);
-  if (!items.length) {
-    const e = document.createElement('span'); e.className = 'ag-empty';
-    e.textContent = 'No dated points. Set a due date via /due or the bullet menu.';
-    strip.appendChild(e); return;
+
+  // left control group — complexity toggles (calendar / timeline views land here later)
+  const controls = document.createElement('div'); controls.className = 'ag-controls';
+  const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); });
+  runT.title = 'Show the running row (started points)';
+  const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); });
+  doneT.title = 'Include completed points';
+  controls.append(runT, doneT);
+  strip.appendChild(controls);
+
+  const rowsEl = document.createElement('div'); rowsEl.className = 'ag-rows';
+  strip.appendChild(rowsEl);
+
+  const all = collectDueDates(root);
+  const visible = all.filter(it => agendaShowDone || !it.done);
+  // Top row: deadlines not yet started. Bottom row: started points.
+  const dueItems = visible.filter(it => it.due !== null && !it.started).sort((a, b) => a.due - b.due);
+  const runItems = visible.filter(it => it.started)
+    .sort((a, b) => (a.due ?? Infinity) - (b.due ?? Infinity) || a.start - b.start);
+
+  if (!all.length) {
+    rowsEl.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.'));
+    return;
   }
-  const today = dueDateToday();
-  const sections = [
-    { label: 'Overdue',    test: d => d < today },
-    { label: 'Today',      test: d => d === today },
-    { label: 'Coming up',  test: d => d > today && d <= today + 6 },
-    { label: 'Later',      test: d => d > today + 6 },
-  ];
-  for (const sec of sections) {
-    const group = items.filter(it => sec.test(it.epochDay));
-    if (!group.length) continue;
-    const sep = document.createElement('span');
-    sep.className = 'ag-sep'; sep.textContent = sec.label;
-    sep.setAttribute('aria-hidden', 'true');
-    strip.appendChild(sep);
-    for (const it of group) {
-      const chip = document.createElement('div'); chip.className = 'ag-chip ' + it.state;
-      chip.setAttribute('role', 'button'); chip.setAttribute('tabindex', '0');
-      chip.setAttribute('aria-label', it.title + ' — due ' + it.label + (it.path.length ? ' · ' + it.path.join(' › ') : ''));
-      chip.title = it.title + (it.path.length ? ' · ' + it.path.join(' › ') : '');
-      // The date badge repeats the section label in the Today group ("Today"
-      // under "Today") — the green chip already carries that, so drop it there.
-      if (it.state !== 'today') {
-        const dateEl = document.createElement('span'); dateEl.className = 'ag-chip-date'; dateEl.textContent = it.label;
-        chip.appendChild(dateEl);
-      }
-      const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
-      chip.appendChild(titleEl);
-      const navigate = () => { focusNode(it.id); };
-      chip.addEventListener('click', navigate);
-      chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
-      strip.appendChild(chip);
-    }
+  if (!dueItems.length && !runItems.length) {
+    rowsEl.appendChild(agMini('Nothing to show — adjust the toggles.'));
+    return;
+  }
+
+  const dueRow = mkAgRow('Due');
+  if (dueItems.length) for (const it of dueItems) dueRow.appendChild(mkAgChip(it, 'due'));
+  else dueRow.appendChild(agMini('Nothing due'));
+  rowsEl.appendChild(dueRow);
+
+  if (agendaShowRunning) {
+    const runRow = mkAgRow('Running');
+    if (runItems.length) for (const it of runItems) runRow.appendChild(mkAgChip(it, 'run'));
+    else runRow.appendChild(agMini('Nothing running'));
+    rowsEl.appendChild(runRow);
   }
 }
 
@@ -11595,6 +11702,8 @@ function toggleAgenda() { if (agendaOpen) closeAgenda(); else openAgenda(); }
 document.getElementById('btn-agenda').addEventListener('click', toggleAgenda);
 document.getElementById('agenda-strip').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeAgenda(); document.getElementById('btn-agenda').focus(); }
+  // keep chip/toggle focus from leaking keys to global shortcuts (Tab still navigates)
+  if (e.key !== 'Tab') e.stopPropagation();
 });
 
 // ─── boot ─────────────────────────────────────────────────────────────────────
