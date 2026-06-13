@@ -109,7 +109,18 @@ Implemented:
   mirrored flex row with invisible gutter clones (collapse-btn / bullet / ol-num)
   keeps the note aligned with the content at every viewport and touch size; the
   live editor survives window re-renders via the `forceIncludeId` base-cell
-  pattern.
+  pattern. The **zoom view** renders the zoomed point's note under its title
+  (`.zoom-note`, same editor; Esc there just commits — focusing the title would
+  flip it into raw edit). **Global toggle:** `#btn-notes` in the header (beside
+  show-done; shown by default, persisted in the autosave payload) hides all
+  notes; a hidden note is never silent — a whisper-level `.note-ind` glyph
+  (`.fn-ref` metrics in `--muted` ink, `fa-file-lines`) trails the point text,
+  display-mode only so it can never leak into the edit buffer, and click /
+  Enter / Space reveals that one note for editing (it re-hides on blur).
+  Typography per the design-language consult: `.88em` (the inline-code step),
+  `line-height:1.5` (the sanctioned step), `--muted` ink, regular upright (no
+  italic — that's the blockquote register), no border-left, and the placeholder
+  uses plain `--muted` (the `opacity:.7` contrast-floor violation was fixed).
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like

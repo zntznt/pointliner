@@ -296,6 +296,17 @@ test('note — plain-text export emits note indented under the item', () => {
   assert.ok(txt.includes('item\n\twhy this matters'), txt);
 });
 
+test('note — the global toggle and its hidden-note indicator are wired (src pins)', () => {
+  // the header front door (P2): a real button with pressed state
+  assert.ok(_src.includes('id="btn-notes"'), 'btn-notes button missing');
+  assert.ok(_src.includes("getElementById('btn-notes').addEventListener"), 'toggle handler missing');
+  // hiding is not silent (P4): the indicator render path + its keyboard twin (P3)
+  assert.ok(_src.includes('appendNoteIndicator'), 'indicator builder missing');
+  assert.ok(_src.includes("closest?.('.note-ind')"), 'indicator Enter/Space branch missing');
+  // the toggle state rides the autosave payload
+  assert.ok(_src.includes('showDone, showNotes'), 'showNotes not persisted in autosave payload');
+});
+
 test('toOpml — encodes tabs/CRs as char refs (would otherwise collapse to spaces)', () => {
   const root = c.mkRoot();
   root.children.push(c.mkNode('a\tb\rc'));

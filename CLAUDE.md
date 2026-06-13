@@ -481,7 +481,11 @@ Node links (same-doc, incl. live-title "mirror" and the `[[` picker) ·
 Click-anywhere-to-edit ·
 Per-point notes (`node.note` + `_note` OPML attr: a muted plain-text block under the
 point — bullet-menu door, click-to-edit in place, Esc/blur commits, clearing deletes;
-plain text only by design, searched, exported as continuation lines) ·
+plain text only by design, searched, exported as continuation lines; renders in the
+zoom view under the title; a **global header toggle** (`#btn-notes`, shown by default,
+persisted) hides all notes, leaving a whisper-level `.note-ind` mark on noted points —
+click/Enter/Space reveals that one note; typography per the design-language consult:
+`.88em`/`1.5` existing steps, `--muted`, no italic, no opacity-faded placeholder) ·
 Status states + priorities (`#TODO [#A] body` — the `#` prefix reuses the hashtag sigil;
 bare `TODO` without `#` is plain text; to-do-ness fully derives from the text — task marker
 or `#keyword` — see the node model above) ·
