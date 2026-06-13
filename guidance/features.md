@@ -96,6 +96,35 @@ Implemented:
   (`focusedId` or root). Toolbar segmented control `1·2·3·All`; keyboard
   `Ctrl/Cmd+1..6` is a best-effort accelerator (browsers may claim those chords
   for tab switching, so the toolbar is the reliable path).
+- **Per-point notes** — a secondary, muted plain-text block under a point
+  (`node.note`, `_note` OPML attr). **Plain text only by design** — a note is
+  annotation, not content: no markdown, no pills, so none of the unfold/prune/
+  promotion machinery applies. Doors: the bullet menu's "Add note"/"Edit note"
+  (hover, long-press on touch, `Shift+F10` keyboard) and click-the-note to edit
+  in place (the display IS the editor — no raw/pretty split for plain text).
+  Enter = line break (a prose *field*, like a dialog textarea or table cell);
+  Esc or blur commits; clearing all text deletes the note. Notes are searched
+  (`nodeMatchesSearch`), highlighted, exported as indented continuation lines
+  (markdown + plain text), and ride snapshots/clones for free. Layout: a second
+  mirrored flex row with invisible gutter clones (collapse-btn / bullet / ol-num)
+  keeps the note aligned with the content at every viewport and touch size; the
+  live editor survives window re-renders via the `forceIncludeId` base-cell
+  pattern. The note row's bullet slot carries a **gutter mark** — a small
+  `fa-file-lines` glyph in `--muted`, constrained to the dot's 6px slot so the
+  text edge is untouched — centered on the parent's bullet column, saying
+  "this line is a note" (decorative, `aria-hidden`; the note's accessible name
+  lives on the editor). The **zoom view** renders the zoomed point's note under its title
+  (`.zoom-note`, same editor; Esc there just commits — focusing the title would
+  flip it into raw edit). **Global toggle:** `#btn-notes` in the header (beside
+  show-done; shown by default, persisted in the autosave payload) hides all
+  notes; a hidden note is never silent — a whisper-level `.note-ind` glyph
+  (`.fn-ref` metrics in `--muted` ink, `fa-file-lines`) trails the point text,
+  display-mode only so it can never leak into the edit buffer, and click /
+  Enter / Space reveals that one note for editing (it re-hides on blur).
+  Typography per the design-language consult: `.88em` (the inline-code step),
+  `line-height:1.5` (the sanctioned step), `--muted` ink, regular upright (no
+  italic — that's the blockquote register), no border-left, and the placeholder
+  uses plain `--muted` (the `opacity:.7` contrast-floor violation was fixed).
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like

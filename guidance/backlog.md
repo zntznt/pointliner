@@ -100,9 +100,17 @@ with `TODO NEXT WAITING | DONE` as the built-in default. Zero new syntax. See
 Per-node key-value metadata, enabling property-based filtering and a future column view.
 - **Fit — medium.** A new per-node `props` sidecar + serialize.
 
-### ◐ Per-bullet notes
-A secondary note under a bullet. The model already carries an unused `note` field.
-- **Fit — easy.** Surface a note editor under the row; add `_note` to OPML serialize/parse.
+### ✓ Per-bullet notes — shipped
+A secondary note under a point. Muted plain-text block (no markdown/pills by design —
+a note is annotation, not content), aligned with the content via mirrored gutter rows.
+Doors: bullet menu "Add note"/"Edit note" (hover, long-press, `Shift+F10`), click the
+note to edit in place; Enter = line break (a prose field), Esc/blur commits, clearing
+all text deletes. `_note` OPML attribute (write + parse), included in search, exported
+as indented continuation lines in markdown/plain text. Undo via snapshot. Renders in
+the zoom view under the title. **Globally toggleable** (`#btn-notes`, shown by default,
+persisted); hidden notes leave a whisper-level indicator on the point — click/Enter/
+Space reveals that one note. Typography conforms to `design-language.md` (existing
+type steps, `--muted`, no italic, no opacity-faded placeholder).
 
 ### ☐ Templates
 Reusable subtree templates.

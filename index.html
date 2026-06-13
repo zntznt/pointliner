@@ -112,7 +112,12 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 button{cursor:pointer;border:1px solid transparent;background:transparent;color:var(--fg);font-family:inherit;font-size:12.5px;padding:4px 10px;border-radius:var(--r-sm);transition:background .1s;white-space:nowrap;flex-shrink:0}
 button:hover{background:var(--bdr)}
 button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
-#btn-done{height:28px;min-width:30px}
+#btn-done,#btn-notes{height:28px;min-width:30px}
+/* hidden-note indicator: a whisper-level trailing mark after the point text
+   (the .fn-ref metrics, but muted ink — accent would read as a link-jump) */
+.note-ind{color:var(--muted);font-size:.72em;vertical-align:super;cursor:pointer;line-height:0;margin-left:.35em;user-select:none}
+.note-ind:hover{color:var(--fg)}
+.note-ind:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
 /* outline level control (segmented) */
 #level-ctl{display:flex;border:1px solid var(--bdr);background:var(--cbg);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;padding:2px;gap:1px;height:28px;align-items:stretch}
 #level-ctl .lvl-btn{border:none;border-radius:4px;padding:2px 8px;font-size:12px;min-width:26px;color:var(--muted)}
@@ -209,6 +214,26 @@ body.base-zoom #outline{max-width:none}
 .node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
 .node-content:focus{box-shadow:0 0 0 2px var(--ring)}
 .node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
+/* ── per-point note: a second mirrored flex row (invisible gutter clones keep the
+   note aligned with the content across every media query) ── */
+.node-note-row{padding-top:0}
+.node-note-row>.collapse-btn,.node-note-row>.ol-num{visibility:hidden}
+/* the note's gutter mark: a whisper-level glyph in the bullet column (decorative —
+   the note itself is the editor). Constrained to the dot's 6px slot so the note
+   text's left edge matches the content exactly; the glyph centers over it. */
+.node-note-row>.bullet{cursor:default}
+.note-mark{width:6px;display:flex;justify-content:center;color:var(--muted);font-size:12px;line-height:0;flex-shrink:0}
+.node-note{flex:1;min-width:0;outline:none;word-break:break-word;white-space:pre-wrap;
+  font-size:.88em;line-height:1.5;color:var(--muted);padding:1px 3px 2px;border-radius:3px;cursor:text}
+.node-note[data-editing]{color:var(--fg);box-shadow:0 0 0 2px var(--ring)}
+.node-note:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
+.node-note:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* the zoomed point's note sits under the zoom title, pulled into the title's
+   bottom-border gap so they read as one header block; its gutter mark starts at
+   the container's left edge, aligned with the title's divider rule above */
+.zoom-note-row{display:flex;align-items:flex-start;margin:-12px 0 18px;padding-top:4px}
+.zoom-note-row>.note-mark{width:auto;margin:8px 7px 0 0}
+.zoom-note{flex:1;min-width:0}
 .node-content strong{font-weight:700}
 .node-content em{font-style:italic}
 .node-content u{text-decoration:underline}
@@ -849,6 +874,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
     <button id="btn-done" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
+    <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
   <div id="breadcrumb-row"></div>
 </div>
@@ -945,6 +971,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 let root      = mkRoot();
 let focusedId = null;
 let showDone  = false;
+let showNotes = true;   // global notes visibility (the header toggle); hidden notes leave a .note-ind mark
 let searchQuery = '';
 let searchQueryLC = '';        // lowercased once, reused per node during a search
 let searchMatchSet = null;     // ids whose subtree (incl self) contains a match
@@ -2527,6 +2554,7 @@ function toOpml(r) {
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
       n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
+      n.note             ? `_note="${ex(n.note)}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
@@ -2870,6 +2898,7 @@ function render() {
       else if (vp.type in BLOCK_PREFIX_MAP || vp.type === 'ol') vp.type = 'ul';
       delete te.dataset.editing;
       te.innerHTML = renderContentHTML(vp);
+      if (!showNotes && vp.note && noteEditId !== vp.id) appendNoteIndicator(te, vp);
       markDirty();
       renderBreadcrumb();
       if (vp.text === zpPrevText && undoStack.length === zpUndoDepth) undoStack.pop();
@@ -2904,6 +2933,25 @@ function render() {
       if (te.dataset.editing) hiFnItem(null);
     });
     container.appendChild(te);
+    // the zoomed point's note renders under its title (same editor contract as
+    // the outline rows; an empty editor appears when just opened via the menu).
+    // With notes toggled off, the same .note-ind mark appears inside the title.
+    if ((showNotes && vp.note) || noteEditId === vp.id) {
+      // same gutter mark as outline note rows; the row starts at the container's
+      // left edge so the mark aligns with the title's divider rule above it
+      const znRow = document.createElement('div');
+      znRow.className = 'zoom-note-row';
+      const mark = document.createElement('span');
+      mark.className = 'note-mark';
+      mark.setAttribute('aria-hidden', 'true');
+      setIcon(mark, NOTE_ICON);
+      const zn = buildNoteEl(vp);
+      zn.classList.add('zoom-note');
+      znRow.append(mark, zn);
+      container.appendChild(znRow);
+    } else if (vp.note) {
+      appendNoteIndicator(te, vp);
+    }
     } // end non-table branch
   }
 
@@ -4228,7 +4276,7 @@ function renderRow(r) {
   // listed interactive elements keep their own behavior; modifier clicks (shift =
   // range select) are left untouched so multi-select still works.
   if (!opts.searchCtx && !isDivider && !isTable) {
-    const INTERACTIVE = '.node-content,.bullet,.collapse-btn,'
+    const INTERACTIVE = '.node-content,.node-note,.bullet,.collapse-btn,'
       + '.md-task-check,.node-link,.dice-roll,.mk-roll,.gr-roll,.math-roll,'
       + '.var-pill,.dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,'
       + '.hashtag,.fn-ref,.md-table-host,.todo-state';
@@ -4266,14 +4314,149 @@ function renderRow(r) {
     row.append(colBtn, bullet, content);
   }
   div.appendChild(row);
+  // per-point note: render when present (and globally shown), or when this point's
+  // note editor was just opened (noteEditId — also the indicator's reveal path,
+  // which is why it overrides a hidden toggle) so an empty editor can appear
+  if ((showNotes && node.note) || noteEditId === node.id) {
+    div.appendChild(buildNoteRow(node, opts));
+  } else if (node.note && !opts.searchCtx) {
+    // notes hidden: a whisper-level trailing mark says "this point has a note"
+    // (P4 — hiding must not be silent). Display-mode only: enterEdit regenerates
+    // the content from node.text, so it can never leak into the edit buffer.
+    appendNoteIndicator(content, node);
+  }
   return div;
+}
+
+// The hidden-note indicator: a tiny trailing glyph inside the display-mode
+// content (contenteditable=false, like pills). Click / Enter / Space reveals
+// that one note for viewing/editing while the global toggle stays off.
+function appendNoteIndicator(content, node) {
+  const ind = document.createElement('span');
+  ind.className = 'note-ind';
+  ind.contentEditable = 'false';
+  ind.setAttribute('role', 'button');
+  ind.setAttribute('tabindex', '-1');
+  ind.setAttribute('aria-label', 'Show note');
+  ind.title = 'Show note';
+  ind.dataset.noteId = node.id;
+  setIcon(ind, NOTE_ICON);
+  // sit inline after the text: append into the last block element when there is one
+  const last = content.lastElementChild;
+  (last && /^(P|LI|H[1-6]|BLOCKQUOTE)$/.test(last.tagName) ? last : content).appendChild(ind);
+}
+
+// ─── per-point notes ──────────────────────────────────────────────────────────
+// A secondary plain-text block under a point (`node.note`): muted display,
+// click-to-edit in place. Plain text only (escaped; no markdown, no pills) — a
+// note is annotation, not content; Enter = line break (it's a prose field, like
+// a dialog textarea), Esc or blur commits. Clearing all text deletes the note.
+// Persistence: `_note` OPML attribute (parse already existed; write added with
+// it). Undo: a commit is a structural snapshot (pushUndo), not a text entry.
+let noteEditId = null; // point whose (possibly empty) note editor is open
+
+function buildNoteRow(node, opts = {}) {
+  const noteRow = document.createElement('div');
+  noteRow.className = 'node-row node-note-row';
+  // invisible gutter clones — same flex slots as the main row, so the note
+  // aligns with the content at every viewport / touch size
+  const gutterCol = document.createElement('span'); gutterCol.className = 'collapse-btn';
+  const gutterBul = document.createElement('span'); gutterBul.className = 'bullet';
+  // the note's gutter mark sits in the dot's 6px slot (width preserved → the
+  // note text's left edge matches the content at every viewport). Built via
+  // setIcon so a missing FA glyph degrades to the unicode mark, never to blank.
+  const mark = document.createElement('span');
+  mark.className = 'note-mark';
+  setIcon(mark, NOTE_ICON);
+  gutterBul.appendChild(mark);
+  gutterCol.setAttribute('aria-hidden', 'true'); gutterBul.setAttribute('aria-hidden', 'true');
+  noteRow.append(gutterCol, gutterBul);
+  if (node.type === 'ol') {
+    const gutterNum = document.createElement('span'); gutterNum.className = 'ol-num';
+    gutterNum.textContent = '0.'; gutterNum.setAttribute('aria-hidden', 'true');
+    noteRow.appendChild(gutterNum);
+  }
+  const noteEl = buildNoteEl(node, opts);
+  if (opts.highlight) highlightContent(noteEl, searchQuery);
+  noteRow.appendChild(noteEl);
+  return noteRow;
+}
+
+// The note glyph everywhere it appears (gutter mark, hidden-note indicator):
+// one spec, FA when healthy, unicode fallback when not (the paintIcon contract).
+const NOTE_ICON = { fa: 'fa-regular fa-file-lines', fb: '🗒' };
+
+// The note editor element itself (no row wrapper) — shared by the outline row
+// (buildNoteRow) and the zoom view (rendered under the zoom title).
+function buildNoteEl(node, opts = {}) {
+  const noteEl = document.createElement('div');
+  noteEl.className = 'node-note';
+  noteEl.dataset.id = node.id;
+  noteEl.setAttribute('aria-label', 'Note');
+  noteEl.dataset.ph = 'Note…';
+  noteEl.textContent = node.note || '';
+  if (!opts.searchCtx) {
+    noteEl.contentEditable = 'plaintext-only';
+    if (noteEl.contentEditable !== 'plaintext-only') noteEl.contentEditable = 'true'; // non-Chromium fallback
+    noteEl.addEventListener('focus', () => {
+      noteEl.dataset.editing = '1'; noteEditId = node.id;
+      forceIncludeId = node.id; // keep this row's live DOM across window re-renders (the base-cell pattern)
+    });
+    noteEl.addEventListener('blur', () => { forceIncludeId = null; commitNote(noteEl, node); });
+    noteEl.addEventListener('keydown', e => {
+      // a prose field: Enter = line break (native), Esc = commit + focus the point
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        noteEl.blur();
+        // return focus to the point's content row when it's on screen (zoom view
+        // has no row — focusing the zoom title would flip it into raw edit, so
+        // there Esc just commits and drops focus)
+        document.querySelector(`.node-content[data-id="${node.id}"]`)?.focus();
+      }
+    });
+    noteEl.addEventListener('input', () => scheduleReconcile());
+  }
+  return noteEl;
+}
+
+function commitNote(noteEl, node) {
+  delete noteEl.dataset.editing;
+  if (noteEditId === node.id) noteEditId = null;
+  const next = (noteEl.innerText || '').replace(/\n+$/, '');
+  const prev = node.note || '';
+  if (next === prev) {
+    // unchanged: still re-render to drop an abandoned empty editor, or to re-hide
+    // a note that was revealed through its indicator while the toggle is off
+    if (!next || !showNotes) render();
+    return;
+  }
+  pushUndo();
+  node.note = next;
+  markDirty();
+  render();
+}
+
+// The bullet-menu door: open (creating if absent) the note editor for a point.
+function openNoteEditor(nodeId) {
+  noteEditId = nodeId;
+  render();
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.node-note[data-id="${nodeId}"]`);
+    if (!el) return;
+    el.focus();
+    const s = window.getSelection(), rng = document.createRange();
+    rng.selectNodeContents(el); rng.collapse(false);
+    s.removeAllRanges(); s.addRange(rng);
+  });
 }
 
 // ─── search ───────────────────────────────────────────────────────────────────
 
 function nodeMatchesSearch(node) {
   if (!searchQueryLC) return false;
-  return stripMd(textForDisplay(node)).toLowerCase().includes(searchQueryLC);
+  return stripMd(textForDisplay(node)).toLowerCase().includes(searchQueryLC)
+    || (!!node.note && node.note.toLowerCase().includes(searchQueryLC));
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
@@ -5006,6 +5189,9 @@ function onKeyDown(e, id, content) {
       pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       return;
     }
+    // hidden-note indicator: Enter/Space reveals the note (the keyboard twin of its click)
+    const nind = e.target.closest?.('.note-ind');
+    if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
@@ -5495,6 +5681,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // actions
   const actions = [
     { icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
+    { icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
+      fn: () => { hideBpop(); openNoteEditor(nodeId); } },
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
@@ -9454,6 +9642,8 @@ function toMarkdown(rootNode) {
         for (let i = 1; i < lines.length; i++) out.push(`${indent}  ${lines[i]}`);
       }
     }
+    // the point's note: plain continuation lines indented under the item
+    if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}  ${l}`));
     // footnote definitions in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -9488,6 +9678,8 @@ function toPlainText(rootNode) {
       out.push(`${indent}${lines[0]}`);
       for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);
     }
+    // the point's note: continuation lines indented under the item
+    if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}\t${l}`));
     // footnote text in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -9562,6 +9754,16 @@ document.getElementById('outline').addEventListener('click', e => {
   const q = tag.dataset.tag;
   document.getElementById('search-box').value = q;
   applySearch(q);
+});
+
+// hidden-note indicator clicks (same delegated pattern as hashtags: mousedown is
+// swallowed so the caret never moves — the caret invariant — and click acts)
+document.getElementById('outline').addEventListener('mousedown', e => {
+  if (e.target.closest('.note-ind')) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+document.getElementById('outline').addEventListener('click', e => {
+  const ind = e.target.closest('.note-ind');
+  if (ind) openNoteEditor(ind.dataset.noteId);
 });
 
 // ─── footnotes ────────────────────────────────────────────────────────────────
@@ -10187,6 +10389,19 @@ document.getElementById('btn-done').addEventListener('click', () => {
   btn.classList.toggle('active', showDone);
   render();
 });
+function syncNotesBtn() {
+  const btn = document.getElementById('btn-notes');
+  btn.title = showNotes ? 'Hide notes' : 'Show notes';
+  btn.setAttribute('aria-label', btn.title);
+  btn.setAttribute('aria-pressed', String(showNotes));
+  btn.classList.toggle('active', showNotes);
+}
+document.getElementById('btn-notes').addEventListener('click', () => {
+  showNotes = !showNotes;
+  syncNotesBtn();
+  scheduleAutosave();
+  render();
+});
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. The modifier
 // key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
@@ -10374,7 +10589,7 @@ function scheduleAutosave() {
   if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, forcedTheme, fullWidth, accentId }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId }));
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -10411,6 +10626,7 @@ function scheduleAutosave() {
         btn.title = showDone ? 'Hide done points' : 'Show done points';
         btn.setAttribute('aria-pressed', String(showDone));
       }
+      if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
       if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) {
         accentId = data.accentId;
       }
