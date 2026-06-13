@@ -60,15 +60,16 @@ due-dates, deadlines/scheduling, and daily-notes/journaling.
 
 ### ◐ Tag power
 Tag *filtering* already works (click a `#tag` to filter), **tag autocomplete shipped**
-(the `#` picker, sourced from `collectTags`, most-used-first — UXP-10), and **search query
+(the `#` picker, sourced from `collectTags`, most-used-first — UXP-10), **search query
 operators shipped** (2026-06-13, the UXP-20-routed decision): implicit AND, `-` negation,
 `"a b"` phrases, `#tag` (word-anchored), `is:done`/`is:todo`/`is:note` — with the
 focus-shown legend under the search box + the `?` panel as front doors, and pure cores
 (`parseSearchQuery`/`queryMatchesNode`) pinned in tests. Because `#KEYWORD` states are
-hashtag-shaped, `#waiting` filters by state with no `state:` operator. Missing: saved/pinned
-searches, tag inheritance, and `OR` (deferred until real queries demand a precedence rule).
-- **Fit — medium.** Persist saved queries (just strings now — the parser is the substrate);
-  inheritance layered on the tag-term matcher.
+hashtag-shaped, `#waiting` filters by state with no `state:` operator. **Saved searches
+shipped** (2026-06-13): star the query to save it doc-level (OPML head element), saved
+queries are chips in the focus-shown panel — apply/forget by mouse or keyboard. Missing:
+tag inheritance and `OR` (deferred until real queries demand a precedence rule).
+- **Fit — medium.** Inheritance layered on the tag-term matcher.
 
 ---
 

@@ -163,6 +163,7 @@ export function loadCores() {
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles',
+    'toggleSavedSearch','isSavedSearch',
   ];
   const cores = {};
   const missing = [];

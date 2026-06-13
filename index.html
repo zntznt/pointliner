@@ -167,6 +167,25 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:nowrap}
 .sh-row kbd{font-size:10px;color:var(--fg);font-family:var(--mono);background:var(--bg);border:1px solid var(--bdr);border-radius:4px;padding:0 4px;line-height:1.6}
 .sh-row code{font-family:var(--mono);font-size:10px}
+/* saved searches: the one interactive island in the otherwise inert hint panel */
+#sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
+.sh-saved-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
+#sh-saved-list{display:flex;flex-wrap:wrap;gap:4px;max-width:340px}
+.sh-chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;color:var(--fg);
+  background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:2px 7px;cursor:pointer;
+  max-width:300px}
+.sh-chip:hover{border-color:var(--acc)}
+.sh-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.sh-chip-q{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-chip-x{color:var(--muted);font-size:12px;line-height:1;border-radius:3px;padding:0 1px}
+.sh-chip-x:hover{color:var(--bad)}
+.sh-chip-x:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+#search-save{position:absolute;right:26px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);
+  font-size:12px;display:none;line-height:1;border:none;background:transparent;padding:2px}
+#search-save.on{display:block}
+#search-save:hover,#search-save[aria-pressed="true"]{color:var(--acc)}
+#search-save:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:3px}
+#search-wrap:has(#search-clear.on) #search-box{padding-right:60px}
 @media(max-width:560px){#search-hint{left:0;right:0;transform:none;min-width:0}.sh-row{white-space:normal}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
@@ -875,8 +894,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <div id="search-wrap">
       <input id="search-box" type="text" placeholder="Search…" aria-label="Search points" aria-describedby="search-hint" autocomplete="off" spellcheck="false">
       <kbd id="search-key">⌘F</kbd>
+      <button id="search-save" title="Save this search" aria-label="Save this search" aria-pressed="false"></button>
       <button id="search-clear" title="Clear search">✕</button>
-      <div id="search-hint" role="note" aria-label="Search filters">
+      <div id="search-hint" role="group" aria-label="Search filters">
+        <div id="sh-saved" hidden>
+          <div class="sh-saved-title">Saved</div>
+          <div id="sh-saved-list"></div>
+        </div>
         <div class="sh-row"><kbd>#tag</kbd><span>points with a tag — state keywords too (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
@@ -1021,7 +1045,7 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
@@ -2579,9 +2603,12 @@ function toOpml(r) {
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
+  // saved searches are doc-level config, so they live in the head (the one
+  // underscore-prefixed custom ELEMENT — outlines carry custom attributes)
+  const saved = r.savedSearches?.length ? `<_savedSearches>${ex(JSON.stringify(r.savedSearches))}</_savedSearches>` : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
-  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified></head>
+  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${saved}</head>
   <body>
 ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
@@ -2649,7 +2676,13 @@ function fromOpml(xml) {
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false,
+  const savedSearches = (() => {
+    try {
+      const a = JSON.parse(doc.querySelector('head > _savedSearches')?.textContent || '[]');
+      return Array.isArray(a) ? a.filter(s => typeof s === 'string') : [];
+    } catch(_) { return []; }
+  })();
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -4548,6 +4581,29 @@ function searchHighlightNeedles(terms) {
 function nodeMatchesSearch(node) {
   if (!searchQueryLC || !searchTerms.length) return false;
   return queryMatchesNode(searchTerms, node);
+}
+
+// ── saved searches ──
+// A saved search is the raw query string, stored doc-level (root.savedSearches,
+// `<_savedSearches>` in the OPML head) so it travels with the file — saved
+// queries reference the doc's own tags/states, so they belong to the document,
+// not the app. The string IS the label: queries are short and self-describing,
+// so there's no naming dialog to maintain.
+
+// Toggle a query in a saved list: present (trim-exact) → removed, absent →
+// appended. Returns a NEW array; an empty query is a no-op copy. Pure.
+function toggleSavedSearch(list, q) {
+  const v = (q || '').trim();
+  const cur = list || [];
+  if (!v) return cur.slice();
+  const out = cur.filter(s => (s || '').trim() !== v);
+  if (out.length === cur.length) out.push(v);
+  return out;
+}
+
+function isSavedSearch(list, q) {
+  const v = (q || '').trim();
+  return !!v && (list || []).some(s => (s || '').trim() === v);
 }
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
@@ -9814,6 +9870,7 @@ function applySearch(q) {
   searchQueryLC = q.toLowerCase();
   searchTerms = parseSearchQuery(q);
   document.getElementById('search-clear').classList.toggle('on', !!q);
+  syncSearchSave();
   render();
 }
 
@@ -9821,6 +9878,7 @@ document.getElementById('search-box').addEventListener('input', function() {
   const q = this.value.trim();
   // toggle the clear affordance instantly for responsiveness; defer the walk
   document.getElementById('search-clear').classList.toggle('on', !!q);
+  syncSearchSave();
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => applySearch(q), 140);
 });
@@ -9828,7 +9886,105 @@ document.getElementById('search-clear').addEventListener('click', () => {
   document.getElementById('search-box').value = '';
   applySearch('');
 });
-document.getElementById('search-box').addEventListener('focus', armChromeReturn);
+document.getElementById('search-box').addEventListener('focus', () => {
+  armChromeReturn();
+  renderSavedSearches();   // refresh after doc loads/switches — cheap, n is small
+});
+
+// ── saved searches wiring ──
+// The star toggles the current query in root.savedSearches (the bookmark model:
+// filled = saved, click again forgets). Saved queries render as chips in the
+// focus-shown panel — click/Enter applies, ✕/Delete forgets. mousedown is
+// prevented on star and chips so the search box keeps its caret throughout.
+function syncSearchSave() {
+  const btn = document.getElementById('search-save');
+  const q = document.getElementById('search-box').value.trim();
+  btn.classList.toggle('on', !!q);
+  const saved = isSavedSearch(root.savedSearches, q);
+  btn.setAttribute('aria-pressed', String(saved));
+  btn.title = saved ? 'Forget this search' : 'Save this search';
+  btn.setAttribute('aria-label', btn.title);
+  setIcon(btn, saved ? '★' : '☆');
+}
+
+function renderSavedSearches() {
+  const sec = document.getElementById('sh-saved');
+  const list = document.getElementById('sh-saved-list');
+  const items = root.savedSearches || [];
+  sec.hidden = !items.length;
+  list.innerHTML = '';
+  for (const q of items) {
+    const chip = document.createElement('span');
+    chip.className = 'sh-chip';
+    chip.setAttribute('role', 'button');
+    chip.setAttribute('tabindex', '0');
+    chip.dataset.q = q;
+    chip.setAttribute('aria-label', `Apply saved search: ${q}`);
+    const qEl = document.createElement('span');
+    qEl.className = 'sh-chip-q';
+    qEl.textContent = q;
+    const x = document.createElement('span');
+    x.className = 'sh-chip-x';
+    x.setAttribute('role', 'button');
+    x.setAttribute('tabindex', '0');
+    x.setAttribute('aria-label', `Forget saved search: ${q}`);
+    x.title = 'Forget';
+    x.textContent = '✕';
+    chip.append(qEl, x);
+    list.appendChild(chip);
+  }
+}
+
+function applySavedChip(q) {
+  const sb = document.getElementById('search-box');
+  sb.value = q;
+  applySearch(q);
+  sb.focus();
+}
+
+function forgetSavedSearch(q) {
+  root.savedSearches = toggleSavedSearch(root.savedSearches, q); // present → removed
+  markDirty();
+  renderSavedSearches();
+  syncSearchSave();
+  document.getElementById('search-box').focus();
+}
+
+document.getElementById('search-save').addEventListener('mousedown', e => e.preventDefault());
+document.getElementById('search-save').addEventListener('click', () => {
+  const q = document.getElementById('search-box').value.trim();
+  if (!q) return;
+  root.savedSearches = toggleSavedSearch(root.savedSearches, q);
+  markDirty();
+  renderSavedSearches();
+  syncSearchSave();
+});
+
+const shSavedList = document.getElementById('sh-saved-list');
+shSavedList.addEventListener('mousedown', e => e.preventDefault());
+shSavedList.addEventListener('click', e => {
+  const chip = e.target.closest('.sh-chip');
+  if (!chip) return;
+  if (e.target.closest('.sh-chip-x')) forgetSavedSearch(chip.dataset.q);
+  else applySavedChip(chip.dataset.q);
+});
+shSavedList.addEventListener('keydown', e => {
+  const chip = e.target.closest('.sh-chip');
+  if (!chip) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    if (e.target.closest('.sh-chip-x')) forgetSavedSearch(chip.dataset.q);
+    else applySavedChip(chip.dataset.q);
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.closest('.sh-chip-x')) {
+    e.preventDefault();
+    forgetSavedSearch(chip.dataset.q);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    document.getElementById('search-box').focus();
+  }
+});
+syncSearchSave();
+renderSavedSearches();
 document.getElementById('search-box').addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.getElementById('search-box').value = '';
@@ -10522,6 +10678,7 @@ const SHORTCUTS = [
     { keys: ['is:todo', 'is:done', 'is:note'], desc: 'Open to-dos / finished to-dos / points with a note' },
     { keys: ['-term', '-#tag'], desc: 'Exclude matches' },
     { keys: ['"a b"'],     desc: 'Exact phrase' },
+    { keys: ['★'],         desc: 'Star a search to save it with the document — saved searches appear under the box while it has focus' },
   ]},
   { sec: 'Edit structure', rows: [
     { keys: ['Enter'],            desc: 'New point' },
