@@ -2705,6 +2705,22 @@ function renderStaticTable(block, l0, l1) {
 
 // ─── OPML ─────────────────────────────────────────────────────────────────────
 
+// Doc-level config rides the <head> as underscore-prefixed custom ELEMENTS
+// (savedSearches/templates/inbox). One serialize + one parse helper keep the three
+// in lockstep (F6): an array serializes as JSON, a scalar (inbox id) as plain text,
+// and both skip emission when empty. headJSONArray reads an array element back with
+// a per-item validator; scalar elements read directly via textContent.
+function headEl(tag, value) {
+  if (Array.isArray(value)) return value.length ? `<${tag}>${ex(JSON.stringify(value))}</${tag}>` : '';
+  return value ? `<${tag}>${ex(String(value))}</${tag}>` : '';
+}
+function headJSONArray(doc, tag, valid) {
+  try {
+    const a = JSON.parse(doc.querySelector('head > ' + tag)?.textContent || '[]');
+    return Array.isArray(a) ? (valid ? a.filter(valid) : a) : [];
+  } catch (_) { return []; }
+}
+
 function toOpml(r) {
   function nx(n, d) {
     const pad = '  '.repeat(d);
@@ -2728,15 +2744,11 @@ function toOpml(r) {
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
-  // saved searches + templates are doc-level config, so they live in the head as
-  // underscore-prefixed custom ELEMENTS (outlines carry custom attributes; the head
-  // carries custom elements — same serialize+parse-in-one-change rule)
-  const saved = r.savedSearches?.length ? `<_savedSearches>${ex(JSON.stringify(r.savedSearches))}</_savedSearches>` : '';
-  const tpls  = r.templates?.length    ? `<_templates>${ex(JSON.stringify(r.templates))}</_templates>` : '';
-  const inbox = r.inboxId              ? `<_inbox>${ex(r.inboxId)}</_inbox>` : '';
+  // doc-level config in the head, each via the shared headEl serializer (F6)
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
-  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${saved}${tpls}${inbox}</head>
+  <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
   <body>
 ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
@@ -2805,19 +2817,9 @@ function fromOpml(xml) {
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
-  const savedSearches = (() => {
-    try {
-      const a = JSON.parse(doc.querySelector('head > _savedSearches')?.textContent || '[]');
-      return Array.isArray(a) ? a.filter(s => typeof s === 'string') : [];
-    } catch(_) { return []; }
-  })();
-  const templates = (() => {
-    try {
-      const a = JSON.parse(doc.querySelector('head > _templates')?.textContent || '[]');
-      return Array.isArray(a) ? a.filter(t => t && typeof t.name === 'string' && t.node) : [];
-    } catch(_) { return []; }
-  })();
-  const inboxId = doc.querySelector('head > _inbox')?.textContent?.trim() || null;
+  const savedSearches = headJSONArray(doc, '_savedSearches', s => typeof s === 'string');
+  const templates     = headJSONArray(doc, '_templates', t => t && typeof t.name === 'string' && t.node);
+  const inboxId       = doc.querySelector('head > _inbox')?.textContent?.trim() || null;
   return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
@@ -4957,105 +4959,96 @@ function refileNodeTo(moveId, targetId) {
   flashHint(`Refiled ${ptsLabel(countPoints(node))} → ${where}`);
 }
 
-// The refile picker: a modal quick-switcher. Type to filter, ↑/↓ to move, Enter to
-// refile, Esc to cancel. "Top level" is always the first option (refile out of nesting).
-let rfState = null;
-function openRefileDialog(moveId) {
-  const node = nodeById(moveId);
-  if (!node) return;
+// Shared modal point-picker (F5): a search box over a filtered, keyboard-navigable
+// list of points, rendered into ioCard. Type to filter, ↑/↓ move, Enter picks, Esc
+// runs onFoot. The CALLER owns ioBack/ioReturnFocus — refile opens a fresh dialog,
+// while capture's "Change inbox" swaps this view into an already-open one. opts:
+//   { icon, title, placeholder?, searchAria, listAria, emptyText?,
+//     itemsFor(query) -> [{id, title, path, top?}], onPick(item), footLabel, onFoot }
+function buildPointPicker(opts) {
   ioCard.innerHTML = '';
-
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
-  setIcon(ic, { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' });
-  const ttl = document.createElement('div'); ttl.className = 'io-title';
-  ttl.textContent = 'Refile to…';
+  setIcon(ic, opts.icon);
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title;
   head.append(ic, ttl); ioCard.appendChild(head);
 
   const search = document.createElement('input');
-  search.className = 'rf-search'; search.type = 'text';
-  search.placeholder = 'Search points…';
-  search.setAttribute('aria-label', 'Search for a destination point');
+  search.className = 'rf-search'; search.type = 'text'; search.placeholder = opts.placeholder || 'Search points…';
+  search.setAttribute('aria-label', opts.searchAria || 'Search points');
   search.autocomplete = 'off'; search.spellcheck = false;
   ioCard.appendChild(search);
 
   const listEl = document.createElement('div'); listEl.className = 'rf-list';
-  listEl.setAttribute('role', 'listbox');
-  listEl.setAttribute('aria-label', 'Destination points');
+  listEl.setAttribute('role', 'listbox'); listEl.setAttribute('aria-label', opts.listAria || 'Points');
   ioCard.appendChild(listEl);
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
-  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', closeIo);
-  foot.append(cancelBtn); ioCard.appendChild(foot);
+  const footBtn = document.createElement('button'); footBtn.className = 'io-btn'; footBtn.type = 'button';
+  footBtn.textContent = opts.footLabel; footBtn.addEventListener('click', () => opts.onFoot());
+  foot.append(footBtn); ioCard.appendChild(foot);
 
-  // "Top level" (root) is always offered first; then the title-matched candidates.
-  function itemsFor(q) {
-    const cands = refileCandidates(q, moveId).slice(0, 60);
-    const showTop = q === '' || 'top level'.includes(q.toLowerCase());
-    return showTop ? [{ id: root.id, title: 'Top level', path: [], top: true }, ...cands] : cands;
-  }
-  rfState = { moveId, items: itemsFor(''), activeIdx: 0 };
-
+  let items = opts.itemsFor('');
+  let activeIdx = 0;
   function renderList() {
     listEl.innerHTML = '';
-    if (!rfState.items.length) {
+    if (!items.length) {
       const empty = document.createElement('div'); empty.className = 'rf-empty';
-      empty.textContent = 'No matching points.';
-      listEl.appendChild(empty);
-      search.removeAttribute('aria-activedescendant');
-      return;
+      empty.textContent = opts.emptyText || 'No matching points.';
+      listEl.appendChild(empty); search.removeAttribute('aria-activedescendant'); return;
     }
-    rfState.items.forEach((it, i) => {
+    items.forEach((it, i) => {
       const row = document.createElement('div');
-      row.className = 'rf-item' + (i === rfState.activeIdx ? ' hi' : '');
-      row.id = 'rf-opt-' + i;
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', String(i === rfState.activeIdx));
+      row.className = 'rf-item' + (i === activeIdx ? ' hi' : '');
+      row.id = 'pp-opt-' + i; row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(i === activeIdx));
       const t = document.createElement('div');
       t.className = 'rf-item-title' + (it.top ? ' rf-item-top' : '');
-      t.textContent = it.title;
-      row.appendChild(t);
-      if (it.path && it.path.length) {
-        const p = document.createElement('div'); p.className = 'rf-item-path';
-        p.textContent = it.path.join(' › ');
-        row.appendChild(p);
-      }
-      row.setAttribute('aria-label', `${it.title}${it.path && it.path.length ? ', in ' + it.path.join(', ') : ''}`);
-      row.addEventListener('mouseenter', () => { rfState.activeIdx = i; renderList(); });
-      row.addEventListener('mousedown', e => { e.preventDefault(); rfState.activeIdx = i; apply(); });
+      t.textContent = it.title; row.appendChild(t);
+      if (it.path?.length) { const p = document.createElement('div'); p.className = 'rf-item-path'; p.textContent = it.path.join(' › '); row.appendChild(p); }
+      row.setAttribute('aria-label', `${it.title}${it.path?.length ? ', in ' + it.path.join(', ') : ''}`);
+      row.addEventListener('mouseenter', () => { activeIdx = i; renderList(); });
+      row.addEventListener('mousedown', e => { e.preventDefault(); activeIdx = i; pick(); });
       listEl.appendChild(row);
     });
-    search.setAttribute('aria-activedescendant', 'rf-opt-' + rfState.activeIdx);
+    search.setAttribute('aria-activedescendant', 'pp-opt-' + activeIdx);
     listEl.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
   }
-
-  function apply() {
-    const it = rfState.items[rfState.activeIdx];
-    if (!it) return;
-    const target = it.id;
-    closeIo();
-    refileNodeTo(moveId, target);
-  }
-
-  search.addEventListener('input', () => {
-    rfState.items = itemsFor(search.value.trim());
-    rfState.activeIdx = 0;
-    renderList();
-  });
+  function pick() { const it = items[activeIdx]; if (it) opts.onPick(it); }
+  search.addEventListener('input', () => { items = opts.itemsFor(search.value.trim()); activeIdx = 0; renderList(); });
   search.addEventListener('keydown', e => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); if (rfState.items.length) { rfState.activeIdx = (rfState.activeIdx + 1) % rfState.items.length; renderList(); } }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); if (rfState.items.length) { rfState.activeIdx = (rfState.activeIdx - 1 + rfState.items.length) % rfState.items.length; renderList(); } }
-    else if (e.key === 'Enter') { e.preventDefault(); apply(); }
-    else if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx + 1) % items.length; renderList(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx - 1 + items.length) % items.length; renderList(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); pick(); }
+    else if (e.key === 'Escape') { e.preventDefault(); opts.onFoot(); }
   });
-
   renderList();
-  ioCancel = closeIo;
+  requestAnimationFrame(() => search.focus());
+}
+
+// The refile picker: a modal quick-switcher. "Top level" is always the first option
+// (refile out of nesting); picking moves the subtree and closes.
+function openRefileDialog(moveId) {
+  const node = nodeById(moveId);
+  if (!node) return;
   ioReturnFocus = document.activeElement;
+  ioCancel = closeIo;
+  buildPointPicker({
+    icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },
+    title: 'Refile to…',
+    searchAria: 'Search for a destination point',
+    listAria: 'Destination points',
+    itemsFor: q => {
+      const cands = refileCandidates(q, moveId).slice(0, 60);
+      const showTop = q === '' || 'top level'.includes(q.toLowerCase());
+      return showTop ? [{ id: root.id, title: 'Top level', path: [], top: true }, ...cands] : cands;
+    },
+    onPick: it => { closeIo(); refileNodeTo(moveId, it.id); },
+    footLabel: 'Cancel',
+    onFoot: closeIo,
+  });
   ioCard.setAttribute('aria-label', 'Refile to');
   ioBack.classList.add('on');
-  requestAnimationFrame(() => search.focus());
 }
 
 // ─── capture / quick inbox ─────────────────────────────────────────────────────
@@ -5142,67 +5135,16 @@ function renderCaptureMain() {
 // excluding nothing). Picking sets the inbox and returns to the capture view with
 // the draft preserved.
 function renderCaptureDest() {
-  ioCard.innerHTML = '';
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
-  setIcon(ic, { fa: 'fa-solid fa-inbox', fb: '⤓' });
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Choose inbox';
-  head.append(ic, ttl); ioCard.appendChild(head);
-
-  const search = document.createElement('input');
-  search.className = 'rf-search'; search.type = 'text'; search.placeholder = 'Search points…';
-  search.setAttribute('aria-label', 'Search for an inbox point');
-  search.autocomplete = 'off'; search.spellcheck = false;
-  ioCard.appendChild(search);
-
-  const listEl = document.createElement('div'); listEl.className = 'rf-list';
-  listEl.setAttribute('role', 'listbox'); listEl.setAttribute('aria-label', 'Inbox candidates');
-  ioCard.appendChild(listEl);
-
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const back = document.createElement('button'); back.className = 'io-btn'; back.textContent = 'Back'; back.type = 'button';
-  back.addEventListener('click', () => renderCaptureMain());
-  foot.append(back); ioCard.appendChild(foot);
-
-  let items = refileCandidates('', '', root).slice(0, 60);
-  let activeIdx = 0;
-  function renderList() {
-    listEl.innerHTML = '';
-    if (!items.length) {
-      const empty = document.createElement('div'); empty.className = 'rf-empty';
-      empty.textContent = 'No matching points.'; listEl.appendChild(empty);
-      search.removeAttribute('aria-activedescendant'); return;
-    }
-    items.forEach((it, i) => {
-      const row = document.createElement('div');
-      row.className = 'rf-item' + (i === activeIdx ? ' hi' : '');
-      row.id = 'cap-opt-' + i; row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', String(i === activeIdx));
-      const t = document.createElement('div'); t.className = 'rf-item-title'; t.textContent = it.title;
-      row.appendChild(t);
-      if (it.path?.length) { const p = document.createElement('div'); p.className = 'rf-item-path'; p.textContent = it.path.join(' › '); row.appendChild(p); }
-      row.setAttribute('aria-label', `${it.title}${it.path?.length ? ', in ' + it.path.join(', ') : ''}`);
-      row.addEventListener('mouseenter', () => { activeIdx = i; renderList(); });
-      row.addEventListener('mousedown', e => { e.preventDefault(); activeIdx = i; pick(); });
-      listEl.appendChild(row);
-    });
-    search.setAttribute('aria-activedescendant', 'cap-opt-' + activeIdx);
-    listEl.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
-  }
-  function pick() {
-    const it = items[activeIdx]; if (!it) return;
-    root.inboxId = it.id; markDirty();
-    renderCaptureMain();
-  }
-  search.addEventListener('input', () => { items = refileCandidates(search.value.trim(), '', root).slice(0, 60); activeIdx = 0; renderList(); });
-  search.addEventListener('keydown', e => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx + 1) % items.length; renderList(); } }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { activeIdx = (activeIdx - 1 + items.length) % items.length; renderList(); } }
-    else if (e.key === 'Enter') { e.preventDefault(); pick(); }
-    else if (e.key === 'Escape') { e.preventDefault(); renderCaptureMain(); }
+  buildPointPicker({
+    icon: { fa: 'fa-solid fa-inbox', fb: '⤓' },
+    title: 'Choose inbox',
+    searchAria: 'Search for an inbox point',
+    listAria: 'Inbox candidates',
+    itemsFor: q => refileCandidates(q, '', root).slice(0, 60),
+    onPick: it => { root.inboxId = it.id; markDirty(); renderCaptureMain(); },
+    footLabel: 'Back',
+    onFoot: () => renderCaptureMain(),
   });
-  renderList();
-  requestAnimationFrame(() => search.focus());
 }
 
 function doCapture() {
@@ -7587,7 +7529,7 @@ function openInsertDialog(opts) {
   requestAnimationFrame(() => { const f = ioCard.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
 function closeIo() {
-  ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null; rfState = null;
+  ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null;
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }

@@ -2667,8 +2667,10 @@ test('saved searches: toOpml emits the head element only when non-empty', () => 
 });
 
 test('saved searches: UI wiring + parse-side present (src pins)', () => {
-  // serialize + parse land in the same change (the OPML invariant)
-  assert.ok(_src.includes("querySelector('head > _savedSearches')"), 'fromOpml parse missing');
+  // serialize + parse land in the same change (the OPML invariant); the head-config
+  // helpers (F6) carry both sides — serialize via headEl, parse via headJSONArray
+  assert.ok(_src.includes("headJSONArray(doc, '_savedSearches'"), 'fromOpml parse missing');
+  assert.ok(_src.includes("headEl('_savedSearches'"), 'toOpml serialize missing');
   assert.ok(_src.includes('savedSearches: []'), 'mkRoot default missing');
   // P2 front doors: the star button + the saved chips section in the panel
   assert.ok(_src.includes('id="search-save"'), 'star button missing');
@@ -2751,7 +2753,8 @@ test('templates: OPML head round-trips templates (serialize + structure)', () =>
 });
 
 test('templates: UI wiring + front doors present (src pins)', () => {
-  assert.ok(_src.includes("querySelector('head > _templates')"), 'fromOpml parse missing');
+  assert.ok(_src.includes("headJSONArray(doc, '_templates'"), 'fromOpml parse missing');
+  assert.ok(_src.includes("headEl('_templates'"), 'toOpml serialize missing');
   assert.ok(_src.includes('templates: []'), 'mkRoot default missing');
   assert.ok(_src.includes('openSaveTemplateDialog'), 'save door missing');
   assert.ok(_src.includes('openTemplatePicker'),     'stamp picker missing');
