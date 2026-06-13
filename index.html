@@ -586,6 +586,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .todo-prio-c{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
+/* progress cookie [/]/[%] — a muted monospace tally; goes success-hued when complete */
+.cookie{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 5px;border-radius:4px;vertical-align:baseline;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
+.cookie-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
    each widget kind is identifiable without turning the line into candy */
 .dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}
@@ -1310,6 +1313,38 @@ function todoDoneFromText(text, seqs = allSequences()) {
   return markers.length > 0 && markers.every(m => /\[[xX]\]$/.test(m));
 }
 
+// ── progress cookies ([/] and [%]) ───────────────────────────────────────────
+// A `[/]` (fraction) or `[%]` (percent) cookie in a point's text renders as a
+// live tally of the tasks it contains. Counted: every checkbox marker in the
+// point's OWN text plus its DIRECT child points — each marker counted
+// individually (so several checkboxes in one point each count) — and any
+// keyword/sequenced child point with no marker counted as a single item, its
+// done-ness from the sequence-aware keyword (right of the | = done). Scope is
+// own text + direct children (recursion deferred). The cookie token stays plain
+// text in node.text (the recipe); the count is computed at render, the same
+// edit-raw / render-pretty model as #+TBLFM:. Pure: no DOM.
+function tallyMarkers(text) {
+  const ms = (text == null ? '' : String(text)).match(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+\[[ xX]\]/gm) || [];
+  let done = 0;
+  for (const m of ms) if (/\[[xX]\]$/.test(m)) done++;
+  return { done, total: ms.length };
+}
+function progressCount(node, seqs = allSequences()) {
+  let { done, total } = tallyMarkers(node?.text || '');
+  for (const c of (node?.children || [])) {
+    const t = tallyMarkers(c.text || '');
+    if (t.total > 0) { done += t.done; total += t.total; continue; }
+    // no checkbox markers → a keyword/sequenced task counts as one item
+    const km = (c.text || '').match(LEAD_WORD_RE);
+    if (km && sequenceForKeyword(km[1], seqs)) { total++; if (keywordIsDone(km[1], seqs)) done++; }
+  }
+  return { done, total };
+}
+function formatProgressCookie(kind, done, total) {
+  if (kind === 'pct') return '[' + (total ? Math.round(100 * done / total) : 0) + '%]';
+  return '[' + done + '/' + total + ']';
+}
+
 // Format-continuation aid for Enter: the markdown PREFIX a new sibling should
 // start with so the format continues (a new to-do gets its `- [ ]`, a new quote
 // its `> `). Keyword form continues with the same #keyword; #DONE restarts as
@@ -1362,6 +1397,7 @@ function renderContentHTML(node) {
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
+  cookieNode        = node;
   globalVarMap      = collectVars();
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
   // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
@@ -1398,6 +1434,7 @@ function renderContentHTML(node) {
   varRenderList     = null;
   grammarRenderList = null;
   seqRenderList     = null;
+  cookieNode        = null;
   return html;
 }
 
@@ -1673,18 +1710,21 @@ let _inlineDepth = 0;
 function renderNodeInline(node) {
   const saved = { dice: diceRenderList, markov: markovRenderList,
                   math: mathRenderList,
-                  vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList };
+                  vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList,
+                  cookie: cookieNode };
   _inlineDepth++;
   diceRenderList = node.dice || null; markovRenderList = node.markov || null;
   mathRenderList = node.math || null;
   varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
   seqRenderList = node.seq || null;
+  cookieNode = node;
   // globalVarMap is document-wide — leave it.
   const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   diceRenderList = saved.dice; markovRenderList = saved.markov;
   mathRenderList = saved.math;
   varRenderList = saved.vars; grammarRenderList = saved.grammar;
   seqRenderList = saved.seq;
+  cookieNode = saved.cookie;
   _inlineDepth--;
   return html;
 }
@@ -1753,6 +1793,14 @@ function mdInline(s) {
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:)
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
     (_, pre, url) => pre + stash(`<a href="${escQ(url)}" target="_blank" rel="noopener">${url}</a>`));
+  // progress cookies — [/] (fraction) and [%] (percent) tally the point's tasks.
+  // Computed against the node being rendered (cookieNode); literal text otherwise.
+  if (cookieNode) s = s.replace(/\[(\/|%)\]/g, (_, k) => {
+    const { done, total } = progressCount(cookieNode);
+    const txt = formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
+    const full = total > 0 && done === total ? ' cookie-full' : '';
+    return stash(`<span class="cookie${full}" aria-label="${done} of ${total} done">${txt}</span>`);
+  });
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
@@ -1771,6 +1819,10 @@ let mathRenderList = null;
 let varRenderList    = null;
 let seqRenderList    = null;
 let grammarRenderList = null;
+// The node currently being rendered, so mdInline can compute a [/] / [%]
+// progress cookie against its tasks. Null outside a node render → cookies stay
+// literal text in any other mdInline caller (breadcrumbs, search, etc.).
+let cookieNode = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
@@ -2751,6 +2803,7 @@ const INSERT_CMDS = [
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
+  { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and child tasks. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
@@ -3278,9 +3331,11 @@ function mtInline(node, raw) {
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
+  cookieNode        = node;
   globalVarMap      = collectVars();
   const html = mdInline(raw || '');
   diceRenderList = markovRenderList = mathRenderList = varRenderList = grammarRenderList = seqRenderList = null;
+  cookieNode = null;
   return html;
 }
 // Select a cell's whole contents (type-to-overwrite) and remember the cell so the
@@ -6432,6 +6487,10 @@ function insertInlineArtifact(id, nodeId, content) {
         applyInlineInsertion(nodeId, offset, `[[seq:${rec.key}]]`);
       },
     });
+  } else if (id === 'progress') {
+    // a cookie is plain computed text (no sidecar) — insert the [/] recipe; it
+    // renders as a live [done/total] tally. Type [%] by hand for the percent form.
+    applyInlineInsertion(nodeId, offset, '[/]');
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -8971,8 +9030,16 @@ function toggleTaskInNode(node, taskIndex) {
   node.checked = todoDoneFromText(node.text);
   markDirty();
   if (node.checked !== wasDone) { render(); return; }
+  // done-ness unchanged → targeted repaint of this node (skips a full render)…
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+  // …plus the parent if it carries a progress cookie counting this child, so the
+  // tally stays live when a multi-marker child only partly completes (P4).
+  const par = parentOf(node.id);
+  if (par && /\[(?:\/|%)\]/.test(par.text || '')) {
+    const pel = document.querySelector(`.node-content[data-id="${par.id}"]`);
+    if (pel && !pel.dataset.editing) pel.innerHTML = renderContentHTML(par);
+  }
 }
 
 // Re-roll a dice token in place (click handler), keeping its formula.
@@ -9713,7 +9780,7 @@ async function writeH(h) {
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
 function flattenArtifacts(text, node, varMap) {
-  return (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
     type = type.toLowerCase();
     if (type === 'grammar') {
       const g = node.grammar?.find(x => x.key === key); if (!g) return '';
@@ -9745,6 +9812,11 @@ function flattenArtifacts(text, node, varMap) {
     const val = varMap[(rec.name || '').toLowerCase()];
     const valStr = val !== undefined ? formatVarValue(val) : '?';
     return rec.expr ? `${rec.name} = ${valStr}` : valStr;
+  });
+  // progress cookies freeze to their computed tally in a one-way snapshot
+  return flat.replace(/\[(\/|%)\]/g, (_, k) => {
+    const { done, total } = progressCount(node);
+    return formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
   });
 }
 
@@ -10693,7 +10765,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table…' },
-    { keys: ['@'],  desc: 'Insert link, image, footnote, dice, roll table, Markov chain, grammar, math, variable, sequence' },
+    { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
@@ -10706,6 +10778,7 @@ const SHORTCUTS = [
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
+    { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },
   ]},
   { sec: 'Format (markdown)', rows: [
     { keys: ['#', '…', '######'], desc: 'Headings (any line, h1–h6)' },

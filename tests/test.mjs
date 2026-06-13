@@ -2530,3 +2530,76 @@ test('saved searches: UI wiring + parse-side present (src pins)', () => {
   // P1/caret: star + chips swallow mousedown so the box keeps its caret
   assert.ok(_src.includes("getElementById('search-save').addEventListener('mousedown', e => e.preventDefault())"), 'star mousedown guard missing');
 });
+
+test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
+  assert.deepEqual(host(c.tallyMarkers('- [ ] a\n- [x] b\n- [ ] c')), { done: 1, total: 3 });
+  assert.deepEqual(host(c.tallyMarkers('* [x] a\n+ [x] b')),          { done: 2, total: 2 });
+  assert.deepEqual(host(c.tallyMarkers('1. [ ] a\n2. [x] b')),        { done: 1, total: 2 }); // ordered tasks
+  assert.deepEqual(host(c.tallyMarkers('no tasks here')),             { done: 0, total: 0 });
+  assert.deepEqual(host(c.tallyMarkers('')),                          { done: 0, total: 0 });
+});
+
+test('progress cookies: progressCount — own-text checkboxes + direct child tasks', () => {
+  // own-text checklist (cookie + boxes in the SAME point)
+  const a = c.mkNode('Shopping [/]\n- [ ] milk\n- [x] eggs\n- [ ] bread');
+  assert.deepEqual(host(c.progressCount(a)), { done: 1, total: 3 });
+  // direct child task points — each marker counts individually
+  const p = c.mkNode('Project [/]');
+  p.children.push(c.mkNode('- [x] design'));
+  p.children.push(c.mkNode('- [ ] build\n- [ ] ship'));   // one child point, two markers
+  assert.deepEqual(host(c.progressCount(p)), { done: 1, total: 3 });
+});
+
+test('progress cookies: keyword/sequenced child points count once, done-aware', () => {
+  const seqs = [DEFAULT_SEQ, FLOW];
+  const p = c.mkNode('Roadmap [/]');
+  p.children.push(c.mkNode('#TODO a'));      // open (default)
+  p.children.push(c.mkNode('#DONE b'));      // done (default)
+  p.children.push(c.mkNode('#DOING c'));     // open (Flow)
+  p.children.push(c.mkNode('#SHIPPED d'));   // done (Flow)
+  p.children.push(c.mkNode('plain note'));   // not a task → ignored
+  assert.deepEqual(host(c.progressCount(p, seqs)), { done: 2, total: 4 });
+});
+
+test('progress cookies: a child with markers counts its markers (the granular unit)', () => {
+  const p = c.mkNode('[/]');
+  p.children.push(c.mkNode('#TODO sub\n- [x] one\n- [ ] two'));  // has markers → count them
+  assert.deepEqual(host(c.progressCount(p)), { done: 1, total: 2 });
+});
+
+test('progress cookies: scope is one level — grandchildren are not counted', () => {
+  const p = c.mkNode('[/]');
+  const child = c.mkNode('- [ ] direct');
+  child.children.push(c.mkNode('- [x] grandchild'));  // deeper → excluded
+  p.children.push(child);
+  assert.deepEqual(host(c.progressCount(p)), { done: 0, total: 1 });
+});
+
+test('progress cookies: formatProgressCookie — fraction and rounded percent', () => {
+  assert.equal(c.formatProgressCookie('frac', 1, 3), '[1/3]');
+  assert.equal(c.formatProgressCookie('frac', 0, 0), '[0/0]');
+  assert.equal(c.formatProgressCookie('pct',  1, 3), '[33%]');   // rounds
+  assert.equal(c.formatProgressCookie('pct',  2, 4), '[50%]');
+  assert.equal(c.formatProgressCookie('pct',  0, 0), '[0%]');    // no divide-by-zero
+  assert.equal(c.formatProgressCookie('pct',  3, 3), '[100%]');
+});
+
+test('progress cookies: flattenArtifacts freezes the tally for one-way export', () => {
+  const flat = c._context.flattenArtifacts;
+  const p = c.mkNode('Project [/] — [%] done');
+  p.children.push(c.mkNode('- [x] a'));
+  p.children.push(c.mkNode('- [ ] b'));
+  p.children.push(c.mkNode('- [ ] c'));
+  assert.equal(flat(p.text, p, {}), 'Project [1/3] — [33%] done');
+});
+
+test('progress cookies: render + front-door wiring (src pins)', () => {
+  assert.ok(_src.includes('progressCount(cookieNode)'), 'mdInline cookie pass missing');
+  assert.ok(_src.includes('let cookieNode = null'), 'cookieNode global missing');
+  assert.ok(_src.includes("id:'progress'"), 'progress @ entry missing');
+  assert.ok(_src.includes("applyInlineInsertion(nodeId, offset, '[/]')"), 'progress insert missing');
+  // P5-4: the syntax also lives in the ? panel, not only the @ menu
+  assert.ok(_src.includes("keys: ['[/]', '[%]']"), 'progress ? panel row missing');
+  // P4: a child partial-toggle refreshes a cookie-bearing parent
+  assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
+});

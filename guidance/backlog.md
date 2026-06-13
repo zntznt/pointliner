@@ -121,9 +121,16 @@ type steps, `--muted`, no italic, no opacity-faded placeholder).
 Reusable subtree templates.
 - **Fit — easy.** Reuses the copy / deep-clone infra; "save this subtree, stamp copies."
 
-### ☐ Checkbox progress cookies `[2/5]` / `[40%]`
-A parent shows how many child checkboxes are done.
-- **Fit — easy.** Reuses the `countDescendants`-style walk over `todo` children.
+### ✓ Checkbox progress cookies `[2/5]` / `[40%]` — shipped
+A point shows how many of its tasks are done.
+- **Shipped (2026-06-13):** the Org `[/]` (fraction) / `[%]` (percent) cookie — plain text in
+  `node.text`, computed at render (the edit-raw/render-pretty model, like `#+TBLFM:`; no sidecar,
+  OPML round-trips for free). Counts every checkbox marker individually + each keyword/sequenced
+  child once (done-ness sequence-aware via `todoDoneFromText`); scope = own text + direct children
+  (recursion deferred). Goes success-hued when complete; live-updates on child toggle. Front door:
+  `@progress`. Pure cores `tallyMarkers`/`progressCount`/`formatProgressCookie` test-pinned. P5:
+  recorded syntax-inventory decision (reuses the `[…]` bracket family) — `ux-remediation.md` UXP-20.
+- **Fit — easy.** Reused the task-marker scan + a one-level child walk.
 
 ### ☐ Capture / quick inbox
 Fast capture of a task/note into a chosen inbox node without navigating there.

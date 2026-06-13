@@ -166,6 +166,29 @@ Implemented:
   (still `:focus-within`, so the panel stays open). Saving marks the doc dirty
   (autosave + OPML); chips refresh on box focus so they're current after a
   file load.
+- **Progress cookies** — a `[/]` (fraction) or `[%]` (percent) cookie in a
+  point's text renders as a **live tally** of the tasks it contains. Counted:
+  every checkbox marker `[ ]`/`[x]` in the point's **own text** plus its
+  **direct child points** — each marker counted individually (so several
+  checkboxes in one point each count) — and any keyword/sequenced child point
+  with no marker counted as a single item, its done-ness from the
+  **sequence-aware** `todoDoneFromText` (right of the `|` = done). Scope is own
+  text + direct children (recursion deferred). The cookie is **plain text** in
+  `node.text` (the recipe, like `#+TBLFM:`): edit mode shows `[/]`, display mode
+  shows the computed `[2/5]` — no sidecar, no OPML attribute, round-trips for
+  free. It goes **success-hued** (`.cookie-full`) when complete and is
+  **live-updating** — toggling a checkbox repaints the cookie's point (own-text
+  case) and, when a multi-marker child only partly completes, the parent too
+  (the `toggleTaskInNode` parent-repaint branch; full state changes already
+  `render()`). A literal `[/]`/`[%]` only becomes a cookie when the rendering
+  point owns tasks (`cookieNode` is set); elsewhere it stays text — the
+  escape-hatch rule. **Front door:** `@progress` (inserts `[/]`; the menu teaches
+  `[%]`). Pure cores: `tallyMarkers` (text → {done,total}), `progressCount`
+  (node × seqs → {done,total}), `formatProgressCookie`. Export
+  (`flattenArtifacts`) freezes the cookie to its computed tally, like every
+  other artifact in a one-way snapshot. P5: a recorded syntax-inventory decision
+  — reuses the `[…]` bracket authoring family rather than minting a sigil
+  (`guidance/ux-remediation.md` UXP-20).
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like

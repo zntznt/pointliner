@@ -505,7 +505,13 @@ Saved searches (star the query to save it doc-level — the raw string is the la
 `root.savedSearches` + the `<_savedSearches>` OPML **head element** (doc-level config; the
 one underscore-prefixed custom element — outlines carry custom attributes); chips in the
 focus-shown panel apply/forget by mouse or keyboard; pure cores `toggleSavedSearch`/
-`isSavedSearch`).
+`isSavedSearch`) ·
+Progress cookies (`[/]` fraction / `[%]` percent — a live task tally rendered against the
+point's own checkboxes + direct child tasks, each checkbox counted individually and each
+keyword/sequenced child once with sequence-aware done-ness; plain text in `node.text` computed
+at render like `#+TBLFM:` — no sidecar, OPML round-trips for free; `@progress` front door;
+recorded P5 syntax-inventory decision reusing the `[…]` bracket family — UXP-20; pure cores
+`tallyMarkers`/`progressCount`/`formatProgressCookie`).
 Details: `guidance/features.md`
 
 ## Direction, roadmap & backlog

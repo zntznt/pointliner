@@ -243,6 +243,20 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   and must not be foreclosed by the parser. Malformed tokens (unknown `is:` value, lone
   `-`, `#non-word`) stay **literal text terms** — the `{…}` invalid-body escape-hatch rule,
   so a query never silently matches everything. §2 inventory row added in the same change.
+- **Decision recorded (owner, 2026-06-13) — progress cookies ship as the Org `[/]`/`[%]` token.**
+  The watch-list item below is resolved. The `{…}`-aggregation route was **weighed and not taken
+  for v1**: a cookie is not inline-composed generative content the user nests — it is a fixed
+  per-point *display* summary, conceptually the sibling of `#+TBLFM:` (edit shows the recipe,
+  render shows the computed value). It reuses the **`[…]` bracket authoring family** already in
+  the app (`[ ]`/`[x]`, `[#A]`, `[^key]`, `[[…]]`) rather than minting a sigil, and is the
+  notation every outliner/Org user already knows (P1/P2). The token is **plain text** in
+  `node.text` (no sidecar, OPML round-trips for free); the count is computed at render against the
+  point's own checkboxes + direct children, each checkbox counted individually and each
+  keyword/sequenced child once (done-ness via the sequence-aware `todoDoneFromText`). A literal
+  `[/]`/`[%]` renders as a cookie **only when the point owns tasks**, else it stays text (the
+  escape-hatch rule). Front door: `@progress`. §2 inventory row + `?`-panel/menu entry added in
+  the same change. The general children-aggregation primitive (`sum`/`count`/`avg` via `evalMath`)
+  remains the separate, still-`{…}`-routed feature — cookies did not foreclose it.
 - **Two live examples to police now** (both in `roadmap.md`):
   - a proposed **render-only `{= expr}` / `{NdM}` second syntax** "alongside `[[type:key]]`" → **P5-3 violation** unless it *replaces* the existing path; route it through the `{…}` engine, don't add a parallel one.
   - possible **`B3`-style table references** beside `@row$col` → reject; `@row$col` is "the one true form."
@@ -250,7 +264,7 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   - **Cross-file links `[[docId#nodeId|label]]`** (Phase 2 step 5) — an *extension of an existing inventory row* (the node-link token grows a doc-id segment), not a new delimiter. Conformant via P5-5 (subsume, don't sibling) — but it is still an inventory-row **edit** and must be recorded in §2 + the `?` panel in the same PR (P5-4), not slipped in as a side effect.
   - **Dates + agenda** (backlog Tier 1) — the highest sprawl risk on the list. Do **not** import Org's `<2026-06-12 Wed>` / `SCHEDULED:` notation — that's two new syntaxes. The engine already speaks dates (`date(y,m,d)`, `today`, epoch-day numbers in `evalMath`); the design question is *where a due date lives*, and the answer must come from the existing inventory (a `{…}`/math form, the status-headline row, or a declared artifact via `@`) — decided with sign-off before any agenda work starts.
   - **Aggregations over children** (roadmap generative ideas) — the roadmap sketch says "a new token type"; the UXP-20-preferred route is an `evalMath` primitive or `resolveBrace` branch (e.g. a children-scope function) so it rides `{…}`. A new token type needs the explicit-decision path.
-  - **Progress cookies `[2/5]` / `[40%]`** (backlog) — Org's cookie notation is a new inline token. Either route it through `{…}` (an aggregation primitive renders the cookie) or take the recorded-decision path; don't copy the Org form by default.
+  - ~~**Progress cookies `[2/5]` / `[40%]`** (backlog)~~ — **decided + shipped 2026-06-13** (see the decision record above): the recorded-decision path was taken — the Org `[/]`/`[%]` cookie, reusing the `[…]` bracket family as a computed display value (no sidecar), with `@progress` as the front door. The `{…}`-aggregation primitive stays a separate future feature.
   - **Properties / per-node metadata** (backlog) — Logseq-style `key:: value` would be a new top-level syntax. If/when built, prefer a declared artifact (`@` + pill, like vars/sequences) over a typed sigil.
   - ~~**Boolean tag queries** (backlog "Tag power")~~ — **decided + shipped 2026-06-13** (see the decision record above): search-box operators over the existing vocabulary, with the focus-shown legend + `?` panel as front doors.
   - **Oracle / decks / bags** (roadmap generative ideas) — conformant by construction *if* they register as grammar-engine callables the way markov does (`{name}` resolution via a typed descriptor in `collectRules`); flag any version that wants its own inline notation.
