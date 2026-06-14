@@ -387,6 +387,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .node-content a:hover{text-decoration:underline}
 .hashtag{color:color-mix(in srgb,var(--acc) 80%,var(--fg));text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .hashtag:hover{color:var(--acc);text-decoration-style:solid}
+.hashtag:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
 /* dice roll pill */
 .dice-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .dice-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -1177,7 +1178,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <!-- variables overview panel (Ctrl+Shift+V) -->
 <div id="var-panel" role="region" aria-label="Variables">
   <div id="var-panel-hd">Variables <button id="var-panel-close" aria-label="Close variables panel" title="Close">✕</button></div>
-  <div id="var-panel-list"></div>
+  <div id="var-panel-list" aria-live="polite"></div>
 </div>
 
 <div id="storage-warn" role="alert">
@@ -2192,7 +2193,7 @@ function mdInline(s) {
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
   // hashtags
-  s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}">#${t}</a>`);
+  s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`);
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>tok[+i]);
   return s;
 }
@@ -6775,6 +6776,9 @@ function onKeyDown(e, id, content) {
     if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
     const pchip = e.target.closest?.('.prop-chip');
     if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
+    // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
+    const htag = e.target.closest?.('.hashtag');
+    if (htag) { e.preventDefault(); searchHashtag(htag); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
@@ -11484,12 +11488,18 @@ document.getElementById('search-box').addEventListener('keydown', e => {
 document.getElementById('outline').addEventListener('mousedown', e => {
   if (e.target.closest('.hashtag')) { e.preventDefault(); e.stopPropagation(); }
 }, true);
-document.getElementById('outline').addEventListener('click', e => {
-  const tag = e.target.closest('.hashtag');
-  if (!tag) return;
+// Apply a tag chip's filter — shared by the click handler and the Enter/Space
+// keyboard twin in the node-content keydown (the caret-invariant pattern: the
+// chip is tabindex="-1", reached via AT, and acts without a mousedown→click).
+function searchHashtag(tag) {
   const q = tag.dataset.tag;
   document.getElementById('search-box').value = q;
   applySearch(q);
+}
+document.getElementById('outline').addEventListener('click', e => {
+  const tag = e.target.closest('.hashtag');
+  if (!tag) return;
+  searchHashtag(tag);
 });
 
 // hidden-note indicator clicks (same delegated pattern as hashtags: mousedown is
@@ -11871,6 +11881,15 @@ function updateVarPanelContent() {
   if (!list) return;
   const vars = collectVars();          // also refreshes _varActiveExprs/_varCycles
   const names = Object.keys(_varActiveExprs).sort();
+  // Content signature: skip the rebuild when nothing a user would see has changed.
+  // markDirty fires on every keystroke while the panel is open, and the list carries
+  // aria-live="polite" — re-emitting an identical list on each keystroke would spam a
+  // screen reader. Guarding the rebuild means AT only hears a change when one happens
+  // (and saves needless DOM thrash too).
+  const sig = JSON.stringify(names.map(nm =>
+    [nm, _varCycles.has(nm) ? '↻' : (vars[nm] === undefined ? '?' : vars[nm])]));
+  if (list.dataset.sig === sig) return;
+  list.dataset.sig = sig;
   list.innerHTML = '';
   if (!names.length) {
     const empty = document.createElement('div');

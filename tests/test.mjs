@@ -2188,6 +2188,22 @@ test('filterTagCandidates: case-insensitive prefix; a lone exact match offers no
   assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'x')), []);           // no match
 });
 
+test('UXP-39: rendered #hashtag is keyboard-operable (role/tabindex + Enter/Space twin)', () => {
+  // the rendered chip carries button semantics + AT focus reach (mirrors note-ind/prop-chip)
+  assert.ok(_src.includes('class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}"'),
+    'hashtag render missing role/tabindex/aria-label');
+  assert.ok(_src.includes('.hashtag:focus-visible'), 'hashtag focus-visible style missing');
+  // the keyboard twin: Enter/Space on a focused chip runs the same filter as the click
+  assert.ok(_src.includes("closest?.('.hashtag')"), 'hashtag Enter/Space branch missing');
+  assert.ok(_src.includes('function searchHashtag('), 'shared searchHashtag helper missing');
+});
+
+test('UXP-38: variables panel announces changes (aria-live + change-guard, no per-keystroke spam)', () => {
+  assert.ok(_src.includes('id="var-panel-list" aria-live="polite"'), 'var panel aria-live missing');
+  // the rebuild is signature-guarded so an unchanged list is not re-emitted on every markDirty
+  assert.ok(_src.includes('list.dataset.sig === sig'), 'var panel change-guard missing');
+});
+
 // ── divider derives from the text (UXP-26: markdown-first, no destruction) ───
 // The break (---/***/___, HR_RE) lives in node.text; lines below it are the
 // hover-reveal section label; node.type is a derived hint like headings.

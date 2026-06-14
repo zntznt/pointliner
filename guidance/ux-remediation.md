@@ -230,7 +230,7 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   now pins both the `due:`/`start:` row and the *Dates & agenda* section — so the panel can't drift
   back out of sync (the UXP-36 pattern, applied to the rows themselves).
 
-### UXP-38 ☐ Variables panel has no `aria-live` on content-refresh (P3-1)
+### UXP-38 ✓ Variables panel has no `aria-live` on content-refresh (P3-1) — **RESOLVED**
 - **Problem:** when the user opens the variables panel (the `{` picker sidebar) and a variable's
   value changes — either because they edited a formula node or re-rolled a pick — the panel
   content updates visually, but the update is **not announced to assistive technology**. The
@@ -239,10 +239,14 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
 - **Violated:** P3-1 (every status change reachable without sight). The pill itself already
   announces its own state correctly (per-state `aria-label` for ↻/？/—); this is the panel-
   level complement.
-- **Remedy:** add `aria-live="polite"` (or `role="status"`) to the panel's content container,
-  so a screen reader announces changes when variable values refresh. Minimal, additive.
+- **Resolved:** `#var-panel-list` carries `aria-live="polite"`, so a screen reader hears value
+  changes when the panel is open. Because `markDirty` rebuilds the panel on **every keystroke**,
+  a naive live region would spam — so `updateVarPanelContent` now computes a content **signature**
+  (`JSON.stringify` of name + cycle-flag + value) and returns early when it is unchanged, leaving
+  the existing DOM (and the live region) untouched. AT therefore only hears a change when one
+  actually happens; the guard also removes needless per-keystroke DOM thrash. Src-pinned.
 
-### UXP-39 ☐ Rendered hashtag `<a>` elements are not keyboard-operable (P3-1)
+### UXP-39 ✓ Rendered hashtag `<a>` elements are not keyboard-operable (P3-1) — **RESOLVED**
 - **Problem:** `<a class="hashtag">` elements in rendered content have no `href`, no `tabindex`,
   and no `keydown` handler — they activate only on `mousedown`. A keyboard user cannot Tab to
   a hashtag chip in rendered output and press Enter/Space to filter by it.
@@ -250,11 +254,14 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   `#tag`) has a keyboard front door — the search box and the `#` picker — so P3-2 is satisfied;
   this is the element-level interaction gap only.
 - **Disposition:** same as todo-picker chips before UXP-16 — capability is keyboard-reachable
-  via search, but the rendered widget itself is not independently operable. Low-urgency because
-  the search path is the primary keyboard path.
-- **Remedy:** add `tabindex="0"` + `keydown` (Enter/Space triggers the filter) to the hashtag
-  render in `renderHashtags` / `mdInline`. Wire alongside the existing `mousedown`, never
-  replacing it (caret invariant).
+  via search, but the rendered widget itself is not independently operable.
+- **Resolved:** the rendered chip now mirrors the established display-mode inline-widget pattern
+  (`.note-ind` / `.prop-chip`): `role="button"` + `tabindex="-1"` (AT-focus reach, not a Tab
+  stop — consistent with pills, **not** `tabindex="0"`) + `aria-label="Filter by #tag"` +
+  a `.hashtag:focus-visible` outline, and an Enter/Space branch in the node-content `keydown`
+  that calls the shared `searchHashtag` helper — the same filter the click runs, added **beside**
+  `mousedown`+`preventDefault`, never replacing it (caret invariant). Src-pinned, and the real
+  `mdInline` render output verified (the `#` inside the aria-label is not re-matched as a tag).
 
 ---
 
