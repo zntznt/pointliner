@@ -201,18 +201,19 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 /* outline */
 #outline{max-width:720px;margin:0 auto;padding:28px 24px 120px}
 body.full-width #outline{max-width:none}
-/* zoomed INTO a base: the base is the whole view, so it goes full-width regardless of the
-   narrow/full toggle (the "make it large" gesture is zooming in). */
+/* zoomed INTO a base: the base table is full-width regardless of the narrow/full toggle;
+   child nodes below the base follow the fullWidth setting (constrained by #vlist). */
 body.base-zoom #outline{max-width:none}
+body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}
 /* virtual list: only a window of rows is in the DOM; spacers reserve the rest */
 #vlist{position:relative}
 .vspacer{flex:none;width:100%}
 #vlist>.node{position:relative}
-.zoom-title{font-size:30px;font-weight:640;font-family:var(--display-font);font-variation-settings:'opsz' 60;letter-spacing:-.025em;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;word-break:break-word;white-space:pre-wrap;cursor:text}
+.zoom-title{font-size:30px;font-weight:640;font-family:var(--display-font);font-variation-settings:'opsz' 60;letter-spacing:-.025em;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;white-space:nowrap;overflow-x:auto;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
 .zoom-title:focus-visible{outline:2px solid color-mix(in srgb,var(--acc) 70%,transparent);outline-offset:1px}
-.zoom-title-base{cursor:default;white-space:normal;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
+.zoom-title-base{cursor:default;white-space:normal;overflow-x:visible;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
 
 /* node base */
 .node{position:relative}
