@@ -222,6 +222,10 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}
 @media(prefers-color-scheme:dark){.node-row:hover{background:rgba(255,255,255,.04)}}
 .search-ctx .node-row:hover{background:transparent}
 .node-row:has(.node-content[data-editing]){background:color-mix(in srgb,var(--acc) 5.5%,transparent)}
+/* While editing an ordered-list point, the raw "N. " marker is revealed in the text
+   (markdown-first, like "#" for a heading). Hide the computed gutter ordinal so the
+   two numbers don't show at once; it returns on the rendered/display view. */
+.node-row:has(>.node-content[data-editing])>.ol-num{visibility:hidden}
 @media(prefers-color-scheme:dark){.node-row:has(.node-content[data-editing]){background:color-mix(in srgb,var(--acc) 8%,transparent)}}
 .collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden;position:relative;z-index:2}
 .has-children>.node-row>.collapse-btn{visibility:visible}
