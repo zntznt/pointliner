@@ -3124,32 +3124,49 @@ test('addMonths — clamps the day to the target month length', () => {
   assert.equal(c.addMonths(c.parseDueDate('2026-06-15'), 1), c.parseDueDate('2026-07-15'));
 });
 
-test('agendaDayBuckets — groups items by primary date, ascending, only non-empty days', () => {
+test('agendaGantt — bar/ongoing layout, axis range includes today, day offsets', () => {
   const today = c.parseDueDate('2026-06-14');
-  const d12 = c.parseDueDate('2026-06-12');
-  const d20 = c.parseDueDate('2026-06-20');
   const items = [
-    { id: 'a', epochDay: d20 },
-    { id: 'b', epochDay: d12 },
-    { id: 'c', epochDay: today },
-    { id: 'd', epochDay: d12 },   // same day as b → shares a bucket
+    // a full range start→due
+    { id: 'a', start: c.parseDueDate('2026-06-12'), due: c.parseDueDate('2026-06-18'), title: 'A' },
+    // due only → a 1-day bar at the deadline
+    { id: 'b', start: null, due: c.parseDueDate('2026-06-20'), title: 'B' },
+    // start only → ongoing bar from start to today
+    { id: 'd', start: c.parseDueDate('2026-06-10'), due: null, title: 'D' },
+    // undated → skipped
+    { id: 'x', start: null, due: null, title: 'X' },
   ];
-  const buckets = host(c.agendaDayBuckets(items, today));
-  // one bucket per distinct day, ascending
-  assert.deepEqual(buckets.map(b => b.epochDay), [d12, today, d20]);
-  // the two June-12 items share the first bucket
-  assert.deepEqual(buckets[0].items.map(i => i.id).sort(), ['b', 'd']);
-  // today / past flags
-  assert.equal(buckets[0].isPast, true);  assert.equal(buckets[0].isToday, false);
-  assert.equal(buckets[1].isToday, true); assert.equal(buckets[1].isPast, false);
-  assert.equal(buckets[2].isPast, false); assert.equal(buckets[2].isToday, false);
-  // each bucket carries the formatted date of its day (reuses formatDueDate)
-  assert.equal(buckets[1].iso, '2026-06-14');
-  assert.equal(buckets[1].state, 'today');
-  // items with no primary date are skipped
-  assert.equal(c.agendaDayBuckets([{ id: 'x', epochDay: null }], today).length, 0);
-  // null/empty input is safe
-  assert.equal(c.agendaDayBuckets(null, today).length, 0);
+  const g = host(c.agendaGantt(items, today));
+  // range spans earliest (Jun 10) to latest (Jun 20), padded one day each side
+  assert.equal(g.rangeStart, c.parseDueDate('2026-06-09'));
+  assert.equal(g.rangeEnd,   c.parseDueDate('2026-06-21'));
+  assert.equal(g.rangeDays,  g.rangeEnd - g.rangeStart + 1);
+  // undated dropped; rows sorted by start day (D@10, A@12, B@20)
+  assert.deepEqual(g.rows.map(r => r.id), ['d', 'a', 'b']);
+  const byId = Object.fromEntries(g.rows.map(r => [r.id, r]));
+  // A: range bar, start Jun 12 → due Jun 18 = 7 days, offset from Jun 9 = 3
+  assert.equal(byId.a.kind, 'bar');
+  assert.equal(byId.a.offsetDays, 3);
+  assert.equal(byId.a.spanDays, 7);
+  // B: due-only → 1-day bar at Jun 20 (offset 11)
+  assert.equal(byId.b.kind, 'bar');
+  assert.equal(byId.b.spanDays, 1);
+  assert.equal(byId.b.offsetDays, 11);
+  // D: ongoing → Jun 10 to today (Jun 14) = 5 days, offset 1
+  assert.equal(byId.d.kind, 'ongoing');
+  assert.equal(byId.d.offsetDays, 1);
+  assert.equal(byId.d.spanDays, 5);
+  // empty / null input is safe (still a valid 1-day frame)
+  assert.equal(host(c.agendaGantt([], today)).rows.length, 0);
+  assert.equal(host(c.agendaGantt(null, today)).rows.length, 0);
+});
+
+test('agendaGantt — today is always inside the range even with only future items', () => {
+  const today = c.parseDueDate('2026-06-14');
+  const g = host(c.agendaGantt([{ id: 'f', start: null, due: c.parseDueDate('2026-08-01'), title: 'F' }], today));
+  assert.ok(g.rangeStart <= today && today <= g.rangeEnd, 'today must be within the axis range');
+  // a far-future deadline still anchors back to today (range starts a day before today)
+  assert.equal(g.rangeStart, today - 1);
 });
 
 test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today flags', () => {
@@ -3254,11 +3271,11 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
-  // agenda view switcher (List / Timeline / Calendar) + their render branches
-  assert.ok(_src.includes('agendaView'), 'agenda view state missing');
-  assert.ok(_src.includes('mkAgViewSwitch'), 'agenda view switcher missing');
-  assert.ok(_src.includes('renderAgendaTimeline'), 'agenda timeline view missing');
+  // agenda view panes (List / Timeline-Gantt / Calendar) — independent toggles that stack
+  assert.ok(_src.includes('agendaBars'), 'agenda view-panes state missing');
+  assert.ok(_src.includes('ag-panes'), 'agenda stacked panes missing');
+  assert.ok(_src.includes('renderAgendaGantt'), 'agenda Gantt view missing');
   assert.ok(_src.includes('renderAgendaCalendar'), 'agenda calendar view missing');
-  assert.ok(_src.includes('agendaDayBuckets'), 'agenda timeline core missing');
+  assert.ok(_src.includes('agendaGantt'), 'agenda Gantt core missing');
   assert.ok(_src.includes('agendaMonthCells'), 'agenda calendar core missing');
 });

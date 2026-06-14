@@ -845,22 +845,32 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
 .ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
 .ag-mini{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-style:normal}
-/* view switcher (segmented, modeled on #level-ctl) + the complexity flags row */
-.ag-views{display:flex;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;padding:1px;gap:1px}
-.ag-view{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;font-family:inherit}
-.ag-view:hover{color:var(--fg)}
-.ag-view.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent)}
-.ag-view:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* view toggles (one bar each) + the complexity flags — two rows of toggle chips */
+.ag-views{display:flex;gap:3px}
 .ag-flags{display:flex;gap:3px}
-/* Timeline view — one horizontally-scrolling ribbon of per-day groups */
-.ag-timeline{flex:1 1 auto;min-width:0;display:flex;align-items:flex-start;gap:14px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
-.ag-timeline::-webkit-scrollbar{display:none}
-.ag-tl-group{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
-.ag-tl-date{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap;padding-left:1px}
-.ag-tl-date.today{color:var(--ok)}
-.ag-tl-date.overdue{color:var(--bad)}
-.ag-tl-chips{display:flex;gap:5px}
-/* Calendar view — a month grid; each cell holds compact item chips */
+/* stacked view panes (List / Gantt / Calendar) on the right of the strip */
+.ag-panes{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.ag-pane{min-width:0;display:flex;flex-direction:column}
+.ag-pane + .ag-pane{border-top:1px solid var(--bdr);margin-top:4px;padding-top:5px}
+/* Timeline pane — a Gantt chart: horizontal bars on a shared, scrollable day axis */
+.ag-gantt{flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:auto;scrollbar-width:thin;max-height:min(46vh,300px)}
+.agg-inner{position:relative;min-height:100%}
+.agg-axis{position:relative;height:15px;margin-bottom:2px}
+.agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:2px}
+.agg-today{position:absolute;top:15px;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 55%,transparent);z-index:1}
+.agg-row{position:relative;height:23px}
+.agg-bar{position:absolute;top:50%;transform:translateY(-50%);height:15px;border-radius:var(--r-sm);border:1px solid;box-sizing:border-box;cursor:pointer;min-width:6px;z-index:2}
+.agg-bar.overdue{background:color-mix(in srgb,var(--bad) 16%,transparent);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+.agg-bar.today{background:color-mix(in srgb,var(--ok) 16%,transparent);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.agg-bar.soon{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 40%,transparent)}
+.agg-bar.future,.agg-bar.none{background:color-mix(in srgb,var(--fg) 7%,transparent);border-color:var(--bdr-ui)}
+.agg-bar.ongoing{border-style:dashed}
+.agg-bar.done{opacity:.5}
+.agg-bar:hover{filter:brightness(1.05)}
+.agg-bar:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.agg-label{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--fg)}
+.agg-bar.done .agg-label{text-decoration:line-through;color:var(--muted)}
+/* Calendar pane — a month grid; each cell holds compact item chips */
 .ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:5px}
 .agc-head{display:flex;align-items:center;gap:6px}
 .agc-title{font-size:12px;font-weight:700;color:var(--fg);min-width:108px;font-variant-numeric:tabular-nums}
@@ -871,14 +881,14 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .agc-today:hover{color:var(--fg);border-color:var(--muted)}
 .agc-today:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-.agc-dow span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:center}
+.agc-dow span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center}
 .agc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
-.agc-cell{min-height:46px;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 3px;display:flex;flex-direction:column;gap:2px;overflow:hidden;background:var(--bg)}
+.agc-cell{min-height:52px;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 3px;display:flex;flex-direction:column;gap:2px;overflow:hidden;background:var(--bg)}
 .agc-cell.oom{opacity:.4}
 .agc-cell.today{border-color:color-mix(in srgb,var(--acc) 45%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}
 .agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding-right:1px}
 .agc-cell.today .agc-dom{color:var(--acc)}
-.agc-item{font-size:10px;line-height:1.35;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg)}
+.agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg)}
 .agc-item:hover{opacity:.82}
 .agc-item:focus-visible{outline:2px solid var(--acc);outline-offset:1px;opacity:1}
 .agc-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
@@ -886,13 +896,14 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .agc-item.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
 .agc-item.future,.agc-item.none{background:color-mix(in srgb,var(--fg) 5%,transparent);border-color:var(--bdr)}
 .agc-item.done{opacity:.5;text-decoration:line-through}
-.agc-more{font-size:9px;font-weight:600;color:var(--muted);padding-left:2px;line-height:1.3}
+.agc-more{font-size:10px;font-weight:600;color:var(--muted);padding-left:2px;line-height:1.3}
 @media(hover:none){
-  .ag-view{padding:5px 11px;font-size:12px}
   .agc-nav{width:32px;height:32px}
   .agc-today{padding:5px 11px}
-  .agc-cell{min-height:54px}
-  .agc-item{font-size:11px;padding:1px 5px}
+  .agc-cell{min-height:58px}
+  .agc-item{font-size:11.5px;padding:1px 5px}
+  .agg-row{height:30px}
+  .agg-bar{height:18px}
 }
 #btn-agenda.active{color:var(--acc)}
 
@@ -1642,6 +1653,36 @@ function calendarMonthGrid(epochDay) {
   return grid;
 }
 
+// Pure: build the Gantt layout for the agenda Timeline view. Each dated item
+// becomes a horizontal bar on a shared day axis:
+//   • due + start → a range bar from start to due ('bar')
+//   • due only    → a 1-day bar at the deadline ('bar')
+//   • start only  → an open-ended bar from start to today ('ongoing')
+// The axis range spans every bar plus today (so the "today" line is always in
+// frame), padded one day each side. Offsets/spans are in DAYS (pixels are a
+// render concern). Rows sort by start day. Returns
+// { rangeStart, rangeEnd, rangeDays, rows:[{…item, kind, offsetDays, spanDays}] }.
+// Node-testable.
+function agendaGantt(items, today = dueDateToday()) {
+  const rows = [];
+  let lo = Infinity, hi = -Infinity;
+  for (const it of (items || [])) {
+    let s, e, kind;
+    if (it.due != null)        { s = it.start != null ? Math.min(it.start, it.due) : it.due; e = it.due; kind = 'bar'; }
+    else if (it.start != null) { s = it.start; e = Math.max(today, it.start); kind = 'ongoing'; }
+    else continue;
+    rows.push({ ...it, kind, _s: s, _e: e });
+    lo = Math.min(lo, s); hi = Math.max(hi, e);
+  }
+  if (!rows.length) return { rangeStart: today, rangeEnd: today, rangeDays: 1, rows: [] };
+  lo = Math.min(lo, today); hi = Math.max(hi, today);
+  const rangeStart = lo - 1, rangeEnd = hi + 1;     // one day of padding each side
+  const rangeDays = rangeEnd - rangeStart + 1;
+  rows.sort((a, b) => a._s - b._s || a._e - b._e);
+  for (const r of rows) { r.offsetDays = r._s - rangeStart; r.spanDays = r._e - r._s + 1; delete r._s; delete r._e; }
+  return { rangeStart, rangeEnd, rangeDays, rows };
+}
+
 // Pure: shift an epoch-day by whole months, clamping the day to the target
 // month's length (Jan 31 + 1 → Feb 28/29, not Mar 3). Used for calendar month nav.
 function addMonths(epochDay, delta) {
@@ -1649,24 +1690,6 @@ function addMonths(epochDay, delta) {
   const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
   const lastOfTarget = new Date(Date.UTC(y, m + delta + 1, 0)).getUTCDate();
   return Math.floor(Date.UTC(y, m + delta, Math.min(day, lastOfTarget)) / 86400000);
-}
-
-// Pure: group dated items (collectDueDates output) into per-day buckets for the
-// agenda Timeline view — one bucket per day that actually has items, ascending.
-// Each item is placed by its PRIMARY date (it.epochDay = due if present, else
-// start), so a point appears once on the day that drives its display. Returns
-// [{ epochDay, iso, label, state, isToday, isPast, items:[…] }]. Node-testable.
-function agendaDayBuckets(items, today = dueDateToday()) {
-  const byDay = new Map();
-  for (const it of (items || [])) {
-    if (it.epochDay == null) continue;
-    if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
-    byDay.get(it.epochDay).push(it);
-  }
-  return [...byDay.keys()].sort((a, b) => a - b).map(ep => {
-    const { iso, label, state } = formatDueDate(ep);
-    return { epochDay: ep, iso, label, state, isToday: ep === today, isPast: ep < today, items: byDay.get(ep) };
-  });
 }
 
 // Pure: map dated items onto a month's 42-cell calendar grid for the agenda
@@ -11873,22 +11896,24 @@ varPanelEl.addEventListener('mousedown', e => e.stopPropagation());
 // ─── agenda strip ──────────────────────────────────────────────────────────────
 // A horizontal strip inside the toolbar (no vertical sidebar — stays mobile-
 // friendly; the toolbar's ResizeObserver re-pads the body so the strip never
-// overlaps the outline). A left control group holds the VIEW SWITCHER plus
-// complexity flags (Done; Running in List view). Three views over the same dated
-// points (collectDueDates):
+// overlaps the outline). A left control group holds the VIEW TOGGLES plus
+// complexity flags (Done; Running when List is open). Each view is an independent
+// toggle and renders as a PANE that stacks below the others (open several at once)
+// over the same dated points (collectDueDates):
 //   • List     — status rows: "Due" (deadlines not yet started) + "Running"
 //                (started points, with elapsed time + deadline).
-//   • Timeline — every dated point on one chronological ribbon, grouped by day
-//                (placed by its primary date), horizontally scrollable.
+//   • Timeline — a Gantt chart: each point a bar on a shared day axis (range bar
+//                start→due, 1-day bar for a deadline, open-ended bar for a started
+//                undeadlined point), horizontally scrollable with a "today" line.
 //   • Calendar — a month grid; each point sits on its day, with month nav.
-// Re-renders on edit while open. The two display models (day buckets, month
-// cells) are pure cores (agendaDayBuckets / agendaMonthCells).
+// Re-renders on edit while open. The layout models (agendaGantt, agendaMonthCells)
+// are pure cores.
 
 let agendaOpen = false;
-let agendaView = 'list';        // 'list' | 'timeline' | 'calendar' — how dated points are shown
-let agendaShowRunning = true;   // List view: bottom row visible by default
+let agendaBars = { list: true, timeline: false, calendar: false };  // which view panes are open (stack)
+let agendaShowRunning = true;   // List pane: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
-let agendaMonth = null;         // Calendar view: any epoch-day in the shown month (session-only)
+let agendaMonth = null;         // Calendar pane: any epoch-day in the shown month (session-only)
 
 function mkAgToggle(label, on, onToggle) {
   const b = document.createElement('span');
@@ -11916,43 +11941,17 @@ function agMini(text) {
   const s = document.createElement('span'); s.className = 'ag-mini'; s.textContent = text; return s;
 }
 
-// The three views, as [value, label, tooltip]. The label IS the front door that
-// teaches each view (P2); order matches increasing visual density.
+// The views, as [key, label, tooltip]. Each is an INDEPENDENT toggle — turning
+// one on opens its bar BELOW the others (panes stack, they don't replace), so a
+// user can read the list and the Gantt at once. The label IS the front door that
+// teaches each view (P2); order matches the stacking order.
 const AG_VIEWS = [
-  ['list',     'List',     'Status rows — deadlines due and points running'],
-  ['timeline', 'Timeline', 'Every dated point on one chronological ribbon, by day'],
-  ['calendar', 'Calendar', 'A month grid with each point on its day'],
+  ['list',     'List',     'Show the status list (Due + Running rows)'],
+  ['timeline', 'Timeline', 'Show the Gantt timeline (start → due bars)'],
+  ['calendar', 'Calendar', 'Show the month calendar'],
 ];
 
-function setAgendaView(v) {
-  if (agendaView === v) return;
-  agendaView = v;
-  if (v === 'calendar' && agendaMonth == null) agendaMonth = dueDateToday();
-  renderAgenda();
-  scheduleAutosave();           // persist the view pref without dirtying the document
-}
-
-// Segmented view switcher (modeled on #level-ctl). role=button spans driven by
-// mousedown+preventDefault (caret invariant) + keydown, like the flag toggles.
-function mkAgViewSwitch() {
-  const grp = document.createElement('div');
-  grp.className = 'ag-views';
-  grp.setAttribute('role', 'group'); grp.setAttribute('aria-label', 'Agenda view');
-  for (const [v, label, tip] of AG_VIEWS) {
-    const b = document.createElement('span');
-    const on = agendaView === v;
-    b.className = 'ag-view' + (on ? ' on' : '');
-    b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0');
-    b.setAttribute('aria-pressed', String(on));
-    b.textContent = label; b.title = tip;
-    b.addEventListener('mousedown', e => { e.preventDefault(); setAgendaView(v); });
-    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAgendaView(v); } });
-    grp.appendChild(b);
-  }
-  return grp;
-}
-
-// Spoken label for a dated point shared by the timeline/calendar item chips:
+// Spoken label for a dated point, shared by the Gantt bars and calendar items:
 // title — due/starts <relative>[, running Nd][, done][· breadcrumb].
 function agItemAria(it) {
   const pathStr = it.path.length ? ' · ' + it.path.join(' › ') : '';
@@ -11973,17 +11972,6 @@ function wireAgNav(el, it, aria) {
   const navigate = () => { zoomInto(it.id); };
   el.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
   el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
-}
-
-// A compact title-only chip (timeline groups + calendar are NOT used here; this is
-// the timeline ribbon chip — the date is carried by the group header above it).
-function mkAgItemChip(it) {
-  const chip = document.createElement('div');
-  chip.className = 'ag-chip ' + (it.due !== null ? it.state : 'none') + (it.done ? ' done' : '');
-  const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
-  chip.appendChild(titleEl);
-  wireAgNav(chip, it, agItemAria(it));
-  return chip;
 }
 
 function mkAgChip(it, kind) {
@@ -12016,44 +12004,60 @@ function mkAgChip(it, kind) {
   return chip;
 }
 
+// One toggle chip per view; flipping it opens/closes that pane. scheduleAutosave
+// (not markDirty) persists the prefs to localStorage without dirtying the document.
+function mkAgViewToggle(view, label, tip) {
+  const t = mkAgToggle(label, agendaBars[view], () => { agendaBars[view] = !agendaBars[view]; renderAgenda(); scheduleAutosave(); });
+  t.title = tip;
+  return t;
+}
+
 function renderAgenda() {
   const strip = document.getElementById('agenda-strip');
   if (!strip) return;
   strip.innerHTML = '';
 
-  // left control group: view switcher + complexity flags. scheduleAutosave (not
-  // markDirty) persists view prefs to localStorage without dirtying the document.
+  // left control group: view toggles (one bar each) + complexity flags.
   const controls = document.createElement('div'); controls.className = 'ag-controls';
-  controls.appendChild(mkAgViewSwitch());
+  const views = document.createElement('div'); views.className = 'ag-views';
+  views.setAttribute('role', 'group'); views.setAttribute('aria-label', 'Agenda views');
+  for (const [v, label, tip] of AG_VIEWS) views.appendChild(mkAgViewToggle(v, label, tip));
   const flags = document.createElement('div'); flags.className = 'ag-flags';
   const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); scheduleAutosave(); });
   doneT.title = 'Include completed points';
   flags.appendChild(doneT);
-  // the Running row exists only in List view, so its toggle shows only there
-  if (agendaView === 'list') {
+  // the Running row exists only in the List pane, so its toggle shows only when List is open
+  if (agendaBars.list) {
     const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); scheduleAutosave(); });
     runT.title = 'Show the running row (started points)';
     flags.appendChild(runT);
   }
-  controls.appendChild(flags);
+  controls.append(views, flags);
   strip.appendChild(controls);
+
+  const panes = document.createElement('div'); panes.className = 'ag-panes';
+  strip.appendChild(panes);
+  const pane = () => { const p = document.createElement('div'); p.className = 'ag-pane'; panes.appendChild(p); return p; };
+
+  if (!agendaBars.list && !agendaBars.timeline && !agendaBars.calendar) {
+    panes.appendChild(agMini('Pick a view — List, Timeline, or Calendar.'));
+    return;
+  }
 
   const all = collectDueDates(root);
   const visible = all.filter(it => agendaShowDone || !it.done);
 
-  // Calendar owns its own container (header + grid) and shows the grid even with
-  // no items, so it branches before the shared "no dated points" empty state.
-  if (agendaView === 'calendar') { renderAgendaCalendar(strip, visible, all.length); return; }
-
-  const body = document.createElement('div'); body.className = 'ag-rows';
-  strip.appendChild(body);
-  if (!all.length) { body.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
-
-  if (agendaView === 'timeline') renderAgendaTimeline(body, visible);
-  else renderAgendaList(body, visible);
+  // Panes stack in view order. Calendar always shows its grid (even with no dated
+  // points); the list/Gantt panes show the "no dated points" hint when empty.
+  if (agendaBars.list)     renderAgendaList(pane(), visible, all.length);
+  if (agendaBars.timeline) renderAgendaGantt(pane(), visible, all.length);
+  if (agendaBars.calendar) renderAgendaCalendar(pane(), visible, all.length);
 }
 
-function renderAgendaList(body, visible) {
+function renderAgendaList(host, visible, totalDated) {
+  if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
+  const body = document.createElement('div'); body.className = 'ag-rows';
+  host.appendChild(body);
   // Top row: deadlines not yet started. Bottom row: started points.
   const dueItems = visible.filter(it => it.due !== null && !it.started).sort((a, b) => a.due - b.due);
   const runItems = visible.filter(it => it.started)
@@ -12073,40 +12077,62 @@ function renderAgendaList(body, visible) {
   }
 }
 
-// Header label for a timeline day group: "Sat Jun 14[ · Today | · Nd ago]".
-// A past day reads "Nd ago" (neutral) — not "overdue": a day bucket can hold a
-// started-but-undeadlined task, so per-item overdue urgency stays on the chips
-// (red tint), while the header's red ink only signals "behind you" (same split
-// as the start-chip "Nd ago" treatment).
-function agTimelineHeader(b) {
-  const d = new Date(b.epochDay * 86400000);
-  const base = CAL_DOW[d.getUTCDay()] + ' ' + CAL_MONTHS[d.getUTCMonth()].slice(0, 3) + ' ' + d.getUTCDate();
-  if (b.isToday) return base + ' · Today';
-  if (b.isPast)  return base + ' · ' + (dueDateToday() - b.epochDay) + 'd ago';
-  return base;
-}
+// Gantt timeline: each dated point is a horizontal bar on a shared day axis
+// (agendaGantt). Range bars span start→due, deadline-only points are 1-day bars,
+// started-but-undeadlined points are open-ended ('ongoing', dashed) bars to today.
+// The axis scrolls horizontally (mobile-friendly); a "today" line marks now.
+function renderAgendaGantt(host, visible, totalDated) {
+  if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
+  const layout = agendaGantt(visible);
+  if (!layout.rows.length) { host.appendChild(agMini('Nothing to show — adjust the toggles.')); return; }
+  const today = dueDateToday();
+  // px/day: roomy for short ranges, compressed (then scrolled) for long ones
+  const px = Math.max(7, Math.min(28, Math.round(900 / layout.rangeDays)));
+  const totalW = layout.rangeDays * px;
 
-function renderAgendaTimeline(body, visible) {
-  const buckets = agendaDayBuckets(visible);
-  if (!buckets.length) { body.appendChild(agMini('Nothing to show — adjust the toggles.')); return; }
-  const tl = document.createElement('div'); tl.className = 'ag-timeline';
-  tl.setAttribute('role', 'group'); tl.setAttribute('aria-label', 'Timeline of dated points by day');
-  for (const b of buckets) {
-    const grp = document.createElement('div'); grp.className = 'ag-tl-group';
-    const head = document.createElement('div');
-    head.className = 'ag-tl-date' + (b.isToday ? ' today' : b.isPast ? ' overdue' : '');
-    head.textContent = agTimelineHeader(b);
-    head.setAttribute('aria-hidden', 'true');     // each chip's aria-label already carries the date
-    grp.appendChild(head);
-    const chips = document.createElement('div'); chips.className = 'ag-tl-chips';
-    for (const it of b.items) chips.appendChild(mkAgItemChip(it));
-    grp.appendChild(chips);
-    tl.appendChild(grp);
+  const scroll = document.createElement('div'); scroll.className = 'ag-gantt';
+  scroll.setAttribute('role', 'group'); scroll.setAttribute('aria-label', 'Timeline (Gantt) of dated points');
+  const inner = document.createElement('div'); inner.className = 'agg-inner'; inner.style.width = totalW + 'px';
+
+  // axis: a date tick every `step` days (daily when the range is short, else weekly/monthly)
+  const axis = document.createElement('div'); axis.className = 'agg-axis'; axis.setAttribute('aria-hidden', 'true');
+  const step = layout.rangeDays <= 24 ? 1 : layout.rangeDays <= 84 ? 7 : 30;
+  for (let d = 0; d < layout.rangeDays; d += step) {
+    const date = new Date((layout.rangeStart + d) * 86400000);
+    const tick = document.createElement('div'); tick.className = 'agg-tick'; tick.style.left = (d * px) + 'px';
+    const dom = date.getUTCDate();
+    tick.textContent = (dom === 1 || d === 0) ? CAL_MONTHS[date.getUTCMonth()].slice(0, 3) + ' ' + dom : String(dom);
+    axis.appendChild(tick);
   }
-  body.appendChild(tl);
+  inner.appendChild(axis);
+
+  // today line (centered on today's column) spanning all rows
+  const todayOff = today - layout.rangeStart;
+  if (todayOff >= 0 && todayOff < layout.rangeDays) {
+    const tl = document.createElement('div'); tl.className = 'agg-today'; tl.style.left = (todayOff * px + px / 2) + 'px';
+    tl.setAttribute('aria-hidden', 'true');
+    inner.appendChild(tl);
+  }
+
+  for (const r of layout.rows) {
+    const row = document.createElement('div'); row.className = 'agg-row';
+    const bar = document.createElement('div');
+    // ongoing (no deadline) reads neutral; bars with a deadline carry its urgency tint
+    bar.className = 'agg-bar ' + r.kind + ' ' + (r.kind === 'ongoing' ? 'none' : r.state) + (r.done ? ' done' : '');
+    bar.style.left = (r.offsetDays * px) + 'px';
+    bar.style.width = Math.max(6, r.spanDays * px) + 'px';
+    const lbl = document.createElement('span'); lbl.className = 'agg-label'; lbl.textContent = r.title;
+    bar.appendChild(lbl);
+    wireAgNav(bar, r, agItemAria(r));
+    row.appendChild(bar);
+    inner.appendChild(row);
+  }
+
+  scroll.appendChild(inner);
+  host.appendChild(scroll);
 }
 
-function renderAgendaCalendar(strip, visible, totalDated) {
+function renderAgendaCalendar(host, visible, totalDated) {
   const wrap = document.createElement('div'); wrap.className = 'ag-calendar';
 
   // month-nav header: ‹ Month YYYY › [Today]
@@ -12132,7 +12158,7 @@ function renderAgendaCalendar(strip, visible, totalDated) {
   const grid = document.createElement('div'); grid.className = 'agc-grid';
   grid.setAttribute('role', 'group');
   wrap.appendChild(grid);
-  strip.appendChild(wrap);
+  host.appendChild(wrap);
 
   // paint() fills title + grid from agendaMonth, so month nav re-paints WITHOUT
   // rebuilding the strip — focus stays on the nav button (like buildDatePicker).
@@ -12652,7 +12678,7 @@ function scheduleAutosave() {
   if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone }));
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -12690,7 +12716,9 @@ function scheduleAutosave() {
         btn.setAttribute('aria-pressed', String(showDone));
       }
       if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
-      if (data.agendaView === 'list' || data.agendaView === 'timeline' || data.agendaView === 'calendar') agendaView = data.agendaView;
+      if (data.agendaBars && typeof data.agendaBars === 'object') {
+        for (const k of ['list', 'timeline', 'calendar']) if (typeof data.agendaBars[k] === 'boolean') agendaBars[k] = data.agendaBars[k];
+      }
       if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
       if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
       if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) {

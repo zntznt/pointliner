@@ -168,7 +168,7 @@ export function loadCores() {
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'pickerTitle','treeRows','migrateEmphasisText',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
-    'calendarMonthGrid','addMonths','agendaDayBuckets','agendaMonthCells',
+    'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells',
   ];
   const cores = {};
   const missing = [];
