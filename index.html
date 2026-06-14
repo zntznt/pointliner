@@ -1242,7 +1242,7 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [], templates: [], inboxId: null };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [], templates: [], inboxId: null, plugins: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
@@ -1912,6 +1912,15 @@ function collectVars(rootNode) {
       }
     }
     for (const c of node.children) gather(c);
+  }
+  // Pack variables (formula-only) declared FIRST, so a document var of the same name
+  // overrides on collision (last-wins). They resolve through the same evalMath +
+  // cycle-detection path below, so a bad/cyclic pack expr fails visibly like any var.
+  for (const pv of packVarDefs(rootNode?.plugins)) {
+    const nm = pv.name.toLowerCase();
+    if (!(nm in defs)) order.push(nm);
+    defs[nm] = pv.expr;
+    delete pickVals[nm];
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
   // Identify shadowed keys (all declarations of a name except the last one)
@@ -3114,7 +3123,7 @@ function toOpml(r) {
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
   // doc-level config in the head, each via the shared headEl serializer (F6)
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId);
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId) + headEl('_plugins', r.plugins);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -3189,7 +3198,10 @@ function fromOpml(xml) {
   const savedSearches = headJSONArray(doc, '_savedSearches', s => typeof s === 'string');
   const templates     = headJSONArray(doc, '_templates', t => t && typeof t.name === 'string' && t.node);
   const inboxId       = doc.querySelector('head > _inbox')?.textContent?.trim() || null;
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId,
+  // data packs (plugins): the validator drops shape-invalid packs (no string id);
+  // bad rules/vars inside a kept pack are neutralized defensively at collect time.
+  const plugins       = headJSONArray(doc, '_plugins', validPluginPack);
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId, plugins,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -8921,11 +8933,57 @@ function rollPickSource(source, rules = collectRules(), vars = collectVars()) {
 // Cached per markDirty() generation, like collectVars(). Cycles are caught lazily
 // at expansion time, so no eager resolution is needed here.
 let _rulesCacheVer = -1, _rulesCached = {};
+// ─── declarative data packs (plugins) ─────────────────────────────────────────
+// A pack is PURE DATA merged into the generative namespace — never code (the locked
+// plugins gate, guidance/plugins-direction.md §0–1). v1 carries grammar rules
+// (parseRules text) and formula variables ({name, expr} → evalMath); both flow ONLY
+// through the existing restricted engines, no eval/Function anywhere. Packs live
+// doc-level on root.plugins, round-trip as the <_plugins> OPML head element, and
+// merge at COLLECT time (collectRules/collectVars, cached on _varsVer) so a load
+// reflects them immediately. Document-authored rules/vars OVERRIDE pack ones on a
+// name collision (packs merge first; the existing last-wins rule does the rest).
+
+// Shape guard: a pack is applied only if it's a plain object carrying a string id.
+// Malformed rules/vars inside a valid pack are neutralized defensively at the use
+// site (parseRules → null, evalMath → null, a non-array `vars` is skipped) — never
+// thrown on. Also the headJSONArray validator at load.
+function validPluginPack(p) {
+  return !!p && typeof p === 'object' && !Array.isArray(p) && typeof p.id === 'string';
+}
+
+// Merge every valid pack's grammar rules into `target` (a null-proto rule map), in
+// pack order (a later pack wins on a name collision). Mirrors collectRules' tree
+// gather: parseRules each pack's text, skip on null, Object.assign the rules.
+// Returns `target`. Pure; no DOM.
+function mergePackRules(target, plugins) {
+  for (const p of (plugins || [])) {
+    if (!validPluginPack(p) || typeof p.rules !== 'string') continue;
+    const parsed = parseRules(p.rules);
+    if (parsed) Object.assign(target, parsed.rules);
+  }
+  return target;
+}
+
+// Flatten every valid pack's formula variables to a [{name, expr}] list, in pack
+// order. Drops entries that aren't {name:string, expr:string} (a missing field,
+// wrong type, or a pick-style var) — pack vars are formula-only in v1. Pure; no DOM.
+function packVarDefs(plugins) {
+  const out = [];
+  for (const p of (plugins || [])) {
+    if (!validPluginPack(p) || !Array.isArray(p.vars)) continue;
+    for (const v of p.vars) {
+      if (v && typeof v.name === 'string' && typeof v.expr === 'string') out.push({ name: v.name, expr: v.expr });
+    }
+  }
+  return out;
+}
+
 function collectRules(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
   if (useCache && _rulesCacheVer === _varsVer) return _rulesCached;
   const merged = Object.create(null);  // null-proto: see parseRules
+  mergePackRules(merged, rootNode?.plugins);  // pack rules first — document rules below override on a name collision
   function gather(node) {
     if (node.grammar?.length) {
       for (const g of node.grammar) {

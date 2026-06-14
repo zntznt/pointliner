@@ -34,13 +34,17 @@ irrelevant here.
 
 ## The four prerequisite fixes, prioritized
 
-1. **The merge seam + `<_plugins>` config (foundation).** There's no init/registry hook
-   today ("no extension hooks exist"). Need: `root.plugins` + a `<_plugins>` head element
-   (reuse the existing `headEl`/`headJSONArray` pattern) + a single `applyPlugins(root)` that
-   merges each pack into its registry. Subtlety to design up front: packs split into **two
-   timings** — *apply-once-at-load* into a mutable registry (emoji, functions, theme) vs
-   *merge-at-collect-time* (rules/vars, because `collectRules`/`collectVars` are recomputed
-   and **cached on `_varsVer`**). A naive "dump it all at load" gets the cached ones wrong.
+1. **The merge seam + `<_plugins>` config (foundation).** ◐ **Grammar + variable packs done**
+   (the collect-time half). Built: `root.plugins` + a `<_plugins>` head element (`headEl`/
+   `headJSONArray`, `validPluginPack` validator) + **merge-at-collect-time** for rules/vars —
+   `collectRules` calls `mergePackRules(merged, root.plugins)` before the tree walk and
+   `collectVars` seeds `packVarDefs(root.plugins)` into `defs` before the `[[var:]]` gather, so a
+   document name overrides the pack on collision; both ride the existing `_varsVer` cache. The
+   designed-up-front **two-timings** split holds: the *merge-at-collect-time* kinds (rules/vars)
+   needed no `applyPlugins` indirection (they merge inside the cached collectors). The
+   *apply-once-at-load* kind — **emoji/shortcodes** (`Object.assign(EMOJI, …)`, the mutable
+   registry) — is the **deliberate follow-on** that `applyPlugins(root)` will own; it carries the
+   post-escape-injection + cross-document-leak concerns the rules/var path doesn't.
 
 2. **Hoist the `evalMath` function tables** (`FN1/FN2/FN3/CONSTS`) to module scope.
    ✅ **DONE — PR #82.** Behavior-preserving; a small per-call perf gain and a single mutable
@@ -52,17 +56,19 @@ irrelevant here.
    dual-home palette remains a CLAUDE.md-documented footgun worth fixing on its own someday —
    but not as plugin work.
 
-4. **Decide the grammar/var-pack delivery + invalidation.** Either deliver packs as subtrees
-   (works today, but the rules appear as visible points) or extend `collectRules`/`collectVars`
-   to merge a doc-level pack source — and in either case honor the contract: anything that
-   changes rules/vars must invalidate through `markDirty` (`_varsVer`).
+4. **Decide the grammar/var-pack delivery + invalidation.** ✅ **Done** — chose the doc-level
+   pack-source extension: `collectRules`/`collectVars` merge `root.plugins` directly, honoring the
+   `_varsVer` contract (packs live on `root`, so the cache reflects them; a future `root.plugins`
+   mutation must `markDirty`). The **visible-subtree** path (pack = a stamped template subtree)
+   still works as the alternative for packs the author wants as points.
 
 ## Notes
 
 - These are **safe, additive, pure-core, testable** refactors — the project's preferred kind.
   None touch the no-code-execution security invariant or add authoring syntax.
-- **Current sequencing (after the #2 / #3 decisions):** **#1** next — the `<_plugins>` store +
-  `applyPlugins` merge seam (the foundation that makes everything pluggable) — then **#4** (the
-  `collectRules`/`collectVars` doc-level merge + `_varsVer` invalidation) as the hidden-bundle
-  grammar/variable pack path. The **visible-subtree** path (pack = a stamped template subtree)
-  already works today, so #4 is only for hidden/bundled packs.
+- **Current sequencing:** **#1 + #4 (grammar + variable packs) are done** — the `<_plugins>` store
+  and the `collectRules`/`collectVars` collect-time merge (with `_varsVer` honored) shipped together.
+  **Next:** the **emoji-pack follow-on** — `applyPlugins(root)` for the *apply-once-at-load* mutable
+  `EMOJI` registry (with `escHtml` on pack values since emoji substitution runs *after* the escape
+  pass, and a per-load rebuild so pack emoji don't leak across documents). Then the **pack-authoring /
+  management UI** (the first *user-facing*, UX-gated layer).

@@ -103,8 +103,8 @@ Templates and saved searches are already doc-level config — no pack machinery 
 
 | | Item |
 |---|---|
-| **Prime now** | the `<_plugins>` store + `applyPlugins` seam + `collectRules`/`collectVars` mergeability (+ `_varsVer` invalidation) + emoji merge |
-| **Done** | FN-table hoist — `evalMath` tables to module scope (PR #82); a mutable home for first-party function modules |
+| **Prime now** | the **emoji merge** (`applyPlugins` apply-at-load into the mutable `EMOJI` map) — the remaining pack kind |
+| **Done** | FN-table hoist — `evalMath` tables to module scope (PR #82) · the `<_plugins>` store + `collectRules`/`collectVars` collect-time mergeability for **grammar + variable packs** (+ `_varsVer` honored) |
 | **Dropped** | single-source theme / theme packs (color palettes — product call) |
 | **Out (gated)** | code plugins · functions-as-data · executable code nodes · remote/marketplace fetch (network) · arbitrary-JS sandboxes — all under §0 |
 
@@ -118,9 +118,15 @@ scope" note (`backlog.md` / `enhancement-research.md` guardrails) into the singl
 The full analysis is `guidance/plugins-data-packs-prerequisites.md`. Status against it:
 - **#2 (hoist `evalMath` FN tables)** — ✅ done (PR #82).
 - **#3 (single-source theme)** — ⊘ dropped (no theme packs).
-- **#1 (the `<_plugins>` merge seam)** — the priming foundation; build next.
-- **#4 (grammar/var-pack delivery + `_varsVer` invalidation)** — the hidden-bundle path, paired
-  with #1. The visible-subtree path already works, so #4 is only for hidden/bundled packs.
+- **#1 (the `<_plugins>` merge seam)** — ✅ **engine done** (grammar + variable packs): `root.plugins`
+  + the `<_plugins>` head element (`headEl`/`headJSONArray`, `validPluginPack` validator) +
+  collect-time merge in `collectRules`/`collectVars` (`mergePackRules`/`packVarDefs`), document
+  overriding pack on collision. No `applyPlugins` indirection was needed for these two pack kinds —
+  they merge directly in the collectors (the `_varsVer`-cached path). **Emoji packs** (the
+  apply-at-load `applyPlugins` timing) are the deliberate follow-on (see §5 "Prime now").
+- **#4 (grammar/var-pack delivery + `_varsVer` invalidation)** — ✅ folded into #1's collect-time
+  merge (packs live on `root`, so the `_varsVer` cache reflects them; a future `root.plugins`
+  mutation must `markDirty`). The visible-subtree path already works.
 
 ---
 

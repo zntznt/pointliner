@@ -296,8 +296,10 @@ changes.
 all app-specific data rides on **underscore-prefixed custom attributes**
 (`_type`, `_dice`, `_vars`, `_id`, …). Sidecar arrays are `JSON.stringify`'d into
 an attribute. **Doc-level config rides the `<head>`** as underscore-prefixed custom
-*elements* (`<_savedSearches>` — JSON content, same serialize+parse-in-one-change
-rule). `ex()` encodes `\n` as `&#10;` because XML attribute normalization
+*elements* (`<_savedSearches>`, `<_templates>`, `<_inbox>`, `<_plugins>` — JSON
+content, same serialize+parse-in-one-change rule; `headEl`/`headJSONArray` are the
+shared serialize/parse pair, the validator dropping malformed entries on load).
+`ex()` encodes `\n` as `&#10;` because XML attribute normalization
 would otherwise collapse literal newlines to spaces on re-parse. **OPML here is a
 storage format, not an interchange format** — the app owns the files, so inventing
 attributes is fine, but the data won't survive a round-trip through other OPML
@@ -459,6 +461,24 @@ varMap value through `formatVarValue` (string-aware), never `formatMathResult`
 directly; in math/dice a string value fails to `null` visibly (the type-safety
 contract). Direction: `guidance/generation-direction.md` — the reverted
 per-expansion bound-picks model (`:=`/`ctx.binds`, PR #51) must not return.
+
+**Declarative data packs (plugins) merge into both collectors.** `root.plugins`
+(the `<_plugins>` OPML head element) is a list of **pure-data** packs — extensibility
+is **data only, never code** (the locked gate: `guidance/plugins-direction.md` §0–1;
+no `eval`/`Function` in the pack path). A pack carries grammar `rules` (one-per-line
+`parseRules` text) and formula `vars` (`{name, expr}` → `evalMath`); both flow through
+the **existing restricted engines** only. They merge at **collect time**: `collectRules`
+calls `mergePackRules(merged, root.plugins)` **before** the tree walk and `collectVars`
+seeds `packVarDefs(root.plugins)` into `defs` **before** the `[[var:]]` gather — so a
+**document-authored name overrides the pack** on collision (packs go in first; the
+existing last-wins merge does the rest), and pack vars resolve through the same lazy
+`Proxy` + cycle detection. Because packs live on `root`, the `_varsVer` cache already
+reflects them; any *future* mutation of `root.plugins` must `markDirty()`. Robustness:
+`validPluginPack` (shape guard — a plain object with a string `id`) is both the
+`headJSONArray` load validator and the collector guard, and malformed `rules`/`vars`
+inside a kept pack are neutralized defensively at use (`parseRules`→`null`,
+`evalMath`→`null`, non-array `vars` skipped) — a hostile `<_plugins>` never throws or
+executes. Pick-vars, emoji packs, and any authoring/management UI are out of v1.
 
 **Node links** are a third document-wide index, same shape as the above — and
 **hashtags** a fourth: `collectTags(rootNode = root)` walks the tree with mdInline's
