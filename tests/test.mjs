@@ -1982,6 +1982,72 @@ test('rollPickSource: weighted alternation respects weights', () => {
   c.resetRandom();
 });
 
+// ── A5: item-weight expressions ({a | b {= expr}}) — dynamic odds over vars ──
+test('parseAlt: trailing {= expr} is a weight; a bare {= expr} alt stays content', () => {
+  assert.deepEqual(host(c.parseAlt('shield {= str}')), { template: 'shield', weightExpr: 'str' });
+  assert.deepEqual(host(c.parseAlt('b 2')), { template: 'b', weight: 2 });           // literal weight unchanged
+  assert.deepEqual(host(c.parseAlt('plain')), { template: 'plain', weight: 1 });     // default weight
+  // a bare computed-value alt has no preceding template → it is NOT a weight
+  assert.deepEqual(host(c.parseAlt('{= 2d6}')), { template: '{= 2d6}', weight: 1 });
+});
+
+test('pickWeightedAlt: a {= expr} weight resolves against vars at pick time', () => {
+  const alts = [c.parseAlt('rare {= luck}'), c.parseAlt('common 1')];
+  // luck = 9 → weights 9 vs 1; 0.5*10 = 5 lands in the first (rare)
+  c.seedSequence([0.5]);
+  try { assert.equal(c.pickWeightedAlt(alts, { luck: 9 }).template, 'rare'); }
+  finally { c.resetRandom(); }
+  // luck = 0 (via expression) → weight 0 disables it; only 'common' remains
+  const alts2 = [c.parseAlt('rare {= luck}'), c.parseAlt('common 1')];
+  c.seedSequence([0.0]);
+  try { assert.equal(c.pickWeightedAlt(alts2, { luck: 0 }).template, 'common'); }
+  finally { c.resetRandom(); }
+});
+
+test('pickWeightedAlt: an unresolved weight expr falls back to neutral 1 (alt not dropped)', () => {
+  const alts = [c.parseAlt('a {= missing}'), c.parseAlt('b {= missing}')];
+  c.seedSequence([0.25]); // both neutral weight 1 → 0.25*2=0.5 lands in the first
+  try { assert.equal(c.pickWeightedAlt(alts, {}).template, 'a'); }
+  finally { c.resetRandom(); }
+});
+
+test('resolveBrace: a {= expr} weight drives a live alternation through the engine', () => {
+  // strong=10 vs weak default 1 → with 0.5 the mass lands in the heavy alt
+  c.seedSequence([0.5]);
+  try {
+    const ctx = { rules: {}, vars: { strong: 10 }, depth: 0, stack: [] };
+    assert.equal(c.resolveBrace('hit {= strong} | miss', ctx), 'hit');
+  } finally { c.resetRandom(); }
+});
+
+// ── yes/no oracle (a weighted-alt recipe; reuses A5 for dynamic odds) ────────
+test('oracle: every band is a valid weighted Yes/No alternation with the right bias', () => {
+  const bands = ['Yes 19 | No 1', 'Yes 3 | No 1', 'Yes 1 | No 1', 'Yes 1 | No 3', 'Yes 1 | No 19'];
+  for (const body of bands) {
+    c.seedSequence([0.0]); assert.match(c.rollPickSource(body, {}, {}), /^(Yes|No)$/, body);
+    c.resetRandom();
+  }
+  // "Certain" (Yes 19 | No 1): the low end of the mass is Yes; only the top sliver is No
+  c.seedSequence([0.0]);  try { assert.equal(c.rollPickSource('Yes 19 | No 1', {}, {}), 'Yes'); } finally { c.resetRandom(); }
+  c.seedSequence([0.99]); try { assert.equal(c.rollPickSource('Yes 19 | No 1', {}, {}), 'No'); }  finally { c.resetRandom(); }
+  // "Impossible" inverts the bias
+  c.seedSequence([0.99]); try { assert.equal(c.rollPickSource('Yes 1 | No 19', {}, {}), 'No'); }  finally { c.resetRandom(); }
+});
+
+test('oracle: dynamic odds — a {= expr} weight reads a variable (A5 inside the oracle body)', () => {
+  // luck=20 vs No 1 → almost always Yes; with 0.0 the mass lands in Yes
+  c.seedSequence([0.0]);
+  try { assert.equal(c.rollPickSource('Yes {= luck} | No 1', {}, { luck: 20 }), 'Yes'); }
+  finally { c.resetRandom(); }
+});
+
+test('oracle: front-door wiring (src pins)', () => {
+  assert.ok(_src.includes("id:'oracle'"), 'oracle @ menu entry missing');
+  assert.ok(_src.includes("id === 'oracle'"), 'oracle insert dispatch missing');
+  assert.ok(_src.includes('function openOracleDialog('), 'oracle dialog missing');
+  assert.ok(_src.includes('ORACLE_BANDS'), 'oracle likelihood bands missing');
+});
+
 test('rollPickSource: dice source rolls through the dice core', () => {
   c.seedSequence([0]); // every die rolls its minimum
   assert.equal(c.rollPickSource('2d6', {}, {}), '2');

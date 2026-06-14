@@ -57,6 +57,24 @@ Implemented:
   degrades to a uniform pick (no per-instance record there). Pure cores: `seqParts`
   (detect), `nextSeqIndex` (state machine), `advanceSeq` (emit), `makeSeqGen` (build).
   This resolved the long-standing "decks/bags have nowhere clean to live yet" question.
+- **Dynamic odds** (A5) — the weight in a weighted alternation may be a trailing
+  `{= expr}` instead of a literal number: `{sword | shield {= str}}` weights "shield"
+  by the variable `str`, resolved against the document vars **at pick time** (so the
+  odds shift as state changes — Perchance-style dynamic weights). `parseAlt` detects a
+  trailing `{= …}` weight (only when a non-empty template precedes it, so a bare
+  `{= 2d6}` alt stays content); `pickWeightedAlt(alts, vars)` resolves it via `evalMath`
+  — an unresolved expr falls back to neutral weight 1 (the alt is not dropped), a numeric
+  `≤ 0` → 0 so `{= cond ? 1 : 0}` can conditionally disable an alt. No new syntax: it
+  reuses the existing `{= …}` math form in the existing trailing-weight slot.
+- **Yes/no oracle** — the `@` **"Oracle (yes/no)"** door: the most-reused solo-gen
+  primitive (ask a question, get Yes/No at tunable odds), shipped as a friendly likelihood
+  picker over weighted alternation — **not** new syntax. Pick a band (Certain / Likely /
+  Even / Unlikely / Impossible — **original, neutral** weight ratios; the IP fence forbids
+  copying a published oracle's tables) or edit the odds yourself; it builds an anonymous
+  `Yes N | No M` weighted-alt pill that re-rolls Yes/No on click and unfolds to
+  `{Yes N | No M}`. Because the odds field IS the weighted-alt body, the odds can be A5
+  `{= expr}` weights for **state-modulated** odds (e.g. `Yes {= 3 + chaos} | No`).
+  `openOracleDialog`/`ORACLE_BANDS`.
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
   **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,

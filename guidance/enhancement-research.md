@@ -158,13 +158,13 @@ So every proposal below can name its target:
 |---|---|---|---|---|---|
 | **A3** | **Conditional text** `{cond: then \| else}` | Ink | `condParts` + `resolveBrace` branch; classify/label/promote/unfold | new `{…}` sub-form; recorded | ✅ **implemented** on branch `claude/gallant-fermat-qrgu0q` (pending merge) — small |
 | **A4** | **Stateful sequences + decks/bags** — `{shuffle:…}` (draw w/o replacement), `{cycle:…}`, `{once:…}`, `{stopping:…}` | Ink sequences + Perchance `consumableList` + Harlowe `(shuffled:)` | `resolveBrace` branch + a **counter/pool field on the grammar record** (already OPML-round-trips via `_grammar`) | new `{…}` sub-form; ⚑ records the "stateful randomness" decision | ☐ **resolves the named open question** — medium |
-| **A5** | **Item weights as expressions / dynamic odds** | Perchance `^[expr]` | extend `parseAlt` so a weight may be a `{=expr}` | reuses `{=}`; no new sigil | ☐ small |
+| **A5** | **Item weights as expressions / dynamic odds** | Perchance `^[expr]` | extend `parseAlt` so a weight may be a `{=expr}` | reuses `{=}`; no new sigil | ✅ **shipped** — a trailing `{= expr}` weight (`{a \| b {= str}}`) resolves against the doc vars at pick time (`pickWeightedAlt(alts, vars)`); unresolved → neutral 1, `≤0` disables the alt |
 | **A1** | **Text modifiers** `.a/.an`, `.s` (plural), `.cap`, `.title` | Tracery + Perchance | `resolveBrace` post-identifier handling | ⚑ the one place that bumps P5 (a `.mod` lexical element) — needs sign-off; **already a deferred follow-on** in `generation-direction.md` §5 | ☐ small core, governance gate |
 | **A2** | **Inline lock-and-reuse** `{name = …}` | Perchance `[w=…]`; Tracery saved symbols | — | ⚑ this *is* the deferred `{:=}`-class shorthand; the *declared* random-pick variable already ships the semantics | ◐ semantics shipped; inline form deferred (lock) |
 | **A6** | **Hierarchical rule/item properties** `{sword.value}` | Perchance hierarchical lists | richer rule record + a `.prop` drill in `expandRule` | reuses `{…}` + the `.` from A1 | ☐ medium |
 | **A7** | **Resolve-then-freeze discipline** (expand nested `{…}` before freezing) | Perchance `evaluateItem` | `rollPickSource` / `promoteBraceBody` freeze path | none (a correctness rule) | ☐ tiny — audit-and-pin |
 | **A8** | **Knobs:** `{Nx: …}` repeat brace · `random(lo,hi)` (`FN2`) · `{d66}` dice mode · a **cycling-link pill** (deterministic advance) · user **seed** | Twine `<<for>>`/`(cycling-link:)` + d66 + procgen seeds | `resolveBrace` / `FN2` / `parseDice` / a new pill verb / RNG plumbing | mostly reuse; cycling-link is a new *interaction* (needs a P2 front door) | ☐ small each |
-| **A-oracle** | **Tunable yes/no oracle** (front door over A3+A5) | tabletop oracles | a `@`-menu recipe building a weighted-alt rule | reuses A3/A5; **IP fence on data** | ☐ small — ships on top of A3+A5 |
+| **A-oracle** | **Tunable yes/no oracle** (front door over A3+A5) | tabletop oracles | a `@`-menu recipe building a weighted-alt rule | reuses A3/A5; **IP fence on data** | ✅ **shipped** — `@` "Oracle (yes/no)" door → a likelihood picker (Certain…Impossible, **original** neutral ratios) that builds an anonymous `Yes N \| No M` weighted-alt pill; the odds field accepts A5 `{= expr}` weights for dynamic odds |
 
 **Why A4 is the headline.** Ink's `once/cycle/stopping` and Perchance's `consumableList` are the
 *same* primitive as a deck/bag: a pill that remembers a counter (an int) or a remaining pool (an
@@ -287,7 +287,8 @@ rollup as the no-sampling default**, with full Monte-Carlo reserved for non-sum 
 Ranked by leverage ÷ cost, in-bounds first:
 
 1. **A3 conditional text + A5 item-weight expressions** — tiny, P5-clean; together they make the
-   grammar genuinely expressive (and unblock a *user-built* oracle past the IP fence). *(A3 done.)*
+   grammar genuinely expressive (and unblock a *user-built* oracle past the IP fence). *(A3, A5,
+   and the A-oracle front door all shipped 2026-06-14.)*
 2. **A4 stateful sequences / decks** — closes the *named* open question with an obvious sidecar
    home; high delight (decks, rotating flavor, draw-without-replacement).
 3. **B1 subtree aggregation** — the roadmap's preferred shape; turns the outline into a

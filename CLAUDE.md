@@ -362,7 +362,10 @@ when proposing features:
   are templates); a **stateful sequence** (`{shuffle|cycle|once|stopping: a|b|c}` — a
   reserved mode keyword before a top-level `:`, via `seqParts`) → a deck/cycle pill
   (stateful as a standalone pill; degrades to a uniform pick inside a rule); top-level `|` →
-  weighted alternation (`{a|b 2|c}`); leading `=` → expression (`{= 2*r}`, calls
+  weighted alternation (`{a|b 2|c}` — a weight is a number **or** a trailing `{= expr}`
+  resolved against the doc vars at pick time, A5 dynamic odds: `pickWeightedAlt(alts, vars)`,
+  taken only when a non-empty template precedes it so a bare `{= 2d6}` alt stays content);
+  leading `=` → expression (`{= 2*r}`, calls
   `evalMath`); a dice pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`);
   a bare identifier → a named rule (`{color}`) if one exists, else a
   document **variable's** value (`{strength}`), else a `{name?}` marker. Names are
@@ -517,6 +520,11 @@ callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
 **Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws
 without replacement, others rotate/advance; state on the grammar record, `_grammar`
 round-trips; `@` "Deck" door; `seqParts`/`nextSeqIndex`/`advanceSeq`) ·
+**Dynamic odds** (A5: a weighted-alternation weight may be a trailing `{= expr}` over
+variables — `{a|b {= str}}` — resolved at pick time; `parseAlt`/`pickWeightedAlt(alts, vars)`) ·
+**Yes/no oracle** (the `@` "Oracle (yes/no)" door — a likelihood picker over original/neutral
+odds bands building an anonymous `Yes N | No M` weighted-alt pill; the odds field accepts A5
+`{= expr}` weights; `openOracleDialog`/`ORACLE_BANDS`) ·
 Math (incl. unit conversion + date math; **subtree aggregation** `{= sum|avg|count(prop)}`
 rolls up a child points' property — `expandAggExpr`/`aggregateChildren`, render-time, live) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
