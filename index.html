@@ -9612,6 +9612,43 @@ function checkInlineHighlight(content, node) {
 // conditionals: ternary  a > b ? x : y  or function form  if(cond, then, else).
 // Uses a recursive-descent parser — no eval(), safe to run on user input.
 
+// evalMath's lookup tables are hoisted to module scope so they're allocated once
+// rather than rebuilt on every call (math pill render, {= …} expansion, subtree
+// aggregation, #+TBLFM: cell). They are fully static — `today` is the one dynamic
+// "constant" and stays per-call inside evalMath (a module-level value would freeze
+// at page load and go stale across midnight).
+const DAY_MS = 86400000;
+// All lookup tables are null-proto: ident() probes them with `in`, and on a plain
+// object `'constructor' in MATH_CONSTS` is true via Object.prototype — `constructor*2`
+// would resolve to the Object function (NaN downstream) and `constructor(5)` would
+// dispatch it as a unary FN1, instead of both failing cleanly to null.
+const MATH_CONSTS = Object.assign(Object.create(null), { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity });
+const FN1 = Object.assign(Object.create(null), {
+  sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
+  round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  asin: Math.asin, acos: Math.acos, atan: Math.atan,
+  ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
+  exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
+  deg: x => x * (180 / Math.PI), rad: x => x * (Math.PI / 180),
+  // unit conversions — each a pure unary fn named from2to (factors are exact)
+  c2f: x => x * 9 / 5 + 32,            f2c: x => (x - 32) * 5 / 9,           // temperature
+  km2mi: x => x / 1.609344,            mi2km: x => x * 1.609344,             // distance (long)
+  m2ft: x => x / 0.3048,               ft2m: x => x * 0.3048,
+  cm2in: x => x / 2.54,                in2cm: x => x * 2.54,                 // distance (short)
+  kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
+  kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
+  l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
+  // date math — dates are integer epoch-days (date(y,m,d)/today); these pull
+  // components or pass through (asdate marks a value for ISO display)
+  year:    x => new Date(Math.round(x) * DAY_MS).getUTCFullYear(),
+  month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
+  day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
+  weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
+  asdate:  x => x,
+});
+const FN2 = Object.assign(Object.create(null), { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot });
+const FN3 = Object.assign(Object.create(null), { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) });
+
 function evalMath(input, vars = {}) {
   // Pre-process: collapse whitespace, lowercase, map Unicode math symbols
   const s = (input || '')
@@ -9647,43 +9684,16 @@ function evalMath(input, vars = {}) {
     return v;
   }
 
-  const DAY_MS = 86400000;
-  const _today = (() => { const d = new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS); })();
-  // All lookup tables are null-proto: ident() probes them with `in`, and on a plain
-  // object `'constructor' in CONSTS` is true via Object.prototype — `constructor*2`
-  // would resolve to the Object function (NaN downstream) and `constructor(5)` would
-  // dispatch it as a unary FN1, instead of both failing cleanly to null.
-  const CONSTS = Object.assign(Object.create(null), { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity, today: _today });
-  const FN1 = Object.assign(Object.create(null), {
-    sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
-    round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
-    asin: Math.asin, acos: Math.acos, atan: Math.atan,
-    ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
-    exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
-    deg: x => x * (180 / Math.PI), rad: x => x * (Math.PI / 180),
-    // unit conversions — each a pure unary fn named from2to (factors are exact)
-    c2f: x => x * 9 / 5 + 32,            f2c: x => (x - 32) * 5 / 9,           // temperature
-    km2mi: x => x / 1.609344,            mi2km: x => x * 1.609344,             // distance (long)
-    m2ft: x => x / 0.3048,               ft2m: x => x * 0.3048,
-    cm2in: x => x / 2.54,                in2cm: x => x * 2.54,                 // distance (short)
-    kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
-    kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
-    l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
-    // date math — dates are integer epoch-days (date(y,m,d)/today); these pull
-    // components or pass through (asdate marks a value for ISO display)
-    year:    x => new Date(Math.round(x) * DAY_MS).getUTCFullYear(),
-    month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
-    day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
-    weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
-    asdate:  x => x,
-  });
-  const FN2 = Object.assign(Object.create(null), { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot });
-  const FN3 = Object.assign(Object.create(null), { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) });
+  // `today` is the one dynamic constant — recomputed per call so a session left
+  // open across midnight (or a doc opened the next day without reload) stays current.
+  // The static tables (MATH_CONSTS/FN1/FN2/FN3) are hoisted to module scope above.
+  const _today = dueDateToday();
 
   function ident() {
     let name = '';
     while (/[a-z0-9_]/.test(peek())) name += eat();
-    if (name in CONSTS) return CONSTS[name];
+    if (name === 'today') return _today;            // dynamic — stays current per call
+    if (name in MATH_CONSTS) return MATH_CONSTS[name];
     // When followed by '(' treat as a function call — don't let a document variable
     // named 'year'/'month'/'day'/etc. shadow a built-in function.
     if (peek() !== '(') {
