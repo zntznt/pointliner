@@ -3460,6 +3460,89 @@ test('subtree aggregation: render + export + front-door wiring (src pins)', () =
   assert.ok(_src.includes("{ keys: ['{= sum(cost)}']"), 'aggregation ? panel row missing');
 });
 
+// ── outline constraints / lint (F2) ─────────────────────────────────────────
+// A reserved `check` property carries an evalMath boolean over the point + its
+// direct children (B1 aggregation) + the point's own numeric props. evalCheck →
+// pass/fail/error/null; is:failing surfaces every violation. Zero new syntax.
+const mkCheckNode = (checkExpr, ownProps = {}, childCosts = []) => {
+  const p = c.mkNode('Project');
+  for (const [k, v] of Object.entries(ownProps)) p.props.push({ key: k, val: String(v) });
+  if (checkExpr != null) p.props.push({ key: 'check', val: checkExpr });
+  for (const cost of childCosts) {
+    const ch = c.mkNode('item');
+    if (cost != null) ch.props.push({ key: 'cost', val: String(cost) });
+    p.children.push(ch);
+  }
+  return p;
+};
+
+test('evalCheck: child-aggregation budget assertion passes / fails', () => {
+  assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', { budget: 100 }, [30, 50]), {}), 'pass'); // 80 ≤ 100
+  assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', { budget: 100 }, [30, 80]), {}), 'fail'); // 110 ≤ 100
+  assert.equal(c.evalCheck(mkCheckNode('sum(weight) == 100', {}, []), {}), 'fail'); // 0 == 100 → fail (no children)
+});
+
+test('evalCheck: count / avg aggregations and own-prop assertions', () => {
+  assert.equal(c.evalCheck(mkCheckNode('count(cost) >= 3', {}, [1, 2, 3]), {}), 'pass');
+  assert.equal(c.evalCheck(mkCheckNode('count(cost) >= 3', {}, [1, 2]), {}), 'fail');
+  assert.equal(c.evalCheck(mkCheckNode('avg(cost) <= 10', {}, [5, 15]), {}), 'pass');   // avg 10
+  assert.equal(c.evalCheck(mkCheckNode('hours <= 8', { hours: 6 }), {}), 'pass');       // own prop
+  assert.equal(c.evalCheck(mkCheckNode('hours <= 8', { hours: 9 }), {}), 'fail');
+});
+
+test('evalCheck: null when no check, error when malformed or unresolvable', () => {
+  assert.equal(c.evalCheck(c.mkNode('plain'), {}), null);                                // no check property
+  assert.equal(c.evalCheck(mkCheckNode('', {}), {}), null);                              // empty value → no check
+  assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= ', { budget: 1 }, [1]), {}), 'error'); // malformed expr
+  assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', {}, [1]), {}), 'error');   // budget undefined → error, not crash
+  assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', { budget: 'lots' }, [1]), {}), 'error'); // non-numeric → error
+});
+
+test('evalCheck: own props win over doc vars; evalMath constants still win over both', () => {
+  // own budget=50 shadows the passed-in doc var budget=100
+  assert.equal(c.evalCheck(mkCheckNode('budget == 50', { budget: 50 }), { budget: 100 }), 'pass');
+  // a doc var with no own-prop shadow resolves from `vars`
+  assert.equal(c.evalCheck(mkCheckNode('rate == 7', {}), { rate: 7 }), 'pass');
+});
+
+test('nodePropVars: numeric own props only — skips dates, the check key, and non-numbers', () => {
+  const n = c.mkNode('x');
+  n.props.push({ key: 'budget', val: '100' }, { key: 'hours', val: '8' },
+    { key: 'name', val: 'abc' }, { key: 'due', val: '2026-01-01' },
+    { key: 'start', val: '2026-01-01' }, { key: 'check', val: 'hours<=8' });
+  assert.deepEqual(host(c.nodePropVars(n)), { budget: 100, hours: 8 });
+});
+
+test('checkExprOf: returns the trimmed assertion or null', () => {
+  assert.equal(c.checkExprOf(mkCheckNode('sum(cost) <= budget', { budget: 1 })), 'sum(cost) <= budget');
+  assert.equal(c.checkExprOf(c.mkNode('plain')), null);
+});
+
+test('parseSearchQuery: is:failing joins the is: family (and negates)', () => {
+  assert.deepEqual(host(c.parseSearchQuery('is:failing')), [{ neg: false, kind: 'is', value: 'failing' }]);
+  assert.deepEqual(host(c.parseSearchQuery('-is:failing')), [{ neg: true, kind: 'is', value: 'failing' }]);
+});
+
+test('termMatchesNode: is:failing matches a failing OR errored check, not a passing/absent one', () => {
+  const term = { neg: false, kind: 'is', value: 'failing' };
+  const failing = mkCheckNode('sum(cost) <= budget', { budget: 10 }, [50]); // 50 > 10
+  const passing = mkCheckNode('sum(cost) <= budget', { budget: 100 }, [5]);
+  const errored = mkCheckNode('sum(cost) <= ', { budget: 1 }, [1]);
+  assert.equal(c.termMatchesNode(term, failing, [], {}), true);
+  assert.equal(c.termMatchesNode(term, errored, [], {}), true);   // can't-evaluate IS a violation to surface (P4)
+  assert.equal(c.termMatchesNode(term, passing, [], {}), false);
+  assert.equal(c.termMatchesNode(term, c.mkNode('plain'), [], {}), false);
+});
+
+test('outline constraints: front-door + render + search wiring (src pins)', () => {
+  assert.ok(_src.includes("id:'check'"), '/check slash verb missing from BLOCK_CMDS');
+  assert.ok(_src.includes('function openCheckDialog'), 'openCheckDialog missing');
+  assert.ok(_src.includes('function buildCheckChip'), 'check chip builder missing');
+  assert.ok(_src.includes('prop-check-fail'), 'check chip fail CSS class missing');
+  assert.ok(_src.includes('is:(done|todo|note|failing)'), 'is:failing missing from parseSearchQuery');
+  assert.ok(_src.includes("openCheckDialog(chip.dataset.propsId)"), 'check chip not routed in openPropChip');
+});
+
 // ── due dates ─────────────────────────────────────────────────────────────────
 
 test('parseDueDate — ISO date parses to epoch day', () => {

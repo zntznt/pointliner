@@ -598,6 +598,21 @@ and chip click; chips render below the note row (gutter mark reuses `.note-mark`
 view; `has:key` / `key:value` search operators added to `parseSearchQuery`/`termMatchesNode` —
 `is:` stays a reserved prefix and `is:unrecognised` falls through to text; exported as
 `[key: val · …]` continuation lines in markdown/plain text) ·
+Outline constraints / lint (F2: a reserved **`check` property** carries an `evalMath` boolean
+assertion over a point + its direct children — `sum(cost) <= budget`, `count(score) >= 3`, own-prop
+`hours <= 8`; **zero new syntax** on the dates precedent — reuses `evalMath` + the B1 child
+aggregations. `evalCheck(node, vars)` → `pass`/`fail`/`error`/`null` (own numeric props via
+`nodePropVars` overlaid on `globalVarMap`, own props win, evalMath constants still win over both;
+child rollups via `expandAggExpr`). A live pass/fail/error chip (`buildCheckChip`, P4 — fail and
+error visible, pass a muted `✓`; a verdict flip announces via the `#a11y-live` region) routed through
+`openPropChip` like a date chip; **`is:failing`** is a new value in the existing `is:` family
+(`termMatchesNode`/`queryMatchesNode` gained a `vars` param defaulting to `globalVarMap`) — the
+doc-wide lint filter, matching a `fail` **or** `error` check. Front doors: `/check` slash verb, the
+bullet-menu "Add/edit check" door, the chip, the `?` panel + search legend; `openCheckDialog` has a
+live preview that explains why an expression can't evaluate (`mathErrorReason`). `check` is reserved
+like `DATE_KEYS` — hidden from the generic Properties editor, merged back on save; round-trips through
+`_props` for free. Deferred: min/max-over-children (date-range checks), multiple checks/point,
+cross-parent refs, structural/existence checks (F5)) ·
 Templates (named subtree snapshots stored doc-level on `root.templates = [{name, node}]` — the
 `<_templates>` OPML **head element**, the second underscore-prefixed custom element beside
 `<_savedSearches>`; save door is the bullet menu "Save as template" (name dialog, save-over-name
