@@ -3261,7 +3261,7 @@ const INSERT_CMDS = [
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table — one grammar rule; click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
-  { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck / sequence', desc:'Draw without replacement (a deck), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
+  { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value — a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
@@ -7915,7 +7915,7 @@ function insertInlineArtifact(id, nodeId, content) {
     });
   } else if (id === 'deck') {
     openSeqDialog({
-      title: 'New deck / sequence',
+      title: 'New deck',
       submitLabel: 'Insert',
       body: selected && seqParts(selected) ? selected : undefined,
       onResult: rec => {
@@ -8964,18 +8964,16 @@ function makeSeqGen(mode, items, key) {
   return rec;
 }
 
-// User-facing label for a sequence mode (the deck/cycle pill + its aria text).
-const SEQ_LABELS = { shuffle: 'deck', cycle: 'cycle', once: 'once', stopping: 'stopping' };
-
 // A stateful-sequence pill (deck / cycle / once / stopping). Reuses the grammar
 // pill chrome but: a deck icon, NO pencil (it unfolds to {mode: …} text for
 // editing, like an anonymous grammar / dice pill), and body-click ADVANCES the
 // sequence rather than re-rolling (wired in rerollGrammar via the `mode` field).
+// User-facing umbrella term is "Deck" with the mode as the qualifier — kept
+// distinct from the reserved word "sequence" (the to-do state-set feature).
 function renderSeqGenPill(key, g) {
-  const label = SEQ_LABELS[g.mode] || g.mode;
   const verb = g.mode === 'shuffle' ? 'draw the next' : 'advance';
-  return `<span class="gr-roll gr-seq" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="${escQ(label)} — click to ${verb}"`
-    + ` aria-label="Sequence (${escQ(label)}): ${escQ(g.result)} — click to ${verb}">`
+  return `<span class="gr-roll gr-seq" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}) — click to ${verb}"`
+    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(g.result)} — click to ${verb}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(g.result)}</span>`
     + `</span>`;
@@ -9046,7 +9044,7 @@ const SEQ_CHIPS = [
   { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
 ];
 
-// Front door for stateful sequences (the @ "Deck / sequence" door). One field:
+// Front door for stateful sequences (the @ "Deck" door). One field:
 // the `mode: a | b | c` body. A deck/cycle pill is a grammar record with state,
 // so onResult hands back a makeSeqGen record the caller pushes to node.grammar.
 function openSeqDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResult }) {
@@ -9080,7 +9078,7 @@ function rerollGrammar(node, key) {
   if (g.mode) {                                   // stateful sequence: ADVANCE, don't re-roll
     g.result = advanceSeq(g);
     markDirty();
-    announce(`${SEQ_LABELS[g.mode] || g.mode}: ${g.result || '(end)'}`);
+    announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
     const el = repaintNodeContent(node);
     el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
     return;
@@ -12929,7 +12927,7 @@ const SHORTCUTS = [
     { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count a child points’ property (also {= sum(cost)/count(cost)})' },
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
-    { keys: ['{shuffle: a|b|c}'], desc: 'Deck / sequence — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
+    { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
     { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },

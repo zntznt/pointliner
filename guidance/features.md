@@ -42,7 +42,7 @@ Implemented:
   its expansion like dice; click to re-generate. **Named pills show their callable
   name** and stay atomic in edit mode (the name is doc-wide config — unfolding
   would lose it); anonymous shorthand pills unfold to editable `{…}`.
-- **Stateful sequences / decks** — `@` "Deck / sequence" (or type the shorthand):
+- **Stateful sequences / decks** — `@` "Deck" (or type the shorthand):
   `{mode: a | b | c}` where `mode` is one of **shuffle** (a DECK — draw without
   replacement, reshuffle when the bag empties), **cycle** (loop in order), **once**
   (each item once, then nothing), **stopping** (advance, then stick on the last).

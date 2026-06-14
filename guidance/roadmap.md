@@ -211,7 +211,7 @@ variables — do not reintroduce it. The oracle was reverted and is listed below
   replacement, reshuffle when empty); the persisted per-instance state (`pos`/`bag`) rides
   on the **grammar record** and round-trips through the existing `_grammar` OPML attribute
   (the question "OPML-record vs sidecar" resolved in favour of the sidecar record). Pure
-  cores `seqParts`/`nextSeqIndex`/`advanceSeq`/`makeSeqGen`; `@` "Deck / sequence" door.
+  cores `seqParts`/`nextSeqIndex`/`advanceSeq`/`makeSeqGen`; `@` "Deck" door.
   See `guidance/features.md`.
 - **Retire the legacy per-feature cores** (`parseDice`/`parseMarkov`) now
   that composition runs through the unified grammar engine — a cleanup refactor that removes

@@ -516,7 +516,7 @@ callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
 **conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`) ·
 **Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws
 without replacement, others rotate/advance; state on the grammar record, `_grammar`
-round-trips; `@` "Deck / sequence" door; `seqParts`/`nextSeqIndex`/`advanceSeq`) ·
+round-trips; `@` "Deck" door; `seqParts`/`nextSeqIndex`/`advanceSeq`) ·
 Math (incl. unit conversion + date math; **subtree aggregation** `{= sum|avg|count(prop)}`
 rolls up a child points' property — `expandAggExpr`/`aggregateChildren`, render-time, live) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
