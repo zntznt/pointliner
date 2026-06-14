@@ -477,6 +477,24 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-roll.math-err .math-result{color:var(--bad);font-weight:600}
 @keyframes math-pop{0%{opacity:.35;transform:scale(.88)}60%{transform:scale(1.05)}100%{opacity:1;transform:scale(1)}}
 .math-roll.math-edited .math-result{display:inline-block;animation:math-pop .25s cubic-bezier(.2,.8,.3,1)}
+/* estimate pill (B2 — uncertain value: mean ± range + a unicode sparkline) */
+.est-pill{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
+.est-pill:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
+.est-pill:active{transform:translateY(.5px)}
+.est-pill .est-ico{color:var(--acc);font-size:.86em;display:inline-flex}
+.est-pill .est-expr{color:var(--muted);font-family:var(--mono);font-size:.9em}
+.est-pill .est-eq{color:var(--muted);opacity:.55;padding:0 1px}
+.est-pill .est-summary{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.est-pill .est-spark{font-family:var(--mono);letter-spacing:-.5px;color:color-mix(in srgb,var(--pill) 62%,var(--fg))}
+.est-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.est-pill:hover .est-edit{opacity:.6}
+.est-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
+.est-pill.est-bad{color:var(--del);border-style:dashed;cursor:default}
+.est-pill.est-bad:hover{box-shadow:none;border-color:var(--bdr)}
+.est-pill.est-err{border-color:var(--bad);border-style:dashed}
+.est-pill.est-err .est-summary{color:var(--bad);font-weight:600}
+.est-pill.est-rolled .est-spark{display:inline-block;animation:dice-pop .28s cubic-bezier(.2,.8,.3,1)}
+.est-preview-spark{font-family:var(--mono);letter-spacing:-.5px;color:var(--acc)}
 /* variable pill */
 .var-pill{display:inline-flex;align-items:center;gap:4px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .var-pill:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -624,12 +642,12 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
    each widget kind is identifiable without turning the line into candy */
 .dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}
-.gr-roll{--pill:#4a7a4d}.math-roll{--pill:#8a5300}.var-pill{--pill:#2a7f74}.seq-pill{--pill:#3d6280}
-.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill{
+.gr-roll{--pill:#4a7a4d}.math-roll{--pill:#8a5300}.var-pill{--pill:#2a7f74}.seq-pill{--pill:#3d6280}.est-pill{--pill:#5a4a8a}
+.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill,.est-pill{
   padding:1px 8px 1px 6px;gap:5px;
   background:color-mix(in srgb,var(--pill) 7%,var(--cbg));
   border-color:color-mix(in srgb,var(--pill) 22%,var(--bdr))}
-.dice-roll:focus-visible,.mk-roll:focus-visible,.gr-roll:focus-visible,.math-roll:focus-visible,.var-pill:focus-visible,.seq-pill:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.dice-roll:focus-visible,.mk-roll:focus-visible,.gr-roll:focus-visible,.math-roll:focus-visible,.var-pill:focus-visible,.seq-pill:focus-visible,.est-pill:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 
 .children{padding-left:var(--ind)}
 /* indent thread: a hairline at every indent step, clipped to the row's depth gutter
@@ -1036,7 +1054,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
   /* edit pencils on pills are hover-revealed on desktop — always show on touch */
-  .dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit{
+  .dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,.est-edit{
     opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr)}
   /* table row handle: wider tap target on touch, always show the grip cue */
   .mt-rowh{width:22px}
@@ -1071,7 +1089,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .collapse-btn:focus-visible,.crumb:focus-visible,.fn-key:focus-visible,#storage-warn-close:focus-visible,
 .bullet:focus-visible,.lvl-btn:focus-visible,#btn-done:focus-visible,.io-btn:focus-visible,.io-chip:focus-visible,
 .dice-edit:focus-visible,.mk-edit:focus-visible,.gr-edit:focus-visible,
-.math-edit:focus-visible,.var-edit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.math-edit:focus-visible,.var-edit:focus-visible,.est-edit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* menu rows: inset ring so the scrollable panel doesn't clip it (matches #bpop) */
 #file-menu .cmd-item:focus-visible,.mt-col-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 /* reduced motion (UXP-17): collapse every animation/transition to imperceptible.
@@ -1252,11 +1270,11 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], savedSearches: [], templates: [], inboxId: null, plugins: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxId: null, plugins: [] };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], seq: [], props: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -1901,6 +1919,7 @@ function renderContentHTML(node) {
   diceRenderList    = node.dice    || null;
   markovRenderList  = node.markov  || null;
   mathRenderList    = node.math    || null;
+  estRenderList     = node.est     || null;
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
@@ -1938,6 +1957,7 @@ function renderContentHTML(node) {
   diceRenderList    = null;
   markovRenderList  = null;
   mathRenderList    = null;
+  estRenderList     = null;
   varRenderList     = null;
   grammarRenderList = null;
   seqRenderList     = null;
@@ -2229,19 +2249,19 @@ function mdEmph(s) {
 let _inlineDepth = 0;
 function renderNodeInline(node) {
   const saved = { dice: diceRenderList, markov: markovRenderList,
-                  math: mathRenderList,
+                  math: mathRenderList, est: estRenderList,
                   vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList,
                   cookie: cookieNode };
   _inlineDepth++;
   diceRenderList = node.dice || null; markovRenderList = node.markov || null;
-  mathRenderList = node.math || null;
+  mathRenderList = node.math || null; estRenderList = node.est || null;
   varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
   seqRenderList = node.seq || null;
   cookieNode = node;
   // globalVarMap is document-wide — leave it.
   const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   diceRenderList = saved.dice; markovRenderList = saved.markov;
-  mathRenderList = saved.math;
+  mathRenderList = saved.math; estRenderList = saved.est;
   varRenderList = saved.vars; grammarRenderList = saved.grammar;
   seqRenderList = saved.seq;
   cookieNode = saved.cookie;
@@ -2299,6 +2319,9 @@ function mdInline(s) {
   // math expressions — [[math:KEY]] resolves against the node's stored expressions
   s = s.replace(/\[\[math:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderMathPill(k, mathRenderList?.find(m => m.key === k))));
+  // estimates — [[est:KEY]] resolves against the node's stored uncertain values
+  s = s.replace(/\[\[est:([a-z0-9]+)\]\]/gi, (_, k) =>
+    stash(renderEstPill(k, estRenderList?.find(e => e.key === k))));
   s = s.replace(/\[\[var:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderVarPill(k, varRenderList?.find(v => v.key === k))));
   s = s.replace(/\[\[grammar:([a-z0-9]+)\]\]/gi, (_, k) =>
@@ -2336,6 +2359,7 @@ function mdInline(s) {
 let diceRenderList = null;
 let markovRenderList = null;
 let mathRenderList = null;
+let estRenderList = null;
 let varRenderList    = null;
 let seqRenderList    = null;
 let grammarRenderList = null;
@@ -3183,6 +3207,7 @@ function toOpml(r) {
       n.math?.length     ? `_math="${ex(JSON.stringify(n.math))}"` : '',
       n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
+      n.est?.length      ? `_est="${ex(JSON.stringify(n.est))}"` : '',
       n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
       n.note             ? `_note="${ex(n.note)}"` : '',
       n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
@@ -3243,6 +3268,7 @@ function fromOpml(xml) {
       math:      (() => { try { return JSON.parse(el.getAttribute('_math')      || '[]'); } catch(_) { return []; } })(),
       vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
       grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
+      est:       (() => { try { const e = JSON.parse(el.getAttribute('_est')    || '[]'); return Array.isArray(e) ? e : []; } catch(_) { return []; } })(),
       seq:       (() => { try { return JSON.parse(el.getAttribute('_seq')       || '[]'); } catch(_) { return []; } })(),
       props:     (() => { try { const p = JSON.parse(el.getAttribute('_props')  || '[]'); return Array.isArray(p) ? p : []; } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
@@ -3354,6 +3380,7 @@ const INSERT_CMDS = [
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value — a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
+  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value — a 90% range, normal/uniform, or a sum over child points; shows mean ± range + a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
   // Organize — document-wide state sets
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Apply states via /.', ex:'Flow: BACKLOG DOING | SHIPPED', section:'Organize' },
 ];
@@ -3901,13 +3928,14 @@ function mtInline(node, raw) {
   diceRenderList    = node.dice    || null;
   markovRenderList  = node.markov  || null;
   mathRenderList    = node.math    || null;
+  estRenderList     = node.est     || null;
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
   cookieNode        = node;
   globalVarMap      = collectVars();
   const html = mdInline(raw || '');
-  diceRenderList = markovRenderList = mathRenderList = varRenderList = grammarRenderList = seqRenderList = null;
+  diceRenderList = markovRenderList = mathRenderList = estRenderList = varRenderList = grammarRenderList = seqRenderList = null;
   cookieNode = null;
   return html;
 }
@@ -4001,6 +4029,8 @@ function handleCellPill(node, pill, target) {
     if (target.closest('.gr-edit')) editGrammar(node, key); else rerollGrammar(node, key);
   } else if (pill.classList.contains('math-roll') && !pill.classList.contains('math-bad')) {
     editMath(node, key);
+  } else if (pill.classList.contains('est-pill') && !pill.classList.contains('est-bad')) {
+    if (target.closest('.est-edit')) editEst(node, key); else rerollEst(node, key);
   } else if (pill.classList.contains('var-pill') && !pill.classList.contains('var-bad')) {
     const vRec = node.vars?.find(x => x.key === key);
     if (vRec?.kind === 'pick' && !target.closest('.var-edit')) rerollPickVar(node, key);
@@ -4956,8 +4986,8 @@ function renderRow(r) {
   // range select) are left untouched so multi-select still works.
   if (!opts.searchCtx && !isDivider && !isTable) {
     const INTERACTIVE = '.node-content,.node-note,.bullet,.collapse-btn,'
-      + '.md-task-check,.node-link,.dice-roll,.mk-roll,.gr-roll,.math-roll,'
-      + '.var-pill,.dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,'
+      + '.md-task-check,.node-link,.dice-roll,.mk-roll,.gr-roll,.math-roll,.est-pill,'
+      + '.var-pill,.dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,.est-edit,'
       + '.hashtag,.fn-ref,.md-table-host,.todo-state';
     row.addEventListener('mousedown', e => {
       if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -6465,6 +6495,20 @@ function attachContentEvents(content, node) {
       }
       return;
     }
+    // estimate pill: pencil opens the editor, body re-samples in place
+    const est = e.target.closest?.('.est-pill');
+    if (est && !est.classList.contains('est-bad')) {
+      e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) {
+        if (e.target.closest('.est-edit')) { exitEdit(content, node); editEst(node, est.dataset.key); }
+        else { const off = getCaretOffset(content); rerollEst(node, est.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+      } else {
+        // display mode: the pill is a live widget — act in place, stay rendered
+        if (e.target.closest('.est-edit')) editEst(node, est.dataset.key);
+        else rerollEst(node, est.dataset.key);
+      }
+      return;
+    }
     // markov pill: pencil opens the editor, body re-rolls the walk
     const mk = e.target.closest?.('.mk-roll');
     if (mk && !mk.classList.contains('mk-bad')) {
@@ -6637,6 +6681,7 @@ function classifyBraceBody(body, rules, vars) {
   }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
+  if (estParts(body)) return 'artifact';                               // {5 to 10}
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
@@ -6667,6 +6712,7 @@ function braceTypeLabel(body, rules, vars) {
   rules = rules || {}; vars = vars || {};
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
+  if (estParts(body)) return ['estimate', null];                       // {5 to 10}
   if (splitTopLevel(body, '|').length > 1) return ['grammar', null];
   if (/^[a-z_][\w]*$/i.test(body)) {
     const low = body.toLowerCase();
@@ -6737,7 +6783,7 @@ function anchorEditInlines(html) {
 // form render as contenteditable=false pill spans (edited via the pencil/dialog);
 // inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|math|var|grammar|seq|est):([a-z0-9]+)\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
   // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
   // the rule isn't currently defined in the document).
@@ -6752,6 +6798,7 @@ function editModeHTML(node) {
     if (type === 'dice')    pill = renderDicePill(key, node.dice?.find(d => d.key === key));
     else if (type === 'markov')    pill = renderMarkovPill(key, node.markov?.find(d => d.key === key));
     else if (type === 'math')      pill = renderMathPill(key, node.math?.find(d => d.key === key));
+    else if (type === 'est')       pill = renderEstPill(key, node.est?.find(d => d.key === key));
     else if (type === 'grammar')   pill = renderGrammarPill(key, node.grammar?.find(d => d.key === key));
     else if (type === 'seq')       pill = renderSeqPill(key, node.seq?.find(d => d.key === key));
     else                           pill = renderVarPill(key, node.vars?.find(d => d.key === key));
@@ -6851,7 +6898,7 @@ function exitEdit(content, node) {
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
-  if (!_suppressPruneOnFlush) { pruneDice(node); pruneMarkov(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); } // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
+  if (!_suppressPruneOnFlush) { pruneDice(node); pruneMarkov(node); pruneMath(node); pruneEst(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); } // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
@@ -7032,7 +7079,7 @@ function onKeyDown(e, id, content) {
   // dispatches a mousedown that the content's existing pill-handler block already handles —
   // same action as a click, no duplicate logic.
   if (e.key === 'Enter' || e.key === ' ') {
-    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit');
+    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit,.est-edit');
     if (pencil) {
       e.preventDefault();
       pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
@@ -7049,7 +7096,7 @@ function onKeyDown(e, id, content) {
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
-    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill');
+    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill,.est-pill');
     if (pillBody && e.target === pillBody) {
       e.preventDefault();
       const k = pillBody.dataset.key;
@@ -8099,6 +8146,18 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.dice ||= []).push(roll);
         applyInlineInsertion(nodeId, offset, `[[dice:${roll.key}]]`);
+      },
+    });
+  } else if (id === 'est') {
+    openEstimateDialog({
+      title: 'Estimate (uncertain value)',
+      submitLabel: 'Add',
+      expr: selected,
+      node: nodeById(nodeId),
+      onResult: rec => {
+        const n = nodeById(nodeId); if (!n) return;
+        (n.est ||= []).push(rec);
+        applyInlineInsertion(nodeId, offset, `[[est:${rec.key}]]`);
       },
     });
   } else if (id === 'markov') {
@@ -9578,6 +9637,13 @@ function promoteBraceBody(node, body) {
     const roll = makeDiceRoll(body);
     if (roll) { (node.dice ||= []).push(roll); return `[[dice:${roll.key}]]`; }
   }
+  // uncertain estimate: {5 to 10}, {normal(8, 2)}, {uniform(0, 10)} — a distribution
+  // constructor (sum/avg rollups are authored via the @estimate dialog, not typed).
+  const estE = estParts(body);
+  if (estE) {
+    const rec = makeEstRoll(estE);
+    if (rec) { (node.est ||= []).push(rec); return `[[est:${rec.key}]]`; }
+  }
   // conditional text: {cond: then | else} → an anonymous grammar. Wrap the body
   // in a brace so the synthetic origin rule expands through resolveBrace (which
   // resolves the conditional) rather than the rule-level `|` split. Checked before
@@ -9664,6 +9730,7 @@ function artifactToShorthand(type, rec) {
   if (!rec) return null;
   if (type === 'dice') return rec.expr ? `{${rec.expr}}` : null;
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
+  if (type === 'est')  return rec.expr ? `{${rec.expr}}` : null;
   if (type === 'var')  return (!rec.expr && rec.name) ? `{${rec.name}}` : null; // display-only only
   if (type === 'grammar') {
     // A stateful sequence's config (mode + items) IS its text, so it unfolds to
@@ -9690,7 +9757,7 @@ function artifactToShorthand(type, rec) {
 // Length `prefix` would have after unfoldArtifacts rewrites its inline-able tokens
 // to {…} source — lets caret math translate folded offsets into unfolded ones.
 function unfoldedPrefixLen(node, prefix) {
-  const RE = /\[\[(dice|math|var|grammar):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est):([a-z0-9]+)\]\]/gi;
   let len = 0, last = 0, m;
   RE.lastIndex = 0;
   while ((m = RE.exec(prefix)) !== null) {
@@ -9710,7 +9777,7 @@ function unfoldedPrefixLen(node, prefix) {
 // a caret can sit inside editable {…} text but a splice must never land inside a
 // token. Pure; offsets are monotonic, so [start,end) ranges stay ordered.
 function foldedOffsetFor(node, offset) {
-  const RE = /\[\[(dice|math|var|grammar):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est):([a-z0-9]+)\]\]/gi;
   const text = node.text;
   let u = 0, last = 0, m;
   while ((m = RE.exec(text)) !== null) {
@@ -9736,7 +9803,7 @@ const _unfoldData = new WeakMap(); // node → [{sh, token}]
 // so the user can edit it as text. Records are left in their sidecars untouched.
 function unfoldArtifacts(node) {
   const list = [];
-  const TOKEN_RE = /\[\[(dice|math|var|grammar):([a-z0-9]+)\]\]/gi;
+  const TOKEN_RE = /\[\[(dice|math|var|grammar|est):([a-z0-9]+)\]\]/gi;
   node.text = node.text.replace(TOKEN_RE, (full, type, key) => {
     const arr = node[type === 'var' ? 'vars' : type];
     const sh = artifactToShorthand(type, arr?.find(r => r.key === key));
@@ -10138,6 +10205,410 @@ function makeMathResult(expr) {
   const v = evalMath(expandAggExpr(expr, null), collectVars());
   if (v === null) return null;
   return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isDateExpr(expr) ? 'date' : undefined };
+}
+
+// ─── uncertainty fields (B2) ─────────────────────────────────────────────────
+// A distribution can't ride evalMath (which ALWAYS returns a NUMBER — a load-bearing
+// invariant), so the estimate artifact has its OWN tiny Monte-Carlo sampler. An
+// estimate is authored as an uncertain expression — `lo to hi` (a 90% CI →
+// lognormal), `normal(m,s)`, `uniform(lo,hi)`, scalars, + − × ÷, and (Phase 2)
+// sum/avg(prop) over children's uncertain properties. The record is tiny —
+// {key, expr, seed} — and reproducible: re-sampling from the same seed gives the
+// same samples, so the pill is stable across renders, a shared C1 snapshot
+// reproduces the exact estimate, and a click just picks a new seed. N≈1000 samples
+// is sub-ms, so we never store the array. ALL cores below are pure + Node-testable.
+const EST_N = 1000;
+const SPARK_RAMP = '▁▂▃▄▅▆▇█';
+const EST_Z95 = 1.6448536269514722;   // one-sided 95th-percentile z-score
+
+// mulberry32 — a tiny seedable PRNG so sampling is deterministic per pill (NOT
+// Math.random, which would re-shape the distribution on every render).
+function rngFromSeed(seed) {
+  let a = (seed >>> 0) || 1;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function estNewSeed() { return (Math.random() * 0x100000000) >>> 0; }
+
+// A standard-normal draw (Box–Muller: two uniforms → one gaussian).
+function estGaussian(rng) {
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function meanOfSamples(arr) {
+  if (!arr || !arr.length) return 0;
+  let s = 0; for (let i = 0; i < arr.length; i++) s += arr[i];
+  return s / arr.length;
+}
+// `lo to hi` → a lognormal whose 5th/95th percentiles are lo/hi (positive bounds);
+// degenerates to a normal with the same CI when a bound is ≤ 0 (log undefined).
+function sampleLogNormalCI(lo, hi, n, rng) {
+  const out = new Array(n);
+  if (lo > 0 && hi > 0 && hi > lo) {
+    const mu = (Math.log(lo) + Math.log(hi)) / 2;
+    const sigma = (Math.log(hi) - Math.log(lo)) / (2 * EST_Z95);
+    for (let i = 0; i < n; i++) out[i] = Math.exp(mu + sigma * estGaussian(rng));
+  } else {
+    const mean = (lo + hi) / 2;
+    const sd = Math.abs(hi - lo) / (2 * EST_Z95);
+    for (let i = 0; i < n; i++) out[i] = mean + sd * estGaussian(rng);
+  }
+  return out;
+}
+
+// Tokenize an uncertain expression, or null on an unknown char / malformed number.
+function tokenizeUncertain(s) {
+  const toks = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === ' ' || c === '\t') { i++; continue; }
+    if ((c >= '0' && c <= '9') || c === '.') {
+      let j = i + 1;
+      while (j < s.length && ((s[j] >= '0' && s[j] <= '9') || s[j] === '.')) j++;
+      const num = s.slice(i, j);
+      if (!/^\d+(\.\d+)?$|^\.\d+$/.test(num)) return null;
+      toks.push({ t: 'num', v: parseFloat(num) });
+      i = j; continue;
+    }
+    if (/[a-z_]/.test(c)) {
+      let j = i + 1;
+      while (j < s.length && /[a-z0-9_]/.test(s[j])) j++;
+      toks.push({ t: 'word', v: s.slice(i, j) });
+      i = j; continue;
+    }
+    if ('+-*/(),'.includes(c)) { toks.push({ t: c }); i++; continue; }
+    return null;
+  }
+  return toks;
+}
+
+// Parse an uncertain expression into an AST, or null if malformed. Precedence,
+// loosest first: `to` (CI constructor) < +,− < *,/ < unary − < atom. A bare word
+// is valid ONLY as the keyword `to`, a constructor name, or a sum/avg argument.
+function parseUncertain(expr) {
+  const s = String(expr == null ? '' : expr).toLowerCase()
+    .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
+  if (!s.trim()) return null;
+  const toks = tokenizeUncertain(s);
+  if (!toks) return null;
+  let pos = 0;
+  const peek = () => toks[pos];
+  const at = (k) => peek() && peek().t === k;
+  const isWord = (w) => peek() && peek().t === 'word' && peek().v === w;
+
+  function pTo() {
+    const lo = pAdd();
+    if (lo == null) return null;
+    if (isWord('to')) { pos++; const hi = pAdd(); return hi == null ? null : { k: 'to', lo, hi }; }
+    return lo;
+  }
+  function pAdd() {
+    let left = pMul();
+    if (left == null) return null;
+    while (at('+') || at('-')) {
+      const op = toks[pos++].t;
+      const right = pMul();
+      if (right == null) return null;
+      left = { k: 'bin', op, left, right };
+    }
+    return left;
+  }
+  function pMul() {
+    let left = pUnary();
+    if (left == null) return null;
+    while (at('*') || at('/')) {
+      const op = toks[pos++].t;
+      const right = pUnary();
+      if (right == null) return null;
+      left = { k: 'bin', op, left, right };
+    }
+    return left;
+  }
+  function pUnary() {
+    if (at('-')) { pos++; const a = pUnary(); return a == null ? null : { k: 'neg', a }; }
+    if (at('+')) { pos++; return pUnary(); }
+    return pAtom();
+  }
+  function pAtom() {
+    const tk = peek();
+    if (!tk) return null;
+    if (tk.t === 'num') { pos++; return { k: 'num', v: tk.v }; }
+    if (tk.t === '(') { pos++; const e = pTo(); if (e == null || !at(')')) return null; pos++; return e; }
+    if (tk.t === 'word') {
+      if (toks[pos + 1] && toks[pos + 1].t === '(') {       // a function call
+        const name = tk.v; pos += 2;
+        if (name === 'normal' || name === 'uniform') {
+          const a = pTo(); if (a == null || !at(',')) return null; pos++;
+          const b = pTo(); if (b == null || !at(')')) return null; pos++;
+          return { k: name, a, b };
+        }
+        if (name === 'sum' || name === 'avg') {
+          if (!at('word')) return null;
+          const prop = toks[pos++].v;
+          if (!at(')')) return null; pos++;
+          return { k: 'agg', fn: name, prop };
+        }
+        return null;                                        // unknown function
+      }
+      return null;                                          // bare word (incl. stray `to`)
+    }
+    return null;
+  }
+
+  const ast = pTo();
+  return (ast != null && pos === toks.length) ? ast : null;
+}
+
+// Read a child point's uncertain property value (the raw expression string), or
+// null when absent — the B2 analogue of B1's childPropNumber (strings, not numbers).
+function estChildPropExpr(node, prop) {
+  const p = (node && node.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).toLowerCase());
+  if (!p) return null;
+  const v = String(p.val == null ? '' : p.val).trim();
+  return v || null;
+}
+
+// Sample an AST node → a length-n array. Distributions zip element-wise under
+// + − × ÷; scalars broadcast. `node` is the point being rendered, so sum/avg
+// aggregate over its direct children's uncertain properties (Monte-Carlo rollup).
+function sampleUncAst(ast, n, rng, node) {
+  switch (ast.k) {
+    case 'num': return new Array(n).fill(ast.v);
+    case 'neg': return sampleUncAst(ast.a, n, rng, node).map(x => -x);
+    case 'bin': {
+      const L = sampleUncAst(ast.left, n, rng, node);
+      const R = sampleUncAst(ast.right, n, rng, node);
+      const out = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const a = L[i], b = R[i];
+        out[i] = ast.op === '+' ? a + b : ast.op === '-' ? a - b : ast.op === '*' ? a * b : a / b;
+      }
+      return out;
+    }
+    case 'to':
+      return sampleLogNormalCI(meanOfSamples(sampleUncAst(ast.lo, n, rng, node)),
+                               meanOfSamples(sampleUncAst(ast.hi, n, rng, node)), n, rng);
+    case 'normal': {
+      const m = meanOfSamples(sampleUncAst(ast.a, n, rng, node));
+      const sd = meanOfSamples(sampleUncAst(ast.b, n, rng, node));
+      const out = new Array(n);
+      for (let i = 0; i < n; i++) out[i] = m + sd * estGaussian(rng);
+      return out;
+    }
+    case 'uniform': {
+      const lo = meanOfSamples(sampleUncAst(ast.a, n, rng, node));
+      const hi = meanOfSamples(sampleUncAst(ast.b, n, rng, node));
+      const out = new Array(n);
+      for (let i = 0; i < n; i++) out[i] = lo + (hi - lo) * rng();
+      return out;
+    }
+    case 'agg': {
+      const kids = (node && node.children) || [];
+      const cols = [];
+      for (const c of kids) {
+        const raw = estChildPropExpr(c, ast.prop);
+        if (raw == null) continue;
+        const sub = parseUncertain(raw);
+        if (!sub) continue;
+        cols.push(sampleUncAst(sub, n, rng, c));            // child as node → nested rollups resolve
+      }
+      const out = new Array(n).fill(0);
+      for (const col of cols) for (let i = 0; i < n; i++) out[i] += col[i];
+      if (ast.fn === 'avg' && cols.length) for (let i = 0; i < n; i++) out[i] /= cols.length;
+      return out;
+    }
+  }
+  return null;
+}
+
+// THE public sampler: an uncertain expression → a length-n sample array, or null
+// if malformed. Deterministic given (expr, seed). node? supplies sum/avg children.
+function sampleUncertain(expr, n, seed, node) {
+  const ast = parseUncertain(expr);
+  if (!ast) return null;
+  const rng = rngFromSeed((seed >>> 0) || 1);
+  return sampleUncAst(ast, (n | 0) || EST_N, rng, node || null);
+}
+
+// {mean, p5, p50, p95} of a sample array (non-finite values dropped), or null.
+function distSummary(samples) {
+  if (!samples || !samples.length) return null;
+  const xs = samples.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!xs.length) return null;
+  const q = (p) => {
+    const idx = (xs.length - 1) * p;
+    const lo = Math.floor(idx), hi = Math.ceil(idx);
+    return lo === hi ? xs[lo] : xs[lo] + (xs[hi] - xs[lo]) * (idx - lo);
+  };
+  let s = 0; for (const x of xs) s += x;
+  return { mean: s / xs.length, p5: q(0.05), p50: q(0.5), p95: q(0.95) };
+}
+
+// A pure-string unicode histogram of a sample array (the export-safe inline viz).
+// Buckets the p1..p99 mass into `buckets` bars mapped to the ▁..█ ramp.
+function sparkline(samples, buckets = 20) {
+  if (!samples || !samples.length) return '';
+  const xs = samples.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!xs.length) return '';
+  const qi = (p) => xs[Math.min(xs.length - 1, Math.max(0, Math.round((xs.length - 1) * p)))];
+  const lo = qi(0.01), hi = qi(0.99);
+  if (!(hi > lo)) return SPARK_RAMP[SPARK_RAMP.length - 1];   // a spike (constant) → one full bar
+  const counts = new Array(buckets).fill(0);
+  for (const x of xs) {
+    if (x < lo || x > hi) continue;
+    let b = Math.floor((x - lo) / (hi - lo) * buckets);
+    if (b >= buckets) b = buckets - 1; else if (b < 0) b = 0;
+    counts[b]++;
+  }
+  const max = Math.max(...counts);
+  if (max === 0) return '';
+  return counts.map(c => SPARK_RAMP[Math.min(7, Math.round(c / max * 7))]).join('');
+}
+
+// Shared number formatter (concise, finite-safe) so the pill, preview and export
+// agree on how a mean/percentile reads.
+function estNumFmt(x) {
+  if (!Number.isFinite(x)) return x > 0 ? '∞' : x < 0 ? '-∞' : 'NaN';
+  const a = Math.abs(x);
+  if (a !== 0 && (a < 0.001 || a >= 100000)) return x.toPrecision(3);
+  return String(+x.toFixed(a < 10 ? 2 : a < 1000 ? 1 : 0));
+}
+
+// "mean (p5 – p95) ▁▂▄▆█…" — the frozen headline display. Pure + export-safe.
+function formatDist(samples) {
+  const sm = distSummary(samples);
+  if (!sm) return '#ERR';
+  return `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)}) ${sparkline(samples, 11)}`;
+}
+
+// Sniff a {…} body that should promote to an estimate pill: an uncertain
+// CONSTRUCTOR — `lo to hi`, normal( ), uniform( ). (sum/avg rollups are authored
+// via the @estimate dialog, so a bare {sum(cost)} never silently diverges from the
+// {= sum(cost)} deterministic-math form.) Returns the trimmed expr, or null.
+function estParts(body) {
+  const b = String(body || '').trim();
+  const low = b.toLowerCase();
+  const sniff = (/\bto\b/.test(low) && /\d/.test(low)) || /^(normal|uniform)\s*\(/.test(low);
+  if (!sniff) return null;
+  return parseUncertain(b) ? b : null;
+}
+
+function estKey() { return 'u' + Math.random().toString(36).slice(2, 9); }
+
+// Build an estimate record from an uncertain expression, or null if it won't parse.
+// The record is tiny — {key, expr, seed}; the distribution is re-derived on render.
+function makeEstRoll(input) {
+  const expr = String(input || '').trim();
+  if (!expr || !parseUncertain(expr)) return null;
+  return { key: estKey(), expr, seed: estNewSeed() };
+}
+
+// Display-mode estimate pill. Re-samples from {expr, seed} against the render node
+// (cookieNode) so Phase-2 sum/avg(prop) rollups stay live as children change. The
+// aria-label is the mean±CI text; the sparkline is decorative (aria-hidden) — P3.
+function renderEstPill(key, e) {
+  if (!e) return `<span class="est-pill est-bad" data-key="${escQ(key)}" aria-label="Estimate (missing data)">≈ ?</span>`;
+  const samples = sampleUncertain(e.expr, EST_N, e.seed, cookieNode);
+  const sm = samples && distSummary(samples);
+  if (!sm) {
+    return `<span class="est-pill est-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit — expression invalid"`
+      + ` aria-label="Estimate ${escQ(e.expr)} — #ERR — click to edit">`
+      + `<span class="est-ico" aria-hidden="true"><i class="fa-solid fa-left-right"></i></span>`
+      + `<span class="est-expr">${escHtml(e.expr)}</span>`
+      + `<span class="est-summary">#ERR</span>`
+      + `<span class="est-edit" role="button" tabindex="-1" aria-label="Edit estimate" title="Edit estimate"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `</span>`;
+  }
+  const headline = `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})`;
+  return `<span class="est-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Uncertain estimate — click to re-sample"`
+    + ` aria-label="Estimate ${escQ(e.expr)}: mean ${escQ(headline)} — click to re-sample">`
+    + `<span class="est-ico" aria-hidden="true"><i class="fa-solid fa-left-right"></i></span>`
+    + `<span class="est-expr">${escHtml(e.expr)}</span>`
+    + `<span class="est-eq">≈</span>`
+    + `<span class="est-summary">${escHtml(headline)}</span>`
+    + `<span class="est-spark" aria-hidden="true">${escHtml(sparkline(samples, 11))}</span>`
+    + `<span class="est-edit" role="button" tabindex="-1" aria-label="Edit estimate" title="Edit estimate"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+    + `</span>`;
+}
+
+const EST_CHIPS = [
+  { label:'to',        insert: el => insertAndSelect(el, '', '5 to 10', '') },
+  { label:'normal()',  insert: el => insertAndSelect(el, 'normal(', '8, 2', ')') },
+  { label:'uniform()', insert: el => insertAndSelect(el, 'uniform(', '0, 10', ')') },
+  { label:'sum()',     insert: el => insertAndSelect(el, 'sum(', 'cost', ')') },
+];
+
+function openEstimateDialog({ title, submitLabel, expr = '', existing = null, node = null, onResult }) {
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-left-right', fb:'≈' },
+    title: title || 'Estimate (uncertain value)',
+    submitLabel: submitLabel || 'Add',
+    fields: [
+      { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,
+        hint:'A 90% range lo to hi (lognormal), normal(mean, sd), uniform(lo, hi); compose with + − × ÷. sum(prop)/avg(prop) rolls up child points’ uncertain properties. Click the pill to re-sample.',
+        preview: v => {
+          const ex = (v.expr || '').trim();
+          if (!ex) return '';
+          if (!parseUncertain(ex)) return `<span class="io-preview-bad">Not a valid uncertain expression</span>`;
+          const save = cookieNode; cookieNode = node || null;   // so a sum(prop) preview resolves against this point's children
+          try {
+            const samples = sampleUncertain(ex, EST_N, 0x9e3779b9, cookieNode);  // fixed preview seed → stable while typing
+            const sm = samples && distSummary(samples);
+            if (!sm) return `<span class="io-preview-bad">No finite samples</span>`;
+            return `<span class="est-preview"><b>${escHtml(estNumFmt(sm.mean))}</b> (${escHtml(estNumFmt(sm.p5))} – ${escHtml(estNumFmt(sm.p95))}) `
+              + `<span class="est-preview-spark">${escHtml(sparkline(samples, 16))}</span></span>`;
+          } finally { cookieNode = save; }
+        } },
+    ],
+    validate: v => !!(v.expr && parseUncertain(v.expr)),
+    onSubmit: v => {
+      const rec = makeEstRoll(v.expr);
+      if (!rec) return;
+      if (existing) rec.key = existing;
+      onResult(rec);
+    },
+  });
+}
+
+// Re-sample an estimate in place (click handler): a fresh seed, new draws.
+function rerollEst(node, key) {
+  const e = node?.est?.find(x => x.key === key);
+  if (!e) return;
+  e.seed = estNewSeed();
+  markDirty();
+  const sm = (() => { const s = sampleUncertain(e.expr, EST_N, e.seed, node); return s && distSummary(s); })();
+  announce(sm ? `${e.expr} re-sampled: ${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : `${e.expr} re-sampled`);
+  const el = repaintNodeContent(node);
+  el?.querySelector(`.est-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('est-rolled');
+}
+
+// Open the editor for an existing estimate; on submit, replace its expression.
+function editEst(node, key) {
+  const e = node?.est?.find(x => x.key === key);
+  if (!e) return;
+  openEstimateDialog({
+    title: 'Edit estimate',
+    submitLabel: 'Save',
+    expr: e.expr, existing: key, node,
+    onResult: rec => {
+      Object.assign(e, { expr: rec.expr, seed: rec.seed });
+      markDirty();
+      repaintNodeContent(node);
+    },
+  });
+}
+
+// Drop estimate records whose [[est:KEY]] token no longer appears in the text.
+function pruneEst(node) {
+  if (!node.est?.length) return;
+  node.est = node.est.filter(e => node.text.includes(`[[est:${e.key}]]`));
 }
 
 function renderMathPill(key, m) {
@@ -11945,11 +12416,16 @@ async function writeH(h) {
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
 function flattenArtifacts(text, node, varMap) {
-  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq):([a-z0-9]+)\]\]/gi, (_, type, key) => {
+  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est):([a-z0-9]+)\]\]/gi, (_, type, key) => {
     type = type.toLowerCase();
     if (type === 'grammar') {
       const g = node.grammar?.find(x => x.key === key); if (!g) return '';
       return g.result;
+    }
+    if (type === 'est') {
+      const e = node.est?.find(x => x.key === key); if (!e) return '';
+      const samples = sampleUncertain(e.expr, EST_N, e.seed, node);
+      return `${e.expr} ≈ ${samples ? formatDist(samples) : '#ERR'}`;
     }
     if (type === 'seq') {
       const sq = node.seq?.find(x => x.key === key); if (!sq) return '';
@@ -13406,6 +13882,7 @@ const SHORTCUTS = [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
     { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count / min / max a child points’ property (also {= sum(cost)/count(cost)})' },
+    { keys: ['{5 to 10}', 'normal(8,2)'], desc: 'Estimate — an uncertain value (90% range, normal/uniform); shows mean ± [p5,p95] + a sparkline, click to re-sample. sum(prop)/avg(prop) rolls up child points (@ → Estimate)' },
     { keys: ['{a|b 2}', '{a|b {= w}}'], desc: 'Weighted random pick — a weight is a number, or a {= expr} over variables (dynamic odds); rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s (e.g. {beast.a} → "an ogre"); chainable {beast.a.cap}' },

@@ -124,7 +124,7 @@ canonical shape:
   checked, collapsed,                   // checked is a derived cache (todoDoneFromText)
   children: [],                         // nested nodes
   footnotes: [],                        // [{key, text}]
-  dice: [], markov: [], math: [], vars: [], grammar: []  // artifact sidecars (legacy `rolltable` migrates into `grammar` on load)
+  dice: [], markov: [], math: [], vars: [], grammar: [], est: []  // artifact sidecars (legacy `rolltable` migrates into `grammar` on load; `est` = uncertainty fields, B2)
 }
 ```
 
@@ -450,6 +450,27 @@ identifier* — so a comma'd `min(a, b)` keeps the numeric-variadic meaning, unt
 **numeric** child props aggregate (`childPropNumber` skips non-numbers, incl. date strings) — so
 a date-property extremal like `max(due)` awaits a date-aware `childPropNumber` (a follow-on).
 
+**Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
+**distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
+deliberately separate. An estimate is an uncertain expression — `lo to hi` (a 90% CI →
+lognormal, p5=lo/p95=hi; normal fallback when a bound ≤ 0), `normal(m,s)`, `uniform(lo,hi)`,
+scalars, `+ − × ÷`, and `sum(prop)`/`avg(prop)` over **children's uncertain properties** — parsed
+by `parseUncertain` (tokenizer + recursive descent; precedence loosest-first `to` < `+−` < `×÷`
+< unary < atom) into an AST that `sampleUncertain(expr, n, seed, node?)` samples into a length-`n`
+**array** (distributions **zip** element-wise under arithmetic; scalars broadcast; `sum/avg(prop)`
+parse each child's prop string and zip-aggregate, child-as-node so nested rollups resolve). The
+record is **`{key, expr, seed}` — not the samples**: re-sampling from the seed (`rngFromSeed`,
+mulberry32) reproduces the exact distribution, so it round-trips through `_est`, a C1 snapshot
+reproduces it, and a click just re-seeds (`rerollEst`). Display is `mean ± [p5,p95]` + a
+**pure-string unicode sparkline** (`distSummary`/`sparkline`/`formatDist` — export-safe, the same
+string in the pill and `flattenArtifacts`). Live like B1 — Phase-2 rollups recompute through the
+`cookieNode` render global. The pill freezes + re-samples on click (dice model), unfolds to its
+`{expr}` source in edit mode, and promotes from the `{lo to hi}` constructor shorthand
+(`estParts` — constructors only, so a bare `{sum(cost)}` never diverges from `{= sum(cost)}`
+deterministic math; rollups are `@estimate`-dialog-authored). The engines stay **separate in v1**:
+an estimate inside a `{= …}` math expr fails visibly, like any non-number. All cores are pure +
+Node-testable. Direction: `guidance/enhancement-research.md` B2 (frontier F3).
+
 **Variables tie the engines together.** `collectVars()` walks the whole
 tree, gathers `[[var:KEY]]` declarations, and resolves them — variables may
 reference other variables (`area = pi*r^2`). Resolution is lazy through a `Proxy`
@@ -551,8 +572,9 @@ legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show th
 callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
 **conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`; and **text
 modifiers** `{ref.mod}` — a `.mod` suffix on a rule/var reference, closed set
-`cap/title/upper/lower/a/s`, chainable, `modParts`/`applyMods` — A1, the one recorded
-syntax-inventory addition, routed through the grammar pill for both rule + var bases) ·
+`cap/title/upper/lower/a/s`, chainable, `modParts`/`applyMods` — A1, a recorded
+syntax-inventory addition (one of two, with B2's uncertain-value family), routed through the
+grammar pill for both rule + var bases) ·
 **Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws
 without replacement, others rotate/advance; state on the grammar record, `_grammar`
 round-trips; `@` "Deck" door; `seqParts`/`nextSeqIndex`/`advanceSeq`) ·
@@ -567,6 +589,12 @@ odds bands building an anonymous `Yes N | No M` weighted-alt pill; the odds fiel
 `{= expr}` weights; `openOracleDialog`/`ORACLE_BANDS`) ·
 Math (incl. unit conversion + date math; **subtree aggregation** `{= sum|avg|count(prop)}`
 rolls up a child points' property — `expandAggExpr`/`aggregateChildren`, render-time, live) ·
+**Uncertainty fields / estimates** (B2, frontier F3 — first-in-class: `@estimate` or `{5 to 10}`,
+an uncertain value sampled Monte-Carlo and shown as `mean ± [p5,p95]` + a unicode sparkline; click
+to re-sample. A **separate sampler** (`sampleUncertain`/`rngFromSeed`) since a distribution can't
+ride `evalMath`; `lo to hi`/`normal`/`uniform` + `+−×÷`, and Phase-2 `sum|avg(prop)` rolls up
+children's uncertain properties. Storage is `{key, expr, seed}` — reproducible, round-trips via
+`_est`. Cores: `parseUncertain`/`distSummary`/`sparkline`/`formatDist`/`estParts`) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
 Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodies —

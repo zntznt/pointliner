@@ -171,6 +171,8 @@ export function loadCores() {
     'tallyMarkers','progressCount','formatProgressCookie',
     'childPropNumber','aggregateChildren','expandAggExpr',
     'evalCheck','nodePropVars','checkExprOf',
+    'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
+    'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'pickerTitle','treeRows','migrateEmphasisText',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
