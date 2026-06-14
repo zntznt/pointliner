@@ -66,7 +66,17 @@ Implemented:
   numbers**, so differences are days and everything composes; `asdate(...)` is a
   numeric identity that the math pill *displays* as an ISO date — display-layer only,
   via `formatEpochDays` / `isDateExpr` / `formatMathDisplay`, so `evalMath` still
-  always returns a number.
+  always returns a number. **Subtree aggregation**: `{= sum(cost)}`, `{= avg(score)}`,
+  `{= count(cost)}` roll up a **property** over the point's **direct children** (the
+  argument is a property *key*, not a value). Substituted to a number before evalMath
+  (`expandAggExpr` → `aggregateChildren` → `childPropNumber`, the `#+TBLFM:` translation
+  model — no parser change, evalMath stays number-only). Render-time + no sidecar: the
+  `{= …}` recipe stays in `node.text` and recomputes live as children change (the current
+  render node is the existing `cookieNode` global; a property edit does a full `render()`).
+  Only direct children whose value is a plain number count (dates/expressions skipped, never
+  mis-summed); grandchildren are excluded; empty → 0. `min`/`max` over children are NOT
+  included (those names are evalMath's numeric variadics — deferred). Works in the math pill
+  (`{= …}`), not in a grammar `{cond:…}`/composition (no node context there).
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
   and flagged (`↻`, `.var-cycle`). Two **value types**, chosen in the dialog:

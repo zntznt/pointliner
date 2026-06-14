@@ -1555,6 +1555,47 @@ function formatProgressCookie(kind, done, total) {
   return '[' + done + '/' + total + ']';
 }
 
+// ── subtree aggregation: sum / avg / count over a child PROPERTY ──────────────
+// A math pill may aggregate a named property over the point's DIRECT children —
+// {= sum(cost)}, {= avg(score)}, {= count(cost)} — so computation finally sees the
+// tree (the org column-view / spreadsheet-rollup gesture). The argument is a
+// property KEY (a bare identifier), not a value, so it is substituted to a number
+// BEFORE evalMath runs (the #+TBLFM: translation model — keeps evalMath number-only
+// and needs no parser change). Only direct children whose property value is a PLAIN
+// number count; a date / expression value is skipped, never silently mis-summed.
+// Render-time + no sidecar: the {= …} recipe stays in node.text and recomputes live
+// as children change (any edit → full render), exactly like the [/] progress cookie.
+// Pure: explicit node. (min/max over children are deliberately NOT here — those
+// names are evalMath's numeric variadics; see guidance/enhancement-research.md.)
+function childPropNumber(child, prop) {
+  const p = (child?.props || []).find(x => x.key === prop);
+  if (!p) return null;
+  const n = Number(String(p.val).trim());
+  return Number.isFinite(n) ? n : null;
+}
+function aggregateChildren(node, fn, prop) {
+  const vals = [];
+  for (const c of (node?.children || [])) {
+    const v = childPropNumber(c, prop);
+    if (v !== null) vals.push(v);
+  }
+  if (fn === 'count') return vals.length;
+  if (!vals.length) return 0;                          // sum/avg of nothing → 0
+  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
+  if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+  return 0;
+}
+// Substitute every sum|avg|count(propName) in a math expression with its computed
+// value over `node`'s direct children. A single bare-identifier argument is
+// required (so a property name shaped like an identifier); these three names are
+// not evalMath functions, so there is no clash. Pure; a null node aggregates over
+// an empty child set (→ 0), which is how node-less validation stays valid.
+function expandAggExpr(expr, node) {
+  if (!expr || !/\b(?:sum|avg|count)\s*\(/.test(expr)) return expr;
+  return String(expr).replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
+    (_, fn, prop) => '(' + aggregateChildren(node, fn, prop) + ')');
+}
+
 // ─── dates: start + due ────────────────────────────────────────────────────────
 // Dates live as properties with key "start" and/or "due", value YYYY-MM-DD (or
 // relative expressions: "today", "today+N", "today-N", "tomorrow") — a point can
@@ -6386,7 +6427,7 @@ function classifyBraceBody(body, rules, vars) {
   if (!body) return 'literal';
   if (body[0] === '=') {                                                // {= expr}
     const expr = body.slice(1).trim();
-    return expr && evalMath(expr, vars) !== null ? 'artifact' : 'invalid';
+    return expr && evalMath(expandAggExpr(expr, null), vars) !== null ? 'artifact' : 'invalid';
   }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
@@ -7887,6 +7928,7 @@ function insertInlineArtifact(id, nodeId, content) {
     openMathDialog({
       title: 'Insert math',
       submitLabel: 'Insert',
+      node: nodeById(nodeId),
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.math ||= []).push(roll);
@@ -8028,6 +8070,7 @@ function insertCellArtifact(id, node, r, c, offset) {
     openMathDialog({
       title: 'Insert math',
       submitLabel: 'Insert',
+      node,
       onResult: roll => { (node.math ||= []).push(roll); splice(`[[math:${roll.key}]]`); },
     });
   } else if (id === 'var') {
@@ -9614,21 +9657,26 @@ function formatVarValue(v) { return typeof v === 'string' ? v : formatMathResult
 function mathKey() { return 'x' + Math.random().toString(36).slice(2, 9); }
 
 function makeMathResult(expr) {
-  const v = evalMath(expr, collectVars());
+  // expandAggExpr keeps {= sum(prop)} valid at creation (no render node → empty
+  // children → 0); renderMathPill recomputes against the real children on render.
+  const v = evalMath(expandAggExpr(expr, null), collectVars());
   if (v === null) return null;
   return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isDateExpr(expr) ? 'date' : undefined };
 }
 
 function renderMathPill(key, m) {
   if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}" aria-label="Math (missing data)">🖩 ?</span>`;
-  // Recompute with current vars so math stays live when variables change.
-  const fresh = evalMath(m.expr, globalVarMap);
+  // Recompute with current vars so math stays live when variables change; expand
+  // sum/avg/count(prop) against the point being rendered so subtree aggregation
+  // stays live as children change (cookieNode = the current render node).
+  const expr = expandAggExpr(m.expr, cookieNode);
+  const fresh = evalMath(expr, globalVarMap);
   if (fresh === null) {
     // The live recompute failed — a referenced variable became unresolvable (deleted,
     // cyclic, or redeclared non-numeric). Surface the failure with its reason rather
     // than the stale last-good m.result (UXP-34); the pill stays clickable so the user
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
-    const reason = mathErrorReason(m.expr, globalVarMap, _varCycles);
+    const reason = mathErrorReason(expr, globalVarMap, _varCycles);
     const label = reason ? `#ERR (${reason})` : '#ERR';
     return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" title="Click to edit — reference unresolved"`
       + ` aria-label="Math ${escQ(m.expr)} — ${escQ(label)} — click to edit">`
@@ -9802,7 +9850,7 @@ const MATH_CHIPS = [
   { label:'round', insert: el => insertAndSelect(el, 'round(', 'x', ')') },
 ];
 
-function openMathDialog({ title, submitLabel, expr = '', existing = null, onResult }) {
+function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, onResult }) {
   openInsertDialog({
     icon: { fa:'fa-solid fa-calculator', fb:'🖩' },
     title,
@@ -9811,23 +9859,26 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, onResu
       {
         key: 'expr',
         label: 'Expression',
-        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), asdate(today+90)',
+        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost)',
         value: expr,
         chips: MATH_CHIPS,
+        hint: 'Functions, π/e/today, units (c2f, km2mi), dates (asdate(today+90)). Roll up a child points’ property with sum(prop) / avg(prop) / count(prop).',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
           const vars = collectVars();
-          const r = evalMath(v, vars);
+          const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
           if (r === null) return `<span class="io-preview-bad">Invalid expression</span>`;
-          return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) });
+          const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
+          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) }); }
+          finally { cookieNode = save; }
         },
       },
     ],
-    validate: v => evalMath(v.expr, collectVars()) !== null,
+    validate: v => evalMath(expandAggExpr(v.expr, node), collectVars()) !== null,
     onSubmit: v => {
       const vars = collectVars();
-      const r = evalMath(v.expr, vars);
+      const r = evalMath(expandAggExpr(v.expr, node), vars);
       if (r === null) return;
       const roll = { key: existing || mathKey(), expr: v.expr, result: formatMathResult(r) };
       onResult(roll);
@@ -9842,7 +9893,7 @@ function editMath(node, key) {
   openMathDialog({
     title: 'Edit expression',
     submitLabel: 'Save',
-    expr: m.expr, existing: key,
+    expr: m.expr, existing: key, node,
     onResult: roll => {
       Object.assign(m, { expr: roll.expr, result: roll.result });
       markDirty();
@@ -11440,7 +11491,7 @@ function flattenArtifacts(text, node, varMap) {
     }
     if (type === 'math') {
       const m = node.math?.find(x => x.key === key); if (!m) return '';
-      const fresh = evalMath(m.expr, varMap);
+      const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
       return fresh !== null ? formatMathResult(fresh) : m.result;
     }
     // var: show "name = value" for defining pills, or just "value" for display-only
@@ -12875,6 +12926,7 @@ const SHORTCUTS = [
   { sec: 'Pills & shorthand', rows: [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
+    { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count a child points’ property (also {= sum(cost)/count(cost)})' },
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{shuffle: a|b|c}'], desc: 'Deck / sequence — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },

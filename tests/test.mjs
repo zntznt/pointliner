@@ -3117,6 +3117,58 @@ test('progress cookies: render + front-door wiring (src pins)', () => {
   assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
 });
 
+// ── subtree aggregation: {= sum|avg|count(prop)} over direct children ────────
+test('subtree aggregation: childPropNumber reads a plain-number property, skips the rest', () => {
+  const child = c.mkNode('milk');
+  child.props.push({ key: 'cost', val: '3' });
+  child.props.push({ key: 'due', val: '2026-06-14' });   // a date, not a plain number
+  assert.equal(c.childPropNumber(child, 'cost'), 3);
+  assert.equal(c.childPropNumber(child, 'due'), null);    // date → skipped, never mis-summed
+  assert.equal(c.childPropNumber(child, 'missing'), null);
+});
+
+test('subtree aggregation: aggregateChildren sum / avg / count over DIRECT children', () => {
+  const p = c.mkNode('Cart');
+  const a = c.mkNode('milk'); a.props.push({ key: 'cost', val: '3' });
+  const b = c.mkNode('eggs'); b.props.push({ key: 'cost', val: '5' });
+  p.children.push(a, b, c.mkNode('a note with no cost'));
+  assert.equal(c.aggregateChildren(p, 'sum', 'cost'), 8);
+  assert.equal(c.aggregateChildren(p, 'avg', 'cost'), 4);    // 8 / 2 (only children that have cost)
+  assert.equal(c.aggregateChildren(p, 'count', 'cost'), 2);
+  assert.equal(c.aggregateChildren(p, 'sum', 'missing'), 0); // nothing → 0
+});
+
+test('subtree aggregation: only DIRECT children count (grandchildren excluded)', () => {
+  const p = c.mkNode('p');
+  const child = c.mkNode('c'); child.props.push({ key: 'cost', val: '10' });
+  const grand = c.mkNode('g'); grand.props.push({ key: 'cost', val: '100' });
+  child.children.push(grand);
+  p.children.push(child);
+  assert.equal(c.aggregateChildren(p, 'sum', 'cost'), 10);   // the grandchild's 100 is not counted
+});
+
+test('subtree aggregation: expandAggExpr substitutes, then evalMath computes', () => {
+  const p = c.mkNode('Cart');
+  const a = c.mkNode('a'); a.props.push({ key: 'cost', val: '3' });
+  const b = c.mkNode('b'); b.props.push({ key: 'cost', val: '5' });
+  p.children.push(a, b);
+  assert.equal(c.expandAggExpr('sum(cost)', p), '(8)');
+  assert.equal(c.expandAggExpr('sum(cost) * 1.1', p), '(8) * 1.1');
+  assert.equal(c.evalMath(c.expandAggExpr('sum(cost) * 2', p), {}), 16); // the real eval path
+  // min/max are NOT aggregations — they stay evalMath's numeric variadics
+  assert.equal(c.expandAggExpr('max(1, 2)', p), 'max(1, 2)');
+  assert.equal(c.expandAggExpr('min(cost)', p), 'min(cost)');
+  // node-less expansion aggregates over nothing → 0, so {= sum(cost)} still validates
+  assert.equal(c.expandAggExpr('sum(cost)', null), '(0)');
+  assert.equal(c.evalMath(c.expandAggExpr('sum(cost)', null), {}), 0);
+});
+
+test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
+  assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode)'), 'renderMathPill live-aggregation wiring missing');
+  assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
+  assert.ok(_src.includes("{ keys: ['{= sum(cost)}']"), 'aggregation ? panel row missing');
+});
+
 // ── due dates ─────────────────────────────────────────────────────────────────
 
 test('parseDueDate — ISO date parses to epoch day', () => {
