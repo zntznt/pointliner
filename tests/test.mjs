@@ -242,6 +242,90 @@ test('conditional standalone shorthand — wrapped def expands and unfolds back 
   assert.equal(c.artifactToShorthand('grammar', rec), '{hp > 0: a | b}');
 });
 
+// ── stateful sequences: {shuffle|cycle|once|stopping: a | b | c} ─────────────
+test('seqParts — parses a mode + items; rejects non-modes', () => {
+  assert.deepEqual(host(c.seqParts('shuffle: a | b | c')), { mode: 'shuffle', items: ['a', 'b', 'c'] });
+  assert.deepEqual(host(c.seqParts('CYCLE: x|y')), { mode: 'cycle', items: ['x', 'y'] }); // case-insensitive mode
+  assert.equal(c.seqParts('a | b'), null);          // plain alternation (no mode)
+  assert.equal(c.seqParts('note: hello'), null);    // a colon without a reserved mode
+  assert.equal(c.seqParts('hp > 0: a | b'), null);  // a conditional, not a sequence
+  assert.equal(c.seqParts('shuffle:'), null);       // a mode with no items
+});
+
+test('nextSeqIndex — cycle loops, once exhausts, stopping sticks on the last', () => {
+  const take = (rec, n) => Array.from({ length: n }, () => c.nextSeqIndex(rec));
+  assert.deepEqual(take({ mode: 'cycle', items: ['a', 'b', 'c'], pos: 0 }, 5), [0, 1, 2, 0, 1]);
+  assert.deepEqual(take({ mode: 'once', items: ['a', 'b'], pos: 0 }, 4), [0, 1, -1, -1]);
+  assert.deepEqual(take({ mode: 'stopping', items: ['a', 'b', 'c'], pos: 0 }, 5), [0, 1, 2, 2, 2]);
+});
+
+test('nextSeqIndex — shuffle draws without replacement, then reshuffles', () => {
+  c.seedSequence([0.1, 0.6, 0.3, 0.8, 0.2, 0.9]);
+  try {
+    const rec = { mode: 'shuffle', items: ['a', 'b', 'c'], bag: [] };
+    const round1 = [c.nextSeqIndex(rec), c.nextSeqIndex(rec), c.nextSeqIndex(rec)];
+    assert.deepEqual([...round1].sort(), [0, 1, 2], 'one full round draws each index exactly once');
+    assert.equal(rec.bag.length, 0, 'bag is empty after a full round');
+    const next = c.nextSeqIndex(rec); // refills (reshuffles) and draws
+    assert.ok(next >= 0 && next < 3, 'the next draw comes from a fresh bag');
+  } finally { c.resetRandom(); }
+});
+
+test('nextSeqIndex — shuffle never repeats across the reshuffle boundary', () => {
+  // a 2-item deck: every draw must differ from the one before it (within a round
+  // they alternate by construction; the fix guarantees the boundary does too).
+  const rec = { mode: 'shuffle', items: ['a', 'b'], bag: [] };
+  let prev = c.nextSeqIndex(rec);
+  for (let i = 0; i < 40; i++) {
+    const cur = c.nextSeqIndex(rec);
+    assert.notEqual(cur, prev, `draw ${i + 1} repeated the previous (boundary repeat)`);
+    prev = cur;
+  }
+});
+
+test('advanceSeq — emits the chosen item, expanded against the grammar', () => {
+  const rec = { mode: 'cycle', items: ['{2d6} gold', 'plain'], pos: 0 };
+  c.seedSequence([0]); // 2d6 → minimum 2
+  try {
+    assert.equal(c.advanceSeq(rec, {}, {}), '2 gold'); // item 0, dice expanded
+    assert.equal(c.advanceSeq(rec, {}, {}), 'plain');  // item 1, no expansion
+  } finally { c.resetRandom(); }
+});
+
+test('makeSeqGen — builds a record advanced to its first emission; rejects bad input', () => {
+  const rec = c.makeSeqGen('cycle', ['a', 'b', 'c']);
+  assert.equal(rec.mode, 'cycle');
+  assert.deepEqual(host(rec.items), ['a', 'b', 'c']);
+  assert.equal(rec.result, 'a'); // first emission
+  assert.equal(rec.pos, 1);
+  assert.ok(rec.anon, 'standalone pill, not a doc-wide callable');
+  assert.equal(c.makeSeqGen('bogus', ['a']), null);
+  assert.equal(c.makeSeqGen('cycle', []), null);
+});
+
+test('resolveBrace — a {mode: …} inside a rule degrades to a uniform pick (no state there)', () => {
+  c.seedSequence([0]); // floor(0*3) → first item
+  try {
+    assert.equal(c.resolveBrace('shuffle: x | y | z', { rules: {}, vars: {}, depth: 0, stack: [] }), 'x');
+  } finally { c.resetRandom(); }
+});
+
+test('classifyBraceBody / braceTypeLabel — a sequence reads as a (grammar) artifact', () => {
+  assert.equal(c.classifyBraceBody('shuffle: a | b | c', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('cycle: a | b', {}, {})), ['grammar', null]);
+  assert.equal(c.classifyBraceBody('note: hello', {}, {}), 'literal'); // a non-mode colon stays prose
+});
+
+test('advanceSeq — an exhausted once emits empty (the pill shows a muted end marker)', () => {
+  const rec = c.makeSeqGen('once', ['only']);   // first emission shown at creation
+  assert.equal(rec.result, 'only');
+  assert.equal(c.advanceSeq(rec, {}, {}), '');  // past the end → empty (renders as "—")
+  assert.equal(c.advanceSeq(rec, {}, {}), '');  // stays ended
+  // render path turns the empty result into a muted "—" marker, not a blank pill (P4)
+  assert.ok(_src.includes('gr-seq-end'), 'once-exhaustion end marker class missing');
+  assert.ok(_src.includes("ended ? '—'"), 'end-marker render branch missing');
+});
+
 // ── prototype-key safety: names colliding with Object.prototype must not crash
 // or resolve to inherited members. Pure cores must return null/marker, never throw.
 test('parseMarkov — a state named "constructor" does not throw', () => {
@@ -3053,6 +3137,58 @@ test('progress cookies: render + front-door wiring (src pins)', () => {
   assert.ok(_src.includes("keys: ['[/]', '[%]']"), 'progress ? panel row missing');
   // P4: a child partial-toggle refreshes a cookie-bearing parent
   assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
+});
+
+// ── subtree aggregation: {= sum|avg|count(prop)} over direct children ────────
+test('subtree aggregation: childPropNumber reads a plain-number property, skips the rest', () => {
+  const child = c.mkNode('milk');
+  child.props.push({ key: 'cost', val: '3' });
+  child.props.push({ key: 'due', val: '2026-06-14' });   // a date, not a plain number
+  assert.equal(c.childPropNumber(child, 'cost'), 3);
+  assert.equal(c.childPropNumber(child, 'due'), null);    // date → skipped, never mis-summed
+  assert.equal(c.childPropNumber(child, 'missing'), null);
+});
+
+test('subtree aggregation: aggregateChildren sum / avg / count over DIRECT children', () => {
+  const p = c.mkNode('Cart');
+  const a = c.mkNode('milk'); a.props.push({ key: 'cost', val: '3' });
+  const b = c.mkNode('eggs'); b.props.push({ key: 'cost', val: '5' });
+  p.children.push(a, b, c.mkNode('a note with no cost'));
+  assert.equal(c.aggregateChildren(p, 'sum', 'cost'), 8);
+  assert.equal(c.aggregateChildren(p, 'avg', 'cost'), 4);    // 8 / 2 (only children that have cost)
+  assert.equal(c.aggregateChildren(p, 'count', 'cost'), 2);
+  assert.equal(c.aggregateChildren(p, 'sum', 'missing'), 0); // nothing → 0
+});
+
+test('subtree aggregation: only DIRECT children count (grandchildren excluded)', () => {
+  const p = c.mkNode('p');
+  const child = c.mkNode('c'); child.props.push({ key: 'cost', val: '10' });
+  const grand = c.mkNode('g'); grand.props.push({ key: 'cost', val: '100' });
+  child.children.push(grand);
+  p.children.push(child);
+  assert.equal(c.aggregateChildren(p, 'sum', 'cost'), 10);   // the grandchild's 100 is not counted
+});
+
+test('subtree aggregation: expandAggExpr substitutes, then evalMath computes', () => {
+  const p = c.mkNode('Cart');
+  const a = c.mkNode('a'); a.props.push({ key: 'cost', val: '3' });
+  const b = c.mkNode('b'); b.props.push({ key: 'cost', val: '5' });
+  p.children.push(a, b);
+  assert.equal(c.expandAggExpr('sum(cost)', p), '(8)');
+  assert.equal(c.expandAggExpr('sum(cost) * 1.1', p), '(8) * 1.1');
+  assert.equal(c.evalMath(c.expandAggExpr('sum(cost) * 2', p), {}), 16); // the real eval path
+  // min/max are NOT aggregations — they stay evalMath's numeric variadics
+  assert.equal(c.expandAggExpr('max(1, 2)', p), 'max(1, 2)');
+  assert.equal(c.expandAggExpr('min(cost)', p), 'min(cost)');
+  // node-less expansion aggregates over nothing → 0, so {= sum(cost)} still validates
+  assert.equal(c.expandAggExpr('sum(cost)', null), '(0)');
+  assert.equal(c.evalMath(c.expandAggExpr('sum(cost)', null), {}), 0);
+});
+
+test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
+  assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode)'), 'renderMathPill live-aggregation wiring missing');
+  assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
+  assert.ok(_src.includes("{ keys: ['{= sum(cost)}']"), 'aggregation ? panel row missing');
 });
 
 // ── due dates ─────────────────────────────────────────────────────────────────

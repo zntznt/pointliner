@@ -440,6 +440,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-roll:hover .gr-ico{transform:rotate(180deg)}
 .gr-name{font-family:var(--mono);font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px}
 .gr-result{font-weight:600;color:var(--fg)}
+.gr-seq-end .gr-result{color:var(--muted);font-weight:400}
 .gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .gr-roll:hover .gr-edit{opacity:.6}
 .gr-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
@@ -1553,6 +1554,47 @@ function progressCount(node, seqs = allSequences()) {
 function formatProgressCookie(kind, done, total) {
   if (kind === 'pct') return '[' + (total ? Math.round(100 * done / total) : 0) + '%]';
   return '[' + done + '/' + total + ']';
+}
+
+// ── subtree aggregation: sum / avg / count over a child PROPERTY ──────────────
+// A math pill may aggregate a named property over the point's DIRECT children —
+// {= sum(cost)}, {= avg(score)}, {= count(cost)} — so computation finally sees the
+// tree (the org column-view / spreadsheet-rollup gesture). The argument is a
+// property KEY (a bare identifier), not a value, so it is substituted to a number
+// BEFORE evalMath runs (the #+TBLFM: translation model — keeps evalMath number-only
+// and needs no parser change). Only direct children whose property value is a PLAIN
+// number count; a date / expression value is skipped, never silently mis-summed.
+// Render-time + no sidecar: the {= …} recipe stays in node.text and recomputes live
+// as children change (any edit → full render), exactly like the [/] progress cookie.
+// Pure: explicit node. (min/max over children are deliberately NOT here — those
+// names are evalMath's numeric variadics; see guidance/enhancement-research.md.)
+function childPropNumber(child, prop) {
+  const p = (child?.props || []).find(x => x.key === prop);
+  if (!p) return null;
+  const n = Number(String(p.val).trim());
+  return Number.isFinite(n) ? n : null;
+}
+function aggregateChildren(node, fn, prop) {
+  const vals = [];
+  for (const c of (node?.children || [])) {
+    const v = childPropNumber(c, prop);
+    if (v !== null) vals.push(v);
+  }
+  if (fn === 'count') return vals.length;
+  if (!vals.length) return 0;                          // sum/avg of nothing → 0
+  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
+  if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+  return 0;
+}
+// Substitute every sum|avg|count(propName) in a math expression with its computed
+// value over `node`'s direct children. A single bare-identifier argument is
+// required (so a property name shaped like an identifier); these three names are
+// not evalMath functions, so there is no clash. Pure; a null node aggregates over
+// an empty child set (→ 0), which is how node-less validation stays valid.
+function expandAggExpr(expr, node) {
+  if (!expr || !/\b(?:sum|avg|count)\s*\(/.test(expr)) return expr;
+  return String(expr).replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
+    (_, fn, prop) => '(' + aggregateChildren(node, fn, prop) + ')');
 }
 
 // ─── dates: start + due ────────────────────────────────────────────────────────
@@ -3220,6 +3262,7 @@ const INSERT_CMDS = [
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table — one grammar rule; click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
+  { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value — a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
@@ -6385,9 +6428,10 @@ function classifyBraceBody(body, rules, vars) {
   if (!body) return 'literal';
   if (body[0] === '=') {                                                // {= expr}
     const expr = body.slice(1).trim();
-    return expr && evalMath(expr, vars) !== null ? 'artifact' : 'invalid';
+    return expr && evalMath(expandAggExpr(expr, null), vars) !== null ? 'artifact' : 'invalid';
   }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
+  if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
@@ -6414,6 +6458,7 @@ function braceTypeLabel(body, rules, vars) {
   if (!body) return ['pill', null];
   if (body[0] === '=') return ['math', null];
   if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
+  if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
   rules = rules || {}; vars = vars || {};
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
@@ -7869,10 +7914,22 @@ function insertInlineArtifact(id, nodeId, content) {
         applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
       },
     });
+  } else if (id === 'deck') {
+    openSeqDialog({
+      title: 'New deck',
+      submitLabel: 'Insert',
+      body: selected && seqParts(selected) ? selected : undefined,
+      onResult: rec => {
+        const n = nodeById(nodeId); if (!n) return;
+        (n.grammar ||= []).push(rec);
+        applyInlineInsertion(nodeId, offset, `[[grammar:${rec.key}]]`);
+      },
+    });
   } else if (id === 'math') {
     openMathDialog({
       title: 'Insert math',
       submitLabel: 'Insert',
+      node: nodeById(nodeId),
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.math ||= []).push(roll);
@@ -8014,6 +8071,7 @@ function insertCellArtifact(id, node, r, c, offset) {
     openMathDialog({
       title: 'Insert math',
       submitLabel: 'Insert',
+      node,
       onResult: roll => { (node.math ||= []).push(roll); splice(`[[math:${roll.key}]]`); },
     });
   } else if (id === 'var') {
@@ -8563,6 +8621,91 @@ function condParts(body) {
   return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
 }
 
+// ─── stateful sequences (decks / cycles) ─────────────────────────────────────
+// A {mode: a | b | c} brace whose leading `mode` keyword gives it MEMORY: a
+// `shuffle` is a DECK (draw without replacement, reshuffle when the bag empties),
+// `cycle` loops in fixed order, `once` emits each item once then nothing,
+// `stopping` advances then sticks on the last. The state (a position or a
+// remaining bag) lives on the pill record — a grammar record carrying
+// `mode`/`items` + state — so it round-trips through OPML like any frozen roll.
+// This is the home the "decks/bags have nowhere clean to live yet" open question
+// was waiting for. Detection is purely syntactic (a reserved mode keyword before
+// a top-level `:`), so it is disjoint from conditionals (which carry a comparison
+// before the `:`) and from plain alternation (which has no mode keyword).
+const SEQ_MODES = ['shuffle', 'cycle', 'once', 'stopping'];
+
+// Parse a {mode: a | b | c} body → {mode, items} or null. The FIRST top-level `:`
+// splits the mode from the items (an item may itself contain a `:`); items split
+// on top-level `|` (a nested {a|b} is protected and stays one item).
+function seqParts(body) {
+  body = (body || '').trim();
+  const segs = splitTopLevel(body, ':');
+  if (segs.length < 2) return null;
+  const mode = segs[0].trim().toLowerCase();
+  if (!SEQ_MODES.includes(mode)) return null;
+  const rest = body.slice(segs[0].length + 1);
+  const items = splitTopLevel(rest, '|').map(s => s.trim()).filter(s => s !== '');
+  return items.length ? { mode, items } : null;
+}
+
+// A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests
+// can seed it).
+function shuffledIndices(n) {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+// Advance a sequence record's state and return the index of the item to emit, or
+// -1 when an exhausted `once` has nothing left. Pure except for the record it
+// mutates (pos / bag) and Math.random for shuffle — no DOM, no document access.
+function nextSeqIndex(rec) {
+  const n = rec.items.length;
+  if (n === 0) return -1;
+  if (rec.mode === 'cycle') {
+    const i = ((rec.pos || 0) % n + n) % n;
+    rec.pos = (i + 1) % n;
+    return i;
+  }
+  if (rec.mode === 'once') {
+    const p = rec.pos || 0;
+    if (p >= n) return -1;
+    rec.pos = p + 1;
+    return p;
+  }
+  if (rec.mode === 'stopping') {
+    const p = rec.pos || 0;
+    rec.pos = Math.min(p + 1, n);     // grows, then saturates at n
+    return Math.min(p, n - 1);        // … and the emitted index sticks on the last
+  }
+  // shuffle: draw without replacement; refill (reshuffle) once the bag empties —
+  // avoiding an immediate repeat across the boundary (the new bag's first draw is
+  // never the item that just ended the previous round). `rec.last` round-trips on
+  // the record like `pos`/`bag`.
+  if (!Array.isArray(rec.bag) || rec.bag.length === 0) {
+    rec.bag = shuffledIndices(n);
+    if (n > 1 && rec.bag[0] === rec.last) {       // would repeat the last drawn item
+      const j = 1 + Math.floor(Math.random() * (n - 1));
+      const t = rec.bag[0]; rec.bag[0] = rec.bag[j]; rec.bag[j] = t;
+    }
+  }
+  const idx = rec.bag.shift();
+  rec.last = idx;
+  return idx;
+}
+
+// Advance a sequence and return its emitted text — the chosen item expanded
+// against the document grammar/vars, so an item may itself roll dice / call a
+// rule ({shuffle: {2d6} gold | a {color} gem}). Pure when rules+vars are passed.
+function advanceSeq(rec, rules = collectRules(), vars = collectVars()) {
+  const idx = nextSeqIndex(rec);
+  if (idx < 0) return '';
+  return expandTemplate(rec.items[idx], { rules, vars, depth: 0, stack: [] });
+}
+
 // Resolve one {...} body. Content-sniffed: a conditional `cond: a|b` (a comparison
 // before a top-level `:`) → THEN/ELSE branch; top-level `|` → alternation; leading
 // `=` → expression; dice pattern → roll; a bare identifier → a named rule (grammar
@@ -8576,6 +8719,14 @@ function resolveBrace(body, ctx) {
     const v = evalMath(cp.cond, ctx.vars);
     if (v === null) return `{${cp.cond}?}`;             // condition couldn't resolve → visible marker (P4)
     return expandTemplate(v ? cp.then : cp.else, ctx);
+  }
+  const sp = seqParts(body);
+  if (sp) {
+    // A {mode: …} INSIDE a rule / pick source has no per-instance record to hold
+    // state, so it degrades to a uniform random draw from its items (the stateful
+    // deck/cycle behaviour lives only in the standalone pill, which advances via
+    // nextSeqIndex, not through here).
+    return expandTemplate(sp.items[Math.floor(Math.random() * sp.items.length)], ctx);
   }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt)).template, ctx);
@@ -8812,8 +8963,43 @@ function makeGrammarRoll(def, originInput) {
   return { key: grammarKey(), def, origin, result };
 }
 
+// Build a fresh stateful-sequence record (a grammar record carrying mode/items +
+// state), already advanced once so it shows its first emission. anon:true keeps
+// it out of the document-wide rule namespace (it's a standalone pill, not a
+// callable). null if the mode is unknown or there are no items.
+function makeSeqGen(mode, items, key) {
+  mode = (mode || '').toLowerCase();
+  if (!SEQ_MODES.includes(mode) || !items || !items.length) return null;
+  const rec = { key: key || grammarKey(), mode, items: items.slice(), anon: true };
+  if (mode === 'shuffle') rec.bag = []; else rec.pos = 0;
+  rec.result = advanceSeq(rec);
+  return rec;
+}
+
+// A stateful-sequence pill (deck / cycle / once / stopping). Reuses the grammar
+// pill chrome but: a deck icon, NO pencil (it unfolds to {mode: …} text for
+// editing, like an anonymous grammar / dice pill), and body-click ADVANCES the
+// sequence rather than re-rolling (wired in rerollGrammar via the `mode` field).
+// User-facing umbrella term is "Deck" with the mode as the qualifier — kept
+// distinct from the reserved word "sequence" (the to-do state-set feature).
+function renderSeqGenPill(key, g) {
+  const verb = g.mode === 'shuffle' ? 'draw the next' : 'advance';
+  // An exhausted `once` has nothing left to emit (empty result). Show a muted "—"
+  // end marker so the pill reads as intentionally finished, not blank/broken (P4);
+  // items are never empty (seqParts filters them), so an empty result IS the end.
+  const ended = g.result === '';
+  const shown = ended ? '—' : g.result;
+  const ariaVal = ended ? '(end)' : g.result;
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}) — click to ${verb}"`
+    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)} — click to ${verb}">`
+    + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
+    + `<span class="gr-result">${escHtml(shown)}</span>`
+    + `</span>`;
+}
+
 function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
+  if (g.mode) return renderSeqGenPill(key, g);   // a stateful sequence rides on the grammar record
   // a non-anon record's origin is a user-declared, doc-wide callable name —
   // show it (the named-table affordance: tells you what {name} calls)
   const name = !g.anon && g.origin ? g.origin : '';
@@ -8870,9 +9056,51 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
   });
 }
 
+const SEQ_CHIPS = [
+  { label:'| item', insert: ' | ' },
+  { label:'{dice}', insert: el => insertAndSelect(el, '{', '2d6', '}') },
+  { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
+];
+
+// Front door for stateful sequences (the @ "Deck" door). One field:
+// the `mode: a | b | c` body. A deck/cycle pill is a grammar record with state,
+// so onResult hands back a makeSeqGen record the caller pushes to node.grammar.
+function openSeqDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResult }) {
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-clone', fb:'🃏' },
+    title,
+    submitLabel: submitLabel || 'Insert',
+    fields: [
+      { key:'body', label:'Mode and items (mode: a | b | c)', type:'textarea', rows:3, value:body, chips: SEQ_CHIPS,
+        placeholder:'shuffle: ace | king | queen | jack',
+        hint:'Start with a mode — shuffle (a deck: draws without replacement, reshuffles when empty) · cycle (loops in order) · once (each once, then nothing) · stopping (advances, then stays on the last) — then items separated by |. Items may roll dice / call rules. Click the pill to advance.',
+        preview: v => {
+          const sp = seqParts(v);
+          if (!sp) return `<span class="io-preview-bad">Start with shuffle / cycle / once / stopping, then items</span>`;
+          const probe = makeSeqGen(sp.mode, sp.items);
+          return probe ? `<span class="gr-preview-result">${escHtml(probe.result || '(empty)')}</span>` : `<span class="io-preview-bad">Invalid</span>`;
+        } },
+    ],
+    validate: v => !!seqParts(v.body),
+    onSubmit: v => {
+      const sp = seqParts(v.body);
+      const rec = sp && makeSeqGen(sp.mode, sp.items);
+      if (rec) onResult(rec);
+    },
+  });
+}
+
 function rerollGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
+  if (g.mode) {                                   // stateful sequence: ADVANCE, don't re-roll
+    g.result = advanceSeq(g);
+    markDirty();
+    announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
+    const el = repaintNodeContent(node);
+    el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
+    return;
+  }
   const result = runGrammar(g.def, g.origin);
   if (result === null) return;
   g.result = result;
@@ -8885,6 +9113,7 @@ function rerollGrammar(node, key) {
 function editGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
+  if (g.mode) return;  // a stateful sequence has no pencil — it's edited inline (unfolds to {mode: …})
   openGrammarDialog({
     title: 'Edit grammar',
     submitLabel: 'Save & generate',
@@ -8932,6 +9161,14 @@ function promoteBraceBody(node, body) {
   if (condParts(body)) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  // stateful sequence: {shuffle|cycle|once|stopping: a | b | c} → a deck/cycle pill
+  // (a grammar record carrying mode/items + draw state). Checked before alternation
+  // since the items carry a top-level `|`.
+  const sp = seqParts(body);
+  if (sp) {
+    const rec = makeSeqGen(sp.mode, sp.items);
+    if (rec) { (node.grammar ||= []).push(rec); return `[[grammar:${rec.key}]]`; }
   }
   // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
   // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
@@ -8989,6 +9226,11 @@ function artifactToShorthand(type, rec) {
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
   if (type === 'var')  return (!rec.expr && rec.name) ? `{${rec.name}}` : null; // display-only only
   if (type === 'grammar') {
+    // A stateful sequence's config (mode + items) IS its text, so it unfolds to
+    // {mode: a | b | c}. The transient draw state (pos/bag) isn't in the text and
+    // is preserved by the unfold WeakMap when the source is left untouched (reset
+    // to a fresh deck only if the items are edited) — the same frozen-roll model.
+    if (rec.mode) return `{${rec.mode}: ${(rec.items || []).join(' | ')}}`;
     // Only ANONYMOUS shorthand pills unfold. A named (non-anon) grammar is a
     // declaration — its rule name is doc-wide callable config richer than the
     // text (same principle as declaring variables), and unfolding would lose
@@ -9431,21 +9673,26 @@ function formatVarValue(v) { return typeof v === 'string' ? v : formatMathResult
 function mathKey() { return 'x' + Math.random().toString(36).slice(2, 9); }
 
 function makeMathResult(expr) {
-  const v = evalMath(expr, collectVars());
+  // expandAggExpr keeps {= sum(prop)} valid at creation (no render node → empty
+  // children → 0); renderMathPill recomputes against the real children on render.
+  const v = evalMath(expandAggExpr(expr, null), collectVars());
   if (v === null) return null;
   return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isDateExpr(expr) ? 'date' : undefined };
 }
 
 function renderMathPill(key, m) {
   if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}" aria-label="Math (missing data)">🖩 ?</span>`;
-  // Recompute with current vars so math stays live when variables change.
-  const fresh = evalMath(m.expr, globalVarMap);
+  // Recompute with current vars so math stays live when variables change; expand
+  // sum/avg/count(prop) against the point being rendered so subtree aggregation
+  // stays live as children change (cookieNode = the current render node).
+  const expr = expandAggExpr(m.expr, cookieNode);
+  const fresh = evalMath(expr, globalVarMap);
   if (fresh === null) {
     // The live recompute failed — a referenced variable became unresolvable (deleted,
     // cyclic, or redeclared non-numeric). Surface the failure with its reason rather
     // than the stale last-good m.result (UXP-34); the pill stays clickable so the user
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
-    const reason = mathErrorReason(m.expr, globalVarMap, _varCycles);
+    const reason = mathErrorReason(expr, globalVarMap, _varCycles);
     const label = reason ? `#ERR (${reason})` : '#ERR';
     return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" title="Click to edit — reference unresolved"`
       + ` aria-label="Math ${escQ(m.expr)} — ${escQ(label)} — click to edit">`
@@ -9619,7 +9866,7 @@ const MATH_CHIPS = [
   { label:'round', insert: el => insertAndSelect(el, 'round(', 'x', ')') },
 ];
 
-function openMathDialog({ title, submitLabel, expr = '', existing = null, onResult }) {
+function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, onResult }) {
   openInsertDialog({
     icon: { fa:'fa-solid fa-calculator', fb:'🖩' },
     title,
@@ -9628,23 +9875,26 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, onResu
       {
         key: 'expr',
         label: 'Expression',
-        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), asdate(today+90)',
+        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost)',
         value: expr,
         chips: MATH_CHIPS,
+        hint: 'Functions, π/e/today, units (c2f, km2mi), dates (asdate(today+90)). Roll up a child points’ property with sum(prop) / avg(prop) / count(prop).',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
           const vars = collectVars();
-          const r = evalMath(v, vars);
+          const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
           if (r === null) return `<span class="io-preview-bad">Invalid expression</span>`;
-          return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) });
+          const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
+          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) }); }
+          finally { cookieNode = save; }
         },
       },
     ],
-    validate: v => evalMath(v.expr, collectVars()) !== null,
+    validate: v => evalMath(expandAggExpr(v.expr, node), collectVars()) !== null,
     onSubmit: v => {
       const vars = collectVars();
-      const r = evalMath(v.expr, vars);
+      const r = evalMath(expandAggExpr(v.expr, node), vars);
       if (r === null) return;
       const roll = { key: existing || mathKey(), expr: v.expr, result: formatMathResult(r) };
       onResult(roll);
@@ -9659,7 +9909,7 @@ function editMath(node, key) {
   openMathDialog({
     title: 'Edit expression',
     submitLabel: 'Save',
-    expr: m.expr, existing: key,
+    expr: m.expr, existing: key, node,
     onResult: roll => {
       Object.assign(m, { expr: roll.expr, result: roll.result });
       markDirty();
@@ -11257,7 +11507,7 @@ function flattenArtifacts(text, node, varMap) {
     }
     if (type === 'math') {
       const m = node.math?.find(x => x.key === key); if (!m) return '';
-      const fresh = evalMath(m.expr, varMap);
+      const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
       return fresh !== null ? formatMathResult(fresh) : m.result;
     }
     // var: show "name = value" for defining pills, or just "value" for display-only
@@ -12692,8 +12942,10 @@ const SHORTCUTS = [
   { sec: 'Pills & shorthand', rows: [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
+    { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count a child points’ property (also {= sum(cost)/count(cost)})' },
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
+    { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
     { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },

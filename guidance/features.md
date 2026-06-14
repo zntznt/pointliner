@@ -42,6 +42,21 @@ Implemented:
   its expansion like dice; click to re-generate. **Named pills show their callable
   name** and stay atomic in edit mode (the name is doc-wide config — unfolding
   would lose it); anonymous shorthand pills unfold to editable `{…}`.
+- **Stateful sequences / decks** — `@` "Deck" (or type the shorthand):
+  `{mode: a | b | c}` where `mode` is one of **shuffle** (a DECK — draw without
+  replacement, reshuffle when the bag empties), **cycle** (loop in order), **once**
+  (each item once, then nothing), **stopping** (advance, then stick on the last).
+  Unlike every other generator these have **memory**: a grammar record carries
+  `mode`/`items` + draw state (`pos` for cycle/once/stopping, a remaining `bag` for
+  shuffle), which round-trips through the `_grammar` OPML attribute. The pill
+  **advances** on body-click (not re-roll), shows a deck icon, has no pencil, and
+  **unfolds** to its `{mode: …}` source for inline editing (the dice/anonymous-grammar
+  model — draw state preserved when the source is left untouched, reset to a fresh
+  deck if the items are edited). Each item is a grammar template (may roll dice / call
+  a rule: `{shuffle: {2d6} gold | a {color} gem}`). Inside a *rule* a `{mode:…}`
+  degrades to a uniform pick (no per-instance record there). Pure cores: `seqParts`
+  (detect), `nextSeqIndex` (state machine), `advanceSeq` (emit), `makeSeqGen` (build).
+  This resolved the long-standing "decks/bags have nowhere clean to live yet" question.
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
   **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,
@@ -51,7 +66,17 @@ Implemented:
   numbers**, so differences are days and everything composes; `asdate(...)` is a
   numeric identity that the math pill *displays* as an ISO date — display-layer only,
   via `formatEpochDays` / `isDateExpr` / `formatMathDisplay`, so `evalMath` still
-  always returns a number.
+  always returns a number. **Subtree aggregation**: `{= sum(cost)}`, `{= avg(score)}`,
+  `{= count(cost)}` roll up a **property** over the point's **direct children** (the
+  argument is a property *key*, not a value). Substituted to a number before evalMath
+  (`expandAggExpr` → `aggregateChildren` → `childPropNumber`, the `#+TBLFM:` translation
+  model — no parser change, evalMath stays number-only). Render-time + no sidecar: the
+  `{= …}` recipe stays in `node.text` and recomputes live as children change (the current
+  render node is the existing `cookieNode` global; a property edit does a full `render()`).
+  Only direct children whose value is a plain number count (dates/expressions skipped, never
+  mis-summed); grandchildren are excluded; empty → 0. `min`/`max` over children are NOT
+  included (those names are evalMath's numeric variadics — deferred). Works in the math pill
+  (`{= …}`), not in a grammar `{cond:…}`/composition (no node context there).
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
   and flagged (`↻`, `.var-cycle`). Two **value types**, chosen in the dialog:

@@ -71,9 +71,15 @@ in a browser and it runs.
   reordering is done via the popup's Move up/down). `IND` (indent step) is a `let`
   recomputed from viewport width in the `resize` handler. Any new mouse-only
   interaction must ship a touch path the same way.
-- **Stateful randomness has nowhere clean to live yet.** Decks/bags (draw without
-  replacement) need persisted state; today everything re-rolls statelessly. This
-  is an open design question, not an oversight (see below).
+- **Stateful randomness lives on the grammar record (resolved).** Decks/bags (draw
+  without replacement) and ordered sequences are `{shuffle|cycle|once|stopping: a|b|c}`
+  pills — a **grammar record** carrying `mode`/`items` + draw state (`pos` for
+  cycle/once/stopping, a remaining `bag` for shuffle), which round-trips through the
+  `_grammar` OPML attribute like any frozen roll. Pure cores: `seqParts` (detect),
+  `nextSeqIndex` (the state machine — mutates the record), `advanceSeq` (emit, expanded),
+  `makeSeqGen` (build). The pill **advances** on body-click (`rerollGrammar` branches on
+  `mode`), has no pencil, and **unfolds** to its `{mode: …}` source for inline editing.
+  Inside a rule a `{mode:…}` degrades to a stateless pick (no per-instance record there).
 - **Run `node --test tests/test.mjs` before and after changing any parsing/eval core.** (`node --test tests/` fails on Node 22.x — it resolves the directory as a module rather than discovering test files; use the explicit path.) All tests must stay green; if you intentionally change a behavior, update the pin in the same commit.
 
 ---
@@ -353,7 +359,9 @@ when proposing features:
   covers everything, content-sniffed inside `resolveBrace`: a conditional
   (`{cond: then|else}` — a comparison before a top-level `:`, via `condParts`) →
   Ink-style conditional text (the `cond` is an `evalMath` comparison, the branches
-  are templates); top-level `|` →
+  are templates); a **stateful sequence** (`{shuffle|cycle|once|stopping: a|b|c}` — a
+  reserved mode keyword before a top-level `:`, via `seqParts`) → a deck/cycle pill
+  (stateful as a standalone pill; degrades to a uniform pick inside a rule); top-level `|` →
   weighted alternation (`{a|b 2|c}`); leading `=` → expression (`{= 2*r}`, calls
   `evalMath`); a dice pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`);
   a bare identifier → a named rule (`{color}`) if one exists, else a
@@ -412,6 +420,17 @@ and the math pill renders the result as an ISO date via `formatEpochDays` /
 `vars` map passed in. Returns `null` on any malformed input — callers branch on `null`.
 *(Adding a function to `FN1`/`FN2`/`FN3` is the P5-preferred way to extend math —
 no new syntax, just a new name inside the existing grammar.)*
+**Subtree aggregation** makes evalMath see the tree: a math pill may roll up a child
+**property** — `{= sum(cost)}`, `{= avg(score)}`, `{= count(cost)}` — over the point's
+**direct children**. The argument is a property *key*, not a value, so it is substituted
+to a number **before** evalMath (`expandAggExpr` → `aggregateChildren` → `childPropNumber`,
+the `#+TBLFM:` translation model — keeps evalMath number-only, no parser change). It is
+**render-time + no sidecar**: the `{= …}` recipe stays in `node.text` and recomputes live
+as children change, because the current render node is the existing `cookieNode` render
+global (the same one the `[/]` cookie uses) and any property edit triggers a full `render()`.
+`renderMathPill` / `flattenArtifacts` pass the node; node-less callers (validation) aggregate
+over an empty set → 0. `min`/`max` over children are **deliberately not** included — those
+names are evalMath's numeric variadics (see `guidance/enhancement-research.md`).
 
 **Variables tie the engines together.** `collectVars()` walks the whole
 tree, gathers `[[var:KEY]]` declarations, and resolves them — variables may
@@ -495,7 +514,11 @@ grammars since the collapse — the `@` door opens the table-flavored grammar di
 legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
 callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
 **conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`) ·
-Math (incl. unit conversion + date math) ·
+**Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws
+without replacement, others rotate/advance; state on the grammar record, `_grammar`
+round-trips; `@` "Deck" door; `seqParts`/`nextSeqIndex`/`advanceSeq`) ·
+Math (incl. unit conversion + date math; **subtree aggregation** `{= sum|avg|count(prop)}`
+rolls up a child points' property — `expandAggExpr`/`aggregateChildren`, render-time, live) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
 Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodies —
