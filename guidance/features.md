@@ -110,6 +110,34 @@ Implemented:
   `{Yes N | No M}`. Because the odds field IS the weighted-alt body, the odds can be A5
   `{= expr}` weights for **state-modulated** odds (e.g. `Yes {= 3 + chaos} | No`).
   `openOracleDialog`/`ORACLE_BANDS`.
+- **Estimate / uncertainty fields (B2)** — `@estimate` (or the `{lo to hi}` shorthand):
+  an **uncertain value** sampled Monte-Carlo and displayed as **mean ± [p5,p95] + a
+  unicode sparkline** (`7.2 (5 – 10) ▁▂▄▆█…`); click the pill to re-sample. This is the
+  one **first-in-class** feature — no offline outliner rolls uncertain estimates up a
+  tree. **A distribution can't ride `evalMath`** (which always returns a number), so the
+  estimate artifact has its OWN sampler, separate from the math engine. The
+  uncertain-expression mini-language: `lo to hi` (a 90% CI → lognormal with p5=lo,
+  p95=hi; falls back to normal when a bound ≤ 0), `normal(m, s)`, `uniform(lo, hi)`,
+  scalars, and `+ − × ÷` (sample arrays **zip** element-wise; scalars broadcast).
+  **Phase 2 — the tree rollup**: `sum(prop)` / `avg(prop)` propagate uncertainty over
+  **children's uncertain properties** (each child's `prop` is itself an uncertain
+  expression like `5 to 10`; Monte-Carlo sample-array sum/avg) — the outline-native
+  propagation, live as children change (the render node is `cookieNode`, same as B1).
+  **Storage is `{key, expr, seed}`, not the samples** — a distribution is reproducible
+  from its expression + seed, so the record is tiny, round-trips through OPML (`_est`),
+  and a shared C1 self-contained doc reproduces the **exact** estimate; re-roll = a new
+  random seed. Pure cores (all seeded, Node-tested): `rngFromSeed` (mulberry32),
+  `parseUncertain` (tokenizer + recursive descent; `to` < `+−` < `×÷` < unary < atom),
+  `sampleUncertain(expr, n, seed, node?)`, `distSummary`, `sparkline` (a histogram that
+  is literally a string — export-safe), `formatDist`, `estParts` (the constructor
+  sniff for typed shorthand — `to`/`normal`/`uniform` only, so a bare `{sum(cost)}`
+  never silently diverges from `{= sum(cost)}` deterministic math; rollups are authored
+  via the dialog). The pill freezes + re-samples on click like dice, the pencil edits,
+  and it unfolds to its `{expr}` source for inline editing. The dialog has a live
+  sparkline preview; `#ERR` chip on a malformed expression (never blank). **Out of
+  scope (recorded follow-ons)**: min/max/count in the uncertain context, mixtures
+  (`mx`), correlation/shared variables, more families (beta/…), the analytic `est+`
+  no-sampling variant, and cross-engine use (an estimate's mean as a number in `{= …}`).
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
   **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,

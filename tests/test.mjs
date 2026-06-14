@@ -1163,6 +1163,137 @@ test('evalMath — new helpers enforce their arity (FN1/FN2/FN3 guards)', () => 
   assert.equal(c.evalMath('clamp(1,2,3,4)'), null);
 });
 
+// ─── uncertainty fields (B2) ──────────────────────────────────────────────────
+test('rngFromSeed — deterministic per seed, in [0,1), differs across seeds', () => {
+  const a = c.rngFromSeed(42), b = c.rngFromSeed(42), d = c.rngFromSeed(43);
+  const seqA = [a(), a(), a()], seqB = [b(), b(), b()], seqD = [d(), d(), d()];
+  assert.deepEqual(seqA, seqB, 'same seed → same stream');
+  assert.notDeepEqual(seqA, seqD, 'different seed → different stream');
+  for (const x of seqA) assert.ok(x >= 0 && x < 1);
+});
+
+test('parseUncertain — accepts the mini-language, rejects malformed', () => {
+  assert.ok(c.parseUncertain('5 to 10'));
+  assert.ok(c.parseUncertain('normal(8, 2)'));
+  assert.ok(c.parseUncertain('uniform(0, 10)'));
+  assert.ok(c.parseUncertain('(5 to 10) + (5 to 10)'));
+  assert.ok(c.parseUncertain('2 * normal(3,1) - 1'));
+  assert.ok(c.parseUncertain('sum(cost)'));
+  assert.ok(c.parseUncertain('avg(score)'));
+  assert.equal(c.parseUncertain(''), null);
+  assert.equal(c.parseUncertain('5 to'), null);          // dangling operator
+  assert.equal(c.parseUncertain('5 to 10 to 20'), null); // `to` is non-associative
+  assert.equal(c.parseUncertain('bogus'), null);         // bare identifier
+  assert.equal(c.parseUncertain('normal(1)'), null);     // wrong arity
+  assert.equal(c.parseUncertain('sum()'), null);
+  assert.equal(c.parseUncertain('5 +'), null);
+});
+
+test('sampleUncertain — 5 to 10 lands its 90% CI at the bounds', () => {
+  const xs = c.sampleUncertain('5 to 10', 4000, 12345);
+  const s = c.distSummary(xs);
+  assert.equal(xs.length, 4000);
+  assert.ok(Math.abs(s.p5 - 5) < 0.6, `p5 ≈ 5, got ${s.p5}`);
+  assert.ok(Math.abs(s.p95 - 10) < 0.9, `p95 ≈ 10, got ${s.p95}`);
+  assert.ok(s.p50 > 5 && s.p50 < 10, 'median inside the CI');
+});
+
+test('sampleUncertain — deterministic given (expr, seed); reseed shifts it', () => {
+  const a = c.sampleUncertain('5 to 10', 1000, 777);
+  const b = c.sampleUncertain('5 to 10', 1000, 777);
+  const d = c.sampleUncertain('5 to 10', 1000, 778);
+  assert.deepEqual(a, b, 'same seed reproduces the exact sample array (the storage model)');
+  assert.notDeepEqual(a, d, 'a new seed re-samples');
+});
+
+test('sampleUncertain — normal(m,0) is constant; uniform is bounded; malformed → null', () => {
+  const con = c.sampleUncertain('normal(10, 0)', 500, 5);
+  assert.ok(con.every(x => Math.abs(x - 10) < 1e-9), 'zero-sd normal is the mean');
+  const uni = c.sampleUncertain('uniform(0, 10)', 2000, 9);
+  assert.ok(uni.every(x => x >= 0 && x <= 10), 'uniform stays in [lo,hi]');
+  assert.equal(c.sampleUncertain('not valid', 100, 1), null);
+});
+
+test('sampleUncertain — (5 to 10)+(5 to 10) zips to ≈2× the mean (independence)', () => {
+  const one = c.distSummary(c.sampleUncertain('5 to 10', 4000, 31));
+  const two = c.distSummary(c.sampleUncertain('(5 to 10) + (5 to 10)', 4000, 31));
+  assert.ok(Math.abs(two.mean - 2 * one.mean) < 0.6, `sum mean ≈ 2× single (${two.mean} vs ${2 * one.mean})`);
+});
+
+test('sampleUncertain — Phase 2: sum(prop)/avg(prop) over children’s uncertain props', () => {
+  const parent = c.mkNode('');
+  const mkChild = (expr) => { const n = c.mkNode(''); n.props = [{ key: 'cost', val: expr }]; return n; };
+  parent.children = [mkChild('5 to 10'), mkChild('5 to 10')];
+  const sm = c.distSummary(c.sampleUncertain('sum(cost)', 4000, 2024, parent));
+  assert.ok(Math.abs(sm.mean - 15) < 1.2, `sum of two 5–10 children ≈ 15, got ${sm.mean}`);
+  const av = c.distSummary(c.sampleUncertain('avg(cost)', 4000, 2024, parent));
+  assert.ok(Math.abs(av.mean - 7.5) < 0.7, `avg ≈ 7.5, got ${av.mean}`);
+  // no qualifying children → an empty rollup is all-zero (vacuous), never throws
+  const empty = c.sampleUncertain('sum(cost)', 100, 1, c.mkNode(''));
+  assert.ok(empty.every(x => x === 0));
+});
+
+test('estChildPropExpr — reads a child’s uncertain property string', () => {
+  const n = c.mkNode(''); n.props = [{ key: 'cost', val: '5 to 10' }];
+  assert.equal(c.estChildPropExpr(n, 'cost'), '5 to 10');
+  assert.equal(c.estChildPropExpr(n, 'COST'), '5 to 10');   // case-insensitive
+  assert.equal(c.estChildPropExpr(n, 'missing'), null);
+});
+
+test('distSummary — quantiles + mean on a fixed array (no RNG)', () => {
+  const xs = Array.from({ length: 100 }, (_, i) => i + 1); // 1..100
+  const s = c.distSummary(xs);
+  assert.ok(Math.abs(s.mean - 50.5) < 1e-9);
+  assert.ok(Math.abs(s.p50 - 50.5) < 0.6);
+  assert.ok(s.p5 < s.p50 && s.p50 < s.p95);
+  assert.equal(c.distSummary([]), null);
+  assert.equal(c.distSummary([NaN, Infinity]), null);       // non-finite dropped → empty
+});
+
+test('sparkline — pure, deterministic, ramp-only; exact on a hand-computed case', () => {
+  assert.equal(c.sparkline([0,1,2,3,4,5,6,7,8,9], 3), '▆▆█'); // counts [3,3,4] → ▆▆█
+  const sp = c.sparkline(Array.from({ length: 1000 }, (_, i) => i), 10);
+  assert.equal(sp.length, 10);
+  for (const ch of sp) assert.ok('▁▂▃▄▅▆▇█'.includes(ch));
+  assert.equal(c.sparkline([], 10), '');
+  assert.equal(c.sparkline([5,5,5,5], 8), '█');              // a constant spike → one full bar
+});
+
+test('formatDist — "mean (p5 – p95) sparkline" on a fixed array', () => {
+  const xs = Array.from({ length: 100 }, (_, i) => i + 1);
+  const out = c.formatDist(xs);
+  assert.match(out, /^50\.5 \([\d.]+ – [\d.]+\) [▁▂▃▄▅▆▇█]+$/);
+  assert.equal(c.formatDist([]), '#ERR');
+});
+
+test('estParts — sniffs distribution constructors only (not sum/avg/dice)', () => {
+  assert.equal(c.estParts('5 to 10'), '5 to 10');
+  assert.equal(c.estParts('normal(8, 2)'), 'normal(8, 2)');
+  assert.equal(c.estParts('uniform(0,10)'), 'uniform(0,10)');
+  assert.equal(c.estParts('sum(cost)'), null);   // rollups are dialog-authored, not typed shorthand
+  assert.equal(c.estParts('2d6'), null);         // dice, not an estimate
+  assert.equal(c.estParts('a | b'), null);
+  assert.equal(c.estParts('tomato'), null);      // contains no standalone "to" token
+});
+
+test('makeEstRoll — builds {key, expr, seed}; rejects malformed', () => {
+  const r = c.makeEstRoll('5 to 10');
+  assert.equal(r.expr, '5 to 10');
+  assert.ok(typeof r.key === 'string' && r.key[0] === 'u');
+  assert.ok(Number.isFinite(r.seed));
+  assert.equal(c.makeEstRoll('nonsense'), null);
+});
+
+test('renderEstPill — frozen summary + aria-label = mean±CI, sparkline aria-hidden', () => {
+  const r = c.makeEstRoll('5 to 10');
+  const html = c.renderEstPill(r.key, r);
+  assert.match(html, /class="est-pill"/);
+  assert.match(html, /aria-label="Estimate 5 to 10: mean/);
+  assert.match(html, /est-spark" aria-hidden="true"/);
+  assert.match(c.renderEstPill('k', null), /est-bad/);     // missing record → bad pill
+  assert.match(c.renderEstPill('k', { key:'k', expr:'bogus', seed:1 }), /est-err/); // unparseable → #ERR
+});
+
 // ─── collectLinks ─────────────────────────────────────────────────────────────
 import { test as ltest } from 'node:test';
 import assert2 from 'node:assert/strict';
