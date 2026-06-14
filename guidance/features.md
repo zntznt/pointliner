@@ -44,9 +44,11 @@ Implemented:
   would lose it); anonymous shorthand pills unfold to editable `{…}`.
 - **Text modifiers** (A1) — a `.mod` suffix on a **rule or variable reference**
   shapes its output without authoring a rule per case: `{beast.a}` → "an ogre",
-  `{noun.s}` → "foxes", `{name.cap}` → "Name". **Closed set of six canonical tokens,
+  `{noun.s}` → "foxes", `{name.cap}` → "Name". **Closed set of canonical tokens,
   one per function, NO aliases:** `cap` (Dog) · `title` (Old Dog) · `upper` (DOG) ·
-  `lower` (dog) · `a` (vowel-aware article) · `s` (pluralize). **Chainable**
+  `lower` (dog) · `a` (vowel-aware article) · `s` (pluralize) · `ed` (regular past tense:
+  `{verb.ed}` → walked/loved/tried) · `ord` (English ordinal: `{n.ord}` → 1st/2nd/11th;
+  non-integer input unchanged). **Chainable**
   left-to-right: `{beast.a.cap}` → "A dragon". Detection (`modParts`) is syntactic — a
   base identifier then `.`-separated suffixes, *every* suffix a member of the set — so
   `{file.txt}` stays literal and `{cap}` (no dot) is just a name. The base resolves
@@ -58,7 +60,9 @@ Implemented:
   the `{.cap}` chip + modifier hint in the grammar dialog, and the `?`-panel
   Pills-&-shorthand row. **Bare references only** — not alternation/dice/math directly
   (`{a|b}.cap` is out of scope; name a rule first). Pure cores: `modParts`, `applyMods`,
-  `pluralize`, `MODIFIERS`.
+  `pluralize`, `pastTense`, `ordinal`, `MODIFIERS`. Adding a modifier name is **additive
+  within the existing closed `.mod` form** — no new P5 inventory decision (`ed`/`ord` were
+  added this way).
   - **Known limitations (documented heuristics, by design):** the `a/an` article is a
     vowel-**letter** test, so "a hour" / "an university" come out wrong (no phonetic
     dictionary); plurals are **regular-only** (`child→childs`, `mouse→mouses` — irregulars

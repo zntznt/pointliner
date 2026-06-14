@@ -8949,6 +8949,24 @@ function pluralize(w) {
   return w + 's';
 }
 
+// Regular past tense (documented heuristic; irregulars like go→goed are out of scope,
+// same limitation as pluralize): consonant+y → …ied; trailing e → +d; else +ed.
+function pastTense(w) {
+  if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ied';   // try → tried
+  if (/e$/i.test(w)) return w + 'd';                          // love → loved
+  return w + 'ed';                                            // walk → walked, play → played
+}
+
+// English ordinal of an integer-valued string; non-integer input returned unchanged.
+function ordinal(s) {
+  const t = String(s).trim();
+  const n = parseInt(t, 10);
+  if (!Number.isFinite(n) || String(n) !== t) return s;
+  const h = Math.abs(n) % 100, d = Math.abs(n) % 10;
+  const suf = (h >= 11 && h <= 13) ? 'th' : d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th';
+  return n + suf;
+}
+
 // One canonical string→string fn per modifier (null-proto so `m in MODIFIERS` is safe).
 const MODIFIERS = Object.assign(Object.create(null), {
   cap:   s => s.charAt(0).toUpperCase() + s.slice(1),
@@ -8957,6 +8975,8 @@ const MODIFIERS = Object.assign(Object.create(null), {
   lower: s => s.toLowerCase(),
   a:     s => (/^[aeiou]/i.test(s.trim()) ? 'an ' : 'a ') + s,
   s:     s => pluralize(s),
+  ed:    s => pastTense(s),
+  ord:   s => ordinal(s),
 });
 
 // Detect a modified reference: a bare base identifier + ≥1 modifier suffix, EVERY
@@ -9475,7 +9495,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text, {3x: {rule}} to repeat a template 3 times. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s). | separates weighted alternatives.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text, {3x: {rule}} to repeat a template 3 times. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -13885,7 +13905,7 @@ const SHORTCUTS = [
     { keys: ['{5 to 10}', 'normal(8,2)'], desc: 'Estimate — an uncertain value (90% range, normal/uniform); shows mean ± [p5,p95] + a sparkline, click to re-sample. sum(prop)/avg(prop) rolls up child points (@ → Estimate)' },
     { keys: ['{a|b 2}', '{a|b {= w}}'], desc: 'Weighted random pick — a weight is a number, or a {= expr} over variables (dynamic odds); rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
-    { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s (e.g. {beast.a} → "an ogre"); chainable {beast.a.cap}' },
+    { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s · ed · ord (e.g. {beast.a} → "an ogre", {verb.ed} → "walked", {n.ord} → "3rd"); chainable {beast.a.cap}' },
     { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
     { keys: ['{3x: {beast}}'], desc: 'Repeat — emit a template N times (1–99), re-expanded each time (distinct rolls); joined by spaces. Use {shuffle: …} for draw-without-replacement.' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },

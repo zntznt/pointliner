@@ -375,7 +375,7 @@ when proposing features:
   a bare identifier → a named rule (`{color}`) if one exists, else a
   document **variable's** value (`{strength}`), else a `{name?}` marker; a
   **modified reference** (`{ref.mod}` — a base identifier + `.`-separated suffixes from
-  the closed set `cap/title/upper/lower/a/s`, via `modParts`, A1 text modifiers) →
+  the closed set `cap/title/upper/lower/a/s/ed/ord`, via `modParts`, A1 text modifiers) →
   resolve the base (rule or var) then `applyMods` left-to-right. Names are
   **document-wide**: `collectRules()` walks the tree (mirroring `collectVars`,
   cached on `_varsVer`) and merges every grammar pill's rules into one namespace
@@ -572,7 +572,7 @@ legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show th
 callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
 **conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`; and **text
 modifiers** `{ref.mod}` — a `.mod` suffix on a rule/var reference, closed set
-`cap/title/upper/lower/a/s`, chainable, `modParts`/`applyMods` — A1, a recorded
+`cap/title/upper/lower/a/s/ed/ord`, chainable, `modParts`/`applyMods` — A1, a recorded
 syntax-inventory addition (one of two, with B2's uncertain-value family), routed through the
 grammar pill for both rule + var bases) ·
 **Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws

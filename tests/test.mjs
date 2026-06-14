@@ -270,6 +270,26 @@ test('applyMods — folds modifiers left-to-right', () => {
   assert.equal(c.applyMods('DOG', ['lower']), 'dog');
 });
 
+test('applyMods — .ed (regular past tense) and .ord (ordinal) follow-ons', () => {
+  assert.equal(c.applyMods('walk', ['ed']), 'walked');
+  assert.equal(c.applyMods('love', ['ed']), 'loved');
+  assert.equal(c.applyMods('try', ['ed']), 'tried');
+  assert.equal(c.applyMods('play', ['ed']), 'played');   // vowel+y → just +ed
+  assert.equal(c.applyMods('1', ['ord']), '1st');
+  assert.equal(c.applyMods('2', ['ord']), '2nd');
+  assert.equal(c.applyMods('3', ['ord']), '3rd');
+  assert.equal(c.applyMods('11', ['ord']), '11th');
+  assert.equal(c.applyMods('12', ['ord']), '12th');
+  assert.equal(c.applyMods('21', ['ord']), '21st');
+  assert.equal(c.applyMods('113', ['ord']), '113th');
+  assert.equal(c.applyMods('abc', ['ord']), 'abc');      // non-integer → unchanged
+  assert.equal(c.applyMods('3.5', ['ord']), '3.5');
+  assert.equal(c.applyMods('3', ['ord', 'cap']), '3rd'); // chainable; cap is a no-op on a digit-led string
+  // both are recognised modifier suffixes (modParts), so {verb.ed} reads as an artifact
+  assert.deepEqual(host(c.modParts('verb.ed')), { base: 'verb', mods: ['ed'] });
+  assert.deepEqual(host(c.modParts('n.ord.cap')), { base: 'n', mods: ['ord', 'cap'] });
+});
+
 test('resolveBrace — a modified reference resolves the base then shapes it', () => {
   const ctx = (rules, vars) => ({ rules, vars, depth: 0, stack: [] });
   assert.equal(c.resolveBrace('beast.cap', ctx({ beast: [{ template: 'dragon', weight: 1 }] }, {})), 'Dragon');
