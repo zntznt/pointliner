@@ -144,7 +144,7 @@ test('evalMath — malformed input returns null (callers branch on null)', () =>
 });
 
 test('evalMath — names colliding with Object.prototype fail to null, not the inherited member', () => {
-  // On plain-object tables `'constructor' in CONSTS` was true via the prototype, so
+  // On plain-object tables `'constructor' in MATH_CONSTS` was true via the prototype, so
   // `constructor*2` resolved to the Object function (NaN) and `constructor(5)`
   // dispatched it as a unary FN1. Both must be unknown names → null.
   assert.equal(c.evalMath('constructor*2', {}), null);
@@ -947,6 +947,20 @@ test('date — today is a finite integer; self-difference is 0', () => {
   assert.ok(Number.isInteger(t) && isFinite(t));
   assert.equal(c.evalMath('today - today'), 0);
   const wd = c.evalMath('weekday(today)'); assert.ok(wd >= 0 && wd <= 6);
+});
+test('date — today resolves per-call, not from a frozen module-level table', () => {
+  // After hoisting MATH_CONSTS/FN1-3 to module scope, `today` must stay dynamic:
+  // it's recomputed each call from new Date(), so a session open across midnight
+  // computes the current epoch-day. Pin it to dueDateToday()'s identical formula.
+  assert.equal(c.evalMath('today', {}), c.dueDateToday());
+  assert.equal(c.evalMath('today + 1', {}), c.dueDateToday() + 1);
+});
+test('evalMath — hoisted FN tables still dispatch (sanity after module-scope hoist)', () => {
+  assert.equal(c.evalMath('sqrt(16)'), 4);   // FN1 math
+  assert.equal(c.evalMath('c2f(0)'), 32);    // FN1 unit conversion
+  assert.ok(Math.abs(c.evalMath('km2mi(1.609344)') - 1) < 1e-9);
+  assert.equal(c.evalMath('atan2(0,1)'), 0); // FN2
+  assert.equal(c.evalMath('date(2026,1,1)') + 0, c.evalMath('date(2026,1,1)')); // FN3 resolves
 });
 test('date — asdate() is numeric identity, so it still composes', () => {
   assert.equal(c.evalMath('asdate(date(2026,12,25))'), c.evalMath('date(2026,12,25)'));
