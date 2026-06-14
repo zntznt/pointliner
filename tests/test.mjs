@@ -2059,6 +2059,17 @@ test('deck door uses its own dialog (regression: openSeqDialog name collision)',
   assert.match(_src, /id === 'deck'[\s\S]{0,120}openDeckDialog\(/, 'deck dispatch must call openDeckDialog, not openSeqDialog');
 });
 
+test('@-dialog insert keeps its sidecar record (regression: mid-insert prune dropped it)', () => {
+  // Every @-menu dialog door (dice/grammar/deck/oracle/…) pushes a sidecar record then
+  // calls applyInlineInsertion. That flushes the active edit via ed.blur() → exitEdit,
+  // which serialized the BUFFER (without the not-yet-spliced token) to node.text and
+  // pruned the just-pushed record → a broken "missing data" pill that only entered edit
+  // mode on click. The flush now suppresses pruning; the next real exit prunes normally.
+  assert.ok(_src.includes('_suppressPruneOnFlush'), 'prune-suppression flag missing');
+  assert.match(_src, /_suppressPruneOnFlush = true;\s*ed\.blur\(\);\s*_suppressPruneOnFlush = false;/, 'flush must wrap ed.blur() in the suppression flag');
+  assert.match(_src, /if \(!_suppressPruneOnFlush\)\s*\{[\s\S]{0,200}pruneGrammar\(node\)/, 'exitEdit prune must honor the flag');
+});
+
 test('rollPickSource: dice source rolls through the dice core', () => {
   c.seedSequence([0]); // every die rolls its minimum
   assert.equal(c.rollPickSource('2d6', {}, {}), '2');
