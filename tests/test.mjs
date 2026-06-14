@@ -3124,6 +3124,84 @@ test('addMonths — clamps the day to the target month length', () => {
   assert.equal(c.addMonths(c.parseDueDate('2026-06-15'), 1), c.parseDueDate('2026-07-15'));
 });
 
+test('agendaGantt — bar/ongoing layout, axis range includes today, day offsets', () => {
+  const today = c.parseDueDate('2026-06-14');
+  const items = [
+    // a full range start→due
+    { id: 'a', start: c.parseDueDate('2026-06-12'), due: c.parseDueDate('2026-06-18'), title: 'A' },
+    // due only → a 1-day bar at the deadline
+    { id: 'b', start: null, due: c.parseDueDate('2026-06-20'), title: 'B' },
+    // start only → ongoing bar from start to today
+    { id: 'd', start: c.parseDueDate('2026-06-10'), due: null, title: 'D' },
+    // undated → skipped
+    { id: 'x', start: null, due: null, title: 'X' },
+  ];
+  const g = host(c.agendaGantt(items, today));
+  // range spans earliest (Jun 10) to latest (Jun 20), padded one day each side
+  assert.equal(g.rangeStart, c.parseDueDate('2026-06-09'));
+  assert.equal(g.rangeEnd,   c.parseDueDate('2026-06-21'));
+  assert.equal(g.rangeDays,  g.rangeEnd - g.rangeStart + 1);
+  // undated dropped; rows sorted by start day (D@10, A@12, B@20)
+  assert.deepEqual(g.rows.map(r => r.id), ['d', 'a', 'b']);
+  const byId = Object.fromEntries(g.rows.map(r => [r.id, r]));
+  // A: range bar, start Jun 12 → due Jun 18 = 7 days, offset from Jun 9 = 3
+  assert.equal(byId.a.kind, 'bar');
+  assert.equal(byId.a.offsetDays, 3);
+  assert.equal(byId.a.spanDays, 7);
+  // B: due-only → 1-day bar at Jun 20 (offset 11)
+  assert.equal(byId.b.kind, 'bar');
+  assert.equal(byId.b.spanDays, 1);
+  assert.equal(byId.b.offsetDays, 11);
+  // D: ongoing → Jun 10 to today (Jun 14) = 5 days, offset 1
+  assert.equal(byId.d.kind, 'ongoing');
+  assert.equal(byId.d.offsetDays, 1);
+  assert.equal(byId.d.spanDays, 5);
+  // empty / null input is safe (still a valid 1-day frame)
+  assert.equal(host(c.agendaGantt([], today)).rows.length, 0);
+  assert.equal(host(c.agendaGantt(null, today)).rows.length, 0);
+});
+
+test('agendaGantt — today is always inside the range even with only future items', () => {
+  const today = c.parseDueDate('2026-06-14');
+  const g = host(c.agendaGantt([{ id: 'f', start: null, due: c.parseDueDate('2026-08-01'), title: 'F' }], today));
+  assert.ok(g.rangeStart <= today && today <= g.rangeEnd, 'today must be within the axis range');
+  // a far-future deadline still anchors back to today (range starts a day before today)
+  assert.equal(g.rangeStart, today - 1);
+});
+
+test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today flags', () => {
+  const today  = c.parseDueDate('2026-06-14');
+  const anchor = c.parseDueDate('2026-06-01');     // June 2026
+  const d10    = c.parseDueDate('2026-06-10');
+  const july5  = c.parseDueDate('2026-07-05');
+  const items = [
+    { id: 'a', epochDay: d10 },
+    { id: 'b', epochDay: d10 },                     // same day as a
+    { id: 'c', epochDay: today },
+    { id: 'z', epochDay: july5 },                   // next month → out-of-month trailing cell
+  ];
+  const cells = host(c.agendaMonthCells(items, anchor, today));
+  assert.equal(cells.length, 42);
+  // backbone is exactly calendarMonthGrid (Sunday-aligned 6 weeks)
+  assert.deepEqual(cells.map(x => x.epochDay), host(c.calendarMonthGrid(anchor)));
+  // two items share June 10's cell; it's in-month with the right day number
+  const cell10 = cells.find(x => x.epochDay === d10);
+  assert.deepEqual(cell10.items.map(i => i.id).sort(), ['a', 'b']);
+  assert.equal(cell10.inMonth, true);
+  assert.equal(cell10.dom, 10);
+  // today flag
+  const cellToday = cells.find(x => x.epochDay === today);
+  assert.equal(cellToday.isToday, true);
+  assert.deepEqual(cellToday.items.map(i => i.id), ['c']);
+  // a July item lands in a trailing out-of-month cell (June 2026's grid reaches July 11)
+  assert.ok(c.calendarMonthGrid(anchor).includes(july5), 'July 5 should be in June 2026 grid');
+  const julyCell = cells.find(x => x.epochDay === july5);
+  assert.equal(julyCell.inMonth, false);
+  assert.equal(julyCell.items.length, 1);
+  // empty days carry an empty array, never undefined
+  assert.ok(cells.every(x => Array.isArray(x.items)));
+});
+
 test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
   const today = c.dueDateToday();
   const q1 = host(c.parseSearchQuery('due:today'));
@@ -3193,4 +3271,11 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
+  // agenda: permanent List on the top bar + Timeline/Calendar as toggled full-width bars below
+  assert.ok(_src.includes('agendaBars'), 'agenda view-bars state missing');
+  assert.ok(_src.includes('ag-top') && _src.includes('ag-pane'), 'agenda top bar / stacked bars missing');
+  assert.ok(_src.includes('renderAgendaGantt'), 'agenda Gantt view missing');
+  assert.ok(_src.includes('renderAgendaCalendar'), 'agenda calendar view missing');
+  assert.ok(_src.includes('agendaGantt'), 'agenda Gantt core missing');
+  assert.ok(_src.includes('agendaMonthCells'), 'agenda calendar core missing');
 });
