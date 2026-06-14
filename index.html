@@ -6629,6 +6629,7 @@ function classifyBraceBody(body, rules, vars) {
   }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
+  if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap}
   if (mp) {
     const low = mp.base.toLowerCase();
@@ -6661,6 +6662,7 @@ function braceTypeLabel(body, rules, vars) {
   if (body[0] === '=') return ['math', null];
   if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
   if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
+  if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
@@ -9033,6 +9035,15 @@ function resolveBrace(body, ctx) {
     else return `{${mp.base}?}`;
     return applyMods(s, mp.mods);
   }
+  const rp = repeatParts(body);
+  if (rp) {
+    // Emit the template N times (each expansion is independent — dice re-roll,
+    // rules re-pick), joined by a single space. Nested {…} braces in the template
+    // are each re-expanded by expandTemplate, so {3x: {2d6}} rolls three times.
+    const out = [];
+    for (let i = 0; i < rp.n; i++) out.push(expandTemplate(rp.template, ctx));
+    return out.join(' ').trim();
+  }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
   if (body[0] === '=') {
@@ -9327,6 +9338,21 @@ function makeSeqGen(mode, items, key) {
   return rec;
 }
 
+// ─── repeat (Nx) ─────────────────────────────────────────────────────────────
+// {Nx: template} — emit `template` N times, re-expanded each time, joined by
+// spaces (e.g. {3x: {beast}} → "ogre wyrm ogre"). N is a literal integer 1–99.
+// Detection is syntactic: a digit run followed by x/X, then a top-level colon.
+// Disjoint from condParts (no comparison), seqParts (not a deck mode keyword),
+// and modParts (Nx isn't a bare identifier + dot suffix). Recorded P5 decision
+// (ux-discipline §2): a new sub-form inside the existing {…} authoring language.
+function repeatParts(body) {
+  const m = (body || '').match(/^\s*(\d+)\s*[xX]\s*:([\s\S]*)$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  if (n < 1 || n > 99) return null;
+  return { n, template: m[2].trim() };
+}
+
 // A stateful-sequence pill (deck / cycle / once / stopping). Reuses the grammar
 // pill chrome but: a deck icon, NO pencil (it unfolds to {mode: …} text for
 // editing, like an anonymous grammar / dice pill), and body-click ADVANCES the
@@ -9372,6 +9398,7 @@ const GRAMMAR_CHIPS = [
   { label:'{= }',   insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
   { label:'{cond}', insert: el => insertAndSelect(el, '{', 'x > 0', ': yes | no}') },
   { label:'{.cap}', insert: el => insertAndSelect(el, '{', 'name', '.cap}') },
+  { label:'{Nx}',   insert: el => insertAndSelect(el, '{', '3x', ': {rule}}') },
 ];
 
 // `tableFlavor` is the "Roll table" door: same dialog, same grammar record —
@@ -9389,7 +9416,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s). | separates weighted alternatives.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text, {3x: {rule}} to repeat a template 3 times. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s). | separates weighted alternatives.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -9573,6 +9600,13 @@ function promoteBraceBody(node, body) {
   // the var-pill path). Undefined base → falls through → stays literal (escape hatch).
   const mp = modParts(body);
   if (mp && (collectRules()[mp.base.toLowerCase()] || mp.base.toLowerCase() in collectVars())) {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  // repeat: {3x: template} → an anonymous grammar wrapping the body in a synthetic
+  // origin rule so it unfolds/refolds/prunes/exports via the grammar machinery. The
+  // anon flag keeps the synthetic origin rule out of the document-wide namespace.
+  if (repeatParts(body)) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
@@ -13366,6 +13400,7 @@ const SHORTCUTS = [
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s (e.g. {beast.a} → "an ogre"); chainable {beast.a.cap}' },
     { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
+    { keys: ['{3x: {beast}}'], desc: 'Repeat — emit a template N times (1–99), re-expanded each time (distinct rolls); joined by spaces. Use {shuffle: …} for draw-without-replacement.' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
     { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },

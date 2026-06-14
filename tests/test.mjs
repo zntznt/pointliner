@@ -359,6 +359,48 @@ test('makeSeqGen — builds a record advanced to its first emission; rejects bad
   assert.equal(c.makeSeqGen('cycle', []), null);
 });
 
+// ── repeatParts ───────────────────────────────────────────────────────────────
+
+test('repeatParts — parses Nx: template; rejects invalid forms', () => {
+  assert.deepEqual(host(c.repeatParts('3x: {beast}')), { n: 3, template: '{beast}' });
+  assert.deepEqual(host(c.repeatParts('1x: hello')), { n: 1, template: 'hello' });   // n=1 boundary
+  assert.deepEqual(host(c.repeatParts('99X: y')), { n: 99, template: 'y' });          // n=99 boundary; X case-insensitive
+  assert.equal(c.repeatParts('0x: hello'), null);   // n=0 rejected
+  assert.equal(c.repeatParts('100x: hello'), null); // n=100 rejected
+  assert.equal(c.repeatParts('shuffle: a|b'), null); // a sequence mode, not Nx
+  assert.equal(c.repeatParts('hello'), null);        // no colon
+  assert.equal(c.repeatParts('x: no'), null);        // not a digit run
+});
+
+test('resolveBrace — {3x: ★} expands the template N times, joined by space', () => {
+  // Template is a literal, so each expansion is identical — trivially verifiable.
+  const ctx = { rules: Object.create(null), vars: Object.create(null), depth: 0, stack: [] };
+  assert.equal(c.resolveBrace('3x: ★', ctx), '★ ★ ★');
+  assert.equal(c.resolveBrace('1x: hi', ctx), 'hi');
+});
+
+test('resolveBrace — {3x: {2d6}} re-rolls each repetition independently', () => {
+  c.seedSequence([0, 0, 0.5, 0, 0, 0.99]);  // two d6 per roll → rolls: 1+1=2, 1+4=5, 1+6=7
+  try {
+    const ctx = { rules: Object.create(null), vars: Object.create(null), depth: 0, stack: [] };
+    assert.equal(c.resolveBrace('3x: {2d6}', ctx), '2 5 7');
+  } finally { c.resetRandom(); }
+});
+
+test('runGrammar — {3x: {beast}} composes repeat inside a grammar rule', () => {
+  c.seedSequence([0]);  // always picks first alternative → 'a'
+  try {
+    const def = 'origin: {3x: {beast}}\nbeast: a | b | c';
+    const result = c.runGrammar(def, 'origin', null, {});
+    assert.equal(result, 'a a a');
+  } finally { c.resetRandom(); }
+});
+
+test('classifyBraceBody / braceTypeLabel — a repeat reads as a (grammar) artifact', () => {
+  assert.equal(c.classifyBraceBody('3x: hello', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('3x: hello', {}, {})), ['grammar', null]);
+});
+
 test('resolveBrace — a {mode: …} inside a rule degrades to a uniform pick (no state there)', () => {
   c.seedSequence([0]); // floor(0*3) → first item
   try {
