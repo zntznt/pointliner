@@ -12558,6 +12558,7 @@ const SHORTCUTS = [
     { keys: ['word word'], desc: 'Every term must match (AND)' },
     { keys: ['#tag'],      desc: 'Points carrying a tag — state keywords too (#todo, #waiting)' },
     { keys: ['is:todo', 'is:done', 'is:note'], desc: 'Open to-dos / finished to-dos / points with a note' },
+    { keys: ['due:today', 'due:overdue', 'start:<date'], desc: 'Dated points — due or overdue, or before/after a date (YYYY-MM-DD, today±N)' },
     { keys: ['has:key'], desc: 'Points carrying a property with that key — e.g. has:status' },
     { keys: ['key:value'], desc: 'Points where key equals value — e.g. status:done, author:alice' },
     { keys: ['-term', '-#tag'], desc: 'Exclude matches' },
@@ -12576,6 +12577,11 @@ const SHORTCUTS = [
     { keys: ['#TODO'],            desc: 'Click a badge to open the state / priority picker' },
     { keys: ['#TODO', '#NEXT', '#WAITING', '#DONE'], desc: 'Type `#KEYWORD ` at the start of a point to set its state' },
     { keys: ['/todo', '/next', '…'],   desc: 'Slash menu sets the to-do state too' },
+  ]},
+  { sec: 'Dates & agenda', rows: [
+    { keys: ['/due'],     desc: 'Schedule a start and/or due date (also in the bullet menu → Set / Edit dates)' },
+    { keys: ['Agenda'],   desc: 'Toolbar calendar button: List, Timeline (Gantt) and Calendar views of every dated point' },
+    { keys: ['due:today', 'start:<date'], desc: 'Filter the outline to dated points (see Search & filter)' },
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table, base, or stamp a saved template…' },
