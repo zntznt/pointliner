@@ -5,7 +5,10 @@
 Implemented:
 
 - **Dice** — `@dice`: `NdM`, `+/-` modifiers, `@var` modifiers, **exploding**
-  (`2d6!`), **keep/drop high/low** (`4d6kh3`/`kl`/`dl`/`dh`), **Fate** (`4dF`),
+  (`2d6!`), **reroll-once** (`4d6r1` — reroll any die ≤K a single time, then keep the
+  new value; the canonical `4d6r1kh3`; v1 excludes Fate / exploding / success pools,
+  but composes with keep/drop; the struck original shows `1↻6` in the breakdown),
+  **keep/drop high/low** (`4d6kh3`/`kl`/`dl`/`dh`), **Fate** (`4dF`),
   and **success-counting pools** — a comparison suffix (`>=`,`<=`,`>`,`<`,`=`)
   turns the term into "count the dice that match" instead of summing pips
   (`6d10>=7`, `4d6<=2`). Each rolled face is its own die, so **exploding composes**

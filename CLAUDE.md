@@ -569,7 +569,7 @@ redesign.
 
 ## Feature status
 
-Implemented: Dice (incl. success-counting pools) · Markov · Roll tables (one-rule
+Implemented: Dice (incl. success-counting pools + reroll-once `rK`) · Markov · Roll tables (one-rule
 grammars since the collapse — the `@` door opens the table-flavored grammar dialog;
 legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
 callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style

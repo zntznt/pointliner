@@ -100,6 +100,35 @@ test('rollParsed — exploding chains on a max die', () => {
   } finally { c.resetRandom(); }
 });
 
+test('parseDice — reroll rK parses and validates its combinations', () => {
+  assert.equal(c.parseDice('4d6r1')[0].reroll, 1);
+  const t = c.parseDice('4d6r1kh3')[0];           // canonical: reroll then keep
+  assert.equal(t.reroll, 1); assert.equal(t.keepMode, 'kh'); assert.equal(t.keepCount, 3);
+  assert.equal(c.parseDice('4d6r1>=4'), null);     // reroll + success pool → null
+  assert.equal(c.parseDice('4dFr1'), null);        // reroll + Fate → null
+  assert.equal(c.parseDice('4d6!r1'), null);       // reroll + exploding → null (v1)
+  assert.equal(c.parseDice('4d6r0'), null);        // threshold < 1 → null
+  assert.equal(c.parseDice('4d6r6'), null);        // threshold ≥ sides → null
+});
+
+test('rollParsed — reroll replaces a die ≤K once, keeping the new value', () => {
+  c.seedSequence([0, 0.9, 0.5, 0.5, 0.5]); // die0: 1→reroll→6; dice 1–3: 4,4,4
+  try {
+    const res = c.rollParsed(c.parseDice('4d6r1'));
+    assert.equal(res.total, 18);                   // 6+4+4+4 (the 1 was rerolled away)
+    assert.deepEqual(host(res.parts[0].rolls), [[6], [4], [4], [4]]);
+    assert.deepEqual(host(res.parts[0].rerolledFrom), [1, null, null, null]);
+    assert.equal(res.parts[0].reroll, 1);
+  } finally { c.resetRandom(); }
+});
+
+test('rollParsed — reroll composes with keep-high (4d6r1kh3)', () => {
+  c.seedSequence([0, 0.9, 0.5, 0.5, 0.5]); // reroll die0 (1→6) → [6,4,4,4]; keep top 3
+  try {
+    assert.equal(c.rollParsed(c.parseDice('4d6r1kh3')).total, 14); // 6+4+4
+  } finally { c.resetRandom(); }
+});
+
 test('rollParsed — total stays within bounds over many rolls', () => {
   c.resetRandom();
   for (let i = 0; i < 200; i++) {
