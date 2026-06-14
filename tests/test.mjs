@@ -2714,6 +2714,13 @@ test('UXP-25: textForDisplay strips ol N. prefix', () => {
   assert.equal(c.textForDisplay(h), 'Title');
 });
 
+test('UXP-25: the computed ol gutter ordinal is hidden while editing (no double number)', () => {
+  // Edit reveals the raw "N. " marker in the text (markdown-first); the position-
+  // computed .ol-num gutter must hide then, or the point shows two numbers at once.
+  assert.match(_src, /\.node-row:has\(>?\.node-content\[data-editing\]\)>\.ol-num\{visibility:hidden\}/,
+    'ol-num hide-while-editing rule missing');
+});
+
 test('UXP-25: migrateNodePrefixes adds 1. to legacy type-only ol nodes', () => {
   const root = c.mkRoot();
   const legacy = c.mkNode('buy milk'); legacy.type = 'ol';
