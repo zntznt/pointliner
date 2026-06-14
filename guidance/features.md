@@ -27,8 +27,16 @@ Implemented:
 - **Grammar** — `@grammar`: recursive-substitution generator (`runGrammar`).
   Named rules `name: a | b 2 | c`, one per line; one brace syntax `{...}` for rule
   refs `{color}`, named tables `{loot}`, named markov chains `{weather}`, variables
-  `{strength}`, dice `{2d6}`, expressions `{= 2*r}`, and inline alternation `{a|b}`,
-  all nestable. Names are **document-wide** (`collectRules()` — grammar rules,
+  `{strength}`, dice `{2d6}`, expressions `{= 2*r}`, inline alternation `{a|b}`, and
+  **conditional text** `{cond: then | else}` (Ink-style — emit `then` when an
+  `evalMath` comparison holds, else `else`; `else` optional, `{hp>0: alive|dead}`),
+  all nestable. Conditional detection is syntactic (`condParts` — a comparison before
+  a top-level `:`, no top-level `|` in the condition), so a plain `{a|b}`, a rule
+  line, or a prose `{note: hi}` never read as a conditional; an unresolvable condition
+  shows a visible `{cond?}` marker. To alternate *inside* a branch, brace it
+  (`{c>0: {a|b} | x}`). A standalone `{cond: …}` promotes to an anonymous grammar pill
+  (`promoteBraceBody` wraps it `origin: {…}` so it routes through `resolveBrace`) and
+  unfolds back to its `{cond: …}` source for editing. Names are **document-wide** (`collectRules()` — grammar rules,
   which include collapsed roll tables, + named chains), so any pill can call
   anything declared anywhere. Cycles/depth caught at expansion (`↻`/`…`). Freezes
   its expansion like dice; click to re-generate. **Named pills show their callable
