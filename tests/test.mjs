@@ -3446,18 +3446,63 @@ test('subtree aggregation: expandAggExpr substitutes, then evalMath computes', (
   assert.equal(c.expandAggExpr('sum(cost)', p), '(8)');
   assert.equal(c.expandAggExpr('sum(cost) * 1.1', p), '(8) * 1.1');
   assert.equal(c.evalMath(c.expandAggExpr('sum(cost) * 2', p), {}), 16); // the real eval path
-  // min/max are NOT aggregations — they stay evalMath's numeric variadics
+  // min/max(prop) ARE aggregations now (single bare identifier); the numeric
+  // variadic min(a,b)/max(1,2) keeps its meaning (a comma excludes it from the regex)
+  assert.equal(c.expandAggExpr('min(cost)', p), '(3)');
+  assert.equal(c.expandAggExpr('max(cost)', p), '(5)');
   assert.equal(c.expandAggExpr('max(1, 2)', p), 'max(1, 2)');
-  assert.equal(c.expandAggExpr('min(cost)', p), 'min(cost)');
+  assert.equal(c.expandAggExpr('min(a, b)', p), 'min(a, b)');
   // node-less expansion aggregates over nothing → 0, so {= sum(cost)} still validates
   assert.equal(c.expandAggExpr('sum(cost)', null), '(0)');
   assert.equal(c.evalMath(c.expandAggExpr('sum(cost)', null), {}), 0);
+});
+
+test('subtree aggregation: min / max over a child property (empty → ±∞ identity)', () => {
+  const p = c.mkNode('Cart');
+  const a = c.mkNode('a'); a.props.push({ key: 'cost', val: '3' });
+  const b = c.mkNode('b'); b.props.push({ key: 'cost', val: '5' });
+  const z = c.mkNode('c'); z.props.push({ key: 'cost', val: '2' });
+  p.children.push(a, b, z, c.mkNode('no cost here'));
+  assert.equal(c.aggregateChildren(p, 'min', 'cost'), 2);
+  assert.equal(c.aggregateChildren(p, 'max', 'cost'), 5);
+  // empty set → the function's IDENTITY element, not 0 (so constraints are vacuously true)
+  assert.equal(c.aggregateChildren(p, 'min', 'missing'), Infinity);
+  assert.equal(c.aggregateChildren(p, 'max', 'missing'), -Infinity);
+  assert.equal(c.aggregateChildren(c.mkNode('leaf'), 'min', 'cost'), Infinity);  // no children at all
+});
+
+test('subtree aggregation: min/max(prop) is purely additive — numeric min(a,b)/max(1,2) untouched', () => {
+  const p = c.mkNode('Cart');
+  const a = c.mkNode('a'); a.props.push({ key: 'cost', val: '3' });
+  const b = c.mkNode('b'); b.props.push({ key: 'cost', val: '5' });
+  p.children.push(a, b);
+  // single bare identifier → child aggregation
+  assert.equal(c.expandAggExpr('min(cost)', p), '(3)');
+  assert.equal(c.expandAggExpr('max(cost)', p), '(5)');
+  assert.equal(c.evalMath(c.expandAggExpr('max(cost) - min(cost)', p), {}), 2); // range, end-to-end
+  // a comma → NOT a single identifier → left for evalMath's numeric variadic path
+  assert.equal(c.expandAggExpr('min(2, 9)', p), 'min(2, 9)');
+  assert.equal(c.evalMath('min(2, 9)', {}), 2);    // the numeric path is intact (no regression)
+  assert.equal(c.evalMath('max(2, 9)', {}), 9);
+  // node-less expansion → ±∞ identity (a valid number), so {= max(prop)} validates at creation
+  assert.equal(c.expandAggExpr('min(start)', null), '(Infinity)');
+  assert.equal(c.evalMath(c.expandAggExpr('max(cost)', null), {}), -Infinity);
+});
+
+test('subtree aggregation: min/max empty set makes a range constraint vacuously TRUE', () => {
+  // a point with no children carrying `start` — `min(start) >= 100` must be true (+∞ >= 100),
+  // not a spurious false from a 0 sentinel. This is what F2 range checks rely on.
+  const p = c.mkNode('Milestone'); p.children.push(c.mkNode('a note'), c.mkNode('another'));
+  assert.equal(c.evalMath(c.expandAggExpr('min(start) >= 100', p), {}), 1);
+  assert.equal(c.evalMath(c.expandAggExpr('max(due) <= 100', p), {}), 1);   // -∞ <= 100 → true
 });
 
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
   assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode)'), 'renderMathPill live-aggregation wiring missing');
   assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
   assert.ok(_src.includes("{ keys: ['{= sum(cost)}']"), 'aggregation ? panel row missing');
+  assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
+  assert.ok(_src.includes('min(prop) / max(prop)'), 'math dialog hint missing min/max');
 });
 
 // ── outline constraints / lint (F2) ─────────────────────────────────────────
