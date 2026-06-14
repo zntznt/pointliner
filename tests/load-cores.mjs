@@ -140,7 +140,7 @@ export function loadCores() {
     'parseMarkov', 'walkMarkov', 'weightedPick',
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize',
-    'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen',
+    'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'collectRules', 'collectLinks', 'linkCandidates',
     'validPluginPack', 'mergePackRules', 'packVarDefs',
     'mkRoot', 'mkNode', 'toOpml', 'toMarkdown', 'toPlainText',

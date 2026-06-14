@@ -82,6 +82,16 @@ Implemented:
   degrades to a uniform pick (no per-instance record there). Pure cores: `seqParts`
   (detect), `nextSeqIndex` (state machine), `advanceSeq` (emit), `makeSeqGen` (build).
   This resolved the long-standing "decks/bags have nowhere clean to live yet" question.
+- **Repeat** — `{Nx: template}` emits a grammar template N times (1–99), re-expanded
+  each time (so dice re-roll, rules re-pick independently), joined by a single space:
+  `{3x: {beast}}` → "ogre wyrm ogre". Detection (`repeatParts`) is syntactic — a digit
+  run + `x/X` before the first top-level `:` — disjoint from `condParts` (needs a
+  comparison), `seqParts` (needs a reserved mode keyword), and `modParts` (needs a
+  bare identifier + dot). N is a literal integer 1–99 only in v1 (a variable count can
+  be modelled with a named rule). Promotes to an anonymous grammar pill via
+  `makeGrammarRoll('origin: {Nx: …}', 'origin')` so unfold/refold/prune/export reuse
+  the grammar machinery unchanged. Front doors: the `{Nx}` chip in the grammar dialog
+  + the `{3x: {beast}}` row in the **Pills & shorthand** `?` panel.
 - **Dynamic odds** (A5) — the weight in a weighted alternation may be a trailing
   `{= expr}` instead of a literal number: `{sword | shield {= str}}` weights "shield"
   by the variable `str`, resolved against the document vars **at pick time** (so the
