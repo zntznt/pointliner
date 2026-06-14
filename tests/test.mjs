@@ -271,6 +271,18 @@ test('nextSeqIndex — shuffle draws without replacement, then reshuffles', () =
   } finally { c.resetRandom(); }
 });
 
+test('nextSeqIndex — shuffle never repeats across the reshuffle boundary', () => {
+  // a 2-item deck: every draw must differ from the one before it (within a round
+  // they alternate by construction; the fix guarantees the boundary does too).
+  const rec = { mode: 'shuffle', items: ['a', 'b'], bag: [] };
+  let prev = c.nextSeqIndex(rec);
+  for (let i = 0; i < 40; i++) {
+    const cur = c.nextSeqIndex(rec);
+    assert.notEqual(cur, prev, `draw ${i + 1} repeated the previous (boundary repeat)`);
+    prev = cur;
+  }
+});
+
 test('advanceSeq — emits the chosen item, expanded against the grammar', () => {
   const rec = { mode: 'cycle', items: ['{2d6} gold', 'plain'], pos: 0 };
   c.seedSequence([0]); // 2d6 → minimum 2
@@ -302,6 +314,16 @@ test('classifyBraceBody / braceTypeLabel — a sequence reads as a (grammar) art
   assert.equal(c.classifyBraceBody('shuffle: a | b | c', {}, {}), 'artifact');
   assert.deepEqual(host(c.braceTypeLabel('cycle: a | b', {}, {})), ['grammar', null]);
   assert.equal(c.classifyBraceBody('note: hello', {}, {}), 'literal'); // a non-mode colon stays prose
+});
+
+test('advanceSeq — an exhausted once emits empty (the pill shows a muted end marker)', () => {
+  const rec = c.makeSeqGen('once', ['only']);   // first emission shown at creation
+  assert.equal(rec.result, 'only');
+  assert.equal(c.advanceSeq(rec, {}, {}), '');  // past the end → empty (renders as "—")
+  assert.equal(c.advanceSeq(rec, {}, {}), '');  // stays ended
+  // render path turns the empty result into a muted "—" marker, not a blank pill (P4)
+  assert.ok(_src.includes('gr-seq-end'), 'once-exhaustion end marker class missing');
+  assert.ok(_src.includes("ended ? '—'"), 'end-marker render branch missing');
 });
 
 // ── prototype-key safety: names colliding with Object.prototype must not crash

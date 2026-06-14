@@ -440,6 +440,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-roll:hover .gr-ico{transform:rotate(180deg)}
 .gr-name{font-family:var(--mono);font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px}
 .gr-result{font-weight:600;color:var(--fg)}
+.gr-seq-end .gr-result{color:var(--muted);font-weight:400}
 .gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .gr-roll:hover .gr-edit{opacity:.6}
 .gr-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
@@ -8680,9 +8681,20 @@ function nextSeqIndex(rec) {
     rec.pos = Math.min(p + 1, n);     // grows, then saturates at n
     return Math.min(p, n - 1);        // … and the emitted index sticks on the last
   }
-  // shuffle: draw without replacement; refill (reshuffle) once the bag empties.
-  if (!Array.isArray(rec.bag) || rec.bag.length === 0) rec.bag = shuffledIndices(n);
-  return rec.bag.shift();
+  // shuffle: draw without replacement; refill (reshuffle) once the bag empties —
+  // avoiding an immediate repeat across the boundary (the new bag's first draw is
+  // never the item that just ended the previous round). `rec.last` round-trips on
+  // the record like `pos`/`bag`.
+  if (!Array.isArray(rec.bag) || rec.bag.length === 0) {
+    rec.bag = shuffledIndices(n);
+    if (n > 1 && rec.bag[0] === rec.last) {       // would repeat the last drawn item
+      const j = 1 + Math.floor(Math.random() * (n - 1));
+      const t = rec.bag[0]; rec.bag[0] = rec.bag[j]; rec.bag[j] = t;
+    }
+  }
+  const idx = rec.bag.shift();
+  rec.last = idx;
+  return idx;
 }
 
 // Advance a sequence and return its emitted text — the chosen item expanded
@@ -8972,10 +8984,16 @@ function makeSeqGen(mode, items, key) {
 // distinct from the reserved word "sequence" (the to-do state-set feature).
 function renderSeqGenPill(key, g) {
   const verb = g.mode === 'shuffle' ? 'draw the next' : 'advance';
-  return `<span class="gr-roll gr-seq" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}) — click to ${verb}"`
-    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(g.result)} — click to ${verb}">`
+  // An exhausted `once` has nothing left to emit (empty result). Show a muted "—"
+  // end marker so the pill reads as intentionally finished, not blank/broken (P4);
+  // items are never empty (seqParts filters them), so an empty result IS the end.
+  const ended = g.result === '';
+  const shown = ended ? '—' : g.result;
+  const ariaVal = ended ? '(end)' : g.result;
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}) — click to ${verb}"`
+    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)} — click to ${verb}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
-    + `<span class="gr-result">${escHtml(g.result)}</span>`
+    + `<span class="gr-result">${escHtml(shown)}</span>`
     + `</span>`;
 }
 
