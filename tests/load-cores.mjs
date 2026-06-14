@@ -142,6 +142,7 @@ export function loadCores() {
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize',
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen',
     'collectVars', 'collectRules', 'collectLinks', 'linkCandidates',
+    'validPluginPack', 'mergePackRules', 'packVarDefs',
     'mkRoot', 'mkNode', 'toOpml', 'toMarkdown', 'toPlainText',
     'embedOpmlIntoHtml', 'extractEmbeddedOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',

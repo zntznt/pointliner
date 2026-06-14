@@ -813,6 +813,110 @@ test('collapse end-to-end — a migrated named table resolves as {name} document
   } finally { c.resetRandom(); }
 });
 
+// ── declarative data packs (plugins) ────────────────────────────────────────
+// A <_plugins> pack is pure DATA merged into the generative namespace through the
+// existing restricted engines (parseRules for rules, evalMath for vars) — never
+// code. Pack rules/vars become callable doc-wide; a document-authored name of the
+// same kind OVERRIDES the pack on collision (packs merge first, last-wins). Malformed
+// packs are dropped/neutralized, never thrown on. (guidance/plugins-direction.md.)
+
+test('plugin packs — validPluginPack keeps a {id:string} object, drops everything else', () => {
+  assert.equal(c.validPluginPack({ id: 'p' }), true);
+  assert.equal(c.validPluginPack({ id: 'p', rules: 'a: b' }), true);
+  assert.equal(c.validPluginPack({}), false);            // no id
+  assert.equal(c.validPluginPack({ id: 5 }), false);     // id not a string
+  assert.equal(c.validPluginPack(null), false);
+  assert.equal(c.validPluginPack('x'), false);
+  assert.equal(c.validPluginPack([{ id: 'p' }]), false); // an array is not a pack
+});
+
+test('plugin packs — mergePackRules is defensive and later-pack-wins', () => {
+  const target = Object.create(null);
+  c.mergePackRules(target, [
+    { id: 'a', rules: 'color: red' },
+    { id: 'b', rules: 'color: blue' },   // later pack wins on a name collision
+    { id: 'c', rules: 'bogus line' },    // parseRules → null → skipped
+    { rules: 'beast: ogre' },            // no id → skipped
+  ]);
+  assert.ok('color' in target);
+  assert.equal(target.color[0].template, 'blue', 'later pack wins on a rule-name collision');
+  assert.ok(!('beast' in target), 'an id-less pack is skipped');
+});
+
+test('plugin packs — packVarDefs flattens only well-formed {name,expr} entries', () => {
+  const defs = host(c.packVarDefs([
+    { id: 'a', vars: [{ name: 'x', expr: '1' }, { name: 'y' }, { expr: '2' }, 'junk'] },
+    { id: 'b', vars: 'not-an-array' },   // dropped
+    { vars: [{ name: 'z', expr: '3' }] },// no id → whole pack dropped
+  ]));
+  assert.deepEqual(defs, [{ name: 'x', expr: '1' }]);
+});
+
+test('plugin packs — a pack rule is callable document-wide', () => {
+  const root = c.mkRoot();
+  root.plugins = [{ id: 'p', rules: 'color: red | blue' }];
+  const rules = c.collectRules(root);
+  assert.ok('color' in rules, 'pack rule should register doc-wide');
+  c.seedSequence([0.1]);
+  try {
+    const out = c.runGrammar('o: {color}', 'o', rules, {});
+    assert.ok(out === 'red' || out === 'blue', `pack rule expanded to ${out}`);
+  } finally { c.resetRandom(); }
+});
+
+test('plugin packs — a document rule OVERRIDES a pack rule on a name collision', () => {
+  const root = c.mkRoot();
+  root.plugins = [{ id: 'p', rules: 'color: red | blue' }];
+  const n = c.mkNode('[[grammar:g1]]');
+  n.grammar = [{ key: 'g1', def: 'color: green', origin: 'color', result: 'green' }];
+  root.children.push(n);
+  const rules = c.collectRules(root);
+  assert.equal(c.runGrammar('o: {color}', 'o', rules, {}), 'green');
+});
+
+test('plugin packs — a formula pack variable resolves and composes', () => {
+  const root = c.mkRoot();
+  root.plugins = [{ id: 'p', vars: [{ name: 'tax', expr: '0.1' }] }];
+  assert.equal(c.collectVars(root).tax, 0.1);
+  assert.equal(c.evalMath('100*tax', c.collectVars(root)), 10);
+});
+
+test('plugin packs — a document variable OVERRIDES a pack variable on a name collision', () => {
+  const root = c.mkRoot();
+  root.plugins = [{ id: 'p', vars: [{ name: 'tax', expr: '0.1' }] }];
+  const n = c.mkNode('[[var:k1]]');
+  n.vars = [{ key: 'k1', name: 'tax', expr: '0.25' }];
+  root.children.push(n);
+  assert.equal(c.collectVars(root).tax, 0.25);
+});
+
+test('plugin packs — a malformed/hostile pack is neutralized, never throws', () => {
+  // rule text that isn't a rule line → parseRules null → no rule registered
+  const r1 = c.mkRoot(); r1.plugins = [{ id: 'p', rules: 'not a rule line' }];
+  assert.doesNotThrow(() => c.collectRules(r1));
+  assert.equal(Object.keys(c.collectRules(r1)).length, 0);
+  // vars not an array → dropped
+  const r2 = c.mkRoot(); r2.plugins = [{ id: 'p', vars: 'oops' }];
+  assert.doesNotThrow(() => c.collectVars(r2));
+  assert.equal(Object.keys(c.collectVars(r2)).length, 0);
+  // a cyclic pack var fails visibly (broken like any var), doesn't hang
+  const r3 = c.mkRoot(); r3.plugins = [{ id: 'p', vars: [{ name: 'a', expr: 'a+1' }] }];
+  assert.equal('a' in c.collectVars(r3), false);
+  // a pack missing id → dropped entirely (neither its rules nor vars apply)
+  const r4 = c.mkRoot(); r4.plugins = [{ rules: 'color: red', vars: [{ name: 'x', expr: '1' }] }];
+  assert.ok(!('color' in c.collectRules(r4)));
+  assert.ok(!('x' in c.collectVars(r4)));
+});
+
+test('plugin packs — toOpml round-trips <_plugins> (present when set, absent when empty)', () => {
+  const root = c.mkRoot();
+  root.plugins = [{ id: 'fantasy', rules: 'npc: knight | rogue', vars: [{ name: 'gold', expr: '50' }] }];
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_plugins>'), 'non-empty plugins emit a <_plugins> head element');
+  assert.ok(xml.includes('fantasy'), 'the pack id is serialized into the head');
+  assert.ok(!c.toOpml(c.mkRoot()).includes('<_plugins>'), 'empty plugins → no <_plugins> element (mirrors _templates)');
+});
+
 test('collectCallables — an anonymous pill does not advertise `origin` as a callable (UXP-33)', () => {
   const root = c.mkRoot();
   const n = c.mkNode('shorthand [[grammar:a1]]');
