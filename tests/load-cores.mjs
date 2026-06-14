@@ -141,6 +141,7 @@ export function loadCores() {
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
     'collectVars', 'collectRules', 'collectLinks', 'linkCandidates',
     'mkRoot', 'mkNode', 'toOpml', 'toMarkdown', 'toPlainText',
+    'embedOpmlIntoHtml', 'extractEmbeddedOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
     'tableDelimCells', 'renderStaticTable', 'starterTableText', 'planBaseConvert', 'planTablePromote', 'findFirstTableRange',

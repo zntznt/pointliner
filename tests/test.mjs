@@ -491,6 +491,46 @@ test('toOpml — base column widths serialize to _colw; absent when all auto', (
   assert.ok(!c.toOpml(plain).includes('_colw='), 'all-auto widths should NOT serialize');
 });
 
+// ── C1: self-contained HTML export (embed/extract data-island round-trip) ────
+const SHELL = '<!DOCTYPE html>\n<html><head><style>.x{}</style></head><body>\n'
+  + '<script type="application/xml" id="pl-embedded-doc"></script>\n'
+  + '<div id="outline"></div>\n<script>var z = 1;</script>\n</body></html>';
+
+test('embedOpmlIntoHtml injects OPML into the empty data-island, leaving the rest intact', () => {
+  const opml = '<opml version="2.0"><body><outline text="hi"/></body></opml>';
+  const out = c.embedOpmlIntoHtml(SHELL, opml);
+  assert.ok(out.includes('id="pl-embedded-doc">' + opml + '</script>'), 'OPML not injected into island');
+  assert.ok(out.includes('var z = 1;'), 'app script must be preserved');
+  assert.ok(out.includes('<div id="outline"></div>'), 'shell structure must be preserved');
+  assert.ok(out.startsWith('<!DOCTYPE html>'), 'doctype preserved');
+});
+
+test('extractEmbeddedOpml is the inverse of embed (round-trip); empty island → empty string', () => {
+  const opml = c.toOpml((() => { const r = c.mkRoot(); r.children.push(c.mkNode('point #tag')); return r; })());
+  const out = c.embedOpmlIntoHtml(SHELL, opml);
+  assert.equal(c.extractEmbeddedOpml(out), opml.trim(), 'embed→extract must round-trip the OPML');
+  assert.equal(c.extractEmbeddedOpml(SHELL), '', 'an empty island extracts to empty string');
+  // the round-tripped OPML still carries the point text verbatim (fromOpml itself needs a
+  // DOMParser the Node harness lacks — its re-parse is covered by the browser verification)
+  assert.ok(c.extractEmbeddedOpml(out).includes('point #tag'), 'extracted OPML must carry the point');
+});
+
+test('embed re-injects over an already-filled island (idempotent re-export)', () => {
+  const first = c.embedOpmlIntoHtml(SHELL, '<opml><body><outline text="a"/></body></opml>');
+  const second = c.embedOpmlIntoHtml(first, '<opml><body><outline text="b"/></body></opml>');
+  assert.equal(c.extractEmbeddedOpml(second), '<opml><body><outline text="b"/></body></opml>');
+  assert.ok(!second.includes('text="a"'), 'stale payload must be replaced, not appended');
+});
+
+test('C1 front-door + hydrate wiring (src pins)', () => {
+  assert.ok(_src.includes('id="pl-embedded-doc"'), 'data-island element missing');
+  assert.ok(_src.includes('id="btn-export-html"'), 'export menu item missing');
+  assert.ok(_src.includes("getElementById('btn-export-html').addEventListener"), 'export wiring missing');
+  assert.ok(_src.includes('function exportSelfContainedHtml('), 'export function missing');
+  assert.ok(_src.includes('function restoreEmbeddedDoc('), 'hydrate-on-load missing');
+  assert.ok(_src.includes('if (loadedFromEmbed) return;'), 'embed-wins-over-autosave guard missing');
+});
+
 // ── collectVars / collectRules (explicit root, parameterized) ───────────────
 const mkVarRoot = (decls) => {
   const root = c.mkRoot();
