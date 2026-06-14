@@ -170,6 +170,7 @@ export function loadCores() {
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie',
     'childPropNumber','aggregateChildren','expandAggExpr',
+    'evalCheck','nodePropVars','checkExprOf',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'pickerTitle','treeRows','migrateEmphasisText',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',

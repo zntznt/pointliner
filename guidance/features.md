@@ -120,6 +120,34 @@ Implemented:
   mis-summed); grandchildren are excluded; empty → 0. `min`/`max` over children are NOT
   included (those names are evalMath's numeric variadics — deferred). Works in the math pill
   (`{= …}`), not in a grammar `{cond:…}`/composition (no node context there).
+- **Outline constraints / lint** (F2) — a point may carry a reserved **`check` property**
+  holding an `evalMath` boolean assertion that spans the point and its **direct children**:
+  `sum(cost) <= budget`, `sum(weight) == 100`, `count(score) >= 3`, own-prop `hours <= 8`. **Zero
+  new authoring syntax** — `check` is a reserved property key (the `start`/`due` dates precedent),
+  the value is the existing `evalMath` language, and the rollups are the existing **B1** child
+  aggregations (`sum`/`avg`/`count(prop)`). `evalCheck(node, vars)` → `'pass'`/`'fail'`/`'error'`/
+  `null`: child aggregations are substituted first (`expandAggExpr`), then evalMath runs against
+  `{ ...vars, ...own-numeric-props }` — the point's own numeric props (`nodePropVars`, finite
+  `Number` only; the `check`/date keys excluded) **win** over doc variables (`globalVarMap`), and
+  evalMath's own constants (`today`) win over both. `1` → pass, `0` → fail, `null` (malformed /
+  missing-or-non-numeric ref) → **error**. The point shows a live **pass/fail/error chip**
+  (`buildCheckChip`): pass is a muted `✓` (P4 — never silent), fail is `--bad`, error is a distinct
+  `--warn` "can't evaluate" (P4 — fail **and** error both visible); a verdict that **flips** between
+  renders announces via the `#a11y-live` region. The chip is keyboard-operable / focus-visible /
+  click-to-edit through the same `.prop-chip` + `openPropChip` path as the date chips, routed to the
+  **Check dialog** (`openCheckDialog`) — a single `evalMath` field with `sum( )`/`count( )`/`<=`/`==`
+  chips, a scope-teaching hint, and a **live preview** that runs `evalCheck` against the current
+  point and *explains why* an expression can't evaluate (`mathErrorReason`). **`is:failing`** is a
+  new value in the existing `is:` search family — the doc-wide lint filter, matching a node whose
+  check **fails or errors** (`termMatchesNode`/`queryMatchesNode` gained a `vars` param defaulting to
+  `globalVarMap`). Front doors: the `/check` slash verb ("Check"), the bullet-menu "Add / edit check"
+  door, the chip, and the `?` panel + focus-shown search-legend rows. `check` is reserved like
+  `DATE_KEYS` — hidden from the generic Properties editor and merged back untouched on save; it
+  round-trips through `_props` for free (no new OPML work). Pure cores `evalCheck`/`nodePropVars`/
+  `checkExprOf`. **Deferred:** `min`/`max`-over-children constraints (need the B1 min/max-over-children
+  aggregation — would unlock date-range checks like `max(childDue) <= due`); multiple checks per
+  point (one `check`/point — `evalMath` has no `&&`); upward / cross-parent references; structural /
+  existence checks ("required children" — that is F5, enforced tree grammars); auto-fix solving.
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
   and flagged (`↻`, `.var-cycle`). Two **value types**, chosen in the dialog:

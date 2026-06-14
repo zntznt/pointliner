@@ -610,6 +610,15 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* start-date chip — neutral/accent ink (a start is never "overdue"-urgent) */
 .prop-chip.prop-start-overdue .prop-val,.prop-chip.prop-start-today .prop-val,.prop-chip.prop-start-soon .prop-val{color:var(--acc)}
 .prop-chip.prop-start-future .prop-val{color:var(--muted)}
+/* constraint / check chip (F2) — pass is a muted ✓ (P4: not silent), fail is bad,
+   error is a distinct "can't evaluate" warn treatment */
+.prop-chip.prop-check .prop-check-glyph{font-weight:600;margin-right:3px}
+.prop-chip.prop-check-pass{background:color-mix(in srgb,var(--ok) 10%,transparent)}
+.prop-chip.prop-check-pass .prop-check-glyph,.prop-chip.prop-check-pass .prop-val{color:var(--ok)}
+.prop-chip.prop-check-fail{background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.prop-chip.prop-check-fail .prop-check-glyph,.prop-chip.prop-check-fail .prop-val{color:var(--bad);font-weight:600}
+.prop-chip.prop-check-error{background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.prop-chip.prop-check-error .prop-check-glyph,.prop-chip.prop-check-error .prop-val{color:var(--warn)}
 .node-props-row>.collapse-btn,.node-props-row>.ol-num{visibility:hidden}
 .node-props-row>.bullet{cursor:default}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
@@ -1096,6 +1105,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         </div>
         <div class="sh-row"><kbd>#tag</kbd><span>points with a tag — state keywords too (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
+        <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails — the lint filter</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points — <code>YYYY-MM-DD</code>, <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase — terms combine (AND)</span></div>
@@ -1599,6 +1609,57 @@ function expandAggExpr(expr, node) {
   if (!expr || !/\b(?:sum|avg|count)\s*\(/.test(expr)) return expr;
   return String(expr).replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
     (_, fn, prop) => '(' + aggregateChildren(node, fn, prop) + ')');
+}
+
+// ─── outline constraints / lint (F2) ─────────────────────────────────────────
+// A point may carry a reserved `check` PROPERTY whose value is an evalMath boolean
+// assertion spanning the point + its direct children — "these child costs sum to ≤
+// budget", "these weights total 100%", "every child has a score". Zero new authoring
+// syntax: `check` is a reserved property key (like `start`/`due`); the value reuses
+// evalMath + the B1 child aggregation (sum/avg/count). The point shows a pass/fail/
+// error chip and `is:failing` surfaces every violation doc-wide. Pure + Node-testable.
+const CHECK_KEY = 'check';
+
+// This point's `check` assertion string (the reserved property's value), or null.
+function checkExprOf(node) {
+  const p = (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === CHECK_KEY);
+  const v = p ? String(p.val).trim() : '';
+  return v || null;
+}
+
+// The point's OWN numeric properties as a { name: number } overlay, so a bare name
+// in a check (`budget`, `hours`) resolves to THIS point's value. Parsed like
+// childPropNumber (finite Number, else skipped); the reserved keys (check + dates)
+// never become variables. Null-proto (a prop named `constructor` is a real key).
+// Pure; no DOM.
+function nodePropVars(node) {
+  const out = Object.create(null);
+  for (const p of (node?.props || [])) {
+    const k = (p.key || '').trim().toLowerCase();
+    if (!k || k === CHECK_KEY || DATE_KEYS.has(k)) continue;
+    const n = Number(String(p.val).trim());
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
+}
+
+// Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
+//   null  → the point has no check.
+//   pass  → the assertion evaluated to a truthy number (1).
+//   fail  → it evaluated to 0.
+//   error → malformed / unresolvable (evalMath null — a missing/non-numeric ref).
+// Scope = { ...vars (doc variables), ...own numeric props } — own props win over
+// doc vars; evalMath's own constants (`today`) still win over both. Child aggregation
+// (sum/avg/count(prop)) is substituted first via expandAggExpr (B1). Pure; no DOM —
+// reuses the exact math + aggregation machinery as a math pill.
+function evalCheck(node, vars = {}) {
+  const raw = checkExprOf(node);
+  if (!raw) return null;
+  const expanded = expandAggExpr(raw, node);
+  const scope = Object.assign(Object.create(null), vars, nodePropVars(node));
+  const res = evalMath(expanded, scope);
+  if (res === null) return 'error';
+  return res ? 'pass' : 'fail';
 }
 
 // ─── dates: start + due ────────────────────────────────────────────────────────
@@ -3225,6 +3286,7 @@ const BLOCK_CMDS = [
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Shows in the Agenda.', ex:'start → due', section:'Organize' },
+  { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children — sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -5071,13 +5133,14 @@ function buildPropsArea(node) {
   area.className = 'props-area';
   area.dataset.id = node.id;
   (node.props || []).forEach(({ key, val }) => {
+    const propK = key.toLowerCase();
+    if (propK === CHECK_KEY) return; // rendered as a pass/fail chip after the loop, not as raw text
     const chip = document.createElement('span');
     chip.className = 'prop-chip';
     chip.setAttribute('role', 'button');
     chip.setAttribute('tabindex', '-1');
     chip.dataset.propsId = node.id;
     let displayVal = val;
-    const propK = key.toLowerCase();
     chip.dataset.propKey = propK; // routes date chips to the Schedule dialog
     if (propK === 'due' || propK === 'start') {
       const ep = parseDueDate(val);
@@ -5103,7 +5166,46 @@ function buildPropsArea(node) {
     chip.append(k, s, v);
     area.appendChild(chip);
   });
+  // the constraint chip (reserved `check` key) — a live pass/fail/error verdict
+  const checkChip = buildCheckChip(node);
+  if (checkChip) area.appendChild(checkChip);
   return area;
+}
+
+// Last-seen check verdict per node id — so a re-eval that FLIPS the verdict (a child
+// edit pushes a budget over) announces the change to assistive tech (P3/P4), while an
+// unchanged or first-seen verdict stays quiet.
+const _checkVerdicts = new Map();
+
+// The constraint chip: evaluates the point's `check` and renders a pass/fail/error
+// verdict (P4 — fail AND error are visible; pass is a muted ✓, not silent). Routes
+// to the Check dialog on click/Enter. Returns null when the point has no check.
+function buildCheckChip(node) {
+  const verdict = evalCheck(node, globalVarMap);
+  if (!verdict) { _checkVerdicts.delete(node.id); return null; }
+  const prev = _checkVerdicts.get(node.id);
+  _checkVerdicts.set(node.id, verdict);
+  const expr = checkExprOf(node) || '';
+  const word = verdict === 'pass' ? 'passing' : verdict === 'fail' ? 'failing' : 'cannot evaluate';
+  const glyph = verdict === 'pass' ? '✓' : verdict === 'fail' ? '⚠' : '⚠';
+  const label = verdict === 'pass' ? 'check' : verdict === 'fail' ? 'check' : 'check?';
+  const chip = document.createElement('span');
+  chip.className = 'prop-chip prop-check prop-check-' + verdict;
+  chip.setAttribute('role', 'button');
+  chip.setAttribute('tabindex', '-1');
+  chip.dataset.propsId = node.id;
+  chip.dataset.propKey = CHECK_KEY;
+  chip.title = `Check: ${expr} — ${word} (click to edit)`;
+  chip.setAttribute('aria-label', `Check: ${expr} — ${word} — click to edit`);
+  const g = document.createElement('span'); g.className = 'prop-check-glyph'; g.textContent = glyph;
+  const t = document.createElement('span'); t.className = 'prop-val'; t.textContent = label;
+  chip.append(g, t);
+  // announce only a genuine flip (not the first sight of the chip)
+  if (prev && prev !== verdict) {
+    const lbl = (textForDisplay(node) || '').split('\n')[0].trim().slice(0, 40);
+    announce(`Check ${word}${lbl ? ' on ' + lbl : ''}`);
+  }
+  return chip;
 }
 
 // Full outline row: invisible gutter clones + the props-area.
@@ -5131,10 +5233,12 @@ function buildPropsRow(node, opts = {}) {
 function openPropsDialog(nodeId) {
   const node = nodeById(nodeId);
   if (!node) return;
-  // Date properties (due/start) are managed by the Schedule dialog, not here —
-  // hide them from the generic editor and merge them back untouched on save.
-  let props = (node.props || []).filter(p => !DATE_KEYS.has(p.key.trim().toLowerCase())).map(p => ({ key: p.key, val: p.val }));
-  const dateProps = (node.props || []).filter(p => DATE_KEYS.has(p.key.trim().toLowerCase()));
+  // Reserved properties (due/start → Schedule dialog; check → Check dialog) are
+  // managed by their own editors, not here — hide them from the generic editor and
+  // merge them back untouched on save.
+  const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY;
+  let props = (node.props || []).filter(p => !reserved(p.key.trim().toLowerCase())).map(p => ({ key: p.key, val: p.val }));
+  const reservedProps = (node.props || []).filter(p => reserved(p.key.trim().toLowerCase()));
 
   ioCard.innerHTML = '';
 
@@ -5215,11 +5319,11 @@ function openPropsDialog(nodeId) {
     }
     errDiv.style.display = 'none';
     pushUndo();
-    // merge the preserved date props back; a date key typed into the generic
-    // editor overrides the preserved one (kept dates are those NOT re-typed here)
-    const typed = new Set(cleaned.filter(p => DATE_KEYS.has(p.key.toLowerCase())).map(p => p.key.toLowerCase()));
-    const keptDates = dateProps.filter(p => !typed.has(p.key.toLowerCase()));
-    node.props = [...keptDates, ...cleaned];
+    // merge the preserved reserved props (dates + check) back; a reserved key typed
+    // into the generic editor overrides the preserved one (kept = those NOT re-typed)
+    const typed = new Set(cleaned.filter(p => reserved(p.key.toLowerCase())).map(p => p.key.toLowerCase()));
+    const keptReserved = reservedProps.filter(p => !typed.has(p.key.toLowerCase()));
+    node.props = [...keptReserved, ...cleaned];
     markDirty(); render(); closeIo();
   }
   cancelBtn.addEventListener('click', closeIo);
@@ -5443,6 +5547,66 @@ function openDueDateDialog(nodeId) {
   ioCard.setAttribute('aria-label', 'Schedule');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { dueF.inp.select(); dueF.inp.focus(); });
+}
+
+// ─── outline constraint / lint dialog (F2) ───────────────────────────────────
+const CHECK_ICON = { fa: 'fa-solid fa-circle-check', fb: '✓' };
+
+// Edit a point's `check` constraint with a live preview that runs evalCheck against
+// THIS point's children + own props. Save writes the `check` property; clearing it
+// removes the check. Reached by /check, the bullet menu, or clicking the chip —
+// mirrors the dates feature. Zero new syntax: the value is the existing evalMath
+// language + B1 aggregation.
+function openCheckDialog(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  const cur = checkExprOf(node) || '';
+  // a node mirror whose `check` is the typed expr, for the live preview
+  const previewNode = expr => ({
+    props: [...(node.props || []).filter(p => p.key.trim().toLowerCase() !== CHECK_KEY), { key: CHECK_KEY, val: expr }],
+    children: node.children,
+  });
+  openInsertDialog({
+    icon: CHECK_ICON,
+    title: 'Check',
+    submitLabel: 'Save',
+    fields: [
+      { key: 'expr', label: 'Constraint', value: cur,
+        placeholder: 'e.g. sum(cost) <= budget',
+        chips: [
+          { label: 'sum( )',   insert: el => insertAndSelect(el, 'sum(', 'prop', ')') },
+          { label: 'count( )', insert: el => insertAndSelect(el, 'count(', 'prop', ')') },
+          { label: '<=',       insert: ' <= ' },
+          { label: '==',       insert: ' == ' },
+        ],
+        hint: 'A true/false test over this point and its direct children. sum/avg/count(prop) roll up a child property; a bare name is this point’s own number. e.g. sum(cost) <= budget · sum(weight) == 100 · count(score) >= 3 · hours <= 8',
+        preview: expr => {
+          const v = (expr || '').trim();
+          if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
+          const verdict = evalCheck(previewNode(v), globalVarMap);
+          const expanded = escHtml(expandAggExpr(v, node));
+          if (verdict === 'pass') return `<span style="color:var(--ok)">✓ passes</span> <span style="color:var(--muted)">· ${expanded}</span>`;
+          if (verdict === 'fail') return `<span style="color:var(--bad)">⚠ fails</span> <span style="color:var(--muted)">· ${expanded}</span>`;
+          const scope = Object.assign(Object.create(null), globalVarMap, nodePropVars(node));
+          const why = mathErrorReason(expandAggExpr(v, node), scope);
+          const reason = why === 'bad ref' ? 'an unknown name — a missing property or variable'
+                       : why === 'non-numeric' ? 'a non-numeric value'
+                       : why === 'cycle' ? 'a reference cycle'
+                       : 'a syntax error';
+          return `<span style="color:var(--warn)">⚠ can’t evaluate</span> <span style="color:var(--muted)">· ${reason}</span>`;
+        },
+      },
+    ],
+    validate: () => true, // empty clears; a non-empty invalid value renders as an error chip (the {…} escape-hatch rule)
+    onSubmit: v => {
+      pushUndo();
+      const expr = (v.expr || '').trim();
+      const props = (node.props || []).filter(p => p.key.trim().toLowerCase() !== CHECK_KEY);
+      if (expr) props.push({ key: CHECK_KEY, val: expr });
+      node.props = props;
+      markDirty(); render();
+    },
+  });
 }
 
 // ─── templates ─────────────────────────────────────────────────────────────────
@@ -5977,7 +6141,7 @@ function parseSearchQuery(q) {
     const tok = m[3];
     let t;
     if ((t = tok.match(/^#(\w+)$/)))                            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note)$/i)))         terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -5995,8 +6159,9 @@ function parseSearchQuery(q) {
   return terms;
 }
 
-// Does one term hit this node (negation NOT applied here)? Pure given seqs.
-function termMatchesNode(term, node, seqs) {
+// Does one term hit this node (negation NOT applied here)? Pure given seqs + vars
+// (vars feeds the is:failing check eval; defaults to the live globalVarMap).
+function termMatchesNode(term, node, seqs, vars = globalVarMap) {
   if (term.kind === 'tag') {
     // mirror collectTags: hashtags live in node.text with [[…]] tokens blanked
     // (so link targets never read as tags); word-anchored both sides so #todo
@@ -6006,6 +6171,12 @@ function termMatchesNode(term, node, seqs) {
   }
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
+    if (term.value === 'failing') {
+      // the lint filter: a failing OR errored check is a violation to surface (a
+      // check you can't evaluate is itself a defect — P4, never silently passed).
+      const v = evalCheck(node, vars);
+      return v === 'fail' || v === 'error';
+    }
     const isTodo = deriveTypeFromText(node.text) === 'todo';
     if (!isTodo) return false;
     const done = todoDoneFromText(node.text, seqs);
@@ -6033,9 +6204,9 @@ function termMatchesNode(term, node, seqs) {
 
 // AND of all terms; a negated term must NOT match. Empty term list matches
 // nothing (callers gate on the raw query string anyway). Pure given seqs.
-function queryMatchesNode(terms, node, seqs = allSequences()) {
+function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap) {
   if (!terms || !terms.length) return false;
-  return terms.every(t => termMatchesNode(t, node, seqs) === !t.neg);
+  return terms.every(t => termMatchesNode(t, node, seqs, vars) === !t.neg);
 }
 
 // The strings worth <mark>ing for a parsed query: positive text terms plus
@@ -7359,6 +7530,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
     { icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
       fn: () => { hideBpop(); openDueDateDialog(nodeId); } },
+    { icon: CHECK_ICON, label: (node.props || []).some(p => p.key.trim().toLowerCase() === CHECK_KEY) ? 'Edit check' : 'Add check',
+      fn: () => { hideBpop(); openCheckDialog(nodeId); } },
     { icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
     { icon: TEMPLATE_ICON, label:'Save as template',
@@ -7699,6 +7872,10 @@ function slashApply() {
   }
   if (trigger !== '@' && cmd.id === 'due') {
     openDueDateDialog(nodeId);
+    return;
+  }
+  if (trigger !== '@' && cmd.id === 'check') {
+    openCheckDialog(nodeId);
     return;
   }
   if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
@@ -12075,6 +12252,7 @@ document.getElementById('outline').addEventListener('click', e => {
 // dialog (with the calendar); any other property → the generic Properties dialog.
 function openPropChip(chip) {
   if (DATE_KEYS.has(chip.dataset.propKey)) openDueDateDialog(chip.dataset.propsId);
+  else if (chip.dataset.propKey === CHECK_KEY) openCheckDialog(chip.dataset.propsId);
   else openPropsDialog(chip.dataset.propsId);
 }
 
@@ -13135,6 +13313,7 @@ const SHORTCUTS = [
     { keys: ['word word'], desc: 'Every term must match (AND)' },
     { keys: ['#tag'],      desc: 'Points carrying a tag — state keywords too (#todo, #waiting)' },
     { keys: ['is:todo', 'is:done', 'is:note'], desc: 'Open to-dos / finished to-dos / points with a note' },
+    { keys: ['is:failing'], desc: 'Points whose check constraint fails or can’t evaluate — the lint filter' },
     { keys: ['due:today', 'due:overdue', 'start:<date'], desc: 'Dated points — due or overdue, or before/after a date (YYYY-MM-DD, today±N)' },
     { keys: ['has:key'], desc: 'Points carrying a property with that key — e.g. has:status' },
     { keys: ['key:value'], desc: 'Points where key equals value — e.g. status:done, author:alice' },
@@ -13162,6 +13341,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table, base, or stamp a saved template…' },
+    { keys: ['/check'], desc: 'Add a pass/fail constraint over a point and its children — sum(cost) ≤ budget, count(score) ≥ 3 (also in the bullet menu; find violations with is:failing)' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, deck, oracle, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
