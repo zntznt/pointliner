@@ -170,10 +170,13 @@ Implemented:
   child → `+∞ >= 1` → true), not spuriously false on a 0 sentinel. **`min`/`max` are purely additive**
   (the spreadsheet `MIN(col)` overload): evalMath's numeric `min`/`max` already require ≥2 args, so
   a single-arg `min(ident)` was already an error there, and the aggregation regex matches only one
-  bare identifier — a comma'd `min(a, b)` keeps the numeric-variadic meaning, untouched. Because
-  only numeric props aggregate, a **date-property** extremal (`max(due) <= deadline`) awaits a
-  date-aware `childPropNumber` — a follow-on. Works in the math pill (`{= …}`) and F2 `check`
-  constraints, not in a grammar `{cond:…}`/composition (no node context there).
+  bare identifier — a comma'd `min(a, b)` keeps the numeric-variadic meaning, untouched. **Date
+  properties also aggregate** (`childPropNumber` tries `Number` first, then `parseDueDate`): a
+  date-shaped value rolls up as **epoch-days**, so `max(due)` / `min(start)` give the latest/earliest
+  child date (wrap in `asdate(...)` to display it as a date) and F2 gets real **date-range checks**
+  (`max(due) <= deadline`). Only strict date-shaped strings parse; a plain word still → `null`.
+  Works in the math pill (`{= …}`) and F2 `check` constraints, not in a grammar
+  `{cond:…}`/composition (no node context there).
 - **Outline constraints / lint** (F2) — a point may carry a reserved **`check` property**
   holding an `evalMath` boolean assertion that spans the point and its **direct children**:
   `sum(cost) <= budget`, `sum(weight) == 100`, `count(score) >= 3`, own-prop `hours <= 8`. **Zero
@@ -199,9 +202,9 @@ Implemented:
   `DATE_KEYS` — hidden from the generic Properties editor and merged back untouched on save; it
   round-trips through `_props` for free (no new OPML work). Pure cores `evalCheck`/`nodePropVars`/
   `checkExprOf`. **Numeric** extremal/range checks (`max(cost) <= cap`, `min(score) >= 1`,
-  `max(end) - min(start) <= 30`) work via the B1 `min`/`max` aggregation; a **date-property**
-  extremal (`max(due) <= deadline`) awaits a date-aware `childPropNumber` (date strings are skipped
-  today). **Deferred:** multiple checks per point (one `check`/point — `evalMath` has no `&&`);
+  `max(end) - min(start) <= 30`) work via the B1 `min`/`max` aggregation; **date-property** extremals
+  (`max(due) <= deadline`, `min(start) >= kickoff`) **now compute too** — `childPropNumber` aggregates
+  date-shaped props as epoch-days. **Deferred:** multiple checks per point (one `check`/point — `evalMath` has no `&&`);
   upward / cross-parent references; structural / existence checks ("required children" — that is F5,
   enforced tree grammars); auto-fix solving.
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice

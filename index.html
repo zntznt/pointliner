@@ -1603,8 +1603,10 @@ function formatProgressCookie(kind, done, total) {
 function childPropNumber(child, prop) {
   const p = (child?.props || []).find(x => x.key === prop);
   if (!p) return null;
-  const n = Number(String(p.val).trim());
-  return Number.isFinite(n) ? n : null;
+  const raw = String(p.val).trim();
+  const n = Number(raw);
+  if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
+  return parseDueDate(raw);                          // else a date-shaped value aggregates as its epoch-day (strict; non-dates → null)
 }
 function aggregateChildren(node, fn, prop) {
   const vals = [];
@@ -5618,7 +5620,7 @@ function openCheckDialog(nodeId) {
           { label: '<=',       insert: ' <= ' },
           { label: '==',       insert: ' == ' },
         ],
-        hint: 'A true/false test over this point and its direct children. sum/avg/count/min/max(prop) roll up a NUMERIC child property; a bare name is this point’s own number. e.g. sum(cost) <= budget · sum(weight) == 100 · count(score) >= 3 · max(cost) <= cap · hours <= 8',
+        hint: 'A true/false test over this point and its direct children. sum/avg/count/min/max(prop) roll up a child property — numeric, or a date (start/due) as epoch-days; a bare name is this point’s own number. e.g. sum(cost) <= budget · count(score) >= 3 · max(cost) <= cap · max(due) <= today+30 · hours <= 8',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';

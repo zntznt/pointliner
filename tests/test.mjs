@@ -3638,13 +3638,36 @@ test('progress cookies: render + front-door wiring (src pins)', () => {
 });
 
 // ── subtree aggregation: {= sum|avg|count(prop)} over direct children ────────
-test('subtree aggregation: childPropNumber reads a plain-number property, skips the rest', () => {
+test('subtree aggregation: childPropNumber reads numbers AND date-shaped values (epoch-days)', () => {
   const child = c.mkNode('milk');
   child.props.push({ key: 'cost', val: '3' });
-  child.props.push({ key: 'due', val: '2026-06-14' });   // a date, not a plain number
-  assert.equal(c.childPropNumber(child, 'cost'), 3);
-  assert.equal(c.childPropNumber(child, 'due'), null);    // date → skipped, never mis-summed
+  child.props.push({ key: 'due', val: '2026-06-14' });   // a date → its epoch-day
+  child.props.push({ key: 'label', val: 'frozen' });     // a plain word → null
+  assert.equal(c.childPropNumber(child, 'cost'), 3);      // numeric first — "3" stays 3, not a date
+  assert.equal(c.childPropNumber(child, 'due'), c.parseDueDate('2026-06-14'));  // date aggregates as epoch-days
+  assert.equal(c.childPropNumber(child, 'label'), null);  // non-date string → still skipped
   assert.equal(c.childPropNumber(child, 'missing'), null);
+});
+
+test('subtree aggregation: date properties aggregate (min/max/count, the F2 date-range unlock)', () => {
+  const p = c.mkNode('Project');
+  const k1 = c.mkNode('A'); k1.props.push({ key: 'due', val: '2026-01-10' }); k1.props.push({ key: 'start', val: '2026-01-01' });
+  const k2 = c.mkNode('B'); k2.props.push({ key: 'due', val: '2026-03-20' }); k2.props.push({ key: 'start', val: '2026-02-15' });
+  const k3 = c.mkNode('C'); k3.props.push({ key: 'note', val: 'no dates here' });
+  p.children.push(k1, k2, k3);
+  assert.equal(c.aggregateChildren(p, 'max', 'due'), c.parseDueDate('2026-03-20'), 'latest child due');
+  assert.equal(c.aggregateChildren(p, 'min', 'start'), c.parseDueDate('2026-01-01'), 'earliest child start');
+  assert.equal(c.aggregateChildren(p, 'count', 'due'), 2, 'only the two dated children count');
+  // a date-range check now computes: max(due) <= a deadline → real F2 constraint
+  const deadline = c.parseDueDate('2026-04-01');
+  assert.ok(c.aggregateChildren(p, 'max', 'due') <= deadline, 'all child dues before the deadline');
+  // numeric aggregation unchanged when props are plain numbers
+  const q = c.mkNode('Q');
+  const n1 = c.mkNode(''); n1.props.push({ key: 'cost', val: '5' });
+  const n2 = c.mkNode(''); n2.props.push({ key: 'cost', val: '7' });
+  q.children.push(n1, n2);
+  assert.equal(c.aggregateChildren(q, 'sum', 'cost'), 12);
+  assert.equal(c.aggregateChildren(q, 'avg', 'cost'), 6);
 });
 
 test('subtree aggregation: aggregateChildren sum / avg / count over DIRECT children', () => {
