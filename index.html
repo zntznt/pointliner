@@ -1068,6 +1068,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 </style>
 </head>
 <body>
+<!-- C1 self-contained export: a "Save as self-contained HTML" copies this whole file
+     and inlines the current outline as OPML here. Empty in the app shell, so the live
+     app is unaffected; on load, restoreEmbeddedDoc() hydrates from it when non-empty.
+     OPML never contains the literal "</script>" (user '<'/'>' are escaped to entities
+     inside attributes), so a raw <script> data-island round-trips safely. -->
+<script type="application/xml" id="pl-embedded-doc"></script>
 <div id="toolbar">
   <div id="toolbar-row">
     <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-menu" aria-label="Pointliner menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span></span>
@@ -1124,6 +1130,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="fm-group">Export</div>
   <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">.md — artifacts frozen</span></div></div>
   <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">.txt — plain outline</span></div></div>
+  <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Self-contained HTML</span><span class="cmd-desc">.html — a shareable file that is the app + this outline</span></div></div>
 
   <div class="fm-group">Appearance</div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
@@ -11381,6 +11388,36 @@ function downloadText(content, ext, mime) {
 function exportMarkdown() { downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); }
 function exportPlainText() { downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); }
 
+// ─── self-contained HTML export (C1) ─────────────────────────────────────────
+// One file that IS the document AND the app: a copy of this whole page with the
+// current outline inlined as OPML in the #pl-embedded-doc data-island. Opening it
+// re-runs the app and hydrates from that island (restoreEmbeddedDoc). The two cores
+// below are pure string ops on the data-island (regex, not DOM) so they are Node-
+// testable and live on the real export path. The `<\/script>` escapes keep THIS
+// script tag from closing early; the island's OPML can hold the literal sequence
+// without breaking, but toOpml never emits it (user '<'/'>' become entities).
+function embedOpmlIntoHtml(html, opml) {
+  return html.replace(
+    /(<script\b[^>]*\bid=["']pl-embedded-doc["'][^>]*>)[\s\S]*?(<\/script>)/i,
+    (_m, open, close) => open + opml + close);
+}
+function extractEmbeddedOpml(html) {
+  const m = html.match(/<script\b[^>]*\bid=["']pl-embedded-doc["'][^>]*>([\s\S]*?)<\/script>/i);
+  return m ? m[1].trim() : '';
+}
+function exportSelfContainedHtml() {
+  const opml = withFoldedActive(() => toOpml(root));
+  const clone = document.documentElement.cloneNode(true);
+  // Lean + boot-fresh: drop rendered/dynamic DOM (regenerated on load) and empty the
+  // island in the clone so the serialized shell has a clean placeholder to inject into.
+  clone.querySelector('#outline')?.replaceChildren();
+  clone.querySelector('#var-panel-list')?.replaceChildren();
+  const island = clone.querySelector('#pl-embedded-doc'); if (island) island.textContent = '';
+  const shell = '<!DOCTYPE html>\n' + clone.outerHTML;
+  downloadText(embedOpmlIntoHtml(shell, opml), '.html', 'text/html');
+  flashHint('Saved a self-contained copy — it opens as this app with your outline inside.');
+}
+
 // ─── search wiring ────────────────────────────────────────────────────────────
 
 let searchDebounce = null;
@@ -12427,6 +12464,7 @@ document.getElementById('btn-save').addEventListener('click', () => { saveFile()
 document.getElementById('btn-save-as').addEventListener('click', () => { saveAsFile(); closeFileMenu(); });
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
+document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenu(); });
 document.getElementById('btn-shortcuts').addEventListener('click', () => { closeFileMenu(); toggleShortcuts(true); });
 
 // outline level control — collapse to first N levels / expand all
@@ -12821,7 +12859,26 @@ function scheduleAutosave() {
   }, 800);
 }
 
+// C1: a self-contained export inlines its outline in #pl-embedded-doc. When that
+// island is non-empty this file is a shared snapshot, so it wins over any localStorage
+// autosave (a recipient must see exactly what was sent — never a stale local doc).
+// The app shell ships the island empty, so the live editor is untouched.
+let loadedFromEmbed = false;
+(function restoreEmbeddedDoc() {
+  try {
+    const el = document.getElementById('pl-embedded-doc');
+    const opml = el && el.textContent ? el.textContent.trim() : '';
+    if (!opml) return;
+    const parsed = fromOpml(opml);
+    if (!parsed) return;
+    root = parsed;
+    loadedFromEmbed = true;
+    dirty = false;
+  } catch(_) {}
+})();
+
 (function restoreAutosave() {
+  if (loadedFromEmbed) return; // a shared snapshot is authoritative over local autosave
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (!raw) return;
@@ -12868,8 +12925,16 @@ buildIndex(root, null); resetDocCaches();
 render();
 updateTitle();
 refreshIcons();
-// Focus the first node so the user can start typing immediately
 requestAnimationFrame(() => {
+  // A shared snapshot (C1) opens in DISPLAY mode: the recipient should see the rendered,
+  // re-rollable doc — not get dropped into edit-mode-on-point-1 (which unfolds pills to
+  // raw shorthand). It is also read-into-memory, not saved-to-disk, so say so once (P4)
+  // — edits-then-reload data loss is never silent.
+  if (loadedFromEmbed) {
+    flashHint('Opened a shared snapshot — edits stay in this browser; export again to save a copy.');
+    return;
+  }
+  // Otherwise focus the first node so the user can start typing immediately.
   if (flatRows.length > 0) focusNode(flatRows[0].node.id);
 });
 </script>

@@ -274,7 +274,7 @@ rollup as the no-sampling default**, with full Monte-Carlo reserved for non-sum 
 
 | # | Upgrade | Inspired by | Mechanism | Status / effort |
 |---|---|---|---|---|
-| **C1** | **"Save as one self-contained HTML"** — a file that *is* the document **and** the app | TiddlyWiki; Decker stacks | export = a copy of `index.html` with the current OPML inlined (e.g. `<script type="application/xml" id="doc">`); on load, detect-and-hydrate | ☐ **the intersection multiplier** — new, ungated, universal (a download; no FSA) — small |
+| **C1** | **"Save as one self-contained HTML"** — a file that *is* the document **and** the app | TiddlyWiki; Decker stacks | export = a copy of `index.html` with the current OPML inlined in the `#pl-embedded-doc` `<script type="application/xml">` data-island; on load `restoreEmbeddedDoc()` hydrates from it (wins over local autosave), opening **in display mode** as a re-rollable snapshot | ✅ **shipped** — File menu → *Self-contained HTML*; pure cores `embedOpmlIntoHtml`/`extractEmbeddedOpml`; browser-verified round-trip (export→reopen→live pills) |
 | **C2** | **One-click in-place save + saver ladder + dirty guard** | TiddlyWiki savers | `showSaveFilePicker` retained handle (Chromium) → download fallback; unsaved-changes indicator + `beforeunload` | ☐ improves the single-file tier *now*, independent of the gated multi-doc FSA work — small–medium |
 | **C3** | **Doc-defined vocabulary** — the document carries its own functions/rules | TiddlyWiki macros; Ink functions | parameterized rules `{greet(name)}` / user math fns `f(x)=x^2` over `collectRules`+variables — **no eval, no build** | ☐ the safe slice of self-extensibility (overlaps B-fn) — medium |
 | **C4** | **Live query / filter as content** | TiddlyWiki filter DSL; org dynamic blocks; Logseq `{{query}}` | the query parser (`parseSearchQuery`/`queryMatchesNode`), the `collectX` indexes, and the link-mirror transclusion already exist | ⚑ **fenced** — the `{query:…}` saved-views DB layer is out of scope; flag, don't build without a scope decision |
@@ -293,7 +293,7 @@ Ranked by leverage ÷ cost, in-bounds first:
 3. **B1 subtree aggregation** — the roadmap's preferred shape; turns the outline into a
    calculator that sees its own structure (the PM/data unlock).
 4. **C1 self-contained HTML export** — small, universal, and the strategic multiplier on
-   everything else.
+   everything else. *(Shipped — File menu → Self-contained HTML.)*
 5. **B2 uncertainty fields** — the lone *first-in-class* feature; design-heavier (the `to`
    operator needs the P5 decision) but uniquely Pointliner's to claim. Ship the small slice
    (`{5 to 10}` + sparkline + `est+`) first.

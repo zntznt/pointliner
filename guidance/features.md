@@ -337,3 +337,26 @@ Implemented:
     per-item sequence switching beyond `/`+typing, priority `[#A]` semantics per sequence,
     inline `{}` reference of a sequence, `CANCELLED` in the default set, logbook /
     `CLOSED:` timestamps, per-file `#+TODO:` declarations, agenda/scheduling.
+
+- **Self-contained HTML export** (C1) — File menu → **Self-contained HTML** writes one
+  `.html` file that *is* the app **and** the document. `exportSelfContainedHtml()` clones
+  the running page (`document.documentElement`), empties the rendered/dynamic DOM
+  (`#outline`, `#var-panel-list`) so the file is lean and boots fresh, and inlines the
+  current outline as **OPML** into the `#pl-embedded-doc` `<script type="application/xml">`
+  data-island. The injection is a pure string op — `embedOpmlIntoHtml(html, opml)` (and its
+  inverse `extractEmbeddedOpml`), Node-testable — operating on the serialized shell, not the
+  DOM. Safe because `toOpml` never emits the literal `</script>` (user `<`/`>` become
+  entities inside attributes), so raw OPML round-trips inside a `<script>` data-island.
+  - **Opening one:** the app re-runs and `restoreEmbeddedDoc()` (before `restoreAutosave`,
+    **winning over local autosave** — a shared snapshot must show exactly what was sent)
+    hydrates `root` from the island. It opens **in display mode** (not edit-mode-on-point-1,
+    so pills render and re-roll) and flashes a one-time **P4** notice that the file is a
+    read-into-memory snapshot — edits live in the browser, re-export to save a copy.
+  - **The app shell ships the data-island empty**, so the live editor is completely
+    unaffected; hydrate is a no-op unless a file was produced by this export.
+  - **Why it matters:** the "intersection multiplier" — it makes every generative /
+    computational document a single offline file you hand to someone who re-rolls and
+    recomputes locally, with nothing installed. (`guidance/enhancement-research.md` C1.)
+  - **Not included (first slice):** in-place self-save / FileSystemAccess handle (that is
+    C2); preserving the author's theme/accent prefs (those ride the JSON autosave, not the
+    OPML); a localStorage-vs-snapshot merge (the snapshot is authoritative on load).
