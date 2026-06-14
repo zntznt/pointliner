@@ -23,6 +23,13 @@ discoverability / UX strategy in `guidance/ux.md`.
    paper/ink palettes, contrast floors as merge criteria, tokened components — the full
    standard (decisions *and* the binding anti-decisions) is `guidance/design-language.md`.
    Visual changes conform to it the way UI changes conform to `ux-discipline.md`.
+6. **Extensibility: declarative data packs only; no code execution while single-`.html`.**
+   Plugins = pure-data packs (grammar/variables/emoji) merged into the registries via a
+   `<_plugins>` head element. **The app executes no document- or plugin-supplied code as a
+   program for as long as it ships as a single, build-free `.html` file** — code plugins,
+   functions-as-data, and executable code nodes are out, under the **same revisit trigger as the
+   parked version-control pivot** ("Pointliner becomes more than a single file"). Themes-as-packs
+   dropped. Full direction + the gate: `guidance/plugins-direction.md`.
 
 ## Storage reality + the durability decision (verified June 2026)
 The File System Access API has two halves:
