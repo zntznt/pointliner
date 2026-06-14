@@ -818,7 +818,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 #agenda-strip{display:none;align-items:stretch;gap:8px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
 #agenda-strip.on{display:flex}
 /* left control group: complexity toggles now; calendar / timeline views later */
-.ag-controls{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;gap:3px;padding-right:8px;border-right:1px solid var(--bdr)}
+.ag-controls{flex:0 0 auto;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;padding-right:8px;border-right:1px solid var(--bdr)}
 .ag-toggle{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}
 .ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
 .ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
@@ -845,6 +845,55 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
 .ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
 .ag-mini{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-style:normal}
+/* view switcher (segmented, modeled on #level-ctl) + the complexity flags row */
+.ag-views{display:flex;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;padding:1px;gap:1px}
+.ag-view{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;font-family:inherit}
+.ag-view:hover{color:var(--fg)}
+.ag-view.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.ag-view:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.ag-flags{display:flex;gap:3px}
+/* Timeline view — one horizontally-scrolling ribbon of per-day groups */
+.ag-timeline{flex:1 1 auto;min-width:0;display:flex;align-items:flex-start;gap:14px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
+.ag-timeline::-webkit-scrollbar{display:none}
+.ag-tl-group{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+.ag-tl-date{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap;padding-left:1px}
+.ag-tl-date.today{color:var(--ok)}
+.ag-tl-date.overdue{color:var(--bad)}
+.ag-tl-chips{display:flex;gap:5px}
+/* Calendar view — a month grid; each cell holds compact item chips */
+.ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:5px}
+.agc-head{display:flex;align-items:center;gap:6px}
+.agc-title{font-size:12px;font-weight:700;color:var(--fg);min-width:108px;font-variant-numeric:tabular-nums}
+.agc-nav{flex:0 0 auto;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;border-radius:var(--r-sm);font-size:15px;line-height:1;user-select:none}
+.agc-nav:hover{color:var(--fg);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.agc-nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.agc-today{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 9px;cursor:pointer;line-height:1.4;font-family:inherit}
+.agc-today:hover{color:var(--fg);border-color:var(--muted)}
+.agc-today:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.agc-dow span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:center}
+.agc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
+.agc-cell{min-height:46px;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 3px;display:flex;flex-direction:column;gap:2px;overflow:hidden;background:var(--bg)}
+.agc-cell.oom{opacity:.4}
+.agc-cell.today{border-color:color-mix(in srgb,var(--acc) 45%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}
+.agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding-right:1px}
+.agc-cell.today .agc-dom{color:var(--acc)}
+.agc-item{font-size:10px;line-height:1.35;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg)}
+.agc-item:hover{opacity:.82}
+.agc-item:focus-visible{outline:2px solid var(--acc);outline-offset:1px;opacity:1}
+.agc-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
+.agc-item.today{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+.agc-item.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
+.agc-item.future,.agc-item.none{background:color-mix(in srgb,var(--fg) 5%,transparent);border-color:var(--bdr)}
+.agc-item.done{opacity:.5;text-decoration:line-through}
+.agc-more{font-size:9px;font-weight:600;color:var(--muted);padding-left:2px;line-height:1.3}
+@media(hover:none){
+  .ag-view{padding:5px 11px;font-size:12px}
+  .agc-nav{width:32px;height:32px}
+  .agc-today{padding:5px 11px}
+  .agc-cell{min-height:54px}
+  .agc-item{font-size:11px;padding:1px 5px}
+}
 #btn-agenda.active{color:var(--acc)}
 
 /* storage warning banner */
@@ -1600,6 +1649,50 @@ function addMonths(epochDay, delta) {
   const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
   const lastOfTarget = new Date(Date.UTC(y, m + delta + 1, 0)).getUTCDate();
   return Math.floor(Date.UTC(y, m + delta, Math.min(day, lastOfTarget)) / 86400000);
+}
+
+// Pure: group dated items (collectDueDates output) into per-day buckets for the
+// agenda Timeline view — one bucket per day that actually has items, ascending.
+// Each item is placed by its PRIMARY date (it.epochDay = due if present, else
+// start), so a point appears once on the day that drives its display. Returns
+// [{ epochDay, iso, label, state, isToday, isPast, items:[…] }]. Node-testable.
+function agendaDayBuckets(items, today = dueDateToday()) {
+  const byDay = new Map();
+  for (const it of (items || [])) {
+    if (it.epochDay == null) continue;
+    if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
+    byDay.get(it.epochDay).push(it);
+  }
+  return [...byDay.keys()].sort((a, b) => a - b).map(ep => {
+    const { iso, label, state } = formatDueDate(ep);
+    return { epochDay: ep, iso, label, state, isToday: ep === today, isPast: ep < today, items: byDay.get(ep) };
+  });
+}
+
+// Pure: map dated items onto a month's 42-cell calendar grid for the agenda
+// Calendar view. Items are placed by primary date (it.epochDay); a cell carries
+// all items that fall on its day. Returns 42 cells (6 weeks × 7 cols, Sunday-
+// aligned — see calendarMonthGrid): [{ epochDay, dom, inMonth, isToday, isPast,
+// items:[…] }]. `monthEpoch` is any day in the month to show. Node-testable.
+function agendaMonthCells(items, monthEpoch, today = dueDateToday()) {
+  const byDay = new Map();
+  for (const it of (items || [])) {
+    if (it.epochDay == null) continue;
+    if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
+    byDay.get(it.epochDay).push(it);
+  }
+  const vm = new Date((monthEpoch || 0) * 86400000).getUTCMonth();
+  return calendarMonthGrid(monthEpoch).map(ep => {
+    const d = new Date(ep * 86400000);
+    return {
+      epochDay: ep,
+      dom: d.getUTCDate(),
+      inMonth: d.getUTCMonth() === vm,
+      isToday: ep === today,
+      isPast: ep < today,
+      items: byDay.get(ep) || [],
+    };
+  });
 }
 
 
@@ -11778,16 +11871,24 @@ document.getElementById('var-panel-close').addEventListener('click', closeVarPan
 varPanelEl.addEventListener('mousedown', e => e.stopPropagation());
 
 // ─── agenda strip ──────────────────────────────────────────────────────────────
-// A two-row horizontal strip inside the toolbar (no vertical sidebar — stays
-// mobile-friendly). The TOP row shows upcoming deadlines (points with a due date
-// not yet started); the BOTTOM "Running" row shows started points (start ≤ today)
-// with how long they've been running plus their deadline. A left control group
-// holds complexity toggles (Running row, Done items); calendar / timeline view
-// buttons will join it later. Re-renders on edit while open.
+// A horizontal strip inside the toolbar (no vertical sidebar — stays mobile-
+// friendly; the toolbar's ResizeObserver re-pads the body so the strip never
+// overlaps the outline). A left control group holds the VIEW SWITCHER plus
+// complexity flags (Done; Running in List view). Three views over the same dated
+// points (collectDueDates):
+//   • List     — status rows: "Due" (deadlines not yet started) + "Running"
+//                (started points, with elapsed time + deadline).
+//   • Timeline — every dated point on one chronological ribbon, grouped by day
+//                (placed by its primary date), horizontally scrollable.
+//   • Calendar — a month grid; each point sits on its day, with month nav.
+// Re-renders on edit while open. The two display models (day buckets, month
+// cells) are pure cores (agendaDayBuckets / agendaMonthCells).
 
 let agendaOpen = false;
-let agendaShowRunning = true;   // bottom row visible by default
+let agendaView = 'list';        // 'list' | 'timeline' | 'calendar' — how dated points are shown
+let agendaShowRunning = true;   // List view: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
+let agendaMonth = null;         // Calendar view: any epoch-day in the shown month (session-only)
 
 function mkAgToggle(label, on, onToggle) {
   const b = document.createElement('span');
@@ -11815,9 +11916,78 @@ function agMini(text) {
   const s = document.createElement('span'); s.className = 'ag-mini'; s.textContent = text; return s;
 }
 
+// The three views, as [value, label, tooltip]. The label IS the front door that
+// teaches each view (P2); order matches increasing visual density.
+const AG_VIEWS = [
+  ['list',     'List',     'Status rows — deadlines due and points running'],
+  ['timeline', 'Timeline', 'Every dated point on one chronological ribbon, by day'],
+  ['calendar', 'Calendar', 'A month grid with each point on its day'],
+];
+
+function setAgendaView(v) {
+  if (agendaView === v) return;
+  agendaView = v;
+  if (v === 'calendar' && agendaMonth == null) agendaMonth = dueDateToday();
+  renderAgenda();
+  scheduleAutosave();           // persist the view pref without dirtying the document
+}
+
+// Segmented view switcher (modeled on #level-ctl). role=button spans driven by
+// mousedown+preventDefault (caret invariant) + keydown, like the flag toggles.
+function mkAgViewSwitch() {
+  const grp = document.createElement('div');
+  grp.className = 'ag-views';
+  grp.setAttribute('role', 'group'); grp.setAttribute('aria-label', 'Agenda view');
+  for (const [v, label, tip] of AG_VIEWS) {
+    const b = document.createElement('span');
+    const on = agendaView === v;
+    b.className = 'ag-view' + (on ? ' on' : '');
+    b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0');
+    b.setAttribute('aria-pressed', String(on));
+    b.textContent = label; b.title = tip;
+    b.addEventListener('mousedown', e => { e.preventDefault(); setAgendaView(v); });
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAgendaView(v); } });
+    grp.appendChild(b);
+  }
+  return grp;
+}
+
+// Spoken label for a dated point shared by the timeline/calendar item chips:
+// title — due/starts <relative>[, running Nd][, done][· breadcrumb].
+function agItemAria(it) {
+  const pathStr = it.path.length ? ' · ' + it.path.join(' › ') : '';
+  let s = it.title + ' — ' + (it.due !== null ? 'due ' : it.start !== null ? 'starts ' : '') + it.label;
+  if (it.started && it.runningDays != null) s += it.runningDays === 0 ? ', started today' : ', running ' + it.runningDays + 'd';
+  if (it.done) s += ', done';
+  return s + pathStr;
+}
+
+// Wire an agenda element to navigate (zoom) to its point. Clicking ZOOMS, never
+// edits; navigate on mousedown+preventDefault (the caret invariant — a plain click
+// would blur the active edit → markDirty → renderAgenda rebuilds the strip and
+// destroys this element before its click lands, dropping the navigation), keydown
+// is the keyboard path. zoomInto commits any in-progress edit (refold) first.
+function wireAgNav(el, it, aria) {
+  el.setAttribute('role', 'button'); el.setAttribute('tabindex', '0');
+  el.title = aria; el.setAttribute('aria-label', aria);
+  const navigate = () => { zoomInto(it.id); };
+  el.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
+  el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
+}
+
+// A compact title-only chip (timeline groups + calendar are NOT used here; this is
+// the timeline ribbon chip — the date is carried by the group header above it).
+function mkAgItemChip(it) {
+  const chip = document.createElement('div');
+  chip.className = 'ag-chip ' + (it.due !== null ? it.state : 'none') + (it.done ? ' done' : '');
+  const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
+  chip.appendChild(titleEl);
+  wireAgNav(chip, it, agItemAria(it));
+  return chip;
+}
+
 function mkAgChip(it, kind) {
   const chip = document.createElement('div');
-  chip.setAttribute('role', 'button'); chip.setAttribute('tabindex', '0');
   const pathStr = it.path.length ? ' · ' + it.path.join(' › ') : '';
   let aria;
   if (kind === 'run') {
@@ -11842,16 +12012,7 @@ function mkAgChip(it, kind) {
   }
   const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
   chip.appendChild(titleEl);
-  chip.title = aria; chip.setAttribute('aria-label', aria);
-  // Clicking a chip ZOOMS into the point (does not enter edit mode). Navigate on
-  // mousedown + preventDefault (the caret invariant): a plain click would let the
-  // mousedown blur the active edit first — that fires markDirty → renderAgenda,
-  // which rebuilds the strip and destroys this chip before its click lands,
-  // dropping the navigation. preventDefault keeps focus put; zoomInto commits any
-  // in-progress edit (refold) before re-rendering.
-  const navigate = () => { zoomInto(it.id); };
-  chip.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
-  chip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
+  wireAgNav(chip, it, aria);
   return chip;
 }
 
@@ -11860,51 +12021,166 @@ function renderAgenda() {
   if (!strip) return;
   strip.innerHTML = '';
 
-  // left control group — complexity toggles (calendar / timeline views land here later)
+  // left control group: view switcher + complexity flags. scheduleAutosave (not
+  // markDirty) persists view prefs to localStorage without dirtying the document.
   const controls = document.createElement('div'); controls.className = 'ag-controls';
-  // scheduleAutosave (not markDirty) persists the view pref to localStorage
-  // without flagging the document as having unsaved changes.
-  const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); scheduleAutosave(); });
-  runT.title = 'Show the running row (started points)';
+  controls.appendChild(mkAgViewSwitch());
+  const flags = document.createElement('div'); flags.className = 'ag-flags';
   const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); scheduleAutosave(); });
   doneT.title = 'Include completed points';
-  controls.append(runT, doneT);
+  flags.appendChild(doneT);
+  // the Running row exists only in List view, so its toggle shows only there
+  if (agendaView === 'list') {
+    const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); scheduleAutosave(); });
+    runT.title = 'Show the running row (started points)';
+    flags.appendChild(runT);
+  }
+  controls.appendChild(flags);
   strip.appendChild(controls);
-
-  const rowsEl = document.createElement('div'); rowsEl.className = 'ag-rows';
-  strip.appendChild(rowsEl);
 
   const all = collectDueDates(root);
   const visible = all.filter(it => agendaShowDone || !it.done);
+
+  // Calendar owns its own container (header + grid) and shows the grid even with
+  // no items, so it branches before the shared "no dated points" empty state.
+  if (agendaView === 'calendar') { renderAgendaCalendar(strip, visible, all.length); return; }
+
+  const body = document.createElement('div'); body.className = 'ag-rows';
+  strip.appendChild(body);
+  if (!all.length) { body.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
+
+  if (agendaView === 'timeline') renderAgendaTimeline(body, visible);
+  else renderAgendaList(body, visible);
+}
+
+function renderAgendaList(body, visible) {
   // Top row: deadlines not yet started. Bottom row: started points.
   const dueItems = visible.filter(it => it.due !== null && !it.started).sort((a, b) => a.due - b.due);
   const runItems = visible.filter(it => it.started)
     .sort((a, b) => (a.due ?? Infinity) - (b.due ?? Infinity) || a.start - b.start);
-
-  if (!all.length) {
-    rowsEl.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.'));
-    return;
-  }
-  if (!dueItems.length && !runItems.length) {
-    rowsEl.appendChild(agMini('Nothing to show — adjust the toggles.'));
-    return;
-  }
+  if (!dueItems.length && !runItems.length) { body.appendChild(agMini('Nothing to show — adjust the toggles.')); return; }
 
   const dueRow = mkAgRow('Due');
   if (dueItems.length) for (const it of dueItems) dueRow.appendChild(mkAgChip(it, 'due'));
   else dueRow.appendChild(agMini('Nothing due'));
-  rowsEl.appendChild(dueRow);
+  body.appendChild(dueRow);
 
   if (agendaShowRunning) {
     const runRow = mkAgRow('Running');
     if (runItems.length) for (const it of runItems) runRow.appendChild(mkAgChip(it, 'run'));
     else runRow.appendChild(agMini('Nothing running'));
-    rowsEl.appendChild(runRow);
+    body.appendChild(runRow);
   }
+}
+
+// Header label for a timeline day group: "Sat Jun 14[ · Today | · Nd ago]".
+// A past day reads "Nd ago" (neutral) — not "overdue": a day bucket can hold a
+// started-but-undeadlined task, so per-item overdue urgency stays on the chips
+// (red tint), while the header's red ink only signals "behind you" (same split
+// as the start-chip "Nd ago" treatment).
+function agTimelineHeader(b) {
+  const d = new Date(b.epochDay * 86400000);
+  const base = CAL_DOW[d.getUTCDay()] + ' ' + CAL_MONTHS[d.getUTCMonth()].slice(0, 3) + ' ' + d.getUTCDate();
+  if (b.isToday) return base + ' · Today';
+  if (b.isPast)  return base + ' · ' + (dueDateToday() - b.epochDay) + 'd ago';
+  return base;
+}
+
+function renderAgendaTimeline(body, visible) {
+  const buckets = agendaDayBuckets(visible);
+  if (!buckets.length) { body.appendChild(agMini('Nothing to show — adjust the toggles.')); return; }
+  const tl = document.createElement('div'); tl.className = 'ag-timeline';
+  tl.setAttribute('role', 'group'); tl.setAttribute('aria-label', 'Timeline of dated points by day');
+  for (const b of buckets) {
+    const grp = document.createElement('div'); grp.className = 'ag-tl-group';
+    const head = document.createElement('div');
+    head.className = 'ag-tl-date' + (b.isToday ? ' today' : b.isPast ? ' overdue' : '');
+    head.textContent = agTimelineHeader(b);
+    head.setAttribute('aria-hidden', 'true');     // each chip's aria-label already carries the date
+    grp.appendChild(head);
+    const chips = document.createElement('div'); chips.className = 'ag-tl-chips';
+    for (const it of b.items) chips.appendChild(mkAgItemChip(it));
+    grp.appendChild(chips);
+    tl.appendChild(grp);
+  }
+  body.appendChild(tl);
+}
+
+function renderAgendaCalendar(strip, visible, totalDated) {
+  const wrap = document.createElement('div'); wrap.className = 'ag-calendar';
+
+  // month-nav header: ‹ Month YYYY › [Today]
+  const head = document.createElement('div'); head.className = 'agc-head';
+  const prev = document.createElement('span'); prev.className = 'agc-nav'; prev.textContent = '‹';
+  prev.setAttribute('role', 'button'); prev.setAttribute('tabindex', '0'); prev.setAttribute('aria-label', 'Previous month');
+  const title = document.createElement('div'); title.className = 'agc-title'; title.setAttribute('aria-live', 'polite');
+  const next = document.createElement('span'); next.className = 'agc-nav'; next.textContent = '›';
+  next.setAttribute('role', 'button'); next.setAttribute('tabindex', '0'); next.setAttribute('aria-label', 'Next month');
+  const todayBtn = document.createElement('span'); todayBtn.className = 'agc-today'; todayBtn.textContent = 'Today';
+  todayBtn.setAttribute('role', 'button'); todayBtn.setAttribute('tabindex', '0');
+  todayBtn.title = 'Jump to the current month'; todayBtn.setAttribute('aria-label', 'Jump to the current month');
+  head.append(prev, title, next, todayBtn);
+  wrap.appendChild(head);
+
+  if (!totalDated) wrap.appendChild(agMini('No dated points yet. Set dates via /due or the bullet menu.'));
+
+  // day-of-week header (decorative — each cell's items carry their own date label)
+  const dow = document.createElement('div'); dow.className = 'agc-dow'; dow.setAttribute('aria-hidden', 'true');
+  for (const d of CAL_DOW) { const s = document.createElement('span'); s.textContent = d; dow.appendChild(s); }
+  wrap.appendChild(dow);
+
+  const grid = document.createElement('div'); grid.className = 'agc-grid';
+  grid.setAttribute('role', 'group');
+  wrap.appendChild(grid);
+  strip.appendChild(wrap);
+
+  // paint() fills title + grid from agendaMonth, so month nav re-paints WITHOUT
+  // rebuilding the strip — focus stays on the nav button (like buildDatePicker).
+  const MAX_PER_CELL = 3;
+  function paint() {
+    const anchor = agendaMonth != null ? agendaMonth : dueDateToday();
+    const vd = new Date(anchor * 86400000);
+    title.textContent = CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear();
+    grid.setAttribute('aria-label', 'Calendar for ' + title.textContent);
+    grid.innerHTML = '';
+    for (const cell of agendaMonthCells(visible, anchor)) {
+      const c = document.createElement('div');
+      c.className = 'agc-cell' + (cell.inMonth ? '' : ' oom') + (cell.isToday ? ' today' : '');
+      const dom = document.createElement('span'); dom.className = 'agc-dom'; dom.textContent = String(cell.dom);
+      dom.setAttribute('aria-hidden', 'true');
+      c.appendChild(dom);
+      for (const it of cell.items.slice(0, MAX_PER_CELL)) {
+        const ich = document.createElement('div');
+        ich.className = 'agc-item ' + (it.due !== null ? it.state : 'none') + (it.done ? ' done' : '');
+        ich.textContent = it.title;
+        wireAgNav(ich, it, agItemAria(it));
+        c.appendChild(ich);
+      }
+      if (cell.items.length > MAX_PER_CELL) {
+        const more = document.createElement('div'); more.className = 'agc-more';
+        more.textContent = '+' + (cell.items.length - MAX_PER_CELL);
+        more.title = (cell.items.length - MAX_PER_CELL) + ' more — open List or Timeline to see all';
+        c.appendChild(more);
+      }
+      grid.appendChild(c);
+    }
+  }
+
+  const navMonth = (delta) => { agendaMonth = addMonths(agendaMonth != null ? agendaMonth : dueDateToday(), delta); paint(); };
+  const goToday  = () => { agendaMonth = dueDateToday(); paint(); };
+  prev.addEventListener('mousedown', e => { e.preventDefault(); navMonth(-1); });
+  next.addEventListener('mousedown', e => { e.preventDefault(); navMonth(1); });
+  todayBtn.addEventListener('mousedown', e => { e.preventDefault(); goToday(); });
+  prev.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navMonth(-1); } });
+  next.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navMonth(1); } });
+  todayBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToday(); } });
+
+  paint();
 }
 
 function openAgenda() {
   agendaOpen = true;
+  agendaMonth = dueDateToday();   // Calendar view always opens on the current month
   const strip = document.getElementById('agenda-strip');
   const btn = document.getElementById('btn-agenda');
   strip.classList.add('on');
@@ -12376,7 +12652,7 @@ function scheduleAutosave() {
   if (autosaveDisabled) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaShowRunning, agendaShowDone }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone }));
     try {
       localStorage.setItem(AUTOSAVE_KEY, payload);
       if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -12414,6 +12690,7 @@ function scheduleAutosave() {
         btn.setAttribute('aria-pressed', String(showDone));
       }
       if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
+      if (data.agendaView === 'list' || data.agendaView === 'timeline' || data.agendaView === 'calendar') agendaView = data.agendaView;
       if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
       if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
       if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) {

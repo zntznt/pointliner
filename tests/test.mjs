@@ -3124,6 +3124,67 @@ test('addMonths — clamps the day to the target month length', () => {
   assert.equal(c.addMonths(c.parseDueDate('2026-06-15'), 1), c.parseDueDate('2026-07-15'));
 });
 
+test('agendaDayBuckets — groups items by primary date, ascending, only non-empty days', () => {
+  const today = c.parseDueDate('2026-06-14');
+  const d12 = c.parseDueDate('2026-06-12');
+  const d20 = c.parseDueDate('2026-06-20');
+  const items = [
+    { id: 'a', epochDay: d20 },
+    { id: 'b', epochDay: d12 },
+    { id: 'c', epochDay: today },
+    { id: 'd', epochDay: d12 },   // same day as b → shares a bucket
+  ];
+  const buckets = host(c.agendaDayBuckets(items, today));
+  // one bucket per distinct day, ascending
+  assert.deepEqual(buckets.map(b => b.epochDay), [d12, today, d20]);
+  // the two June-12 items share the first bucket
+  assert.deepEqual(buckets[0].items.map(i => i.id).sort(), ['b', 'd']);
+  // today / past flags
+  assert.equal(buckets[0].isPast, true);  assert.equal(buckets[0].isToday, false);
+  assert.equal(buckets[1].isToday, true); assert.equal(buckets[1].isPast, false);
+  assert.equal(buckets[2].isPast, false); assert.equal(buckets[2].isToday, false);
+  // each bucket carries the formatted date of its day (reuses formatDueDate)
+  assert.equal(buckets[1].iso, '2026-06-14');
+  assert.equal(buckets[1].state, 'today');
+  // items with no primary date are skipped
+  assert.equal(c.agendaDayBuckets([{ id: 'x', epochDay: null }], today).length, 0);
+  // null/empty input is safe
+  assert.equal(c.agendaDayBuckets(null, today).length, 0);
+});
+
+test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today flags', () => {
+  const today  = c.parseDueDate('2026-06-14');
+  const anchor = c.parseDueDate('2026-06-01');     // June 2026
+  const d10    = c.parseDueDate('2026-06-10');
+  const july5  = c.parseDueDate('2026-07-05');
+  const items = [
+    { id: 'a', epochDay: d10 },
+    { id: 'b', epochDay: d10 },                     // same day as a
+    { id: 'c', epochDay: today },
+    { id: 'z', epochDay: july5 },                   // next month → out-of-month trailing cell
+  ];
+  const cells = host(c.agendaMonthCells(items, anchor, today));
+  assert.equal(cells.length, 42);
+  // backbone is exactly calendarMonthGrid (Sunday-aligned 6 weeks)
+  assert.deepEqual(cells.map(x => x.epochDay), host(c.calendarMonthGrid(anchor)));
+  // two items share June 10's cell; it's in-month with the right day number
+  const cell10 = cells.find(x => x.epochDay === d10);
+  assert.deepEqual(cell10.items.map(i => i.id).sort(), ['a', 'b']);
+  assert.equal(cell10.inMonth, true);
+  assert.equal(cell10.dom, 10);
+  // today flag
+  const cellToday = cells.find(x => x.epochDay === today);
+  assert.equal(cellToday.isToday, true);
+  assert.deepEqual(cellToday.items.map(i => i.id), ['c']);
+  // a July item lands in a trailing out-of-month cell (June 2026's grid reaches July 11)
+  assert.ok(c.calendarMonthGrid(anchor).includes(july5), 'July 5 should be in June 2026 grid');
+  const julyCell = cells.find(x => x.epochDay === july5);
+  assert.equal(julyCell.inMonth, false);
+  assert.equal(julyCell.items.length, 1);
+  // empty days carry an empty array, never undefined
+  assert.ok(cells.every(x => Array.isArray(x.items)));
+});
+
 test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
   const today = c.dueDateToday();
   const q1 = host(c.parseSearchQuery('due:today'));
@@ -3193,4 +3254,11 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
+  // agenda view switcher (List / Timeline / Calendar) + their render branches
+  assert.ok(_src.includes('agendaView'), 'agenda view state missing');
+  assert.ok(_src.includes('mkAgViewSwitch'), 'agenda view switcher missing');
+  assert.ok(_src.includes('renderAgendaTimeline'), 'agenda timeline view missing');
+  assert.ok(_src.includes('renderAgendaCalendar'), 'agenda calendar view missing');
+  assert.ok(_src.includes('agendaDayBuckets'), 'agenda timeline core missing');
+  assert.ok(_src.includes('agendaMonthCells'), 'agenda calendar core missing');
 });
