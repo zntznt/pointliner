@@ -7916,7 +7916,7 @@ function insertInlineArtifact(id, nodeId, content) {
       },
     });
   } else if (id === 'deck') {
-    openSeqDialog({
+    openDeckDialog({
       title: 'New deck',
       submitLabel: 'Insert',
       body: selected && seqParts(selected) ? selected : undefined,
@@ -9092,10 +9092,15 @@ const SEQ_CHIPS = [
   { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
 ];
 
-// Front door for stateful sequences (the @ "Deck" door). One field:
-// the `mode: a | b | c` body. A deck/cycle pill is a grammar record with state,
-// so onResult hands back a makeSeqGen record the caller pushes to node.grammar.
-function openSeqDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResult }) {
+// Front door for the deck/cycle pill (the @ "Deck" door). One field: the
+// `mode: a | b | c` body. A deck/cycle pill is a grammar record with state, so
+// onResult hands back a makeSeqGen record the caller pushes to node.grammar.
+// NB this is `openDeckDialog`, NOT `openSeqDialog` — the latter name belongs to
+// the *state-set* sequence dialog (declared later). They collided once: a
+// duplicate `function openSeqDialog` shadowed this one (function declarations
+// hoist, last wins), so the deck door silently opened the state-set dialog and
+// its Insert stayed disabled. Keep the two dialog names distinct.
+function openDeckDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResult }) {
   openInsertDialog({
     icon: { fa:'fa-solid fa-clone', fb:'🃏' },
     title,

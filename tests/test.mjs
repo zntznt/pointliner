@@ -2048,6 +2048,17 @@ test('oracle: front-door wiring (src pins)', () => {
   assert.ok(_src.includes('ORACLE_BANDS'), 'oracle likelihood bands missing');
 });
 
+test('deck door uses its own dialog (regression: openSeqDialog name collision)', () => {
+  // A4 named the deck dialog `openSeqDialog`, colliding with the pre-existing
+  // state-set sequence dialog of the same name. Function declarations hoist, so the
+  // later (state-set) one won and the deck @-door silently opened the WRONG dialog —
+  // its Insert button stayed disabled (the deck `body` param was ignored). The deck
+  // dialog is now `openDeckDialog`; these pins keep the names from colliding again.
+  assert.equal((_src.match(/function openSeqDialog\(/g) || []).length, 1, 'exactly one openSeqDialog (no shadowing)');
+  assert.equal((_src.match(/function openDeckDialog\(/g) || []).length, 1, 'exactly one openDeckDialog');
+  assert.match(_src, /id === 'deck'[\s\S]{0,120}openDeckDialog\(/, 'deck dispatch must call openDeckDialog, not openSeqDialog');
+});
+
 test('rollPickSource: dice source rolls through the dice core', () => {
   c.seedSequence([0]); // every die rolls its minimum
   assert.equal(c.rollPickSource('2d6', {}, {}), '2');
