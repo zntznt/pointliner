@@ -819,16 +819,13 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
    Timeline (Gantt) and Calendar each open as their own full-width bar below. */
 #agenda-strip{display:none;flex-direction:column;gap:0;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
 #agenda-strip.on{display:flex}
-/* top bar: the control grid (left) + the always-present List (right) */
 .ag-top{display:flex;align-items:stretch;min-width:0}
-/* 2×2 control grid — Timeline · Calendar / Done · Running */
 .ag-controls{flex:0 0 auto;display:grid;grid-template-columns:repeat(2,minmax(64px,auto));gap:3px;align-content:center;padding-right:10px;border-right:1px solid var(--bdr)}
 .ag-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;padding-left:10px}
 .ag-toggle{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}
 .ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
 .ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .ag-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-/* the two stacked, independently-scrollable rows */
 .ag-rows{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;justify-content:center}
 .ag-row{display:flex;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;min-height:22px}
 .ag-row::-webkit-scrollbar{display:none}
@@ -850,58 +847,71 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
 .ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
 .ag-mini{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-style:normal}
-/* Timeline / Calendar each open as a full-width bar below the top bar */
 .ag-pane{min-width:0;display:flex;flex-direction:column;border-top:1px solid var(--bdr);margin-top:5px;padding-top:6px}
-/* Timeline pane — a Gantt chart: horizontal bars on a shared, scrollable day axis */
-.ag-gantt{flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:auto;scrollbar-width:thin;max-height:min(46vh,300px)}
+/* ── Timeline (Gantt) — fixed names column left, scrollable chart right ── */
+.agg-outer{display:flex;min-width:0;align-items:flex-start}
+.agg-names-col{flex:0 0 auto;width:clamp(90px,20%,180px);display:flex;flex-direction:column;border-right:1px solid var(--bdr);padding-right:6px;overflow:hidden;max-height:min(46vh,300px)}
+.agg-names-inner{display:flex;flex-direction:column;overflow-y:hidden;overflow-x:hidden}
+.agg-axis-spacer{height:17px;flex-shrink:0}
+.agg-name-row{height:23px;display:flex;align-items:center;font-size:11px;color:var(--fg);overflow:hidden;white-space:nowrap;cursor:pointer;flex-shrink:0;gap:4px}
+.agg-name-row span{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.agg-name-row:hover{color:var(--acc)}
+.agg-name-row:focus-visible{outline:2px solid var(--acc);outline-offset:-1px;border-radius:2px}
+.agg-name-row.done{text-decoration:line-through;color:var(--muted)}
+.agg-chart-col{flex:1 1 auto;min-width:0;position:relative}
+.agg-chart-col::after{content:'';position:absolute;right:0;top:0;bottom:0;width:24px;background:linear-gradient(to right,transparent,var(--hbg));pointer-events:none;z-index:4;opacity:0;transition:opacity .15s}
+.agg-chart-col.can-scroll::after{opacity:1}
+.ag-gantt{max-height:min(46vh,300px);overflow-x:auto;overflow-y:auto;scrollbar-width:thin}
 .agg-inner{position:relative;min-height:100%}
 .agg-axis{position:relative;height:15px;margin-bottom:2px}
-.agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:2px}
-.agg-today{position:absolute;top:15px;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 55%,transparent);z-index:1}
+.agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:3px}
+.agg-today{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 65%,transparent);z-index:2}
+.agg-today-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:700;letter-spacing:.04em;color:var(--acc);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}
 .agg-row{position:relative;height:23px}
-.agg-bar{position:absolute;top:50%;transform:translateY(-50%);height:15px;border-radius:var(--r-sm);border:1px solid;box-sizing:border-box;cursor:pointer;min-width:6px;z-index:2}
-.agg-bar.overdue{background:color-mix(in srgb,var(--bad) 16%,transparent);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
-.agg-bar.today{background:color-mix(in srgb,var(--ok) 16%,transparent);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
-.agg-bar.soon{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 40%,transparent)}
-.agg-bar.future,.agg-bar.none{background:color-mix(in srgb,var(--fg) 7%,transparent);border-color:var(--bdr-ui)}
+.agg-bar{position:absolute;top:50%;transform:translateY(-50%);height:15px;border-radius:var(--r-sm);border:1px solid;box-sizing:border-box;cursor:pointer;min-width:6px;z-index:3}
+.agg-bar.overdue{background:color-mix(in srgb,var(--bad) 18%,transparent);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
+.agg-bar.today{background:color-mix(in srgb,var(--ok) 18%,transparent);border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.agg-bar.soon{background:color-mix(in srgb,var(--acc) 18%,transparent);border-color:color-mix(in srgb,var(--acc) 45%,transparent)}
+.agg-bar.future,.agg-bar.none{background:color-mix(in srgb,var(--fg) 8%,transparent);border-color:var(--bdr-ui)}
 .agg-bar.ongoing{border-style:dashed}
 .agg-bar.done{opacity:.5}
-.agg-bar:hover{filter:brightness(1.05)}
+.agg-bar:hover{filter:brightness(1.08)}
 .agg-bar:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-.agg-label{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--fg)}
-.agg-bar.done .agg-label{text-decoration:line-through;color:var(--muted)}
-/* Calendar pane — a month grid; each cell holds compact item chips */
-.ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:5px}
+/* ── Calendar pane — month grid ── */
+.ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px}
 .agc-head{display:flex;align-items:center;gap:6px}
-.agc-title{font-size:12px;font-weight:700;color:var(--fg);min-width:108px;font-variant-numeric:tabular-nums}
-.agc-nav{flex:0 0 auto;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;border-radius:var(--r-sm);font-size:15px;line-height:1;user-select:none}
-.agc-nav:hover{color:var(--fg);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.agc-title{font-size:14px;font-weight:700;color:var(--fg);flex:1;font-variant-numeric:tabular-nums}
+.agc-nav{flex:0 0 auto;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--bdr-ui);background:transparent;color:var(--fg);cursor:pointer;border-radius:var(--r-sm);font-size:16px;line-height:1;user-select:none}
+.agc-nav:hover{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 60%,transparent);background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .agc-nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-.agc-today{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 9px;cursor:pointer;line-height:1.4;font-family:inherit}
-.agc-today:hover{color:var(--fg);border-color:var(--muted)}
+.agc-today{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:3px 10px;cursor:pointer;line-height:1.4;font-family:inherit}
+.agc-today:hover{color:var(--fg);border-color:var(--fg)}
 .agc-today:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-.agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-.agc-dow span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center}
-.agc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
-.agc-cell{min-height:52px;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 3px;display:flex;flex-direction:column;gap:2px;overflow:hidden;background:var(--bg)}
-.agc-cell.oom{opacity:.4}
-.agc-cell.today{border-color:color-mix(in srgb,var(--acc) 45%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--acc) 45%,transparent)}
-.agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding-right:1px}
-.agc-cell.today .agc-dom{color:var(--acc)}
+.agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.agc-dow span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center;padding:2px 0}
+.agc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
+.agc-cell{min-height:56px;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;overflow:hidden;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default}
+.agc-cell:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
+.agc-cell.oom{opacity:.35}
+.agc-cell.today{background:color-mix(in srgb,var(--acc) 9%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
+.agc-cell.has-items{background:color-mix(in srgb,var(--fg) 6%,transparent)}
+.agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding:0 1px}
+.agc-cell.today .agc-dom{color:var(--acc);font-weight:800;background:color-mix(in srgb,var(--acc) 18%,transparent);border-radius:3px;padding:0 4px}
 .agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg)}
 .agc-item:hover{opacity:.82}
 .agc-item:focus-visible{outline:2px solid var(--acc);outline-offset:1px;opacity:1}
 .agc-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
 .agc-item.today{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
 .agc-item.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
-.agc-item.future,.agc-item.none{background:color-mix(in srgb,var(--fg) 5%,transparent);border-color:var(--bdr)}
+.agc-item.future,.agc-item.none{background:color-mix(in srgb,var(--fg) 5%,transparent);border-color:color-mix(in srgb,var(--fg) 14%,transparent)}
 .agc-item.done{opacity:.5;text-decoration:line-through}
 .agc-more{font-size:10px;font-weight:600;color:var(--muted);padding-left:2px;line-height:1.3}
 @media(hover:none){
-  .agc-nav{width:32px;height:32px}
-  .agc-today{padding:5px 11px}
-  .agc-cell{min-height:58px}
+  .agc-nav{width:36px;height:36px;font-size:18px}
+  .agc-today{padding:5px 12px}
+  .agc-cell{min-height:62px}
   .agc-item{font-size:11.5px;padding:1px 5px}
+  .agg-name-row{height:30px}
   .agg-row{height:30px}
   .agg-bar{height:18px}
 }
@@ -12058,10 +12068,10 @@ function renderAgendaList(host, visible, totalDated) {
   }
 }
 
-// Gantt timeline: each dated point is a horizontal bar on a shared day axis
-// (agendaGantt). Range bars span start→due, deadline-only points are 1-day bars,
-// started-but-undeadlined points are open-ended ('ongoing', dashed) bars to today.
-// The axis scrolls horizontally (mobile-friendly); a "today" line marks now.
+// Gantt timeline: fixed names column on the left; scrollable chart on the right.
+// Range bars span start→due, deadline-only points are 1-day bars, started-but-
+// undeadlined points are open-ended ('ongoing', dashed) bars to today.
+// Names and chart share the same row heights and scroll together vertically.
 function renderAgendaGantt(host, visible, totalDated) {
   if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
   const layout = agendaGantt(visible);
@@ -12071,13 +12081,29 @@ function renderAgendaGantt(host, visible, totalDated) {
   const px = Math.max(7, Math.min(28, Math.round(900 / layout.rangeDays)));
   const totalW = layout.rangeDays * px;
 
+  // two-panel layout: fixed names column + scrollable chart
+  const outer = document.createElement('div'); outer.className = 'agg-outer';
+
+  // left: item names (no scrollbar, driven by JS scroll sync)
+  const namesCol = document.createElement('div'); namesCol.className = 'agg-names-col';
+  const namesInner = document.createElement('div'); namesInner.className = 'agg-names-inner';
+  const spacer = document.createElement('div'); spacer.className = 'agg-axis-spacer';
+  namesInner.appendChild(spacer);
+  namesCol.appendChild(namesInner);
+  outer.appendChild(namesCol);
+
+  // right: scrollable chart
+  const chartCol = document.createElement('div'); chartCol.className = 'agg-chart-col';
   const scroll = document.createElement('div'); scroll.className = 'ag-gantt';
-  scroll.setAttribute('role', 'group'); scroll.setAttribute('aria-label', 'Timeline (Gantt) of dated points');
+  scroll.setAttribute('role', 'group'); scroll.setAttribute('aria-label', 'Timeline of dated points');
+  chartCol.appendChild(scroll);
+  outer.appendChild(chartCol);
+
   const inner = document.createElement('div'); inner.className = 'agg-inner'; inner.style.width = totalW + 'px';
 
   // axis: a date tick every `step` days (daily when the range is short, else weekly/monthly)
-  const axis = document.createElement('div'); axis.className = 'agg-axis'; axis.setAttribute('aria-hidden', 'true');
   const step = layout.rangeDays <= 24 ? 1 : layout.rangeDays <= 84 ? 7 : 30;
+  const axis = document.createElement('div'); axis.className = 'agg-axis'; axis.setAttribute('aria-hidden', 'true');
   for (let d = 0; d < layout.rangeDays; d += step) {
     const date = new Date((layout.rangeStart + d) * 86400000);
     const tick = document.createElement('div'); tick.className = 'agg-tick'; tick.style.left = (d * px) + 'px';
@@ -12087,30 +12113,48 @@ function renderAgendaGantt(host, visible, totalDated) {
   }
   inner.appendChild(axis);
 
-  // today line (centered on today's column) spanning all rows
+  // today line — full-height accent stripe with a "Today" label at the top
   const todayOff = today - layout.rangeStart;
   if (todayOff >= 0 && todayOff < layout.rangeDays) {
     const tl = document.createElement('div'); tl.className = 'agg-today'; tl.style.left = (todayOff * px + px / 2) + 'px';
     tl.setAttribute('aria-hidden', 'true');
+    const todayLbl = document.createElement('span'); todayLbl.className = 'agg-today-lbl'; todayLbl.textContent = 'Today';
+    tl.appendChild(todayLbl);
     inner.appendChild(tl);
   }
 
   for (const r of layout.rows) {
+    // name row (left panel) — click/Enter also zooms in like the bar
+    const nameRow = document.createElement('div');
+    nameRow.className = 'agg-name-row' + (r.done ? ' done' : '');
+    const nameSpan = document.createElement('span'); nameSpan.textContent = r.title; nameSpan.title = r.title;
+    nameRow.appendChild(nameSpan);
+    wireAgNav(nameRow, r, agItemAria(r));
+    namesInner.appendChild(nameRow);
+
+    // bar row (chart panel) — no inline label; name is in the left column
     const row = document.createElement('div'); row.className = 'agg-row';
     const bar = document.createElement('div');
     // ongoing (no deadline) reads neutral; bars with a deadline carry its urgency tint
     bar.className = 'agg-bar ' + r.kind + ' ' + (r.kind === 'ongoing' ? 'none' : r.state) + (r.done ? ' done' : '');
     bar.style.left = (r.offsetDays * px) + 'px';
     bar.style.width = Math.max(6, r.spanDays * px) + 'px';
-    const lbl = document.createElement('span'); lbl.className = 'agg-label'; lbl.textContent = r.title;
-    bar.appendChild(lbl);
     wireAgNav(bar, r, agItemAria(r));
     row.appendChild(bar);
     inner.appendChild(row);
   }
 
   scroll.appendChild(inner);
-  host.appendChild(scroll);
+  host.appendChild(outer);
+
+  // vertical scroll sync: names column tracks the chart's scrollTop
+  // right-fade shadow: visible when there is more content to the right
+  const updateFade = () => {
+    const canScrollRight = scroll.scrollWidth > scroll.clientWidth + 2 && scroll.scrollLeft < scroll.scrollWidth - scroll.clientWidth - 2;
+    chartCol.classList.toggle('can-scroll', canScrollRight);
+  };
+  scroll.addEventListener('scroll', () => { namesInner.scrollTop = scroll.scrollTop; updateFade(); });
+  requestAnimationFrame(updateFade);
 }
 
 function renderAgendaCalendar(host, visible, totalDated) {
@@ -12125,24 +12169,45 @@ function renderAgendaCalendar(host, visible, totalDated) {
   next.setAttribute('role', 'button'); next.setAttribute('tabindex', '0'); next.setAttribute('aria-label', 'Next month');
   const todayBtn = document.createElement('span'); todayBtn.className = 'agc-today'; todayBtn.textContent = 'Today';
   todayBtn.setAttribute('role', 'button'); todayBtn.setAttribute('tabindex', '0');
-  todayBtn.title = 'Jump to the current month'; todayBtn.setAttribute('aria-label', 'Jump to the current month');
+  todayBtn.setAttribute('aria-label', 'Jump to current month');
   head.append(prev, title, next, todayBtn);
   wrap.appendChild(head);
 
   if (!totalDated) wrap.appendChild(agMini('No dated points yet. Set dates via /due or the bullet menu.'));
 
-  // day-of-week header (decorative — each cell's items carry their own date label)
+  // day-of-week header (aria-hidden — each cell carries its full date label)
   const dow = document.createElement('div'); dow.className = 'agc-dow'; dow.setAttribute('aria-hidden', 'true');
   for (const d of CAL_DOW) { const s = document.createElement('span'); s.textContent = d; dow.appendChild(s); }
   wrap.appendChild(dow);
 
   const grid = document.createElement('div'); grid.className = 'agc-grid';
-  grid.setAttribute('role', 'group');
+  grid.setAttribute('role', 'grid');
   wrap.appendChild(grid);
   host.appendChild(wrap);
 
-  // paint() fills title + grid from agendaMonth, so month nav re-paints WITHOUT
-  // rebuilding the strip — focus stays on the nav button (like buildDatePicker).
+  // arrow-key roving-tabindex navigation within the grid (attached once, survives paint() redraws)
+  grid.addEventListener('keydown', e => {
+    if (!['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
+    const cells = [...grid.querySelectorAll('.agc-cell')];
+    const idx = cells.indexOf(document.activeElement);
+    if (idx === -1) return;
+    e.preventDefault();
+    let next = idx;
+    if (e.key === 'ArrowRight') next = idx + 1;
+    if (e.key === 'ArrowLeft')  next = idx - 1;
+    if (e.key === 'ArrowDown')  next = idx + 7;
+    if (e.key === 'ArrowUp')    next = idx - 7;
+    if (e.key === 'Home') next = Math.floor(idx / 7) * 7;
+    if (e.key === 'End')  next = Math.floor(idx / 7) * 7 + 6;
+    if (next >= 0 && next < cells.length && next !== idx) {
+      cells[idx].setAttribute('tabindex', '-1');
+      cells[next].setAttribute('tabindex', '0');
+      cells[next].focus();
+    }
+  });
+
+  // paint() fills title + grid from agendaMonth — month nav re-paints WITHOUT
+  // rebuilding the strip so focus stays on the nav button (like buildDatePicker).
   const MAX_PER_CELL = 3;
   function paint() {
     const anchor = agendaMonth != null ? agendaMonth : dueDateToday();
@@ -12150,12 +12215,24 @@ function renderAgendaCalendar(host, visible, totalDated) {
     title.textContent = CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear();
     grid.setAttribute('aria-label', 'Calendar for ' + title.textContent);
     grid.innerHTML = '';
+    let firstInMonth = null;
     for (const cell of agendaMonthCells(visible, anchor)) {
       const c = document.createElement('div');
-      c.className = 'agc-cell' + (cell.inMonth ? '' : ' oom') + (cell.isToday ? ' today' : '');
+      c.className = 'agc-cell' + (cell.inMonth ? '' : ' oom') + (cell.isToday ? ' today' : '') + (cell.items.length ? ' has-items' : '');
+      c.setAttribute('role', 'gridcell');
+      c.setAttribute('tabindex', cell.isToday ? '0' : '-1');
+      // full date label so screen readers announce the day without looking inside
+      const dt = new Date(cell.epochDay * 86400000);
+      const cellLabel = CAL_DOW_FULL[dt.getUTCDay()] + ', ' + CAL_MONTHS[dt.getUTCMonth()] + ' ' + cell.dom
+        + (cell.isToday ? ' (today)' : '')
+        + (cell.items.length ? ', ' + cell.items.length + ' item' + (cell.items.length !== 1 ? 's' : '') : '');
+      c.setAttribute('aria-label', cellLabel);
+      if (cell.inMonth && !firstInMonth) firstInMonth = c;
+
       const dom = document.createElement('span'); dom.className = 'agc-dom'; dom.textContent = String(cell.dom);
       dom.setAttribute('aria-hidden', 'true');
       c.appendChild(dom);
+
       for (const it of cell.items.slice(0, MAX_PER_CELL)) {
         const ich = document.createElement('div');
         ich.className = 'agc-item ' + (it.due !== null ? it.state : 'none') + (it.done ? ' done' : '');
@@ -12170,6 +12247,10 @@ function renderAgendaCalendar(host, visible, totalDated) {
         c.appendChild(more);
       }
       grid.appendChild(c);
+    }
+    // if today is not in this month, give tabindex=0 to the first in-month cell
+    if (!grid.querySelector('.agc-cell.today') && firstInMonth) {
+      firstInMonth.setAttribute('tabindex', '0');
     }
   }
 
