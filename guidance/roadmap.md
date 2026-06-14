@@ -206,9 +206,13 @@ variables — do not reintroduce it. The oracle was reverted and is listed below
   walk; reuse `markDirty`/`_varsVer` invalidation. **⚠ UXP-20 route:** prefer an `evalMath`
   primitive / `resolveBrace` branch (children-scope functions inside `{…}`) over the
   "new token type" sketch — a new token needs the explicit-decision path. *(heavier)*
-- **Decks / bags** (draw without replacement) — the first feature needing **persisted
-  per-instance state**; decide OPML-record (portable, ugly) vs. sidecar. Breaks the
-  stateless purity. *(heavier)*
+- **Decks / bags** (draw without replacement) — ✓ **shipped (2026-06-14) as stateful
+  sequences.** `{shuffle|cycle|once|stopping: a|b|c}` — shuffle is the deck (draw without
+  replacement, reshuffle when empty); the persisted per-instance state (`pos`/`bag`) rides
+  on the **grammar record** and round-trips through the existing `_grammar` OPML attribute
+  (the question "OPML-record vs sidecar" resolved in favour of the sidecar record). Pure
+  cores `seqParts`/`nextSeqIndex`/`advanceSeq`/`makeSeqGen`; `@` "Deck / sequence" door.
+  See `guidance/features.md`.
 - **Retire the legacy per-feature cores** (`parseDice`/`parseMarkov`) now
   that composition runs through the unified grammar engine — a cleanup refactor that removes
   duplicated code, not a capability add. Defer until the duplication causes friction.

@@ -42,6 +42,21 @@ Implemented:
   its expansion like dice; click to re-generate. **Named pills show their callable
   name** and stay atomic in edit mode (the name is doc-wide config — unfolding
   would lose it); anonymous shorthand pills unfold to editable `{…}`.
+- **Stateful sequences / decks** — `@` "Deck / sequence" (or type the shorthand):
+  `{mode: a | b | c}` where `mode` is one of **shuffle** (a DECK — draw without
+  replacement, reshuffle when the bag empties), **cycle** (loop in order), **once**
+  (each item once, then nothing), **stopping** (advance, then stick on the last).
+  Unlike every other generator these have **memory**: a grammar record carries
+  `mode`/`items` + draw state (`pos` for cycle/once/stopping, a remaining `bag` for
+  shuffle), which round-trips through the `_grammar` OPML attribute. The pill
+  **advances** on body-click (not re-roll), shows a deck icon, has no pencil, and
+  **unfolds** to its `{mode: …}` source for inline editing (the dice/anonymous-grammar
+  model — draw state preserved when the source is left untouched, reset to a fresh
+  deck if the items are edited). Each item is a grammar template (may roll dice / call
+  a rule: `{shuffle: {2d6} gold | a {color} gem}`). Inside a *rule* a `{mode:…}`
+  degrades to a uniform pick (no per-instance record there). Pure cores: `seqParts`
+  (detect), `nextSeqIndex` (state machine), `advanceSeq` (emit), `makeSeqGen` (build).
+  This resolved the long-standing "decks/bags have nowhere clean to live yet" question.
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
   **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,
