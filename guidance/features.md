@@ -72,8 +72,34 @@ Implemented:
     out of scope); `title` capitalizes after whitespace only (`o'brien→O'brien`); and a
     `{numericVar.cap}` becomes a **grammar pill, so it freezes** (re-roll on click) rather
     than live-updating like a plain `{var}` pill — fine in practice, since the real use is
-    `.s`/`.cap` on a **string** (random-pick) variable. Past-tense `.ed` and aliases
+    `.s`/`.cap` on a **string** (random-pick) variable. Aliases
     (`.an`/`.capitalize`/`.plural`) are deferred follow-ons.
+- **Hierarchical / property items (A6)** — a grammar item carries named **fields** via
+  **dotted sub-rules**, read with `{item.field}`:
+  ```
+  weapon: sword | axe | bow
+  sword.name: a sharp longsword
+  sword.damage: 1d8
+  sword.value: 50
+  ```
+  `{weapon}` picks an item **key** (`sword`); `{weapon.damage}` picks one then reads
+  *that* item's `damage` sub-rule. NPCs whose name+trait+stat belong together, loot with
+  a value, planets with a climate. `parseRules` accepts a **dotted rule name**
+  (`/^[a-z_]\w*(\.[a-z_]\w*)*$/`); `fieldParts` detects a 2-segment `{base.field}` whose
+  suffix is **not** a modifier (checked **after** `modParts`, so A1 modifiers win the `.`
+  overlap — don't name a field after a modifier). `resolveBrace` resolves it three ways:
+  a directly-named sub-rule (`{sword.damage}`) → that rule; else resolve `base` to a key
+  and read `key.field` (`{weapon.damage}` → `sword.damage`); else a `{base.field?}` marker
+  (P4). **Cross-reference consistency** — making `{item.name}` and `{item.damage}` the
+  **same** item — rides the **random-pick variable** (declare `w = {weapon}`, then
+  `{w.name}`/`{w.damage}` read the one frozen item; re-rolling `w` moves all fields
+  together), **NOT** a per-expansion bind (the reverted `{a := …}`/`ctx.binds` model — see
+  `generation-direction.md` §2 — must not return). Standalone `{rule.field}` works
+  one-shot. Promotes to an anonymous grammar pill (`origin: {item.field}`), unfolds
+  verbatim, round-trips in the grammar `def`. **v1 = a single field**; field-then-modifier
+  chaining (`{w.damage.cap}`) and multi-level nesting (`{planet.country.town}`) are
+  deferred. Front doors: the grammar-dialog hint + the `{weapon.damage}` `?`-panel row.
+  Pure cores: `fieldParts`, the extended `parseRules`, the `resolveBrace` field branch.
 - **Stateful sequences / decks** — `@` "Deck" (or type the shorthand):
   `{mode: a | b | c}` where `mode` is one of **shuffle** (a DECK — draw without
   replacement, reshuffle when the bag empties), **cycle** (loop in order), **once**

@@ -347,6 +347,53 @@ test('text modifier unfold round-trip — a promoted {beast.cap} unfolds verbati
   assert.equal(c.artifactToShorthand('grammar', rec), '{beast.cap}');
 });
 
+// ── hierarchical / property items (A6): dotted sub-rules + {base.field} ────────
+test('parseRules — accepts dotted sub-rule names; rejects stray dots', () => {
+  const p = c.parseRules('weapon: sword | axe\nsword.damage: 1d8\nsword.name: a longsword');
+  assert.ok(p.rules['sword.damage'], 'sword.damage registered as a rule key');
+  assert.ok(p.rules['sword.name']);
+  assert.equal(p.rules['weapon'].length, 2, 'parent rule keeps its alternatives');
+  assert.ok(c.parseRules('a.b.c: x'), 'multi-segment dotted name is a valid key');
+  assert.equal(c.parseRules('.x: y'), null);   // leading dot
+  assert.equal(c.parseRules('a..b: y'), null); // empty segment
+  assert.equal(c.parseRules('a.: y'), null);   // trailing dot
+});
+
+test('fieldParts — a 2-segment ref whose suffix is NOT a modifier', () => {
+  assert.deepEqual(host(c.fieldParts('weapon.damage')), { base: 'weapon', field: 'damage' });
+  assert.deepEqual(host(c.fieldParts('w.value')), { base: 'w', field: 'value' });
+  assert.equal(c.fieldParts('w.cap'), null);   // cap is a modifier → A1's modParts owns it
+  assert.equal(c.fieldParts('n.ord'), null);   // ord too (the new A1 modifier)
+  assert.equal(c.fieldParts('beast'), null);   // no dot
+  assert.equal(c.fieldParts('a.b.c'), null);   // 3 segments → not a single field (v1)
+});
+
+test('resolveBrace / runGrammar — {base.field} resolves three ways', () => {
+  // 1. a directly-named sub-rule
+  assert.equal(c.runGrammar('origin: {sword.damage}\nsword.damage: hit', 'origin', {}, {}), 'hit');
+  // 2. pick the parent → read the picked item's field ({weapon} = "sword" → sword.damage)
+  assert.equal(c.runGrammar('origin: {weapon.damage}\nweapon: sword\nsword.damage: hit', 'origin', {}, {}), 'hit');
+  // 3. an undefined field → a visible marker (P4), never silent
+  assert.equal(c.runGrammar('origin: {weapon.color}\nweapon: sword\nsword.damage: hit', 'origin', {}, {}), '{weapon.color?}');
+});
+
+test('A6 consistency rides the pick variable, not a per-expansion bind', () => {
+  // A pick variable frozen to "sword" makes {w} and {w.damage} the SAME item — the
+  // locked consistency path (NOT the reverted ctx.binds / {a := …} model).
+  const def = 'origin: {w} hits for {w.damage}\nsword.damage: heavy\naxe.damage: light';
+  assert.equal(c.runGrammar(def, 'origin', {}, { w: 'sword' }), 'sword hits for heavy');
+  assert.equal(c.runGrammar(def, 'origin', {}, { w: 'axe' }),   'axe hits for light');
+});
+
+test('classifyBraceBody / braceTypeLabel — a resolvable field ref is a grammar artifact', () => {
+  const rules = { weapon: [{ template: 'sword', weight: 1 }], 'sword.damage': [{ template: 'hit', weight: 1 }] };
+  assert.equal(c.classifyBraceBody('weapon.damage', rules, {}), 'artifact'); // base is a known rule
+  assert.equal(c.classifyBraceBody('sword.damage', rules, {}), 'artifact');  // direct sub-rule
+  assert.equal(c.classifyBraceBody('w.damage', {}, { w: 'sword' }), 'artifact'); // base is a known var
+  assert.equal(c.classifyBraceBody('file.name', {}, {}), 'literal');         // undefined base → prose, not a broken pill
+  assert.deepEqual(host(c.braceTypeLabel('weapon.damage', rules, {})), ['grammar', 'weapon.damage']);
+});
+
 // ── stateful sequences: {shuffle|cycle|once|stopping: a | b | c} ─────────────
 test('seqParts — parses a mode + items; rejects non-modes', () => {
   assert.deepEqual(host(c.seqParts('shuffle: a | b | c')), { mode: 'shuffle', items: ['a', 'b', 'c'] });
