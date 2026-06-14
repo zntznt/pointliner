@@ -375,7 +375,7 @@ when proposing features:
   a bare identifier → a named rule (`{color}`) if one exists, else a
   document **variable's** value (`{strength}`), else a `{name?}` marker; a
   **modified reference** (`{ref.mod}` — a base identifier + `.`-separated suffixes from
-  the closed set `cap/title/upper/lower/a/s`, via `modParts`, A1 text modifiers) →
+  the closed set `cap/title/upper/lower/a/s/ed/ord`, via `modParts`, A1 text modifiers) →
   resolve the base (rule or var) then `applyMods` left-to-right. Names are
   **document-wide**: `collectRules()` walks the tree (mirroring `collectVars`,
   cached on `_varsVer`) and merges every grammar pill's rules into one namespace
@@ -448,7 +448,10 @@ is *vacuously true* on a point with no qualifying child, not spuriously false on
 `min(ident)` was already an error there), and the aggregation regex matches only a *single bare
 identifier* — so a comma'd `min(a, b)` keeps the numeric-variadic meaning, untouched. Only
 **numeric** child props aggregate (`childPropNumber` skips non-numbers, incl. date strings) — so
-a date-property extremal like `max(due)` awaits a date-aware `childPropNumber` (a follow-on).
+a date-property extremal like `max(due)`/`min(start)` **now aggregates** — `childPropNumber` tries
+`Number` first (so `"5"` stays `5`), then `parseDueDate`, so date-shaped values roll up as
+**epoch-days** (wrap in `asdate(...)` to display the result as a date). Only date-shaped strings
+parse (strict `parseDueDate`); a plain word still → `null` (skipped).
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
@@ -566,13 +569,13 @@ redesign.
 
 ## Feature status
 
-Implemented: Dice (incl. success-counting pools) · Markov · Roll tables (one-rule
+Implemented: Dice (incl. success-counting pools + reroll-once `rK`) · Markov · Roll tables (one-rule
 grammars since the collapse — the `@` door opens the table-flavored grammar dialog;
 legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
 callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
 **conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`; and **text
 modifiers** `{ref.mod}` — a `.mod` suffix on a rule/var reference, closed set
-`cap/title/upper/lower/a/s`, chainable, `modParts`/`applyMods` — A1, a recorded
+`cap/title/upper/lower/a/s/ed/ord`, chainable, `modParts`/`applyMods` — A1, a recorded
 syntax-inventory addition (one of two, with B2's uncertain-value family), routed through the
 grammar pill for both rule + var bases) ·
 **Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws
@@ -654,9 +657,9 @@ bullet-menu "Add/edit check" door, the chip, the `?` panel + search legend; `ope
 live preview that explains why an expression can't evaluate (`mathErrorReason`). `check` is reserved
 like `DATE_KEYS` — hidden from the generic Properties editor, merged back on save; round-trips through
 `_props` for free. Numeric extremal checks (`max(cost) <= cap`, `min(score) >= 1`) work via the
-B1 `min`/`max` aggregation; **date-range** checks (`max(due) <= deadline`) await a date-aware
-`childPropNumber` (date strings are skipped today). Deferred: multiple checks/point, cross-parent
-refs, structural/existence checks (F5)) ·
+B1 `min`/`max` aggregation; **date-range** checks (`max(due) <= deadline`, `min(start) >= kickoff`)
+**now compute** — `childPropNumber` aggregates date-shaped props as epoch-days. Deferred: multiple
+checks/point, cross-parent refs, structural/existence checks (F5)) ·
 Templates (named subtree snapshots stored doc-level on `root.templates = [{name, node}]` — the
 `<_templates>` OPML **head element**, the second underscore-prefixed custom element beside
 `<_savedSearches>`; save door is the bullet menu "Save as template" (name dialog, save-over-name

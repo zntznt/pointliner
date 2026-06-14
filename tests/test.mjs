@@ -100,6 +100,35 @@ test('rollParsed — exploding chains on a max die', () => {
   } finally { c.resetRandom(); }
 });
 
+test('parseDice — reroll rK parses and validates its combinations', () => {
+  assert.equal(c.parseDice('4d6r1')[0].reroll, 1);
+  const t = c.parseDice('4d6r1kh3')[0];           // canonical: reroll then keep
+  assert.equal(t.reroll, 1); assert.equal(t.keepMode, 'kh'); assert.equal(t.keepCount, 3);
+  assert.equal(c.parseDice('4d6r1>=4'), null);     // reroll + success pool → null
+  assert.equal(c.parseDice('4dFr1'), null);        // reroll + Fate → null
+  assert.equal(c.parseDice('4d6!r1'), null);       // reroll + exploding → null (v1)
+  assert.equal(c.parseDice('4d6r0'), null);        // threshold < 1 → null
+  assert.equal(c.parseDice('4d6r6'), null);        // threshold ≥ sides → null
+});
+
+test('rollParsed — reroll replaces a die ≤K once, keeping the new value', () => {
+  c.seedSequence([0, 0.9, 0.5, 0.5, 0.5]); // die0: 1→reroll→6; dice 1–3: 4,4,4
+  try {
+    const res = c.rollParsed(c.parseDice('4d6r1'));
+    assert.equal(res.total, 18);                   // 6+4+4+4 (the 1 was rerolled away)
+    assert.deepEqual(host(res.parts[0].rolls), [[6], [4], [4], [4]]);
+    assert.deepEqual(host(res.parts[0].rerolledFrom), [1, null, null, null]);
+    assert.equal(res.parts[0].reroll, 1);
+  } finally { c.resetRandom(); }
+});
+
+test('rollParsed — reroll composes with keep-high (4d6r1kh3)', () => {
+  c.seedSequence([0, 0.9, 0.5, 0.5, 0.5]); // reroll die0 (1→6) → [6,4,4,4]; keep top 3
+  try {
+    assert.equal(c.rollParsed(c.parseDice('4d6r1kh3')).total, 14); // 6+4+4
+  } finally { c.resetRandom(); }
+});
+
 test('rollParsed — total stays within bounds over many rolls', () => {
   c.resetRandom();
   for (let i = 0; i < 200; i++) {
@@ -268,6 +297,26 @@ test('applyMods — folds modifiers left-to-right', () => {
   assert.equal(c.applyMods('owl', ['a']), 'an owl');
   assert.equal(c.applyMods('old dog', ['title']), 'Old Dog');
   assert.equal(c.applyMods('DOG', ['lower']), 'dog');
+});
+
+test('applyMods — .ed (regular past tense) and .ord (ordinal) follow-ons', () => {
+  assert.equal(c.applyMods('walk', ['ed']), 'walked');
+  assert.equal(c.applyMods('love', ['ed']), 'loved');
+  assert.equal(c.applyMods('try', ['ed']), 'tried');
+  assert.equal(c.applyMods('play', ['ed']), 'played');   // vowel+y → just +ed
+  assert.equal(c.applyMods('1', ['ord']), '1st');
+  assert.equal(c.applyMods('2', ['ord']), '2nd');
+  assert.equal(c.applyMods('3', ['ord']), '3rd');
+  assert.equal(c.applyMods('11', ['ord']), '11th');
+  assert.equal(c.applyMods('12', ['ord']), '12th');
+  assert.equal(c.applyMods('21', ['ord']), '21st');
+  assert.equal(c.applyMods('113', ['ord']), '113th');
+  assert.equal(c.applyMods('abc', ['ord']), 'abc');      // non-integer → unchanged
+  assert.equal(c.applyMods('3.5', ['ord']), '3.5');
+  assert.equal(c.applyMods('3', ['ord', 'cap']), '3rd'); // chainable; cap is a no-op on a digit-led string
+  // both are recognised modifier suffixes (modParts), so {verb.ed} reads as an artifact
+  assert.deepEqual(host(c.modParts('verb.ed')), { base: 'verb', mods: ['ed'] });
+  assert.deepEqual(host(c.modParts('n.ord.cap')), { base: 'n', mods: ['ord', 'cap'] });
 });
 
 test('resolveBrace — a modified reference resolves the base then shapes it', () => {
@@ -3618,13 +3667,36 @@ test('progress cookies: render + front-door wiring (src pins)', () => {
 });
 
 // ── subtree aggregation: {= sum|avg|count(prop)} over direct children ────────
-test('subtree aggregation: childPropNumber reads a plain-number property, skips the rest', () => {
+test('subtree aggregation: childPropNumber reads numbers AND date-shaped values (epoch-days)', () => {
   const child = c.mkNode('milk');
   child.props.push({ key: 'cost', val: '3' });
-  child.props.push({ key: 'due', val: '2026-06-14' });   // a date, not a plain number
-  assert.equal(c.childPropNumber(child, 'cost'), 3);
-  assert.equal(c.childPropNumber(child, 'due'), null);    // date → skipped, never mis-summed
+  child.props.push({ key: 'due', val: '2026-06-14' });   // a date → its epoch-day
+  child.props.push({ key: 'label', val: 'frozen' });     // a plain word → null
+  assert.equal(c.childPropNumber(child, 'cost'), 3);      // numeric first — "3" stays 3, not a date
+  assert.equal(c.childPropNumber(child, 'due'), c.parseDueDate('2026-06-14'));  // date aggregates as epoch-days
+  assert.equal(c.childPropNumber(child, 'label'), null);  // non-date string → still skipped
   assert.equal(c.childPropNumber(child, 'missing'), null);
+});
+
+test('subtree aggregation: date properties aggregate (min/max/count, the F2 date-range unlock)', () => {
+  const p = c.mkNode('Project');
+  const k1 = c.mkNode('A'); k1.props.push({ key: 'due', val: '2026-01-10' }); k1.props.push({ key: 'start', val: '2026-01-01' });
+  const k2 = c.mkNode('B'); k2.props.push({ key: 'due', val: '2026-03-20' }); k2.props.push({ key: 'start', val: '2026-02-15' });
+  const k3 = c.mkNode('C'); k3.props.push({ key: 'note', val: 'no dates here' });
+  p.children.push(k1, k2, k3);
+  assert.equal(c.aggregateChildren(p, 'max', 'due'), c.parseDueDate('2026-03-20'), 'latest child due');
+  assert.equal(c.aggregateChildren(p, 'min', 'start'), c.parseDueDate('2026-01-01'), 'earliest child start');
+  assert.equal(c.aggregateChildren(p, 'count', 'due'), 2, 'only the two dated children count');
+  // a date-range check now computes: max(due) <= a deadline → real F2 constraint
+  const deadline = c.parseDueDate('2026-04-01');
+  assert.ok(c.aggregateChildren(p, 'max', 'due') <= deadline, 'all child dues before the deadline');
+  // numeric aggregation unchanged when props are plain numbers
+  const q = c.mkNode('Q');
+  const n1 = c.mkNode(''); n1.props.push({ key: 'cost', val: '5' });
+  const n2 = c.mkNode(''); n2.props.push({ key: 'cost', val: '7' });
+  q.children.push(n1, n2);
+  assert.equal(c.aggregateChildren(q, 'sum', 'cost'), 12);
+  assert.equal(c.aggregateChildren(q, 'avg', 'cost'), 6);
 });
 
 test('subtree aggregation: aggregateChildren sum / avg / count over DIRECT children', () => {
