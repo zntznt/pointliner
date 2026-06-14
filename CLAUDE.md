@@ -616,6 +616,14 @@ The product direction is now set. Read these before proposing or building:
   Bases (table-vs-base model, freeform-bases philosophy, base layout + header interaction,
   and the scope fence: views/typed-fields/filters are deferred). Read before any
   table/base work.
+- `guidance/plugins-direction.md` — **locked direction for extensibility/plugins** + the
+  **code-execution gate**: extensibility is **declarative DATA packs only** (grammar/variables/
+  emoji merged into the registries via a `<_plugins>` head element); **the app executes no
+  document- or plugin-supplied code as a program while it ships as a single build-free `.html`
+  file** (code plugins / executable code nodes are out, gated on the *same* "more than a single
+  file" revisit trigger as the parked version-control pivot). The restricted DSL engines
+  (`evalMath`/grammar/dice) are interpreters, not code execution, and are unaffected. Read
+  before any plugin/extensibility work; companion how-to: `plugins-data-packs-prerequisites.md`.
 - `guidance/design-language.md` — **the locked visual standard** (typeface roles + the
   native-or-embedded constraint, the opsz-tracks-size type scale, warm paper/ink palettes,
   contrast floors as merge criteria, the dual-home CSS+JS palette invariant, pill/table/
