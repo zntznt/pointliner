@@ -9922,10 +9922,20 @@ const FN1 = Object.assign(Object.create(null), {
   month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
   day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
   weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
+  quarter: x => Math.floor(new Date(Math.round(x) * DAY_MS).getUTCMonth() / 3) + 1, // 1–4
+  daysuntil: d => Math.round(d) - dueDateToday(),                     // days from today to date d (negative if past)
   asdate:  x => x,
 });
-const FN2 = Object.assign(Object.create(null), { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot });
-const FN3 = Object.assign(Object.create(null), { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) });
+const FN2 = Object.assign(Object.create(null), {
+  atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot,
+  daysbetween: (a, b) => Math.abs(Math.round(b) - Math.round(a)),  // whole days between two dates
+  pctof: (part, whole) => part / whole * 100,                      // part as a percentage of whole (÷0 → ∞)
+  pctchange: (from, to) => (to - from) / from * 100,               // percent change from→to (÷0 → ∞)
+});
+const FN3 = Object.assign(Object.create(null), {
+  date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS),
+  clamp: (x, lo, hi) => Math.min(Math.max(x, lo), hi),            // bound x to [lo, hi]
+});
 
 function evalMath(input, vars = {}) {
   // Pre-process: collapse whitespace, lowercase, map Unicode math symbols
@@ -10328,7 +10338,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions, π/e/today, units (c2f, km2mi), dates (asdate(today+90)). Roll up a child points’ property with sum(prop) / avg(prop) / count(prop) / min(prop) / max(prop).',
+        hint: 'Functions, π/e/today, units (c2f, km2mi), dates (asdate(today+90), daysuntil(due), clamp(x,0,10)). Roll up a child points’ property with sum(prop) / avg(prop) / count(prop) / min(prop) / max(prop).',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
