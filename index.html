@@ -3263,6 +3263,7 @@ const INSERT_CMDS = [
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table — one grammar rule; click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
+  { id:'oracle',   icon:'🔮', fa:'',                         label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value — a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
@@ -7925,6 +7926,14 @@ function insertInlineArtifact(id, nodeId, content) {
         applyInlineInsertion(nodeId, offset, `[[grammar:${rec.key}]]`);
       },
     });
+  } else if (id === 'oracle') {
+    openOracleDialog({
+      onResult: roll => {
+        const n = nodeById(nodeId); if (!n) return;
+        (n.grammar ||= []).push(roll);
+        applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
+      },
+    });
   } else if (id === 'math') {
     openMathDialog({
       title: 'Insert math',
@@ -8551,7 +8560,15 @@ function matchBrace(str, open) {
 }
 
 // One alternative "template 2" → {template, weight}; trailing integer = weight.
+// Parse one alternation alt → { template, weight } or { template, weightExpr }.
+// The trailing weight is a bare integer (`b 2`) OR a `{= expr}` brace (`b {= str}`
+// — A5 dynamic odds: resolved at pick time against the doc vars, reusing the math
+// form, no new sigil). A weight is taken only when a non-empty template precedes
+// it, so a bare computed-value alt (`{= 2d6}`) stays content, not a zero-template
+// weight. Same trailing-token convention as the numeric weight it extends.
 function parseAlt(a) {
+  const em = a.match(/^([\s\S]*?\S)\s+\{=\s*([\s\S]+?)\s*\}\s*$/);
+  if (em) return { template: em[1].trim(), weightExpr: em[2].trim() };
   const wm = a.match(/^([\s\S]*?)\s+(\d+)\s*$/);
   return { template: (wm ? wm[1] : a).trim(), weight: wm ? parseInt(wm[2], 10) : 1 };
 }
@@ -8578,10 +8595,23 @@ function parseRules(def) {
 }
 
 // Weighted random choice among [{...,weight}] entries.
-function pickWeightedAlt(alts) {
-  const total = alts.reduce((a, x) => a + x.weight, 0);
+// Weighted random pick. A weight may be a static number or a `{= expr}` resolved
+// now against `vars` (A5). An unresolved expr → neutral weight 1 (the alt is not
+// dropped); a numeric ≤ 0 → 0, so `{= cond ? 1 : 0}` can conditionally disable an
+// alt. An all-zero total falls back to the last alt rather than dividing by zero.
+function pickWeightedAlt(alts, vars = {}) {
+  const wOf = a => {
+    if (a.weightExpr != null) {
+      const v = evalMath(a.weightExpr, vars);
+      return v === null ? 1 : Math.max(0, v);
+    }
+    return a.weight;
+  };
+  const ws = alts.map(wOf);
+  const total = ws.reduce((s, w) => s + w, 0);
+  if (total <= 0) return alts[alts.length - 1];
   let r = Math.random() * total;
-  for (const a of alts) { r -= a.weight; if (r < 0) return a; }
+  for (let i = 0; i < alts.length; i++) { r -= ws[i]; if (r < 0) return alts[i]; }
   return alts[alts.length - 1];
 }
 
@@ -8729,7 +8759,7 @@ function resolveBrace(body, ctx) {
     return expandTemplate(sp.items[Math.floor(Math.random() * sp.items.length)], ctx);
   }
   const alts = splitTopLevel(body, '|');
-  if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt)).template, ctx);
+  if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
   if (body[0] === '=') {
     const r = evalMath(body.slice(1), ctx.vars);
     return r === null ? '?' : formatMathResult(r);
@@ -8760,7 +8790,7 @@ function expandRule(name, ctx) {
   ctx.stack.push(name); ctx.depth++;
   let out;
   if (Array.isArray(rule)) {
-    out = expandTemplate(pickWeightedAlt(rule).template, ctx);
+    out = expandTemplate(pickWeightedAlt(rule, ctx.vars).template, ctx);
   } else if (rule.kind === 'markov') {
     out = walkMarkov(rule.parsed, rule.start, rule.steps).map(s => expandTemplate(s, ctx)).join(' → ');
   } else {
@@ -9086,6 +9116,46 @@ function openSeqDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResu
       const sp = seqParts(v.body);
       const rec = sp && makeSeqGen(sp.mode, sp.items);
       if (rec) onResult(rec);
+    },
+  });
+}
+
+// ─── yes/no oracle (a friendly door over weighted alternation + A5) ──────────
+// The most-reused solo-gen primitive: ask a question, get Yes/No at tunable odds.
+// It is just a weighted-alternation grammar (`Yes N | No M`) behind a likelihood
+// picker — no new syntax, no new pill (an anonymous grammar that re-rolls on click
+// and unfolds to `{Yes N | No M}`). The bands are ORIGINAL/neutral ratios (the IP
+// fence: never copy a published oracle's tables). Because the odds field is just
+// the weighted-alt body, a weight can be an A5 `{= expr}` for state-modulated odds.
+const ORACLE_BANDS = [
+  { label: 'Certain',    body: 'Yes 19 | No 1' },
+  { label: 'Likely',     body: 'Yes 3 | No 1'  },
+  { label: 'Even',       body: 'Yes 1 | No 1'  },
+  { label: 'Unlikely',   body: 'Yes 1 | No 3'  },
+  { label: 'Impossible', body: 'Yes 1 | No 19' },
+];
+const ORACLE_CHIPS = ORACLE_BANDS.map(b => ({ label: b.label, insert: el => { el.value = b.body; } }));
+
+function openOracleDialog({ onResult }) {
+  const build = body => makeGrammarRoll('origin: ' + body, 'origin');
+  openInsertDialog({
+    icon: { fa: '', fb: '🔮' },
+    title: 'Yes/No oracle',
+    submitLabel: 'Insert',
+    fields: [
+      { key: 'body', label: 'Odds (Yes weight | No weight)', value: 'Yes 1 | No 1', chips: ORACLE_CHIPS,
+        placeholder: 'Yes 3 | No 1',
+        hint: 'Pick a likelihood, or set the odds yourself — the weight after each option tunes its chance. A weight can be a {= expression} over variables for dynamic odds. Click the pill to ask again.',
+        preview: v => {
+          if (splitTopLevel(v, '|').length < 2) return `<span class="io-preview-bad">Two options, e.g. Yes 3 | No 1</span>`;
+          const roll = build(v);
+          return roll ? `<span class="gr-preview-result">${escHtml(roll.result)}</span>` : `<span class="io-preview-bad">Invalid</span>`;
+        } },
+    ],
+    validate: v => splitTopLevel(v.body, '|').length >= 2 && !!build(v.body),
+    onSubmit: v => {
+      const roll = build(v.body);
+      if (roll) { roll.anon = true; onResult(roll); }
     },
   });
 }
@@ -12932,7 +13002,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table, base, or stamp a saved template…' },
-    { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, math, variable, sequence' },
+    { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, deck, oracle, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
@@ -12943,7 +13013,7 @@ const SHORTCUTS = [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
     { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count a child points’ property (also {= sum(cost)/count(cost)})' },
-    { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
+    { keys: ['{a|b 2}', '{a|b {= w}}'], desc: 'Weighted random pick — a weight is a number, or a {= expr} over variables (dynamic odds); rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
