@@ -6437,6 +6437,11 @@ function classifyBraceBody(body, rules, vars) {
   }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
+  const mp = modParts(body);                                           // {beast.cap}
+  if (mp) {
+    const low = mp.base.toLowerCase();
+    return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
+  }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
@@ -6464,6 +6469,7 @@ function braceTypeLabel(body, rules, vars) {
   if (body[0] === '=') return ['math', null];
   if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
   if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
+  if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
@@ -8667,6 +8673,50 @@ function condParts(body) {
   return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
 }
 
+// ─── text modifiers (A1) ─────────────────────────────────────────────────────
+// A `.mod` suffix on a rule/variable reference shapes its output: {beast.a} →
+// "an ogre", {noun.s} → "foxes", {name.cap} → "Name", chainable {beast.a.cap} →
+// "A dragon". Six canonical tokens, one per function, NO aliases. Detection is
+// syntactic (modParts, like condParts); the base resolves through the existing
+// rule/var machinery and applyMods folds the modifiers left-to-right. The only new
+// lexical element is the `.mod` suffix — a recorded P5 decision (ux-discipline §2).
+
+// Regular-English pluralizer (documented heuristic; irregulars like child→childs are
+// out of scope). Order matters: sibilant → +es; f/fe → ves; consonant+y → ies; else +s.
+function pluralize(w) {
+  if (/(s|x|z|ch|sh)$/i.test(w)) return w + 'es';
+  if (/(?:[^f]f|fe)$/i.test(w)) return w.replace(/fe?$/i, 'ves');
+  if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ies';
+  return w + 's';
+}
+
+// One canonical string→string fn per modifier (null-proto so `m in MODIFIERS` is safe).
+const MODIFIERS = Object.assign(Object.create(null), {
+  cap:   s => s.charAt(0).toUpperCase() + s.slice(1),
+  title: s => s.split(/(\s+)/).map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(''),
+  upper: s => s.toUpperCase(),
+  lower: s => s.toLowerCase(),
+  a:     s => (/^[aeiou]/i.test(s.trim()) ? 'an ' : 'a ') + s,
+  s:     s => pluralize(s),
+});
+
+// Detect a modified reference: a bare base identifier + ≥1 modifier suffix, EVERY
+// suffix a known MODIFIERS key. Syntactic only (does not check the base is defined,
+// like condParts). {file.txt} → null (txt ∉ MODIFIERS); {cap} (no dot) → null.
+function modParts(body) {
+  const segs = (body || '').trim().split('.');
+  if (segs.length < 2) return null;
+  if (!/^[a-z_]\w*$/i.test(segs[0])) return null;
+  const mods = segs.slice(1);
+  if (!mods.every(m => m in MODIFIERS)) return null;
+  return { base: segs[0], mods };
+}
+
+// Fold the modifier functions over a string, left-to-right.
+function applyMods(s, mods) {
+  return mods.reduce((acc, m) => (m in MODIFIERS ? MODIFIERS[m](acc) : acc), s);
+}
+
 // ─── stateful sequences (decks / cycles) ─────────────────────────────────────
 // A {mode: a | b | c} brace whose leading `mode` keyword gives it MEMORY: a
 // `shuffle` is a DECK (draw without replacement, reshuffle when the bag empties),
@@ -8773,6 +8823,17 @@ function resolveBrace(body, ctx) {
     // deck/cycle behaviour lives only in the standalone pill, which advances via
     // nextSeqIndex, not through here).
     return expandTemplate(sp.items[Math.floor(Math.random() * sp.items.length)], ctx);
+  }
+  const mp = modParts(body);
+  if (mp) {
+    // a modified reference: resolve the base (rule or variable) then shape it. An
+    // undefined base → visible marker (P4), modifiers not applied.
+    const low = mp.base.toLowerCase();
+    let s;
+    if (ctx.rules[low]) s = expandRule(low, ctx);
+    else if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, low)) s = formatVarValue(ctx.vars[low]);
+    else return `{${mp.base}?}`;
+    return applyMods(s, mp.mods);
   }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
@@ -9066,6 +9127,7 @@ const GRAMMAR_CHIPS = [
   { label:'{dice}', insert: el => insertAndSelect(el, '{', '2d6', '}') },
   { label:'{= }',   insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
   { label:'{cond}', insert: el => insertAndSelect(el, '{', 'x > 0', ': yes | no}') },
+  { label:'{.cap}', insert: el => insertAndSelect(el, '{', 'name', '.cap}') },
 ];
 
 // `tableFlavor` is the "Roll table" door: same dialog, same grammar record —
@@ -9083,7 +9145,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text. | separates weighted alternatives.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s). | separates weighted alternatives.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -9260,6 +9322,15 @@ function promoteBraceBody(node, body) {
   if (sp) {
     const rec = makeSeqGen(sp.mode, sp.items);
     if (rec) { (node.grammar ||= []).push(rec); return `[[grammar:${rec.key}]]`; }
+  }
+  // text modifier: {beast.cap} / {var.s} → an anonymous grammar wrapped `origin:
+  // {ref.mod}`, so unfold/refold/prune/export all reuse the grammar machinery (the
+  // load-bearing A1 decision — both rule and var bases route through grammar, never
+  // the var-pill path). Undefined base → falls through → stays literal (escape hatch).
+  const mp = modParts(body);
+  if (mp && (collectRules()[mp.base.toLowerCase()] || mp.base.toLowerCase() in collectVars())) {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
   // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
@@ -9541,6 +9612,43 @@ function checkInlineHighlight(content, node) {
 // conditionals: ternary  a > b ? x : y  or function form  if(cond, then, else).
 // Uses a recursive-descent parser — no eval(), safe to run on user input.
 
+// evalMath's lookup tables are hoisted to module scope so they're allocated once
+// rather than rebuilt on every call (math pill render, {= …} expansion, subtree
+// aggregation, #+TBLFM: cell). They are fully static — `today` is the one dynamic
+// "constant" and stays per-call inside evalMath (a module-level value would freeze
+// at page load and go stale across midnight).
+const DAY_MS = 86400000;
+// All lookup tables are null-proto: ident() probes them with `in`, and on a plain
+// object `'constructor' in MATH_CONSTS` is true via Object.prototype — `constructor*2`
+// would resolve to the Object function (NaN downstream) and `constructor(5)` would
+// dispatch it as a unary FN1, instead of both failing cleanly to null.
+const MATH_CONSTS = Object.assign(Object.create(null), { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity });
+const FN1 = Object.assign(Object.create(null), {
+  sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
+  round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  asin: Math.asin, acos: Math.acos, atan: Math.atan,
+  ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
+  exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
+  deg: x => x * (180 / Math.PI), rad: x => x * (Math.PI / 180),
+  // unit conversions — each a pure unary fn named from2to (factors are exact)
+  c2f: x => x * 9 / 5 + 32,            f2c: x => (x - 32) * 5 / 9,           // temperature
+  km2mi: x => x / 1.609344,            mi2km: x => x * 1.609344,             // distance (long)
+  m2ft: x => x / 0.3048,               ft2m: x => x * 0.3048,
+  cm2in: x => x / 2.54,                in2cm: x => x * 2.54,                 // distance (short)
+  kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
+  kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
+  l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
+  // date math — dates are integer epoch-days (date(y,m,d)/today); these pull
+  // components or pass through (asdate marks a value for ISO display)
+  year:    x => new Date(Math.round(x) * DAY_MS).getUTCFullYear(),
+  month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
+  day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
+  weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
+  asdate:  x => x,
+});
+const FN2 = Object.assign(Object.create(null), { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot });
+const FN3 = Object.assign(Object.create(null), { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) });
+
 function evalMath(input, vars = {}) {
   // Pre-process: collapse whitespace, lowercase, map Unicode math symbols
   const s = (input || '')
@@ -9576,43 +9684,16 @@ function evalMath(input, vars = {}) {
     return v;
   }
 
-  const DAY_MS = 86400000;
-  const _today = (() => { const d = new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS); })();
-  // All lookup tables are null-proto: ident() probes them with `in`, and on a plain
-  // object `'constructor' in CONSTS` is true via Object.prototype — `constructor*2`
-  // would resolve to the Object function (NaN downstream) and `constructor(5)` would
-  // dispatch it as a unary FN1, instead of both failing cleanly to null.
-  const CONSTS = Object.assign(Object.create(null), { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity, today: _today });
-  const FN1 = Object.assign(Object.create(null), {
-    sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
-    round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
-    asin: Math.asin, acos: Math.acos, atan: Math.atan,
-    ln: Math.log, log: Math.log10, log2: Math.log2, log10: Math.log10,
-    exp: Math.exp, sign: Math.sign, trunc: Math.trunc, cbrt: Math.cbrt,
-    deg: x => x * (180 / Math.PI), rad: x => x * (Math.PI / 180),
-    // unit conversions — each a pure unary fn named from2to (factors are exact)
-    c2f: x => x * 9 / 5 + 32,            f2c: x => (x - 32) * 5 / 9,           // temperature
-    km2mi: x => x / 1.609344,            mi2km: x => x * 1.609344,             // distance (long)
-    m2ft: x => x / 0.3048,               ft2m: x => x * 0.3048,
-    cm2in: x => x / 2.54,                in2cm: x => x * 2.54,                 // distance (short)
-    kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
-    kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
-    l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
-    // date math — dates are integer epoch-days (date(y,m,d)/today); these pull
-    // components or pass through (asdate marks a value for ISO display)
-    year:    x => new Date(Math.round(x) * DAY_MS).getUTCFullYear(),
-    month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
-    day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
-    weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
-    asdate:  x => x,
-  });
-  const FN2 = Object.assign(Object.create(null), { atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot });
-  const FN3 = Object.assign(Object.create(null), { date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS) });
+  // `today` is the one dynamic constant — recomputed per call so a session left
+  // open across midnight (or a doc opened the next day without reload) stays current.
+  // The static tables (MATH_CONSTS/FN1/FN2/FN3) are hoisted to module scope above.
+  const _today = dueDateToday();
 
   function ident() {
     let name = '';
     while (/[a-z0-9_]/.test(peek())) name += eat();
-    if (name in CONSTS) return CONSTS[name];
+    if (name === 'today') return _today;            // dynamic — stays current per call
+    if (name in MATH_CONSTS) return MATH_CONSTS[name];
     // When followed by '(' treat as a function call — don't let a document variable
     // named 'year'/'month'/'day'/etc. shadow a built-in function.
     if (peek() !== '(') {
@@ -13036,6 +13117,7 @@ const SHORTCUTS = [
     { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count a child points’ property (also {= sum(cost)/count(cost)})' },
     { keys: ['{a|b 2}', '{a|b {= w}}'], desc: 'Weighted random pick — a weight is a number, or a {= expr} over variables (dynamic odds); rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
+    { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s (e.g. {beast.a} → "an ogre"); chainable {beast.a.cap}' },
     { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },

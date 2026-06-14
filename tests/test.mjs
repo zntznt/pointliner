@@ -144,7 +144,7 @@ test('evalMath — malformed input returns null (callers branch on null)', () =>
 });
 
 test('evalMath — names colliding with Object.prototype fail to null, not the inherited member', () => {
-  // On plain-object tables `'constructor' in CONSTS` was true via the prototype, so
+  // On plain-object tables `'constructor' in MATH_CONSTS` was true via the prototype, so
   // `constructor*2` resolved to the Object function (NaN) and `constructor(5)`
   // dispatched it as a unary FN1. Both must be unknown names → null.
   assert.equal(c.evalMath('constructor*2', {}), null);
@@ -240,6 +240,62 @@ test('conditional standalone shorthand — wrapped def expands and unfolds back 
   // …and editing it unfolds the pill straight back to the {cond: …} the user typed.
   const rec = { def: 'origin: {hp > 0: a | b}', origin: 'origin', anon: true };
   assert.equal(c.artifactToShorthand('grammar', rec), '{hp > 0: a | b}');
+});
+
+// ── text modifiers (A1): {ref.mod} — cap/title/upper/lower/a/s ───────────────
+test('modParts — base + known modifier suffix(es); rejects non-modifiers', () => {
+  assert.deepEqual(host(c.modParts('beast.cap')), { base: 'beast', mods: ['cap'] });
+  assert.deepEqual(host(c.modParts('x.a.cap')), { base: 'x', mods: ['a', 'cap'] });
+  assert.equal(c.modParts('file.txt'), null);    // txt ∉ modifiers
+  assert.equal(c.modParts('cap'), null);         // no dot → a bare word, not a modref
+  assert.equal(c.modParts('beast.badmod'), null);
+  assert.equal(c.modParts('2d6.cap'), null);     // base must be an identifier
+});
+
+test('pluralize — regular English heuristic', () => {
+  assert.equal(c.pluralize('cat'), 'cats');
+  assert.equal(c.pluralize('fox'), 'foxes');
+  assert.equal(c.pluralize('bus'), 'buses');
+  assert.equal(c.pluralize('fly'), 'flies');
+  assert.equal(c.pluralize('day'), 'days');
+  assert.equal(c.pluralize('leaf'), 'leaves');
+  assert.equal(c.pluralize('knife'), 'knives');
+});
+
+test('applyMods — folds modifiers left-to-right', () => {
+  assert.equal(c.applyMods('dragon', ['a', 'cap']), 'A dragon');
+  assert.equal(c.applyMods('dragon', ['cap', 'a']), 'a Dragon');
+  assert.equal(c.applyMods('owl', ['a']), 'an owl');
+  assert.equal(c.applyMods('old dog', ['title']), 'Old Dog');
+  assert.equal(c.applyMods('DOG', ['lower']), 'dog');
+});
+
+test('resolveBrace — a modified reference resolves the base then shapes it', () => {
+  const ctx = (rules, vars) => ({ rules, vars, depth: 0, stack: [] });
+  assert.equal(c.resolveBrace('beast.cap', ctx({ beast: [{ template: 'dragon', weight: 1 }] }, {})), 'Dragon');
+  assert.equal(c.resolveBrace('name.upper', ctx({}, { name: 'alice' })), 'ALICE');
+  assert.equal(c.resolveBrace('ghost.cap', ctx({}, {})), '{ghost?}'); // undefined base → marker, mods not applied
+});
+
+test('classifyBraceBody / braceTypeLabel — a modref is a (grammar) artifact when its base is defined', () => {
+  const rules = { beast: [{ template: 'dragon', weight: 1 }] }, vars = { name: 'alice' };
+  assert.equal(c.classifyBraceBody('beast.cap', rules, vars), 'artifact');
+  assert.equal(c.classifyBraceBody('name.s', rules, vars), 'artifact');
+  assert.equal(c.classifyBraceBody('ghost.cap', rules, vars), 'invalid');  // undefined base, mod-shaped
+  assert.equal(c.classifyBraceBody('file.txt', rules, vars), 'literal');    // not a modifier
+  assert.deepEqual(host(c.braceTypeLabel('beast.cap', rules, vars)), ['grammar', null]);
+});
+
+test('runGrammar — modifiers compose with rule expansion (the promoted shape)', () => {
+  assert.equal(c.runGrammar('origin: {beast.cap}\nbeast: dragon', 'origin', {}, {}), 'Dragon');
+  assert.equal(c.runGrammar('origin: {beast.a}\nbeast: ogre', 'origin', {}, {}), 'an ogre');
+  assert.equal(c.runGrammar('origin: {beast.a.cap}\nbeast: dragon', 'origin', {}, {}), 'A dragon');
+  assert.equal(c.runGrammar('origin: {noun.s}\nnoun: fox', 'origin', {}, {}), 'foxes');
+});
+
+test('text modifier unfold round-trip — a promoted {beast.cap} unfolds verbatim', () => {
+  const rec = { def: 'origin: {beast.cap}', origin: 'origin', anon: true };
+  assert.equal(c.artifactToShorthand('grammar', rec), '{beast.cap}');
 });
 
 // ── stateful sequences: {shuffle|cycle|once|stopping: a | b | c} ─────────────
@@ -891,6 +947,20 @@ test('date — today is a finite integer; self-difference is 0', () => {
   assert.ok(Number.isInteger(t) && isFinite(t));
   assert.equal(c.evalMath('today - today'), 0);
   const wd = c.evalMath('weekday(today)'); assert.ok(wd >= 0 && wd <= 6);
+});
+test('date — today resolves per-call, not from a frozen module-level table', () => {
+  // After hoisting MATH_CONSTS/FN1-3 to module scope, `today` must stay dynamic:
+  // it's recomputed each call from new Date(), so a session open across midnight
+  // computes the current epoch-day. Pin it to dueDateToday()'s identical formula.
+  assert.equal(c.evalMath('today', {}), c.dueDateToday());
+  assert.equal(c.evalMath('today + 1', {}), c.dueDateToday() + 1);
+});
+test('evalMath — hoisted FN tables still dispatch (sanity after module-scope hoist)', () => {
+  assert.equal(c.evalMath('sqrt(16)'), 4);   // FN1 math
+  assert.equal(c.evalMath('c2f(0)'), 32);    // FN1 unit conversion
+  assert.ok(Math.abs(c.evalMath('km2mi(1.609344)') - 1) < 1e-9);
+  assert.equal(c.evalMath('atan2(0,1)'), 0); // FN2
+  assert.equal(c.evalMath('date(2026,1,1)') + 0, c.evalMath('date(2026,1,1)')); // FN3 resolves
 });
 test('date — asdate() is numeric identity, so it still composes', () => {
   assert.equal(c.evalMath('asdate(date(2026,12,25))'), c.evalMath('date(2026,12,25)'));

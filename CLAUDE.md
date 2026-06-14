@@ -368,7 +368,10 @@ when proposing features:
   leading `=` → expression (`{= 2*r}`, calls
   `evalMath`); a dice pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`);
   a bare identifier → a named rule (`{color}`) if one exists, else a
-  document **variable's** value (`{strength}`), else a `{name?}` marker. Names are
+  document **variable's** value (`{strength}`), else a `{name?}` marker; a
+  **modified reference** (`{ref.mod}` — a base identifier + `.`-separated suffixes from
+  the closed set `cap/title/upper/lower/a/s`, via `modParts`, A1 text modifiers) →
+  resolve the base (rule or var) then `applyMods` left-to-right. Names are
   **document-wide**: `collectRules()` walks the tree (mirroring `collectVars`,
   cached on `_varsVer`) and merges every grammar pill's rules into one namespace
   (a named roll table IS one of these — see the collapse above), so `{rule}`
@@ -516,7 +519,10 @@ Implemented: Dice (incl. success-counting pools) · Markov · Roll tables (one-r
 grammars since the collapse — the `@` door opens the table-flavored grammar dialog;
 legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
 callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
-**conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`) ·
+**conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`; and **text
+modifiers** `{ref.mod}` — a `.mod` suffix on a rule/var reference, closed set
+`cap/title/upper/lower/a/s`, chainable, `modParts`/`applyMods` — A1, the one recorded
+syntax-inventory addition, routed through the grammar pill for both rule + var bases) ·
 **Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws
 without replacement, others rotate/advance; state on the grammar record, `_grammar`
 round-trips; `@` "Deck" door; `seqParts`/`nextSeqIndex`/`advanceSeq`) ·
