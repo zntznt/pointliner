@@ -42,6 +42,31 @@ Implemented:
   its expansion like dice; click to re-generate. **Named pills show their callable
   name** and stay atomic in edit mode (the name is doc-wide config — unfolding
   would lose it); anonymous shorthand pills unfold to editable `{…}`.
+- **Text modifiers** (A1) — a `.mod` suffix on a **rule or variable reference**
+  shapes its output without authoring a rule per case: `{beast.a}` → "an ogre",
+  `{noun.s}` → "foxes", `{name.cap}` → "Name". **Closed set of six canonical tokens,
+  one per function, NO aliases:** `cap` (Dog) · `title` (Old Dog) · `upper` (DOG) ·
+  `lower` (dog) · `a` (vowel-aware article) · `s` (pluralize). **Chainable**
+  left-to-right: `{beast.a.cap}` → "A dragon". Detection (`modParts`) is syntactic — a
+  base identifier then `.`-separated suffixes, *every* suffix a member of the set — so
+  `{file.txt}` stays literal and `{cap}` (no dot) is just a name. The base resolves
+  through the existing rule/var machinery (`resolveBrace` → `expandRule` / `formatVarValue`),
+  then `applyMods` folds the modifiers; an undefined base shows a `{base?}` marker. A
+  modified reference **routes through the grammar pill** (promoted `origin: {ref.mod}`)
+  for both rule and var bases — never the var-pill path — so unfold/refold (back to
+  `{ref.mod}`), prune, and export reuse the grammar machinery unchanged. Front doors:
+  the `{.cap}` chip + modifier hint in the grammar dialog, and the `?`-panel
+  Pills-&-shorthand row. **Bare references only** — not alternation/dice/math directly
+  (`{a|b}.cap` is out of scope; name a rule first). Pure cores: `modParts`, `applyMods`,
+  `pluralize`, `MODIFIERS`.
+  - **Known limitations (documented heuristics, by design):** the `a/an` article is a
+    vowel-**letter** test, so "a hour" / "an university" come out wrong (no phonetic
+    dictionary); plurals are **regular-only** (`child→childs`, `mouse→mouses` — irregulars
+    out of scope); `title` capitalizes after whitespace only (`o'brien→O'brien`); and a
+    `{numericVar.cap}` becomes a **grammar pill, so it freezes** (re-roll on click) rather
+    than live-updating like a plain `{var}` pill — fine in practice, since the real use is
+    `.s`/`.cap` on a **string** (random-pick) variable. Past-tense `.ed` and aliases
+    (`.an`/`.capitalize`/`.plural`) are deferred follow-ons.
 - **Stateful sequences / decks** — `@` "Deck" (or type the shorthand):
   `{mode: a | b | c}` where `mode` is one of **shuffle** (a DECK — draw without
   replacement, reshuffle when the bag empties), **cycle** (loop in order), **once**
