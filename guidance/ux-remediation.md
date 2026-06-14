@@ -230,6 +230,32 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   now pins both the `due:`/`start:` row and the *Dates & agenda* section — so the panel can't drift
   back out of sync (the UXP-36 pattern, applied to the rows themselves).
 
+### UXP-38 ☐ Variables panel has no `aria-live` on content-refresh (P3-1)
+- **Problem:** when the user opens the variables panel (the `{` picker sidebar) and a variable's
+  value changes — either because they edited a formula node or re-rolled a pick — the panel
+  content updates visually, but the update is **not announced to assistive technology**. The
+  panel itself has `role="region"` and an `aria-label`; the close button is named and
+  keyboard-operable. Only the live-region gap remains.
+- **Violated:** P3-1 (every status change reachable without sight). The pill itself already
+  announces its own state correctly (per-state `aria-label` for ↻/？/—); this is the panel-
+  level complement.
+- **Remedy:** add `aria-live="polite"` (or `role="status"`) to the panel's content container,
+  so a screen reader announces changes when variable values refresh. Minimal, additive.
+
+### UXP-39 ☐ Rendered hashtag `<a>` elements are not keyboard-operable (P3-1)
+- **Problem:** `<a class="hashtag">` elements in rendered content have no `href`, no `tabindex`,
+  and no `keydown` handler — they activate only on `mousedown`. A keyboard user cannot Tab to
+  a hashtag chip in rendered output and press Enter/Space to filter by it.
+- **Violated:** P3-1 (every interactive element keyboard-operable). The *capability* (filter by
+  `#tag`) has a keyboard front door — the search box and the `#` picker — so P3-2 is satisfied;
+  this is the element-level interaction gap only.
+- **Disposition:** same as todo-picker chips before UXP-16 — capability is keyboard-reachable
+  via search, but the rendered widget itself is not independently operable. Low-urgency because
+  the search path is the primary keyboard path.
+- **Remedy:** add `tabindex="0"` + `keydown` (Enter/Space triggers the filter) to the hashtag
+  render in `renderHashtags` / `mdInline`. Wire alongside the existing `mousedown`, never
+  replacing it (caret invariant).
+
 ---
 
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
