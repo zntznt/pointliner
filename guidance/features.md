@@ -115,7 +115,12 @@ Implemented:
   **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,
   `km2mi`/`mi2km`, `m2ft`, `cm2in`, `kg2lb`, `kmh2mph`, `l2gal`, …). **Date math**:
   `today` (a constant = epoch-days of the local date), `date(y,m,d)` (a 3-arg fn,
-  `FN3`), and `year`/`month`/`day`/`weekday` (`FN1`). Dates are **epoch-day
+  `FN3`), and `year`/`month`/`day`/`weekday`/`quarter` (`FN1`, `quarter` → 1–4).
+  **Date utility helpers**: `daysuntil(d)` (days from today to date `d`, negative if
+  past — pairs with the `due`/`start` properties: `{= daysuntil(due)}` is the live
+  countdown), `daysbetween(a, b)` (absolute whole-day gap, `FN2`). **General**:
+  `clamp(x, lo, hi)` bounds `x` to `[lo, hi]` (`FN3`); `pctof(part, whole)` and
+  `pctchange(from, to)` are percentage helpers (`FN2`, ÷0 → `∞`). Dates are **epoch-day
   numbers**, so differences are days and everything composes; `asdate(...)` is a
   numeric identity that the math pill *displays* as an ISO date — display-layer only,
   via `formatEpochDays` / `isDateExpr` / `formatMathDisplay`, so `evalMath` still

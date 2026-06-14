@@ -1126,6 +1126,42 @@ test('date — arity guard: date() needs exactly 3 args', () => {
   assert.equal(c.evalMath('date(2026,12)'), null);
   assert.equal(c.evalMath('date(2026,12,25,1)'), null);
 });
+test('evalMath — daysuntil(d) counts days from today (negative if past)', () => {
+  assert.equal(c.evalMath('daysuntil(today)'), 0);
+  assert.equal(c.evalMath('daysuntil(today + 5)'), 5);
+  assert.equal(c.evalMath('daysuntil(today - 3)'), -3);
+  // pins against the same per-call today as the date helpers (not a frozen table)
+  assert.equal(c.evalMath('daysuntil(date(2026,12,25))'), c.evalMath('date(2026,12,25)') - c.dueDateToday());
+});
+test('evalMath — daysbetween(a,b) is the absolute whole-day gap (symmetric)', () => {
+  assert.equal(c.evalMath('daysbetween(date(2026,1,1), date(2026,1,8))'), 7);
+  assert.equal(c.evalMath('daysbetween(date(2026,1,8), date(2026,1,1))'), 7); // symmetric
+  assert.equal(c.evalMath('daysbetween(date(2026,3,1), date(2026,3,1))'), 0);
+});
+test('evalMath — quarter(d) returns 1–4 (completes year/month/day/weekday)', () => {
+  assert.equal(c.evalMath('quarter(date(2026,1,15))'), 1);
+  assert.equal(c.evalMath('quarter(date(2026,4,1))'), 2);
+  assert.equal(c.evalMath('quarter(date(2026,9,30))'), 3);
+  assert.equal(c.evalMath('quarter(date(2026,12,31))'), 4);
+});
+test('evalMath — clamp(x,lo,hi) bounds x to [lo,hi]', () => {
+  assert.equal(c.evalMath('clamp(5,0,10)'), 5);
+  assert.equal(c.evalMath('clamp(-1,0,10)'), 0);
+  assert.equal(c.evalMath('clamp(99,0,10)'), 10);
+});
+test('evalMath — pctof / pctchange (÷0 → ∞ stays valid, not null)', () => {
+  assert.equal(c.evalMath('pctof(25,200)'), 12.5);
+  assert.equal(c.evalMath('pctchange(50,75)'), 50);
+  assert.equal(c.evalMath('pctchange(80,60)'), -25);
+  assert.equal(c.evalMath('pctof(5,0)'), Infinity);   // div-by-zero is a valid ∞ result
+});
+test('evalMath — new helpers enforce their arity (FN1/FN2/FN3 guards)', () => {
+  assert.equal(c.evalMath('daysuntil()'), null);          // FN1 needs 1
+  assert.equal(c.evalMath('daysuntil(1,2)'), null);
+  assert.equal(c.evalMath('daysbetween(1)'), null);       // FN2 needs 2
+  assert.equal(c.evalMath('clamp(1,2)'), null);           // FN3 needs 3
+  assert.equal(c.evalMath('clamp(1,2,3,4)'), null);
+});
 
 // ─── collectLinks ─────────────────────────────────────────────────────────────
 import { test as ltest } from 'node:test';
