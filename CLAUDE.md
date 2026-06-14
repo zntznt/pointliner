@@ -393,6 +393,17 @@ and the math pill renders the result as an ISO date via `formatEpochDays` /
 `vars` map passed in. Returns `null` on any malformed input — callers branch on `null`.
 *(Adding a function to `FN1`/`FN2`/`FN3` is the P5-preferred way to extend math —
 no new syntax, just a new name inside the existing grammar.)*
+**Subtree aggregation** makes evalMath see the tree: a math pill may roll up a child
+**property** — `{= sum(cost)}`, `{= avg(score)}`, `{= count(cost)}` — over the point's
+**direct children**. The argument is a property *key*, not a value, so it is substituted
+to a number **before** evalMath (`expandAggExpr` → `aggregateChildren` → `childPropNumber`,
+the `#+TBLFM:` translation model — keeps evalMath number-only, no parser change). It is
+**render-time + no sidecar**: the `{= …}` recipe stays in `node.text` and recomputes live
+as children change, because the current render node is the existing `cookieNode` render
+global (the same one the `[/]` cookie uses) and any property edit triggers a full `render()`.
+`renderMathPill` / `flattenArtifacts` pass the node; node-less callers (validation) aggregate
+over an empty set → 0. `min`/`max` over children are **deliberately not** included — those
+names are evalMath's numeric variadics (see `guidance/enhancement-research.md`).
 
 **Variables tie the engines together.** `collectVars()` walks the whole
 tree, gathers `[[var:KEY]]` declarations, and resolves them — variables may
@@ -476,7 +487,8 @@ grammars since the collapse — the `@` door opens the table-flavored grammar di
 legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
 callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
 **conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`) ·
-Math (incl. unit conversion + date math) ·
+Math (incl. unit conversion + date math; **subtree aggregation** `{= sum|avg|count(prop)}`
+rolls up a child points' property — `expandAggExpr`/`aggregateChildren`, render-time, live) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
 Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodies —
