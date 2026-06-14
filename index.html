@@ -6380,6 +6380,7 @@ function classifyBraceBody(body, rules, vars) {
     const expr = body.slice(1).trim();
     return expr && evalMath(expr, vars) !== null ? 'artifact' : 'invalid';
   }
+  if (condParts(body)) return 'artifact';                              // {cond: a|b}
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
@@ -6405,6 +6406,7 @@ function braceTypeLabel(body, rules, vars) {
   body = (body || '').trim();
   if (!body) return ['pill', null];
   if (body[0] === '=') return ['math', null];
+  if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
   rules = rules || {}; vars = vars || {};
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
@@ -8532,13 +8534,42 @@ function expandTemplate(tpl, ctx) {
   return out;
 }
 
-// Resolve one {...} body. Content-sniffed: top-level `|` → alternation;
-// leading `=` → expression; dice pattern → roll; a bare identifier → a named
-// rule (grammar rule or named roll table) if one exists, otherwise a document
-// variable's value, otherwise an undefined-name marker.
+// Parse a conditional brace body `COND : THEN [| ELSE]` (Ink-style conditional
+// text — emit THEN when COND holds, else ELSE). COND is an evalMath comparison;
+// THEN/ELSE are grammar templates (ELSE optional → ''). Detection is purely
+// SYNTACTIC — a top-level `:` whose left side is a single (no top-level `|`)
+// comparison — so it never depends on whether a variable is defined yet, and a
+// plain alternation `{a|b}` or rule definition never reads as a conditional. A
+// leading `=` ({= expr}) is an expression, not a conditional. Returns the parts
+// or null. THEN is the text before the first top-level `|`, ELSE is the rest;
+// to alternate inside a branch, wrap it in braces (`{c>0: {a|b} | x}`).
+function condParts(body) {
+  body = (body || '').trim();
+  if (!body || body[0] === '=') return null;
+  const segs = splitTopLevel(body, ':');
+  if (segs.length < 2) return null;                               // no top-level `:`
+  const cond = segs[0].trim();
+  if (!cond || splitTopLevel(cond, '|').length > 1) return null;  // a `|` before the `:` → alternation, not a conditional
+  if (!/==|!=|<|>/.test(cond)) return null;                       // require a comparison so detection stays syntactic
+  const rest = body.slice(segs[0].length + 1);
+  const alts = splitTopLevel(rest, '|');
+  return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
+}
+
+// Resolve one {...} body. Content-sniffed: a conditional `cond: a|b` (a comparison
+// before a top-level `:`) → THEN/ELSE branch; top-level `|` → alternation; leading
+// `=` → expression; dice pattern → roll; a bare identifier → a named rule (grammar
+// rule or named roll table) if one exists, otherwise a document variable's value,
+// otherwise an undefined-name marker.
 function resolveBrace(body, ctx) {
   body = body.trim();
   if (body === '') return '';
+  const cp = condParts(body);
+  if (cp) {
+    const v = evalMath(cp.cond, ctx.vars);
+    if (v === null) return `{${cp.cond}?}`;             // condition couldn't resolve → visible marker (P4)
+    return expandTemplate(v ? cp.then : cp.else, ctx);
+  }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt)).template, ctx);
   if (body[0] === '=') {
@@ -8795,6 +8826,7 @@ const GRAMMAR_CHIPS = [
   { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
   { label:'{dice}', insert: el => insertAndSelect(el, '{', '2d6', '}') },
   { label:'{= }',   insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
+  { label:'{cond}', insert: el => insertAndSelect(el, '{', 'x > 0', ': yes | no}') },
 ];
 
 // `tableFlavor` is the "Roll table" door: same dialog, same grammar record —
@@ -8812,7 +8844,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math. | separates weighted alternatives.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text. | separates weighted alternatives.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -8885,6 +8917,14 @@ function promoteBraceBody(node, body) {
   if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {
     const roll = makeDiceRoll(body);
     if (roll) { (node.dice ||= []).push(roll); return `[[dice:${roll.key}]]`; }
+  }
+  // conditional text: {cond: then | else} → an anonymous grammar. Wrap the body
+  // in a brace so the synthetic origin rule expands through resolveBrace (which
+  // resolves the conditional) rather than the rule-level `|` split. Checked before
+  // alternation since a conditional's else-branch carries a top-level `|`.
+  if (condParts(body)) {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
   // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
@@ -12615,6 +12655,7 @@ const SHORTCUTS = [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
+    { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
     { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },

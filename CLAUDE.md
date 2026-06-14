@@ -331,7 +331,10 @@ when proposing features:
 - *Unified grammar engine* (`runGrammar`, `expandTemplate`, `resolveBrace`,
   `expandRule`, `parseRules`, `expandText`) — a recursive-substitution engine
   (Tracery-style) that **is** the composition layer. One brace syntax `{...}`
-  covers everything, content-sniffed inside `resolveBrace`: top-level `|` →
+  covers everything, content-sniffed inside `resolveBrace`: a conditional
+  (`{cond: then|else}` — a comparison before a top-level `:`, via `condParts`) →
+  Ink-style conditional text (the `cond` is an `evalMath` comparison, the branches
+  are templates); top-level `|` →
   weighted alternation (`{a|b 2|c}`); leading `=` → expression (`{= 2*r}`, calls
   `evalMath`); a dice pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`);
   a bare identifier → a named rule (`{color}`) if one exists, else a
@@ -471,7 +474,8 @@ redesign.
 Implemented: Dice (incl. success-counting pools) · Markov · Roll tables (one-rule
 grammars since the collapse — the `@` door opens the table-flavored grammar dialog;
 legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
-callable name; named = atomic in edit mode, anonymous unfolds) ·
+callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
+**conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`) ·
 Math (incl. unit conversion + date math) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
