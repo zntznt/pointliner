@@ -387,6 +387,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .node-content a:hover{text-decoration:underline}
 .hashtag{color:color-mix(in srgb,var(--acc) 80%,var(--fg));text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .hashtag:hover{color:var(--acc);text-decoration-style:solid}
+.hashtag:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
 /* dice roll pill */
 .dice-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .dice-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -1177,7 +1178,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <!-- variables overview panel (Ctrl+Shift+V) -->
 <div id="var-panel" role="region" aria-label="Variables">
   <div id="var-panel-hd">Variables <button id="var-panel-close" aria-label="Close variables panel" title="Close">✕</button></div>
-  <div id="var-panel-list"></div>
+  <div id="var-panel-list" aria-live="polite"></div>
 </div>
 
 <div id="storage-warn" role="alert">
@@ -2192,7 +2193,7 @@ function mdInline(s) {
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
   // hashtags
-  s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}">#${t}</a>`);
+  s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`);
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>tok[+i]);
   return s;
 }
@@ -6379,6 +6380,7 @@ function classifyBraceBody(body, rules, vars) {
     const expr = body.slice(1).trim();
     return expr && evalMath(expr, vars) !== null ? 'artifact' : 'invalid';
   }
+  if (condParts(body)) return 'artifact';                              // {cond: a|b}
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
@@ -6404,6 +6406,7 @@ function braceTypeLabel(body, rules, vars) {
   body = (body || '').trim();
   if (!body) return ['pill', null];
   if (body[0] === '=') return ['math', null];
+  if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
   rules = rules || {}; vars = vars || {};
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
@@ -6775,6 +6778,9 @@ function onKeyDown(e, id, content) {
     if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
     const pchip = e.target.closest?.('.prop-chip');
     if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
+    // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
+    const htag = e.target.closest?.('.hashtag');
+    if (htag) { e.preventDefault(); searchHashtag(htag); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
@@ -8528,13 +8534,42 @@ function expandTemplate(tpl, ctx) {
   return out;
 }
 
-// Resolve one {...} body. Content-sniffed: top-level `|` → alternation;
-// leading `=` → expression; dice pattern → roll; a bare identifier → a named
-// rule (grammar rule or named roll table) if one exists, otherwise a document
-// variable's value, otherwise an undefined-name marker.
+// Parse a conditional brace body `COND : THEN [| ELSE]` (Ink-style conditional
+// text — emit THEN when COND holds, else ELSE). COND is an evalMath comparison;
+// THEN/ELSE are grammar templates (ELSE optional → ''). Detection is purely
+// SYNTACTIC — a top-level `:` whose left side is a single (no top-level `|`)
+// comparison — so it never depends on whether a variable is defined yet, and a
+// plain alternation `{a|b}` or rule definition never reads as a conditional. A
+// leading `=` ({= expr}) is an expression, not a conditional. Returns the parts
+// or null. THEN is the text before the first top-level `|`, ELSE is the rest;
+// to alternate inside a branch, wrap it in braces (`{c>0: {a|b} | x}`).
+function condParts(body) {
+  body = (body || '').trim();
+  if (!body || body[0] === '=') return null;
+  const segs = splitTopLevel(body, ':');
+  if (segs.length < 2) return null;                               // no top-level `:`
+  const cond = segs[0].trim();
+  if (!cond || splitTopLevel(cond, '|').length > 1) return null;  // a `|` before the `:` → alternation, not a conditional
+  if (!/==|!=|<|>/.test(cond)) return null;                       // require a comparison so detection stays syntactic
+  const rest = body.slice(segs[0].length + 1);
+  const alts = splitTopLevel(rest, '|');
+  return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
+}
+
+// Resolve one {...} body. Content-sniffed: a conditional `cond: a|b` (a comparison
+// before a top-level `:`) → THEN/ELSE branch; top-level `|` → alternation; leading
+// `=` → expression; dice pattern → roll; a bare identifier → a named rule (grammar
+// rule or named roll table) if one exists, otherwise a document variable's value,
+// otherwise an undefined-name marker.
 function resolveBrace(body, ctx) {
   body = body.trim();
   if (body === '') return '';
+  const cp = condParts(body);
+  if (cp) {
+    const v = evalMath(cp.cond, ctx.vars);
+    if (v === null) return `{${cp.cond}?}`;             // condition couldn't resolve → visible marker (P4)
+    return expandTemplate(v ? cp.then : cp.else, ctx);
+  }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt)).template, ctx);
   if (body[0] === '=') {
@@ -8791,6 +8826,7 @@ const GRAMMAR_CHIPS = [
   { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
   { label:'{dice}', insert: el => insertAndSelect(el, '{', '2d6', '}') },
   { label:'{= }',   insert: el => insertAndSelect(el, '{= ', 'expr', '}') },
+  { label:'{cond}', insert: el => insertAndSelect(el, '{', 'x > 0', ': yes | no}') },
 ];
 
 // `tableFlavor` is the "Roll table" door: same dialog, same grammar record —
@@ -8808,7 +8844,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math. | separates weighted alternatives.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text. | separates weighted alternatives.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -8881,6 +8917,14 @@ function promoteBraceBody(node, body) {
   if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {
     const roll = makeDiceRoll(body);
     if (roll) { (node.dice ||= []).push(roll); return `[[dice:${roll.key}]]`; }
+  }
+  // conditional text: {cond: then | else} → an anonymous grammar. Wrap the body
+  // in a brace so the synthetic origin rule expands through resolveBrace (which
+  // resolves the conditional) rather than the rule-level `|` split. Checked before
+  // alternation since a conditional's else-branch carries a top-level `|`.
+  if (condParts(body)) {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
   // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
@@ -11484,12 +11528,18 @@ document.getElementById('search-box').addEventListener('keydown', e => {
 document.getElementById('outline').addEventListener('mousedown', e => {
   if (e.target.closest('.hashtag')) { e.preventDefault(); e.stopPropagation(); }
 }, true);
-document.getElementById('outline').addEventListener('click', e => {
-  const tag = e.target.closest('.hashtag');
-  if (!tag) return;
+// Apply a tag chip's filter — shared by the click handler and the Enter/Space
+// keyboard twin in the node-content keydown (the caret-invariant pattern: the
+// chip is tabindex="-1", reached via AT, and acts without a mousedown→click).
+function searchHashtag(tag) {
   const q = tag.dataset.tag;
   document.getElementById('search-box').value = q;
   applySearch(q);
+}
+document.getElementById('outline').addEventListener('click', e => {
+  const tag = e.target.closest('.hashtag');
+  if (!tag) return;
+  searchHashtag(tag);
 });
 
 // hidden-note indicator clicks (same delegated pattern as hashtags: mousedown is
@@ -11871,6 +11921,15 @@ function updateVarPanelContent() {
   if (!list) return;
   const vars = collectVars();          // also refreshes _varActiveExprs/_varCycles
   const names = Object.keys(_varActiveExprs).sort();
+  // Content signature: skip the rebuild when nothing a user would see has changed.
+  // markDirty fires on every keystroke while the panel is open, and the list carries
+  // aria-live="polite" — re-emitting an identical list on each keystroke would spam a
+  // screen reader. Guarding the rebuild means AT only hears a change when one happens
+  // (and saves needless DOM thrash too).
+  const sig = JSON.stringify(names.map(nm =>
+    [nm, _varCycles.has(nm) ? '↻' : (vars[nm] === undefined ? '?' : vars[nm])]));
+  if (list.dataset.sig === sig) return;
+  list.dataset.sig = sig;
   list.innerHTML = '';
   if (!names.length) {
     const empty = document.createElement('div');
@@ -12596,6 +12655,7 @@ const SHORTCUTS = [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
+    { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
     { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },

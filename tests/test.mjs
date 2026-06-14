@@ -190,6 +190,58 @@ test('runGrammar — invalid definition returns null', () => {
   assert.equal(c.runGrammar('not a rule line', 'origin', {}, {}), null);
 });
 
+// ── conditional text: {cond: then | else} (Ink-style) ───────────────────────
+test('condParts — splits a comparison into cond / then / else', () => {
+  assert.deepEqual(host(c.condParts('hp > 0: alive | dead')), { cond: 'hp > 0', then: 'alive', else: 'dead' });
+  assert.deepEqual(host(c.condParts('n == 1: one')), { cond: 'n == 1', then: 'one', else: '' }); // else optional
+});
+
+test('condParts — only a real comparison is a conditional (no false positives)', () => {
+  assert.equal(c.condParts('a | b'), null);          // plain alternation
+  assert.equal(c.condParts('name: value'), null);    // a colon without a comparison stays literal
+  assert.equal(c.condParts('= 2*3'), null);          // {= expr} is an expression
+  assert.equal(c.condParts('2d6'), null);            // a dice body
+  assert.equal(c.condParts('x>0 | y: a|b'), null);   // a top-level `|` before the `:` → alternation wins
+});
+
+test('resolveBrace — conditional emits THEN when the comparison holds, else ELSE', () => {
+  const ctx = (vars) => ({ rules: {}, vars, depth: 0, stack: [] });
+  assert.equal(c.resolveBrace('hp > 0: alive | dead', ctx({ hp: 3 })), 'alive');
+  assert.equal(c.resolveBrace('hp > 0: alive | dead', ctx({ hp: 0 })), 'dead');
+  assert.equal(c.resolveBrace('hp > 0: alive', ctx({ hp: 0 })), ''); // no else → empty
+});
+
+test('resolveBrace — an unresolvable condition fails visibly (P4), never silently', () => {
+  // hp is undefined → evalMath returns null → a `{cond?}` marker, not a blank or a throw.
+  assert.equal(c.resolveBrace('hp > 0: a | b', { rules: {}, vars: {}, depth: 0, stack: [] }), '{hp > 0?}');
+});
+
+test('runGrammar — a braced conditional inside a rule resolves against document vars', () => {
+  assert.equal(c.runGrammar('origin: The {danger > 3: dragon stirs | meadow is calm}.', 'origin', {}, { danger: 5 }), 'The dragon stirs.');
+  assert.equal(c.runGrammar('origin: The {danger > 3: dragon stirs | meadow is calm}.', 'origin', {}, { danger: 1 }), 'The meadow is calm.');
+});
+
+test('runGrammar — a conditional branch can call another rule (composition)', () => {
+  assert.equal(c.runGrammar('origin: {fear > 0: {cry}|steady}\ncry: RUN', 'origin', {}, { fear: 1 }), 'RUN');
+});
+
+test('classifyBraceBody / braceTypeLabel — a conditional reads as a (grammar) artifact', () => {
+  assert.equal(c.classifyBraceBody('hp > 0: a | b', {}, {}), 'artifact'); // styled valid, not the gr-bad typo signal
+  assert.deepEqual(host(c.braceTypeLabel('hp > 0: a | b', {}, {})), ['grammar', null]);
+  // a colon without a comparison is still plain prose, untouched
+  assert.equal(c.classifyBraceBody('note: hello', {}, {}), 'literal');
+});
+
+test('conditional standalone shorthand — wrapped def expands and unfolds back to its {cond} source', () => {
+  // promoteBraceBody wraps a standalone {cond: …} as `origin: {cond: …}` so the
+  // synthetic rule routes through resolveBrace (not the rule-level `|` split).
+  assert.equal(c.runGrammar('origin: {hp > 0: a | b}', 'origin', {}, { hp: 5 }), 'a');
+  assert.equal(c.runGrammar('origin: {hp > 0: a | b}', 'origin', {}, { hp: 0 }), 'b');
+  // …and editing it unfolds the pill straight back to the {cond: …} the user typed.
+  const rec = { def: 'origin: {hp > 0: a | b}', origin: 'origin', anon: true };
+  assert.equal(c.artifactToShorthand('grammar', rec), '{hp > 0: a | b}');
+});
+
 // ── prototype-key safety: names colliding with Object.prototype must not crash
 // or resolve to inherited members. Pure cores must return null/marker, never throw.
 test('parseMarkov — a state named "constructor" does not throw', () => {
@@ -2186,6 +2238,22 @@ test('filterTagCandidates: case-insensitive prefix; a lone exact match offers no
   assert.deepEqual(plainTags(c.filterTagCandidates(tags, '')), tags); // bare # → full list
   assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'beta')), []);        // fully typed → dismiss
   assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'x')), []);           // no match
+});
+
+test('UXP-39: rendered #hashtag is keyboard-operable (role/tabindex + Enter/Space twin)', () => {
+  // the rendered chip carries button semantics + AT focus reach (mirrors note-ind/prop-chip)
+  assert.ok(_src.includes('class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}"'),
+    'hashtag render missing role/tabindex/aria-label');
+  assert.ok(_src.includes('.hashtag:focus-visible'), 'hashtag focus-visible style missing');
+  // the keyboard twin: Enter/Space on a focused chip runs the same filter as the click
+  assert.ok(_src.includes("closest?.('.hashtag')"), 'hashtag Enter/Space branch missing');
+  assert.ok(_src.includes('function searchHashtag('), 'shared searchHashtag helper missing');
+});
+
+test('UXP-38: variables panel announces changes (aria-live + change-guard, no per-keystroke spam)', () => {
+  assert.ok(_src.includes('id="var-panel-list" aria-live="polite"'), 'var panel aria-live missing');
+  // the rebuild is signature-guarded so an unchanged list is not re-emitted on every markDirty
+  assert.ok(_src.includes('list.dataset.sig === sig'), 'var panel change-guard missing');
 });
 
 // ── divider derives from the text (UXP-26: markdown-first, no destruction) ───

@@ -331,7 +331,10 @@ when proposing features:
 - *Unified grammar engine* (`runGrammar`, `expandTemplate`, `resolveBrace`,
   `expandRule`, `parseRules`, `expandText`) — a recursive-substitution engine
   (Tracery-style) that **is** the composition layer. One brace syntax `{...}`
-  covers everything, content-sniffed inside `resolveBrace`: top-level `|` →
+  covers everything, content-sniffed inside `resolveBrace`: a conditional
+  (`{cond: then|else}` — a comparison before a top-level `:`, via `condParts`) →
+  Ink-style conditional text (the `cond` is an `evalMath` comparison, the branches
+  are templates); top-level `|` →
   weighted alternation (`{a|b 2|c}`); leading `=` → expression (`{= 2*r}`, calls
   `evalMath`); a dice pattern → a roll (`{2d6}`, calls `parseDice`/`rollParsed`);
   a bare identifier → a named rule (`{color}`) if one exists, else a
@@ -471,7 +474,8 @@ redesign.
 Implemented: Dice (incl. success-counting pools) · Markov · Roll tables (one-rule
 grammars since the collapse — the `@` door opens the table-flavored grammar dialog;
 legacy `[[rolltable:]]` records migrate on load) · Grammar (named pills show their
-callable name; named = atomic in edit mode, anonymous unfolds) ·
+callable name; named = atomic in edit mode, anonymous unfolds; incl. Ink-style
+**conditional text** `{cond: then|else}` — `condParts`/`resolveBrace`) ·
 Math (incl. unit conversion + date math) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
@@ -568,6 +572,11 @@ The product direction is now set. Read these before proposing or building:
   noise, no red default accent, display ceiling ~2em). Read before any visual change;
   contradicting a Decision there is a regression, not a restyle.
 - `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
+- `guidance/enhancement-research.md` — consolidated *inspiration → upgrade* catalogue for the
+  generative + computational engine and single-file offline-ness (mechanics mined from Tracery /
+  Perchance / Ink / Twine / oracles / Soulver / Calca / Frink / Squiggle / Guesstimate / org-mode /
+  TiddlyWiki / Decker, each mapped to a code seam + a P5 verdict). Candidate material for the
+  roadmap's interleaving clause — **not a commitment**; companion to `outliner-frontier-report.md`.
 - `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu
   descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.
