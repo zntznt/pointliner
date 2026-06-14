@@ -3271,9 +3271,9 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
-  // agenda view panes (List / Timeline-Gantt / Calendar) — independent toggles that stack
-  assert.ok(_src.includes('agendaBars'), 'agenda view-panes state missing');
-  assert.ok(_src.includes('ag-panes'), 'agenda stacked panes missing');
+  // agenda: permanent List on the top bar + Timeline/Calendar as toggled full-width bars below
+  assert.ok(_src.includes('agendaBars'), 'agenda view-bars state missing');
+  assert.ok(_src.includes('ag-top') && _src.includes('ag-pane'), 'agenda top bar / stacked bars missing');
   assert.ok(_src.includes('renderAgendaGantt'), 'agenda Gantt view missing');
   assert.ok(_src.includes('renderAgendaCalendar'), 'agenda calendar view missing');
   assert.ok(_src.includes('agendaGantt'), 'agenda Gantt core missing');

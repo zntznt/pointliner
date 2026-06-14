@@ -814,11 +814,16 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* keep the help affordance from colliding with the footnote panel */
 #fn-panel.on ~ #sc-toggle{bottom:calc(256px + env(safe-area-inset-bottom))}
 #fn-panel.on ~ .sc-panel{bottom:calc(296px + env(safe-area-inset-bottom))}
-/* ── agenda strip (two horizontal rows, sits inside the toolbar) ── */
-#agenda-strip{display:none;align-items:stretch;gap:8px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
+/* ── agenda strip (sits inside the toolbar) ──
+   A vertical stack: the TOP bar holds the 2×2 control grid + the List, and the
+   Timeline (Gantt) and Calendar each open as their own full-width bar below. */
+#agenda-strip{display:none;flex-direction:column;gap:0;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
 #agenda-strip.on{display:flex}
-/* left control group: complexity toggles now; calendar / timeline views later */
-.ag-controls{flex:0 0 auto;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;padding-right:8px;border-right:1px solid var(--bdr)}
+/* top bar: the control grid (left) + the always-present List (right) */
+.ag-top{display:flex;align-items:stretch;min-width:0}
+/* 2×2 control grid — Timeline · Calendar / Done · Running */
+.ag-controls{flex:0 0 auto;display:grid;grid-template-columns:repeat(2,minmax(64px,auto));gap:3px;align-content:center;padding-right:10px;border-right:1px solid var(--bdr)}
+.ag-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;padding-left:10px}
 .ag-toggle{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}
 .ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
 .ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
@@ -845,13 +850,8 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
 .ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
 .ag-mini{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-style:normal}
-/* view toggles (one bar each) + the complexity flags — two rows of toggle chips */
-.ag-views{display:flex;gap:3px}
-.ag-flags{display:flex;gap:3px}
-/* stacked view panes (List / Gantt / Calendar) on the right of the strip */
-.ag-panes{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.ag-pane{min-width:0;display:flex;flex-direction:column}
-.ag-pane + .ag-pane{border-top:1px solid var(--bdr);margin-top:4px;padding-top:5px}
+/* Timeline / Calendar each open as a full-width bar below the top bar */
+.ag-pane{min-width:0;display:flex;flex-direction:column;border-top:1px solid var(--bdr);margin-top:5px;padding-top:6px}
 /* Timeline pane — a Gantt chart: horizontal bars on a shared, scrollable day axis */
 .ag-gantt{flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:auto;scrollbar-width:thin;max-height:min(46vh,300px)}
 .agg-inner{position:relative;min-height:100%}
@@ -11894,12 +11894,12 @@ document.getElementById('var-panel-close').addEventListener('click', closeVarPan
 varPanelEl.addEventListener('mousedown', e => e.stopPropagation());
 
 // ─── agenda strip ──────────────────────────────────────────────────────────────
-// A horizontal strip inside the toolbar (no vertical sidebar — stays mobile-
-// friendly; the toolbar's ResizeObserver re-pads the body so the strip never
-// overlaps the outline). A left control group holds the VIEW TOGGLES plus
-// complexity flags (Done; Running when List is open). Each view is an independent
-// toggle and renders as a PANE that stacks below the others (open several at once)
-// over the same dated points (collectDueDates):
+// A vertical stack inside the toolbar (no sidebar — stays mobile-friendly; the
+// toolbar's ResizeObserver re-pads the body so the strip never overlaps the
+// outline). The TOP bar is a 2×2 control grid (Timeline · Calendar / Done ·
+// Running) beside the always-present LIST. Timeline and Calendar are independent
+// toggles that each open their own FULL-WIDTH bar below the top one. All bars
+// read the same dated points (collectDueDates):
 //   • List     — status rows: "Due" (deadlines not yet started) + "Running"
 //                (started points, with elapsed time + deadline).
 //   • Timeline — a Gantt chart: each point a bar on a shared day axis (range bar
@@ -11910,10 +11910,10 @@ varPanelEl.addEventListener('mousedown', e => e.stopPropagation());
 // are pure cores.
 
 let agendaOpen = false;
-let agendaBars = { list: true, timeline: false, calendar: false };  // which view panes are open (stack)
-let agendaShowRunning = true;   // List pane: bottom row visible by default
+let agendaBars = { timeline: false, calendar: false };  // which extra bars are open (List is always shown)
+let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
-let agendaMonth = null;         // Calendar pane: any epoch-day in the shown month (session-only)
+let agendaMonth = null;         // Calendar bar: any epoch-day in the shown month (session-only)
 
 function mkAgToggle(label, on, onToggle) {
   const b = document.createElement('span');
@@ -11940,16 +11940,6 @@ function mkAgRow(label) {
 function agMini(text) {
   const s = document.createElement('span'); s.className = 'ag-mini'; s.textContent = text; return s;
 }
-
-// The views, as [key, label, tooltip]. Each is an INDEPENDENT toggle — turning
-// one on opens its bar BELOW the others (panes stack, they don't replace), so a
-// user can read the list and the Gantt at once. The label IS the front door that
-// teaches each view (P2); order matches the stacking order.
-const AG_VIEWS = [
-  ['list',     'List',     'Show the status list (Due + Running rows)'],
-  ['timeline', 'Timeline', 'Show the Gantt timeline (start → due bars)'],
-  ['calendar', 'Calendar', 'Show the month calendar'],
-];
 
 // Spoken label for a dated point, shared by the Gantt bars and calendar items:
 // title — due/starts <relative>[, running Nd][, done][· breadcrumb].
@@ -12004,7 +11994,7 @@ function mkAgChip(it, kind) {
   return chip;
 }
 
-// One toggle chip per view; flipping it opens/closes that pane. scheduleAutosave
+// One toggle chip per extra view; flipping it opens/closes that bar. scheduleAutosave
 // (not markDirty) persists the prefs to localStorage without dirtying the document.
 function mkAgViewToggle(view, label, tip) {
   const t = mkAgToggle(label, agendaBars[view], () => { agendaBars[view] = !agendaBars[view]; renderAgenda(); scheduleAutosave(); });
@@ -12017,41 +12007,32 @@ function renderAgenda() {
   if (!strip) return;
   strip.innerHTML = '';
 
-  // left control group: view toggles (one bar each) + complexity flags.
-  const controls = document.createElement('div'); controls.className = 'ag-controls';
-  const views = document.createElement('div'); views.className = 'ag-views';
-  views.setAttribute('role', 'group'); views.setAttribute('aria-label', 'Agenda views');
-  for (const [v, label, tip] of AG_VIEWS) views.appendChild(mkAgViewToggle(v, label, tip));
-  const flags = document.createElement('div'); flags.className = 'ag-flags';
-  const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); scheduleAutosave(); });
-  doneT.title = 'Include completed points';
-  flags.appendChild(doneT);
-  // the Running row exists only in the List pane, so its toggle shows only when List is open
-  if (agendaBars.list) {
-    const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); scheduleAutosave(); });
-    runT.title = 'Show the running row (started points)';
-    flags.appendChild(runT);
-  }
-  controls.append(views, flags);
-  strip.appendChild(controls);
-
-  const panes = document.createElement('div'); panes.className = 'ag-panes';
-  strip.appendChild(panes);
-  const pane = () => { const p = document.createElement('div'); p.className = 'ag-pane'; panes.appendChild(p); return p; };
-
-  if (!agendaBars.list && !agendaBars.timeline && !agendaBars.calendar) {
-    panes.appendChild(agMini('Pick a view — List, Timeline, or Calendar.'));
-    return;
-  }
-
   const all = collectDueDates(root);
   const visible = all.filter(it => agendaShowDone || !it.done);
 
-  // Panes stack in view order. Calendar always shows its grid (even with no dated
-  // points); the list/Gantt panes show the "no dated points" hint when empty.
-  if (agendaBars.list)     renderAgendaList(pane(), visible, all.length);
-  if (agendaBars.timeline) renderAgendaGantt(pane(), visible, all.length);
-  if (agendaBars.calendar) renderAgendaCalendar(pane(), visible, all.length);
+  // top bar: the 2×2 control grid (Timeline · Calendar / Done · Running) + the List
+  const top = document.createElement('div'); top.className = 'ag-top';
+  const controls = document.createElement('div'); controls.className = 'ag-controls';
+  controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Agenda controls');
+  const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); scheduleAutosave(); });
+  runT.title = 'Show the running row (started points)';
+  const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); scheduleAutosave(); });
+  doneT.title = 'Include completed points';
+  // grid order (row-major): Timeline, Calendar, Done, Running
+  controls.append(
+    mkAgViewToggle('timeline', 'Timeline', 'Show the Gantt timeline (start → due bars) on its own bar below'),
+    mkAgViewToggle('calendar', 'Calendar', 'Show the month calendar on its own bar below'),
+    doneT, runT,
+  );
+  const listHost = document.createElement('div'); listHost.className = 'ag-list';
+  renderAgendaList(listHost, visible, all.length);
+  top.append(controls, listHost);
+  strip.appendChild(top);
+
+  // Timeline / Calendar each open as a full-width bar below the top one.
+  const bar = () => { const p = document.createElement('div'); p.className = 'ag-pane'; strip.appendChild(p); return p; };
+  if (agendaBars.timeline) renderAgendaGantt(bar(), visible, all.length);
+  if (agendaBars.calendar) renderAgendaCalendar(bar(), visible, all.length);
 }
 
 function renderAgendaList(host, visible, totalDated) {
@@ -12717,7 +12698,7 @@ function scheduleAutosave() {
       }
       if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
       if (data.agendaBars && typeof data.agendaBars === 'object') {
-        for (const k of ['list', 'timeline', 'calendar']) if (typeof data.agendaBars[k] === 'boolean') agendaBars[k] = data.agendaBars[k];
+        for (const k of ['timeline', 'calendar']) if (typeof data.agendaBars[k] === 'boolean') agendaBars[k] = data.agendaBars[k];
       }
       if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
       if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
