@@ -1580,8 +1580,8 @@ function formatProgressCookie(kind, done, total) {
 // number count; a date / expression value is skipped, never silently mis-summed.
 // Render-time + no sidecar: the {= …} recipe stays in node.text and recomputes live
 // as children change (any edit → full render), exactly like the [/] progress cookie.
-// Pure: explicit node. (min/max over children are deliberately NOT here — those
-// names are evalMath's numeric variadics; see guidance/enhancement-research.md.)
+// Pure: explicit node. (min/max over children ARE supported — the single-arg overload
+// is additive since evalMath's numeric min/max need ≥2 args; see aggregateChildren.)
 function childPropNumber(child, prop) {
   const p = (child?.props || []).find(x => x.key === prop);
   if (!p) return null;
@@ -1595,19 +1595,28 @@ function aggregateChildren(node, fn, prop) {
     if (v !== null) vals.push(v);
   }
   if (fn === 'count') return vals.length;
+  // min/max return their IDENTITY element on an empty set (+∞ / −∞), not 0 — so a
+  // constraint like `min(start) >= kickoff` with no dated children is vacuously TRUE
+  // (+∞ >= kickoff) instead of spuriously failing on a 0 sentinel. These run before
+  // the sum/avg empty-guard for that reason. formatMathResult already renders ±∞.
+  if (fn === 'min') return vals.length ? Math.min(...vals) : Infinity;
+  if (fn === 'max') return vals.length ? Math.max(...vals) : -Infinity;
   if (!vals.length) return 0;                          // sum/avg of nothing → 0
   if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
   if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
   return 0;
 }
-// Substitute every sum|avg|count(propName) in a math expression with its computed
-// value over `node`'s direct children. A single bare-identifier argument is
-// required (so a property name shaped like an identifier); these three names are
-// not evalMath functions, so there is no clash. Pure; a null node aggregates over
-// an empty child set (→ 0), which is how node-less validation stays valid.
+// Substitute every sum|avg|count|min|max(propName) in a math expression with its
+// computed value over `node`'s direct children. A SINGLE bare-identifier argument is
+// required (a property name shaped like an identifier). sum/avg/count are not evalMath
+// names, so no clash; min/max ARE evalMath's numeric variadics, but those require ≥2
+// args — single-arg `min(ident)` is already an error there, so this overload is purely
+// additive (a comma'd `min(a, b)` keeps the numeric path; the regex needs one ident,
+// no comma). The spreadsheet MIN(col) vs MIN(a,b) split. Pure; a null node aggregates
+// over an empty child set, which is how node-less validation stays valid.
 function expandAggExpr(expr, node) {
-  if (!expr || !/\b(?:sum|avg|count)\s*\(/.test(expr)) return expr;
-  return String(expr).replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
+  if (!expr || !/\b(?:sum|avg|count|min|max)\s*\(/.test(expr)) return expr;
+  return String(expr).replace(/\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
     (_, fn, prop) => '(' + aggregateChildren(node, fn, prop) + ')');
 }
 
@@ -5579,7 +5588,7 @@ function openCheckDialog(nodeId) {
           { label: '<=',       insert: ' <= ' },
           { label: '==',       insert: ' == ' },
         ],
-        hint: 'A true/false test over this point and its direct children. sum/avg/count(prop) roll up a child property; a bare name is this point’s own number. e.g. sum(cost) <= budget · sum(weight) == 100 · count(score) >= 3 · hours <= 8',
+        hint: 'A true/false test over this point and its direct children. sum/avg/count/min/max(prop) roll up a NUMERIC child property; a bare name is this point’s own number. e.g. sum(cost) <= budget · sum(weight) == 100 · count(score) >= 3 · max(cost) <= cap · hours <= 8',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -10285,7 +10294,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions, π/e/today, units (c2f, km2mi), dates (asdate(today+90)). Roll up a child points’ property with sum(prop) / avg(prop) / count(prop).',
+        hint: 'Functions, π/e/today, units (c2f, km2mi), dates (asdate(today+90)). Roll up a child points’ property with sum(prop) / avg(prop) / count(prop) / min(prop) / max(prop).',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -13352,7 +13361,7 @@ const SHORTCUTS = [
   { sec: 'Pills & shorthand', rows: [
     { keys: ['{2d6}'],   desc: 'Dice roll pill' },
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
-    { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count a child points’ property (also {= sum(cost)/count(cost)})' },
+    { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count / min / max a child points’ property (also {= sum(cost)/count(cost)})' },
     { keys: ['{a|b 2}', '{a|b {= w}}'], desc: 'Weighted random pick — a weight is a number, or a {= expr} over variables (dynamic odds); rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s (e.g. {beast.a} → "an ogre"); chainable {beast.a.cap}' },

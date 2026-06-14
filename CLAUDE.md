@@ -429,16 +429,23 @@ and the math pill renders the result as an ISO date via `formatEpochDays` /
 *(Adding a function to `FN1`/`FN2`/`FN3` is the P5-preferred way to extend math —
 no new syntax, just a new name inside the existing grammar.)*
 **Subtree aggregation** makes evalMath see the tree: a math pill may roll up a child
-**property** — `{= sum(cost)}`, `{= avg(score)}`, `{= count(cost)}` — over the point's
-**direct children**. The argument is a property *key*, not a value, so it is substituted
-to a number **before** evalMath (`expandAggExpr` → `aggregateChildren` → `childPropNumber`,
-the `#+TBLFM:` translation model — keeps evalMath number-only, no parser change). It is
-**render-time + no sidecar**: the `{= …}` recipe stays in `node.text` and recomputes live
-as children change, because the current render node is the existing `cookieNode` render
-global (the same one the `[/]` cookie uses) and any property edit triggers a full `render()`.
-`renderMathPill` / `flattenArtifacts` pass the node; node-less callers (validation) aggregate
-over an empty set → 0. `min`/`max` over children are **deliberately not** included — those
-names are evalMath's numeric variadics (see `guidance/enhancement-research.md`).
+**property** — `{= sum(cost)}`, `{= avg(score)}`, `{= count(cost)}`, `{= min(cost)}`,
+`{= max(cost)}` — over the point's **direct children**. The argument is a property *key*,
+not a value, so it is substituted to a number **before** evalMath (`expandAggExpr` →
+`aggregateChildren` → `childPropNumber`, the `#+TBLFM:` translation model — keeps evalMath
+number-only, no parser change). It is **render-time + no sidecar**: the `{= …}` recipe stays
+in `node.text` and recomputes live as children change, because the current render node is the
+existing `cookieNode` render global (the same one the `[/]` cookie uses) and any property edit
+triggers a full `render()`. `renderMathPill` / `flattenArtifacts` pass the node; node-less
+callers (validation) aggregate over an empty set → `0` for sum/avg/count, and the **identity
+element** for the extremals — `min` of ∅ = `+∞`, `max` of ∅ = `-∞` (so an F2 range constraint
+is *vacuously true* on a point with no qualifying child, not spuriously false on a 0 sentinel).
+**`min`/`max` over children IS now included** (the spreadsheet `MIN(col)` overload): it is
+**purely additive** because evalMath's numeric `min`/`max` already require **≥2 args** (single-arg
+`min(ident)` was already an error there), and the aggregation regex matches only a *single bare
+identifier* — so a comma'd `min(a, b)` keeps the numeric-variadic meaning, untouched. Only
+**numeric** child props aggregate (`childPropNumber` skips non-numbers, incl. date strings) — so
+a date-property extremal like `max(due)` awaits a date-aware `childPropNumber` (a follow-on).
 
 **Variables tie the engines together.** `collectVars()` walks the whole
 tree, gathers `[[var:KEY]]` declarations, and resolves them — variables may
@@ -611,8 +618,10 @@ doc-wide lint filter, matching a `fail` **or** `error` check. Front doors: `/che
 bullet-menu "Add/edit check" door, the chip, the `?` panel + search legend; `openCheckDialog` has a
 live preview that explains why an expression can't evaluate (`mathErrorReason`). `check` is reserved
 like `DATE_KEYS` — hidden from the generic Properties editor, merged back on save; round-trips through
-`_props` for free. Deferred: min/max-over-children (date-range checks), multiple checks/point,
-cross-parent refs, structural/existence checks (F5)) ·
+`_props` for free. Numeric extremal checks (`max(cost) <= cap`, `min(score) >= 1`) work via the
+B1 `min`/`max` aggregation; **date-range** checks (`max(due) <= deadline`) await a date-aware
+`childPropNumber` (date strings are skipped today). Deferred: multiple checks/point, cross-parent
+refs, structural/existence checks (F5)) ·
 Templates (named subtree snapshots stored doc-level on `root.templates = [{name, node}]` — the
 `<_templates>` OPML **head element**, the second underscore-prefixed custom element beside
 `<_savedSearches>`; save door is the bullet menu "Save as template" (name dialog, save-over-name

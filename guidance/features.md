@@ -110,16 +110,23 @@ Implemented:
   numeric identity that the math pill *displays* as an ISO date — display-layer only,
   via `formatEpochDays` / `isDateExpr` / `formatMathDisplay`, so `evalMath` still
   always returns a number. **Subtree aggregation**: `{= sum(cost)}`, `{= avg(score)}`,
-  `{= count(cost)}` roll up a **property** over the point's **direct children** (the
-  argument is a property *key*, not a value). Substituted to a number before evalMath
-  (`expandAggExpr` → `aggregateChildren` → `childPropNumber`, the `#+TBLFM:` translation
-  model — no parser change, evalMath stays number-only). Render-time + no sidecar: the
+  `{= count(cost)}`, `{= min(cost)}`, `{= max(cost)}` roll up a **property** over the point's
+  **direct children** (the argument is a property *key*, not a value). Substituted to a number
+  before evalMath (`expandAggExpr` → `aggregateChildren` → `childPropNumber`, the `#+TBLFM:`
+  translation model — no parser change, evalMath stays number-only). Render-time + no sidecar: the
   `{= …}` recipe stays in `node.text` and recomputes live as children change (the current
   render node is the existing `cookieNode` global; a property edit does a full `render()`).
   Only direct children whose value is a plain number count (dates/expressions skipped, never
-  mis-summed); grandchildren are excluded; empty → 0. `min`/`max` over children are NOT
-  included (those names are evalMath's numeric variadics — deferred). Works in the math pill
-  (`{= …}`), not in a grammar `{cond:…}`/composition (no node context there).
+  mis-summed); grandchildren are excluded. Empty set → `0` for sum/avg/count, but the **identity
+  element** for the extremals — `min(∅)` = `+∞`, `max(∅)` = `-∞` — so an extremal/range constraint
+  is *vacuously true* when no child carries the property (e.g. `min(stock) >= 1` with no stocked
+  child → `+∞ >= 1` → true), not spuriously false on a 0 sentinel. **`min`/`max` are purely additive**
+  (the spreadsheet `MIN(col)` overload): evalMath's numeric `min`/`max` already require ≥2 args, so
+  a single-arg `min(ident)` was already an error there, and the aggregation regex matches only one
+  bare identifier — a comma'd `min(a, b)` keeps the numeric-variadic meaning, untouched. Because
+  only numeric props aggregate, a **date-property** extremal (`max(due) <= deadline`) awaits a
+  date-aware `childPropNumber` — a follow-on. Works in the math pill (`{= …}`) and F2 `check`
+  constraints, not in a grammar `{cond:…}`/composition (no node context there).
 - **Outline constraints / lint** (F2) — a point may carry a reserved **`check` property**
   holding an `evalMath` boolean assertion that spans the point and its **direct children**:
   `sum(cost) <= budget`, `sum(weight) == 100`, `count(score) >= 3`, own-prop `hours <= 8`. **Zero
@@ -144,10 +151,12 @@ Implemented:
   door, the chip, and the `?` panel + focus-shown search-legend rows. `check` is reserved like
   `DATE_KEYS` — hidden from the generic Properties editor and merged back untouched on save; it
   round-trips through `_props` for free (no new OPML work). Pure cores `evalCheck`/`nodePropVars`/
-  `checkExprOf`. **Deferred:** `min`/`max`-over-children constraints (need the B1 min/max-over-children
-  aggregation — would unlock date-range checks like `max(childDue) <= due`); multiple checks per
-  point (one `check`/point — `evalMath` has no `&&`); upward / cross-parent references; structural /
-  existence checks ("required children" — that is F5, enforced tree grammars); auto-fix solving.
+  `checkExprOf`. **Numeric** extremal/range checks (`max(cost) <= cap`, `min(score) >= 1`,
+  `max(end) - min(start) <= 30`) work via the B1 `min`/`max` aggregation; a **date-property**
+  extremal (`max(due) <= deadline`) awaits a date-aware `childPropNumber` (date strings are skipped
+  today). **Deferred:** multiple checks per point (one `check`/point — `evalMath` has no `&&`);
+  upward / cross-parent references; structural / existence checks ("required children" — that is F5,
+  enforced tree grammars); auto-fix solving.
 - **Variables** — `@var`: named values usable in math (`2*pi*r`) and dice
   (`2d6+str_mod`); **may reference other variables**; reference cycles detected
   and flagged (`↻`, `.var-cycle`). Two **value types**, chosen in the dialog:
