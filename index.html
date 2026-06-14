@@ -6589,6 +6589,14 @@ function enterEdit(content, node) {
   scheduleReconcile(); // raw markdown text may differ in height from rendered HTML
 }
 
+// When applyInlineReplace flushes the active edit mid-insert (its `ed.blur()`), the
+// blur runs exitEdit, which serializes the edit BUFFER to node.text — and the buffer
+// does not yet hold the token being inserted (it's spliced right after). Pruning there
+// would drop the sidecar record the @-dialog onResult just pushed (its `[[type:key]]`
+// isn't in node.text yet), leaving a broken "missing data" pill. So the prune is
+// suppressed for that one transient flush; the next real exitEdit (when the user leaves
+// the point — token now present) prunes correctly. See applyInlineReplace.
+let _suppressPruneOnFlush = false;
 function exitEdit(content, node) {
   // Record where the caret stood (unfolded coordinates) so a chrome excursion —
   // search / file menu / help — can restore it on Escape (armChromeReturn).
@@ -6643,7 +6651,7 @@ function exitEdit(content, node) {
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
-  pruneDice(node); pruneMarkov(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); // drop data for deleted tokens
+  if (!_suppressPruneOnFlush) { pruneDice(node); pruneMarkov(node); pruneMath(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); } // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   content.innerHTML = renderContentHTML(node);
@@ -7920,7 +7928,7 @@ function insertInlineArtifact(id, nodeId, content) {
       },
     });
   } else if (id === 'deck') {
-    openSeqDialog({
+    openDeckDialog({
       title: 'New deck',
       submitLabel: 'Insert',
       body: selected && seqParts(selected) ? selected : undefined,
@@ -8144,7 +8152,11 @@ function applyInlineReplace(nodeId, start, end, str) {
   // would fire its blur mid-rebuild and exitEdit would clobber node.text back to
   // the pre-splice buffer (the same hazard the @table path guards — createBaseAt).
   const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
-  if (ed) ed.blur();
+  // Suppress pruning during this flush: the buffer doesn't yet hold the token we're
+  // about to splice, so exitEdit's prune would drop a sidecar record the caller just
+  // pushed (the @-dialog insert bug — a broken "missing data" pill). The next real
+  // exitEdit prunes normally, with the token present.
+  if (ed) { _suppressPruneOnFlush = true; ed.blur(); _suppressPruneOnFlush = false; }
   // By now the blur has refolded + promoted node.text back to token form, which is
   // LONGER than the {…} the user saw — splicing at the raw captured offset could
   // land inside a token, corrupting it (UXP-30). Translate into folded coordinates
@@ -9096,10 +9108,15 @@ const SEQ_CHIPS = [
   { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
 ];
 
-// Front door for stateful sequences (the @ "Deck" door). One field:
-// the `mode: a | b | c` body. A deck/cycle pill is a grammar record with state,
-// so onResult hands back a makeSeqGen record the caller pushes to node.grammar.
-function openSeqDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResult }) {
+// Front door for the deck/cycle pill (the @ "Deck" door). One field: the
+// `mode: a | b | c` body. A deck/cycle pill is a grammar record with state, so
+// onResult hands back a makeSeqGen record the caller pushes to node.grammar.
+// NB this is `openDeckDialog`, NOT `openSeqDialog` — the latter name belongs to
+// the *state-set* sequence dialog (declared later). They collided once: a
+// duplicate `function openSeqDialog` shadowed this one (function declarations
+// hoist, last wins), so the deck door silently opened the state-set dialog and
+// its Insert stayed disabled. Keep the two dialog names distinct.
+function openDeckDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResult }) {
   openInsertDialog({
     icon: { fa:'fa-solid fa-clone', fb:'🃏' },
     title,
