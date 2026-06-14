@@ -139,6 +139,7 @@ export function loadCores() {
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'parseMarkov', 'walkMarkov', 'weightedPick',
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
+    'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen',
     'collectVars', 'collectRules', 'collectLinks', 'linkCandidates',
     'mkRoot', 'mkNode', 'toOpml', 'toMarkdown', 'toPlainText',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',

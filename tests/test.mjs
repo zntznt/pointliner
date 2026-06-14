@@ -242,6 +242,68 @@ test('conditional standalone shorthand — wrapped def expands and unfolds back 
   assert.equal(c.artifactToShorthand('grammar', rec), '{hp > 0: a | b}');
 });
 
+// ── stateful sequences: {shuffle|cycle|once|stopping: a | b | c} ─────────────
+test('seqParts — parses a mode + items; rejects non-modes', () => {
+  assert.deepEqual(host(c.seqParts('shuffle: a | b | c')), { mode: 'shuffle', items: ['a', 'b', 'c'] });
+  assert.deepEqual(host(c.seqParts('CYCLE: x|y')), { mode: 'cycle', items: ['x', 'y'] }); // case-insensitive mode
+  assert.equal(c.seqParts('a | b'), null);          // plain alternation (no mode)
+  assert.equal(c.seqParts('note: hello'), null);    // a colon without a reserved mode
+  assert.equal(c.seqParts('hp > 0: a | b'), null);  // a conditional, not a sequence
+  assert.equal(c.seqParts('shuffle:'), null);       // a mode with no items
+});
+
+test('nextSeqIndex — cycle loops, once exhausts, stopping sticks on the last', () => {
+  const take = (rec, n) => Array.from({ length: n }, () => c.nextSeqIndex(rec));
+  assert.deepEqual(take({ mode: 'cycle', items: ['a', 'b', 'c'], pos: 0 }, 5), [0, 1, 2, 0, 1]);
+  assert.deepEqual(take({ mode: 'once', items: ['a', 'b'], pos: 0 }, 4), [0, 1, -1, -1]);
+  assert.deepEqual(take({ mode: 'stopping', items: ['a', 'b', 'c'], pos: 0 }, 5), [0, 1, 2, 2, 2]);
+});
+
+test('nextSeqIndex — shuffle draws without replacement, then reshuffles', () => {
+  c.seedSequence([0.1, 0.6, 0.3, 0.8, 0.2, 0.9]);
+  try {
+    const rec = { mode: 'shuffle', items: ['a', 'b', 'c'], bag: [] };
+    const round1 = [c.nextSeqIndex(rec), c.nextSeqIndex(rec), c.nextSeqIndex(rec)];
+    assert.deepEqual([...round1].sort(), [0, 1, 2], 'one full round draws each index exactly once');
+    assert.equal(rec.bag.length, 0, 'bag is empty after a full round');
+    const next = c.nextSeqIndex(rec); // refills (reshuffles) and draws
+    assert.ok(next >= 0 && next < 3, 'the next draw comes from a fresh bag');
+  } finally { c.resetRandom(); }
+});
+
+test('advanceSeq — emits the chosen item, expanded against the grammar', () => {
+  const rec = { mode: 'cycle', items: ['{2d6} gold', 'plain'], pos: 0 };
+  c.seedSequence([0]); // 2d6 → minimum 2
+  try {
+    assert.equal(c.advanceSeq(rec, {}, {}), '2 gold'); // item 0, dice expanded
+    assert.equal(c.advanceSeq(rec, {}, {}), 'plain');  // item 1, no expansion
+  } finally { c.resetRandom(); }
+});
+
+test('makeSeqGen — builds a record advanced to its first emission; rejects bad input', () => {
+  const rec = c.makeSeqGen('cycle', ['a', 'b', 'c']);
+  assert.equal(rec.mode, 'cycle');
+  assert.deepEqual(host(rec.items), ['a', 'b', 'c']);
+  assert.equal(rec.result, 'a'); // first emission
+  assert.equal(rec.pos, 1);
+  assert.ok(rec.anon, 'standalone pill, not a doc-wide callable');
+  assert.equal(c.makeSeqGen('bogus', ['a']), null);
+  assert.equal(c.makeSeqGen('cycle', []), null);
+});
+
+test('resolveBrace — a {mode: …} inside a rule degrades to a uniform pick (no state there)', () => {
+  c.seedSequence([0]); // floor(0*3) → first item
+  try {
+    assert.equal(c.resolveBrace('shuffle: x | y | z', { rules: {}, vars: {}, depth: 0, stack: [] }), 'x');
+  } finally { c.resetRandom(); }
+});
+
+test('classifyBraceBody / braceTypeLabel — a sequence reads as a (grammar) artifact', () => {
+  assert.equal(c.classifyBraceBody('shuffle: a | b | c', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('cycle: a | b', {}, {})), ['grammar', null]);
+  assert.equal(c.classifyBraceBody('note: hello', {}, {}), 'literal'); // a non-mode colon stays prose
+});
+
 // ── prototype-key safety: names colliding with Object.prototype must not crash
 // or resolve to inherited members. Pure cores must return null/marker, never throw.
 test('parseMarkov — a state named "constructor" does not throw', () => {

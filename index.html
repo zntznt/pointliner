@@ -3213,6 +3213,7 @@ const INSERT_CMDS = [
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table — one grammar rule; click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
+  { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck / sequence', desc:'Draw without replacement (a deck), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value — a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
@@ -6381,6 +6382,7 @@ function classifyBraceBody(body, rules, vars) {
     return expr && evalMath(expr, vars) !== null ? 'artifact' : 'invalid';
   }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
+  if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
@@ -6407,6 +6409,7 @@ function braceTypeLabel(body, rules, vars) {
   if (!body) return ['pill', null];
   if (body[0] === '=') return ['math', null];
   if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
+  if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
   rules = rules || {}; vars = vars || {};
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
@@ -7862,6 +7865,17 @@ function insertInlineArtifact(id, nodeId, content) {
         applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
       },
     });
+  } else if (id === 'deck') {
+    openSeqDialog({
+      title: 'New deck / sequence',
+      submitLabel: 'Insert',
+      body: selected && seqParts(selected) ? selected : undefined,
+      onResult: rec => {
+        const n = nodeById(nodeId); if (!n) return;
+        (n.grammar ||= []).push(rec);
+        applyInlineInsertion(nodeId, offset, `[[grammar:${rec.key}]]`);
+      },
+    });
   } else if (id === 'math') {
     openMathDialog({
       title: 'Insert math',
@@ -8556,6 +8570,80 @@ function condParts(body) {
   return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
 }
 
+// ─── stateful sequences (decks / cycles) ─────────────────────────────────────
+// A {mode: a | b | c} brace whose leading `mode` keyword gives it MEMORY: a
+// `shuffle` is a DECK (draw without replacement, reshuffle when the bag empties),
+// `cycle` loops in fixed order, `once` emits each item once then nothing,
+// `stopping` advances then sticks on the last. The state (a position or a
+// remaining bag) lives on the pill record — a grammar record carrying
+// `mode`/`items` + state — so it round-trips through OPML like any frozen roll.
+// This is the home the "decks/bags have nowhere clean to live yet" open question
+// was waiting for. Detection is purely syntactic (a reserved mode keyword before
+// a top-level `:`), so it is disjoint from conditionals (which carry a comparison
+// before the `:`) and from plain alternation (which has no mode keyword).
+const SEQ_MODES = ['shuffle', 'cycle', 'once', 'stopping'];
+
+// Parse a {mode: a | b | c} body → {mode, items} or null. The FIRST top-level `:`
+// splits the mode from the items (an item may itself contain a `:`); items split
+// on top-level `|` (a nested {a|b} is protected and stays one item).
+function seqParts(body) {
+  body = (body || '').trim();
+  const segs = splitTopLevel(body, ':');
+  if (segs.length < 2) return null;
+  const mode = segs[0].trim().toLowerCase();
+  if (!SEQ_MODES.includes(mode)) return null;
+  const rest = body.slice(segs[0].length + 1);
+  const items = splitTopLevel(rest, '|').map(s => s.trim()).filter(s => s !== '');
+  return items.length ? { mode, items } : null;
+}
+
+// A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests
+// can seed it).
+function shuffledIndices(n) {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+// Advance a sequence record's state and return the index of the item to emit, or
+// -1 when an exhausted `once` has nothing left. Pure except for the record it
+// mutates (pos / bag) and Math.random for shuffle — no DOM, no document access.
+function nextSeqIndex(rec) {
+  const n = rec.items.length;
+  if (n === 0) return -1;
+  if (rec.mode === 'cycle') {
+    const i = ((rec.pos || 0) % n + n) % n;
+    rec.pos = (i + 1) % n;
+    return i;
+  }
+  if (rec.mode === 'once') {
+    const p = rec.pos || 0;
+    if (p >= n) return -1;
+    rec.pos = p + 1;
+    return p;
+  }
+  if (rec.mode === 'stopping') {
+    const p = rec.pos || 0;
+    rec.pos = Math.min(p + 1, n);     // grows, then saturates at n
+    return Math.min(p, n - 1);        // … and the emitted index sticks on the last
+  }
+  // shuffle: draw without replacement; refill (reshuffle) once the bag empties.
+  if (!Array.isArray(rec.bag) || rec.bag.length === 0) rec.bag = shuffledIndices(n);
+  return rec.bag.shift();
+}
+
+// Advance a sequence and return its emitted text — the chosen item expanded
+// against the document grammar/vars, so an item may itself roll dice / call a
+// rule ({shuffle: {2d6} gold | a {color} gem}). Pure when rules+vars are passed.
+function advanceSeq(rec, rules = collectRules(), vars = collectVars()) {
+  const idx = nextSeqIndex(rec);
+  if (idx < 0) return '';
+  return expandTemplate(rec.items[idx], { rules, vars, depth: 0, stack: [] });
+}
+
 // Resolve one {...} body. Content-sniffed: a conditional `cond: a|b` (a comparison
 // before a top-level `:`) → THEN/ELSE branch; top-level `|` → alternation; leading
 // `=` → expression; dice pattern → roll; a bare identifier → a named rule (grammar
@@ -8569,6 +8657,14 @@ function resolveBrace(body, ctx) {
     const v = evalMath(cp.cond, ctx.vars);
     if (v === null) return `{${cp.cond}?}`;             // condition couldn't resolve → visible marker (P4)
     return expandTemplate(v ? cp.then : cp.else, ctx);
+  }
+  const sp = seqParts(body);
+  if (sp) {
+    // A {mode: …} INSIDE a rule / pick source has no per-instance record to hold
+    // state, so it degrades to a uniform random draw from its items (the stateful
+    // deck/cycle behaviour lives only in the standalone pill, which advances via
+    // nextSeqIndex, not through here).
+    return expandTemplate(sp.items[Math.floor(Math.random() * sp.items.length)], ctx);
   }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt)).template, ctx);
@@ -8805,8 +8901,39 @@ function makeGrammarRoll(def, originInput) {
   return { key: grammarKey(), def, origin, result };
 }
 
+// Build a fresh stateful-sequence record (a grammar record carrying mode/items +
+// state), already advanced once so it shows its first emission. anon:true keeps
+// it out of the document-wide rule namespace (it's a standalone pill, not a
+// callable). null if the mode is unknown or there are no items.
+function makeSeqGen(mode, items, key) {
+  mode = (mode || '').toLowerCase();
+  if (!SEQ_MODES.includes(mode) || !items || !items.length) return null;
+  const rec = { key: key || grammarKey(), mode, items: items.slice(), anon: true };
+  if (mode === 'shuffle') rec.bag = []; else rec.pos = 0;
+  rec.result = advanceSeq(rec);
+  return rec;
+}
+
+// User-facing label for a sequence mode (the deck/cycle pill + its aria text).
+const SEQ_LABELS = { shuffle: 'deck', cycle: 'cycle', once: 'once', stopping: 'stopping' };
+
+// A stateful-sequence pill (deck / cycle / once / stopping). Reuses the grammar
+// pill chrome but: a deck icon, NO pencil (it unfolds to {mode: …} text for
+// editing, like an anonymous grammar / dice pill), and body-click ADVANCES the
+// sequence rather than re-rolling (wired in rerollGrammar via the `mode` field).
+function renderSeqGenPill(key, g) {
+  const label = SEQ_LABELS[g.mode] || g.mode;
+  const verb = g.mode === 'shuffle' ? 'draw the next' : 'advance';
+  return `<span class="gr-roll gr-seq" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="${escQ(label)} — click to ${verb}"`
+    + ` aria-label="Sequence (${escQ(label)}): ${escQ(g.result)} — click to ${verb}">`
+    + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
+    + `<span class="gr-result">${escHtml(g.result)}</span>`
+    + `</span>`;
+}
+
 function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
+  if (g.mode) return renderSeqGenPill(key, g);   // a stateful sequence rides on the grammar record
   // a non-anon record's origin is a user-declared, doc-wide callable name —
   // show it (the named-table affordance: tells you what {name} calls)
   const name = !g.anon && g.origin ? g.origin : '';
@@ -8863,9 +8990,51 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
   });
 }
 
+const SEQ_CHIPS = [
+  { label:'| item', insert: ' | ' },
+  { label:'{dice}', insert: el => insertAndSelect(el, '{', '2d6', '}') },
+  { label:'{ref}',  insert: el => insertAndSelect(el, '{', 'rule', '}') },
+];
+
+// Front door for stateful sequences (the @ "Deck / sequence" door). One field:
+// the `mode: a | b | c` body. A deck/cycle pill is a grammar record with state,
+// so onResult hands back a makeSeqGen record the caller pushes to node.grammar.
+function openSeqDialog({ title, submitLabel, body = 'shuffle: a | b | c', onResult }) {
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-clone', fb:'🃏' },
+    title,
+    submitLabel: submitLabel || 'Insert',
+    fields: [
+      { key:'body', label:'Mode and items (mode: a | b | c)', type:'textarea', rows:3, value:body, chips: SEQ_CHIPS,
+        placeholder:'shuffle: ace | king | queen | jack',
+        hint:'Start with a mode — shuffle (a deck: draws without replacement, reshuffles when empty) · cycle (loops in order) · once (each once, then nothing) · stopping (advances, then stays on the last) — then items separated by |. Items may roll dice / call rules. Click the pill to advance.',
+        preview: v => {
+          const sp = seqParts(v);
+          if (!sp) return `<span class="io-preview-bad">Start with shuffle / cycle / once / stopping, then items</span>`;
+          const probe = makeSeqGen(sp.mode, sp.items);
+          return probe ? `<span class="gr-preview-result">${escHtml(probe.result || '(empty)')}</span>` : `<span class="io-preview-bad">Invalid</span>`;
+        } },
+    ],
+    validate: v => !!seqParts(v.body),
+    onSubmit: v => {
+      const sp = seqParts(v.body);
+      const rec = sp && makeSeqGen(sp.mode, sp.items);
+      if (rec) onResult(rec);
+    },
+  });
+}
+
 function rerollGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
+  if (g.mode) {                                   // stateful sequence: ADVANCE, don't re-roll
+    g.result = advanceSeq(g);
+    markDirty();
+    announce(`${SEQ_LABELS[g.mode] || g.mode}: ${g.result || '(end)'}`);
+    const el = repaintNodeContent(node);
+    el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
+    return;
+  }
   const result = runGrammar(g.def, g.origin);
   if (result === null) return;
   g.result = result;
@@ -8878,6 +9047,7 @@ function rerollGrammar(node, key) {
 function editGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
+  if (g.mode) return;  // a stateful sequence has no pencil — it's edited inline (unfolds to {mode: …})
   openGrammarDialog({
     title: 'Edit grammar',
     submitLabel: 'Save & generate',
@@ -8925,6 +9095,14 @@ function promoteBraceBody(node, body) {
   if (condParts(body)) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  // stateful sequence: {shuffle|cycle|once|stopping: a | b | c} → a deck/cycle pill
+  // (a grammar record carrying mode/items + draw state). Checked before alternation
+  // since the items carry a top-level `|`.
+  const sp = seqParts(body);
+  if (sp) {
+    const rec = makeSeqGen(sp.mode, sp.items);
+    if (rec) { (node.grammar ||= []).push(rec); return `[[grammar:${rec.key}]]`; }
   }
   // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
   // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
@@ -8982,6 +9160,11 @@ function artifactToShorthand(type, rec) {
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
   if (type === 'var')  return (!rec.expr && rec.name) ? `{${rec.name}}` : null; // display-only only
   if (type === 'grammar') {
+    // A stateful sequence's config (mode + items) IS its text, so it unfolds to
+    // {mode: a | b | c}. The transient draw state (pos/bag) isn't in the text and
+    // is preserved by the unfold WeakMap when the source is left untouched (reset
+    // to a fresh deck only if the items are edited) — the same frozen-roll model.
+    if (rec.mode) return `{${rec.mode}: ${(rec.items || []).join(' | ')}}`;
     // Only ANONYMOUS shorthand pills unfold. A named (non-anon) grammar is a
     // declaration — its rule name is doc-wide callable config richer than the
     // text (same principle as declaring variables), and unfolding would lose
@@ -12656,6 +12839,7 @@ const SHORTCUTS = [
     { keys: ['{= 2*r}'], desc: 'Math pill (expressions, dates, units)' },
     { keys: ['{a|b 2}'], desc: 'Weighted random pick — rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
+    { keys: ['{shuffle: a|b|c}'], desc: 'Deck / sequence — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
     { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },
