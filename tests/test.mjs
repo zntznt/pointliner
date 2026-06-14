@@ -3269,6 +3269,9 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes('renderAgenda'), 'renderAgenda missing');
   assert.ok(_src.includes("/^(due|start):"), 'due/start search operator missing');
   assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
+  // P5-4 (UXP-37): the date/agenda syntax also lives in the ? panel, not only the search legend
+  assert.ok(_src.includes("keys: ['due:today', 'due:overdue', 'start:<date']"), 'due/start ? panel row missing');
+  assert.ok(_src.includes("sec: 'Dates & agenda'"), 'agenda ? panel section missing');
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
   // agenda: permanent List on the top bar + Timeline/Calendar as toggled full-width bars below

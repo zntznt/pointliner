@@ -211,6 +211,51 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   instead of silently rotting the help panel. Full single-sourcing (one table read by both the
   handlers and the `?` panel) stays a welcome refactor, but the drift class is now wired.
 
+### UXP-37 ✓ Dates + Agenda shipped without `?`-panel documentation — **RESOLVED (drift, closed in the same pass)**
+- **Problem:** the Dates + Agenda feature (and the Timeline/Calendar views added in PR #73)
+  shipped with their filter syntax documented only in the **focus-shown search legend** and the
+  §2 inventory — **the `?` panel (`SHORTCUTS`) carried no `due:`/`start:` row** and **no entry at
+  all** for the `/due` (Schedule) verb or the Agenda views. Exactly the help-panel drift UXP-36
+  anticipated: a feature merged and its hand-maintained `?`-panel rows were never added. The §2
+  inventory was also stale — it still described the Agenda as a "two-row horizontal strip" with
+  Timeline/Calendar "planned," though both shipped.
+- **Violated:** P5-4 (a typeable syntax — `due:`/`start:` — documented in the inventory + legend
+  but **not** the `?` panel, which §2 names as a required front door), P2-1 (the Schedule verb and
+  Agenda views had visible affordances but no `?`-panel door).
+- **Resolved (this pass):** the `?` panel gained a **`due:today` / `due:overdue` / `start:<date`
+  row** in *Search & filter* (mirroring the legend) and a new **Dates & agenda** section
+  documenting `/due` (Schedule), the Agenda toolbar button, and its List / Timeline (Gantt) /
+  Calendar views. The §2 inventory row was rewritten to the shipped vertical-bar layout, the §9
+  matrix gained a *Dates / agenda* row, and the due-dates front-door src-pin test (`tests/test.mjs`)
+  now pins both the `due:`/`start:` row and the *Dates & agenda* section — so the panel can't drift
+  back out of sync (the UXP-36 pattern, applied to the rows themselves).
+
+### UXP-38 ☐ Variables panel has no `aria-live` on content-refresh (P3-1)
+- **Problem:** when the user opens the variables panel (the `{` picker sidebar) and a variable's
+  value changes — either because they edited a formula node or re-rolled a pick — the panel
+  content updates visually, but the update is **not announced to assistive technology**. The
+  panel itself has `role="region"` and an `aria-label`; the close button is named and
+  keyboard-operable. Only the live-region gap remains.
+- **Violated:** P3-1 (every status change reachable without sight). The pill itself already
+  announces its own state correctly (per-state `aria-label` for ↻/？/—); this is the panel-
+  level complement.
+- **Remedy:** add `aria-live="polite"` (or `role="status"`) to the panel's content container,
+  so a screen reader announces changes when variable values refresh. Minimal, additive.
+
+### UXP-39 ☐ Rendered hashtag `<a>` elements are not keyboard-operable (P3-1)
+- **Problem:** `<a class="hashtag">` elements in rendered content have no `href`, no `tabindex`,
+  and no `keydown` handler — they activate only on `mousedown`. A keyboard user cannot Tab to
+  a hashtag chip in rendered output and press Enter/Space to filter by it.
+- **Violated:** P3-1 (every interactive element keyboard-operable). The *capability* (filter by
+  `#tag`) has a keyboard front door — the search box and the `#` picker — so P3-2 is satisfied;
+  this is the element-level interaction gap only.
+- **Disposition:** same as todo-picker chips before UXP-16 — capability is keyboard-reachable
+  via search, but the rendered widget itself is not independently operable. Low-urgency because
+  the search path is the primary keyboard path.
+- **Remedy:** add `tabindex="0"` + `keydown` (Enter/Space triggers the filter) to the hashtag
+  render in `renderHashtags` / `mdInline`. Wire alongside the existing `mousedown`, never
+  replacing it (caret invariant).
+
 ---
 
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
