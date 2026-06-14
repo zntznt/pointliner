@@ -568,6 +568,11 @@ The product direction is now set. Read these before proposing or building:
   noise, no red default accent, display ceiling ~2em). Read before any visual change;
   contradicting a Decision there is a regression, not a restyle.
 - `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
+- `guidance/enhancement-research.md` — consolidated *inspiration → upgrade* catalogue for the
+  generative + computational engine and single-file offline-ness (mechanics mined from Tracery /
+  Perchance / Ink / Twine / oracles / Soulver / Calca / Frink / Squiggle / Guesstimate / org-mode /
+  TiddlyWiki / Decker, each mapped to a code seam + a P5 verdict). Candidate material for the
+  roadmap's interleaving clause — **not a commitment**; companion to `outliner-frontier-report.md`.
 - `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu
   descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.

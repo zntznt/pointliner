@@ -170,7 +170,16 @@ Phase 1's weight is broken up.
 
 ## Generative / internal-engine ideas (the "balance" side)
 Self-contained, additive ideas for the generative engine — good interleaving material
-between the heavy PKM phases. (Shipped items removed: dice success pools, date math,
+between the heavy PKM phases.
+
+> **Expanded catalogue:** `guidance/enhancement-research.md` consolidates the June 2026
+> comparable-tool research (Tracery / Perchance / Ink / Twine / tabletop oracles / Soulver /
+> Calca / Frink / Squiggle / Guesstimate / org-mode / TiddlyWiki / Decker) into a ranked
+> *inspiration → upgrade* menu — each mapped to a code seam and a P5 verdict — covering the
+> generative engine, the computational engine, **and** single-file offline-ness. The bullets
+> below are the short list; that doc is the detail (and names which items are deferred-by-lock).
+
+(Shipped items removed: dice success pools, date math,
 unit conversion, and **random variables** — a variable whose value is a frozen,
 re-rollable grammar pick, the Perchance-style generation model — are **done**; see
 `guidance/features.md` and `guidance/generation-direction.md`. The earlier per-expansion
