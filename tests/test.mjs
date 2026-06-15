@@ -3157,6 +3157,15 @@ test('linkCreateOption: the created stub is an ordinary markdown-aware node', ()
   assert.equal(c.todoDoneFromText('- [x] buy milk'), true);
 });
 
+test('link-and-create: a mid-edit create defers a full render to exit (wiring guard)', () => {
+  // Verified live in a browser: creating a stub mid-edit must repaint the whole tree
+  // on exit, or the new sibling never appears (exitEdit's partial single-node
+  // re-render would hide it). Guard the flag wiring against silent regression.
+  const src = readFileSync(_htmlPath, 'utf8');
+  assert.ok(src.includes('_pendingFullRender = true'), 'lpApply create branch must set _pendingFullRender');
+  assert.ok(src.includes('if (_pendingFullRender)'), 'exitEdit must honor _pendingFullRender with a full render()');
+});
+
 // ── SHORTCUTS registry drift guard (UXP-36) ───────────────────────────────────
 // These tests read the raw HTML source and assert that critical keyboard handler
 // patterns are still present. They catch a whole class of silent regression:

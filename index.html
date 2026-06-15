@@ -6905,6 +6905,12 @@ function enterEdit(content, node) {
 // suppressed for that one transient flush; the next real exitEdit (when the user leaves
 // the point — token now present) prunes correctly. See applyInlineReplace.
 let _suppressPruneOnFlush = false;
+// Set when a STRUCTURAL change happens mid-edit (e.g. link-and-create adds a new
+// point). A full render() is forbidden mid-edit (it would destroy the active
+// contenteditable/caret), but on edit EXIT it is safe — exitEdit honors this flag
+// and does a whole-tree render so the new point actually appears, instead of the
+// partial single-node re-render that would leave the sibling stub invisible.
+let _pendingFullRender = false;
 function exitEdit(content, node) {
   // Record where the caret stood (unfolded coordinates) so a chrome excursion —
   // search / file menu / help — can restore it on Escape (armChromeReturn).
@@ -6962,17 +6968,26 @@ function exitEdit(content, node) {
   if (!_suppressPruneOnFlush) { pruneDice(node); pruneMarkov(node); pruneMath(node); pruneEst(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); } // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
-  content.innerHTML = renderContentHTML(node);
   markDirty();
-  // Live-title links and mirrors pointing here re-render NOW, not at the next
-  // full render() — an edit must not leave stale captions/transclusions on
-  // screen (UXP-4). Off-screen sources have no DOM and render fresh on scroll.
-  if (node.text !== prevText) {
-    const bl = collectLinks().backlinks[node.id];
-    if (bl) for (const srcId of bl) {
-      if (srcId === node.id) continue;
-      const src = nodeById(srcId);
-      if (src) repaintNodeContent(src);
+  if (_pendingFullRender) {
+    // A structural change during this edit (link-and-create added a point) needs
+    // the WHOLE tree repainted, not just this node — safe now that edit is ending
+    // (the base-table path likewise calls render() from exitEdit). This also
+    // repaints live-title backlink sources for free, so the partial path below is skipped.
+    _pendingFullRender = false;
+    render();
+  } else {
+    content.innerHTML = renderContentHTML(node);
+    // Live-title links and mirrors pointing here re-render NOW, not at the next
+    // full render() — an edit must not leave stale captions/transclusions on
+    // screen (UXP-4). Off-screen sources have no DOM and render fresh on scroll.
+    if (node.text !== prevText) {
+      const bl = collectLinks().backlinks[node.id];
+      if (bl) for (const srcId of bl) {
+        if (srcId === node.id) continue;
+        const src = nodeById(srcId);
+        if (src) repaintNodeContent(src);
+      }
     }
   }
   if (activeContentId === node.id) activeContentId = null;
@@ -11352,8 +11367,10 @@ function lpApply() {
     nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
     targetId = nn.id;
     announce(`Created point "${title}"`);            // #a11y-live (P3)
-    // NB: stays in edit mode — the new stub paints on the next full render, never
-    // a mid-edit render() (that would destroy the active contenteditable/caret).
+    // Stay in edit mode now (a mid-edit render() would destroy the caret); flag a
+    // full render so the new stub actually appears when this edit exits (exitEdit
+    // honors _pendingFullRender — a partial single-node re-render would hide it).
+    _pendingFullRender = true;
   } else {
     targetId = matches[activeIdx].id;
   }

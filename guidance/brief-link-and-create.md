@@ -37,9 +37,11 @@ path — **not** a new concept, pill, or syntax.
 3. **Create destination:** `resolveInbox() || root`. New point is `parent.children.push(...)`.
 4. **Stays in edit mode; does NOT call `render()`.** The current point is mid-edit (the menu fired
    on `mousedown`+`preventDefault`, focus is held). Creating the node mutates the tree +
-   `nodeMap`/`parentMap` + `markDirty()`; the new stub paints on the **next** full render
-   (exit/navigate). Calling `render()` mid-edit would destroy the active contenteditable/caret —
-   **forbidden here.**
+   `nodeMap`/`parentMap` + `markDirty()`. Calling `render()` mid-edit would destroy the active
+   contenteditable/caret — **forbidden here.** Instead the create branch sets a `_pendingFullRender`
+   flag that `exitEdit` honors: on edit exit it does a whole-tree `render()` (not its usual partial
+   single-node re-render, which would leave the new sibling stub invisible — a real bug the browser
+   test caught). The base-table path already calls `render()` from `exitEdit`, so this is safe.
 5. **Title is the raw-case typed query** (trimmed), not the lowercased match query. Markdown-aware
    like capture: `deriveTypeFromText` + `todoDoneFromText` so `[[- [ ] buy milk]]` makes a to-do stub.
 6. **Structural undo:** `pushUndo()` before the create (one entry restores both the new node and the

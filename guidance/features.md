@@ -472,8 +472,10 @@ Implemented:
     `[[#id|]]` form) — the Zettelkasten "declare by linking" move. The stub lands in the **inbox if
     one is set, else at top level** (`resolveInbox() || root`), is **markdown-aware**
     (`- [ ] buy milk` → a to-do stub, via `deriveTypeFromText`/`todoDoneFromText` like capture), and
-    you **stay where you are** — the new stub paints on the next render, never a mid-edit `render()`
-    (which would destroy the caret); one `pushUndo()` reverts both the node and the link. Pure core
+    you **stay where you are** — the new stub paints when the edit exits (a `_pendingFullRender` flag
+    makes `exitEdit` do a whole-tree `render()` instead of the partial single-node re-render that would
+    leave the sibling stub invisible), never a mid-edit `render()` (which would destroy the caret); one
+    `pushUndo()` reverts both the node and the link. Pure core
     `linkCreateOption(rawQuery)` (trimmed raw-case title, or null → no row). **Zero new syntax** —
     reuses `[[` + `[[#id|]]`, no inventory addition. Same-document only (cross-file create is Phase 1).
   - **Edit mode:** a link is **plain editable text** `[[#id|label]]`, not an atomic pill —
