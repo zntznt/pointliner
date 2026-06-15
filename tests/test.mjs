@@ -2750,6 +2750,30 @@ test('regression: formula-only variables are untouched by the pick branch', () =
   test('mathErrorReason — bad ref wins over non-numeric when both are present', () => {
     assert.equal(mathErrorReason('missing + beast', { beast: 'dragon' }), 'bad ref');
   });
+
+  test('mathErrorReason — estimate-constructor syntax reads as estimate, not bad ref', () => {
+    // crossing the estimate↔math boundary: the `to` operator / normal( / uniform(
+    assert.equal(mathErrorReason('5 to 10', {}), 'estimate');
+    assert.equal(mathErrorReason('(5 to 10) + 1', {}), 'estimate');   // was 'bad ref' (the `to` looked like an unknown name)
+    assert.equal(mathErrorReason('normal(8, 2)', {}), 'estimate');
+    assert.equal(mathErrorReason('2 * uniform(0, 10)', {}), 'estimate');
+    // it is the MOST specific reason — wins even when a bad ref is also present
+    assert.equal(mathErrorReason('missing + 5 to 10', {}), 'estimate');
+    // and it does NOT false-positive on innocent math: `today` (contains "to"),
+    // a var named `total`, or a function with no estimate keyword
+    assert.equal(mathErrorReason('asdate(today + 90)', {}), '');
+    assert.equal(mathErrorReason('total * 2', { total: 5 }), '');
+    assert.equal(mathErrorReason('c2f(20)', {}), '');
+  });
+
+  test('mathReasonPhrase — one human phrase per code, shared by the dialogs (P1)', () => {
+    assert.match(c.mathReasonPhrase('estimate'), /separate engine/);
+    assert.match(c.mathReasonPhrase('bad ref'), /unknown name/);
+    assert.match(c.mathReasonPhrase('non-numeric'), /non-numeric/);
+    assert.match(c.mathReasonPhrase('cycle'), /cycle/);
+    assert.equal(c.mathReasonPhrase(''), '');         // generic → caller's own fallback
+    assert.equal(c.mathReasonPhrase('whatever'), ''); // unknown code → no phrase
+  });
 }
 
 // ── unfold/refold + offset translation (UXP-30 / UXP-31) ───────────────────────

@@ -60,6 +60,17 @@ two correctness footguns, now closed:
   **independent** draws; `sum(prop)` aggregates a child property and is not Excel `SUM(1,2,3)`; a
   pick variable is declared via `@ → Variable`, not as a grammar rule line.
 
+**Follow-up batch (same audit):** the residual clarity gaps + the one real P4 item:
+- **Estimate↔math boundary now legible.** Using estimate syntax (`to`/`normal(`/`uniform(`) in a
+  math/check expression reported a misleading `bad ref`; `mathErrorReason` now returns an `estimate`
+  code and `mathReasonPhrase` (one shared code→phrase map, P1) makes the math dialog, the `/check`
+  dialog and `#ERR` pills name the boundary. The math dialog also now shows the reason (was a bare
+  "Invalid expression").
+- **In-app help** clarified for the remaining silent/startling behaviors: `{Nx}` takes a **literal**
+  N (a roll like `{{2d4}x:…}` isn't supported); a non-numeric weight (`rare 1d6`) is read as entry
+  text, not a weight; `min/max` over no matching child shows `∞`/`−∞`; estimate `lo to hi` bounds are
+  order-insensitive.
+
 Still open (a separate UX lane, not an engine gap): **non-brace artifact-looking input is silent.**
 Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nudge — correct by the
 `{…}`-is-the-syntax / literal-escape-hatch design (UXP-20), so the remedy is discoverability
