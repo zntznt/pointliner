@@ -12737,22 +12737,48 @@ function updateTitle() {
 const hasFSA = 'showOpenFilePicker' in window;
 const OPML_TYPE = { description:'OPML outline', accept:{'text/x-opml':['.opml']} };
 
+// The single runtime chokepoint for making `newRoot` the live document. Every
+// runtime swap (newFile + both openFile paths) funnels through here, so the
+// future document-switcher swaps through this one seam, not four call sites.
+// (Load-time bootstrap — the restoreEmbeddedDoc / restoreAutosave IIFEs + the
+// post-init block — is a separate one-time path and does NOT go through here:
+// it also restores app prefs / snapshot mode and is structurally different.)
+//
+// Per-document state RESET here (the switcher will later make exactly these
+// per-doc): root · fileHandle · fileName · dirty · focusedId ·
+// searchQuery/searchQueryLC/searchTerms · undoStack/redoStack ·
+// autosaveDisabled · storageWarnState.
+// App-wide prefs NOT touched (they survive a swap): showDone · showNotes ·
+// forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
+// agendaShowDone.
+function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null } = {}) {
+  root = newRoot;
+  fileHandle = fh;
+  fileName = fname;
+  focusedId = null;
+  searchQuery = ''; searchQueryLC = ''; searchTerms = [];
+  undoStack.length = 0; redoStack.length = 0;
+  autosaveDisabled = false; storageWarnState = null;
+  document.getElementById('file-name').textContent = fileName;
+  updateTitle();
+  document.getElementById('search-box').value = '';            // normalization #1: clear stale search UI on every swap (the <input> path skipped this)
+  document.getElementById('search-clear').classList.remove('on');
+  migrateNodePrefixes(root);
+  buildIndex(root, null);
+  resetDocCaches();
+  const assigned = !root.docId; ensureDocId(root);
+  if (assigned) scheduleAutosave();                            // normalization #2: a freshly-assigned docId persists; final dirty state stays clean
+  markClean();
+  render();
+}
+
 async function newFile() {
   if (dirty && !await openConfirmDialog({
     title: 'Discard unsaved changes?',
     message: 'Your current outline has unsaved changes. Starting a new file will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
-  root = mkRoot(); focusedId = null; fileHandle = null; fileName = 'unsaved'; searchQuery = ''; searchQueryLC = ''; searchTerms = [];
-  undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
-  document.getElementById('file-name').textContent = fileName;
-  updateTitle();
-  document.getElementById('search-box').value = '';
-  document.getElementById('search-clear').classList.remove('on');
-  migrateNodePrefixes(root);
-  buildIndex(root, null); resetDocCaches();
-  ensureDocId(root);
-  markClean(); render();
+  adoptDoc(mkRoot());
 }
 
 async function openFile() {
@@ -12765,26 +12791,15 @@ async function openFile() {
     try {
       [fileHandle] = await window.showOpenFilePicker({ types:[OPML_TYPE] });
       const file = await fileHandle.getFile();
-      fileName = file.name;
-      root = fromOpml(await file.text());
-      migrateNodePrefixes(root);
-      buildIndex(root, null); resetDocCaches();
-      focusedId = null; searchQuery = ''; searchQueryLC = ''; searchTerms = [];
-      undoStack.length = 0; redoStack.length = 0; autosaveDisabled = false; storageWarnState = null;
-      document.getElementById('file-name').textContent = fileName;
-      updateTitle();
-      document.getElementById('search-box').value = '';
-      document.getElementById('search-clear').classList.remove('on');
-      const _newId = !root.docId; ensureDocId(root); if (_newId) markDirty();
-      markClean(); render();
+      const text = await file.text();
+      adoptDoc(fromOpml(text), { fileName: file.name, fileHandle });
     } catch(e) { if (e.name!=='AbortError') alert('Could not open: '+e.message); }
   } else {
     const inp = document.createElement('input');
     inp.type='file'; inp.accept='.opml,text/x-opml,application/xml,text/xml';
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
-      fileName = file.name;
-      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); resetDocCaches(); focusedId=null; searchQuery=''; searchQueryLC=''; searchTerms=[]; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); const _newId2 = !root.docId; ensureDocId(root); if (_newId2) markDirty(); markClean(); render(); }
+      try { adoptDoc(fromOpml(await file.text()), { fileName: file.name }); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
