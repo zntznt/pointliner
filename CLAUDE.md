@@ -48,8 +48,15 @@ in a browser and it runs.
 - **Pure cores return `null` on invalid input**; callers branch on `null`. Keep
   parsing/rolling free of DOM access so they stay testable in plain Node.
 - **`mdToHtml` must stay synchronous** (render-context globals depend on it).
-- **`markDirty()` is the single invalidation point** — it bumps `_varsVer`. Any
-  new cross-node cache must be invalidated there too.
+- **`markDirty()` is the single invalidation point** — it bumps `_varsVer` (as does
+  `resetDocCaches()`, the DOM-free twin called on document load/swap). Any new cross-node
+  cache must be keyed on `_varsVer` too. **The canonical registry is the eight whole-tree
+  caches** keyed on that one generation — `collectVars`, `collectRules`, `collectLinks`,
+  `collectTags`, `collectCallables`, `collectSequences`, `knownStates`, `stateCmds` (grep
+  `// doc-cache` for the declarations; the full list also lives in the `resetDocCaches`
+  doc-comment). A **ninth** cache MUST join that list AND check/set `_varsVer`, or it
+  silently serves stale data; the `doc-cache invalidation` test in `tests/test.mjs` pins
+  the wiring (collector-object identity across a generation bump).
 - **Theme via CSS custom properties** (`--acc`, `--bg`, `--fg`, `--bdr`, `--ring`,
   `--muted`, the semantic `--ok/--warn/--bad/--info`, `--acc-fg`, `--mono`, the `--r-*`
   radius and `--sh-*` shadow tokens). Don't hardcode colors; dark mode is a media query

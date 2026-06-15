@@ -167,6 +167,7 @@ export function loadCores() {
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
+    'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles',
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie',

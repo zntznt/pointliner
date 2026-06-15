@@ -3408,6 +3408,42 @@ test('collectUnlinkedRefs: title-only (no alias prop) behavior unchanged', () =>
   assert.deepEqual(host(out).map(o => o.id), ['s0']);
 });
 
+// ── doc-cache invalidation invariant (preventive) ─────────────────────────────
+// Eight whole-tree caches are keyed on the single _varsVer generation; both
+// writers (markDirty / resetDocCaches) bump it. This pins the invalidation
+// WIRING — not content (content is pinned per-collector via the explicit-root
+// path). It catches a future ninth cache wired to the wrong counter, or a
+// writer that forgets to bump — both of which serve stale data silently.
+//
+// The cache path is only reachable via the NO-ARG form (uses the module `root`);
+// an explicit rootNode bypasses the cache. _varsVer is a lexical `let` (unreadable
+// from outside), so we observe invalidation via collector-object IDENTITY: same
+// generation → the identical cached object; after a bump → a freshly built one.
+// The bump is driven by resetDocCaches() (the DOM-free _varsVer++ — the exact bump
+// markDirty does, minus the stubbed-DOM noise), reached via cores._context.
+test('doc-cache: every _varsVer-keyed collector caches within a generation and rebuilds after a bump', () => {
+  const bump = c._context.resetDocCaches;
+  assert.equal(typeof bump, 'function', 'resetDocCaches must be reachable via _context to drive the _varsVer bump');
+  // The canonical eight (mirrors the resetDocCaches registry / the `// doc-cache` markers).
+  const collectors = [
+    ['collectVars', c.collectVars],
+    ['collectRules', c.collectRules],
+    ['collectLinks', c.collectLinks],
+    ['collectTags', c.collectTags],
+    ['collectCallables', c.collectCallables],
+    ['collectSequences', c.collectSequences],
+    ['knownStates', c.knownStates],
+    ['stateCmds', c.stateCmds],
+  ];
+  for (const [name, fn] of collectors) {
+    assert.equal(typeof fn, 'function', `${name} must be harvested into the cores`);
+    const a = fn();                                  // builds + caches at the current generation
+    assert.strictEqual(fn(), a, `${name}: same generation must return the identical cached object`);
+    bump();                                          // _varsVer++ — the shared invalidation point
+    assert.notStrictEqual(fn(), a, `${name}: a generation bump must invalidate the cache (fresh object)`);
+  }
+});
+
 // ── SHORTCUTS registry drift guard (UXP-36) ───────────────────────────────────
 // These tests read the raw HTML source and assert that critical keyboard handler
 // patterns are still present. They catch a whole class of silent regression:
