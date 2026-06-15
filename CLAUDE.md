@@ -727,6 +727,10 @@ The product direction is now set. Read these before proposing or building:
   shadow/radius component rules, and the binding anti-decisions: no glassmorphism, no
   noise, no red default accent, display ceiling ~2em). Read before any visual change;
   contradicting a Decision there is a regression, not a restyle.
+- `guidance/generative-status.md` — **completion ledger for the generative + computational lane**
+  (what's shipped · deferred · deliberately out-of-scope, + the next frontier). The generative +
+  computational catalogue is now **complete**; this is the index — detail lives in `features.md` and
+  `enhancement-research.md`.
 - `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
 - `guidance/enhancement-research.md` — consolidated *inspiration → upgrade* catalogue for the
   generative + computational engine and single-file offline-ness (mechanics mined from Tracery /
