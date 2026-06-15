@@ -1417,7 +1417,7 @@ function parseSequence(def) {
 // Document-wide declared sequences in document order (token-gated like the other
 // sidecar indexes). No-arg = the live document with the per-generation cache;
 // an explicit root bypasses the cache (pure function of its argument — tests).
-let _seqsCacheVer = -1, _seqsCached = [];
+let _seqsCacheVer = -1, _seqsCached = []; // doc-cache 6: collectSequences (see resetDocCaches registry)
 function collectSequences(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -1455,7 +1455,7 @@ function keywordIsDone(keyword, seqs = allSequences()) {
 
 // Every recognized state keyword (default + declared), uppercase. Cached on
 // _varsVer; this is the dynamic replacement for the old hardcoded keyword regex.
-let _statesCacheVer = -1, _statesCached = null;
+let _statesCacheVer = -1, _statesCached = null; // doc-cache 7: knownStates (see resetDocCaches registry)
 function knownStates(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache && _statesCacheVer === _varsVer && _statesCached) return _statesCached;
@@ -2420,7 +2420,7 @@ let cookieNode = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
-let _varsCacheVer = -1, _varsVer = 0, _varsCached = {};
+let _varsCacheVer = -1, _varsVer = 0, _varsCached = {}; // doc-cache 1: collectVars; _varsVer is the shared generation counter (see resetDocCaches registry)
 let _varCycles        = new Set(); // names that participate in a reference cycle
 let _varShadowedKeys  = new Set(); // sidecar keys whose name is overridden by a later declaration
 let _varActiveExprs   = {};        // name -> expr for the last/active declaration of each var
@@ -3427,9 +3427,9 @@ const DEFAULT_STATE_ICONS = {
   WAITING: { icon:'⏳', fa:'fa-solid fa-hourglass-half' },
   DONE:    { icon:'✓', fa:'fa-solid fa-square-check' },
 };
-let _stateCmdsVer = -1, _stateCmdsCached = null;
+let _stateCmdsCacheVer = -1, _stateCmdsCached = null; // doc-cache 8: stateCmds — no rootNode override; reads live state via allSequences() (see resetDocCaches registry)
 function stateCmds() {
-  if (_stateCmdsVer === _varsVer && _stateCmdsCached) return _stateCmdsCached;
+  if (_stateCmdsCacheVer === _varsVer && _stateCmdsCached) return _stateCmdsCached;
   const out = [], seen = new Set();
   for (const sq of allSequences()) {
     sq.states.forEach((st, i) => {
@@ -3446,7 +3446,7 @@ function stateCmds() {
       });
     });
   }
-  _stateCmdsVer = _varsVer; _stateCmdsCached = out;
+  _stateCmdsCacheVer = _varsVer; _stateCmdsCached = out;
   return out;
 }
 // The / pool: static block commands + the per-sequence state entries.
@@ -9438,7 +9438,7 @@ function rollPickSource(source, rules = collectRules(), vars = collectVars()) {
 // This is what lets `{ruleName}` resolve from any grammar or shorthand anywhere.
 // Cached per markDirty() generation, like collectVars(). Cycles are caught lazily
 // at expansion time, so no eager resolution is needed here.
-let _rulesCacheVer = -1, _rulesCached = {};
+let _rulesCacheVer = -1, _rulesCached = {}; // doc-cache 2: collectRules (see resetDocCaches registry)
 // ─── declarative data packs (plugins) ─────────────────────────────────────────
 // A pack is PURE DATA merged into the generative namespace — never code (the locked
 // plugins gate, guidance/plugins-direction.md §0–1). v1 carries grammar rules
@@ -9517,7 +9517,7 @@ function collectRules(rootNode) {
 // rules (named roll tables ARE one-rule grammars since the collapse), and named
 // markov chains — grouped for the brace autocomplete picker. Cached on _varsVer
 // like collectVars/collectRules.
-let _callablesCacheVer = -1, _callablesCached = [];
+let _callablesCacheVer = -1, _callablesCached = []; // doc-cache 5: collectCallables (see resetDocCaches registry)
 function collectCallables(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache && _callablesCacheVer === _varsVer) return _callablesCached;
@@ -9560,7 +9560,7 @@ function filterBraceCandidates(callables, prefix) {
 // targets ([[#id|…]]) and artifact tokens never read as tags; status keywords
 // (#TODO) count deliberately — completing them is useful. Sorted most-used first.
 // Pure over rootNode (tests); no-arg = the live document, cached on _varsVer.
-let _tagsCacheVer = -1, _tagsCached = null;
+let _tagsCacheVer = -1, _tagsCached = null; // doc-cache 4: collectTags (see resetDocCaches registry)
 function collectTags(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -9595,7 +9595,7 @@ function filterTagCandidates(tags, prefix) {
 // `label` is only a fallback caption — display resolves the target's LIVE title.
 // Pure over rootNode; cached on _varsVer for the live document (mirrors collectVars).
 const LINK_RE = /\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
-let _linksCacheVer = -1, _linksCached = null;
+let _linksCacheVer = -1, _linksCached = null; // doc-cache 3: collectLinks (see resetDocCaches registry)
 function collectLinks(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -12575,11 +12575,27 @@ function performMultiDrop(ids, targetId, position) {
 
 // ─── dirty ────────────────────────────────────────────────────────────────────
 
-// Invalidate every _varsVer-keyed document cache (collectVars/Rules/Links/
-// Sequences/Callables, state commands). markDirty does this on every edit, but a
-// fresh document load (newFile/openFile/restore) replaces `root` without an edit —
-// so the previous document's caches would be served until the first keystroke
-// (UXP-32). Call beside every buildIndex(root, null) that swaps the tree.
+// Invalidate every _varsVer-keyed document cache. This bump is the single
+// invalidation point shared with markDirty(); both do `_varsVer++` and nothing
+// else touches the eight per-generation caches.
+//
+// THE CANONICAL REGISTRY — every whole-tree cache keyed on _varsVer (grep
+// `doc-cache` to list all eight declarations; a ninth MUST join this list AND
+// be wired to _varsVer, or it will silently serve stale data):
+//   1. collectVars      (_varsCacheVer)
+//   2. collectRules     (_rulesCacheVer)
+//   3. collectLinks     (_linksCacheVer)
+//   4. collectTags      (_tagsCacheVer)
+//   5. collectCallables (_callablesCacheVer)
+//   6. collectSequences (_seqsCacheVer)
+//   7. knownStates      (_statesCacheVer)
+//   8. stateCmds        (_stateCmdsCacheVer)   ← no rootNode override; reads live state via allSequences()
+//
+// markDirty does this on every edit, but a fresh document load (newFile/openFile/
+// restore) replaces `root` without an edit — so the previous document's caches
+// would be served until the first keystroke (UXP-32). Call beside every
+// buildIndex(root, null) that swaps the tree. The invariant is pinned by the
+// "doc-cache invalidation" regression test in tests/test.mjs.
 function resetDocCaches() { _varsVer++; }
 
 function markDirty() {
