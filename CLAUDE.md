@@ -376,7 +376,11 @@ when proposing features:
   document **variable's** value (`{strength}`), else a `{name?}` marker; a
   **modified reference** (`{ref.mod}` — a base identifier + `.`-separated suffixes from
   the closed set `cap/title/upper/lower/a/s/ed/ord`, via `modParts`, A1 text modifiers) →
-  resolve the base (rule or var) then `applyMods` left-to-right. Names are
+  resolve the base (rule or var) then `applyMods` left-to-right; an **item field**
+  (`{item.field}` — a 2-segment ref whose suffix is NOT a modifier, via `fieldParts`,
+  **after** `modParts`, A6 hierarchical items) → resolve a dotted sub-rule
+  (`sword.damage: 1d8` read as `{weapon.damage}` after picking `weapon`→`sword`; consistency
+  across fields rides a **pick variable**, never a per-expansion bind). Names are
   **document-wide**: `collectRules()` walks the tree (mirroring `collectVars`,
   cached on `_varsVer`) and merges every grammar pill's rules into one namespace
   (a named roll table IS one of these — see the collapse above), so `{rule}`
@@ -578,6 +582,11 @@ modifiers** `{ref.mod}` — a `.mod` suffix on a rule/var reference, closed set
 `cap/title/upper/lower/a/s/ed/ord`, chainable, `modParts`/`applyMods` — A1, a recorded
 syntax-inventory addition (one of two, with B2's uncertain-value family), routed through the
 grammar pill for both rule + var bases) ·
+**Hierarchical / property items** (A6: a grammar item carries **fields** via dotted sub-rules
+`sword.damage: 1d8`, read with `{item.field}` — `fieldParts` (a 2-segment ref whose suffix is NOT
+a modifier, checked after `modParts`) + a `resolveBrace` branch; cross-field consistency rides a
+**pick variable** (`w = {weapon}` → `{w.name}`/`{w.damage}`), never the reverted per-expansion
+bind; promotes to an anon grammar pill, OPML round-trips in the `def`; v1 = single field) ·
 **Stateful sequences / decks** (`{shuffle|cycle|once|stopping: a|b|c}` — a deck draws
 without replacement, others rotate/advance; state on the grammar record, `_grammar`
 round-trips; `@` "Deck" door; `seqParts`/`nextSeqIndex`/`advanceSeq`) ·

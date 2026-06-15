@@ -6703,6 +6703,13 @@ function classifyBraceBody(body, rules, vars) {
     const low = mp.base.toLowerCase();
     return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
   }
+  const fp = fieldParts(body);                                         // {weapon.damage}
+  if (fp) {
+    const b = fp.base.toLowerCase();
+    // artifact only when it resolves (direct sub-rule, or the base is a known rule/var);
+    // else 'literal' so prose like {file.name} with no such rule stays plain text.
+    return (rules[`${b}.${fp.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) ? 'artifact' : 'literal';
+  }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (estParts(body)) return 'artifact';                               // {5 to 10}
@@ -6734,6 +6741,11 @@ function braceTypeLabel(body, rules, vars) {
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
+  const fp0 = fieldParts(body);                                        // {weapon.damage}
+  if (fp0) {
+    const b = fp0.base.toLowerCase();
+    if (rules[`${b}.${fp0.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) return ['grammar', body];
+  }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
   if (estParts(body)) return ['estimate', null];                       // {5 to 10}
@@ -8888,7 +8900,10 @@ function parseRules(def) {
     const ci = line.indexOf(':');
     if (ci < 0) return null;
     const name = line.slice(0, ci).trim().toLowerCase();
-    if (!/^[a-z_][\w]*$/.test(name)) return null;
+    // Dotted names register a sub-rule field (A6 hierarchical items): `sword.damage: 1d8`
+    // keys a rule `sword.damage`, read via {weapon.damage}. A stray/empty segment
+    // (`.x`, `a..b`) is rejected, like a bare bad name.
+    if (!/^[a-z_][\w]*(\.[a-z_][\w]*)*$/.test(name)) return null;
     const rhs = line.slice(ci + 1).trim();
     if (!rhs) return null;
     const alts = splitTopLevel(rhs, '|').map(parseAlt).filter(a => a.template !== '' && a.weight >= 1);
@@ -9020,6 +9035,22 @@ function applyMods(s, mods) {
   return mods.reduce((acc, m) => (m in MODIFIERS ? MODIFIERS[m](acc) : acc), s);
 }
 
+// ─── hierarchical / property items (A6) ──────────────────────────────────────
+// `{base.field}` reads a *field* of a picked item: with `weapon: sword | axe` and
+// `sword.damage: 1d8`, `{weapon.damage}` picks a weapon then reads its damage
+// sub-rule. Detection mirrors modParts but is SYNTACTIC + disjoint from A1: exactly
+// ONE suffix that is NOT a known modifier (a modifier suffix is A1's job, and
+// modParts is checked first, so a field named `cap`/`s`/`ed`/… is shadowed by the
+// modifier — documented: don't name fields after modifiers). v1 = a single field;
+// `{w.damage.cap}` (field then modifier) is deferred (modParts→null, then this →
+// null on the 3-segment body, so it shows the {…?} marker — acceptable).
+function fieldParts(body) {
+  const m = (body || '').trim().match(/^([a-z_]\w*)\.([a-z_]\w*)$/i);
+  if (!m) return null;
+  if (m[2].toLowerCase() in MODIFIERS) return null;   // a modifier suffix → A1's modParts, not a field
+  return { base: m[1], field: m[2] };
+}
+
 // ─── stateful sequences (decks / cycles) ─────────────────────────────────────
 // A {mode: a | b | c} brace whose leading `mode` keyword gives it MEMORY: a
 // `shuffle` is a DECK (draw without replacement, reshuffle when the bag empties),
@@ -9137,6 +9168,26 @@ function resolveBrace(body, ctx) {
     else if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, low)) s = formatVarValue(ctx.vars[low]);
     else return `{${mp.base}?}`;
     return applyMods(s, mp.mods);
+  }
+  const fp = fieldParts(body);
+  if (fp) {
+    // {base.field} — read a sub-rule field of a picked item (A6). Checked AFTER
+    // modParts so a modifier suffix wins the `.` overlap. Three resolutions:
+    const base = fp.base.toLowerCase(), field = fp.field.toLowerCase();
+    // 1. a directly-named sub-rule: {sword.damage} → rule `sword.damage`
+    if (ctx.rules[`${base}.${field}`]) return expandRule(`${base}.${field}`, ctx);
+    // 2. resolve the base to an item KEY, then read THAT item's field: {weapon.damage}
+    //    picks weapon ("sword") → reads `sword.damage`; {w.damage} where pick-var w="sword"
+    //    reads the SAME item's field — the locked cross-reference-consistency path (a pick
+    //    variable, NOT a per-expansion bind / the reverted ctx.binds model).
+    let v;
+    if (ctx.rules[base]) v = expandRule(base, ctx);
+    else if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, base)) v = formatVarValue(ctx.vars[base]);
+    if (v != null) {
+      const key = `${String(v).trim().toLowerCase()}.${field}`;
+      if (ctx.rules[key]) return expandRule(key, ctx);
+    }
+    return `{${fp.base}.${fp.field}?}`;                   // undefined field → visible marker (P4)
   }
   const rp = repeatParts(body);
   if (rp) {
@@ -9519,7 +9570,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text, {3x: {rule}} to repeat a template 3 times. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text, {3x: {rule}} to repeat a template 3 times. Define sub-rules key.field: … (sword.damage: 1d8) and read them with {item.field}; for the SAME item across fields, declare a pick variable (w = {weapon}) then use {w.name}/{w.damage}. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -9712,6 +9763,19 @@ function promoteBraceBody(node, body) {
   if (mp && (collectRules()[mp.base.toLowerCase()] || mp.base.toLowerCase() in collectVars())) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  // item field: {weapon.damage} / {sword.damage} → an anonymous grammar wrapped
+  // `origin: {base.field}`, so it routes through resolveBrace's field branch (and
+  // unfold/refold/prune/export reuse the grammar machinery, like A1). Promotes only
+  // when it resolves (a direct sub-rule, or a known rule/var base) — else falls
+  // through → stays literal, the escape hatch for prose like {file.name}.
+  const fp = fieldParts(body);
+  if (fp) {
+    const b = fp.base.toLowerCase();
+    if (collectRules()[`${b}.${fp.field.toLowerCase()}`] || collectRules()[b] || b in collectVars()) {
+      const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+      if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+    }
   }
   // repeat: {3x: template} → an anonymous grammar wrapping the body in a synthetic
   // origin rule so it unfolds/refolds/prunes/exports via the grammar machinery. The
@@ -13930,6 +13994,7 @@ const SHORTCUTS = [
     { keys: ['{a|b 2}', '{a|b {= w}}'], desc: 'Weighted random pick — a weight is a number, or a {= expr} over variables (dynamic odds); rules & tables compose' },
     { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
     { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s · ed · ord (e.g. {beast.a} → "an ogre", {verb.ed} → "walked", {n.ord} → "3rd"); chainable {beast.a.cap}' },
+    { keys: ['{weapon.damage}'], desc: 'Item field — read a sub-rule field of a picked item (define sword.damage: 1d8). For the SAME item across fields, freeze it in a pick variable: w = {weapon}, then {w.name}/{w.damage}' },
     { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
     { keys: ['{3x: {beast}}'], desc: 'Repeat — emit a template N times (1–99), re-expanded each time (distinct rolls); joined by spaces. Use {shuffle: …} for draw-without-replacement.' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },

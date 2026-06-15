@@ -57,6 +57,14 @@ retried:
 generation*. That is exactly the variable model the user asked for, and it makes consistency
 automatic — one stored value, many references.
 
+**A6 (hierarchical / property items, 2026-06-14) rides this, not the reverted bind.** When an item
+carries fields (`sword.damage: 1d8`, read as `{weapon.damage}`), the question "are `{item.name}` and
+`{item.damage}` the *same* item?" is the **same** consistency problem — and it has the **same locked
+answer**: declare a **pick variable** (`w = {weapon}`, frozen to one item), then `{w.name}` /
+`{w.damage}` reference that one stored value. A standalone `{weapon.damage}` re-picks independently
+(by design). The per-expansion `{a := …}` / `ctx.binds` model **must not be reintroduced** to make
+two bare `{weapon.*}` braces agree — that is the reverted pivot above.
+
 ---
 
 ## 3. Syntax — there is none to add (P5)
