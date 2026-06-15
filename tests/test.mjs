@@ -3408,6 +3408,66 @@ test('collectUnlinkedRefs: title-only (no alias prop) behavior unchanged', () =>
   assert.deepEqual(host(out).map(o => o.id), ['s0']);
 });
 
+// ── ensureDocId / _docid ──────────────────────────────────────────────────────
+
+test('ensureDocId: assigns a non-empty string when root.docId is null', () => {
+  const root = c.mkRoot();
+  assert.equal(root.docId, null, 'mkRoot sets docId to null');
+  const id = c.ensureDocId(root);
+  assert.equal(typeof id, 'string');
+  assert.ok(id.length > 0);
+  assert.equal(root.docId, id);
+});
+
+test('ensureDocId: idempotent — second call returns same id, does not reassign', () => {
+  const root = c.mkRoot();
+  const id1 = c.ensureDocId(root);
+  const id2 = c.ensureDocId(root);
+  assert.equal(id1, id2);
+});
+
+test('ensureDocId: leaves an existing docId untouched', () => {
+  const root = c.mkRoot();
+  root.docId = 'preset-id';
+  assert.equal(c.ensureDocId(root), 'preset-id');
+  assert.equal(root.docId, 'preset-id');
+});
+
+test('ensureDocId: injected gen function is used when docId is absent', () => {
+  const root = c.mkRoot();
+  let called = 0;
+  const gen = () => { called++; return 'deterministic'; };
+  const id = c.ensureDocId(root, gen);
+  assert.equal(id, 'deterministic');
+  assert.equal(called, 1);
+  // second call — gen must NOT be called again
+  c.ensureDocId(root, gen);
+  assert.equal(called, 1, 'gen must not be called again if docId already set');
+});
+
+test('_docid: toOpml emits <_docid> when docId is set', () => {
+  const root = c.mkRoot();
+  root.docId = 'test-doc-abc';
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_docid>test-doc-abc</_docid>'), `<_docid> not found in: ${xml.slice(0, 200)}`);
+});
+
+test('_docid: toOpml omits <_docid> when docId is null', () => {
+  const root = c.mkRoot(); // docId is null
+  const xml = c.toOpml(root);
+  assert.ok(!xml.includes('_docid'), 'null docId must not emit a <_docid> element');
+});
+
+test('_docid: ensureDocId + toOpml pipeline produces a stable id', () => {
+  const root = c.mkRoot();
+  c.ensureDocId(root, () => 'stable-id');
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_docid>stable-id</_docid>'));
+  // second serialization must emit the same id
+  assert.equal(c.toOpml(root).indexOf('<_docid>stable-id</_docid>'),
+               xml.indexOf('<_docid>stable-id</_docid>'));
+});
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
