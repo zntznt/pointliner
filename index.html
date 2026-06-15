@@ -12756,6 +12756,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null 
   fileHandle = fh;
   fileName = fname;
   focusedId = null;
+  clearTimeout(searchDebounce);
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0;
   autosaveDisabled = false; storageWarnState = null;
