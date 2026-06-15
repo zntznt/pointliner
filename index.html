@@ -1024,6 +1024,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #bl-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 .bl-item{padding:3px 0;cursor:pointer;font-size:13px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bl-item:hover{text-decoration:underline}
+.bl-subhd{margin-top:6px;padding-top:5px;border-top:1px solid var(--bdr);font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bl-item.bl-unlinked{display:flex;align-items:center;gap:8px;cursor:default;white-space:nowrap}
+.bl-item.bl-unlinked:hover{text-decoration:none}
+.bl-unlinked-label{color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.bl-unlinked-label:hover{color:var(--acc);text-decoration:underline}
+.bl-link-btn{flex-shrink:0;font-size:11px;font-weight:600;color:var(--acc);cursor:pointer;padding:1px 6px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;outline-offset:2px}
+.bl-link-btn:hover{background:var(--acc);color:var(--acc-fg)}
+.bl-link-btn:focus-visible{outline:2px solid var(--ring)}
 /* ── link picker ([[ trigger) ── */
 #lp-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:260px;max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #lp-menu.on{display:block}
@@ -9511,6 +9519,60 @@ function collectLinks(rootNode) {
   return result;
 }
 
+// Minimum title length for unlinked-reference matching (1-2 char titles would match too broadly).
+const UNLINKED_MIN_LEN = 3;
+
+// Pure: list points that mention targetId's title in plain prose without already linking to it.
+// Whole-word, case-insensitive; strips [[…]] tokens before matching (same as collectTags).
+// Pure over rootNode (pass explicit root for tests; omit for live document).
+function collectUnlinkedRefs(targetId, rootNode) {
+  if (rootNode === undefined) rootNode = root;
+  let title = null;
+  (function find(n) {
+    if (title !== null) return;
+    if (n.id === targetId) { title = textForDisplay(n) || ''; return; }
+    for (const c of n.children || []) find(c);
+  })(rootNode);
+  if (title === null) return [];
+  const t = title.trim();
+  if (t.length < UNLINKED_MIN_LEN) return [];
+  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(?<![a-zA-Z0-9])${esc}(?![a-zA-Z0-9])`, 'i');
+  const linkers = new Set(collectLinks(rootNode).backlinks[targetId] || []);
+  const out = [];
+  (function walk(n) {
+    if (n.id !== targetId && !linkers.has(n.id)) {
+      const stripped = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
+      if (re.test(stripped)) out.push({ id: n.id, title: textForDisplay(n) || '(untitled)' });
+    }
+    for (const c of n.children || []) walk(c);
+  })(rootNode);
+  return out;
+}
+
+// Pure: replace the first outside-token occurrence of title in text with [[#targetId|]].
+// Returns the new text, or null if no outside-token occurrence was found.
+function linkifyMention(text, title, targetId) {
+  const esc = (title || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!esc) return null;
+  const re = new RegExp(`(?<![a-zA-Z0-9])${esc}(?![a-zA-Z0-9])`, 'i');
+  const spans = [];
+  let t;
+  const tok = /\[\[[^\]]*\]\]/g;
+  while ((t = tok.exec(text))) spans.push([t.index, t.index + t[0].length]);
+  let from = 0;
+  while (from <= text.length) {
+    const m = re.exec(text.slice(from));
+    if (!m) return null;
+    const i = from + m.index, e = i + m[0].length;
+    if (!spans.some(([a, b]) => i < b && e > a)) {
+      return text.slice(0, i) + `[[#${targetId}|]]` + text.slice(e);
+    }
+    from = i + 1;
+  }
+  return null;
+}
+
 function grammarKey() { return 'g' + Math.random().toString(36).slice(2, 9); }
 
 // Build a fresh grammar record from a definition; null if malformed.
@@ -13105,9 +13167,10 @@ function syncBlPanelBottom() {
 function showBlPanel(nodeId) {
   const idx = collectLinks();
   const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
-  if (!sources.length) { hideBlPanel(); return; }
+  const unlinked = collectUnlinkedRefs(nodeId);
+  if (!sources.length && !unlinked.length) { hideBlPanel(); return; }
   blNodeId = nodeId;
-  renderBlPanel(sources);
+  renderBlPanel(sources, unlinked);
   document.getElementById('bl-panel').classList.add('on');
   syncBlPanelBottom();
 }
@@ -13119,10 +13182,14 @@ function hideBlPanel() {
   syncBlPanelBottom();
 }
 
-function renderBlPanel(sources) {
+function renderBlPanel(sources, unlinked) {
+  unlinked = unlinked || [];
   const inner = document.getElementById('bl-list');
   const hd = document.getElementById('bl-panel-hd');
-  if (hd) hd.textContent = sources.length === 1 ? 'Linked from' : `Linked from · ${sources.length}`;
+  if (hd) {
+    if (!sources.length) hd.style.display = 'none';
+    else { hd.style.display = ''; hd.textContent = sources.length === 1 ? 'Linked from' : `Linked from · ${sources.length}`; }
+  }
   inner.innerHTML = '';
   sources.forEach(src => {
     const item = document.createElement('div');
@@ -13132,12 +13199,48 @@ function renderBlPanel(sources) {
     item.addEventListener('click', () => { hideBlPanel(); zoomInto(src.id); });
     inner.appendChild(item);
   });
+  if (!unlinked.length) return;
+  const subhd = document.createElement('div');
+  subhd.className = 'bl-subhd';
+  subhd.textContent = `Unlinked references · ${unlinked.length}`;
+  inner.appendChild(subhd);
+  const focusedTitle = textForDisplay(nodeById(blNodeId)) || '';
+  unlinked.forEach(({ id, title }) => {
+    const row = document.createElement('div');
+    row.className = 'bl-item bl-unlinked';
+    const label = document.createElement('span');
+    label.className = 'bl-unlinked-label';
+    label.textContent = title;
+    label.title = 'Click to zoom into this node';
+    label.addEventListener('click', () => { hideBlPanel(); zoomInto(id); });
+    const btn = document.createElement('span');
+    btn.className = 'bl-link-btn';
+    btn.textContent = 'Link';
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('tabindex', '0');
+    btn.setAttribute('aria-label', `Link this mention to "${focusedTitle}"`);
+    const doLink = () => {
+      const mentionNode = nodeById(id); if (!mentionNode) return;
+      const next = linkifyMention(mentionNode.text, focusedTitle, blNodeId);
+      if (next == null) return;
+      pushUndo();
+      mentionNode.text = next; markDirty(); render();
+      showBlPanel(blNodeId);
+      announce('Linked mention');
+    };
+    btn.addEventListener('mousedown', e => { e.preventDefault(); doLink(); });
+    btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doLink(); } });
+    row.appendChild(label);
+    row.appendChild(btn);
+    inner.appendChild(row);
+  });
 }
 
 function updateBlPanel(nodeId) {
   const idx = collectLinks();
   const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
-  if (sources.length) showBlPanel(nodeId); else hideBlPanel();
+  const unlinked = collectUnlinkedRefs(nodeId);
+  if (sources.length || unlinked.length) showBlPanel(nodeId); else hideBlPanel();
 }
 
 // Keep the panel docked above the software keyboard on mobile. Crucially the
@@ -14078,6 +14181,7 @@ const SHORTCUTS = [
     { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, deck, oracle, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
     { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title); type a new title and pick “+ New point” to create and link it in one step; or paste a copied link' },
+    { keys: ['Linked from'], desc: 'Backlinks panel — appears at the bottom when you focus a point that others link to or mention. “Linked from” lists actual links; “Unlinked references” lists points that mention the title in prose without a link — click Link to convert the first mention to a [[#id|]] link in one click' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },

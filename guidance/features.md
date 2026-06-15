@@ -478,6 +478,19 @@ Implemented:
     `pushUndo()` reverts both the node and the link. Pure core
     `linkCreateOption(rawQuery)` (trimmed raw-case title, or null → no row). **Zero new syntax** —
     reuses `[[` + `[[#id|]]`, no inventory addition. Same-document only (cross-file create is Phase 1).
+  - **Unlinked references (same-document, Phase 3):** the backlinks panel gains a second section
+    — **"Unlinked references · N"** — listing other points that **mention the focused point's title
+    in plain prose but haven't linked to it yet**. Each row has a **Link** button that wraps the
+    first outside-token occurrence of the title in `[[#id|]]` and refreshes the panel in one click
+    (`pushUndo()` + `markDirty()` + `render()` + `showBlPanel()`). The row then moves to "Linked
+    from". Match is **whole-word, case-insensitive** (word-boundary `(?<![a-zA-Z0-9])` guards so
+    `cat` never matches `category`); tokens stripped before matching so a link's own label never
+    counts. Min title length is 3 characters. Panel opens if *either* section is non-empty.
+    Pure cores: `collectUnlinkedRefs(targetId, rootNode)` (tree walk, never cached — runs only
+    on panel open/refresh) + `linkifyMention(text, title, targetId)` (converts first
+    outside-token occurrence or returns `null`). **Zero new syntax** — reuses `[[#id|]]`. Link
+    control is `role="button"`, keyboard-operable (Enter/Space) + `mousedown`+`preventDefault`
+    (caret invariant), announced via `#a11y-live`. Same-document only (cross-file is Phase 1).
   - **Edit mode:** a link is **plain editable text** `[[#id|label]]`, not an atomic pill —
     you edit the token as text (like a footnote ref `[^key]`). It renders as a link only in
     display mode. Clicking a link → zoom to the target.

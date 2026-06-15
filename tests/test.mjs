@@ -3166,6 +3166,119 @@ test('link-and-create: a mid-edit create defers a full render to exit (wiring gu
   assert.ok(src.includes('if (_pendingFullRender)'), 'exitEdit must honor _pendingFullRender with a full render()');
 });
 
+// ── collectUnlinkedRefs & linkifyMention (unlinked references) ────────────────
+// Build small trees explicitly via mkRoot/mkNode to keep these pure over rootNode.
+
+function makeRefTree() {
+  // root → dragon (the target), sibling1 (mentions dragon in prose),
+  //         sibling2 (already links to dragon), sibling3 (no mention),
+  //         sibling4 (mentions "category" — word-boundary guard)
+  const root2 = c.mkRoot();
+  const dragon = c.mkNode('Dragon'); dragon.id = 'drg';
+  const sib1 = c.mkNode('the dragon sleeps'); sib1.id = 's1';
+  const sib2 = c.mkNode('[[#drg|]] guards the hoard'); sib2.id = 's2';
+  const sib3 = c.mkNode('no mention here'); sib3.id = 's3';
+  const sib4 = c.mkNode('category of beasts'); sib4.id = 's4';
+  root2.children.push(dragon, sib1, sib2, sib3, sib4);
+  return { root2, dragon, sib1, sib2, sib3, sib4 };
+}
+
+test('collectUnlinkedRefs: finds prose mentions, excludes self + linkers + boundary non-matches', () => {
+  const { root2, sib1 } = makeRefTree();
+  const out = c.collectUnlinkedRefs('drg', root2);
+  assert.equal(out.length, 1, 'only the plain-prose mention (not self, not linker, not boundary)');
+  assert.equal(out[0].id, sib1.id);
+});
+
+test('collectUnlinkedRefs: case-insensitive match', () => {
+  const root2 = c.mkRoot();
+  const target = c.mkNode('Dragon'); target.id = 'drg2';
+  const sib = c.mkNode('DRAGON roams the land'); sib.id = 'sx';
+  root2.children.push(target, sib);
+  const out = c.collectUnlinkedRefs('drg2', root2);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].id, sib.id);
+});
+
+test('collectUnlinkedRefs: already-linking point is excluded (it is a backlink not unlinked)', () => {
+  const { root2, sib2 } = makeRefTree();
+  const out = c.collectUnlinkedRefs('drg', root2);
+  assert.ok(!out.find(r => r.id === sib2.id), 'linker must not appear in unlinked refs');
+});
+
+test('collectUnlinkedRefs: word-boundary guard (category must not match cat)', () => {
+  const root2 = c.mkRoot();
+  const target = c.mkNode('cat'); target.id = 'cat1';
+  const sib = c.mkNode('category of things'); sib.id = 'cx';
+  root2.children.push(target, sib);
+  const out = c.collectUnlinkedRefs('cat1', root2);
+  assert.equal(out.length, 0, 'partial word must not match');
+});
+
+test('collectUnlinkedRefs: mention inside existing [[…]] token is excluded', () => {
+  const root2 = c.mkRoot();
+  const target = c.mkNode('Dragon'); target.id = 'drg3';
+  // the word "dragon" appears only inside a different link token label
+  const sib = c.mkNode('see [[#other|Dragon]] for details'); sib.id = 's_tok';
+  root2.children.push(target, sib);
+  const out = c.collectUnlinkedRefs('drg3', root2);
+  assert.equal(out.length, 0, 'mention inside a token must not count');
+});
+
+test('collectUnlinkedRefs: 2-char title → [] (below UNLINKED_MIN_LEN)', () => {
+  const root2 = c.mkRoot();
+  const target = c.mkNode('ab'); target.id = 'ab1';
+  const sib = c.mkNode('the ab test'); sib.id = 'abs';
+  root2.children.push(target, sib);
+  const out = c.collectUnlinkedRefs('ab1', root2);
+  assert.equal(out.length, 0);
+});
+
+test('collectUnlinkedRefs: unknown targetId → []', () => {
+  const root2 = c.mkRoot();
+  root2.children.push(c.mkNode('something'));
+  const out = c.collectUnlinkedRefs('nonexistent', root2);
+  assert.equal(out.length, 0);
+});
+
+test('linkifyMention: wraps the first outside-token occurrence', () => {
+  const result = c.linkifyMention('the dragon sleeps', 'Dragon', 'drg');
+  assert.equal(result, 'the [[#drg|]] sleeps');
+});
+
+test('linkifyMention: case-insensitive, preserves surrounding text exactly', () => {
+  const result = c.linkifyMention('I saw DRAGON yesterday', 'Dragon', 'drg');
+  assert.equal(result, 'I saw [[#drg|]] yesterday');
+});
+
+test('linkifyMention: only first occurrence is converted', () => {
+  const result = c.linkifyMention('dragon and then Dragon', 'Dragon', 'drg');
+  // first occurrence gets the link; second stays plain text
+  assert.equal(result, '[[#drg|]] and then Dragon');
+});
+
+test('linkifyMention: null when the only occurrence is inside an existing [[…]] token', () => {
+  const result = c.linkifyMention('see [[#other|Dragon]] for details', 'Dragon', 'drg');
+  assert.equal(result, null);
+});
+
+test('linkifyMention: null when title is absent', () => {
+  assert.equal(c.linkifyMention('no match here', 'Dragon', 'drg'), null);
+});
+
+test('linkifyMention: null on empty title', () => {
+  assert.equal(c.linkifyMention('some text', '', 'drg'), null);
+  assert.equal(c.linkifyMention('some text', '   ', 'drg'), null);
+});
+
+test('linkifyMention: outside-token occurrence wins when token also exists', () => {
+  // text has one token occurrence AND one plain-prose occurrence — the plain one converts first
+  const text = '[[#other|Dragon]] the dragon sleeps';
+  const result = c.linkifyMention(text, 'Dragon', 'drg');
+  // "Dragon" in token label is inside [[…]], "dragon" in prose is outside → prose one links
+  assert.equal(result, '[[#other|Dragon]] the [[#drg|]] sleeps');
+});
+
 // ── SHORTCUTS registry drift guard (UXP-36) ───────────────────────────────────
 // These tests read the raw HTML source and assert that critical keyboard handler
 // patterns are still present. They catch a whole class of silent regression:
