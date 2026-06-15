@@ -145,6 +145,7 @@ export function loadCores() {
     'collectUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'validPluginPack', 'mergePackRules', 'packVarDefs',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
+    'workspaceAffordance', 'workspaceFileName', 'firstLineTitle',
     'embedOpmlIntoHtml', 'extractEmbeddedOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
