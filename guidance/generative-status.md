@@ -67,9 +67,9 @@ two correctness footguns, now closed:
   dialog and `#ERR` pills name the boundary. The math dialog also now shows the reason (was a bare
   "Invalid expression").
 - **In-app help** clarified for the remaining silent/startling behaviors: `{Nx}` takes a **literal**
-  N (a roll like `{{2d4}x:…}` isn't supported); a non-numeric weight (`rare 1d6`) is read as entry
-  text, not a weight; `min/max` over no matching child shows `∞`/`−∞`; estimate `lo to hi` bounds are
-  order-insensitive.
+  N (a roll in the count slot, e.g. a `{2d4}`-based count, isn't supported); a non-numeric weight
+  (`rare 1d6`) is read as entry text, not a weight; `min/max` over no matching child shows `∞`/`−∞`;
+  estimate `lo to hi` bounds are order-insensitive.
 
 Still open (a separate UX lane, not an engine gap): **non-brace artifact-looking input is silent.**
 Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nudge — correct by the
