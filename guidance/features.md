@@ -583,3 +583,32 @@ Implemented:
   - **Not included (first slice):** in-place self-save / FileSystemAccess handle (that is
     C2); preserving the author's theme/accent prefs (those ride the JSON autosave, not the
     OPML); a localStorage-vs-snapshot merge (the snapshot is authoritative on load).
+
+- **Workspace folder** (Phase 1, step 3 — `guidance/roadmap.md`) — a durable on-disk
+  backing folder, the "hard gate" for the coming multi-document workspace. **File menu →
+  Connect folder…** (Chromium only, gated on `'showDirectoryPicker' in window`) picks a
+  folder, writes the current document into it once as a `.opml`, and **remembers the
+  folder** so the app auto-reconnects next launch. Mental model: *"put this notebook in a
+  folder I'll remember."*
+  - **Reuses the existing Save path** — the folder just supplies the backing
+    `fileHandle`; the actual write is `writeH` (the same OPML writer as Save As), and
+    subsequent persistence is the ordinary `${MOD}+S` Save plus the localStorage autosave.
+    This is **not** continuous auto-write (that is a later step) and **not** multi-document.
+  - **Persistence:** a `FileSystemDirectoryHandle` is structured-cloneable but not
+    JSON-serializable, so it can't ride the localStorage autosave — it lives in **IndexedDB**
+    (`idbOpen`/`idbGet`/`idbSet`/`idbDel`, a single `kv` store, key `workspaceDir`).
+  - **Reconnect on load:** `queryPermission` needs no gesture, so a still-granted handle
+    reconnects **silently**; a handle that needs re-permission becomes `pendingDir` and the
+    menu shows **Reconnect folder** (re-requesting permission needs a user gesture). A
+    moved/deleted folder is forgotten gracefully (no crash, offers Connect again).
+  - **Disconnect** forgets the connection only — it never deletes the file or the folder;
+    the backing `fileHandle` stays, so Save still writes the same file.
+  - **Affordance state machine:** the pure core `workspaceAffordance({hasWorkspace,
+    connected, pending})` → `hidden | connected | reconnect | connect` (the gate wins,
+    then connected, then pending). The fresh-file name comes from `workspaceFileName(doc,
+    currentName)` (keep a real name; else derive from `firstLineTitle(doc)`; else
+    `outline`; single `.opml` suffix; path-separators/reserved chars sanitized). Both pure
+    + Node-tested; the picker, IndexedDB, and re-permission flow are browser-side
+    (Chromium-manual-verified).
+  - **Non-Chromium** (Firefox/Safari): the menu item is simply hidden — everything else
+    works as today.

@@ -1176,6 +1176,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Load an OPML file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
   <div class="cmd-item" id="btn-save"><div class="cmd-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">Write to the current file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Save a copy as a new OPML file</span></div></div>
+  <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect folder…</span><span class="cmd-desc" id="workspace-desc">Save into a folder and reopen it automatically</span></div></div>
+  <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Workspace connected — Save writes here</span></div></div>
 
   <div class="fm-group">Export</div>
   <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">.md — artifacts frozen</span></div></div>
@@ -12837,6 +12839,162 @@ async function writeH(h) {
   catch(e) { alert('Save failed: '+e.message); }
 }
 
+// ─── workspace folder (connect · persist · reconnect) ─────────────────────────
+// Phase 1, step 3 (guidance/roadmap.md): a durable on-disk backing folder — the
+// "hard gate" for the multi-doc workspace. Connecting a folder writes the current
+// document into it once (reusing the existing OPML Save path) and remembers the
+// folder handle in IndexedDB, so the app auto-reconnects on the next launch. This is
+// NOT continuous auto-write (brief #4) and NOT multi-document (brief #5): the folder
+// simply supplies the backing fileHandle once. Chromium-gated on showDirectoryPicker
+// (the directory handle + queryPermission are a separate File System Access surface
+// from hasFSA's showOpenFilePicker).
+const hasWorkspace = 'showDirectoryPicker' in window;
+let workspaceDir = null;   // the permission-granted FileSystemDirectoryHandle this session, or null
+let pendingDir = null;     // a rehydrated stored handle awaiting a re-permission gesture (→ 'reconnect')
+const WORKSPACE_KEY = 'workspaceDir';
+
+// Pure: the File-menu affordance state machine. Precedence — the capability gate wins
+// first, then a live connection, then a rehydrated-but-unpermissioned handle, else the
+// offer to connect. (Node-testable; no DOM.)
+function workspaceAffordance({ hasWorkspace, connected, pending }) {
+  if (!hasWorkspace) return 'hidden';
+  if (connected) return 'connected';
+  if (pending) return 'reconnect';
+  return 'connect';
+}
+
+// Pure: the document's title — its first point's display text, first line, markdown
+// stripped. Empty when the document has no points (or an empty first point). Used to
+// name a freshly-created workspace file. (Node-testable; no DOM.)
+function firstLineTitle(doc) {
+  const first = doc && Array.isArray(doc.children) ? doc.children[0] : null;
+  if (!first) return '';
+  const line = (textForDisplay(first) || '').split('\n', 1)[0];
+  return stripMd(line).trim();
+}
+
+// Pure: the .opml filename to create in the connected folder. Mirrors saveAsFile's
+// suggested-name logic (keep a real current name; else derive from the title; else
+// 'outline'), normalized to a single '.opml' suffix and sanitized of path separators /
+// filesystem-reserved characters so getFileHandle never sees a nested path or an
+// illegal name. (Node-testable; no DOM.)
+function workspaceFileName(doc, currentName) {
+  let base = (currentName && currentName !== 'unsaved')
+    ? currentName.replace(/\.opml$/i, '')
+    : (firstLineTitle(doc) || 'outline');
+  base = base.replace(/[\/\\]+/g, ' ')             // path separators → space (never a nested path)
+             .replace(/[\x00-\x1f<>:"|?*]+/g, '')  // control + filesystem-reserved characters
+             .replace(/\s+/g, ' ')
+             .trim();
+  if (!base) base = 'outline';
+  return base + '.opml';
+}
+
+// ── IndexedDB handle store ────────────────────────────────────────────────────
+// A FileSystemDirectoryHandle is structured-cloneable but NOT JSON-serializable, so it
+// can't ride localStorage like the autosave snapshot — it must live in IndexedDB. A
+// minimal promise wrapper over a single 'kv' object store; the workspace handle is the
+// only key for now. (Browser-only; exercised by the §6 IndexedDB round-trip, not Node.)
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('pointliner', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(k) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => { const t = db.transaction('kv', 'readonly').objectStore('kv').get(k); t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error); });
+}
+async function idbSet(k, v) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); });
+}
+async function idbDel(k) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite').objectStore('kv').delete(k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); });
+}
+
+// Reflect the current workspace state into the two File-menu rows. The connect/reconnect
+// action and the disconnect action are distinct button rows (each keyboard-operable, no
+// nested interactives); the connected state shows the disconnect row carrying the folder
+// name. Called on every menu open and after any state change.
+function renderWorkspaceAffordance() {
+  const connect = document.getElementById('btn-workspace');
+  const disconnect = document.getElementById('btn-workspace-disconnect');
+  if (!connect || !disconnect) return;
+  const state = workspaceAffordance({ hasWorkspace, connected: !!workspaceDir, pending: !!pendingDir });
+  if (state === 'connected') {
+    connect.style.display = 'none';
+    disconnect.style.display = '';
+    const name = workspaceDir?.name || 'folder';
+    document.getElementById('workspace-dc-desc').textContent = 'Workspace: ' + name + ' — Save writes here';
+    disconnect.setAttribute('aria-label', 'Disconnect workspace folder ' + name);
+    return;
+  }
+  disconnect.style.display = 'none';
+  if (state === 'hidden') { connect.style.display = 'none'; return; }
+  connect.style.display = '';
+  const label = document.getElementById('workspace-label');
+  const desc = document.getElementById('workspace-desc');
+  if (state === 'reconnect') {
+    label.textContent = 'Reconnect folder';
+    desc.textContent = 'Grant access to “' + (pendingDir?.name || 'your folder') + '” again';
+    connect.setAttribute('aria-label', 'Reconnect folder ' + (pendingDir?.name || ''));
+    connect.dataset.wsAction = 'reconnect';
+  } else {
+    label.textContent = 'Connect folder…';
+    desc.textContent = 'Save into a folder and reopen it automatically';
+    connect.setAttribute('aria-label', 'Connect folder');
+    connect.dataset.wsAction = 'connect';
+  }
+}
+
+// Connect (user gesture): pick a folder, write the doc into it once via the existing OPML
+// writer, make that file THE backing handle, and remember the folder in IndexedDB.
+async function connectWorkspace() {
+  try {
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const name = workspaceFileName(root, fileName);
+    const fh = await dir.getFileHandle(name, { create: true });
+    await writeH(fh);                  // reuse the OPML writer (also markClean()s)
+    fileHandle = fh; fileName = name;  // the folder file is now the backing file
+    workspaceDir = dir; pendingDir = null;
+    await idbSet(WORKSPACE_KEY, dir);
+    document.getElementById('file-name').textContent = fileName;
+    updateTitle();
+    renderWorkspaceAffordance();
+    flashHint('Folder connected — saved “' + name + '”');
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // user cancelled the picker — silent no-op (P4)
+    alert('Could not connect folder: ' + (e && e.message ? e.message : e));
+  }
+}
+
+// Reconnect (user gesture): a stored handle was rehydrated but lacks permission; re-request
+// it. Granted → live; denied/dismissed → stays pending (the 'Reconnect folder' affordance).
+async function reconnectWorkspace() {
+  if (!pendingDir) return;
+  try {
+    const perm = await pendingDir.requestPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      workspaceDir = pendingDir; pendingDir = null;
+      renderWorkspaceAffordance();
+      flashHint('Folder reconnected — “' + (workspaceDir.name || 'folder') + '”');
+    }
+  } catch (_) { /* denied / dismissed — stays pending, no error toast */ }
+}
+
+// Disconnect: forget the connection only. Never deletes the file or the folder; the
+// backing fileHandle is left intact so Save still writes the same file.
+async function disconnectWorkspace() {
+  try { await idbDel(WORKSPACE_KEY); } catch (_) {}
+  workspaceDir = null; pendingDir = null;
+  renderWorkspaceAffordance();
+  flashHint('Folder disconnected — the file is still there.');
+}
+
 // ─── plain-text / markdown export ─────────────────────────────────────────────
 // These are interchange formats, not the canonical store (OPML is). Artifacts are
 // live in the app — a dice roll re-rolls, a math pill recomputes — but a flat text
@@ -14081,6 +14239,7 @@ function openFileMenu() {
   const searchKey = document.getElementById('search-key');
   if (searchKey) searchKey.textContent = fmtKey('F');
   updateFmStatus();
+  renderWorkspaceAffordance();
   const rect = document.getElementById('toolbar-row').getBoundingClientRect();
   fileMenu.style.top  = (rect.bottom + 4) + 'px';
   fileMenu.style.left = (rect.left + 8) + 'px';
@@ -14097,7 +14256,9 @@ function closeFileMenu() {
 // keyboard path added ALONGSIDE the pointer path. Per ux-discipline §7.1 the file
 // menu is a settings *dialog*, not a menu — rows are buttons; arrow-roving is a
 // convenience on top, not menu semantics.
-const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')];
+// Hidden rows (the workspace connect/disconnect rows toggle by state) stay out of the
+// arrow-roving order and the initial-focus pick.
+const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')].filter(el => el.style.display !== 'none');
 fileMenu.querySelectorAll('.cmd-item').forEach(it => { it.setAttribute('role', 'button'); it.setAttribute('tabindex', '-1'); });
 fileMenu.addEventListener('keydown', e => {
   const items = fmItems();
@@ -14127,6 +14288,11 @@ document.getElementById('btn-new').addEventListener('click', () => { newFile(); 
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
 document.getElementById('btn-save').addEventListener('click', () => { saveFile(); closeFileMenu(); });
 document.getElementById('btn-save-as').addEventListener('click', () => { saveAsFile(); closeFileMenu(); });
+document.getElementById('btn-workspace').addEventListener('click', () => {
+  (document.getElementById('btn-workspace').dataset.wsAction === 'reconnect' ? reconnectWorkspace() : connectWorkspace());
+  closeFileMenu();
+});
+document.getElementById('btn-workspace-disconnect').addEventListener('click', () => { disconnectWorkspace(); closeFileMenu(); });
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
 document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenu(); });
@@ -14387,6 +14553,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'File & history', rows: [
     { keys: [`${MOD}+S`, `${MOD}+O`], desc: 'Save / open' },
+    { keys: ['Connect folder'],       desc: 'File menu: save this document into a folder the app remembers, so it reconnects automatically next launch (Chromium only)' },
     { keys: [`${MOD}+F`],             desc: 'Search' },
     { keys: [`${MOD}+Z`, `${MOD}+Y`], desc: 'Undo / redo' },
   ]},
@@ -14615,6 +14782,25 @@ requestAnimationFrame(() => {
   // Otherwise focus the first node so the user can start typing immediately.
   if (flatRows.length > 0) focusNode(flatRows[0].node.id);
 });
+
+// Re-permission on load (Phase 1, step 3): if a workspace folder was connected in a
+// previous session, rehydrate its handle from IndexedDB and decide silently vs. prompt.
+// queryPermission needs no gesture, so a still-granted handle reconnects silently; a
+// non-granted one becomes pendingDir and surfaces the 'Reconnect folder' affordance
+// instead (requestPermission needs a gesture). A moved/deleted folder is forgotten.
+if (hasWorkspace) (async function reconnectStoredWorkspace() {
+  try {
+    const dir = await idbGet(WORKSPACE_KEY);
+    if (dir) {
+      const perm = await dir.queryPermission({ mode: 'readwrite' });
+      if (perm === 'granted') workspaceDir = dir; // silent reconnect
+      else pendingDir = dir;                       // → 'reconnect' affordance
+    }
+  } catch (_) {
+    try { await idbDel(WORKSPACE_KEY); } catch (_) {} // moved/deleted handle → forget it
+  }
+  renderWorkspaceAffordance();
+})();
 </script>
 </body>
 </html>

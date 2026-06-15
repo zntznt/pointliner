@@ -3468,6 +3468,55 @@ test('_docid: ensureDocId + toOpml pipeline produces a stable id', () => {
                xml.indexOf('<_docid>stable-id</_docid>'));
 });
 
+// ── workspace folder (Phase 1, step 3) ───────────────────────────────────────
+// Pure cores only — the directory picker, IndexedDB persistence, and re-permission
+// flow are browser-side and verified manually (see the PR's manual checklist).
+
+test('workspaceAffordance: capability gate wins, then connected > pending > connect', () => {
+  // gate first — !hasWorkspace is always 'hidden', even if connected/pending claim true
+  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: false, pending: false }), 'hidden');
+  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: true, pending: true }), 'hidden');
+  // connected beats a stale pending handle
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: false }), 'connected');
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: true }), 'connected');
+  // a rehydrated-but-unpermissioned handle offers reconnect
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: false, pending: true }), 'reconnect');
+  // nothing stored → offer to connect
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: false, pending: false }), 'connect');
+});
+
+test('firstLineTitle: first point\'s display text, first line, markdown-stripped', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('**Project** Plan\nsecond line ignored'));
+  assert.equal(c.firstLineTitle(root), 'Project Plan');
+  // empty / missing first point → empty string (the workspaceFileName fallback then kicks in)
+  assert.equal(c.firstLineTitle(c.mkRoot()), '');
+  assert.equal(c.firstLineTitle({ children: [] }), '');
+  assert.equal(c.firstLineTitle({}), '');
+});
+
+test('workspaceFileName: keeps a real current name, normalizes to a single .opml suffix', () => {
+  const r = c.mkRoot();
+  assert.equal(c.workspaceFileName(r, 'notes.opml'), 'notes.opml');   // no double suffix
+  assert.equal(c.workspaceFileName(r, 'notes'), 'notes.opml');        // adds the suffix
+  assert.equal(c.workspaceFileName(r, 'NOTES.OPML'), 'NOTES.opml');   // case-insensitive strip + normalize
+});
+
+test('workspaceFileName: derives from the title when unsaved, falls back to outline', () => {
+  const titled = c.mkRoot(); titled.children.push(c.mkNode('My Campaign'));
+  assert.equal(c.workspaceFileName(titled, 'unsaved'), 'My Campaign.opml');
+  assert.equal(c.workspaceFileName(c.mkRoot(), 'unsaved'), 'outline.opml'); // empty document
+  assert.equal(c.workspaceFileName(c.mkRoot(), ''), 'outline.opml');        // falsy current name
+});
+
+test('workspaceFileName: sanitizes path separators and reserved characters', () => {
+  const r = c.mkRoot();
+  assert.equal(c.workspaceFileName(r, 'a/b\\c'), 'a b c.opml');  // separators → space (never a nested path)
+  assert.equal(c.workspaceFileName(r, 'a:b*c?'), 'abc.opml');    // reserved chars dropped
+  const odd = c.mkRoot(); odd.children.push(c.mkNode('///'));    // a title that sanitizes to nothing
+  assert.equal(c.workspaceFileName(odd, 'unsaved'), 'outline.opml');
+});
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
