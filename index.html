@@ -1029,6 +1029,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #lp-menu.on{display:block}
 .lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
+/* link-and-create: the "+ New point" row reads as a create affordance, not a match */
+.lp-item.lp-create{color:var(--muted);font-style:italic}
+.lp-item.lp-create:hover,.lp-item.lp-create.hi{color:var(--acc)}
+.lp-menu .lp-item.lp-create:first-child{margin-top:0}
+.lp-item.lp-create:not(:first-child){margin-top:3px;border-top:1px solid var(--bdr);padding-top:7px}
 /* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
 #brace-menu,#tag-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #brace-menu.on,#tag-menu.on{display:block}
@@ -11258,6 +11263,15 @@ function linkCandidates(query, excludeId, rootNode = root) {
   return out;
 }
 
+// The link picker's "+ New point" create option (link-and-create): the trimmed
+// raw-case query as a stub title, or null when the query is empty/whitespace (so
+// no create row appears then). Raw case is preserved — this is the title the user
+// typed, unlike the lowercased match query. Pure; the DOM layer decides nothing.
+function linkCreateOption(rawQuery) {
+  const t = String(rawQuery || '').trim();
+  return t ? { title: t } : null;
+}
+
 function checkLinkTrigger(content, nodeId) {
   if (isSlashMenuOpen()) { hideLinkMenu(); return; }
   const pos = getCaretOffset(content);
@@ -11267,8 +11281,9 @@ function checkLinkTrigger(content, nodeId) {
   const query = m[1].toLowerCase();
   const triggerOffset = m.index;
   const candidates = linkCandidates(query, nodeId);
-  if (!candidates.length) { hideLinkMenu(); return; }
-  lpState = { nodeId, content, triggerOffset, query, activeIdx: 0, matches: candidates.slice(0, 20) };
+  const create = linkCreateOption(m[1]);   // raw-case query → the "+ New point" row (null when empty)
+  if (!candidates.length && !create) { hideLinkMenu(); return; }
+  lpState = { nodeId, content, triggerOffset, query, activeIdx: 0, matches: candidates.slice(0, 20), create };
   hideSlashMenu();
   renderLinkMenu();
   positionLinkMenu(content, triggerOffset);
@@ -11288,6 +11303,20 @@ function renderLinkMenu() {
     item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = i; lpApply(); });
     lpMenu.appendChild(item);
   });
+  // link-and-create: a "+ New point" row is always last when the query is non-empty,
+  // shown even when candidates exist (so you can deliberately make a new point).
+  if (lpState.create) {
+    const ci = lpState.matches.length;
+    const item = document.createElement('div');
+    item.className = 'lp-item lp-create' + (ci === lpState.activeIdx ? ' hi' : '');
+    item.textContent = `+ New point: "${lpState.create.title}"`;
+    item.setAttribute('role', 'option');
+    item.id = 'lp-opt-' + ci;
+    item.setAttribute('aria-selected', String(ci === lpState.activeIdx));
+    item.addEventListener('mouseenter', () => { lpState.activeIdx = ci; renderLinkMenu(); });
+    item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = ci; lpApply(); });
+    lpMenu.appendChild(item);
+  }
   // focus stays at the caret — the active option is exposed via activedescendant
   // (the slash menu's screen-reader pattern, shared by all caret pickers)
   lpState.content?.setAttribute('aria-activedescendant', 'lp-opt-' + lpState.activeIdx);
@@ -11297,26 +11326,48 @@ function renderLinkMenu() {
 
 function lpMove(dir) {
   if (!lpState) return;
-  const n = lpState.matches.length;
+  const n = lpState.matches.length + (lpState.create ? 1 : 0);  // wrap includes the create row
   lpState.activeIdx = (lpState.activeIdx + dir + n) % n;
   renderLinkMenu();
 }
 
 function lpApply() {
   if (!lpState) return;
-  const { nodeId, content, triggerOffset, query, activeIdx, matches } = lpState;
-  const chosen = matches[activeIdx];
+  const { nodeId, content, triggerOffset, query, activeIdx, matches, create } = lpState;
+  // link-and-create: the create row is the last index (matches.length) when present.
+  const isCreate = create && activeIdx === matches.length;
   hideLinkMenu();
+  let targetId;
+  if (isCreate) {
+    // Make a stub point titled with what was typed and link to it in one gesture.
+    // One undo entry restores BOTH the new node and the inserted link.
+    pushUndo();
+    const title = create.title;
+    const nn = mkNode(title);
+    nn.type = deriveTypeFromText(title) || 'ul';   // markdown-aware: "- [ ] x" → a to-do stub
+    nn.checked = todoDoneFromText(title);
+    const parent = resolveInbox() || root;          // inbox if set, else top level (locked default)
+    if (parent.collapsed) parent.collapsed = false;  // never hide a freshly-created stub
+    parent.children.push(nn);
+    nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
+    targetId = nn.id;
+    announce(`Created point "${title}"`);            // #a11y-live (P3)
+    // NB: stays in edit mode — the new stub paints on the next full render, never
+    // a mid-edit render() (that would destroy the active contenteditable/caret).
+  } else {
+    targetId = matches[activeIdx].id;
+  }
   const fullText = editableText(content);
   // Empty label = the target's LIVE title (the same form "Copy link" produces) —
   // the link follows a rename instead of freezing the title as typed today.
-  const token = `[[#${chosen.id}|]]`;
+  const token = `[[#${targetId}|]]`;
   const newText = fullText.slice(0, triggerOffset) + token + fullText.slice(triggerOffset + 2 + query.length);
   const node = nodeById(nodeId); if (!node) return;
   node.text = newText;
   content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(content, triggerOffset + token.length); } catch(_) {}
   markDirty();
+  if (isCreate) flashHint(`Created "${create.title}"`);   // visible confirmation (P4)
 }
 
 function positionLinkMenu(content, offset) {
@@ -14009,7 +14060,7 @@ const SHORTCUTS = [
     { keys: ['/check'], desc: 'Add a pass/fail constraint over a point and its children — sum(cost) ≤ budget, count(score) ≥ 3 (also in the bullet menu; find violations with is:failing)' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, deck, oracle, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
-    { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title; or paste a copied link)' },
+    { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title); type a new title and pick “+ New point” to create and link it in one step; or paste a copied link' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },

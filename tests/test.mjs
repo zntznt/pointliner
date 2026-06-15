@@ -3133,6 +3133,30 @@ test('linkCandidates: titles come through textForDisplay (prefixes stripped)', (
   assert.deepEqual(out.map(t => t.title), ['Heading title']);
 });
 
+// ── linkCreateOption (link-and-create: the "+ New point" picker row) ──────────
+test('linkCreateOption: trimmed raw-case title, or null on empty/whitespace', () => {
+  assert.deepEqual(host(c.linkCreateOption('Dragon')), { title: 'Dragon' });
+  assert.deepEqual(host(c.linkCreateOption('  spaced  ')), { title: 'spaced' });   // trimmed
+  assert.deepEqual(host(c.linkCreateOption('New Idea')), { title: 'New Idea' });   // case PRESERVED (vs the lowercased match query)
+  assert.equal(c.linkCreateOption(''), null);
+  assert.equal(c.linkCreateOption('   '), null);                              // whitespace-only → no create row
+  assert.equal(c.linkCreateOption(null), null);
+});
+
+test('linkCreateOption: the created stub is an ordinary markdown-aware node', () => {
+  const title = c.linkCreateOption('Buy milk').title;
+  const stub = c.mkNode(title);
+  assert.equal(stub.text, 'Buy milk');
+  // full sidecars, like any node (so it round-trips and can carry artifacts later)
+  assert.ok(Array.isArray(stub.children) && Array.isArray(stub.dice) && Array.isArray(stub.props));
+  // a plain title has no derived type (→ the wiring falls back to 'ul'); a task
+  // title still classifies, reusing capture's markdown-awareness
+  assert.equal(c.deriveTypeFromText('Buy milk'), null);
+  assert.equal(c.deriveTypeFromText('- [ ] buy milk'), 'todo');
+  assert.equal(c.todoDoneFromText('- [ ] buy milk'), false);
+  assert.equal(c.todoDoneFromText('- [x] buy milk'), true);
+});
+
 // ── SHORTCUTS registry drift guard (UXP-36) ───────────────────────────────────
 // These tests read the raw HTML source and assert that critical keyboard handler
 // patterns are still present. They catch a whole class of silent regression:

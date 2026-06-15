@@ -462,12 +462,20 @@ Implemented:
     render and A↔B cycles.
   - **Keyboard-first creation:** "Copy link to this node" (bullet menu + `Cmd/Ctrl+Shift+L`)
     puts `[[#id|]]` on the clipboard; paste it and the caret lands right after the `|`,
-    ready for a label. Typing `[[#id]]` by hand works too. A `[[`-triggered node picker
-    exists but is **gated off** (`LINK_PICKER_ENABLED = false`) as a future opt-in
-    guidance overlay (per `guidance/ux.md`). **UX status:** this is a tracked
-    discoverability non-conformance — `guidance/ux-remediation.md` UXP-4. The overlay
-    *staging* stays a roadmap call, but "no front door at any verbosity" is not a
-    conformant end state: it must eventually surface at least at the Guided floor.
+    ready for a label. Typing `[[#id]]` by hand works too. The **`[[`-triggered node picker**
+    is live (`LINK_PICKER_ENABLED`, a kill switch defaulting **on** — UXP-4 resolved; candidates
+    via the pure `linkCandidates`).
+  - **Link-and-create (same-document, Phase 3):** typing `[[a title that doesn't exist yet`
+    no longer dead-ends. The picker always offers a **"+ New point: ‹title›"** row — the last
+    option, shown even when matches exist, absent when the query is empty/whitespace. Choosing it
+    **creates a stub point titled with what you typed and links to it in one gesture** (the live-title
+    `[[#id|]]` form) — the Zettelkasten "declare by linking" move. The stub lands in the **inbox if
+    one is set, else at top level** (`resolveInbox() || root`), is **markdown-aware**
+    (`- [ ] buy milk` → a to-do stub, via `deriveTypeFromText`/`todoDoneFromText` like capture), and
+    you **stay where you are** — the new stub paints on the next render, never a mid-edit `render()`
+    (which would destroy the caret); one `pushUndo()` reverts both the node and the link. Pure core
+    `linkCreateOption(rawQuery)` (trimmed raw-case title, or null → no row). **Zero new syntax** —
+    reuses `[[` + `[[#id|]]`, no inventory addition. Same-document only (cross-file create is Phase 1).
   - **Edit mode:** a link is **plain editable text** `[[#id|label]]`, not an atomic pill —
     you edit the token as text (like a footnote ref `[^key]`). It renders as a link only in
     display mode. Clicking a link → zoom to the target.
