@@ -7368,8 +7368,6 @@ function onKeyDown(e, id, content) {
     if (isAtLastLine(content)) { e.preventDefault(); navigateToNext(id); }
   }
   else if (e.key==='Escape') { e.preventDefault(); if (focusedId) zoomOut(); else content.blur(); }
-  else if (e.key==='s' && ctrl) { e.preventDefault(); saveFile(); }
-  else if (e.key==='o' && ctrl) { e.preventDefault(); openFile(); }
 }
 
 // ─── multi-select ─────────────────────────────────────────────────────────────
