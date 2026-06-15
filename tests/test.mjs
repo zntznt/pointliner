@@ -3279,6 +3279,135 @@ test('linkifyMention: outside-token occurrence wins when token also exists', () 
   assert.equal(result, '[[#other|Dragon]] the [[#drg|]] sleeps');
 });
 
+// ── aliases (reserved `aliases` property; aliasesOf / nodeNames pure cores) ────
+
+test('aliasesOf: comma-split, trimmed, empties dropped', () => {
+  const n = c.mkNode('Wyrm');
+  n.props = [{ key: 'aliases', val: 'wyrm, drake' }];
+  assert.deepEqual(host(c.aliasesOf(n)), ['wyrm', 'drake']);
+});
+
+test('aliasesOf: trims and drops empty segments', () => {
+  const n = c.mkNode('Wyrm');
+  n.props = [{ key: 'aliases', val: 'wyrm, , drake,' }];
+  assert.deepEqual(host(c.aliasesOf(n)), ['wyrm', 'drake']);
+});
+
+test('aliasesOf: no aliases property → []', () => {
+  const n = c.mkNode('Wyrm');
+  assert.deepEqual(host(c.aliasesOf(n)), []);
+  n.props = [{ key: 'status', val: 'open' }];
+  assert.deepEqual(host(c.aliasesOf(n)), []);
+});
+
+test('aliasesOf: key is case-insensitive, value case preserved', () => {
+  const n = c.mkNode('Wyrm');
+  n.props = [{ key: 'Aliases', val: 'Dragon, Drake' }];
+  assert.deepEqual(host(c.aliasesOf(n)), ['Dragon', 'Drake']);   // key matched case-insensitively, value case kept
+});
+
+test('nodeNames: canonical title first, then aliases', () => {
+  const n = c.mkNode('Wyrm');
+  n.props = [{ key: 'aliases', val: 'dragon, drake' }];
+  assert.deepEqual(host(c.nodeNames(n)), ['Wyrm', 'dragon', 'drake']);
+});
+
+test('nodeNames: dedupes a case-variant alias equal to the title', () => {
+  const n = c.mkNode('Dragon');
+  n.props = [{ key: 'aliases', val: 'dragon, wyrm' }];   // 'dragon' duplicates the title (case-insensitive)
+  assert.deepEqual(host(c.nodeNames(n)), ['Dragon', 'wyrm']);
+});
+
+test('nodeNames: empty title → aliases only', () => {
+  const n = c.mkNode('');
+  n.props = [{ key: 'aliases', val: 'wyrm, drake' }];
+  assert.deepEqual(host(c.nodeNames(n)), ['wyrm', 'drake']);
+});
+
+test('linkCandidates: an alias makes a point match, recording which alias hit', () => {
+  const root = c.mkRoot();
+  const wyrm = c.mkNode('Wyrm'); wyrm.props = [{ key: 'aliases', val: 'dragon, drake' }];
+  root.children.push(wyrm);
+  const out = JSON.parse(JSON.stringify(c.linkCandidates('dragon', 'none', root)));
+  assert.equal(out.length, 1);
+  assert.equal(out[0].id, wyrm.id);
+  assert.equal(out[0].title, 'Wyrm');     // display stays the canonical title
+  assert.equal(out[0].alias, 'dragon');   // the alias that caused the match (picker hint)
+});
+
+test('linkCandidates: a title hit sets alias:null even when aliases exist', () => {
+  const root = c.mkRoot();
+  const wyrm = c.mkNode('Wyrm'); wyrm.props = [{ key: 'aliases', val: 'dragon' }];
+  root.children.push(wyrm);
+  const out = JSON.parse(JSON.stringify(c.linkCandidates('wyrm', 'none', root)));
+  assert.equal(out.length, 1);
+  assert.equal(out[0].alias, null);
+});
+
+test('linkCandidates: a point with aliases but EMPTY title is not a candidate (§2.5)', () => {
+  const root = c.mkRoot();
+  const ghost = c.mkNode(''); ghost.props = [{ key: 'aliases', val: 'dragon' }];
+  root.children.push(ghost);
+  assert.equal(c.linkCandidates('dragon', 'none', root).length, 0);
+});
+
+test('linkCandidates: self excluded even on an alias match', () => {
+  const root = c.mkRoot();
+  const wyrm = c.mkNode('Wyrm'); wyrm.props = [{ key: 'aliases', val: 'dragon' }];
+  root.children.push(wyrm);
+  assert.equal(c.linkCandidates('dragon', wyrm.id, root).length, 0);
+});
+
+test('linkCandidates: non-alias behavior unchanged — alias defaults to null on titled match', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Alpha section');
+  root.children.push(a);
+  const out = JSON.parse(JSON.stringify(c.linkCandidates('alpha', 'none', root)));
+  assert.deepEqual(out.map(t => t.title), ['Alpha section']);
+  assert.equal(out[0].alias, null);
+});
+
+test('collectUnlinkedRefs: finds a point via an alias (title itself absent)', () => {
+  // §8 integration: Wyrm is aliased "dragon"; a sibling says "the dragon sleeps"
+  // (never the word "Wyrm"). It must still surface as an unlinked reference.
+  const root = c.mkRoot();
+  const wyrm = c.mkNode('Wyrm'); wyrm.id = 'wyrm'; wyrm.props = [{ key: 'aliases', val: 'dragon' }];
+  const sib = c.mkNode('the dragon sleeps'); sib.id = 'sib';
+  root.children.push(wyrm, sib);
+  const out = c.collectUnlinkedRefs('wyrm', root);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].id, 'sib');
+});
+
+test('collectUnlinkedRefs: short title rescued by a long alias (per-name min-length)', () => {
+  const root = c.mkRoot();
+  const ab = c.mkNode('ab'); ab.id = 'ab'; ab.props = [{ key: 'aliases', val: 'dragon' }];  // 'ab' < 3, 'dragon' ≥ 3
+  const sib = c.mkNode('here be a dragon'); sib.id = 'sib2';
+  const sib2 = c.mkNode('the ab test only'); sib2.id = 'sib3';   // only the short name → excluded
+  root.children.push(ab, sib, sib2);
+  const out = c.collectUnlinkedRefs('ab', root);
+  assert.deepEqual(host(out).map(o => o.id), ['sib2']);   // only the long-alias mention; the short-name-only mention is excluded
+});
+
+test('collectUnlinkedRefs: alias match still respects token-strip + already-linked exclusions', () => {
+  const root = c.mkRoot();
+  const wyrm = c.mkNode('Wyrm'); wyrm.id = 'wyrm2'; wyrm.props = [{ key: 'aliases', val: 'dragon' }];
+  const linker = c.mkNode('[[#wyrm2|]] is here'); linker.id = 'lk';      // already links → excluded
+  const tokenOnly = c.mkNode('see [[#x|dragon]] here'); tokenOnly.id = 'tk'; // alias only inside a token → excluded
+  root.children.push(wyrm, linker, tokenOnly);
+  const out = c.collectUnlinkedRefs('wyrm2', root);
+  assert.equal(out.length, 0);
+});
+
+test('collectUnlinkedRefs: title-only (no alias prop) behavior unchanged', () => {
+  const root = c.mkRoot();
+  const dragon = c.mkNode('Dragon'); dragon.id = 'd0';
+  const sib = c.mkNode('the dragon sleeps'); sib.id = 's0';
+  root.children.push(dragon, sib);
+  const out = c.collectUnlinkedRefs('d0', root);
+  assert.deepEqual(host(out).map(o => o.id), ['s0']);
+});
+
 // ── SHORTCUTS registry drift guard (UXP-36) ───────────────────────────────────
 // These tests read the raw HTML source and assert that critical keyboard handler
 // patterns are still present. They catch a whole class of silent regression:

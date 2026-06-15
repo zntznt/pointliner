@@ -491,6 +491,22 @@ Implemented:
     outside-token occurrence or returns `null`). **Zero new syntax** — reuses `[[#id|]]`. Link
     control is `role="button"`, keyboard-operable (Enter/Space) + `mousedown`+`preventDefault`
     (caret invariant), announced via `#a11y-live`. Same-document only (cross-file is Phase 1).
+    **Aliases extend the match** (see below): a point is found as an unlinked reference via **any**
+    of its names, and the Link action links whichever name actually appears in that point's text.
+  - **Aliases (same-document, Phase 3):** a point can carry **alternate names** so linking and
+    mention-detection find it under more than its canonical title. *"Wyrm"* aliased *"dragon, drake"*
+    surfaces when you type `[[dragon` and when another point says "the dragon sleeps". **Storage = a
+    reserved `aliases` property** (the `check`/dates precedent — a comma-separated `node.props` entry
+    `{key:'aliases', val:'wyrm, drake'}` round-tripping through the existing `_props` OPML attribute;
+    **zero new sidecar, zero new syntax**). Hidden from the generic Properties editor and merged back
+    on save like the other reserved keys. Three front doors: the **bullet-menu "Add/Edit aliases"**
+    item, the **aliases chip** (click → dialog), and the **`/alias` slash verb**. The `[[` picker
+    matches any alias and shows an **"alias: X" hint** when an alias (not the title) caused the match
+    (P4). **Aliases extend *matching*, not *display*** — a link still renders the canonical live title
+    (use `[[#id|label]]` for a custom caption). Pure cores: `aliasesOf(node)` (comma-split, trimmed)
+    + `nodeNames(node)` (canonical title first, then deduped aliases) — the shared name helper
+    consumed by `linkCandidates` and `collectUnlinkedRefs`. Same-document only; an `alias:` search
+    operator and cross-file alias matching are deferred.
   - **Edit mode:** a link is **plain editable text** `[[#id|label]]`, not an atomic pill —
     you edit the token as text (like a footnote ref `[^key]`). It renders as a link only in
     display mode. Clicking a link → zoom to the target.

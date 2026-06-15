@@ -1042,6 +1042,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .lp-item.lp-create:hover,.lp-item.lp-create.hi{color:var(--acc)}
 .lp-menu .lp-item.lp-create:first-child{margin-top:0}
 .lp-item.lp-create:not(:first-child){margin-top:3px;border-top:1px solid var(--bdr);padding-top:7px}
+/* alias hint: why a non-title match surfaced */
+.lp-alias-hint{color:var(--muted);font-size:11px}
+.lp-item.hi .lp-alias-hint,.lp-item:hover .lp-alias-hint{color:var(--acc)}
 /* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
 #brace-menu,#tag-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #brace-menu.on,#tag-menu.on{display:block}
@@ -1347,6 +1350,25 @@ function textForDisplay(node) {
   const pt = parseTodo(t);
   if (pt.keyword) t = pt.body;
   return t;
+}
+
+// A point's alternate names — the reserved `aliases` property, comma-split, trimmed,
+// empties dropped. The shared helper that broadens link-picker + unlinked-reference
+// matching beyond the canonical title. Pure; no DOM. (ALIAS_KEY defined near CHECK_KEY.)
+function aliasesOf(node) {
+  const p = (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === ALIAS_KEY);
+  if (!p) return [];
+  return String(p.val || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
+// Every name a point answers to: canonical title first, then aliases (deduped
+// case-insensitively, non-empty). Used by linkCandidates + collectUnlinkedRefs.
+function nodeNames(node) {
+  const out = [];
+  const t = (textForDisplay(node) || '').trim();
+  if (t) out.push(t);
+  for (const a of aliasesOf(node)) if (a && !out.some(x => x.toLowerCase() === a.toLowerCase())) out.push(a);
+  return out;
 }
 
 // ─── TODO states & priorities (Org-style) ────────────────────────────────────
@@ -1663,6 +1685,13 @@ function expandAggExpr(expr, node) {
 // error chip and `is:failing` surfaces every violation doc-wide. Pure + Node-testable.
 const CHECK_KEY = 'check';
 
+// Reserved property holding a point's alternate names (comma-separated) so the
+// link picker + unlinked-reference detection find it under more than its canonical
+// title. Like `check`/dates: hidden from the generic Properties editor, merged
+// back on save, round-trips through `_props`. Zero new sidecar/syntax. (aliasesOf
+// / nodeNames live beside textForDisplay.)
+const ALIAS_KEY = 'aliases';
+
 // This point's `check` assertion string (the reserved property's value), or null.
 function checkExprOf(node) {
   const p = (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === CHECK_KEY);
@@ -1679,7 +1708,7 @@ function nodePropVars(node) {
   const out = Object.create(null);
   for (const p of (node?.props || [])) {
     const k = (p.key || '').trim().toLowerCase();
-    if (!k || k === CHECK_KEY || DATE_KEYS.has(k)) continue;
+    if (!k || k === CHECK_KEY || k === ALIAS_KEY || DATE_KEYS.has(k)) continue;
     const n = Number(String(p.val).trim());
     if (Number.isFinite(n)) out[k] = n;
   }
@@ -3382,6 +3411,7 @@ const BLOCK_CMDS = [
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Shows in the Agenda.', ex:'start → due', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children — sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
+  { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title.', ex:'wyrm, drake', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -5257,6 +5287,12 @@ function buildPropsArea(node) {
         chip.setAttribute('aria-label', `${propK}: ${dateLabel} (${df.iso}) — click to edit properties`);
       }
     }
+    if (propK === ALIAS_KEY) {
+      // reserved alias prop renders as a normal chip (unlike check), but routes to
+      // the Aliases dialog and reads as such (P4)
+      chip.title = 'Click to edit aliases';
+      chip.setAttribute('aria-label', `aliases: ${val} — click to edit aliases`);
+    }
     if (!chip.title) chip.title = 'Edit properties';
     if (!chip.getAttribute('aria-label')) chip.setAttribute('aria-label', `${key}: ${val} — click to edit properties`);
     const k = document.createElement('span'); k.className = 'prop-key'; k.textContent = key;
@@ -5332,10 +5368,10 @@ function buildPropsRow(node, opts = {}) {
 function openPropsDialog(nodeId) {
   const node = nodeById(nodeId);
   if (!node) return;
-  // Reserved properties (due/start → Schedule dialog; check → Check dialog) are
-  // managed by their own editors, not here — hide them from the generic editor and
-  // merge them back untouched on save.
-  const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY;
+  // Reserved properties (due/start → Schedule dialog; check → Check dialog;
+  // aliases → Aliases dialog) are managed by their own editors, not here — hide
+  // them from the generic editor and merge them back untouched on save.
+  const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY || k === ALIAS_KEY;
   let props = (node.props || []).filter(p => !reserved(p.key.trim().toLowerCase())).map(p => ({ key: p.key, val: p.val }));
   const reservedProps = (node.props || []).filter(p => reserved(p.key.trim().toLowerCase()));
 
@@ -5703,6 +5739,66 @@ function openCheckDialog(nodeId) {
       markDirty(); render();
     },
   });
+}
+
+// ─── aliases dialog ──────────────────────────────────────────────────────────
+const ALIAS_ICON = { fa: 'fa-solid fa-tag', fb: '🏷' };
+
+// Edit a point's alternate names (the reserved `aliases` property, comma-separated).
+// Reached by /alias, the bullet menu, or clicking the alias chip — mirrors the
+// dates/check dialogs. Empty input removes the property (clearing deletes, like the
+// note editor). Aliases broaden link-picker + unlinked-reference MATCHING only; the
+// link still renders the canonical title. Zero new syntax.
+function openAliasDialog(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, ALIAS_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Aliases';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px;display:flex;flex-direction:column;gap:8px';
+  const lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em';
+  lbl.textContent = 'Aliases (comma-separated)';
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'props-input val-in';
+  inp.style.cssText = 'width:100%;box-sizing:border-box';
+  inp.value = aliasesOf(node).join(', ');
+  inp.placeholder = 'e.g. wyrm, drake';
+  inp.setAttribute('aria-label', 'Aliases, comma-separated');
+  inp.spellcheck = false; inp.autocomplete = 'off';
+  const hint = document.createElement('div');
+  hint.style.cssText = 'font-size:11px;color:var(--muted)';
+  hint.textContent = 'Alternate names so links and mentions find this point. The link still shows its title.';
+  wrap.append(lbl, inp, hint); ioCard.appendChild(wrap);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
+  const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
+  foot.append(cancelBtn, saveBtn); ioCard.appendChild(foot);
+
+  function save() {
+    pushUndo();
+    const list = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+    const others = (node.props || []).filter(p => p.key.trim().toLowerCase() !== ALIAS_KEY);
+    node.props = list.length ? [...others, { key: 'aliases', val: list.join(', ') }] : others;
+    markDirty(); render(); closeIo();
+  }
+  cancelBtn.addEventListener('click', closeIo);
+  saveBtn.addEventListener('click', save);
+  inp.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') e.stopPropagation();         // protect global shortcuts; Tab bubbles to the focus trap
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+  });
+  ioCancel = closeIo;
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Aliases');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { inp.select(); inp.focus(); });
 }
 
 // ─── templates ─────────────────────────────────────────────────────────────────
@@ -7674,6 +7770,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openDueDateDialog(nodeId); } },
     { icon: CHECK_ICON, label: (node.props || []).some(p => p.key.trim().toLowerCase() === CHECK_KEY) ? 'Edit check' : 'Add check',
       fn: () => { hideBpop(); openCheckDialog(nodeId); } },
+    { icon: { fa:'fa-solid fa-tag', fb:'🏷' }, label: aliasesOf(node).length ? 'Edit aliases' : 'Add alias',
+      fn: () => { hideBpop(); openAliasDialog(nodeId); } },
     { icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
     { icon: TEMPLATE_ICON, label:'Save as template',
@@ -8018,6 +8116,10 @@ function slashApply() {
   }
   if (trigger !== '@' && cmd.id === 'check') {
     openCheckDialog(nodeId);
+    return;
+  }
+  if (trigger !== '@' && cmd.id === 'alias') {
+    openAliasDialog(nodeId);
     return;
   }
   if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
@@ -9522,22 +9624,25 @@ function collectLinks(rootNode) {
 // Minimum title length for unlinked-reference matching (1-2 char titles would match too broadly).
 const UNLINKED_MIN_LEN = 3;
 
-// Pure: list points that mention targetId's title in plain prose without already linking to it.
-// Whole-word, case-insensitive; strips [[…]] tokens before matching (same as collectTags).
-// Pure over rootNode (pass explicit root for tests; omit for live document).
+// Pure: list points that mention any of targetId's names (canonical title OR an
+// alias) in plain prose without already linking to it. Whole-word, case-insensitive;
+// strips [[…]] tokens before matching (same as collectTags). The noise floor
+// (UNLINKED_MIN_LEN) is applied per name, so a short title with a long alias still
+// matches on the alias. Pure over rootNode (pass explicit root for tests; omit for
+// live document).
 function collectUnlinkedRefs(targetId, rootNode) {
   if (rootNode === undefined) rootNode = root;
-  let title = null;
+  let target = null;
   (function find(n) {
-    if (title !== null) return;
-    if (n.id === targetId) { title = textForDisplay(n) || ''; return; }
+    if (target) return;
+    if (n.id === targetId) { target = n; return; }
     for (const c of n.children || []) find(c);
   })(rootNode);
-  if (title === null) return [];
-  const t = title.trim();
-  if (t.length < UNLINKED_MIN_LEN) return [];
-  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?<![a-zA-Z0-9])${esc}(?![a-zA-Z0-9])`, 'i');
+  if (!target) return [];
+  const names = nodeNames(target).map(s => s.trim()).filter(s => s.length >= UNLINKED_MIN_LEN);
+  if (!names.length) return [];
+  const alt = names.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const re = new RegExp(`(?<![a-zA-Z0-9])(?:${alt})(?![a-zA-Z0-9])`, 'i');
   const linkers = new Set(collectLinks(rootNode).backlinks[targetId] || []);
   const out = [];
   (function walk(n) {
@@ -11324,15 +11429,24 @@ lpMenu.addEventListener('mousedown', e => e.preventDefault());
 
 function hideLinkMenu() { lpState?.content?.removeAttribute('aria-activedescendant'); lpMenu.classList.remove('on'); lpState = null; }
 
-// Link-target candidates: every point whose title contains the query (case-
-// insensitive), excluding the linking point itself and title-less points. Pure
-// over rootNode (tests pass an explicit tree); no-arg = the live document.
+// Link-target candidates: every point whose title OR an alias contains the query
+// (case-insensitive), excluding the linking point itself and title-less points.
+// `alias` records which alias matched when the title did not (a picker hint, P4);
+// null on a title hit. Pure over rootNode (tests pass an explicit tree); no-arg =
+// the live document.
 function linkCandidates(query, excludeId, rootNode = root) {
   const out = [];
   function walk(n) {
     if (n.id !== excludeId) {
       const title = textForDisplay(n);
-      if (title && (query === '' || title.toLowerCase().includes(query))) out.push({ id: n.id, title });
+      if (title) {
+        const names = nodeNames(n);
+        if (query === '' || names.some(nm => nm.toLowerCase().includes(query))) {
+          const hitTitle = query === '' || title.toLowerCase().includes(query);
+          const alias = hitTitle ? null : (names.slice(1).find(nm => nm.toLowerCase().includes(query)) || null);
+          out.push({ id: n.id, title, alias });
+        }
+      }
     }
     for (const c of n.children) walk(c);
   }
@@ -11373,6 +11487,14 @@ function renderLinkMenu() {
     const item = document.createElement('div');
     item.className = 'lp-item' + (i === lpState.activeIdx ? ' hi' : '');
     item.textContent = nd.title;
+    // alias hint: when an alias (not the title) caused this match, say so (P4 — no
+    // silent "why did that appear?"). Additive markup; the title stays the label.
+    if (nd.alias) {
+      const hint = document.createElement('span');
+      hint.className = 'lp-alias-hint';
+      hint.textContent = ` · alias: ${nd.alias}`;
+      item.appendChild(hint);
+    }
     item.setAttribute('role', 'option');
     item.id = 'lp-opt-' + i;
     item.setAttribute('aria-selected', String(i === lpState.activeIdx));
@@ -13048,6 +13170,7 @@ document.getElementById('outline').addEventListener('click', e => {
 function openPropChip(chip) {
   if (DATE_KEYS.has(chip.dataset.propKey)) openDueDateDialog(chip.dataset.propsId);
   else if (chip.dataset.propKey === CHECK_KEY) openCheckDialog(chip.dataset.propsId);
+  else if (chip.dataset.propKey === ALIAS_KEY) openAliasDialog(chip.dataset.propsId);
   else openPropsDialog(chip.dataset.propsId);
 }
 
@@ -13221,7 +13344,15 @@ function renderBlPanel(sources, unlinked) {
     btn.setAttribute('aria-label', `Link this mention to "${focusedTitle}"`);
     const doLink = () => {
       const mentionNode = nodeById(id); if (!mentionNode) return;
-      const next = linkifyMention(mentionNode.text, focusedTitle, blNodeId);
+      // The matched name may be an alias, not the title (§8): try each name the
+      // focus point answers to and link whichever actually appears in this text.
+      const target = nodeById(blNodeId);
+      const names = target ? nodeNames(target) : [focusedTitle];
+      let next = null;
+      for (const name of names) {
+        next = linkifyMention(mentionNode.text, name, blNodeId);
+        if (next != null) break;
+      }
       if (next == null) return;
       pushUndo();
       mentionNode.text = next; markDirty(); render();
@@ -14178,10 +14309,11 @@ const SHORTCUTS = [
   { sec: 'Insert & commands', rows: [
     { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table, base, or stamp a saved template…' },
     { keys: ['/check'], desc: 'Add a pass/fail constraint over a point and its children — sum(cost) ≤ budget, count(score) ≥ 3 (also in the bullet menu; find violations with is:failing)' },
+    { keys: ['/alias'], desc: 'Give a point alternate names (comma-separated) so links and mentions find it under more than its title — wyrm, drake (also in the bullet menu and the aliases chip; the link still shows the title)' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, deck, oracle, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
-    { keys: ['[['], desc: 'Link to a point — the picker lists your points (live title); type a new title and pick “+ New point” to create and link it in one step; or paste a copied link' },
-    { keys: ['Linked from'], desc: 'Backlinks panel — appears at the bottom when you focus a point that others link to or mention. “Linked from” lists actual links; “Unlinked references” lists points that mention the title in prose without a link — click Link to convert the first mention to a [[#id|]] link in one click' },
+    { keys: ['[['], desc: 'Link to a point — the picker lists your points by title or alias (an “alias: X” hint shows why an alias matched); type a new title and pick “+ New point” to create and link it in one step; or paste a copied link' },
+    { keys: ['Linked from'], desc: 'Backlinks panel — appears at the bottom when you focus a point that others link to or mention. “Linked from” lists actual links; “Unlinked references” lists points that mention the title (or an alias) in prose without a link — click Link to convert the first mention to a [[#id|]] link in one click' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },
