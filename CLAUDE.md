@@ -475,7 +475,11 @@ string in the pill and `flattenArtifacts`). Live like B1 — Phase-2 rollups rec
 `{expr}` source in edit mode, and promotes from the `{lo to hi}` constructor shorthand
 (`estParts` — constructors only, so a bare `{sum(cost)}` never diverges from `{= sum(cost)}`
 deterministic math; rollups are `@estimate`-dialog-authored). The engines stay **separate in v1**:
-an estimate inside a `{= …}` math expr fails visibly, like any non-number. All cores are pure +
+an estimate inside a `{= …}` math expr fails visibly, like any non-number — and **legibly**:
+`mathErrorReason` sniffs estimate-constructor syntax (`to`/`normal(`/`uniform(`) and returns the
+`estimate` code, so the math dialog, the `/check` dialog and `#ERR` pills name the boundary
+(`mathReasonPhrase` is the one shared code→phrase map, P1) instead of reporting a misleading `bad ref`.
+All cores are pure +
 Node-testable. Direction: `guidance/enhancement-research.md` B2 (frontier F3).
 
 **Variables tie the engines together.** `collectVars()` walks the whole

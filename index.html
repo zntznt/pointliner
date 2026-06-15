@@ -3000,12 +3000,19 @@ const MATH_CONST_NAMES = new Set(['pi', 'e', 'tau', 'inf', 'infinity', 'today'])
 // value-position identifiers in `expr` against the resolved `vars` map and the set of
 // cyclic names. Mirrors evalMath's own rule — an identifier directly followed by `(`
 // is a function call, not a variable — so function names need no enumeration.
+//   'estimate'    — the expression uses estimate-constructor syntax (lo to hi /
+//                   normal( / uniform(), a separate engine that can't ride evalMath
 //   'cycle'       — an identifier names a variable caught in a reference cycle
 //   'non-numeric' — an identifier names a variable whose value is a string (e.g. a pick)
 //   'bad ref'     — an identifier names nothing resolvable (deleted / never declared)
 //   ''            — no offending identifier; a generic malformed expression
 function mathErrorReason(expr, vars = {}, cycles = new Set()) {
   const s = String(expr || '');
+  // Estimate-constructor syntax (`lo to hi`, normal(…), uniform(…)) is a SEPARATE
+  // engine — a distribution can't ride evalMath (number-only). Catch it first so
+  // crossing the boundary reads as 'estimate', not 'bad ref' (the `to` looks like
+  // an unknown name) or a bare syntax error. Same sniff as estParts.
+  if ((/\bto\b/i.test(s) && /\d/.test(s)) || /\b(?:normal|uniform)\s*\(/i.test(s)) return 'estimate';
   const re = /[A-Za-z_]\w*/g;
   let m, sawNonNumeric = false, sawBadRef = false;
   while ((m = re.exec(s)) !== null) {
@@ -3019,6 +3026,17 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
   if (sawBadRef) return 'bad ref';
   if (sawNonNumeric) return 'non-numeric';
   return '';
+}
+
+// A human phrase for a mathErrorReason code, so the math dialog, the check dialog,
+// and #ERR pills explain a failure the SAME way (P1/P4 — legible, consistent). ''
+// for a generic/unknown code (the caller supplies its own "syntax error" fallback).
+function mathReasonPhrase(why) {
+  return why === 'estimate'    ? 'an estimate (lo to hi / normal / uniform) — a separate engine, not usable in math or a check'
+       : why === 'bad ref'     ? 'an unknown name — a missing property or variable'
+       : why === 'non-numeric' ? 'a non-numeric value (e.g. a text pick)'
+       : why === 'cycle'       ? 'a reference cycle'
+       : '';
 }
 
 // Apply TBLFM formulas to a table model, returning a new rows grid with every
@@ -5657,10 +5675,7 @@ function openCheckDialog(nodeId) {
           if (verdict === 'fail') return `<span style="color:var(--bad)">⚠ fails</span> <span style="color:var(--muted)">· ${expanded}</span>`;
           const scope = Object.assign(Object.create(null), globalVarMap, nodePropVars(node));
           const why = mathErrorReason(expandAggExpr(v, node), scope);
-          const reason = why === 'bad ref' ? 'an unknown name — a missing property or variable'
-                       : why === 'non-numeric' ? 'a non-numeric value'
-                       : why === 'cycle' ? 'a reference cycle'
-                       : 'a syntax error';
+          const reason = mathReasonPhrase(why) || 'a syntax error';
           return `<span style="color:var(--warn)">⚠ can’t evaluate</span> <span style="color:var(--muted)">· ${reason}</span>`;
         },
       },
@@ -9580,7 +9595,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text (the comparison reads a document variable — declare it via @ → Variable), {3x: {rule}} to repeat a template 3 times. Define sub-rules key.field: … (sword.damage: 1d8) and read them with {item.field}; for the SAME item across fields, declare a pick variable through @ → Variable → Random pick (w = {weapon}, NOT a rule line here) then use {w.name}/{w.damage}. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives, each weighted by a trailing number or {= expr}.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text (the comparison reads a document variable — declare it via @ → Variable), {3x: {rule}} to repeat a template a literal N (1–99) times — N is a fixed number, not a roll. Define sub-rules key.field: … (sword.damage: 1d8) and read them with {item.field}; for the SAME item across fields, declare a pick variable through @ → Variable → Random pick (w = {weapon}, NOT a rule line here) then use {w.name}/{w.damage}. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives, each weighted by a trailing number or {= expr}; any other trailing token (e.g. 1d6) is read as entry text, not a weight.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -10670,7 +10685,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
     submitLabel: submitLabel || 'Add',
     fields: [
       { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,
-        hint:'A 90% range lo to hi (lognormal — or normal if a bound ≤ 0), normal(mean, sd), uniform(lo, hi). Combine with + − × ÷ — each estimate is sampled INDEPENDENTLY (variances add); reuse one uncertain value by giving children a property and rolling it up with sum(prop)/avg(prop). The sparkline is a density histogram across the full sampled range; the ± shows mean and the inner 90% [p5,p95]. Estimates are their own engine — they don’t work inside a {= …} math pill. Click to re-sample.',
+        hint:'A 90% range lo to hi (lognormal — or normal if a bound ≤ 0), normal(mean, sd), uniform(lo, hi). Combine with + − × ÷ — each estimate is sampled INDEPENDENTLY (variances add); reuse one uncertain value by giving children a property and rolling it up with sum(prop)/avg(prop). The sparkline is a density histogram across the full sampled range; the ± shows mean and the inner 90% [p5,p95]. Estimates are their own engine — they don’t work inside a {= …} math pill. The lo/hi order doesn’t matter (5 to 10 ≡ 10 to 5). Click to re-sample.',
         preview: v => {
           const ex = (v.expr || '').trim();
           if (!ex) return '';
@@ -10927,13 +10942,16 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, abs, sin/cos/tan, log (base-10 — use ln for natural; log2/log10 too), min/max, … · π/e/today. Units (c2f, km2mi — the from2to pattern; also f2c, mi2km). Dates: a fixed date is date(2026,12,31); date math returns a NUMBER, so wrap it in asdate(…) to show a calendar (asdate(today+90)); daysuntil(due), clamp(x,0,10). Roll up a child points’ property — sum/avg/count/min/max(prop), e.g. sum(cost) — this aggregates a property over child points; it is NOT SUM(1,2,3), so add literals with 1+2+3.',
+        hint: 'Functions: sqrt, abs, sin/cos/tan, log (base-10 — use ln for natural; log2/log10 too), min/max, … · π/e/today. Units (c2f, km2mi — the from2to pattern; also f2c, mi2km). Dates: a fixed date is date(2026,12,31); date math returns a NUMBER, so wrap it in asdate(…) to show a calendar (asdate(today+90)); daysuntil(due), clamp(x,0,10). Roll up a child points’ property — sum/avg/count/min/max(prop), e.g. sum(cost) — this aggregates a property over child points; it is NOT SUM(1,2,3), so add literals with 1+2+3. min/max over no matching child → ∞ / −∞ (the empty-set identity).',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
           const vars = collectVars();
           const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
-          if (r === null) return `<span class="io-preview-bad">Invalid expression</span>`;
+          if (r === null) {
+            const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node), vars));
+            return `<span class="io-preview-bad">Invalid expression${phrase ? ' — ' + phrase : ''}</span>`;
+          }
           const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
           try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) }); }
           finally { cookieNode = save; }
@@ -14006,7 +14024,7 @@ const SHORTCUTS = [
     { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s · ed · ord (e.g. {beast.a} → "an ogre", {verb.ed} → "walked", {n.ord} → "3rd"); chainable {beast.a.cap}' },
     { keys: ['{weapon.damage}'], desc: 'Item field — read a sub-rule field of a picked item (define sword.damage: 1d8). For the SAME item across fields, freeze it in a pick variable: w = {weapon}, then {w.name}/{w.damage}' },
     { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
-    { keys: ['{3x: {beast}}'], desc: 'Repeat — emit a template N times (1–99), re-expanded each time (distinct rolls); joined by spaces. Use {shuffle: …} for draw-without-replacement.' },
+    { keys: ['{3x: {beast}}'], desc: 'Repeat — emit a template a literal N times (1–99; not a roll), re-expanded each time (distinct rolls); joined by spaces. Use {shuffle: …} for draw-without-replacement.' },
     { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
     { keys: ['[^key]'],  desc: 'Footnote reference' },
     { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },

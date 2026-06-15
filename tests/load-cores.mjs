@@ -161,7 +161,7 @@ export function loadCores() {
     'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
     'rolltableDefToRules','migrateRolltables',
-    'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason',
+    'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason','mathReasonPhrase',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
