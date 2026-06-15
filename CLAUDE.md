@@ -595,7 +595,9 @@ each time for independent dice rolls / rule picks, joined by spaces; `repeatPart
 `resolveBrace`; promotes to an anonymous grammar pill; `{Nx}` chip in the grammar dialog +
 `?`-panel row; recorded P5 sub-form addition) ·
 **Dynamic odds** (A5: a weighted-alternation weight may be a trailing `{= expr}` over
-variables — `{a|b {= str}}` — resolved at pick time; `parseAlt`/`pickWeightedAlt(alts, vars)`) ·
+variables — `{a|b {= str}}` — resolved at pick time; `parseAlt`/`pickWeightedAlt(alts, vars)`. Works
+in an inline brace **and** at the rule-alternation level — `name: a | b {= w}`; `parseRules` keeps the
+`weightExpr` alt instead of dropping it for lacking a numeric `weight`) ·
 **Yes/no oracle** (the `@` "Oracle (yes/no)" door — a likelihood picker over original/neutral
 odds bands building an anonymous `Yes N | No M` weighted-alt pill; the odds field accepts A5
 `{= expr}` weights; `openOracleDialog`/`ORACLE_BANDS`) ·
@@ -655,7 +657,9 @@ view; `has:key` / `key:value` search operators added to `parseSearchQuery`/`term
 Outline constraints / lint (F2: a reserved **`check` property** carries an `evalMath` boolean
 assertion over a point + its direct children — `sum(cost) <= budget`, `count(score) >= 3`, own-prop
 `hours <= 8`; **zero new syntax** on the dates precedent — reuses `evalMath` + the B1 child
-aggregations. `evalCheck(node, vars)` → `pass`/`fail`/`error`/`null` (own numeric props via
+aggregations. A check **must contain a comparison** (`> >= < <= == !=`); a bare numeric expression
+(`5 + 5`, `sqrt(16)`, a lone rollup `sum(cost)`) is not a true/false test and returns `error`, never
+a truthy `pass` (the P4 silent-wrong-success guard). `evalCheck(node, vars)` → `pass`/`fail`/`error`/`null` (own numeric props via
 `nodePropVars` overlaid on `globalVarMap`, own props win, evalMath constants still win over both;
 child rollups via `expandAggExpr`). A live pass/fail/error chip (`buildCheckChip`, P4 — fail and
 error visible, pass a muted `✓`; a verdict flip announces via the `#a11y-live` region) routed through
@@ -727,6 +731,10 @@ The product direction is now set. Read these before proposing or building:
   shadow/radius component rules, and the binding anti-decisions: no glassmorphism, no
   noise, no red default accent, display ceiling ~2em). Read before any visual change;
   contradicting a Decision there is a regression, not a restyle.
+- `guidance/generative-status.md` — **completion ledger for the generative + computational lane**
+  (what's shipped · deferred · deliberately out-of-scope, + the next frontier). The generative +
+  computational catalogue is now **complete**; this is the index — detail lives in `features.md` and
+  `enhancement-research.md`.
 - `guidance/backlog.md` — consolidated, prioritized feature gaps (product-neutral).
 - `guidance/enhancement-research.md` — consolidated *inspiration → upgrade* catalogue for the
   generative + computational engine and single-file offline-ness (mechanics mined from Tracery /
