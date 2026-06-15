@@ -43,6 +43,28 @@ surface. The next frontier is a *different chapter* — the PKM / multi-document
 **Cross-cutting:** outline constraints / lint (F2, a reserved `check` property + `is:failing`) ·
 declarative data-pack plugins (grammar/var packs, data-only) · self-contained HTML export (C1).
 
+## Hardening pass (2026-06-15 — simulated-user audit)
+
+Four simulated users (varying interest/attention) drove the real cores through only the in-app
+help. The **engines proved correct** for every documented form — the failures were doc-accuracy and
+two correctness footguns, now closed:
+- **`evalCheck` requires a comparison.** A `check` with no `> >= < <= == !=` (a bare `5 + 5`,
+  `sqrt(16)`, or lone `sum(cost)`) returned a truthy `pass` — a P4 silent-wrong-success. It now
+  returns `error`.
+- **Rule-level dynamic weights are kept.** `parseRules` silently dropped a `{= expr}`-weighted
+  alternative (`name: a | b {= w}`) because the filter required a numeric `weight`; it now keeps the
+  `weightExpr` alt, matching the inline `{a|b {= w}}` path (P5 coherence).
+- **In-app help corrected** for the traps a real person hit: `log` is base-10 (`ln` for natural);
+  date math returns a number (wrap in `asdate(…)`; a fixed date is `date(y,m,d)`); `{lo to hi}` is a
+  distribution, not a random integer (use `{1d100}`), is lognormal-or-normal, and composes
+  **independent** draws; `sum(prop)` aggregates a child property and is not Excel `SUM(1,2,3)`; a
+  pick variable is declared via `@ → Variable`, not as a grammar rule line.
+
+Still open (a separate UX lane, not an engine gap): **non-brace artifact-looking input is silent.**
+Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nudge — correct by the
+`{…}`-is-the-syntax / literal-escape-hatch design (UXP-20), so the remedy is discoverability
+(onboarding / an empty-state cue), governed by `ux.md`, not a generative-engine change.
+
 ## Deferred (recorded follow-ons — not lost, just not v1)
 
 - **A6:** field × modifier chaining (`{w.damage.cap}`); multi-level nesting (`{planet.country.town}`);

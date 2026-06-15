@@ -2490,6 +2490,20 @@ test('pickWeightedAlt: an unresolved weight expr falls back to neutral 1 (alt no
   finally { c.resetRandom(); }
 });
 
+test('parseRules: a rule-level {= expr} dynamic weight is KEPT, not silently dropped', () => {
+  // Regression: the filter `a.weight >= 1` dropped dynamic-weight alts (which carry
+  // weightExpr, not weight), so `p: peace | war {= w}` lost the war alt entirely.
+  const p = c.parseRules('p: peace | war {= w}');
+  assert.equal(p.rules.p.length, 2, 'both alternatives survive parse');
+  assert.deepEqual(host(p.rules.p[1]), { template: 'war', weightExpr: 'w' });
+  // and it actually weights at runtime, matching the inline {a|b {= w}} form
+  c.seedSequence([0.5]); // war weight 50 vs peace 1 → mass lands in war
+  try { assert.equal(c.runGrammar('p: peace | war {= w}', 'p', null, { w: 50 }), 'war'); }
+  finally { c.resetRandom(); }
+  // a static 0-weight alt is still dropped (unchanged behavior)
+  assert.equal(c.parseRules('p: a | b 0').rules.p.length, 1);
+});
+
 test('resolveBrace: a {= expr} weight drives a live alternation through the engine', () => {
   // strong=10 vs weak default 1 → with 0.5 the mass lands in the heavy alt
   c.seedSequence([0.5]);
@@ -3830,7 +3844,7 @@ test('subtree aggregation: render + export + front-door wiring (src pins)', () =
   assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
   assert.ok(_src.includes("{ keys: ['{= sum(cost)}']"), 'aggregation ? panel row missing');
   assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
-  assert.ok(_src.includes('min(prop) / max(prop)'), 'math dialog hint missing min/max');
+  assert.ok(_src.includes('sum/avg/count/min/max(prop)'), 'math dialog hint missing min/max aggregation');
 });
 
 // ── outline constraints / lint (F2) ─────────────────────────────────────────
@@ -3869,6 +3883,14 @@ test('evalCheck: null when no check, error when malformed or unresolvable', () =
   assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= ', { budget: 1 }, [1]), {}), 'error'); // malformed expr
   assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', {}, [1]), {}), 'error');   // budget undefined → error, not crash
   assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', { budget: 'lots' }, [1]), {}), 'error'); // non-numeric → error
+  // a check with NO comparison operator is not a true/false test → error, never a
+  // truthy 'pass' (the silent wrong-success footgun: `5 + 5` must not report green)
+  assert.equal(c.evalCheck(mkCheckNode('5 + 5', {}), {}), 'error');
+  assert.equal(c.evalCheck(mkCheckNode('sqrt(16)', {}), {}), 'error');
+  assert.equal(c.evalCheck(mkCheckNode('sum(cost)', {}, [1, 2]), {}), 'error'); // a bare rollup, no assertion
+  // real comparisons still evaluate normally
+  assert.equal(c.evalCheck(mkCheckNode('3 < 5', {}), {}), 'pass');
+  assert.equal(c.evalCheck(mkCheckNode('3 > 5', {}), {}), 'fail');
 });
 
 test('evalCheck: own props win over doc vars; evalMath constants still win over both', () => {
