@@ -1287,9 +1287,14 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxId: null, plugins: [] };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxId: null, plugins: [], docId: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
+function ensureDocId(root, gen) {
+  if (!gen) gen = uid;
+  if (!root.docId) root.docId = gen();
+  return root.docId;
+}
 function mkNode(text = '', type = 'ul') {
   return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
 }
@@ -3307,7 +3312,7 @@ function toOpml(r) {
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
   // doc-level config in the head, each via the shared headEl serializer (F6)
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId) + headEl('_plugins', r.plugins);
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId) + headEl('_plugins', r.plugins) + headEl('_docid', r.docId);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -3383,10 +3388,11 @@ function fromOpml(xml) {
   const savedSearches = headJSONArray(doc, '_savedSearches', s => typeof s === 'string');
   const templates     = headJSONArray(doc, '_templates', t => t && typeof t.name === 'string' && t.node);
   const inboxId       = doc.querySelector('head > _inbox')?.textContent?.trim() || null;
+  const docId         = doc.querySelector('head > _docid')?.textContent?.trim() || null;
   // data packs (plugins): the validator drops shape-invalid packs (no string id);
   // bad rules/vars inside a kept pack are neutralized defensively at collect time.
   const plugins       = headJSONArray(doc, '_plugins', validPluginPack);
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId, plugins,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId, plugins, docId,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -12745,6 +12751,7 @@ async function newFile() {
   document.getElementById('search-clear').classList.remove('on');
   migrateNodePrefixes(root);
   buildIndex(root, null); resetDocCaches();
+  ensureDocId(root);
   markClean(); render();
 }
 
@@ -12768,6 +12775,7 @@ async function openFile() {
       updateTitle();
       document.getElementById('search-box').value = '';
       document.getElementById('search-clear').classList.remove('on');
+      const _newId = !root.docId; ensureDocId(root); if (_newId) markDirty();
       markClean(); render();
     } catch(e) { if (e.name!=='AbortError') alert('Could not open: '+e.message); }
   } else {
@@ -12776,7 +12784,7 @@ async function openFile() {
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       fileName = file.name;
-      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); resetDocCaches(); focusedId=null; searchQuery=''; searchQueryLC=''; searchTerms=[]; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); markClean(); render(); }
+      try { root = fromOpml(await file.text()); migrateNodePrefixes(root); buildIndex(root, null); resetDocCaches(); focusedId=null; searchQuery=''; searchQueryLC=''; searchTerms=[]; undoStack.length=0; redoStack.length=0; autosaveDisabled=false; storageWarnState=null; document.getElementById('file-name').textContent=fileName; updateTitle(); const _newId2 = !root.docId; ensureDocId(root); if (_newId2) markDirty(); markClean(); render(); }
       catch(e) { alert('Invalid file: '+e.message); }
     };
     inp.click();
@@ -14523,6 +14531,7 @@ let loadedFromEmbed = false;
     const parsed = fromOpml(opml);
     if (!parsed) return;
     root = parsed;
+    ensureDocId(root);
     loadedFromEmbed = true;
     dirty = false;
   } catch(_) {}
@@ -14567,12 +14576,14 @@ let loadedFromEmbed = false;
         applyWidth();
       }
       dirty = false; // restored state is "clean" relative to disk
+      if (!root.docId) { ensureDocId(root); scheduleAutosave(); } // backfill legacy autosave
     }
   } catch(_) {}
 })();
 
 migrateNodePrefixes(root);
 buildIndex(root, null); resetDocCaches();
+ensureDocId(root);
 render();
 updateTitle();
 refreshIcons();

@@ -198,6 +198,23 @@ shelved with a clearer conscience.
 
 ---
 
+## Tech debt / internal refactors
+
+### ☐ Doc-cache registry / `makeDocCache` refactor (deferred)
+
+PR #99 *guarded* the eight-cache `_varsVer` invalidation invariant (named caches,
+`// doc-cache` markers, a regression test with a proven negative control). A follow-on could
+*cure* the class by construction: a `DOC_CACHES` registry that `resetDocCaches()` **and** the
+invalidation test **derive from** (so a ninth cache is auto-covered), optionally routing the
+*vanilla* caches through a `makeDocCache(name, compute)` factory while leaving `collectVars`
+(Proxy / cycle-detection / `_varShadowedKeys`/`_varActiveExprs`/`_varCycles` side-effects) and
+`stateCmds` (no dual-mode) **bespoke-but-registered**. Registry-first, factory-second.
+**Do opportunistically the next time a doc-cache is added** — not worth a standalone hot-path
+rewrite for zero user value. (A circulated brief mis-listed `allSequences` as a cache; the
+actual eighth-set member is `collectSequences` — `allSequences` is an uncached wrapper.)
+
+---
+
 ## Out of scope
 - **Non-image file attachments** — nowhere clean to store binaries without bloating the file.
 - **Code execution in code blocks** — security + complexity for a single-file browser app.
