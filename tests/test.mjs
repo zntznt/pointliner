@@ -3569,7 +3569,9 @@ test('UXP-36: SHORTCUTS registry declaration is present', () => {
 });
 
 test('UXP-36: Ctrl+S save shortcut handler is present', () => {
-  assert.ok(_src.includes("e.key==='s' && ctrl") || _src.includes('e.key === \'s\' && ctrl'),
+  // The global document keydown handler is the sole owner of Ctrl+S (the editor-level
+  // duplicate was removed to cure a double-fire — see the spurious-save-error fix).
+  assert.ok(_src.includes("ctrl && e.key==='s'") || _src.includes("ctrl && e.key === 's'"),
     "Ctrl+S handler pattern not found in index.html");
 });
 
