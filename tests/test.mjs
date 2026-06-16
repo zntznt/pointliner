@@ -26,6 +26,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 import { loadCores } from './load-cores.mjs';
 
 const c = loadCores();
@@ -3703,6 +3704,66 @@ test('buildWorkspaceIndex: skips docs missing docId or root; empty input → emp
   assert.deepEqual(host([...idx.nameByDocId.keys()]), ['g']);
   assert.equal(idx.candidates.length, 1);
   assert.equal(idx.titles.get('g').get('n'), 'Node');
+});
+
+// ── cross-document link token (CF-2) ──────────────────────────────────────────
+// renderCrossLinkPill reads the module-level root.docId and workspaceIndex (CF-1) rather
+// than taking them as params, so we set those let-bound globals in the vm realm before each
+// call (the harness escape hatch — see load-cores' note on let-bound globals). The folder
+// switch + zoom-to-node click path is browser-side (mock-index Playwright harness).
+
+function cfDocFor(docId, name, points) {
+  const r = c.mkRoot(); r.docId = docId;
+  for (const [id, text] of points) { const n = c.mkNode(text); n.id = id; r.children.push(n); }
+  return { docId, name, root: r };
+}
+// Set the vm realm's root.docId + workspaceIndex (built from docs, or null).
+function cfSetGlobals(ownDocId, docs) {
+  c._context.__ownDocId = ownDocId;
+  c._context.__wi = docs ? c.buildWorkspaceIndex(docs) : null;
+  vm.runInContext('root.docId = __ownDocId; workspaceIndex = __wi;', c._context);
+}
+
+test('renderCrossLinkPill: cross-doc target → .node-link-cross with data-doc/target + indexed title', () => {
+  cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
+  const html = c.renderCrossLinkPill('db', 'm1', '');
+  assert.match(html, /class="node-link node-link-cross"/);
+  assert.match(html, /data-doc="db"/);
+  assert.match(html, /data-target="m1"/);
+  assert.match(html, />Gamma</);                        // empty label → live title from the index
+  assert.match(html, /title="b\.opml"/);                // doc-name tooltip
+  assert.match(html, /aria-label="[^"]*b\.opml[^"]*"/); // P3: doc name in the accessible name
+  assert.match(c.renderCrossLinkPill('db', 'm1', 'see B'), />see B</); // explicit label wins
+});
+
+test('renderCrossLinkPill: unknown doc or node → broken pill, never silent (P4)', () => {
+  cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
+  const unknownNode = c.renderCrossLinkPill('db', 'zzz', '');    // doc known, node missing
+  assert.match(unknownNode, /node-link-broken/);
+  assert.match(unknownNode, /data-doc="db"/);
+  assert.doesNotMatch(unknownNode, /node-link-cross/);
+  const unknownDoc = c.renderCrossLinkPill('dz', 'm1', 'label'); // doc absent from index
+  assert.match(unknownDoc, /node-link-broken/);
+  assert.match(unknownDoc, />label</);
+  cfSetGlobals('da', null);                                      // no workspaceIndex at all
+  assert.match(c.renderCrossLinkPill('db', 'm1', ''), /node-link-broken/);  // broken, not a throw
+});
+
+test('renderCrossLinkPill: a token in its own doc delegates to the same-doc pill (no data-doc)', () => {
+  cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
+  const html = c.renderCrossLinkPill('da', 'whatever', 'Home');  // docId === root.docId
+  assert.doesNotMatch(html, /data-doc=/);   // same-doc pills never carry data-doc
+  assert.match(html, /class="node-link/);
+  vm.runInContext('workspaceIndex = null; root.docId = null;', c._context);  // restore for later tests
+});
+
+test('CF-2 non-collision: a [[B#n]] cross-doc token is absent from same-doc collectLinks', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('see [[B#n]] and [[#real]]'));  // one cross-doc, one same-doc
+  const links = c.collectLinks(root);
+  assert.ok(links.backlinks.real, 'same-doc [[#real]] is collected');
+  assert.equal(links.backlinks.n, undefined, 'cross-doc [[B#n]] never enters the same-doc index');
+  assert.equal(links.backlinks.B, undefined);
 });
 
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────

@@ -1019,6 +1019,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:2px;padding:0 1px}
 /* mirror: inline accent underline, no box — flows with the line like a caption link */
 .node-link-mirror{display:inline;color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
+/* cross-doc link (CF-2): same as a same-doc link plus a muted trailing arrow so a jump to another note reads distinctly */
+.node-link-cross::after{content:"\2197";font-size:.78em;color:var(--muted);margin-left:1px;vertical-align:baseline}
 /* ── backlinks panel ── */
 #bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
 #bl-panel.on{transform:translateY(0)}
@@ -2351,6 +2353,25 @@ function renderLinkPill(target, label) {
   return `<span class="node-link" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
 }
 
+// Cross-document link pill (CF-2). A [[docId#nodeId|label]] token pointing at a point in
+// ANOTHER workspace doc: title-only (no mirror/transclusion across docs in v1), caption from
+// the CF-1 workspaceIndex, broken when the target is absent (or no index — e.g. viewed
+// without a workspace). A token whose docId is THIS doc delegates to the same-doc pill, so a
+// copied [[A#id|]] pasted back into A behaves exactly like [[#id|]] (mirror included). An
+// empty-label caption reads workspaceIndex.titles, so it follows the target's renames on the
+// next folder scan. The same-doc path (renderLinkPill) is untouched.
+function renderCrossLinkPill(docId, target, label) {
+  if (docId === (root.docId || '')) return renderLinkPill(target, label);   // self → same-doc (incl. mirror)
+  const title = workspaceIndex?.titles?.get(docId)?.get(target);
+  const capText = label || title || 'link';
+  const cap = escHtml(capText);
+  if (!title) {                                                              // missing doc or node → broken (P4)
+    return `<span class="node-link node-link-broken" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another note)')}">${cap}</span>`;
+  }
+  const docName = workspaceIndex.nameByDocId?.get(docId) || 'another note';
+  return `<span class="node-link node-link-cross" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docName)}" aria-label="${escQ(capText + ' — link to a point in ' + docName)}">${cap}</span>`;
+}
+
 function mdInline(s) {
   s = (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   // Stash code/image/link/footnote as opaque tokens so later passes (emoji,
@@ -2389,6 +2410,11 @@ function mdInline(s) {
   // sequence declarations — [[seq:KEY]] resolves against the node's stored sequences
   s = s.replace(/\[\[seq:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderSeqPill(k, seqRenderList?.find(q => q.key === k))));
+  // cross-document node links — [[DOCID#TARGETID]] or [[DOCID#TARGETID|label]] (CF-2).
+  // Mutually exclusive with the same-doc form below: this requires >=1 char before '#',
+  // the same-doc form requires none — so neither steals the other and order is irrelevant.
+  s = s.replace(/\[\[([a-z0-9]+)#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, docId, target, label) =>
+    stash(renderCrossLinkPill(docId, target, label ?? '')));
   // node links — [[#TARGETID]] or [[#TARGETID|label]]
   s = s.replace(/\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, target, label) =>
     stash(renderLinkPill(target, label ?? '')));
@@ -3559,7 +3585,9 @@ function zoomTo(id)   { focusedId = id; render(); }
 function copyNodeLink(id) {
   const node = nodeById(id);
   if (!node) return;
-  const token = `[[#${id}|]]`;
+  // In a workspace, emit the portable cross-doc form so a paste into another doc links
+  // across; in its home doc it resolves same-doc via the renderCrossLinkPill delegation (CF-2).
+  const token = (workspaceDir && root.docId) ? `[[${root.docId}#${id}|]]` : `[[#${id}|]]`;
   const done = () => flashHint('Link copied');
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(token).then(done, () => fallbackCopy(token, done));
@@ -6706,8 +6734,11 @@ function attachContentEvents(content, node) {
     const lnk = e.target.closest?.('.node-link');
     if (lnk && !content.dataset.editing) {
       e.preventDefault(); e.stopPropagation();
-      const tid = lnk.dataset.target;
-      if (tid && nodeById(tid)) zoomInto(tid);
+      const did = lnk.dataset.doc, tid = lnk.dataset.target;
+      if (did && did !== (root.docId || '')) {                   // cross-doc → switch doc, then zoom (CF-2)
+        const name = workspaceIndex?.nameByDocId?.get(did);
+        if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(tid)) zoomInto(tid); });
+      } else if (tid && nodeById(tid)) zoomInto(tid);            // same-doc (unchanged)
       return;
     }
     // static table "Convert to base" (§6 promote). Display mode only; the node-link
@@ -14925,7 +14956,7 @@ const SHORTCUTS = [
     { keys: ['[['], desc: 'Link to a point — the picker lists your points by title or alias (an “alias: X” hint shows why an alias matched); type a new title and pick “+ New point” to create and link it in one step; or paste a copied link' },
     { keys: ['Linked from'], desc: 'Backlinks panel — appears at the bottom when you focus a point that others link to or mention. “Linked from” lists actual links; “Unlinked references” lists points that mention the title (or an alias) in prose without a link — click Link to convert the first mention to a [[#id|]] link in one click' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
-    { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point' },
+    { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point — pasteable into any point. In a connected workspace folder it copies a cross-document link ([[docId#id]]), so pasting into another note links across files; click it to jump there (an ↗ marks a cross-note link)' },
     { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },
   ]},
   { sec: 'Pills & shorthand', rows: [
