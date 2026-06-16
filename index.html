@@ -540,6 +540,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* footnotes */
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
+.fn-ref:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
 #fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
 #fn-panel.on{transform:translateY(0)}
 .fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
@@ -720,6 +721,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .tp-chip{padding:2px 9px;border-radius:6px;background:var(--bdr);cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);transition:background .1s,color .1s;user-select:none}
 .tp-chip:hover{background:var(--acc);color:var(--acc-fg)}
 .tp-chip.cur{background:var(--acc);color:var(--acc-fg)}
+.tp-chip:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .tp-chip.tp-none{font-weight:400;color:var(--muted)}
 
 /* slash menu */
@@ -1025,6 +1027,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 
 /* ── node links ── */
 .node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
+.node-link:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:2px;padding:0 1px}
 /* mirror: inline accent underline, no box — flows with the line like a caption link */
 .node-link-mirror{display:inline;color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
@@ -1036,6 +1039,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #bl-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 .bl-item{padding:3px 0;cursor:pointer;font-size:13px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bl-item:hover{text-decoration:underline}
+.bl-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px;text-decoration:underline}
 .bl-doc-hint{color:var(--muted);font-size:11px}
 .bl-item.bl-cross:hover .bl-doc-hint{color:var(--acc)}
 .bl-subhd{margin-top:6px;padding-top:5px;border-top:1px solid var(--bdr);font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2352,7 +2356,7 @@ function renderLinkPill(target, label) {
   const tn = nodeById(target);
   if (!tn) {
     const cap = escHtml(label || target);
-    return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ((label || target) + ' (broken link)')}">${cap}</span>`;
+    return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ((label || target) + ' (broken link)')}">${cap}</span>`;
   }
   // Empty label → mirror (transclusion): embed the target's rendered content inline.
   // When already inside a transclusion (_inlineDepth > 0) fall back to title-only
@@ -2360,13 +2364,13 @@ function renderLinkPill(target, label) {
   if (label === '') {
     if (_inlineDepth > 0) {
       const title = escHtml(textForDisplay(tn) || '(untitled)');
-      return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
+      return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
     }
     const inner = renderNodeInline(tn);
-    return `<span class="node-link node-link-mirror" data-target="${escQ(target)}" contenteditable="false">${inner}</span>`;
+    return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${inner}</span>`;
   }
   const title = escHtml(label || textForDisplay(tn) || '(untitled)');
-  return `<span class="node-link" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
+  return `<span class="node-link" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
 }
 
 // Cross-document link pill (CF-2). A [[docId#nodeId|label]] token pointing at a point in
@@ -2382,10 +2386,10 @@ function renderCrossLinkPill(docId, target, label) {
   const capText = label || title || 'link';
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
-    return `<span class="node-link node-link-broken" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another note)')}">${cap}</span>`;
+    return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another note)')}">${cap}</span>`;
   }
   const docName = workspaceIndex.nameByDocId?.get(docId) || 'another note';
-  return `<span class="node-link node-link-cross" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docName)}" aria-label="${escQ(capText + ' — link to a point in ' + docName)}">${cap}</span>`;
+  return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docName)}" aria-label="${escQ(capText + ' — link to a point in ' + docName)}">${cap}</span>`;
 }
 
 function mdInline(s) {
@@ -2406,7 +2410,7 @@ function mdInline(s) {
     return stash(`<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${mdEmph(txt)}</a>`);
   });
   // footnote refs
-  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => stash(`<sup class="fn-ref" data-key="${escQ(k)}">[${k}]</sup>`));
+  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(k)}" aria-label="Footnote ${escQ(k)}">[${k}]</sup>`));
   // dice rolls — [[dice:KEY]] resolves against the node's stored roll data
   s = s.replace(/\[\[dice:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderDicePill(k, diceRenderList?.find(d => d.key === k))));
@@ -6763,6 +6767,14 @@ function attachContentEvents(content, node) {
       } else if (tid && nodeById(tid)) zoomInto(tid);            // same-doc (unchanged)
       return;
     }
+    // footnote ref (UXP-55): click/tap reveals + highlights its footnote (display mode only;
+    // in edit mode the ref is plain [^key] text). The keyboard twin is in onKeyDown.
+    const fnref = e.target.closest?.('.fn-ref');
+    if (fnref && !content.dataset.editing) {
+      e.preventDefault(); e.stopPropagation();
+      activateFnRef(fnref.dataset.key, node.id);
+      return;
+    }
     // static table "Convert to base" (§6 promote). Display mode only; the node-link
     // check above already swallows clicks inside mirrors (whose tables belong to the
     // mirrored node, not this one).
@@ -7415,6 +7427,13 @@ function onKeyDown(e, id, content) {
     // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
     const htag = e.target.closest?.('.hashtag');
     if (htag) { e.preventDefault(); searchHashtag(htag); return; }
+    // node link (UXP-53): Enter/Space follows the link — dispatch the mousedown its display-mode
+    // handler already processes (zoom same-doc / switch+zoom cross-doc). Beside mousedown.
+    const lnk = e.target.closest?.('.node-link');
+    if (lnk) { e.preventDefault(); lnk.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return; }
+    // footnote ref (UXP-55): Enter/Space reveals + highlights its footnote (hover's keyboard twin)
+    const fnref = e.target.closest?.('.fn-ref');
+    if (fnref) { e.preventDefault(); activateFnRef(fnref.dataset.key, id); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
@@ -7831,7 +7850,7 @@ bpop.addEventListener('mousedown', e => e.preventDefault());
 // Keyboard nav (UXP-14): same §7 menu pattern as the Column panel. Items are the
 // type-switcher buttons + the action rows; Enter/Space fire their mousedown handler.
 bpop.addEventListener('keydown', e => {
-  const items = [...bpop.querySelectorAll('.bpop-type, .cmd-item')];
+  const items = [...bpop.querySelectorAll('.bpop-type, .cmd-item, .tp-chip')];   // UXP-56: include the todo-picker chips
   if (!items.length) return;
   const idx = items.indexOf(document.activeElement);
   if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
@@ -8038,6 +8057,10 @@ function showTodoPicker(nodeId, anchorEl) {
     const chip = document.createElement('div');
     chip.className = 'tp-chip' + (val === '' ? ' tp-none' : '') + (keyword === val ? ' cur' : '');
     chip.textContent = label;
+    chip.setAttribute('role', 'menuitemradio');          // UXP-56: keyboard-operable picker chips
+    chip.setAttribute('tabindex', '-1');
+    chip.setAttribute('aria-checked', String(keyword === val));
+    chip.setAttribute('aria-label', val === '' ? 'No state' : ('State ' + val));
     chip.addEventListener('mousedown', e => { e.preventDefault(); node.text = setTodoState(node.text, val); apply(); });
     stChips.appendChild(chip);
   });
@@ -8055,6 +8078,11 @@ function showTodoPicker(nodeId, anchorEl) {
     chip.className = 'tp-chip' + (val === null ? ' tp-none' : '') + (priority === val ? ' cur' : '');
     chip.textContent = label;
     chip.style.opacity = keyword ? '' : '.4';
+    chip.setAttribute('role', 'menuitemradio');          // UXP-56
+    chip.setAttribute('tabindex', '-1');
+    chip.setAttribute('aria-checked', String(priority === val));
+    chip.setAttribute('aria-label', val === null ? 'No priority' : ('Priority ' + val));
+    if (!keyword) chip.setAttribute('aria-disabled', 'true');   // priority needs a state first
     chip.addEventListener('mousedown', e => {
       e.preventDefault();
       if (!keyword) return; // no priority without a state
@@ -8074,6 +8102,10 @@ function showTodoPicker(nodeId, anchorEl) {
     if (pr.right  > window.innerWidth  - 8) bpop.style.left = (window.innerWidth - pr.width - 8) + 'px';
     if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (rect.top - pr.height - 4) + 'px';
   });
+  // UXP-56: make the picker a real keyboard menu — move focus to the current (or first) chip and
+  // arm Esc-restore (the shared #bpop keydown handler now navigates .tp-chip too).
+  bpopReturnFocus = nodeId;
+  requestAnimationFrame(() => { (bpop.querySelector('.tp-chip.cur') || bpop.querySelector('.tp-chip'))?.focus(); });
 }
 
 // ─── slash commands ───────────────────────────────────────────────────────────
@@ -14113,12 +14145,29 @@ function hideFnPanel() {
   syncBlPanelBottom(); // re-stack bl-panel if it's open
 }
 
+// UXP-55: reveal + lock the footnote panel and highlight the matching entry, scrolling it into
+// view — the click/tap/keyboard twin of the fn-ref hover reveal (which had no non-hover path).
+function activateFnRef(key, nodeId) {
+  fnLocked = true;
+  showFnPanel(nodeId);
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.fn-ref.hi, #fn-list .fn-key.hi').forEach(el => el.classList.remove('hi'));
+    document.querySelectorAll(`.node[data-id="${nodeId}"] .fn-ref[data-key="${CSS.escape(key)}"]`).forEach(el => el.classList.add('hi'));
+    const item = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(key)}"]`);
+    item?.querySelector('.fn-key')?.classList.add('hi');
+    item?.scrollIntoView({ block: 'nearest' });
+  });
+  announce(`Footnote ${key}`);
+}
+
 // ─── backlinks panel ─────────────────────────────────────────────────────────
 let blNodeId = null, blHideTimer = null;
 
 function scheduleBlHide() {
   clearTimeout(blHideTimer);
   blHideTimer = setTimeout(() => {
+    const panel = document.getElementById('bl-panel');
+    if (panel?.contains(document.activeElement)) return;   // UXP-54: focus moved into the panel — keep it open
     if (document.activeElement?.classList.contains('node-content')) return;
     hideBlPanel();
   }, 150);
@@ -14166,9 +14215,15 @@ function renderBlPanel(sources, unlinked, cross) {
   sources.forEach(src => {
     const item = document.createElement('div');
     item.className = 'bl-item';
-    item.textContent = textForDisplay(src) || '(untitled)';
-    item.title = 'Click to zoom into this node';
-    item.addEventListener('click', () => { hideBlPanel(); zoomInto(src.id); });
+    const t = textForDisplay(src) || '(untitled)';
+    item.textContent = t;
+    item.title = 'Open this point';
+    item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable backlink rows
+    item.setAttribute('tabindex', '0');
+    item.setAttribute('aria-label', `Linked from "${t}" — open`);
+    const go = () => { hideBlPanel(); zoomInto(src.id); };
+    item.addEventListener('click', go);
+    item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     inner.appendChild(item);
   });
   // CF-4: cross-doc inbound links — same "Linked from" list, each marked with its source doc
@@ -14182,13 +14237,17 @@ function renderBlPanel(sources, unlinked, cross) {
     hint.className = 'bl-doc-hint';
     hint.textContent = ` · ${docName || 'another note'}`;
     item.appendChild(hint);
-    item.title = 'Click to open this note';
-    item.setAttribute('aria-label', `Linked from "${title}" in ${docName || 'another note'} — click to open`);
-    item.addEventListener('click', () => {
+    item.title = 'Open this note';
+    item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable cross-doc backlink rows
+    item.setAttribute('tabindex', '0');
+    item.setAttribute('aria-label', `Linked from "${title}" in ${docName || 'another note'} — open`);
+    const go = () => {
       hideBlPanel();
       const name = workspaceIndex?.nameByDocId?.get(docId);
       if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(nodeId)) zoomInto(nodeId); });
-    });
+    };
+    item.addEventListener('click', go);
+    item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     inner.appendChild(item);
   });
   if (!unlinked.length) return;
@@ -14203,8 +14262,13 @@ function renderBlPanel(sources, unlinked, cross) {
     const label = document.createElement('span');
     label.className = 'bl-unlinked-label';
     label.textContent = title;
-    label.title = 'Click to zoom into this node';
-    label.addEventListener('click', () => { hideBlPanel(); zoomInto(id); });
+    label.title = 'Open this point';
+    label.setAttribute('role', 'link');          // UXP-54: the unlinked-ref title is keyboard-operable too
+    label.setAttribute('tabindex', '0');
+    label.setAttribute('aria-label', `Open "${title}"`);
+    const goLabel = () => { hideBlPanel(); zoomInto(id); };
+    label.addEventListener('click', goLabel);
+    label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goLabel(); } });
     const btn = document.createElement('span');
     btn.className = 'bl-link-btn';
     btn.textContent = 'Link';
