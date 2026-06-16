@@ -14,7 +14,9 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > fresh set of non-conformances, tracked below as **UXP-40…67**: **batch 1 (UXP-40…52) is
 > ✓ closed** (data-safety + zero-risk conformance one-liners); **batch 2 (UXP-53…56) is
 > ✓ closed** (the a11y-reachability batch — links, backlinks, footnote refs, todo picker);
-> **UXP-57…67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> **batch 3 (UXP-58, UXP-59, UXP-64) is ✓ closed** (P4 feedback-consistency: error toasts,
+> search empty-state, context-aware workspace snippet);
+> **UXP-57, UXP-60…63, UXP-65…67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
 
@@ -413,20 +415,18 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
 - **Violates:** P1 (Shift extends *everywhere except* between points) / P3-2. **Target:** `Shift+↑/↓` branches
   that, at the caret's first/last line, blur + `rangeSelectTo(prev/next)` from the current point as anchor.
 
-### UXP-58 ☐ Native `alert()` for workspace/file errors (P4 channel) 🟡
-- **Problem:** ~8 sites (`connectWorkspace`, `switchWorkspaceDoc`, `createWorkspaceNote`,
-  `deleteWorkspaceDoc`, `saveToWorkspaceDoc`, `openFile`, `saveAsFile`, `writeH`, `openWorkspaceSwitcher`)
-  surface errors via the browser's native `alert()` — the bespoke/native-dialog pattern §6/§7.3 (and
-  `bases-direction.md`) rule out. Not silent (good), but un-themed, not focus-managed, not announced.
-- **Violates:** P4-4 / coherence. **Target:** route through the in-app banner (`showWorkspaceWarn`/
-  `showStorageWarn`-style) or a styled error toast — the app's four feedback channels only.
+### UXP-58 ✓ Native `alert()` for workspace/file errors (P4 channel) 🟡 — **RESOLVED**
+- **Problem:** ~9 sites surfaced errors via native `alert()` — un-themed, unannounced.
+- **Fix:** `flashError(msg)` error-tone toast (same `#flash-hint` channel, `--bad` tint, 5s dwell,
+  click-to-dismiss, `announce()` for AT). All nine `alert()` call sites replaced. No `.AbortError`
+  guard logic changed.
 
-### UXP-59 ☐ In-document search has no zero-results empty-state (P4) 🟡
-- **Problem:** a query matching nothing in the current doc blanks `#outline` — no message, no count, no
-  "0 results." Indistinguishable from a breakage. (The cross-doc "Found in other notes" panel only shows
-  with a connected folder + other-doc hits, so the common single-file case is a silent void.)
-- **Violates:** P4 (silent "nothing happened"). **Target:** an inline empty-state when
-  `searchQuery && flatRows.length === 0` ("No points match '<q>' — Esc to clear"); ideally a live match count.
+### UXP-59 ✓ In-document search has no zero-results empty-state (P4) 🟡 — **RESOLVED**
+- **Problem:** a query matching nothing blanked `#outline` — indistinguishable from a breakage.
+- **Fix:** `render()` injects `<div id="search-empty">` (hidden by default) into `#outline` and shows it
+  when `searchQuery && flatRows.length === 0`. Copy: "No points match 'q' — Esc to clear" ("…in this
+  note…" variant when a workspace folder is connected). CSS: `#search-empty` inherits `--muted` and
+  is centered under the outline's max-width.
 
 ### UXP-60 ☐ Enter doesn't split the point at the caret (P1 — product decision) 🟡
 - **Problem:** `insertSiblingAfter` ignores the caret — Enter mid-text drops an empty sibling and **orphans
@@ -472,12 +472,13 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   links-as-text). *(Source: the June 2026 interaction-coherence audit; its other findings were
   already covered by UXP-40…67 or declined — see the audit eval thread.)*
 
-### UXP-64 ☐ Workspace-search snippet rarely reveals *why* a row matched (P4) 🟢
-- **Problem:** the "Found in other notes" snippet is derived from the same `textForDisplay(n)` as the title
-  and only shown when it differs — so a hit on a **note**, a **property**, or an `is:`/`due:` term shows the
-  title alone, with no indication of where the match occurred.
-- **Violates:** P4 (trust of the click-to-jump). **Target:** build the snippet around the matched needle
-  (reuse `searchHighlightNeedles`) or append the matching property/state.
+### UXP-64 ✓ Workspace-search snippet rarely reveals *why* a row matched (P4) 🟢 — **RESOLVED**
+- **Problem:** snippet was always the title slice — hits on notes, properties, or `is:`/`due:` showed
+  the title only, with no indication of why the row matched.
+- **Fix:** `searchSnippet(node, terms)` pure core (Node-testable, 11 pinned assertions). Text/tag hits:
+  window ~120 chars around the first needle hit, ellipsized. Structural hits: `key: val` for
+  `prop:`/`has:`, `is:<value>` for `is:`, `due: <val>`/`start: <val>` for date terms. Fallback:
+  title slice (previous behaviour). Wired into `searchWorkspace` — `snippet: searchSnippet(n, terms)`.
 
 ### UXP-65 ☐ Saved-search / workspace-result chips are full Tab stops (P3/P1) 🟢
 - **Problem:** `renderSavedSearches` chips and `renderWorkspaceSearchResults` rows use `tabindex="0"`, while

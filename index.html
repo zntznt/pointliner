@@ -213,7 +213,7 @@ body.full-width #outline{max-width:none}
 /* zoomed INTO a base: the base table is full-width regardless of the narrow/full toggle;
    child nodes below the base follow the fullWidth setting (constrained by #vlist). */
 body.base-zoom #outline{max-width:none}
-body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}
+body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-empty{max-width:720px;margin:40px auto;padding:0 16px;color:var(--muted);font-size:13.5px;text-align:center;line-height:1.6}
 /* virtual list: only a window of rows is in the DOM; spacers reserve the rest */
 #vlist{position:relative}
 .vspacer{flex:none;width:100%}
@@ -3835,6 +3835,16 @@ function render() {
   container.appendChild(vlist);
   appendGhostRow(vp, container);
 
+  // UXP-59: empty-state banner when a search yields no matches
+  const seEl = document.createElement('div');
+  seEl.id = 'search-empty';
+  const seMsg = workspaceDir
+    ? 'No points in this note match “' + searchQuery + '” — Esc to clear'
+    : 'No points match “' + searchQuery + '” — Esc to clear';
+  seEl.textContent = seMsg;
+  seEl.hidden = !(searchQuery && flatRows.length === 0);
+  container.appendChild(seEl);
+
   measureTops();
   winStart = 0; winEnd = -1;
   renderWindow(true);
@@ -5959,7 +5969,7 @@ async function openWorkspaceSwitcher() {
   if (!workspaceDir) return;
   let names;
   try { names = await listWorkspaceNames(workspaceDir); }
-  catch (e) { alert('Could not read the workspace folder: ' + (e.message || e)); return; }
+  catch (e) { flashError('Could not read the workspace folder: ' + (e.message || e)); return; }
 
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
@@ -9900,6 +9910,32 @@ function workspaceBacklinks(targetDocId, targetNodeId, index) {
 // ones — is:done / is:todo (need this doc's sequences) and is:failing (needs this doc's
 // resolved vars) — get THIS doc's allSequences(root) / collectVars(root) (pure over the
 // retained root), computed once per doc and only when an is: term is present (needsCtx).
+// Context-aware snippet for workspace search results (UXP-64). Given the
+// matching node and the parsed search terms, returns a window around the
+// first text/tag needle hit, or a field label for structural (is:/prop:/due:)
+// hits, or the title slice as a fallback.
+function searchSnippet(node, terms) {
+  const text = stripMd(textForDisplay(node));
+  const body = text + (node.note ? ' ' + node.note : '');
+  const needles = searchHighlightNeedles(terms).filter(nd => typeof nd === 'string');
+  for (const nd of needles) {
+    const src = nd[0] === '#' ? (node.text || '') : body;
+    const i = src.toLowerCase().indexOf(nd.toLowerCase());
+    if (i >= 0) {
+      const a = Math.max(0, i - 40), b = Math.min(src.length, i + nd.length + 80);
+      return (a ? '…' : '') + src.slice(a, b).trim() + (b < src.length ? '…' : '');
+    }
+  }
+  for (const t of terms) {
+    if (t.neg) continue;
+    if (t.kind === 'prop') { const p = (node.props || []).find(p => p.key.toLowerCase() === t.key);   if (p) return p.key + ': ' + p.val; }
+    if (t.kind === 'has')  { const p = (node.props || []).find(p => p.key.toLowerCase() === t.value); if (p) return p.key + ': ' + p.val; }
+    if (t.kind === 'is')   return 'is:' + t.value;
+    if (t.kind === 'due' || t.kind === 'start') { const p = (node.props || []).find(p => p.key.toLowerCase() === t.kind); if (p) return t.kind + ': ' + p.val; }
+  }
+  return text.slice(0, 120);
+}
+
 function searchWorkspace(query, index, currentDocId, cap = 50) {
   if (!index || !index.roots) return [];
   const terms = parseSearchQuery(query);
@@ -9916,7 +9952,7 @@ function searchWorkspace(query, index, currentDocId, cap = 50) {
       if (queryMatchesNode(terms, n, seqs, vars)) {
         out.push({ docId, nodeId: n.id, docName,
                    title: textForDisplay(n) || '(untitled)',
-                   snippet: stripMd(textForDisplay(n)).slice(0, 120) });
+                   snippet: searchSnippet(n, terms) });
       }
       for (const c of (n.children || [])) walk(c);
     };
@@ -13160,14 +13196,14 @@ async function openFile() {
       const file = await fileHandle.getFile();
       const text = await file.text();
       adoptDoc(fromOpml(text), { fileName: file.name, fileHandle });
-    } catch(e) { if (e.name!=='AbortError') alert('Could not open: '+e.message); }
+    } catch(e) { if (e.name!=='AbortError') flashError('Could not open: '+e.message); }
   } else {
     const inp = document.createElement('input');
     inp.type='file'; inp.accept='.opml,text/x-opml,application/xml,text/xml';
     inp.onchange = async () => {
       const file = inp.files[0]; if (!file) return;
       try { adoptDoc(fromOpml(await file.text()), { fileName: file.name }); }
-      catch(e) { alert('Invalid file: '+e.message); }
+      catch(e) { flashError('Invalid file: '+e.message); }
     };
     inp.click();
   }
@@ -13188,7 +13224,7 @@ async function saveAsFile() {
       document.getElementById('file-name').textContent = fileName;
       updateTitle();
       if (await writeH(fileHandle)) flashHint('Saved “' + fileName + '”');
-    } catch(e) { if (e.name!=='AbortError') alert('Could not save: '+e.message); }
+    } catch(e) { if (e.name!=='AbortError') flashError('Could not save: '+e.message); }
   } else dlOpml();
 }
 function dlOpml() {
@@ -13202,7 +13238,7 @@ async function writeH(h) {
   try { const w=await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); return true; }
   catch(e) {
     if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the workspace folder — reconnect, or use Save As to keep your work.');
-    else alert('Save failed: ' + e.message);
+    else flashError('Save failed: ' + e.message);
     return false;
   }
 }
@@ -13397,7 +13433,7 @@ async function connectWorkspace() {
     flashHint('Folder connected — saved “' + name + '”');
   } catch (e) {
     if (e && e.name === 'AbortError') return; // user cancelled the picker — silent no-op (P4)
-    alert('Could not connect folder: ' + (e && e.message ? e.message : e));
+    flashError('Could not connect folder: ' + (e && e.message ? e.message : e));
   }
 }
 
@@ -13502,7 +13538,7 @@ async function switchWorkspaceDoc(name) {
     adoptDoc(fromOpml(await (await fh.getFile()).text()), { fileName: name, fileHandle: fh, workspaceFile: fh });
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
     _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;
-  } catch (e) { alert('Could not open “' + name + '”: ' + (e.message || e)); return false; }
+  } catch (e) { flashError('Could not open “' + name + '”: ' + (e.message || e)); return false; }
 }
 
 // New document inside the folder (collision-safe). Reroutes File → New when a folder is
@@ -13538,7 +13574,7 @@ async function createWorkspaceNote(title) {
     const w = await fh.createWritable(); await w.write(toOpml(doc)); await w.close();
     refreshWorkspaceIndex();                        // background — ready by the time the point exits edit
     return { docId: doc.docId, nodeId: pt.id, name };
-  } catch (e) { alert('Could not create note: ' + (e.message || e)); return null; }
+  } catch (e) { flashError('Could not create note: ' + (e.message || e)); return null; }
 }
 
 // File the CURRENT (detached) document into the folder under a collision-safe name and
@@ -13567,7 +13603,7 @@ async function deleteWorkspaceDoc(name) {
     confirmLabel: 'Delete', cancelLabel: 'Cancel',
   })) return false;
   try { await workspaceDir.removeEntry(name); }
-  catch (e) { alert('Could not delete “' + name + '”: ' + (e.message || e)); return false; }
+  catch (e) { flashError('Could not delete “' + name + '”: ' + (e.message || e)); return false; }
   flashHint('Deleted “' + name + '”');   // UX audit: confirm a permanent delete (P4)
   if (name === fileName) {
     const rest = await listWorkspaceNames(workspaceDir);
