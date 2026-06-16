@@ -445,6 +445,34 @@ Implemented:
   **Shift+Enter** is a line break. Until an inbox is set the Capture button is disabled
   and the action routes to the picker (no silent no-op — P4). Helpers `openCaptureDialog`
   / `doCapture` / `resolveInbox`. No new syntax.
+- **Multi-document workspace** — a **workspace of many `.opml` notes in a real disk folder**, the
+  durable backing for cross-file linking (Phase 1). **Chromium-gated** — the directory picker /
+  `queryPermission` are a separate File System Access surface from the single-file open/save, so
+  non-Chromium browsers keep full single-file mode. Connect a folder once via the File menu
+  (`showDirectoryPicker({mode:'readwrite'})`, `connectWorkspace`); the handle is persisted in
+  **IndexedDB** and re-permissioned on load (`queryPermission` reconnects silently, else a one-click
+  **Reconnect**). Once connected, **every edit auto-writes** the current note to its `.opml`
+  (debounced `flushWorkspaceFile`, coalesced one-write-in-flight; the localStorage autosave stays as
+  the sub-second crash buffer, and still runs for a doc too large for localStorage) — **no manual
+  save needed**. The **document switcher** (File → Switch document…) lists the folder's notes:
+  open/**switch** (dirty-guarded `switchWorkspaceDoc`), **New** (File → New makes a fresh note **in
+  the folder**, collision-safe `uniqueWorkspaceName`/`workspaceFileName`), and **delete**
+  (`deleteWorkspaceDoc`; deleting the current note opens another or a fresh one). On reload the
+  **last-open note re-opens from disk** (`reopenWorkspaceDoc` — the folder is the source of truth, so
+  the doc survives a localStorage wipe; a **newer-wins** check against the localStorage copy keeps
+  any post-degrade edits). **Lost access** (folder/file moved or permission revoked) **degrades
+  gracefully** (`degradeWorkspace`): one soft warning, auto-write stops, the menu flips to
+  **Reconnect** — never a per-keystroke alert; a reconnect **verifies by actually re-reading the
+  file**, so a deleted folder reports honestly instead of falsely "reconnecting". The menu is
+  **document-aware** (`connected` vs `connected-detached` when the open doc isn't in the folder, with
+  a **Save to workspace** action). A **non-Chromium** browser hides the workspace and shows an
+  **invite** in the File menu (`#workspace-invite` — "open in Chrome or Edge to unlock linked
+  notebooks", with **Copy link**). Foundations: a **stable per-doc id** in the OPML head (`_docid`,
+  `ensureDocId`, migrate-on-load) gives every note a cross-file address; **`adoptDoc(newRoot, opts)`**
+  is the single runtime document-swap chokepoint (one reset of `root`/`fileHandle`/search/undo — the
+  per-document state inventory). Pure cores `workspaceAffordance`/`workspaceFileName`/
+  `uniqueWorkspaceName`/`ensureDocId` are Node-pinned; the FSA picker + OS permission flow is
+  **human-verified** (it can't be driven headless). See `guidance/roadmap.md` (Phase 1).
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like

@@ -21,32 +21,30 @@ hashtag tags with click-to-filter; OPML / Markdown / plain-text export; theming 
 
 ## Tier 1 — high priority (recurring across tools, high value)
 
-### ◐ Node links & backlinks (the link layer)
-Link any node to any other and see what links back. Anchors a whole cluster — quick-switcher,
-link-and-create, aliases, unlinked references, graph view.
-- **Shipped (same-document):** `[[#id|label]]` token + `collectLinks` index + backlinks panel
-  + copy-link + keyboard-first creation + the **`[[` picker** (live — UXP-4); plus a
-  **live-title/content "mirror"** (`[[#id|]]`). **Remaining:** cross-document (needs the
-  workspace), and the Org-roam cluster below (aliases, unlinked refs, graph). See
-  `guidance/features.md` / `guidance/roadmap.md`.
-- **Why:** turns the tree into a navigable web — the core of PKM / Zettelkasten work.
-- **Foundation present:** every node already has a stable id that round-trips through OPML
-  (`_id`), so addressable targets exist; only the link + index + backlink layer is missing.
-- **Scope split:** *same-document* linking works everywhere, ungated; *cross-document* linking
-  rides on the multi-doc workspace (gated). See plan.
-- **Fit — medium core.** `[[…|label]]` token + resolver + a backlink index via tree-walk (the
-  `collectVars`/`collectRules` cached-walk pattern). Pure, testable core; panel + switcher are
-  the new UI.
-- **Rough order:** (a) link token + resolver → (b) backlink index + panel → (c) quick-switcher
-  (fuzzy jump by title; near-standalone) + link-and-create → (d) aliases + unlinked references →
-  (e) graph view (later, hard).
+### ✓ Node links & backlinks (the link layer) — delivered (2026-06-16)
+Link any node to any other and see what links back. Anchored the whole cluster — **delivered end to
+end**, same-document *and* cross-document.
+- **Shipped (same-document):** `[[#id|label]]` token + `collectLinks` index + backlinks panel +
+  copy-link + keyboard-first creation + the **`[[` picker** (live — UXP-4) + a **live-title/content
+  "mirror"** (`[[#id|]]`); plus the Org-roam cluster: **link-and-create** ("+ New point", `#96`),
+  **aliases** (`#98`), **unlinked references** (`#97`).
+- **Shipped (cross-document, on the Phase-1 workspace):** `[[docId#nodeId|label]]` token + the
+  **workspace-wide link index** (CF-1) + cross-doc **navigation** (CF-2) + the **`[[` picker across
+  the folder** (CF-3) + **cross-doc backlinks** (CF-4) + **"+ New note"** link-and-create (CF-5).
+  See `guidance/features.md` / `guidance/roadmap.md` (Phase 2).
+- **Deferred / parked:** cross-document **unlinked references** (scanning other docs' prose — high
+  cost, secondary value), and the **graph view** (parked — low actionable value for one notebook).
+- **Why:** turned the tree into a navigable web — the core of PKM / Zettelkasten work. **Done.**
 
-### ☐ Multiple documents / workspace
-A workspace of many docs instead of one file at a time.
-- **Why:** organization at scale + the substrate for cross-file linking; also relieves
-  single-file scale pressures (localStorage autosave cap, whole-tree per-edit work).
-- **Fit — hard.** The core storage refactor; gated power tier. Storage + durability decisions
-  are settled in `guidance/roadmap.md`.
+### ✓ Multiple documents / workspace — delivered (2026-06-16)
+A workspace of many `.opml` notes in a real disk folder instead of one file at a time — **delivered**
+(Phase 1, Chromium-gated). Connect a folder (File System Access + IndexedDB handle), durable
+continuous auto-write, a document switcher (open/new/switch/delete), reopen-the-last-doc across
+reloads, graceful degrade/reconnect on lost access, and a non-Chromium invite. Single-file mode stays
+the universal default. The substrate that cross-file linking + whole-folder search ride on. See the
+**Multi-document workspace** entry in `guidance/features.md` and Phase 1 in `guidance/roadmap.md`.
+- **Why:** organization at scale + the substrate for cross-file linking; also relieves single-file
+  scale pressures (localStorage autosave cap, whole-tree per-edit work).
 
 ### ✓ Dates on items + agenda / calendar view (2026-06-13)
 Due dates live as a `due` property in `node.props` (value: `YYYY-MM-DD`, `today`, `today+N`).
