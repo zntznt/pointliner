@@ -751,7 +751,8 @@ Implemented:
     `docId` before the `#` (`[[docB#nodeId|label]]`); a bare `[[#nodeId]]` targets its own doc.
     The index is `{ titles: Map(docId→Map(nodeId→title)), outgoing: [{src…,dst…,label}],
     backlinks: Map("dstDocId#dstNodeId"→[{srcDocId,srcNodeId}]), candidates: [{docId,nodeId,
-    title,docName}], nameByDocId: Map(docId→name) }`. A file without a stable `_docid` is
+    title,docName}], nameByDocId: Map(docId→name), roots: Map(docId→parsed tree) }` (`roots`
+    added by WS-1 — see below). A file without a stable `_docid` is
     **skipped** (it has no cross-file address until the app opens + stamps it — the scan never
     writes `_docid` back); an unreadable/unparseable file is skipped, never thrown. It is
     **not a `_varsVer` doc-cache** — it spans documents and rebuilds on filesystem events, not
@@ -760,3 +761,29 @@ Implemented:
     path is untouched** (`collectLinks`/`LINK_RE`/`renderLinkPill`/`linkCandidates` unchanged).
     Pure cores `parseLinkToken`/`buildWorkspaceIndex` are Node-pinned; the FSA scan is
     mock-handle-verified headless. (`WLINK_RE`/`scanWorkspace`/`refreshWorkspaceIndex`.)
+  - **Workspace-wide search core** (WS-1, *internal, no UI — the surface is WS-2*): "find
+    anything across my whole notebook." The **key reuse** — `queryMatchesNode`/`termMatchesNode`
+    are pure and node-object-based (they read a node's `text`/`note`/`props`/`children`), so they
+    run **verbatim** over other docs' nodes: **no new query language, no new operators, no new
+    syntax**, the same `parseSearchQuery` engine as in-doc search. The only new data is CF-1's
+    index retaining each doc's **parsed tree** (`roots: Map(docId→tree)` — built in
+    `buildWorkspaceIndex`'s validated loop, so invalid/duplicate docs are skipped). The pure
+    matcher `searchWorkspace(query, index, currentDocId, cap=50)` walks each other doc's points
+    (`root.children`, skipping the doc-title container — every returned `nodeId` is navigable),
+    runs `queryMatchesNode`, and returns `[{docId,nodeId,docName,title,snippet}]` capped at `cap`;
+    the **current doc is excluded** (the in-outline filter already covers it). The in-doc search
+    path is **untouched**. **Memory:** the index now holds every doc's parsed tree — bounded by
+    the notebook's own size (comparable to "all docs loaded"), fine for the target scale; a lighter
+    per-node projection is the future optimization if a very large vault demands it. The CF-1
+    lifecycle (re-scan on switch) keeps it fresh. **All operators are exact across docs.** text /
+    phrase / `-NOT` / `#tag` / `has:` / `key:value` / `due:` / `start:` read only the node's own
+    text/props; the context-reading ones — `is:done`/`is:todo` (need this doc's **sequences**) and
+    `is:failing` (needs this doc's resolved **vars**) — get **this** doc's `allSequences(root)` /
+    `collectVars(root)` (pure over the retained root), computed **once per doc and only when an
+    `is:` term is present** (`needsCtx`, so a plain text search pays nothing). Making `is:done`/
+    `is:todo` exact also required the `is:` branch of `termMatchesNode` to derive to-do-ness
+    **seq-aware** (`sequenceForKeyword(km, seqs) || isTaskFirst`) rather than via the module-global
+    `deriveTypeFromText` — a **behavior-identical** change in-doc (where `seqs` *is* the current
+    doc's states), exact for another doc's custom sequence. Pure core `searchWorkspace` is
+    Node-pinned (incl. cross-doc `is:done`/`is:failing` exactness + the lazy-context guard); the
+    scan→`roots`→search path is mock-dir-verified headless.

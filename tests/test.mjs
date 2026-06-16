@@ -3858,6 +3858,122 @@ test('workspaceBacklinks: an unknown/untitled source falls back to (untitled)', 
     [{ docId: 'db', nodeId: 'ghost', title: '(untitled)', docName: 'b.opml' }]);
 });
 
+// ── workspace-wide search (WS-1) ──────────────────────────────────────────────
+// searchWorkspace runs the SAME pure engine (parseSearchQuery/queryMatchesNode) over other
+// docs' parsed trees, retained on the index as `roots`. No new query language. Reuses cfDocFor.
+
+test('buildWorkspaceIndex: exposes roots (WS-1) — a Map of docId → the parsed tree', () => {
+  const da = cfDocFor('da', 'a.opml', [['a1', 'x']]);
+  const idx = c.buildWorkspaceIndex([da]);
+  assert.equal(typeof idx.roots?.get, 'function');
+  assert.equal(idx.roots.get('da'), da.root);   // the same tree reference is retained
+  assert.equal(idx.roots.size, 1);
+  // invalid docs are skipped (not in roots), same guard as nameByDocId
+  const idx2 = c.buildWorkspaceIndex([da, { docId: '', root: c.mkRoot() }, { docId: 'x', root: null }, null]);
+  assert.deepEqual(host([...idx2.roots.keys()]), ['da']);
+});
+
+test('searchWorkspace: a text term finds points in OTHER docs, excludes current, shapes result', () => {
+  const idx = c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'Alpha apple'], ['a2', 'Beta banana']]),
+    cfDocFor('db', 'b.opml', [['b1', 'Gamma apple'], ['b2', 'Delta cherry']]),
+  ]);
+  // current doc = da → excluded; 'apple' matches b1 (in db) only
+  assert.deepEqual(host(c.searchWorkspace('apple', idx, 'da')),
+    [{ docId: 'db', nodeId: 'b1', docName: 'b.opml', title: 'Gamma apple', snippet: 'Gamma apple' }]);
+  // from a DIFFERENT current doc (dc), da's a1 is searched too
+  assert.deepEqual(host(c.searchWorkspace('apple', idx, 'dc')).map(r => r.nodeId).sort(), ['a1', 'b1']);
+});
+
+test('searchWorkspace: reuses the in-doc operators (#tag, has:, key:value, phrase, -neg)', () => {
+  const db = c.mkRoot(); db.docId = 'db';
+  const p1 = c.mkNode('Gamma apple #fruit'); p1.id = 'b1';
+  const p2 = c.mkNode('Delta pie'); p2.id = 'b2'; p2.props = [{ key: 'status', val: 'ripe' }];
+  db.children.push(p1, p2);
+  const idx = c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'current doc apple #fruit']]),   // current doc, excluded
+    { docId: 'db', name: 'b.opml', root: db },
+  ]);
+  assert.deepEqual(host(c.searchWorkspace('#fruit', idx, 'da')).map(r => r.nodeId), ['b1']);
+  assert.deepEqual(host(c.searchWorkspace('has:status', idx, 'da')).map(r => r.nodeId), ['b2']);
+  assert.deepEqual(host(c.searchWorkspace('status:ripe', idx, 'da')).map(r => r.nodeId), ['b2']);
+  assert.deepEqual(host(c.searchWorkspace('"Gamma apple"', idx, 'da')).map(r => r.nodeId), ['b1']);
+  // negation: an apple that is NOT #fruit → none (b1 is the only apple and it IS #fruit)
+  assert.deepEqual(host(c.searchWorkspace('apple -#fruit', idx, 'da')), []);
+});
+
+test('searchWorkspace: empty query, absent / no-roots index → []; cap bounds results', () => {
+  const idx = c.buildWorkspaceIndex([cfDocFor('db', 'b.opml', [['b1', 'x'], ['b2', 'x']])]);
+  assert.deepEqual(host(c.searchWorkspace('', idx, 'da')), []);
+  assert.deepEqual(host(c.searchWorkspace('   ', idx, 'da')), []);
+  assert.deepEqual(host(c.searchWorkspace('x', null, 'da')), []);
+  assert.deepEqual(host(c.searchWorkspace('x', {}, 'da')), []);     // no .roots
+  const big = c.buildWorkspaceIndex([cfDocFor('db', 'b.opml', [['b1', 'x'], ['b2', 'x'], ['b3', 'x']])]);
+  assert.equal(host(c.searchWorkspace('x', big, 'da', 1)).length, 1);
+  assert.equal(host(c.searchWorkspace('x', big, 'da', 2)).length, 2);
+  assert.equal(host(c.searchWorkspace('x', big, 'da')).length, 3);   // default cap 50 → all 3
+});
+
+test('searchWorkspace: walks nested points (not just top level)', () => {
+  const db = c.mkRoot(); db.docId = 'db';
+  const parent = c.mkNode('parent'); parent.id = 'p';
+  const kid = c.mkNode('nested needle'); kid.id = 'k'; parent.children.push(kid);
+  db.children.push(parent);
+  const idx = c.buildWorkspaceIndex([{ docId: 'db', name: 'b.opml', root: db }]);
+  assert.deepEqual(host(c.searchWorkspace('needle', idx, 'da')).map(r => r.nodeId), ['k']);
+});
+
+// WS-1 amendment: is: operators are EXACT across docs (per-doc seqs/vars, not the current
+// doc's). These are the cases the prior fallback got wrong.
+test('searchWorkspace: is:done / is:todo are exact for another doc\'s custom @sequence', () => {
+  const db = c.mkRoot(); db.docId = 'db';
+  // db declares a custom sequence OPEN | SHIPPED (SHIPPED is the done-state)
+  const decl = c.mkNode('[[seq:s1]] shipping'); decl.id = 'd1';
+  decl.seq = [{ key: 's1', name: 'Ship', states: ['OPEN', 'SHIPPED'], doneFrom: 1 }];
+  const shipped = c.mkNode('#SHIPPED the feature'); shipped.id = 'p1';
+  const open = c.mkNode('#OPEN the bug'); open.id = 'p2';
+  db.children.push(decl, shipped, open);
+  const idx = c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'current doc']]),   // current doc: only the DEFAULT sequence
+    { docId: 'db', name: 'b.opml', root: db },
+  ]);
+  // SHIPPED is a done-state ONLY in db's sequence — the current doc's seqs would miss it
+  assert.deepEqual(host(c.searchWorkspace('is:done', idx, 'da')).map(r => r.nodeId), ['p1']);
+  assert.deepEqual(host(c.searchWorkspace('is:todo', idx, 'da')).map(r => r.nodeId), ['p2']);
+});
+
+test('searchWorkspace: is:failing is exact for another doc\'s variable-referencing check', () => {
+  const db = c.mkRoot(); db.docId = 'db';
+  const vdecl = c.mkNode('[[var:v1]] budget'); vdecl.id = 'v';
+  vdecl.vars = [{ key: 'v1', name: 'budget', expr: '100' }];          // db's doc-level var
+  const fail = c.mkNode('over'); fail.id = 'f'; fail.props = [{ key: 'check', val: 'budget >= 500' }];  // 100≥500 → fail
+  const pass = c.mkNode('under'); pass.id = 'p'; pass.props = [{ key: 'check', val: 'budget >= 50' }];   // 100≥50 → pass
+  db.children.push(vdecl, fail, pass);
+  const idx = c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'current doc']]),   // current doc has NO 'budget' var
+    { docId: 'db', name: 'b.opml', root: db },
+  ]);
+  // with db's resolved vars (budget=100) only the ≥500 check fails; the ≥50 check passes.
+  // (the prior fallback used the current doc's vars → budget unresolved → BOTH would error→fail.)
+  assert.deepEqual(host(c.searchWorkspace('is:failing', idx, 'da')).map(r => r.nodeId), ['f']);
+});
+
+test('searchWorkspace: per-doc context (collectVars) is computed only when an is: term is present', () => {
+  const idx = c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'current']]),
+    cfDocFor('db', 'b.opml', [['b1', 'apple pie'], ['b2', 'banana']]),
+  ]);
+  // spy on collectVars in the vm realm (a function-decl global; searchWorkspace resolves it lazily)
+  vm.runInContext('if (!globalThis.__origCV) { globalThis.__origCV = collectVars; collectVars = function (r) { globalThis.__cv = (globalThis.__cv || 0) + 1; return __origCV(r); }; }', c._context);
+  c._context.__cv = 0; c.searchWorkspace('apple', idx, 'da');           // non-is: → needsCtx false
+  const afterText = c._context.__cv;
+  c._context.__cv = 0; c.searchWorkspace('is:failing', idx, 'da');      // is: → needsCtx true
+  const afterIs = c._context.__cv;
+  vm.runInContext('collectVars = __origCV; delete globalThis.__origCV;', c._context);   // restore BEFORE asserts
+  assert.equal(afterText, 0, 'a non-is: search never computes per-doc vars');
+  assert.ok(afterIs >= 1, 'an is: search computes per-doc vars (once per other doc)');
+});
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
