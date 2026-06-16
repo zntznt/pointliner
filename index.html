@@ -167,7 +167,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted);pointer-events:none}
 #search-wrap:focus-within #search-hint{display:block}
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:nowrap}
-.sh-row kbd{font-size:10px;color:var(--fg);font-family:var(--mono);background:var(--bg);border:1px solid var(--bdr);border-radius:4px;padding:0 4px;line-height:1.6}
+.sh-row kbd{font-size:10px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:0 4px;line-height:1.6}
 .sh-row code{font-family:var(--mono);font-size:10px}
 /* saved searches: the one interactive island in the otherwise inert hint panel */
 #sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
@@ -670,8 +670,8 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .collapsed>.children{display:none}
 
 /* search highlight */
-mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1px}
-@media(prefers-color-scheme:dark){mark{background:rgba(200,150,0,.35)}}
+mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-radius:2px;padding:0 1px}
+@media(prefers-color-scheme:dark){mark{background:color-mix(in srgb,#caa53d 42%,transparent)}}
 .search-ctx{opacity:.5}
 .search-ctx .node-content{pointer-events:none}
 
@@ -3504,7 +3504,7 @@ const BLOCK_CMDS = [
   { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Smallest heading.',                       ex:'### text', section:'Headings', turn:true },
   // Blocks
   { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Prose block — Enter = line break, Shift+Enter = new point.', ex:'text\nmore text', section:'Blocks', turn:true },
-  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced, unformatted code block.',     ex:'```', section:'Blocks', turn:true },
+  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block — Shift+Enter adds lines (Enter exits to a new point).',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
@@ -5435,7 +5435,7 @@ function buildCheckChip(node) {
   _checkVerdicts.set(node.id, verdict);
   const expr = checkExprOf(node) || '';
   const word = verdict === 'pass' ? 'passing' : verdict === 'fail' ? 'failing' : 'cannot evaluate';
-  const glyph = verdict === 'pass' ? '✓' : verdict === 'fail' ? '⚠' : '⚠';
+  const glyph = verdict === 'pass' ? '✓' : verdict === 'fail' ? '✗' : '⚠';
   const label = verdict === 'pass' ? 'check' : verdict === 'fail' ? 'check' : 'check?';
   const chip = document.createElement('span');
   chip.className = 'prop-chip prop-check prop-check-' + verdict;
@@ -6857,6 +6857,9 @@ function attachContentEvents(content, node) {
           content.textContent = content.dataset.prevText ?? node.text;
           content.blur();
         }
+        // Base carve-out (UXP-67): in a base (role=grid), Ctrl/⌘+Enter COMMITS the
+        // edit (blur), not zoom — the grid-cell convention (cf. Table Enter). A normal
+        // point zooms; the divergence is sanctioned + documented in ux-discipline.md §3.
         if ((e.key === 'Enter') && (e.ctrlKey || e.metaKey)) {
           e.preventDefault(); content.blur();
         }
@@ -7646,6 +7649,12 @@ function onKeyDown(e, id, content) {
   else if (e.key==='Backspace') {
     const node = nodeById(id);
     if (node && content.textContent==='' && node.children.length===0) { e.preventDefault(); deleteNode(id); }
+    else if (node && node.type !== 'base') {
+      // UXP-68: Backspace at the very start of a non-empty point merges it up into the
+      // previous visible point (peer-standard; the inverse of the UXP-60 Enter-split).
+      const sel = window.getSelection();
+      if (content.dataset.editing && sel && sel.isCollapsed && getCaretOffset(content) === 0 && mergeUpInto(id)) e.preventDefault();
+    }
   }
   else if (e.key==='ArrowUp'   && e.altKey)  { e.preventDefault(); moveNode(id,-1); }
   else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
@@ -8342,6 +8351,7 @@ function renderSlashMenu() {
     list.appendChild(item);
   });
   slashState.content?.setAttribute('aria-activedescendant', 'sf-opt-' + slashState.activeIdx);
+  slashState.content?.setAttribute('aria-controls', 'slash-menu-list');
   slashMenu.appendChild(list);
   footer = document.createElement('div'); footer.className = 'slash-footer';
   footer.innerHTML = slashFooterHTML(slashState.matches[slashState.activeIdx], slashState.trigger);
@@ -11455,7 +11465,7 @@ function renderMathPill(key, m) {
   }
   const display = formatMathDisplay(fresh, m.expr);
   return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}">`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)} — click to edit">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
@@ -11494,7 +11504,7 @@ function renderVarPill(key, v) {
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
     const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
     const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found — click to edit`
-      : `Variable ${escQ(v.name)} = ${escQ(display)}`;
+      : `Variable ${escQ(v.name)} = ${escQ(display)} — click to edit`;
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${refLabel}">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
@@ -11911,7 +11921,7 @@ function announce(msg) {
   requestAnimationFrame(() => { el.textContent = msg; });
 }
 
-function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashMenu.classList.remove('on'); slashState = null; }
+function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
 // ON by default (UXP-4 — a built capability with no front door at any verbosity is
@@ -11926,7 +11936,7 @@ let lpState = null;
 function isLpMenuOpen() { return lpMenu.classList.contains('on'); }
 lpMenu.addEventListener('mousedown', e => e.preventDefault());
 
-function hideLinkMenu() { lpState?.content?.removeAttribute('aria-activedescendant'); lpMenu.classList.remove('on'); lpState = null; }
+function hideLinkMenu() { lpState?.content?.removeAttribute('aria-activedescendant'); lpState?.content?.removeAttribute('aria-controls'); lpMenu.classList.remove('on'); lpState = null; }
 
 // Link-target candidates: every point whose title OR an alias contains the query
 // (case-insensitive), excluding the linking point itself and title-less points.
@@ -12068,6 +12078,7 @@ function renderLinkMenu() {
   // focus stays at the caret — the active option is exposed via activedescendant
   // (the slash menu's screen-reader pattern, shared by all caret pickers)
   lpState.content?.setAttribute('aria-activedescendant', 'lp-opt-' + lpState.activeIdx);
+  lpState.content?.setAttribute('aria-controls', 'lp-menu');
   lpMenu.classList.add('on');
   lpMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
@@ -12176,7 +12187,7 @@ function positionLinkMenu(content, offset) {
 const braceMenu = document.getElementById('brace-menu');
 let braceState = null;
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
-function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceMenu.classList.remove('on'); braceState = null; }
+function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; }
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
 
 // ─── {…} shorthand live-preview tooltip (UXP-7) ──────────────────────────────
@@ -12253,6 +12264,7 @@ function renderBraceMenu() {
   });
   // focus stays at the caret — active option exposed via activedescendant (UXP-14)
   braceState.content?.setAttribute('aria-activedescendant', 'bm-opt-' + braceState.activeIdx);
+  braceState.content?.setAttribute('aria-controls', 'brace-menu');
   braceMenu.classList.add('on');
   braceMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
@@ -12325,7 +12337,7 @@ function braceApply() {
 const tagMenu = document.getElementById('tag-menu');
 let tagState = null;
 function isTagMenuOpen() { return tagMenu.classList.contains('on'); }
-function hideTagMenu() { tagState?.content?.removeAttribute('aria-activedescendant'); tagMenu.classList.remove('on'); tagState = null; }
+function hideTagMenu() { tagState?.content?.removeAttribute('aria-activedescendant'); tagState?.content?.removeAttribute('aria-controls'); tagMenu.classList.remove('on'); tagState = null; }
 tagMenu.addEventListener('mousedown', e => e.preventDefault());
 
 function checkTagTrigger(content, nodeId) {
@@ -12369,6 +12381,7 @@ function renderTagMenu() {
   });
   // focus stays at the caret — active option exposed via activedescendant (UXP-14)
   tagState.content?.setAttribute('aria-activedescendant', 'tm-opt-' + tagState.activeIdx);
+  tagState.content?.setAttribute('aria-controls', 'tag-menu');
   tagMenu.classList.add('on');
   tagMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
 }
@@ -12728,6 +12741,20 @@ function splitForSibling(text, offset, contPrefix) {
   return { before: s.slice(0, o), after: (contPrefix || '') + s.slice(o) };
 }
 
+// Pure core (UXP-68): merge `body` (the prefix-stripped trailing point) onto the end of
+// `prevText` (the previous visible point) when Backspace is pressed at offset 0 — the
+// inverse of splitForSibling. Joins FLUSH onto the target's last *content* line: a
+// trailing blank line on the target (a stray `\n` — e.g. a contenteditable filler `<br>`
+// that `editableText` turns into `\n`, common on parent points) and a leading blank line
+// on the body are trimmed at the seam, so the body never lands on a spurious second line.
+// The returned `offset` is the FOLDED join position, turned into a caret by
+// unfoldedPrefixLen at the call site.
+function mergeUpText(prevText, body) {
+  const p = (prevText == null ? '' : String(prevText)).replace(/\n+$/, '');
+  const b = (body == null ? '' : String(body)).replace(/^\n+/, '');
+  return { text: p + b, offset: p.length };
+}
+
 // Token-keyed sidecars (the 8 with prune functions). Cloned whole onto a split's new
 // half; each node's pruneArtifacts then sheds the records whose token lives elsewhere
 // (clone-both-then-prune — safer than partitioning by key). props/note stay on the
@@ -12736,6 +12763,18 @@ const ARTIFACT_SIDECARS = ['footnotes','dice','markov','math','vars','grammar','
 function cloneArtifactSidecars(srcNode, dst) {
   for (const k of ARTIFACT_SIDECARS) {
     if (Array.isArray(srcNode[k])) dst[k] = srcNode[k].map(r => JSON.parse(JSON.stringify(r)));
+  }
+}
+
+// Merge counterpart (UXP-68): append a merged-away point's sidecar records onto the
+// surviving point; pruneArtifacts then drops any whose token didn't come along.
+// Concatenates (cloneArtifactSidecars *replaces* — a merge keeps both sides' records).
+function mergeArtifactSidecars(srcNode, dst) {
+  for (const k of ARTIFACT_SIDECARS) {
+    if (Array.isArray(srcNode[k]) && srcNode[k].length) {
+      const cloned = srcNode[k].map(r => JSON.parse(JSON.stringify(r)));
+      dst[k] = (Array.isArray(dst[k]) ? dst[k] : []).concat(cloned);
+    }
   }
 }
 
@@ -12792,6 +12831,52 @@ function insertSiblingAfter(id) {
   nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
   markDirty();
   render(); focusNode(nn.id);
+}
+
+// UXP-68: Backspace at offset 0 of a non-empty point merges it UP into the previous
+// visible point — the inverse of insertSiblingAfter's caret-split. Target = the row
+// directly above (deleteNode's focus model: the previous sibling's last visible
+// descendant, else the parent). Mirrors the UXP-60 fold dance — blur to commit the
+// active edit (refold + promote + prune → folded text), append the prefix-stripped body,
+// carry the children + sidecars, drop the emptied point, land the caret at the join.
+// Returns true when it merged (caller preventDefaults), false when there is no valid
+// target above (first point, or a base/code block that text must not merge into).
+function mergeUpInto(id) {
+  const node = nodeById(id);
+  const parent = parentOf(id);
+  if (!node || !parent || node.type === 'code') return false;
+  const idx = parent.children.findIndex(c => c.id === id);
+  let target = null;                              // the previous visible point
+  if (idx > 0) target = lastVis(parent.children[idx - 1]);
+  else if (parent.id !== root.id && parent.id !== focusedId) target = parent;
+  if (!target || target.type === 'base' || target.type === 'code') return false;
+
+  pushUndo();
+  const ed = document.querySelector(`.node-content[data-id="${id}"][data-editing]`);
+  if (ed) ed.blur();                              // commit the active edit → node.text final + folded
+
+  const oldPrevText = target.text;
+  const body = textForDisplay(node);              // prefix/marker stripped; folded tokens preserved
+  const { text: merged, offset: joinFolded } = mergeUpText(oldPrevText, body);
+  const joinPrefix = merged.slice(0, joinFolded); // target's text minus any trailing blank line — the seam
+  target.text = merged;
+  mergeArtifactSidecars(node, target);            // target gains node's records…
+  target.checked = todoDoneFromText(target.text);
+  pruneArtifacts(target);                          // …then shed any whose token didn't come along
+
+  if (node.children.length) {                      // carry the children up, reparented
+    for (const c of node.children) parentMap.set(c.id, target);
+    target.children.push(...node.children);
+    node.children = [];
+    if (target.collapsed) target.collapsed = false;
+  }
+  const ix = parent.children.findIndex(c => c.id === id);
+  parent.children.splice(ix, 1);                   // drop the emptied source point
+  deregisterSubtree(node);
+  markDirty();
+  render();
+  focusNodeAtOffset(target.id, unfoldedPrefixLen(target, joinPrefix)); // caret at the join
+  return true;
 }
 
 function indentNode(id) {

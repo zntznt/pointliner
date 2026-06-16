@@ -188,7 +188,7 @@ export function loadCores() {
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','urgencyMark',
     'todayISO','journalFileName','findOrCreateDatedEntry',
-    'splitForSibling',
+    'splitForSibling', 'mergeUpText',
     'flatRowStep',
   ];
   const cores = {};
