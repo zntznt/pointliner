@@ -448,8 +448,27 @@ Implemented:
 - **Node links & mirror** — link any node to any other with `[[#TARGETID|label]]`
   (the target id lives in the text; no sidecar). `collectLinks(rootNode)` walks the
   tree and returns `{ outgoing, backlinks, broken }`, cached on `_varsVer` like
-  `collectVars`. **Same-document only** (cross-document is gated behind the future
-  multi-doc workspace).
+  `collectVars`. **Same-document** here; **cross-document links** (`[[docId#id|label]]`)
+  ship in CF-2 (below).
+  - **Cross-document links (CF-2, Chromium/workspace-gated):** `[[docId#nodeId|label]]`
+    links to a point in **another workspace document** — the roadmap-locked cross-file
+    extension of the same-doc token, **no new delimiter** (just an optional docId before
+    the `#`). The two forms are mutually exclusive by regex (same-doc requires `#` right
+    after `[[`; cross-doc requires ≥1 char before it), so `collectLinks`/`LINK_RE` and the
+    same-doc pill are **untouched** — CF-2 adds a parallel path (`renderCrossLinkPill`,
+    `mdInline` cross-doc stash). The caption comes from CF-1's `workspaceIndex.titles`
+    (empty label → the target's **live title**, following renames on the next folder scan);
+    a missing target renders `.node-link-broken`. A token whose docId is the current doc
+    **delegates to the same-doc pill** (mirror included), so a copied `[[A#id|]]` behaves
+    identically in its home doc. **Click navigates like a same-doc link** (P1): it
+    `switchWorkspaceDoc(name)` (dirty-guarded — a cancelled discard aborts the jump) then
+    `zoomInto(nodeId)`. **Title-only in v1** (no cross-doc mirror/transclusion). Visual: a
+    muted trailing `↗` (`.node-link-cross::after`, `--muted` — no new color) distinguishes
+    a cross-note jump; the pill carries a `title`/`aria-label` naming the target doc (P3).
+    Front door: **Copy link** emits the portable `[[docId#id|]]` form when a workspace is
+    connected (`copyNodeLink`), same-doc `[[#id|]]` otherwise. Pure core
+    `renderCrossLinkPill` is Node-pinned; the switch+zoom click path is mock-index
+    Playwright-verified.
   - **Caption vs. mirror:** `[[#id|My text]]` shows a fixed caption; **`[[#id|]]`
     (empty label) "mirrors"** the target — it renders the target's *live* content,
     pills included, in their current state, **display-only and inline**. Rename or
