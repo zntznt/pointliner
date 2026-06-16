@@ -9,11 +9,14 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 **Status:** ☐ open · ◐ in progress · ✓ closed (move the row out on close)
 **Severity:** 🔴 breaks the unified language outright · 🟡 partial / inconsistent · 🟢 cosmetic-but-tracked
 
-> **Current state (June 2026): every numbered defect is closed.** Tiers 1–3 and the
-> correctness batch are ✓; the only open row is **UXP-20**, the *standing* syntax-sprawl
-> guard, which by design never closes — it is the gate every future feature is checked
-> against, not a defect awaiting a fix. The closed entries below are retained as the
-> record of the decisions (and the regression tripwires) they encode.
+> **Current state (June 2026):** Tiers 1–3, the correctness batch, and the drift/a11y
+> fixes (UXP-3…39) are ✓ closed. A six-domain **UX audit (June 2026)** then surfaced a
+> fresh set of non-conformances, tracked below as **UXP-40…67**: **batch 1 (UXP-40…52) is
+> ✓ closed** (data-safety + zero-risk conformance one-liners); **batch 2 (UXP-53…56) is
+> ✓ closed** (the a11y-reachability batch — links, backlinks, footnote refs, todo picker);
+> **UXP-57…67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> closes. Closed entries are retained as the record of the decisions (and the regression
+> tripwires) they encode.
 
 Each entry: the **problem**, the **rule** it violates, and the **target** (the conformant end-state the fix must reach). Verify the named symbol with grep before acting — some controls drift (per `accessibility.md`'s "verify before you label").
 
@@ -262,6 +265,253 @@ data shown to the user is silently wrong — so they're tracked here, not in a s
   that calls the shared `searchHashtag` helper — the same filter the click runs, added **beside**
   `mousedown`+`preventDefault`, never replacing it (caret invariant). Src-pinned, and the real
   `mdInline` render output verified (the `#` inside the aria-label is not re-matched as a tag).
+
+---
+
+## UX audit (June 2026) — new defects (UXP-40…67)
+
+A six-domain UX review (editing/keyboard, artifacts/pills, navigation/links, search/agenda/dates,
+workspace/files, visual/responsive) against `ux-discipline.md` (P1–P5) + `design-language.md`.
+**Batch 1 (UXP-40…52)** — the data-safety trio + zero-risk conformance one-liners — shipped + verified
+together (behavioral fixes headless-pinned; declarative fixes verified by inspection + green suite).
+**UXP-53…67** are open, sequenced for follow-up. The dominant theme: the a11y pass (UXP-19 pills /
+UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *secondary panels*
+(backlinks, todo-picker) — that is the UXP-53…56 batch.
+
+### UXP-40 ✓ IME composition unguarded in `onKeyDown` — **RESOLVED** (batch 1) 🔴
+- **Problem:** Enter/Tab/Backspace during a CJK/IME composition fired the structural editor
+  (`insertSiblingAfter` / line-break / `deleteNode`), destroying the in-flight candidate. The `input`
+  path was IME-guarded; the structural `keydown` path (`onKeyDown`) was not. Real data loss for IME users.
+- **Violated:** P1 / P3.
+- **Resolved:** `if (e.isComposing || e.keyCode === 229) return;` as the first line of `onKeyDown`.
+  Headless-pinned (a composing keydown never inserts a sibling).
+
+### UXP-41 ✓ Confirm-dialog Enter confirms despite focusing Cancel — **RESOLVED** (batch 1) 🔴
+- **Problem:** `openConfirmDialog` focuses Cancel "so Enter doesn't accidentally discard," but the
+  `ioBack` keydown made Enter call `finish(true)` **unconditionally** — defeating its own guard. Every
+  Discard / Delete-permanently flow could be confirmed by a reflexive Enter.
+- **Violated:** P1 / P4.
+- **Resolved:** Enter now resolves to the focused button (`finish(document.activeElement === okBtn)`).
+  Headless-pinned (Enter on Cancel → no confirm; Enter on OK → confirm).
+
+### UXP-42 ✓ Single-node drag-reorder was not undoable — **RESOLVED** (batch 1) 🟡
+- **Problem:** `performDrop` (single-bullet drag) called only `markDirty(); render()` — no `pushUndo()`,
+  unlike every sibling path (`moveNode`, `performMultiDrop`, `refileNodeTo`, `deleteNode`). A misplaced
+  drag was unrecoverable, and a later undo jumped past it.
+- **Violated:** P4 (and P1 — drag-one diverged from drag-many).
+- **Resolved:** `pushUndo()` before the splice. Headless-pinned (undo recorded; reorder still correct).
+
+### UXP-43 ✓ `.io-btn.danger` white-on-pastel-red fails contrast in dark mode — **RESOLVED** (batch 1) 🟡
+- **Problem:** `color:#fff` on `background:var(--bad)`; dark `--bad` is a pastel (`#f0928b`) → white ≈ 2:1,
+  illegible label on the confirm dialog's primary button. The hardcoded `#fff` also bypasses the token system.
+- **Violated:** `design-language.md` §3 (contrast floor; colored surface pairs with computed contrast ink).
+- **Resolved:** the app's danger-tint recipe (`background:color-mix(--bad 14% / --hbg); color:var(--bad);
+  border:--bad 40%`), matching `.nsb-btn.danger` / `#storage-warn` / `.prop-check-fail` — legible both themes.
+
+### UXP-44 ✓ Confirm-dialog icon used a hardcoded non-theming red — **RESOLVED** (batch 1) 🟢
+- **Problem:** `ic.style.cssText = 'background:rgba(201,64,64,.14);color:#c94040'` — a fresh literal red,
+  not `--bad`; identical in both themes (no response), barely visible on the dark card.
+- **Violated:** `design-language.md` §3 ("one red = `--bad`, never a fresh hex").
+- **Resolved:** `color-mix(in srgb,var(--bad) 14%,transparent)` + `color:var(--bad)`.
+
+### UXP-45 ✓ `math-err` pill clickable but not keyboard-focusable — **RESOLVED** (batch 1) 🟡
+- **Problem:** the UXP-34 `math-err` pill "keeps the edit affordance so the user can fix the broken
+  reference," but it lacked `tabindex` (its `est-err` sibling has it) — a keyboard user is told there's an
+  error to fix but can't reach the fix.
+- **Violated:** P3-2.
+- **Resolved:** `tabindex="-1"` on the `math-err` span (mirrors `est-err`; the `.math-roll` keydown branch already handles it).
+
+### UXP-46 ✓ Same-doc broken link gave AT no "broken" signal — **RESOLVED** (batch 1) 🟢
+- **Problem:** `node-link-broken` (same-doc) carried no `aria-label`; "broken" was color/dotted-underline
+  only — while the cross-doc twin already announced it. Color as sole carrier.
+- **Violated:** P3-4.
+- **Resolved:** `aria-label="<cap> (broken link)"` on the same-doc broken pill, mirroring the cross-doc one.
+
+### UXP-47 ✓ `est-pill` omitted from the iOS touch-callout suppression — **RESOLVED** (batch 1) 🟢
+- **Problem:** estimates are tappable (re-sample) like dice, but `.est-pill` was missing from the
+  `-webkit-touch-callout:none` group, so an iOS long-press can trigger the text-selection callout.
+- **Violated:** P3 (touch).
+- **Resolved:** added `.est-pill` to the selector.
+
+### UXP-48 ✓ `.bl-link-btn` focus ring used `--ring` (alpha glow) not solid `--acc` — **RESOLVED** (batch 1) 🟢
+- **Problem:** `outline:2px solid var(--ring)` — a 2px solid outline of a ~20%-alpha colour is a faint,
+  low-contrast ring, inconsistent with every other control's `2px solid var(--acc)`.
+- **Violated:** `design-language.md` §4 (`--ring` = decorative glow; `:focus-visible` = solid accent).
+- **Resolved:** `outline:2px solid var(--acc)`.
+
+### UXP-49 ✓ Manual Save gave no confirmation (silent success) — **RESOLVED** (batch 1) 🟡
+- **Problem:** `writeH` `markClean()`-ed with no toast, while every other save-class action flashes one.
+  The most common save path was the silent one.
+- **Violated:** P4 (every action confirms).
+- **Resolved:** `writeH` now returns success; `saveFile`/`saveAsFile` flash `Saved "<name>"`, `dlOpml` flashes
+  `Downloaded "<name>"`. The boolean keeps auto-write (`flushWorkspaceFile`) toast-free. Headless-pinned.
+
+### UXP-50 ✓ Workspace-doc delete was silent on success — **RESOLVED** (batch 1) 🟢
+- **Problem:** `deleteWorkspaceDoc` confirmed + alerted on failure, but a *successful* permanent delete
+  acknowledged only by the row vanishing — under the destructive-toast discipline (UXP-12) elsewhere.
+- **Violated:** P4.
+- **Resolved:** `flashHint('Deleted "<name>"')` after a successful `removeEntry`.
+
+### UXP-51 ✓ Non-Chromium "Copy link" claimed success while copying nothing — **RESOLVED** (batch 1) 🟡
+- **Problem:** the `else` (no `navigator.clipboard`) branch of the Linked-notebooks invite flashed
+  "Link copied" without copying — a false-success front door for the exact browsers it targets.
+- **Violated:** P4.
+- **Resolved:** route through `fallbackCopy` (the `execCommand` path `copyNodeLink` already uses) in both the
+  no-clipboard and rejection branches — it actually copies, and only confirms on success.
+
+### UXP-52 ✓ Search legend omitted `has:` / `key:value` — **RESOLVED** (batch 1) 🟢
+- **Problem:** two shipped, parseable operators were in the `?` panel but absent from the always-visible
+  focus-shown legend (the primary operator front door).
+- **Violated:** P5-4 / P2-1 (every authoring syntax in a documented, reachable place).
+- **Resolved:** a legend `sh-row` for `has:key` / `key:value` (with examples).
+
+---
+
+### UXP-53 ✓ Node-link pills keyboard-operable in display mode — **RESOLVED** 🟡
+- **Problem:** `.node-link` / `-mirror` / `-broken` / `-cross` render as `<span contenteditable="false">`
+  with **no `tabindex`/`role`/`aria-label`** and are absent from the pill-body keydown dispatch
+  (`onKeyDown` ~7417) — link navigation is mouse-only; a screen reader gets an unnamed span.
+  *Independently flagged by two reviewers.* The §9 matrix's "Links P3 ✅" is now inaccurate.
+- **Violates:** P3-1/P3-2. **Target:** the UXP-39 pattern — `role="link"` + `tabindex="-1"` + `aria-label`
+  on all `.node-link*` variants, and a `.node-link` branch in the keydown block (zoom same-doc / switch+zoom
+  cross-doc) added **beside** `mousedown`+`preventDefault`. `renderLinkPill` (~2350) / `renderCrossLinkPill`.
+- **Resolved:** all six link-pill variants (`renderLinkPill` broken/mirror×2/plain + `renderCrossLinkPill` broken/cross) carry `role="link"` + `tabindex="-1"` (broken/cross already had `aria-label`; plain/mirror are named by their content); a `.node-link` branch in the `onKeyDown` Enter/Space block dispatches the display-mode `mousedown` the existing handler processes (zoom same-doc / switch+zoom cross-doc), and a `.node-link:focus-visible` ring. Headless-pinned (role/tabindex present; Enter on a link navigates to its target).
+
+### UXP-54 ✓ Backlinks panel rows keyboard-operable + reachable — **RESOLVED** 🟡
+- **Problem:** `.bl-item` (same-doc) and `.bl-cross` rows in `renderBlPanel` (~14148) are plain `<div>`s
+  with a `click` listener only — no `role`/`tabindex`/`keydown`, and the same-doc rows have **no accessible
+  name** (cross-doc rows at least carry one). The panel surfaces on edit-focus but isn't a Tab stop, so a
+  keyboard user sees "Linked from" appear but can't reach/follow any backlink. Same-doc rows also use the
+  internal word "node" in `title` (V/§1 vocabulary).
+- **Violates:** P3-1/P3-2 (+ vocabulary). **Target:** `role="button"`+`tabindex`+`aria-label`+Enter/Space on
+  rows, a focus path into the panel, "point" in copy.
+- **Resolved:** the same-doc + cross-doc backlink rows **and** the unlinked-ref title carry `role="link"` + `tabindex="0"` (matching the panel's existing `.bl-link-btn`) + `aria-label` + an Enter/Space `keydown` beside the `click`, with "point" vocabulary; **`scheduleBlHide` now keeps the panel open when focus is within `#bl-panel`** (the `scheduleFnHide` precedent), so focusing a row no longer dismisses it; `.bl-item:focus-visible` ring. Headless-pinned (role/tabindex/aria; panel stays open on row focus; Enter navigates to the source).
+
+### UXP-55 ✓ Footnote refs keyboard / touch / AT-operable — **RESOLVED** 🟡
+- **Problem:** `<sup class="fn-ref">` (mdInline ~2408) has no `tabindex`/`role`/`aria-label` and is driven
+  only by `mouseover`/`mouseout` to reveal the footnote panel — no click, no Enter/Space, no
+  `@media(hover:none)` tap fallback. Unreachable by keyboard and on touch; AT announces a bare `[1]`.
+  Violates the app's own "hover-only affordances need a touch fallback" rule.
+- **Violates:** P3 + touch invariant. **Target:** `role="button"`+`tabindex="-1"`+`aria-label="Footnote N"`,
+  an Enter/Space + tap path opening/scrolling the panel, mirrored into the `@media(hover:none)` block.
+- **Resolved:** the `fn-ref` render carries `role="button"` + `tabindex="-1"` + `aria-label="Footnote N"`; a new **`activateFnRef(key, nodeId)`** reveals + locks the footnote panel, highlights the matching entry, and scrolls it into view — wired as a content-`mousedown` branch (click/**tap**, display mode) and an `onKeyDown` Enter/Space branch, **beside** the existing hover reveal (kept for mouse). `.fn-ref:focus-visible` ring. The tap path is the touch fallback (`.fn-ref` was already in the touch-callout group). Headless-pinned.
+
+### UXP-56 ✓ Todo state/priority picker keyboard-operable — **RESOLVED** 🟡
+- **Problem:** `#bpop` is a full `role="menu"` (roving focus, Enter/Space, Esc-restore) as the bullet popup,
+  but `showTodoPicker` (~8011) rebuilds it with mouse-only `<div class="tp-chip">` chips (no
+  role/tabindex/keydown) and never moves focus in — so reached via the keyboard-operable bullet popup
+  ("Set state / priority…"), focus is stranded on a dead picker. The capability has a keyboard door
+  (`/state:`), so P3-2 holds, but the same element being a real menu in one mode and dead in another is P1.
+- **Violates:** P1 / P3-1. **Target:** give the chips the `role`/`tabindex`/keydown the bullet popup already
+  applies; move focus in when entered from the keyboard.
+- **Resolved:** the `.tp-chip`s carry `role="menuitemradio"` + `tabindex="-1"` + `aria-checked` + `aria-label` (priority chips `aria-disabled` without a keyword); the **shared `#bpop` keydown handler now navigates `.tp-chip`** too (Arrows/Home/End/Enter/Esc — the same handler the bullet popup uses); `showTodoPicker` moves focus to the current (or first) chip and sets `bpopReturnFocus` so Esc restores focus to the point; `.tp-chip:focus-visible` ring. The same `#bpop` element is now a real menu in **both** modes (P1). Headless-pinned (role/tabindex/aria-checked; focus-in; ArrowDown roving; Enter applies).
+
+### UXP-57 ☐ No `Shift+Arrow` point selection (P1/P3) 🟡
+- **Problem:** the §3 "Shift = extend" law and the multi-select capability have **no keyboard door between
+  points** — `rangeSelectTo` is reachable only from shift-**click**; `onKeyDown`'s arrow branches require
+  `!e.shiftKey`. Keyboard users cannot grow a multi-point selection.
+- **Violates:** P1 (Shift extends *everywhere except* between points) / P3-2. **Target:** `Shift+↑/↓` branches
+  that, at the caret's first/last line, blur + `rangeSelectTo(prev/next)` from the current point as anchor.
+
+### UXP-58 ☐ Native `alert()` for workspace/file errors (P4 channel) 🟡
+- **Problem:** ~8 sites (`connectWorkspace`, `switchWorkspaceDoc`, `createWorkspaceNote`,
+  `deleteWorkspaceDoc`, `saveToWorkspaceDoc`, `openFile`, `saveAsFile`, `writeH`, `openWorkspaceSwitcher`)
+  surface errors via the browser's native `alert()` — the bespoke/native-dialog pattern §6/§7.3 (and
+  `bases-direction.md`) rule out. Not silent (good), but un-themed, not focus-managed, not announced.
+- **Violates:** P4-4 / coherence. **Target:** route through the in-app banner (`showWorkspaceWarn`/
+  `showStorageWarn`-style) or a styled error toast — the app's four feedback channels only.
+
+### UXP-59 ☐ In-document search has no zero-results empty-state (P4) 🟡
+- **Problem:** a query matching nothing in the current doc blanks `#outline` — no message, no count, no
+  "0 results." Indistinguishable from a breakage. (The cross-doc "Found in other notes" panel only shows
+  with a connected folder + other-doc hits, so the common single-file case is a silent void.)
+- **Violates:** P4 (silent "nothing happened"). **Target:** an inline empty-state when
+  `searchQuery && flatRows.length === 0` ("No points match '<q>' — Esc to clear"); ideally a live match count.
+
+### UXP-60 ☐ Enter doesn't split the point at the caret (P1 — product decision) 🟡
+- **Problem:** `insertSiblingAfter` ignores the caret — Enter mid-text drops an empty sibling and **orphans
+  the trailing text** on the original point. Every peer outliner (Workflowy/Logseq/Roam/Notion/Dynalist)
+  splits at the caret; this is the most surprising deviation a new user hits. (§3 says "Enter = new point"
+  but doesn't pin split-vs-append, so not a literal violation — a strong P1 expectation gap.)
+- **Needs a deliberate split-vs-append decision** before implementing. **Target (if split):** split
+  `node.text` at the caret, keep the head, seed the new sibling with the tail (after the continuation
+  prefix), caret at the tail start; guard the no-active-edit (programmatic) path.
+
+### UXP-61 ☐ Bottom-docked panel shadows invisible in dark mode (design-language) 🟢
+- **Problem:** `#fn-panel` / `#bl-panel` / `#var-panel` use a hardcoded `box-shadow:0 -4px 24px
+  rgba(0,0,0,.08)` — an `.08`-alpha black shadow vanishes on the dark `--bg`, losing the slide-up elevation
+  cue. **Note for the fix:** `--sh-1`/`--sh-2` are *downward* shadows (positive Y), so a blind swap points the
+  shadow the wrong way for these upward panels — needs a direction-aware/theme-aware shadow (a new token or a
+  themed shadow-colour var), hence deferred from batch 1.
+- **Violates:** `design-language.md` §3/§4 (dark shadows stronger + black). **Target:** an upward,
+  theme-strong shadow (dual-home if a new token).
+
+### UXP-62 ☐ Agenda Calendar grid diverges from the date-picker grid (P1/P3) 🟢
+- **Problem:** two `role="grid"` calendars behave differently — the Schedule-dialog picker (`buildDatePicker`)
+  supports PageUp/PageDown month nav and wraps weeks in `role="row"`; the agenda Calendar
+  (`renderAgendaCalendar`) handles only Arrows/Home/End and appends cells directly to the grid (no
+  `role="row"` — an incomplete ARIA grid).
+- **Violates:** P1 / P3. **Target:** add PageUp/PageDown + `role="row"` weeks to the agenda grid to match.
+
+### UXP-63 ☐ Pill body-click semantics diverge without a signal (P1) 🟢
+- **Problem:** body-click means **re-roll** (dice/grammar/markov/est/pick-var), **edit** (math/formula-var/
+  seq-pill), or **advance** (deck) — three outcomes for one gesture, partially documented but not *signaled*.
+- **Disposition:** mostly an accepted design tension (a deterministic pill has nothing to reroll; a deck
+  advances by design). **Target:** record an explicit P1 carve-out and ensure each pill's `title`/`aria-label`
+  states its click outcome (most already do — verify completeness).
+- **Stronger target (independent convergence — recorded, not overriding the disposition above):** a
+  separate interaction-coherence audit — *blind to this register* — reached the **same finding**
+  independently and argued for a structural fix that also serves the **sighted** user (the
+  aria-label-only target serves AT, not visual predictability). Approach: a pure, pinned
+  **`interactionClass(type)` → `'generator' | 'reference' | 'navigator' | 'structural'`** consumed by
+  **both** the pill renderers (one shared *visual* re-roll cue across every generator) **and** the
+  content `mousedown` dispatch (the class's action) — so a generator can't be added without the
+  cue/behavior and a reference can never re-roll. Two blind passes converging here is a fair argument
+  that the lighter target under-serves predictability; **pursue if a shared visual cue is later
+  wanted**, weighed against the project's deliberate-distinct-pills philosophy (deck-no-pencil,
+  links-as-text). *(Source: the June 2026 interaction-coherence audit; its other findings were
+  already covered by UXP-40…67 or declined — see the audit eval thread.)*
+
+### UXP-64 ☐ Workspace-search snippet rarely reveals *why* a row matched (P4) 🟢
+- **Problem:** the "Found in other notes" snippet is derived from the same `textForDisplay(n)` as the title
+  and only shown when it differs — so a hit on a **note**, a **property**, or an `is:`/`due:` term shows the
+  title alone, with no indication of where the match occurred.
+- **Violates:** P4 (trust of the click-to-jump). **Target:** build the snippet around the matched needle
+  (reuse `searchHighlightNeedles`) or append the matching property/state.
+
+### UXP-65 ☐ Saved-search / workspace-result chips are full Tab stops (P3/P1) 🟢
+- **Problem:** `renderSavedSearches` chips and `renderWorkspaceSearchResults` rows use `tabindex="0"`, while
+  every other in-content chip/pill is deliberately `tabindex="-1"` (roving, not a Tab stop). A focus-shown
+  panel injects several Tab stops into the chrome order each time the box is focused.
+- **Violates:** P3 / P1 (chip convention). **Target:** either move to `-1` + arrow-roving, or record the
+  transient-panel Tab-group as a deliberate deviation.
+
+### UXP-66 ☐ Gantt/calendar urgency is color-only on the bars/items (P3-4) 🟢
+- **Problem:** Gantt bar / calendar item-chip urgency (overdue/today/soon/future) is carried purely by
+  background/border colour — unlike the date *chips* (urgency in text) and the `aria-label` (correct). A
+  colour-blind sighted user can't distinguish an overdue bar from an upcoming one on the chart.
+- **Violates:** P3-4. **Target:** a small non-colour cue (leading `!` / hatch on overdue) or a textual
+  urgency suffix on calendar items.
+
+### UXP-67 ☐ Polish cluster — minor P1/P3/visual nits 🟢
+A grab-bag of small, independent items from the audit (low priority; each a one-line-ish fix):
+- **Code-block Enter friction:** inside a `code` node every newline needs Shift+Enter (Enter ejects to a
+  sibling) — conformant by the standard, but undocumented; advertise it in the `/code` menu `desc` (P2-2).
+- **Base `Ctrl+Enter` divergence:** commits the cell edit in a base but zooms everywhere else — an
+  undocumented per-block-type meaning for a reserved chord (P1).
+- **No Backspace merge-up:** Backspace at offset 0 of a non-empty point does nothing (defensible P1-4 guard,
+  but a peer-outliner expectation gap — decide deliberately).
+- **Collapse/expand + collapse-to-level not in undo** — they `markDirty()` (persist to OPML) but no
+  `pushUndo()`; a "collapse to level 1" on a big tree can't be undone (decide: view-state vs undoable).
+- **Menus lack `aria-controls`/`aria-owns`** on the contenteditable that owns `aria-activedescendant`
+  (`/`,`@`,`{`,`#`,`[[`) — some SRs won't associate the active option (P3).
+- **Check chip same `⚠` glyph** for both fail and error (distinguished by colour + text only — conformant
+  via text, but easy to confuse at a glance; consider a distinct error glyph).
+- **Divergent `.sh-row kbd` keycap recipe** (flat, `--bg`, no 2px ledge) vs the canonical keycap (§4 "one rule").
+- **Search `mark` is screen-yellow** (`rgba(255,200,0,…)`) not the warm `.md-hl` highlighter (§4 micro-layer).
+- **`accent-color:var(--acc)` not set** on native controls (the §3 dual-home native-control invariant) —
+  verify whether any native checkbox/range is actually used before fixing.
+- **Missing-data pill glyphs inconsistent** across families (raw emoji fallback vs the FA family icon) — cosmetic.
 
 ---
 
