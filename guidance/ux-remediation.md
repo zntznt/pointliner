@@ -23,7 +23,11 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > `applyInlineReplace` fold dance, clone-both-then-prune sidecars);
 > **UXP-57 is ✓ closed** (Shift+Arrow range selection in non-editing state — `flatRowStep` +
 > `selFocusId` + `rangeSelectTo`; plain Arrow row-nav + `.node-cursor` visual);
-> **UXP-63, UXP-67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> **batch 5 (UXP-63, UXP-67) is ✓ closed** (pill body-click P1 carve-out + the polish cluster:
+> `/code` Enter hint, base `Ctrl+Enter` carve-out, menu `aria-controls`, distinct check-error glyph,
+> canonical `.sh-row kbd` keycap, warm search `mark`, collapse = view-state). The cluster's one
+> genuine behavior change — **Backspace merge-up** — is split out as **UXP-68 ☐ open**, a pending
+> P1 product decision (peer-standard, the inverse of UXP-60). **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
 
@@ -484,7 +488,7 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   untouched). PageUp/PageDown page the month (`navMonth(±1)` repaint) and restore focus to the same 42-cell
   slot in the new month. Verified: 6 `role="row"` weeks × 7 cells; PageDown June→July, PageUp July→June.
 
-### UXP-63 ☐ Pill body-click semantics diverge without a signal (P1) 🟢
+### UXP-63 ✓ Pill body-click semantics diverge without a signal (P1) 🟢 — **RESOLVED (recorded P1 carve-out)**
 - **Problem:** body-click means **re-roll** (dice/grammar/markov/est/pick-var), **edit** (math/formula-var/
   seq-pill), or **advance** (deck) — three outcomes for one gesture, partially documented but not *signaled*.
 - **Disposition:** mostly an accepted design tension (a deterministic pill has nothing to reroll; a deck
@@ -502,6 +506,14 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   wanted**, weighed against the project's deliberate-distinct-pills philosophy (deck-no-pencil,
   links-as-text). *(Source: the June 2026 interaction-coherence audit; its other findings were
   already covered by UXP-40…67 or declined — see the audit eval thread.)*
+- **Resolution (the lighter target — the `interactionClass` refactor stays deferred per the disposition above):**
+  the three sanctioned outcomes are now an **explicit P1 carve-out** in `ux-discipline.md` §7.2 — generators
+  re-roll/re-sample · computed + declarative pills (math, formula var, display-only var, sequence) edit · a
+  deck advances — *outcome by pill family, by design*. The label audit closed the only two gaps where the
+  action lived in `title` but not `aria-label`: the normal **math pill** and the resolved **display-only var
+  pill** `aria-label`s now end "— click to edit" (dice, grammar, markov, deck, estimate, random-pick var,
+  formula var and the sequence pill already named their outcome). Every functional pill now states its click
+  outcome to **both** sight (`title`) and AT (`aria-label`).
 
 ### UXP-64 ✓ Workspace-search snippet rarely reveals *why* a row matched (P4) 🟢 — **RESOLVED**
 - **Problem:** snippet was always the title slice — hits on notes, properties, or `is:`/`due:` showed
@@ -532,7 +544,7 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   The marker is visual-only (the elements' `aria-label` already states urgency, so no double-announce).
   Verified: overdue items marked, non-overdue unmarked, on both the Gantt and the calendar.
 
-### UXP-67 ☐ Polish cluster — minor P1/P3/visual nits 🟢
+### UXP-67 ✓ Polish cluster — minor P1/P3/visual nits 🟢 — **RESOLVED (batch 5; Backspace merge-up split to UXP-68)**
 A grab-bag of small, independent items from the audit (low priority; each a one-line-ish fix):
 - **Code-block Enter friction:** inside a `code` node every newline needs Shift+Enter (Enter ejects to a
   sibling) — conformant by the standard, but undocumented; advertise it in the `/code` menu `desc` (P2-2).
@@ -551,6 +563,24 @@ A grab-bag of small, independent items from the audit (low priority; each a one-
 - **`accent-color:var(--acc)` not set** on native controls (the §3 dual-home native-control invariant) —
   verify whether any native checkbox/range is actually used before fixing.
 - **Missing-data pill glyphs inconsistent** across families (raw emoji fallback vs the FA family icon) — cosmetic.
+
+**Resolution (batch 5) — per item:**
+- **Code-block Enter friction** ✓ — the `/code` menu `desc` now advertises "Shift+Enter adds lines (Enter exits to a new point)" (P2-2).
+- **Base `Ctrl+Enter` divergence** ✓ — sanctioned carve-out: in a base (`role=grid`) the chord commits the cell/header edit (grid-cell convention, cf. Table `Enter`). Recorded in `ux-discipline.md` §3 + an inline comment at the handler.
+- **Menus lack `aria-controls`/`aria-owns`** ✓ — the `/`·`@` (shared), `[[`, `{`, `#` owners now set `aria-controls` to their listbox (`slash-menu-list`/`lp-menu`/`brace-menu`/`tag-menu`) beside `aria-activedescendant`, removed on close — matching the tree-picker's existing `aria-controls="tp-list"`.
+- **Check chip same `⚠` glyph** ✓ — error now distinct: pass `✓` · fail `✗` · error `⚠` (colour + text + glyph all carry the verdict).
+- **Divergent `.sh-row kbd` keycap** ✓ — adopts the canonical recipe (`--hbg` fill + 2px bottom ledge), the §4 "one keycap rule".
+- **Search `mark` screen-yellow** ✓ — now the warm `.md-hl` highlighter (`color-mix` `#e2c044` light / `#caa53d` dark), light + dark homes.
+- **`accent-color` on native controls** ✓ — verified **no action needed**: the app's only native form control is `.md-task-check`, which already sets `accent-color:var(--acc)`; no native checkbox/range/radio lacks it.
+- **Collapse/expand + collapse-to-level not in undo** ✓ — **deliberate decision: collapse is view-state, not undoable** (the common outliner model; keeps the undo stack content-only). Recorded carve-out, no code change (the UXP-65 option-B pattern).
+- **Missing-data pill glyphs inconsistent** ✓ — cosmetic, accepted as-is: a degraded **no-record** marker (the sidecar is gone), not an interaction surface; not worth an FA-subset rebuild.
+- **No Backspace merge-up** → **split to UXP-68** — the one genuine **P1 behavior change** in the cluster, taken out of "polish" and tracked as its own owner decision (see below).
+
+### UXP-68 ☐ Backspace at offset 0 doesn't merge the point upward (P1 — product decision) 🟡
+- **Problem:** Backspace at offset 0 of a **non-empty** point is a no-op (a defensible P1-4 data-safety guard). Every peer outliner (Workflowy/Logseq/Roam/Dynalist/Notion) **merges the point into the previous one** — the inverse of UXP-60's caret-split — so a new user reads the no-op as a bug.
+- **Why split from UXP-67:** this is a core-keyboard behavior change, **not** polish — the same P1 product-decision class as UXP-57/60, so it takes the owner's explicit call before build rather than riding in on a grab-bag batch.
+- **Sketch (if greenlit):** mirror UXP-60's `insertSiblingAfter` fold dance in reverse — concatenate this point's text onto the previous visible point at the join offset (fold-aware via `foldedOffsetFor`), reparent this point's children after the previous's, merge sidecars (`cloneArtifactSidecars` → `pruneArtifacts` on both), caret at the join, one `pushUndo`. Guard: caret collapsed at offset 0, a previous point exists, and the merge doesn't cross a zoom root.
+- **Recommendation:** **yes** — peer-standard and the symmetric partner to the shipped Enter-split. Awaiting the owner's go.
 
 ---
 
