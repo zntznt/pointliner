@@ -765,8 +765,8 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .io-btn.primary{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
 .io-btn.primary:hover{filter:brightness(1.07)}
 .io-btn.primary:disabled{opacity:.4;cursor:not-allowed;filter:none}
-.io-btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
-.io-btn.danger:hover{filter:brightness(1.08)}
+.io-btn.danger{background:color-mix(in srgb,var(--bad) 14%,var(--hbg));border-color:color-mix(in srgb,var(--bad) 40%,transparent);color:var(--bad);font-weight:600}
+.io-btn.danger:hover{background:color-mix(in srgb,var(--bad) 24%,var(--hbg));border-color:var(--bad)}
 .io-field textarea{width:100%;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;resize:vertical;line-height:1.5;transition:border-color .12s,box-shadow .12s}
 .io-field textarea.io-mono{font-family:var(--mono)}
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
@@ -1045,7 +1045,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .bl-unlinked-label:hover{color:var(--acc);text-decoration:underline}
 .bl-link-btn{flex-shrink:0;font-size:11px;font-weight:600;color:var(--acc);cursor:pointer;padding:1px 6px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;outline-offset:2px}
 .bl-link-btn:hover{background:var(--acc);color:var(--acc-fg)}
-.bl-link-btn:focus-visible{outline:2px solid var(--ring)}
+.bl-link-btn:focus-visible{outline:2px solid var(--acc)}
 /* ── link picker ([[ trigger) ── */
 #lp-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:260px;max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #lp-menu.on{display:block}
@@ -1113,7 +1113,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .fn-key{padding:6px 11px}
   #sc-toggle{width:36px;height:36px;font-size:15px}
   /* suppress the iOS long-press text/callout on tappable widgets */
-  .bullet,.collapse-btn,.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.fn-ref{-webkit-touch-callout:none}
+  .bullet,.collapse-btn,.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.fn-ref{-webkit-touch-callout:none}
 }
 /* focus-visible sweep (UXP-17): every keyboard-focusable control shows the standard
    2px accent ring (the app's one focus indicator), instead of the per-browser default. */
@@ -1162,6 +1162,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points — <code>YYYY-MM-DD</code>, <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase — terms combine (AND)</span></div>
+        <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters — <code>has:status</code>, <code>status:done</code></span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -2351,7 +2352,7 @@ function renderLinkPill(target, label) {
   const tn = nodeById(target);
   if (!tn) {
     const cap = escHtml(label || target);
-    return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false">${cap}</span>`;
+    return `<span class="node-link node-link-broken" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ((label || target) + ' (broken link)')}">${cap}</span>`;
   }
   // Empty label → mirror (transclusion): embed the target's rendered content inline.
   // When already inside a transclusion (_inlineDepth > 0) fall back to title-only
@@ -7381,6 +7382,9 @@ function parseMLlines(lines) {
 // ─── keydown ─────────────────────────────────────────────────────────────────
 
 function onKeyDown(e, id, content) {
+  // IME guard (UX audit): while composing (CJK/IME), Enter/Tab/Backspace belong to the
+  // candidate selection, not the structural editor — let the IME own every key.
+  if (e.isComposing || e.keyCode === 229) return;
   const ctrl = e.ctrlKey || e.metaKey;
   // Static-table "Convert to base": keyboard activation of the focused ▦ button, the
   // P3-2 keydown path beside its mousedown handler. (Tab-focus itself rides UXP-14.)
@@ -8982,7 +8986,7 @@ function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'O
 
     const head = document.createElement('div'); head.className = 'io-head';
     const ic = document.createElement('div'); ic.className = 'cmd-icon';
-    ic.style.cssText = 'background:rgba(201,64,64,.14);color:#c94040';
+    ic.style.cssText = 'background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)';
     setIcon(ic, { fa:'fa-solid fa-triangle-exclamation', fb:'⚠' });
     const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = title;
     head.append(ic, ttl); ioCard.appendChild(head);
@@ -9005,7 +9009,7 @@ function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'O
     // Keyboard: Escape = cancel, Enter = confirm
     function onKey(e) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); ioBack.removeEventListener('keydown', onKey); finish(false); }
-      if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); ioBack.removeEventListener('keydown', onKey); finish(true); }
+      if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); ioBack.removeEventListener('keydown', onKey); finish(document.activeElement === okBtn); }  // UX audit: Enter on Cancel must NOT confirm
     }
     ioBack.addEventListener('keydown', onKey);
 
@@ -11214,7 +11218,7 @@ function renderMathPill(key, m) {
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
     const reason = mathErrorReason(expr, globalVarMap, _varCycles);
     const label = reason ? `#ERR (${reason})` : '#ERR';
-    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" title="Click to edit — reference unresolved"`
+    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit — reference unresolved"`
       + ` aria-label="Math ${escQ(m.expr)} — ${escQ(label)} — click to edit">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
       + `<span class="math-expr">${escHtml(m.expr)}</span>`
@@ -12840,6 +12844,7 @@ function performDrop(fromId, targetId, position) {
   const fromNode   = nodeById(fromId);
   if (!fromParent || !fromNode) return;
 
+  pushUndo();   // UX audit: single-node drag-reorder must be undoable, like every other structural move
   const fromIdx = fromParent.children.findIndex(c => c.id === fromId);
   fromParent.children.splice(fromIdx, 1);
 
@@ -13137,7 +13142,7 @@ async function openFile() {
 }
 
 async function saveFile() {
-  if (hasFSA) { if (fileHandle) await writeH(fileHandle); else await saveAsFile(); }
+  if (hasFSA) { if (fileHandle) { if (await writeH(fileHandle)) flashHint('Saved “' + fileName + '”'); } else await saveAsFile(); }
   else dlOpml();
 }
 async function saveAsFile() {
@@ -13150,7 +13155,7 @@ async function saveAsFile() {
       fileName = fileHandle.name;
       document.getElementById('file-name').textContent = fileName;
       updateTitle();
-      await writeH(fileHandle);
+      if (await writeH(fileHandle)) flashHint('Saved “' + fileName + '”');
     } catch(e) { if (e.name!=='AbortError') alert('Could not save: '+e.message); }
   } else dlOpml();
 }
@@ -13159,13 +13164,14 @@ function dlOpml() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href=url; a.download=(fileName==='unsaved'?'outline':fileName.replace(/\.opml$/i,''))+'.opml';
-  a.click(); URL.revokeObjectURL(url); markClean();
+  a.click(); URL.revokeObjectURL(url); markClean(); flashHint('Downloaded “' + a.download + '”');
 }
 async function writeH(h) {
-  try { const w=await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); }
+  try { const w=await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); return true; }
   catch(e) {
     if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the workspace folder — reconnect, or use Save As to keep your work.');
     else alert('Save failed: ' + e.message);
+    return false;
   }
 }
 
@@ -13530,6 +13536,7 @@ async function deleteWorkspaceDoc(name) {
   })) return false;
   try { await workspaceDir.removeEntry(name); }
   catch (e) { alert('Could not delete “' + name + '”: ' + (e.message || e)); return false; }
+  flashHint('Deleted “' + name + '”');   // UX audit: confirm a permanent delete (P4)
   if (name === fileName) {
     const rest = await listWorkspaceNames(workspaceDir);
     if (rest.length) await switchWorkspaceDoc(rest[0]);   // switch refreshes the index
@@ -14965,8 +14972,9 @@ document.getElementById('btn-workspace-disconnect').addEventListener('click', ()
 document.getElementById('workspace-invite-copy').addEventListener('click', (e) => {
   e.stopPropagation();
   const url = location.href;
-  if (navigator.clipboard) { navigator.clipboard.writeText(url).then(() => flashHint('Link copied — open it in Chrome or Edge')).catch(() => flashHint('Copy link: ' + url)); }
-  else { flashHint('Link copied — open it in Chrome or Edge'); }
+  const done = () => flashHint('Link copied — open it in Chrome or Edge');
+  if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done)); }
+  else { fallbackCopy(url, done); }   // UX audit: actually copy (was a false-success claim with no clipboard)
 });
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
