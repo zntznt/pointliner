@@ -3810,6 +3810,54 @@ test('workspaceCandidates: absent or empty index → []', () => {
   assert.deepEqual(host(c.workspaceCandidates('x', c.buildWorkspaceIndex([]), 'da')), []);
 });
 
+// ── cross-document backlinks (CF-4) ───────────────────────────────────────────
+// workspaceBacklinks(targetDocId, targetNodeId, index) is pure — the panel merge
+// (showBlPanel/renderBlPanel) is browser-side (mock-index harness). Reuses cfDocFor.
+function cf4Index() {
+  return c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'Target'], ['a2', 'self-link [[#a1]]']]),  // a2 → a1 same-doc
+    cfDocFor('db', 'b.opml', [['b1', 'From B [[da#a1]]']]),                       // cross-doc → da#a1
+    cfDocFor('dc', 'c.opml', [['c1', 'From C [[da#a1]]']]),                       // cross-doc → da#a1
+  ]);
+}
+
+test('workspaceBacklinks: other-doc sources for docId#nodeId, excludes same-doc, maps title/docName', () => {
+  const res = host(c.workspaceBacklinks('da', 'a1', cf4Index()));
+  // da#a2 (same-doc) is excluded — collectLinks owns it; db#b1 and dc#c1 remain, in walk order
+  assert.deepEqual(res, [
+    { docId: 'db', nodeId: 'b1', title: 'From B [[da#a1]]', docName: 'b.opml' },
+    { docId: 'dc', nodeId: 'c1', title: 'From C [[da#a1]]', docName: 'c.opml' },
+  ]);
+});
+
+test('workspaceBacklinks: a target linked ONLY from its own doc → [] (same-doc is collectLinks domain)', () => {
+  const idx = c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'Target'], ['a2', 'links [[#a1]]']]),
+  ]);
+  assert.deepEqual(host(c.workspaceBacklinks('da', 'a1', idx)), []);
+});
+
+test('workspaceBacklinks: no inbound entry / absent / empty index → []', () => {
+  const idx = cf4Index();
+  assert.deepEqual(host(c.workspaceBacklinks('da', 'nope', idx)), []);   // no entry for da#nope
+  assert.deepEqual(host(c.workspaceBacklinks('dz', 'x', idx)), []);
+  assert.deepEqual(host(c.workspaceBacklinks('da', 'a1', null)), []);
+  assert.deepEqual(host(c.workspaceBacklinks('da', 'a1', undefined)), []);
+  assert.deepEqual(host(c.workspaceBacklinks('da', 'a1', {})), []);       // no .backlinks
+  assert.deepEqual(host(c.workspaceBacklinks('da', 'a1', c.buildWorkspaceIndex([]))), []);
+});
+
+test('workspaceBacklinks: an unknown/untitled source falls back to (untitled)', () => {
+  // a hand-built index whose backlinks reference a node absent from titles (defensive path)
+  const mockIdx = {
+    backlinks: new Map([['da#a1', [{ srcDocId: 'db', srcNodeId: 'ghost' }]]]),
+    titles: new Map([['db', new Map()]]),
+    nameByDocId: new Map([['db', 'b.opml']]),
+  };
+  assert.deepEqual(host(c.workspaceBacklinks('da', 'a1', mockIdx)),
+    [{ docId: 'db', nodeId: 'ghost', title: '(untitled)', docName: 'b.opml' }]);
+});
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
