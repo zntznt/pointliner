@@ -3473,9 +3473,9 @@ test('_docid: ensureDocId + toOpml pipeline produces a stable id', () => {
 // flow are browser-side and verified manually (see the PR's manual checklist).
 
 test('workspaceAffordance: capability gate wins, then connected > pending > connect', () => {
-  // gate first — !hasWorkspace is always 'hidden', even if connected/pending claim true
-  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: false, pending: false }), 'hidden');
-  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: true, pending: true, backed: true }), 'hidden');
+  // gate first — !hasWorkspace → 'invite' (show informational row), even if connected/pending claim true
+  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: false, pending: false }), 'invite');
+  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: true, pending: true, backed: true }), 'invite');
   // connected + folder-backed beats a stale pending handle
   assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: false, backed: true }), 'connected');
   assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: true, backed: true }), 'connected');
