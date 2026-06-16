@@ -6485,7 +6485,13 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
       const v = evalCheck(node, vars);
       return v === 'fail' || v === 'error';
     }
-    const isTodo = deriveTypeFromText(node.text) === 'todo';
+    // to-do-ness is SEQ-AWARE here: a leading keyword recognized in THESE seqs, or a task
+    // line. deriveTypeFromText reads the module-global knownStates (the CURRENT doc's), which
+    // is wrong for another doc's custom sequence — WS-1 amendment. In-doc, seqs is the current
+    // doc's allSequences(), so this is behavior-identical to the old gate; for workspace search
+    // it is exact for each doc's own sequences.
+    const km = (node.text || '').match(LEAD_WORD_RE);
+    const isTodo = (km && !!sequenceForKeyword(km[1], seqs)) || isTaskFirst(node.text);
     if (!isTodo) return false;
     const done = todoDoneFromText(node.text, seqs);
     return term.value === 'done' ? done : !done;
@@ -9780,10 +9786,12 @@ function buildWorkspaceIndex(docs) {
   const backlinks = new Map();
   const candidates = [];
   const nameByDocId = new Map();
+  const roots = new Map();   // WS-1: retain each doc's parsed tree so workspace search can run the in-doc engine over it
   for (const d of (docs || [])) {
     if (!d || !d.docId || !d.root) continue;
     const ownDocId = d.docId;
     nameByDocId.set(ownDocId, d.name);
+    roots.set(ownDocId, d.root);
     let titleMap = titles.get(ownDocId);
     if (!titleMap) { titleMap = new Map(); titles.set(ownDocId, titleMap); }
     const walk = (n) => {
@@ -9807,7 +9815,7 @@ function buildWorkspaceIndex(docs) {
     };
     for (const c of (d.root.children || [])) walk(c);
   }
-  return { titles, outgoing, backlinks, candidates, nameByDocId };
+  return { titles, outgoing, backlinks, candidates, nameByDocId, roots };
 }
 
 // CF-4: other-doc points that link TO targetDocId#targetNodeId, read from the CF-1 index's
@@ -9826,6 +9834,45 @@ function workspaceBacklinks(targetDocId, targetNodeId, index) {
       title: index.titles.get(s.srcDocId)?.get(s.srcNodeId) || '(untitled)',
       docName: index.nameByDocId.get(s.srcDocId),
     });
+  }
+  return out;
+}
+
+// WS-1: workspace-wide search. Points across the folder (excluding the current doc, which
+// the in-outline filter already covers) that match the SAME query engine as in-doc search —
+// queryMatchesNode/termMatchesNode are pure and node-object-based, so they run verbatim over
+// other docs' parsed trees (retained on the index as `roots`). No new query language, no new
+// operators. Walks each doc's POINTS (root.children), skipping the doc-title root container —
+// consistent with buildWorkspaceIndex/collectLinks, so every nodeId is a navigable point.
+// Pure given the index; cap bounds the result count.
+//
+// Operator accuracy: ALL operators are exact across docs. text / phrase / -NOT / #tag /
+// has: / key:value / due: / start: read only the node's own text/props; the context-reading
+// ones — is:done / is:todo (need this doc's sequences) and is:failing (needs this doc's
+// resolved vars) — get THIS doc's allSequences(root) / collectVars(root) (pure over the
+// retained root), computed once per doc and only when an is: term is present (needsCtx).
+function searchWorkspace(query, index, currentDocId, cap = 50) {
+  if (!index || !index.roots) return [];
+  const terms = parseSearchQuery(query);
+  if (!terms.length) return [];
+  const needsCtx = terms.some(t => t.kind === 'is');      // only is:* reads seqs/vars — compute lazily
+  const out = [];
+  for (const [docId, root] of index.roots) {
+    if (docId === currentDocId) continue;                 // current doc → the in-outline filter
+    const docName = index.nameByDocId?.get(docId);
+    const seqs = needsCtx ? allSequences(root) : undefined;   // THIS doc's sequences → exact is:done/is:todo
+    const vars = needsCtx ? collectVars(root)  : undefined;   // THIS doc's resolved vars → exact is:failing
+    const walk = (n) => {
+      if (out.length >= cap) return;
+      if (queryMatchesNode(terms, n, seqs, vars)) {
+        out.push({ docId, nodeId: n.id, docName,
+                   title: textForDisplay(n) || '(untitled)',
+                   snippet: stripMd(textForDisplay(n)).slice(0, 120) });
+      }
+      for (const c of (n.children || [])) walk(c);
+    };
+    for (const c of (root?.children || [])) walk(c);
+    if (out.length >= cap) break;
   }
   return out;
 }
