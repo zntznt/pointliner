@@ -206,6 +206,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | Plain keys / arrows | Act **within** text (type, move caret, select) | MUST NOT be hijacked for structure while editing |
 | `Enter` | New point | **All** blocks — *Paragraph is the sanctioned exception — see P1-1* |
 | `Shift + Enter` | Line break in the point | **All** blocks — *Paragraph is the sanctioned exception — see P1-1* |
+| `Backspace` (point start) | Merge the point up into the previous visible point | Collapsed caret at offset 0: appends this point's marker-stripped text to the row above, carries its children + sidecars, lands the caret at the join (UXP-68 — the inverse of the Enter-split). An empty childless point deletes instead (editing flow). Declines at the first point / into a base or code block |
 | `Tab` / `Shift+Tab` | Indent / outdent | Points **and** table cells |
 | `↑/↓` (non-editing) | Move the row cursor between points | Fires in the global handler when `activeContentId == null` and focus is not in an input — moves `selFocusId` one step via `flatRowStep`, clears any selection, scrolls the row into view, shows a `.node-cursor` highlight. Prerequisite to Shift+Arrow |
 | `Shift + ↑/↓` (non-editing) | Extend / contract the multi-point selection | Fixes `selAnchorId` at the cursor position (inherited from the last-edited point), moves `selFocusId` one step, calls `rangeSelectTo` — identical model to Shift+click (UXP-57). `Esc` clears |

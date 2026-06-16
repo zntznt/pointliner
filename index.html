@@ -7649,6 +7649,12 @@ function onKeyDown(e, id, content) {
   else if (e.key==='Backspace') {
     const node = nodeById(id);
     if (node && content.textContent==='' && node.children.length===0) { e.preventDefault(); deleteNode(id); }
+    else if (node && node.type !== 'base') {
+      // UXP-68: Backspace at the very start of a non-empty point merges it up into the
+      // previous visible point (peer-standard; the inverse of the UXP-60 Enter-split).
+      const sel = window.getSelection();
+      if (content.dataset.editing && sel && sel.isCollapsed && getCaretOffset(content) === 0 && mergeUpInto(id)) e.preventDefault();
+    }
   }
   else if (e.key==='ArrowUp'   && e.altKey)  { e.preventDefault(); moveNode(id,-1); }
   else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
@@ -12735,6 +12741,17 @@ function splitForSibling(text, offset, contPrefix) {
   return { before: s.slice(0, o), after: (contPrefix || '') + s.slice(o) };
 }
 
+// Pure core (UXP-68): merge `body` (the prefix-stripped trailing point) onto the end of
+// `prevText` (the previous visible point) when Backspace is pressed at offset 0 — the
+// inverse of splitForSibling. No separator is inserted (Backspace joins flush, like every
+// peer outliner); the returned `offset` is the FOLDED join position (prevText's length),
+// turned into a caret by unfoldedPrefixLen at the call site.
+function mergeUpText(prevText, body) {
+  const p = prevText == null ? '' : String(prevText);
+  const b = body == null ? '' : String(body);
+  return { text: p + b, offset: p.length };
+}
+
 // Token-keyed sidecars (the 8 with prune functions). Cloned whole onto a split's new
 // half; each node's pruneArtifacts then sheds the records whose token lives elsewhere
 // (clone-both-then-prune — safer than partitioning by key). props/note stay on the
@@ -12743,6 +12760,18 @@ const ARTIFACT_SIDECARS = ['footnotes','dice','markov','math','vars','grammar','
 function cloneArtifactSidecars(srcNode, dst) {
   for (const k of ARTIFACT_SIDECARS) {
     if (Array.isArray(srcNode[k])) dst[k] = srcNode[k].map(r => JSON.parse(JSON.stringify(r)));
+  }
+}
+
+// Merge counterpart (UXP-68): append a merged-away point's sidecar records onto the
+// surviving point; pruneArtifacts then drops any whose token didn't come along.
+// Concatenates (cloneArtifactSidecars *replaces* — a merge keeps both sides' records).
+function mergeArtifactSidecars(srcNode, dst) {
+  for (const k of ARTIFACT_SIDECARS) {
+    if (Array.isArray(srcNode[k]) && srcNode[k].length) {
+      const cloned = srcNode[k].map(r => JSON.parse(JSON.stringify(r)));
+      dst[k] = (Array.isArray(dst[k]) ? dst[k] : []).concat(cloned);
+    }
   }
 }
 
@@ -12799,6 +12828,50 @@ function insertSiblingAfter(id) {
   nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
   markDirty();
   render(); focusNode(nn.id);
+}
+
+// UXP-68: Backspace at offset 0 of a non-empty point merges it UP into the previous
+// visible point — the inverse of insertSiblingAfter's caret-split. Target = the row
+// directly above (deleteNode's focus model: the previous sibling's last visible
+// descendant, else the parent). Mirrors the UXP-60 fold dance — blur to commit the
+// active edit (refold + promote + prune → folded text), append the prefix-stripped body,
+// carry the children + sidecars, drop the emptied point, land the caret at the join.
+// Returns true when it merged (caller preventDefaults), false when there is no valid
+// target above (first point, or a base/code block that text must not merge into).
+function mergeUpInto(id) {
+  const node = nodeById(id);
+  const parent = parentOf(id);
+  if (!node || !parent || node.type === 'code') return false;
+  const idx = parent.children.findIndex(c => c.id === id);
+  let target = null;                              // the previous visible point
+  if (idx > 0) target = lastVis(parent.children[idx - 1]);
+  else if (parent.id !== root.id && parent.id !== focusedId) target = parent;
+  if (!target || target.type === 'base' || target.type === 'code') return false;
+
+  pushUndo();
+  const ed = document.querySelector(`.node-content[data-id="${id}"][data-editing]`);
+  if (ed) ed.blur();                              // commit the active edit → node.text final + folded
+
+  const oldPrevText = target.text;
+  const body = textForDisplay(node);              // prefix/marker stripped; folded tokens preserved
+  target.text = mergeUpText(oldPrevText, body).text;
+  mergeArtifactSidecars(node, target);            // target gains node's records…
+  target.checked = todoDoneFromText(target.text);
+  pruneArtifacts(target);                          // …then shed any whose token didn't come along
+
+  if (node.children.length) {                      // carry the children up, reparented
+    for (const c of node.children) parentMap.set(c.id, target);
+    target.children.push(...node.children);
+    node.children = [];
+    if (target.collapsed) target.collapsed = false;
+  }
+  const ix = parent.children.findIndex(c => c.id === id);
+  parent.children.splice(ix, 1);                   // drop the emptied source point
+  deregisterSubtree(node);
+  markDirty();
+  render();
+  focusNodeAtOffset(target.id, unfoldedPrefixLen(target, oldPrevText)); // caret at the join
+  return true;
 }
 
 function indentNode(id) {

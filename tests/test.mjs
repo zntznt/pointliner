@@ -5380,6 +5380,35 @@ test('splitForSibling tolerates null/undefined text', () => {
   assert.deepEqual(host(c.splitForSibling(undefined, 3, 'x')), { before: '', after: 'x' });
 });
 
+// ─── mergeUpText (UXP-68: Backspace merges the point up into the one above) ────
+test('mergeUpText joins flush and reports the folded join offset', () => {
+  assert.deepEqual(host(c.mergeUpText('bar', 'foo')), { text: 'barfoo', offset: 3 });
+});
+test('mergeUpText into an empty previous point keeps the body, offset 0', () => {
+  assert.deepEqual(host(c.mergeUpText('', 'foo')), { text: 'foo', offset: 0 });
+});
+test('mergeUpText with an empty body lands the caret at the seam (no-op join)', () => {
+  assert.deepEqual(host(c.mergeUpText('bar', '')), { text: 'bar', offset: 3 });
+});
+test('mergeUpText tolerates null/undefined', () => {
+  assert.deepEqual(host(c.mergeUpText(null, null)), { text: '', offset: 0 });
+  assert.deepEqual(host(c.mergeUpText('hi', undefined)), { text: 'hi', offset: 2 });
+});
+
+test('UXP-68 wiring: Backspace-at-start merges up via mergeUpInto', () => {
+  assert.ok(_src.includes('function mergeUpInto'), 'mergeUpInto must be defined');
+  assert.ok(_src.includes('function mergeArtifactSidecars'), 'mergeArtifactSidecars must be defined');
+  // target = the row above (deleteNode's focus model: prev sibling's last visible, else parent)
+  assert.match(_src, /function mergeUpInto[\s\S]{0,700}lastVis\(parent\.children\[idx - 1\]\)/,
+    'mergeUpInto targets the previous visible point via lastVis');
+  // mirrors the fold dance: caret lands at the folded join via unfoldedPrefixLen
+  assert.match(_src, /function mergeUpInto[\s\S]{0,2000}unfoldedPrefixLen\(target, oldPrevText\)/,
+    'mergeUpInto lands the caret at the folded join');
+  // keydown gate: only when the selection is collapsed at offset 0
+  assert.match(_src, /getCaretOffset\(content\) === 0 && mergeUpInto\(id\)/,
+    'Backspace handler gates merge-up on caret offset 0');
+});
+
 // ─── flatRowStep ──────────────────────────────────────────────────────────────
 
 test('flatRowStep steps forward through a flat row list', () => {

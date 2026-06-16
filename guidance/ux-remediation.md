@@ -26,8 +26,8 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > **batch 5 (UXP-63, UXP-67) is ✓ closed** (pill body-click P1 carve-out + the polish cluster:
 > `/code` Enter hint, base `Ctrl+Enter` carve-out, menu `aria-controls`, distinct check-error glyph,
 > canonical `.sh-row kbd` keycap, warm search `mark`, collapse = view-state). The cluster's one
-> genuine behavior change — **Backspace merge-up** — is split out as **UXP-68 ☐ open**, a pending
-> P1 product decision (peer-standard, the inverse of UXP-60). **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> genuine behavior change — **Backspace merge-up** — was greenlit by the owner and shipped as
+> **UXP-68 ✓ closed** (the inverse of UXP-60's caret-split). **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
 
@@ -576,11 +576,11 @@ A grab-bag of small, independent items from the audit (low priority; each a one-
 - **Missing-data pill glyphs inconsistent** ✓ — cosmetic, accepted as-is: a degraded **no-record** marker (the sidecar is gone), not an interaction surface; not worth an FA-subset rebuild.
 - **No Backspace merge-up** → **split to UXP-68** — the one genuine **P1 behavior change** in the cluster, taken out of "polish" and tracked as its own owner decision (see below).
 
-### UXP-68 ☐ Backspace at offset 0 doesn't merge the point upward (P1 — product decision) 🟡
+### UXP-68 ✓ Backspace at offset 0 merges the point upward (P1) 🟡 — **RESOLVED**
 - **Problem:** Backspace at offset 0 of a **non-empty** point is a no-op (a defensible P1-4 data-safety guard). Every peer outliner (Workflowy/Logseq/Roam/Dynalist/Notion) **merges the point into the previous one** — the inverse of UXP-60's caret-split — so a new user reads the no-op as a bug.
 - **Why split from UXP-67:** this is a core-keyboard behavior change, **not** polish — the same P1 product-decision class as UXP-57/60, so it takes the owner's explicit call before build rather than riding in on a grab-bag batch.
-- **Sketch (if greenlit):** mirror UXP-60's `insertSiblingAfter` fold dance in reverse — concatenate this point's text onto the previous visible point at the join offset (fold-aware via `foldedOffsetFor`), reparent this point's children after the previous's, merge sidecars (`cloneArtifactSidecars` → `pruneArtifacts` on both), caret at the join, one `pushUndo`. Guard: caret collapsed at offset 0, a previous point exists, and the merge doesn't cross a zoom root.
-- **Recommendation:** **yes** — peer-standard and the symmetric partner to the shipped Enter-split. Awaiting the owner's go.
+- **Fix:** pure core `mergeUpText(prevText, body)` → `{text, offset}` (flush join + the folded join offset; 5 pinned cases) drives `mergeUpInto(id)` — the reverse of `insertSiblingAfter`'s fold dance: target = the previous visible point (`lastVis` of the prior sibling, else the parent — `deleteNode`'s focus model); `blur()` commits the active edit (refold + promote + prune → folded text); the merged-in body is `textForDisplay(node)` (prefix/marker stripped, folded tokens preserved); the point's children reparent onto the target; sidecars merge via `mergeArtifactSidecars` then `pruneArtifacts` sheds orphans; the caret lands at the join via `unfoldedPrefixLen(target, oldPrevText)`; one `pushUndo`. Gated on a collapsed caret at offset 0 **in edit mode**; declines at the first point or into a base/code block. A source wiring pin guards the structure; recorded in `ux-discipline.md` §3.
+- **Disposition:** greenlit by the owner (2026-06-16) and shipped — peer-standard, the symmetric partner to the UXP-60 Enter-split.
 
 ---
 
