@@ -584,8 +584,8 @@ Implemented:
     C2); preserving the author's theme/accent prefs (those ride the JSON autosave, not the
     OPML); a localStorage-vs-snapshot merge (the snapshot is authoritative on load).
 
-- **Workspace folder** (Phase 1, steps 3–5a — `guidance/roadmap.md`) — a durable on-disk
-  backing folder, the “hard gate” for the coming multi-document workspace. **File menu →
+- **Workspace folder** (Phase 1, steps 3–5b — `guidance/roadmap.md`) — a durable on-disk
+  backing folder, now a **notebook of documents you switch between**. **File menu →
   Connect folder…** (Chromium only, gated on `'showDirectoryPicker' in window`) picks a
   folder, writes the current document into it once as a `.opml`, and **remembers the
   folder** so the app reopens the doc from disk on every subsequent load. Mental model:
@@ -611,8 +611,9 @@ Implemented:
     case; data is never lost (localStorage buffer and Ctrl+S / Save As both recover it). No
     polling detector is built. **Manual single-file mode is unchanged** — a doc opened via
     Open or saved via Save As (not in the workspace) keeps manual-Save behavior; continuous
-    write is the workspace tier only. *(Not yet: new/opened docs auto-landing in the folder,
-    or a multi-file switcher — those need collision-safe naming and are Phase 1, step 5b.)*
+    write is the workspace tier only. *(Done in step 5b: New lands in
+    the folder and a Switch-document list. Not yet: rename (FSA has no atomic rename),
+    nested subfolders, and external-edit conflict detection.)*
   - **Reopen on load — the folder is the source of truth** (Phase 1, step 5a): on every
     load after the initial connect, `reopenStoredWorkspace` reads the stored `{ dir, name }`
     from IndexedDB, verifies reachability (`reopenWorkspaceDoc` — `requestPermission`
@@ -626,6 +627,25 @@ Implemented:
     (user gesture)** also verifies reachability: if the folder was deleted, it now
     honestly says "no longer available" and returns to the Connect state instead of
     claiming success.
+  - **Document switcher** (Phase 1, step 5b): the connected folder is a notebook. **File
+    menu → Switch document…** opens a list of the folder's `.opml` docs (`listWorkspaceNames`
+    → the pure `workspaceDocList`: `.opml`-only, de-duped, case-insensitively sorted), the
+    current one marked; click a row to **switch** (`switchWorkspaceDoc` — a plain dirty-
+    guarded read, *not* `reopenWorkspaceDoc`'s newer-wins, which compares the current doc's
+    autosave and is wrong for a different file), a trash control to **delete** (confirmed;
+    `removeEntry`; deleting the current doc switches to the first remaining one, or creates a
+    fresh doc when the folder empties), and **+ New document** to create one. Rows are
+    keyboard-operable (↑/↓ move, Enter opens, Delete removes), labeled, focus-visible.
+    **File → New** is rerouted: with a folder connected a new outline **lands in the folder**
+    under a collision-safe name (`uniqueWorkspaceName` — `outline.opml` → `outline-2.opml` →
+    …, case-insensitive) and auto-writes from the first edit. Each switch/create persists the
+    new `{ dir, name }`, so reopen-on-load restores the doc you last had open.
+  - **Detached state — Finding 8** (Phase 1, step 5b): when a folder is connected but the
+    current doc **isn't in it** (e.g. you opened an external `.opml`), `workspaceFile` is
+    null and `workspaceAffordance` returns `connected-detached`. The menu is honest about it
+    — *"Workspace: ‹folder› · this document isn't in it"* — and offers **Save to workspace**
+    (`saveToWorkspaceDoc`: files the current `root` into the folder under a collision-safe
+    name and folder-backs it), replacing the misleading "Save writes here".
   - **Persistence:** a `FileSystemDirectoryHandle` is structured-cloneable but not
     JSON-serializable, so it can’t ride the localStorage autosave — it lives in **IndexedDB**
     (`idbOpen`/`idbGet`/`idbSet`/`idbDel`, a single `kv` store, key `workspaceDir`).
@@ -634,13 +654,16 @@ Implemented:
   - **Disconnect** forgets the connection and stops auto-writing. Does not delete the file
     or folder; manual Save still writes the same file.
   - **Affordance state machine:** the pure core `workspaceAffordance({hasWorkspace,
-    connected, pending})` → `hidden | connected | reconnect | connect` (the gate wins,
-    then connected, then pending). The fresh-file name comes from `workspaceFileName(doc,
-    currentName)` (keep a real name; else derive from `firstLineTitle(doc)`; else
-    `outline`; single `.opml` suffix; path-separators/reserved chars sanitized).
-    `lastAutosaveSavedAt()` reads `savedAt` from the localStorage autosave payload (0 if
-    absent — covers fresh sessions and legacy saves without the field). All three pure +
-    Node-tested; the picker, IndexedDB, and re-permission flow are browser-side
-    (Chromium-manual-verified).
+    connected, pending, backed})` → `hidden | connected | connected-detached | reconnect |
+    connect` (the gate wins, then a live connection — split by `backed` = `!!workspaceFile`
+    into the plain and detached states — then a pending handle). The fresh-file name comes
+    from `workspaceFileName(doc, currentName)` (keep a real name; else derive from
+    `firstLineTitle(doc)`; else `outline`; single `.opml` suffix; path-separators/reserved
+    chars sanitized); `uniqueWorkspaceName(existing, base)` makes it collision-safe;
+    `workspaceDocList(names)` shapes a raw listing; `lastAutosaveSavedAt()` reads `savedAt`
+    from the localStorage autosave payload (0 if absent — covers fresh sessions and legacy
+    saves without the field). All pure + Node-tested; the picker, IndexedDB, directory
+    iteration, and re-permission flow are browser-side (the switch/new/delete logic is
+    mock-handle-verified headless; real folder switching is Chromium-manual-verified).
   - **Non-Chromium** (Firefox/Safari): the menu item is simply hidden — everything else
     works as today.
