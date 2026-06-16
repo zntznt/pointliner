@@ -3766,6 +3766,50 @@ test('CF-2 non-collision: a [[B#n]] cross-doc token is absent from same-doc coll
   assert.equal(links.backlinks.B, undefined);
 });
 
+// ── cross-document [[ picker candidates (CF-3) ────────────────────────────────
+// workspaceCandidates(query, index, currentDocId) is pure — the merge into the live
+// picker (checkLinkTrigger/renderLinkMenu/lpApply) is browser-side (mock-index harness).
+// Reuses cfDocFor from the CF-2 block above.
+function cfIndex() {
+  return c.buildWorkspaceIndex([
+    cfDocFor('da', 'a.opml', [['a1', 'Alpha current']]),
+    cfDocFor('db', 'b.opml', [['b1', 'Beta other'], ['b2', 'Gamma other']]),
+    cfDocFor('dc', 'c.opml', [['c1', 'Beta cee']]),
+  ]);
+}
+
+test('workspaceCandidates: filters by query (case-insensitive), excludes current doc, maps shape', () => {
+  const idx = cfIndex();
+  const res = host(c.workspaceCandidates('beta', idx, 'da'));   // da excluded; matches b1 + c1
+  assert.deepEqual(res.map(r => r.id), ['b1', 'c1']);
+  assert.deepEqual(res.find(r => r.id === 'b1'),
+    { id: 'b1', docId: 'db', title: 'Beta other', docName: 'b.opml' });   // shape
+  // case-insensitive
+  assert.deepEqual(host(c.workspaceCandidates('GAMMA', idx, 'da')).map(r => r.id), ['b2']);
+});
+
+test('workspaceCandidates: empty query → all other-doc points; current doc always excluded', () => {
+  const idx = cfIndex();
+  const all = host(c.workspaceCandidates('', idx, 'da'));
+  assert.deepEqual(all.map(r => r.id), ['b1', 'b2', 'c1']);   // a1 (da) excluded
+  assert.ok(all.every(r => r.docId !== 'da'));
+});
+
+test('workspaceCandidates: a current-doc match is excluded (linkCandidates covers it live)', () => {
+  const idx = cfIndex();
+  // "alpha" only matches a1 in da (the current doc) → excluded → []
+  assert.deepEqual(host(c.workspaceCandidates('alpha', idx, 'da')), []);
+  // …but from a DIFFERENT current doc, da's a1 IS offered
+  assert.deepEqual(host(c.workspaceCandidates('alpha', idx, 'db')).map(r => r.id), ['a1']);
+});
+
+test('workspaceCandidates: absent or empty index → []', () => {
+  assert.deepEqual(host(c.workspaceCandidates('x', null, 'da')), []);
+  assert.deepEqual(host(c.workspaceCandidates('x', undefined, 'da')), []);
+  assert.deepEqual(host(c.workspaceCandidates('x', {}, 'da')), []);         // no .candidates
+  assert.deepEqual(host(c.workspaceCandidates('x', c.buildWorkspaceIndex([]), 'da')), []);
+});
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
