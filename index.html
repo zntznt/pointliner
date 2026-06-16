@@ -1046,8 +1046,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .lp-menu .lp-item.lp-create:first-child{margin-top:0}
 .lp-item.lp-create:not(:first-child){margin-top:3px;border-top:1px solid var(--bdr);padding-top:7px}
 /* alias hint: why a non-title match surfaced */
-.lp-alias-hint{color:var(--muted);font-size:11px}
-.lp-item.hi .lp-alias-hint,.lp-item:hover .lp-alias-hint{color:var(--acc)}
+.lp-alias-hint,.lp-doc-hint{color:var(--muted);font-size:11px}
+.lp-item.hi .lp-alias-hint,.lp-item:hover .lp-alias-hint,.lp-item.hi .lp-doc-hint,.lp-item:hover .lp-doc-hint{color:var(--acc)}
 /* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
 #brace-menu,#tag-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #brace-menu.on,#tag-menu.on{display:block}
@@ -11641,6 +11641,25 @@ function linkCandidates(query, excludeId, rootNode = root) {
   return out;
 }
 
+// CF-3: other-doc points from the workspace index (CF-1) matching the query, for the [[
+// picker. The CURRENT doc is excluded here — linkCandidates already covers it live and
+// alias-aware, so including it again would dupe and serve a staler (scan-time) copy. Shape
+// mirrors a linkCandidates row plus { docId, docName } so renderLinkMenu/lpApply branch on
+// docId. Pure; absent/empty index → []. Title-substring match (case-insensitive); aliases
+// are a current-doc concern (they live on the live tree, not the cross-doc title index).
+function workspaceCandidates(query, index, currentDocId) {
+  if (!index || !index.candidates) return [];
+  const q = (query || '').toLowerCase();
+  const out = [];
+  for (const c of index.candidates) {                 // [{ docId, nodeId, title, docName }]
+    if (c.docId === currentDocId) continue;
+    if (q === '' || (c.title || '').toLowerCase().includes(q)) {
+      out.push({ id: c.nodeId, docId: c.docId, title: c.title, docName: c.docName });
+    }
+  }
+  return out;
+}
+
 // The link picker's "+ New point" create option (link-and-create): the trimmed
 // raw-case query as a stub title, or null when the query is empty/whitespace (so
 // no create row appears then). Raw case is preserved — this is the title the user
@@ -11659,9 +11678,13 @@ function checkLinkTrigger(content, nodeId) {
   const query = m[1].toLowerCase();
   const triggerOffset = m.index;
   const candidates = linkCandidates(query, nodeId);
+  // CF-3: append other-doc points from the workspace index (current-doc first = most
+  // relevant; the current doc is excluded there, since linkCandidates already covers it).
+  const cross = (workspaceDir && workspaceIndex) ? workspaceCandidates(query, workspaceIndex, root.docId) : [];
+  const merged = [...candidates, ...cross].slice(0, 20);
   const create = linkCreateOption(m[1]);   // raw-case query → the "+ New point" row (null when empty)
-  if (!candidates.length && !create) { hideLinkMenu(); return; }
-  lpState = { nodeId, content, triggerOffset, query, activeIdx: 0, matches: candidates.slice(0, 20), create };
+  if (!merged.length && !create) { hideLinkMenu(); return; }
+  lpState = { nodeId, content, triggerOffset, query, activeIdx: 0, matches: merged, create };
   hideSlashMenu();
   renderLinkMenu();
   positionLinkMenu(content, triggerOffset);
@@ -11674,9 +11697,18 @@ function renderLinkMenu() {
     const item = document.createElement('div');
     item.className = 'lp-item' + (i === lpState.activeIdx ? ' hi' : '');
     item.textContent = nd.title;
-    // alias hint: when an alias (not the title) caused this match, say so (P4 — no
-    // silent "why did that appear?"). Additive markup; the title stays the label.
-    if (nd.alias) {
+    // CF-3: a cross-doc row (from another workspace doc) carries a docId — show its doc
+    // name so it's clear the point lives elsewhere (P4) and name the doc in the aria-label
+    // (P3). A row never has both: alias matching is current-doc-only.
+    if (nd.docId) {
+      const hint = document.createElement('span');
+      hint.className = 'lp-doc-hint';
+      hint.textContent = ` · ${nd.docName || 'another note'}`;
+      item.appendChild(hint);
+      item.setAttribute('aria-label', `${nd.title} — in ${nd.docName || 'another note'}`);
+    } else if (nd.alias) {
+      // alias hint: when an alias (not the title) caused this match, say so (P4 — no
+      // silent "why did that appear?"). Additive markup; the title stays the label.
       const hint = document.createElement('span');
       hint.className = 'lp-alias-hint';
       hint.textContent = ` · alias: ${nd.alias}`;
@@ -11748,7 +11780,10 @@ function lpApply() {
   const fullText = editableText(content);
   // Empty label = the target's LIVE title (the same form "Copy link" produces) —
   // the link follows a rename instead of freezing the title as typed today.
-  const token = `[[#${targetId}|]]`;
+  // CF-3: a cross-doc pick (the candidate carries a docId) inserts the portable
+  // [[docId#id|]] form so it renders + navigates via CF-2; same-doc + create are unchanged.
+  const chosen = isCreate ? null : matches[activeIdx];
+  const token = (chosen && chosen.docId) ? `[[${chosen.docId}#${chosen.id}|]]` : `[[#${targetId}|]]`;
   const newText = fullText.slice(0, triggerOffset) + token + fullText.slice(triggerOffset + 2 + query.length);
   const node = nodeById(nodeId); if (!node) return;
   node.text = newText;
@@ -14953,7 +14988,7 @@ const SHORTCUTS = [
     { keys: ['/alias'], desc: 'Give a point alternate names (comma-separated) so links and mentions find it under more than its title — wyrm, drake (also in the bullet menu and the aliases chip; the link still shows the title)' },
     { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, deck, oracle, math, variable, sequence' },
     { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
-    { keys: ['[['], desc: 'Link to a point — the picker lists your points by title or alias (an “alias: X” hint shows why an alias matched); type a new title and pick “+ New point” to create and link it in one step; or paste a copied link' },
+    { keys: ['[['], desc: 'Link to a point — the picker lists your points by title or alias (an “alias: X” hint shows why an alias matched). In a connected workspace folder it also lists points from your other notes (a “· ‹note›” hint marks each); picking one inserts a cross-document link. Type a new title and pick “+ New point” to create and link a point here in one step; or paste a copied link' },
     { keys: ['Linked from'], desc: 'Backlinks panel — appears at the bottom when you focus a point that others link to or mention. “Linked from” lists actual links; “Unlinked references” lists points that mention the title (or an alias) in prose without a link — click Link to convert the first mention to a [[#id|]] link in one click' },
     { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
     { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point — pasteable into any point. In a connected workspace folder it copies a cross-document link ([[docId#id]]), so pasting into another note links across files; click it to jump there (an ↗ marks a cross-note link)' },

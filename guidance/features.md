@@ -469,6 +469,19 @@ Implemented:
     connected (`copyNodeLink`), same-doc `[[#id|]]` otherwise. Pure core
     `renderCrossLinkPill` is Node-pinned; the switch+zoom click path is mock-index
     Playwright-verified.
+  - **Cross-document `[[` picker (CF-3, Chromium/workspace-gated):** typing `[[` now offers
+    points from **every doc in the connected folder**, not just the current one — cross-file
+    linking without copy-paste. The current doc's candidates come first (most relevant,
+    live + alias-aware via `linkCandidates`); other-doc points follow, each sourced from
+    CF-1's `workspaceIndex.candidates` by the pure core `workspaceCandidates(query, index,
+    currentDocId)` (the current doc is **excluded there** to avoid a duped, scan-time-stale
+    copy). A cross-doc row shows a **`· ‹note›` doc hint** (mirroring the alias hint; a row
+    never has both) and an `aria-label` naming the target doc (P3/P4); picking it inserts the
+    cross-doc `[[docId#id|]]` token (which then renders + navigates via CF-2), while a same-doc
+    pick and the **"+ New point"** create row are byte-identical to today (the create row still
+    makes a same-doc stub — a cross-doc "+ New note" is a clean follow-on, not v1). With no
+    workspace the picker is exactly as before. `workspaceCandidates` is Node-pinned; the live
+    merge / hint / token-insertion is mock-index Playwright-verified.
   - **Caption vs. mirror:** `[[#id|My text]]` shows a fixed caption; **`[[#id|]]`
     (empty label) "mirrors"** the target — it renders the target's *live* content,
     pills included, in their current state, **display-only and inline**. Rename or
