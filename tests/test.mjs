@@ -4101,9 +4101,51 @@ const _htmlPath = process.env.POINTLINER_HTML
   || resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
 const _src = readFileSync(_htmlPath, 'utf8');
 
-test('UXP-36: SHORTCUTS registry declaration is present', () => {
-  assert.ok(_src.includes('const SHORTCUTS = ['),
-    'const SHORTCUTS = [ not found in index.html');
+test('UXP-36: GUIDE registry declaration is present', () => {
+  assert.ok(_src.includes('const GUIDE = ['),
+    'const GUIDE = [ not found in index.html — the unified registry was renamed or removed');
+});
+
+// ── GUIDE drift guard: every / and @ command id must have a GUIDE entry ────────
+// The GUIDE array is a `const` (not a function declaration) so it lives in the
+// source string only. We extract `id:` values from GUIDE entries via source
+// inspection and verify that all BLOCK_CMDS + INSERT_CMDS ids are covered by
+// some entry's `covers` array or its own `id` field.
+test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
+  const BLOCK_IDS = ['ul','ol','todo','h1','h2','h3','para','code','divider','quote',
+    'base','template','due','check','alias','journal'];
+  // Extract all id:' and covers:[' values from the GUIDE source block
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('(function buildShortcutsPanel()'));
+  const coveredIds = new Set();
+  // Match covers:['id1','id2',...] patterns
+  for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
+    for (const id of m[1].matchAll(/'([^']+)'/g)) coveredIds.add(id[1]);
+  }
+  const missing = BLOCK_IDS.filter(id => !coveredIds.has(id));
+  assert.deepEqual(missing, [],
+    `GUIDE missing covers for BLOCK_CMDS ids: ${missing.join(', ')}\n` +
+    `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
+});
+
+test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
+  const INSERT_IDS = ['footnote','image','link','table','progress','dice','markov',
+    'rolltable','grammar','deck','oracle','math','var','est','sequence'];
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('(function buildShortcutsPanel()'));
+  const coveredIds = new Set();
+  for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
+    for (const id of m[1].matchAll(/'([^']+)'/g)) coveredIds.add(id[1]);
+  }
+  const missing = INSERT_IDS.filter(id => !coveredIds.has(id));
+  assert.deepEqual(missing, [],
+    `GUIDE missing covers for INSERT_CMDS ids: ${missing.join(', ')}\n` +
+    `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
+});
+
+test('GUIDE drift guard: openGuide function is wired to the Concept guide button', () => {
+  assert.ok(_src.includes('openGuide()'), 'openGuide() call missing — Concept guide button is not wired');
+  assert.ok(_src.includes('function openGuide('), 'openGuide function declaration missing');
+  assert.ok(_src.includes('sc-guide-open'), 'sc-guide-open button id missing in panel HTML');
+  assert.ok(_src.includes("'Concept guide'") || _src.includes('"Concept guide"') || _src.includes('Concept guide ›'), 'Concept guide footer link text missing');
 });
 
 test('UXP-36: Ctrl+S save shortcut handler is present', () => {
@@ -4303,8 +4345,8 @@ test('search query: front doors + wiring are present (src pins)', () => {
   assert.ok(_src.includes('id="search-hint"'), 'search hint legend missing');
   assert.ok(_src.includes('aria-describedby="search-hint"'), 'input not described by the hint');
   assert.ok(_src.includes('#search-wrap:focus-within #search-hint'), 'hint not shown on focus');
-  // the ? reference panel documents the operators
-  assert.ok(_src.includes("sec: 'Search & filter'"), '? panel section missing');
+  // the GUIDE (? concept guide) documents the operators — id:'search-ops' in cat:'getting-around'
+  assert.ok(_src.includes("id:'search-ops'"), 'GUIDE search-ops entry missing');
   // wiring: applySearch parses once per query
   assert.ok(_src.includes('searchTerms = parseSearchQuery(q)'), 'applySearch does not parse the query');
 });
@@ -4705,8 +4747,8 @@ test('progress cookies: render + front-door wiring (src pins)', () => {
   assert.ok(_src.includes('let cookieNode = null'), 'cookieNode global missing');
   assert.ok(_src.includes("id:'progress'"), 'progress @ entry missing');
   assert.ok(_src.includes("applyInlineInsertion(nodeId, offset, '[/]')"), 'progress insert missing');
-  // P5-4: the syntax also lives in the ? panel, not only the @ menu
-  assert.ok(_src.includes("keys: ['[/]', '[%]']"), 'progress ? panel row missing');
+  // P5-4: the syntax also lives in the GUIDE (? concept guide), not only the @ menu
+  assert.ok(_src.includes("id:'progress'") && _src.includes("syn:'[/]'"), 'GUIDE progress entry or [/] example missing');
   // P4: a child partial-toggle refreshes a cookie-bearing parent
   assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
 });
@@ -4826,7 +4868,7 @@ test('subtree aggregation: min/max empty set makes a range constraint vacuously 
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
   assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode)'), 'renderMathPill live-aggregation wiring missing');
   assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
-  assert.ok(_src.includes("{ keys: ['{= sum(cost)}']"), 'aggregation ? panel row missing');
+  assert.ok(_src.includes("id:'rollups'") && _src.includes("syn:'{= sum(cost)}'"), 'GUIDE rollups entry or sum example missing');
   assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
   assert.ok(_src.includes('sum/avg/count/min/max(prop)'), 'math dialog hint missing min/max aggregation');
 });
@@ -5255,9 +5297,9 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes('renderAgenda'), 'renderAgenda missing');
   assert.ok(_src.includes("/^(due|start):"), 'due/start search operator missing');
   assert.ok(_src.includes("term.kind === 'due' || term.kind === 'start'"), 'date search match missing');
-  // P5-4 (UXP-37): the date/agenda syntax also lives in the ? panel, not only the search legend
-  assert.ok(_src.includes("keys: ['due:today', 'due:overdue', 'start:<date']"), 'due/start ? panel row missing');
-  assert.ok(_src.includes("sec: 'Dates & agenda'"), 'agenda ? panel section missing');
+  // P5-4 (UXP-37): the date/agenda syntax also lives in the GUIDE (? concept guide), not only the search legend
+  assert.ok(_src.includes("id:'dates'") && _src.includes("cat:'dates'"), 'GUIDE dates entry missing');
+  assert.ok(_src.includes("id:'search-ops'") && _src.includes("syn:'due:today / due:overdue'"), 'GUIDE search-ops due/start examples missing');
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
   // agenda: permanent List on the top bar + Timeline/Calendar as toggled full-width bars below
