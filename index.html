@@ -862,6 +862,38 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 /* keep the help affordance from colliding with the footnote panel */
 #fn-panel.on ~ #sc-toggle{bottom:calc(256px + env(safe-area-inset-bottom))}
 #fn-panel.on ~ .sc-panel{bottom:calc(296px + env(safe-area-inset-bottom))}
+.sc-footer{border-top:1px solid var(--bdr);margin-top:10px;padding-top:8px}
+.sc-guide-btn{background:none;border:none;color:var(--acc);cursor:pointer;font-size:12px;padding:2px 0;font-weight:500}
+.sc-guide-btn:hover{opacity:.8}
+.sc-guide-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#io-card.guide-open{width:min(760px,calc(100vw - 32px));max-height:min(88vh,680px);padding:0;overflow:hidden}
+.guide-wrap{display:flex;flex-direction:column;height:min(88vh,680px)}
+.guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.guide-title{font-size:13px;font-weight:600;flex-shrink:0}
+.guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
+.guide-search::placeholder{color:var(--muted)}
+.guide-search:focus{outline:2px solid var(--acc);outline-offset:-1px}
+.guide-close{flex-shrink:0;width:26px;height:26px;border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.guide-close:hover{background:color-mix(in srgb,var(--acc) 10%,transparent);color:var(--fg)}
+.guide-close:focus-visible{outline:2px solid var(--acc)}
+.guide-body{display:flex;flex:1;overflow:hidden;min-height:0}
+.guide-nav{width:154px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--bdr);padding:6px 0}
+.guide-nav-btn{display:block;width:100%;text-align:left;padding:6px 12px;font-size:12px;color:var(--fg);border:none;background:none;cursor:pointer;transition:background .09s}
+.guide-nav-btn:hover{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.guide-nav-btn.active{background:color-mix(in srgb,var(--acc) 12%,transparent);color:var(--acc);font-weight:600}
+.guide-nav-btn.guide-nav-dim{opacity:.4}
+.guide-nav-btn:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.guide-pane{flex:1;overflow-y:auto;padding:16px 18px;min-width:0;outline:none}
+.guide-entry{margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--bdr)}
+.guide-entry:last-child{border-bottom:none;margin-bottom:0}
+.guide-cat-badge{font-size:10px;font-weight:600;color:var(--acc);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+.guide-entry-title{font-size:13px;font-weight:600;margin-bottom:5px}
+.guide-entry-body{font-size:12.5px;line-height:1.57;margin:0 0 8px;color:var(--fg)}
+.guide-ex{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12px}
+.guide-ex dt code{background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 15%,transparent);border-radius:3px;padding:1px 5px;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.guide-ex dd{color:var(--muted);align-self:center;margin:0}
+.guide-no-results{color:var(--muted);font-size:12.5px;padding:8px 0}
+@media(max-width:540px){.guide-nav{width:120px}.guide-pane{padding:12px 14px}}
 /* ── agenda strip (sits inside the toolbar) ──
    A vertical stack: the TOP bar holds the 2×2 control grid + the List, and the
    Timeline (Gantt) and Calendar each open as their own full-width bar below. */
@@ -9170,11 +9202,13 @@ function openInsertDialog(opts) {
   requestAnimationFrame(() => { const f = ioCard.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
 function closeIo() {
-  ioBack.classList.remove('on'); ioCard.innerHTML = ''; ioCancel = null;
+  ioBack.classList.remove('on');
+  ioCard.classList.remove('guide-open');
+  ioCard.innerHTML = ''; ioCancel = null;
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }
-ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) closeIo(); });
+ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) (ioCancel || closeIo)(); });
 // Focus trap: Tab cycles within the dialog, never escaping to background content.
 ioBack.addEventListener('keydown', e => {
   if (e.key !== 'Tab') return;
@@ -15601,114 +15635,326 @@ document.getElementById('btn-journal').addEventListener('click', () => openJourn
 // key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
 const IS_MAC = /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || '');
 const MOD = IS_MAC ? '⌘' : 'Ctrl';
-const SHORTCUTS = [
-  { sec: 'Navigate', rows: [
-    { keys: ['↑', '↓'],            desc: 'Move between points' },
-    { keys: [`${MOD}+.`, ','],    desc: 'Collapse / expand point' },
-    { keys: [`${MOD}+1`, '…', '6'], desc: 'Show first N levels (or use the toolbar 1·2·3·All)' },
-    { keys: [`${MOD}+Enter`],     desc: 'Zoom into point' },
-    { keys: ['Esc'],              desc: 'Zoom out / deselect — from search or a menu, returns to your edit' },
-    { keys: ['↓'],                desc: 'From the search field: jump to the first matching point' },
-  ]},
-  { sec: 'Search & filter', rows: [
-    { keys: ['word word'], desc: 'Every term must match (AND)' },
-    { keys: ['#tag'],      desc: 'Points carrying a tag — state keywords too (#todo, #waiting)' },
-    { keys: ['is:todo', 'is:done', 'is:note'], desc: 'Open to-dos / finished to-dos / points with a note' },
-    { keys: ['is:failing'], desc: 'Points whose check constraint fails or can’t evaluate — the lint filter' },
-    { keys: ['due:today', 'due:overdue', 'start:<date'], desc: 'Dated points — due or overdue, or before/after a date (YYYY-MM-DD, today±N)' },
-    { keys: ['has:key'], desc: 'Points carrying a property with that key — e.g. has:status' },
-    { keys: ['key:value'], desc: 'Points where key equals value — e.g. status:done, author:alice' },
-    { keys: ['-term', '-#tag'], desc: 'Exclude matches' },
-    { keys: ['"a b"'],     desc: 'Exact phrase' },
-    { keys: ['★'],         desc: 'Star a search to save it with the document — saved searches appear under the box while it has focus' },
-    { keys: ['across notes'], desc: 'In a connected workspace folder, search also scans your other notes — matches appear as a “Found in other notes” list under the box (with the note name); click one to jump there. Same operators, folder-wide' },
-  ]},
-  { sec: 'Edit structure', rows: [
-    { keys: ['Enter'],            desc: 'New point' },
-    { keys: ['⇧+Enter'],         desc: 'Line break inside a point' },
-    { keys: ['Tab', '⇧+Tab'],    desc: 'Indent / outdent' },
-    { keys: ['Alt+↑', '↓'],      desc: 'Move point up / down' },
-    { keys: ['Refile…'],         desc: 'Move a point (and its subtree) anywhere via search — in the bullet menu (⇧+F10)' },
-    { keys: ['⤓ Capture'],       desc: 'Toolbar inbox button: fast-add a point to a chosen inbox from anywhere, without navigating' },
-  ]},
-  { sec: 'TODO state & priority', rows: [
-    { keys: ['#TODO'],            desc: 'Click a badge to open the state / priority picker' },
-    { keys: ['#TODO', '#NEXT', '#WAITING', '#DONE'], desc: 'Type `#KEYWORD ` at the start of a point to set its state' },
-    { keys: ['/todo', '/next', '…'],   desc: 'Slash menu sets the to-do state too' },
-  ]},
-  { sec: 'Dates & agenda', rows: [
-    { keys: ['/due'],     desc: 'Schedule a start and/or due date (also in the bullet menu → Set / Edit dates)' },
-    { keys: ['/journal'], desc: 'Open or create today\'s journal entry (toolbar calendar-day button does the same; set a home via the bullet menu)' },
-    { keys: ['Agenda'],   desc: 'Toolbar calendar button: List, Timeline (Gantt) and Calendar views of every dated point' },
-    { keys: ['due:today', 'start:<date'], desc: 'Filter the outline to dated points (see Search & filter)' },
-  ]},
-  { sec: 'Insert & commands', rows: [
-    { keys: ['/'],  desc: 'Turn point into heading, list, quote, code, table, base, or stamp a saved template…' },
-    { keys: ['/check'], desc: 'Add a pass/fail constraint over a point and its children — sum(cost) ≤ budget, count(score) ≥ 3 (also in the bullet menu; find violations with is:failing)' },
-    { keys: ['/alias'], desc: 'Give a point alternate names (comma-separated) so links and mentions find it under more than its title — wyrm, drake (also in the bullet menu and the aliases chip; the link still shows the title)' },
-    { keys: ['@'],  desc: 'Insert link, image, footnote, progress cookie, dice, roll table, Markov chain, grammar, deck, oracle, math, variable, sequence' },
-    { keys: ['#'],  desc: 'Tag — the picker lists existing tags so they stay consistent' },
-    { keys: ['[['], desc: 'Link to a point — the picker lists your points by title or alias (an “alias: X” hint shows why an alias matched). In a connected workspace folder it also lists points from your other notes (a “· ‹note›” hint marks each); picking one inserts a cross-document link. Type a new title to create as you link: pick “+ New point” for a stub in THIS note, or “+ New note” for a whole new note in the folder (linked across) — you stay where you are either way; or paste a copied link' },
-    { keys: ['Linked from'], desc: 'Backlinks panel — appears at the bottom when you focus a point that others link to or mention. “Linked from” lists actual links — including links from your other notes in a connected workspace folder (each marked with a “· ‹note›” hint; click one to open that note); “Unlinked references” lists points in THIS note that mention the title (or an alias) in prose without a link — click Link to convert the first mention to a [[#id|]] link in one click' },
-    { keys: ['⇧+F10'], desc: 'Open the menu for the focused point, or a base cell’s column + row menu' },
-    { keys: [`${MOD}+⇧+L`], desc: 'Copy a link to the current point — pasteable into any point. In a connected workspace folder it copies a cross-document link ([[docId#id]]), so pasting into another note links across files; click it to jump there (an ↗ marks a cross-note link)' },
-    { keys: [`${MOD}+⇧+V`], desc: 'Variables panel' },
-  ]},
-  { sec: 'Pills & shorthand', rows: [
-    { keys: ['{2d6}', '{4d6r1kh3}'], desc: 'Dice roll pill — NdM with kh/kl (keep), ! (explode), rK (reroll ≤K once), dF (Fate), >=N (success pool)' },
-    { keys: ['{= 2*r}'], desc: 'Math pill — expressions, units, dates (log is base-10; date math returns a number — wrap in asdate(…) to show a calendar date; a fixed date is date(y,m,d))' },
-    { keys: ['{= sum(cost)}'], desc: 'Subtree rollup — sum / avg / count / min / max a property over DIRECT child points (skips children lacking it; not Excel SUM(1,2,3) — add literals with 1+2+3). Also {= sum(cost)/count(cost)}' },
-    { keys: ['{5 to 10}', 'normal(8,2)'], desc: 'Estimate — an uncertain VALUE/distribution (NOT a random integer — for that use dice like {1d100}); 90% range (lognormal, or normal if a bound ≤ 0) / normal / uniform; shows mean ± [p5,p95] + a density sparkline; + − × ÷ combine independent draws. Click to re-sample (@ → Estimate)' },
-    { keys: ['{a|b 2}', '{a|b {= w}}'], desc: 'Weighted random pick — a weight is a number, or a {= expr} over variables (dynamic odds); rules & tables compose' },
-    { keys: ['{hp>0: a|b}'], desc: 'Conditional text — emit a when the comparison holds, else b (else optional)' },
-    { keys: ['{name.cap}', '{noun.s}'], desc: 'Text modifier on a rule/variable — cap · title · upper · lower · a · s · ed · ord (e.g. {beast.a} → "an ogre", {verb.ed} → "walked", {n.ord} → "3rd"); chainable {beast.a.cap}' },
-    { keys: ['{weapon.damage}'], desc: 'Item field — read a sub-rule field of a picked item (define sword.damage: 1d8). For the SAME item across fields, freeze it in a pick variable: w = {weapon}, then {w.name}/{w.damage}' },
-    { keys: ['{shuffle: a|b|c}'], desc: 'Deck — shuffle (draw without replacement), cycle, once, or stopping; click the pill to advance' },
-    { keys: ['{3x: {beast}}'], desc: 'Repeat — emit a template a literal N times (1–99; not a roll), re-expanded each time (distinct rolls); joined by spaces. Use {shuffle: …} for draw-without-replacement.' },
-    { keys: ['{name}'],  desc: 'Variable reference — a formula value, or a random pick frozen until its declaration is re-rolled (@ → Variable → Random pick)' },
-    { keys: ['[^key]'],  desc: 'Footnote reference' },
-    { keys: ['[/]', '[%]'], desc: 'Progress cookie — live tally of a point’s checkboxes & child tasks' },
-  ]},
-  { sec: 'Format (markdown)', rows: [
-    { keys: ['#', '…', '######'], desc: 'Headings (any line, h1–h6)' },
-    { keys: ['>'],                desc: 'Blockquote (any line)' },
-    { keys: ['```', '~~~'],       desc: 'Fenced code block' },
-    { keys: ['---', '***'],       desc: 'Divider / rule' },
-    { keys: ['-', '1.', '- [ ]'], desc: 'Bullet / numbered / to-do' },
-    { keys: ['**b**', '__b__'],   desc: 'Bold' },
-    { keys: ['*i*', '_i_'],       desc: 'Italic' },
-    { keys: ['++u++'],            desc: 'Underline' },
-    { keys: ['~~s~~', '`c`'],     desc: 'Strikethrough / inline code' },
-    { keys: ['==hi=='],           desc: 'Highlight' },
-    { keys: ['[t](url)', ':emoji:'], desc: 'Link / emoji shortcode' },
-    { keys: ['![alt](url)'],      desc: 'Image' },
-    { keys: ['http://…'],         desc: 'Bare URLs auto-link' },
-    { keys: ['| a | b |'],        desc: 'Table — header row + a |---|---| delimiter row (renders read-only)' },
-    { keys: ['term', ': def'],    desc: 'Definition list' },
-  ]},
-  { sec: 'File & history', rows: [
-    { keys: [`${MOD}+S`, `${MOD}+O`], desc: 'Save / open' },
-    { keys: ['Connect folder'],       desc: 'File menu: save this document into a folder the app remembers — it reconnects next launch and then saves to its file automatically as you type, no Ctrl+S needed (Chromium only)' },
-    { keys: [`${MOD}+F`],             desc: 'Search' },
-    { keys: [`${MOD}+Z`, `${MOD}+Y`], desc: 'Undo / redo' },
-  ]},
-  { sec: 'Multi-select', rows: [
-    { keys: ['⇧+Click'], desc: 'Select a range of points' },
-    { keys: [`${MOD}+C`, `${MOD}+X`], desc: 'Copy / cut the selected points' },
-    { keys: ['Tab', '⇧+Tab'], desc: 'Indent / outdent the selection' },
-    { keys: ['Delete'], desc: 'Delete the selected points' },
-  ]},
+// Single registry: essential:true entries drive the corner panel; cat entries
+// drive the Concept guide. One source, two views, no drift.
+const GUIDE = [
+  // ── Navigate (essentials only) ────────────────────────────────────────────
+  { id:'nav-move',    essential:true, essSection:'Navigate', keys:['↑','↓'],      essLabel:'Move between points' },
+  { id:'nav-col',     essential:true, essSection:'Navigate', keys:[`${MOD}+.`,','],  essLabel:'Collapse / expand' },
+  { id:'nav-levels',  essential:true, essSection:'Navigate', keys:[`${MOD}+1–6`],     essLabel:'Collapse to N levels' },
+  { id:'nav-zoom',    essential:true, essSection:'Navigate', keys:[`${MOD}+Enter`],  essLabel:'Zoom into point' },
+  { id:'nav-esc',     essential:true, essSection:'Navigate', keys:['Esc'],           essLabel:'Zoom out / close panel' },
+  { id:'nav-search',  essential:true, essSection:'Navigate', keys:[`${MOD}+F`],      essLabel:'Search' },
+  { id:'nav-jump',    essential:true, essSection:'Navigate', keys:['↓ from search'],   essLabel:'Jump to first match' },
+
+  // ── Edit structure (essentials only) ──────────────────────────────────────
+  { id:'edit-enter',   essential:true, essSection:'Edit', keys:['Enter'],               essLabel:'New point' },
+  { id:'edit-break',   essential:true, essSection:'Edit', keys:['⇧+Enter'],               essLabel:'Line break' },
+  { id:'edit-indent',  essential:true, essSection:'Edit', keys:['Tab','⇧+Tab'],           essLabel:'Indent / outdent' },
+  { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','↓'],         essLabel:'Move point up / down' },
+  { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
+  { id:'edit-capture', essential:true, essSection:'Edit', keys:['⬓ Capture'],            essLabel:'Add to inbox from anywhere' },
+
+  // ── Insert triggers (essentials only) ─────────────────────────────────────
+  { id:'insert-slash',  essential:true, essSection:'Insert', keys:['/'],           essLabel:'Block type / template' },
+  { id:'insert-at',     essential:true, essSection:'Insert', keys:['@'],           essLabel:'Insert pill or widget' },
+  { id:'insert-link',   essential:true, essSection:'Insert', keys:['[['],          essLabel:'Link to a point' },
+  { id:'insert-tag',    essential:true, essSection:'Insert', keys:['#'],           essLabel:'Hashtag' },
+  { id:'insert-cpylink',essential:true, essSection:'Insert', keys:[`${MOD}+⇧+L`], essLabel:'Copy link to point' },
+
+  // ── File & history (essentials only) ──────────────────────────────────────
+  { id:'file-save', essential:true, essSection:'File', keys:[`${MOD}+S`,`${MOD}+O`], essLabel:'Save / open' },
+  { id:'file-undo', essential:true, essSection:'File', keys:[`${MOD}+Z`,`${MOD}+Y`], essLabel:'Undo / redo' },
+  { id:'file-vars', essential:true, essSection:'File', keys:[`${MOD}+⇧+V`],         essLabel:'Variables panel' },
+
+  // ── Multi-select (essentials only) ────────────────────────────────────────
+  { id:'sel-range',  essential:true, essSection:'Select', keys:['⇧+Click'],            essLabel:'Select a range' },
+  { id:'sel-copy',   essential:true, essSection:'Select', keys:[`${MOD}+C`,`${MOD}+X`], essLabel:'Copy / cut selection' },
+  { id:'sel-indent', essential:true, essSection:'Select', keys:['Tab','⇧+Tab'],         essLabel:'Indent / outdent selection' },
+  { id:'sel-del',    essential:true, essSection:'Select', keys:['Delete'],         essLabel:'Delete selection' },
+
+  // ── Getting around (guide) ────────────────────────────────────────────────
+  { id:'search-ops', cat:'getting-around',
+    title:'Search operators',
+    body:'Combine terms with implicit AND. Prefix a term with − to exclude it. Wrap phrases in quotes. Use #tag to filter by tag or state keyword.',
+    examples:[
+      { syn:'word word',              desc:'all terms must match' },
+      { syn:'-term',                  desc:'exclude matches' },
+      { syn:'"a b"',                  desc:'exact phrase' },
+      { syn:'#tag',                   desc:'tag or state keyword (#todo, #done)' },
+      { syn:'is:todo / is:done / is:note', desc:'open tasks / done tasks / noted points' },
+      { syn:'is:failing',             desc:'check constraint violations — the lint filter' },
+      { syn:'has:key / key:value',    desc:'property filters (has:status, priority:high)' },
+      { syn:'due:today / due:overdue',desc:'deadline filters' },
+      { syn:'start:<date',            desc:'started before date (YYYY-MM-DD or today±N)' },
+    ] },
+  { id:'workspace-search', cat:'getting-around',
+    title:'Workspace-wide search',
+    body:'In a connected workspace folder the search box also scans your other notes. Matches appear as "Found in other notes" with the note name. Click to open it.',
+    examples:[] },
+
+  // ── Writing & formatting (guide) ──────────────────────────────────────────
+  { id:'point-types', cat:'writing', covers:['ul','ol','h1','h2','h3','para','code','divider','quote','base'],
+    title:'Point types',
+    body:'Use the / menu to turn a point into a heading, list, quote, code block, or interactive table (base). The type is written into the text and round-trips to plain files.',
+    examples:[
+      { syn:'# Heading',    desc:'h1–h6 (any line, prefixed with # through ######)' },
+      { syn:'> quote',      desc:'blockquote (any line)' },
+      { syn:'``` or ~~~',   desc:'fenced code block' },
+      { syn:'--- or ***',   desc:'divider / thematic rule' },
+      { syn:'/base',        desc:'interactive spreadsheet table at this point' },
+    ] },
+  { id:'inline-md', cat:'writing',
+    title:'Inline formatting',
+    body:'Markdown emphasis works on any line of any point. Bold and italic support both asterisk and underscore forms; underscores are word-boundary-guarded so snake_case stays literal.',
+    examples:[
+      { syn:'**bold** or __bold__',     desc:'bold' },
+      { syn:'*italic* or _italic_',     desc:'italic' },
+      { syn:'++underline++',            desc:'underline' },
+      { syn:'~~strike~~ or `code`',     desc:'strikethrough / inline code' },
+      { syn:'==highlight==',            desc:'highlight' },
+      { syn:'[text](url)',              desc:'hyperlink' },
+      { syn:'![alt](url)',             desc:'image' },
+      { syn:':emoji:',                  desc:'emoji shortcode' },
+    ] },
+  { id:'tables', cat:'writing', covers:['table'],
+    title:'Tables',
+    body:'Write a GFM pipe table in any point — a header row followed by a |---|---| delimiter row renders as a read-only grid with optional #+TBLFM: formulas. For an interactive editable table use /base.',
+    examples:[
+      { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'static markdown table' },
+      { syn:'/base',                            desc:'interactive spreadsheet (editable cells, formulas)' },
+    ] },
+  { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
+    title:'Footnotes and links',
+    body:'Footnote references [^key] link inline to a definition in the same point. Use @ → Link or @ → Image to insert external links or images.',
+    examples:[
+      { syn:'[^key]',            desc:'footnote reference' },
+      { syn:'@ → Footnote',       desc:'add footnote definition' },
+      { syn:'[text](url)',       desc:'hyperlink (typed directly or via @ → Link)' },
+    ] },
+
+  // ── To-dos & organizing (guide) ───────────────────────────────────────────
+  { id:'todo-syntax', cat:'todos', covers:['todo'],
+    title:'To-do states',
+    body:'A point becomes a to-do when its text starts with a task marker or a #KEYWORD. Click a state badge to open the state and priority picker. Enter in a to-do continues the format on the next point.',
+    examples:[
+      { syn:'- [ ] task',              desc:'task-marker to-do' },
+      { syn:'- [x] done',              desc:'checked task' },
+      { syn:'#TODO body',              desc:'keyword-style to-do' },
+      { syn:'#NEXT [#A] body',         desc:'with priority A/B/C' },
+      { syn:'/todo',                   desc:'slash verb sets the state' },
+    ] },
+  { id:'sequences', cat:'todos', covers:['sequence'],
+    title:'Custom state sequences',
+    body:'Use @ → Sequence to define your own state set — a list of keywords split into in-progress and done halves by |. Apply any state with /state: or click the badge. Done-ness tracks which side of | the keyword is on.',
+    examples:[
+      { syn:'TODO NEXT WAITING | DONE', desc:'built-in sequence' },
+      { syn:'DRAFT REVIEW | PUBLISHED', desc:'example custom sequence' },
+    ] },
+  { id:'progress', cat:'todos', covers:['progress'],
+    title:'Progress cookies',
+    body:"Type [/] for a fraction or [%] for a percentage. Each cookie shows a live tally of the point's checkboxes and direct child to-dos. Use @ → Progress to insert.",
+    examples:[
+      { syn:'[/]', desc:'shows e.g. 2/5 — fraction of done tasks' },
+      { syn:'[%]', desc:'shows e.g. 40% — percentage done' },
+    ] },
+  { id:'templates', cat:'todos', covers:['template'],
+    title:'Templates',
+    body:'Save any point and its subtree as a named template via the bullet menu. Stamp a copy with /template — the picker deep-clones the subtree with fresh IDs and inserts it.',
+    examples:[
+      { syn:'/template',                         desc:'pick and stamp a saved template' },
+      { syn:'Bullet menu → Save as template', desc:'save the current point as a template' },
+    ] },
+  { id:'aliases', cat:'todos', covers:['alias'],
+    title:'Aliases',
+    body:'Give a point alternate names so links and unlinked-reference mentions find it under more than its title. The link still shows the title.',
+    examples:[
+      { syn:'/alias',       desc:'add aliases to the current point' },
+      { syn:'wyrm, drake',  desc:'comma-separated alternate names' },
+    ] },
+
+  // ── Dates & agenda (guide) ────────────────────────────────────────────────
+  { id:'dates', cat:'dates', covers:['due'],
+    title:'Scheduling dates',
+    body:'A point can carry a start date, a due date, or both. Use /due or the bullet menu → Set / Edit dates. Click a date chip to reopen the scheduler. Date fields accept absolute and relative values.',
+    examples:[
+      { syn:'/due',       desc:'open the date scheduler' },
+      { syn:'2026-01-15', desc:'absolute ISO date' },
+      { syn:'today',      desc:"today's date" },
+      { syn:'today+7',    desc:'one week from now' },
+    ] },
+  { id:'agenda', cat:'dates',
+    title:'Agenda views',
+    body:'The toolbar calendar button opens the agenda strip: a Due list, an optional Timeline (Gantt) and an optional Calendar. Click any item to zoom in. Flags toggle Done items and the Running row.',
+    examples:[
+      { syn:'Due row',    desc:'deadlines not yet started' },
+      { syn:'Running row',desc:'in-progress points (started ≤ today)' },
+      { syn:'Timeline',   desc:'Gantt bars on a shared scrolling day axis' },
+      { syn:'Calendar',   desc:'month grid; ‹ › nav, up to 3 items per day' },
+    ] },
+  { id:'journal', cat:'dates', covers:['journal'],
+    title:'Journal',
+    body:"Use /journal or the toolbar calendar-day button to open or create today's dated entry. Set a home node for journal entries via the bullet menu.",
+    examples:[
+      { syn:'/journal', desc:"open or create today's entry" },
+    ] },
+
+  // ── Generators (guide) ────────────────────────────────────────────────────
+  { id:'dice', cat:'generators', covers:['dice'],
+    title:'Dice rolls',
+    body:'Type {NdM} to insert a dice roll pill. Supports keep-highest/lowest, exploding dice, reroll-once, Fate dice and success pools. Click to re-roll.',
+    examples:[
+      { syn:'{2d6}',      desc:'roll 2d6' },
+      { syn:'{4d6kh3}',   desc:'keep highest 3 of 4d6' },
+      { syn:'{2d6!}',     desc:'exploding dice' },
+      { syn:'{2d6r1}',    desc:'reroll once if ≤ 1' },
+      { syn:'{dF}',       desc:'Fate / Fudge dice (−1/0/+1)' },
+      { syn:'{2d6>=4}',   desc:'count successes ≥ 4' },
+    ] },
+  { id:'grammar', cat:'generators', covers:['grammar','rolltable'],
+    title:'Grammar and roll tables',
+    body:'The {…} engine is a recursive-substitution grammar. Rules compose dice, math, modifiers and conditions. Use @ → Grammar or @ → Roll table to get started. Click to re-roll.',
+    examples:[
+      { syn:'{a|b|c}',              desc:'random pick from alternatives' },
+      { syn:'{a|b 2|c}',            desc:'weighted pick (b is twice as likely)' },
+      { syn:'{name}',               desc:'reference a named rule' },
+      { syn:'{name.cap}',           desc:'text modifier (cap/title/upper/lower/s/ed/ord/a)' },
+      { syn:'{hp>0: alive|dead}',   desc:'conditional text' },
+      { syn:'{weapon.damage}',      desc:'item field (sub-rule of a picked item)' },
+    ] },
+  { id:'deck', cat:'generators', covers:['deck'],
+    title:'Decks and repeats',
+    body:'A deck pill draws without replacement. Use shuffle for a random order, cycle to loop in order, once to stop after one pass, or stopping to stay on the last item. Click to advance.',
+    examples:[
+      { syn:'{shuffle: a|b|c}', desc:'draw without replacement' },
+      { syn:'{cycle: a|b|c}',   desc:'advance in order, loop' },
+      { syn:'{once: a|b|c}',    desc:'advance once per click, stop' },
+      { syn:'{stopping: a|b|c}',desc:'advance to last item, stay' },
+      { syn:'{3x: {beast}}',    desc:'repeat template 3 times independently' },
+    ] },
+  { id:'markov', cat:'generators', covers:['markov'],
+    title:'Markov chains',
+    body:'A Markov chain generates text by random walks through a transition table you define. Named chains are callable as {chainName} inside grammar rules.',
+    examples:[
+      { syn:'@ → Markov chain', desc:'add a Markov chain pill' },
+      { syn:'{chainName}',     desc:'reference from a grammar rule' },
+    ] },
+  { id:'oracle', cat:'generators', covers:['oracle'],
+    title:'Yes / no oracle',
+    body:'@ → Oracle (yes/no) inserts a weighted yes/no pill. Pick a likelihood band from certain to impossible, or set custom numeric odds. Click to consult again.',
+    examples:[
+      { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle pill' },
+      { syn:'Yes 4 | No 1',      desc:'custom 80% yes' },
+    ] },
+
+  // ── Compute (guide) ───────────────────────────────────────────────────────
+  { id:'math', cat:'compute', covers:['math'],
+    title:'Math expressions',
+    body:'Type {= expr} to insert a math pill. Supports arithmetic, trig, logs, unit conversions, date math and ternary (a > b ? x : y). Math always returns a number — wrap dates in asdate(…) to display as a calendar date.',
+    examples:[
+      { syn:'{= 2 * r}',          desc:'expression over a variable' },
+      { syn:'{= c2f(98.6)}',      desc:'unit conversion (Celsius → Fahrenheit)' },
+      { syn:'{= today + 30}',     desc:'date arithmetic (epoch-day number)' },
+      { syn:'{= asdate(today+30)}',desc:'render as calendar date' },
+      { syn:'{= a > b ? a : b}',  desc:'ternary conditional' },
+    ] },
+  { id:'variables', cat:'compute', covers:['var'],
+    title:'Variables',
+    body:'Use @ → Variable to declare a named value — either a formula evaluated live or a random pick frozen until re-rolled. Reference the value anywhere with a {name} pill.',
+    examples:[
+      { syn:'@ → Variable', desc:'declare a variable' },
+      { syn:'{name}',      desc:'reference the value inline' },
+      { syn:'{= 2 * area}',desc:'use in a math expression' },
+    ] },
+  { id:'estimates', cat:'compute', covers:['est'],
+    title:'Uncertainty and estimates',
+    body:'Type {5 to 10} or use @ → Estimate to insert an uncertain value sampled from a distribution. Arithmetic combines distributions independently. Click the pill to re-sample.',
+    examples:[
+      { syn:'{5 to 10}',      desc:'90% confidence interval (lognormal)' },
+      { syn:'normal(8, 2)',   desc:'normal distribution, mean 8 std 2' },
+      { syn:'uniform(1, 6)',  desc:'uniform distribution' },
+      { syn:'{5 to 10} + {2 to 4}', desc:'sum of independent distributions' },
+    ] },
+  { id:'rollups', cat:'compute',
+    title:'Subtree rollups',
+    body:'A math pill can aggregate a property across the direct children of a point: sum, avg, count, min or max. The value recomputes live as children change.',
+    examples:[
+      { syn:'{= sum(cost)}',  desc:'sum the cost property of each child' },
+      { syn:'{= avg(score)}', desc:'average the score property' },
+      { syn:'{= count(done)}',desc:'count children that have a done property' },
+      { syn:'{= asdate(max(due))}', desc:'latest due date among children' },
+    ] },
+  { id:'check', cat:'compute', covers:['check'],
+    title:'Check constraints',
+    body:'Use /check to add a pass/fail constraint to a point. The constraint must contain a comparison. A live chip shows pass/fail/error. Use is:failing to find violations.',
+    examples:[
+      { syn:'sum(cost) <= budget', desc:'rollup constraint' },
+      { syn:'hours <= 8',          desc:'own-property constraint' },
+      { syn:'count(score) >= 3',   desc:'require at least 3 scored children' },
+      { syn:'is:failing',          desc:'search for failing constraints' },
+    ] },
+
+  // ── Links & knowledge (guide) ─────────────────────────────────────────────
+  { id:'point-links', cat:'links',
+    title:'Point links',
+    body:"Type [[ to open the link picker and link to any point by title or alias. The link shows the target's live title — rename the target and the link updates instantly. An empty label [[#id|]] mirrors the target's content inline.",
+    examples:[
+      { syn:'[[',                   desc:'open the link picker' },
+      { syn:'[[#id|label]]',        desc:'link with a fixed caption' },
+      { syn:'[[#id|]]',             desc:"live-title link (mirrors target's content)" },
+    ] },
+  { id:'backlinks', cat:'links',
+    title:'Backlinks',
+    body:'When you focus a point a backlinks panel appears at the bottom listing points that link to it. "Unlinked references" lists points that mention the title in prose — click Link to convert the first mention to a real link.',
+    examples:[
+      { syn:'Linked from',          desc:'direct backlinks' },
+      { syn:'Unlinked references',  desc:'prose mentions — click Link to convert' },
+    ] },
+  { id:'cross-doc-links', cat:'links',
+    title:'Cross-document links',
+    body:'In a connected workspace folder the [[ picker also lists points from other notes. Picking one inserts a cross-document link. An ↗ mark distinguishes cross-note links. Backlinks list cross-note sources too.',
+    examples:[
+      { syn:'[[docId#id|label]]',   desc:'cross-document link' },
+      { syn:'+ New note',           desc:'create a new note and link to it in one step' },
+    ] },
+
+  // ── Files & workspace (guide) ─────────────────────────────────────────────
+  { id:'saving', cat:'files',
+    title:'Saving',
+    body:'The app autosaves to the browser on every keystroke. Use Ctrl/Cmd+S to save as an OPML file. In a connected workspace folder the file is written continuously — no Ctrl+S needed.',
+    examples:[
+      { syn:`${MOD}+S`,              desc:'save as OPML' },
+      { syn:`${MOD}+O`,              desc:'open an OPML file' },
+      { syn:'File → Connect folder', desc:'connect a workspace folder (Chromium only)' },
+    ] },
+  { id:'export', cat:'files',
+    title:'Export',
+    body:'Export as Markdown, plain text, or a self-contained HTML file from the File menu. The HTML export is a fully interactive clone of the app with the document embedded — shareable and works offline.',
+    examples:[
+      { syn:'File → Export Markdown',      desc:'one-way lossy snapshot' },
+      { syn:'File → Self-contained HTML',  desc:'interactive shareable file' },
+    ] },
 ];
+
 (function buildShortcutsPanel() {
   const panel = document.getElementById('sc-panel');
+  // Group essential entries by essSection, in declaration order
+  const sections = [];
+  const secMap = Object.create(null);
+  for (const e of GUIDE) {
+    if (!e.essential) continue;
+    if (!secMap[e.essSection]) { secMap[e.essSection] = []; sections.push(e.essSection); }
+    secMap[e.essSection].push(e);
+  }
   let html = '<div class="sc-head">Shortcuts &amp; syntax</div>';
-  for (const group of SHORTCUTS) {
-    html += `<div class="sc-sec">${group.sec}</div>`;
-    for (const r of group.rows) {
-      const keys = r.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('');
-      html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(r.desc)}</span></div>`;
+  for (const sec of sections) {
+    html += `<div class="sc-sec">${escHtml(sec)}</div>`;
+    for (const e of secMap[sec]) {
+      const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('');
+      html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
     }
   }
+  html += '<div class="sc-footer"><button class="sc-guide-btn" id="sc-guide-open">Concept guide ›</button></div>';
   panel.innerHTML = html;
 })();
 const scToggle = document.getElementById('sc-toggle');
@@ -15732,6 +15978,130 @@ document.addEventListener('mousedown', e => {
   if (scPanel.contains(e.target) || scToggle.contains(e.target)) return;
   toggleShortcuts(false);
 });
+// Wire the "Concept guide ›" footer button. Uses the same io-back/io-card modal
+// infra as dialogs; backdrop mousedown now dispatches ioCancel so close() fires.
+document.getElementById('sc-panel').addEventListener('click', e => {
+  if (e.target.id === 'sc-guide-open') { toggleShortcuts(false); openGuide(); }
+});
+function openGuide(initialCat) {
+  armChromeReturn();
+  const CATS = [
+    { id:'getting-around', label:'Getting around' },
+    { id:'writing',        label:'Writing & formatting' },
+    { id:'todos',          label:'To-dos & organizing' },
+    { id:'dates',          label:'Dates & agenda' },
+    { id:'generators',     label:'Generators' },
+    { id:'compute',        label:'Compute' },
+    { id:'links',          label:'Links & knowledge' },
+    { id:'files',          label:'Files & workspace' },
+  ];
+  let activeCat = initialCat || 'getting-around';
+  let filterQ   = '';
+  ioCard.classList.add('guide-open');
+  ioCard.innerHTML =
+    '<div class="guide-wrap">' +
+      '<div class="guide-header" role="search">' +
+        '<span class="guide-title">Concept guide</span>' +
+        '<input class="guide-search" type="search" placeholder="Search guide…" aria-label="Search guide" data-first>' +
+        '<button class="guide-close" aria-label="Close guide">×</button>' +
+      '</div>' +
+      '<div class="guide-body">' +
+        '<nav class="guide-nav" aria-label="Guide categories"></nav>' +
+        '<div class="guide-pane" tabindex="-1" role="document" aria-label="Guide content"></div>' +
+      '</div>' +
+    '</div>';
+  ioBack.classList.add('on');
+  ioReturnFocus = document.getElementById('sc-toggle');
+  function close() { restoreChromeReturn(); closeIo(); }
+  ioCancel = close;
+  const searchEl = ioCard.querySelector('.guide-search');
+  const closeBtn = ioCard.querySelector('.guide-close');
+  const nav      = ioCard.querySelector('.guide-nav');
+  const pane     = ioCard.querySelector('.guide-pane');
+  function matchEntry(e, q) {
+    const hay = ((e.title||'') + ' ' + (e.body||'') + ' ' +
+      (e.examples||[]).map(x => x.syn + ' ' + x.desc).join(' ')).toLowerCase();
+    return hay.includes(q);
+  }
+  function guideEntries() {
+    const pool = GUIDE.filter(e => e.cat);
+    const q = filterQ.trim().toLowerCase();
+    if (!q) return pool.filter(e => e.cat === activeCat);
+    return pool.filter(e => matchEntry(e, q));
+  }
+  const catLabels = Object.fromEntries(CATS.map(c => [c.id, c.label]));
+  function renderPane() {
+    const entries = guideEntries();
+    const q = filterQ.trim().toLowerCase();
+    if (!entries.length) {
+      pane.innerHTML = '<p class="guide-no-results">No results for “' + escHtml(filterQ) + '”</p>';
+      return;
+    }
+    pane.innerHTML = entries.map(e => {
+      const exHtml = (e.examples||[]).length
+        ? '<dl class="guide-ex">' + (e.examples||[]).map(x =>
+            '<dt><code>' + escHtml(x.syn) + '</code></dt><dd>' + escHtml(x.desc) + '</dd>').join('') + '</dl>'
+        : '';
+      const badge = q ? '<div class="guide-cat-badge">' + escHtml(catLabels[e.cat] || e.cat) + '</div>' : '';
+      return '<div class="guide-entry">' + badge +
+        '<div class="guide-entry-title">' + escHtml(e.title||'') + '</div>' +
+        '<p class="guide-entry-body">' + escHtml(e.body||'') + '</p>' + exHtml + '</div>';
+    }).join('');
+  }
+  function renderNav() {
+    const q = filterQ.trim().toLowerCase();
+    nav.innerHTML = CATS.map(c => {
+      const hasMatch = q ? GUIDE.filter(e => e.cat === c.id).some(e => matchEntry(e, q)) : true;
+      const isActive = !q && c.id === activeCat;
+      return '<button class="guide-nav-btn' +
+        (isActive ? ' active' : '') +
+        (q && !hasMatch ? ' guide-nav-dim' : '') +
+        '" data-cat="' + c.id + '">' + escHtml(c.label) + '</button>';
+    }).join('');
+  }
+  function update() { renderNav(); renderPane(); }
+  update();
+  nav.addEventListener('click', e => {
+    const btn = e.target.closest('.guide-nav-btn');
+    if (!btn || btn.classList.contains('guide-nav-dim')) return;
+    activeCat = btn.dataset.cat;
+    filterQ = '';
+    searchEl.value = '';
+    update();
+    btn.classList.add('active');
+    pane.scrollTop = 0;
+  });
+  nav.addEventListener('keydown', e => {
+    const btn = e.target.closest('.guide-nav-btn');
+    if (!btn) return;
+    if (e.key === 'ArrowUp') { e.preventDefault(); const p = btn.previousElementSibling; if (p) p.focus(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); const n = btn.nextElementSibling; if (n) n.focus(); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); pane.focus(); }
+    if (e.key === 'Escape') { e.stopPropagation(); searchEl.focus(); }
+  });
+  searchEl.addEventListener('input', () => {
+    filterQ = searchEl.value;
+    const q = filterQ.trim().toLowerCase();
+    if (q) {
+      const first = GUIDE.find(e => e.cat && matchEntry(e, q));
+      if (first) activeCat = first.cat;
+    }
+    update();
+  });
+  searchEl.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const firstBtn = nav.querySelector('.guide-nav-btn:not(.guide-nav-dim)');
+      if (firstBtn) firstBtn.focus();
+    }
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+  });
+  closeBtn.addEventListener('click', close);
+  closeBtn.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); }
+  });
+  requestAnimationFrame(() => { searchEl.focus(); });
+}
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); closeFileMenu(); restoreChromeReturn(); return; }
