@@ -4148,6 +4148,21 @@ test('GUIDE drift guard: openGuide function is wired to the Concept guide button
   assert.ok(_src.includes("'Concept guide'") || _src.includes('"Concept guide"') || _src.includes('Concept guide ›'), 'Concept guide footer link text missing');
 });
 
+test('GUIDE: the guide nav is a two-level list (category header per group, each topic its own item)', () => {
+  // The left list groups entries under category headers and renders every entry
+  // as its own clickable item — not a flat category-only nav. A regression to the
+  // category-only model (one button per category, all entries in the pane) would
+  // drop these markers.
+  assert.ok(_src.includes('guide-nav-group'), 'category header class missing — nav is not grouped');
+  assert.ok(_src.includes('data-id="'), 'per-topic data-id missing — entries are not individual items');
+  // every cat entry must carry a title (it is the left-list label)
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('(function buildShortcutsPanel()'));
+  const catEntries = [...guideBlock.matchAll(/cat:'[^']+'/g)].length;
+  const titles = [...guideBlock.matchAll(/title:'[^']*'|title:"[^"]*"/g)].length;
+  assert.ok(titles >= catEntries,
+    `every guide (cat) entry needs a title for its left-list label: ${catEntries} cat entries, ${titles} titles`);
+});
+
 test('UXP-36: Ctrl+S save shortcut handler is present', () => {
   // The global document keydown handler is the sole owner of Ctrl+S (the editor-level
   // duplicate was removed to cure a double-fire — see the spurious-save-error fix).
