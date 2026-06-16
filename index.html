@@ -82,6 +82,7 @@ button,[contenteditable],input{touch-action:manipulation}
   --r-xs:3px;--r-sm:6px;--r-md:8px;--r-lg:12px;
   --sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);
   --sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);
+  --sh-up:0 -4px 24px rgba(45,35,25,.10);
 }
 @media(prefers-color-scheme:dark){:root{
   color-scheme:dark;
@@ -91,6 +92,7 @@ button,[contenteditable],input{touch-action:manipulation}
   --ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;
   --sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);
   --sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);
+  --sh-up:0 -6px 28px rgba(0,0,0,.5);
 }}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:17px;line-height:var(--lh);min-height:100vh;padding-top:44px}
 ::selection{background:color-mix(in srgb,var(--acc) 22%,transparent)}
@@ -541,7 +543,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
 .fn-ref:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
-#fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
+#fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
 #fn-panel.on{transform:translateY(0)}
 .fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 #fn-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
@@ -936,6 +938,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .agc-dow span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center;padding:2px 0}
 .agc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
+.agc-week{display:contents}
 .agc-cell{min-height:56px;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;overflow:hidden;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default}
 .agc-cell:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
 .agc-cell.oom{opacity:.35}
@@ -1034,7 +1037,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* cross-doc link (CF-2): same as a same-doc link plus a muted trailing arrow so a jump to another note reads distinctly */
 .node-link-cross::after{content:"\2197";font-size:.78em;color:var(--muted);margin-left:1px;vertical-align:baseline}
 /* ── backlinks panel ── */
-#bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
+#bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
 #bl-panel.on{transform:translateY(0)}
 #bl-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 .bl-item{padding:3px 0;cursor:pointer;font-size:13px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1073,7 +1076,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .bm-val{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .bm-item.hi .bm-val{color:var(--muted)}
 /* ── variables overview panel ── */
-#var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -4px 24px rgba(0,0,0,.08);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
+#var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
 #var-panel.on{transform:translateY(0)}
 #var-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 16px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;display:flex;align-items:center;gap:8px}
 #var-panel-list{overflow-y:auto;padding:8px 16px 12px;flex:1;display:flex;flex-wrap:wrap;gap:6px 20px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;align-content:flex-start}
@@ -1950,6 +1953,14 @@ function agendaMonthCells(items, monthEpoch, today = dueDateToday()) {
       items: byDay.get(ep) || [],
     };
   });
+}
+
+// Pure: a non-colour urgency cue prefixed onto agenda labels (the visual twin of
+// the aria-label, which already states urgency). Only the critical 'overdue'
+// state earns a marker; the rest return '' so the cue stays meaningful (P3-4).
+// Node-testable.
+function urgencyMark(state) {
+  return state === 'overdue' ? '! ' : '';
 }
 
 
@@ -14818,7 +14829,8 @@ function renderAgendaGantt(host, visible, totalDated) {
     // name row (left panel) — click/Enter also zooms in like the bar
     const nameRow = document.createElement('div');
     nameRow.className = 'agg-name-row' + (r.done ? ' done' : '');
-    const nameSpan = document.createElement('span'); nameSpan.textContent = r.title; nameSpan.title = r.title;
+    const barState = r.kind === 'ongoing' ? 'none' : r.state;     // matches the bar's urgency class
+    const nameSpan = document.createElement('span'); nameSpan.textContent = urgencyMark(barState) + r.title; nameSpan.title = r.title;
     nameRow.appendChild(nameSpan);
     wireAgNav(nameRow, r, agItemAria(r));
     namesInner.appendChild(nameRow);
@@ -14878,6 +14890,19 @@ function renderAgendaCalendar(host, visible, totalDated) {
 
   // arrow-key roving-tabindex navigation within the grid (attached once, survives paint() redraws)
   grid.addEventListener('keydown', e => {
+    // PageUp/PageDown page the month (parity with buildDatePicker), keeping focus
+    // on the same 42-cell slot so the day-of-week/week position is stable.
+    if (e.key === 'PageUp' || e.key === 'PageDown') {
+      const cells = [...grid.querySelectorAll('.agc-cell')];
+      const idx = cells.indexOf(document.activeElement);
+      if (idx === -1) return;
+      e.preventDefault();
+      navMonth(e.key === 'PageUp' ? -1 : 1);            // repaints the grid in place
+      const after = [...grid.querySelectorAll('.agc-cell')];
+      const tgt = after[idx] || after.find(c => c.getAttribute('tabindex') === '0') || after[0];
+      if (tgt) { after.forEach(c => c.setAttribute('tabindex', '-1')); tgt.setAttribute('tabindex', '0'); tgt.focus(); }
+      return;
+    }
     if (!['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
     const cells = [...grid.querySelectorAll('.agc-cell')];
     const idx = cells.indexOf(document.activeElement);
@@ -14906,8 +14931,9 @@ function renderAgendaCalendar(host, visible, totalDated) {
     title.textContent = CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear();
     grid.setAttribute('aria-label', 'Calendar for ' + title.textContent);
     grid.innerHTML = '';
-    let firstInMonth = null;
-    for (const cell of agendaMonthCells(visible, anchor)) {
+    let firstInMonth = null, week = null;
+    agendaMonthCells(visible, anchor).forEach((cell, ci) => {
+      if (ci % 7 === 0) { week = document.createElement('div'); week.className = 'agc-week'; week.setAttribute('role', 'row'); grid.appendChild(week); }
       const c = document.createElement('div');
       c.className = 'agc-cell' + (cell.inMonth ? '' : ' oom') + (cell.isToday ? ' today' : '') + (cell.items.length ? ' has-items' : '');
       c.setAttribute('role', 'gridcell');
@@ -14926,8 +14952,9 @@ function renderAgendaCalendar(host, visible, totalDated) {
 
       for (const it of cell.items.slice(0, MAX_PER_CELL)) {
         const ich = document.createElement('div');
-        ich.className = 'agc-item ' + (it.due !== null ? it.state : 'none') + (it.done ? ' done' : '');
-        ich.textContent = it.title;
+        const itState = it.due !== null ? it.state : 'none';     // matches the chip's urgency class
+        ich.className = 'agc-item ' + itState + (it.done ? ' done' : '');
+        ich.textContent = urgencyMark(itState) + it.title;
         wireAgNav(ich, it, agItemAria(it));
         c.appendChild(ich);
       }
@@ -14937,8 +14964,8 @@ function renderAgendaCalendar(host, visible, totalDated) {
         more.title = (cell.items.length - MAX_PER_CELL) + ' more — open List or Timeline to see all';
         c.appendChild(more);
       }
-      grid.appendChild(c);
-    }
+      week.appendChild(c);
+    });
     // if today is not in this month, give tabindex=0 to the first in-month cell
     if (!grid.querySelector('.agc-cell.today') && firstInMonth) {
       firstInMonth.setAttribute('tabindex', '0');
@@ -15191,8 +15218,8 @@ function buildAccentSwatches(dark) {
 function applyTheme() {
   const dark = forcedTheme === 'dark' || (forcedTheme === null && window.matchMedia('(prefers-color-scheme:dark)').matches);
   themeStyle.textContent = forcedTheme ? (forcedTheme === 'dark'
-    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45)}'
-    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14)}'
+    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);--sh-up:0 -6px 28px rgba(0,0,0,.5)}'
+    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10)}'
   ) : '';
   document.documentElement.style.colorScheme = forcedTheme || '';
   applyAccentCSS(dark);

@@ -16,7 +16,10 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > ✓ closed** (the a11y-reachability batch — links, backlinks, footnote refs, todo picker);
 > **batch 3 (UXP-58, UXP-59, UXP-64) is ✓ closed** (P4 feedback-consistency: error toasts,
 > search empty-state, context-aware workspace snippet);
-> **UXP-57, UXP-60…63, UXP-65…67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> **batch 4 (UXP-61, UXP-62, UXP-65, UXP-66) is ✓ closed** (visual + a11y consistency polish:
+> theme-aware `--sh-up` panel shadow, agenda-calendar grid parity, transient Tab-group carve-out,
+> non-colour urgency marker);
+> **UXP-57, UXP-60, UXP-63, UXP-67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
 
@@ -437,21 +440,24 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   `node.text` at the caret, keep the head, seed the new sibling with the tail (after the continuation
   prefix), caret at the tail start; guard the no-active-edit (programmatic) path.
 
-### UXP-61 ☐ Bottom-docked panel shadows invisible in dark mode (design-language) 🟢
-- **Problem:** `#fn-panel` / `#bl-panel` / `#var-panel` use a hardcoded `box-shadow:0 -4px 24px
-  rgba(0,0,0,.08)` — an `.08`-alpha black shadow vanishes on the dark `--bg`, losing the slide-up elevation
-  cue. **Note for the fix:** `--sh-1`/`--sh-2` are *downward* shadows (positive Y), so a blind swap points the
-  shadow the wrong way for these upward panels — needs a direction-aware/theme-aware shadow (a new token or a
-  themed shadow-colour var), hence deferred from batch 1.
-- **Violates:** `design-language.md` §3/§4 (dark shadows stronger + black). **Target:** an upward,
-  theme-strong shadow (dual-home if a new token).
+### UXP-61 ✓ Bottom-docked panel shadows invisible in dark mode (design-language) 🟢 — **RESOLVED**
+- **Problem:** `#fn-panel` / `#bl-panel` / `#var-panel` used a hardcoded `box-shadow:0 -4px 24px
+  rgba(0,0,0,.08)` — vanishing on the dark `--bg`. The `--sh-1/2` tokens are *downward* (positive Y), so a
+  blind swap would point the shadow the wrong way.
+- **Fix:** a new theme-aware **upward** shadow token `--sh-up`, dual-homed across all four palette homes
+  (light `:root` = `0 -4px 24px rgba(45,35,25,.10)`; dark `@media` + the `applyTheme` forced-dark string =
+  `0 -6px 28px rgba(0,0,0,.5)`, the §3 "dark shadows stronger + black" rule; forced-light string mirrors the
+  light value). The three panels use `box-shadow:var(--sh-up)`. Verified in dark mode + the forced-dark toggle
+  (the dual-home check) — the slide-up elevation cue is visible again.
 
-### UXP-62 ☐ Agenda Calendar grid diverges from the date-picker grid (P1/P3) 🟢
-- **Problem:** two `role="grid"` calendars behave differently — the Schedule-dialog picker (`buildDatePicker`)
-  supports PageUp/PageDown month nav and wraps weeks in `role="row"`; the agenda Calendar
-  (`renderAgendaCalendar`) handles only Arrows/Home/End and appends cells directly to the grid (no
-  `role="row"` — an incomplete ARIA grid).
-- **Violates:** P1 / P3. **Target:** add PageUp/PageDown + `role="row"` weeks to the agenda grid to match.
+### UXP-62 ✓ Agenda Calendar grid diverges from the date-picker grid (P1/P3) 🟢 — **RESOLVED**
+- **Problem:** two `role="grid"` calendars behaved differently — `buildDatePicker` wrapped weeks in
+  `role="row"` and supported PageUp/PageDown month nav; the agenda `renderAgendaCalendar` appended cells
+  directly to the grid (no `role="row"`) and handled only Arrows/Home/End.
+- **Fix:** brought `renderAgendaCalendar` to parity. `paint()` now groups the 42 cells into six
+  `.agc-week` `role="row"` wrappers (`.agc-week{display:contents}`, mirroring `.cal-week` so the CSS grid is
+  untouched). PageUp/PageDown page the month (`navMonth(±1)` repaint) and restore focus to the same 42-cell
+  slot in the new month. Verified: 6 `role="row"` weeks × 7 cells; PageDown June→July, PageUp July→June.
 
 ### UXP-63 ☐ Pill body-click semantics diverge without a signal (P1) 🟢
 - **Problem:** body-click means **re-roll** (dice/grammar/markov/est/pick-var), **edit** (math/formula-var/
@@ -480,19 +486,26 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   `prop:`/`has:`, `is:<value>` for `is:`, `due: <val>`/`start: <val>` for date terms. Fallback:
   title slice (previous behaviour). Wired into `searchWorkspace` — `snippet: searchSnippet(n, terms)`.
 
-### UXP-65 ☐ Saved-search / workspace-result chips are full Tab stops (P3/P1) 🟢
+### UXP-65 ✓ Saved-search / workspace-result chips are full Tab stops (P3/P1) 🟢 — **RESOLVED (documented deviation)**
 - **Problem:** `renderSavedSearches` chips and `renderWorkspaceSearchResults` rows use `tabindex="0"`, while
-  every other in-content chip/pill is deliberately `tabindex="-1"` (roving, not a Tab stop). A focus-shown
-  panel injects several Tab stops into the chrome order each time the box is focused.
-- **Violates:** P3 / P1 (chip convention). **Target:** either move to `-1` + arrow-roving, or record the
-  transient-panel Tab-group as a deliberate deviation.
+  every other in-content chip/pill is deliberately `tabindex="-1"` (roving, not a Tab stop).
+- **Resolution (option B — recorded carve-out, no code change):** the `#search-hint` panel is a **transient,
+  focus-shown** surface (present only while the search box has focus, dismissed on Esc/blur) holding a small,
+  bounded set of already-labeled, keyboard-operable controls. Tabbing from the search box through them is
+  reasonable; the panel is a **sanctioned transient Tab-group**, now documented in `ux-discipline.md` §3
+  alongside the other recorded exceptions. (Option A — `-1` + arrow-roving across two chip groups wired
+  through the search input — is disproportionate effort + input-conflict risk for a 🟢 nit, and is not
+  pursued.) `:focus-visible` rings are kept as-is.
 
-### UXP-66 ☐ Gantt/calendar urgency is color-only on the bars/items (P3-4) 🟢
-- **Problem:** Gantt bar / calendar item-chip urgency (overdue/today/soon/future) is carried purely by
-  background/border colour — unlike the date *chips* (urgency in text) and the `aria-label` (correct). A
-  colour-blind sighted user can't distinguish an overdue bar from an upcoming one on the chart.
-- **Violates:** P3-4. **Target:** a small non-colour cue (leading `!` / hatch on overdue) or a textual
-  urgency suffix on calendar items.
+### UXP-66 ✓ Gantt/calendar urgency is color-only on the bars/items (P3-4) 🟢 — **RESOLVED**
+- **Problem:** Gantt bar / calendar item-chip urgency was carried purely by background/border colour — a
+  colour-blind sighted user couldn't distinguish an overdue item from an upcoming one (the date *chips* and
+  the `aria-label` already convey urgency in text).
+- **Fix:** a pure, pinned helper `urgencyMark(state)` → `'! '` for `overdue`, `''` otherwise (the critical
+  state only, so the cue stays meaningful). Prefixed onto the visible text of **both** surfaces — the Gantt
+  name (left column, paired with its bar) and the calendar item-chip — so an overdue item reads `! Title`.
+  The marker is visual-only (the elements' `aria-label` already states urgency, so no double-announce).
+  Verified: overdue items marked, non-overdue unmarked, on both the Gantt and the calendar.
 
 ### UXP-67 ☐ Polish cluster — minor P1/P3/visual nits 🟢
 A grab-bag of small, independent items from the audit (low priority; each a one-line-ish fix):

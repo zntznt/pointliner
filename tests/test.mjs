@@ -5176,6 +5176,17 @@ test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today fl
   assert.ok(cells.every(x => Array.isArray(x.items)));
 });
 
+// ── urgencyMark (UXP-66) — non-colour cue for overdue agenda items ───────────
+test('urgencyMark — only overdue earns a marker; others return empty', () => {
+  assert.equal(c.urgencyMark('overdue'), '! ');
+  assert.equal(c.urgencyMark('today'), '');
+  assert.equal(c.urgencyMark('soon'), '');
+  assert.equal(c.urgencyMark('future'), '');
+  assert.equal(c.urgencyMark('none'), '');
+  assert.equal(c.urgencyMark(undefined), '');
+  assert.equal(c.urgencyMark(''), '');
+});
+
 test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
   const today = c.dueDateToday();
   const q1 = host(c.parseSearchQuery('due:today'));
