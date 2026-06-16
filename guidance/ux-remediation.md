@@ -459,6 +459,18 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
 - **Disposition:** mostly an accepted design tension (a deterministic pill has nothing to reroll; a deck
   advances by design). **Target:** record an explicit P1 carve-out and ensure each pill's `title`/`aria-label`
   states its click outcome (most already do — verify completeness).
+- **Stronger target (independent convergence — recorded, not overriding the disposition above):** a
+  separate interaction-coherence audit — *blind to this register* — reached the **same finding**
+  independently and argued for a structural fix that also serves the **sighted** user (the
+  aria-label-only target serves AT, not visual predictability). Approach: a pure, pinned
+  **`interactionClass(type)` → `'generator' | 'reference' | 'navigator' | 'structural'`** consumed by
+  **both** the pill renderers (one shared *visual* re-roll cue across every generator) **and** the
+  content `mousedown` dispatch (the class's action) — so a generator can't be added without the
+  cue/behavior and a reference can never re-roll. Two blind passes converging here is a fair argument
+  that the lighter target under-serves predictability; **pursue if a shared visual cue is later
+  wanted**, weighed against the project's deliberate-distinct-pills philosophy (deck-no-pencil,
+  links-as-text). *(Source: the June 2026 interaction-coherence audit; its other findings were
+  already covered by UXP-40…67 or declined — see the audit eval thread.)*
 
 ### UXP-64 ☐ Workspace-search snippet rarely reveals *why* a row matched (P4) 🟢
 - **Problem:** the "Found in other notes" snippet is derived from the same `textForDisplay(n)` as the title
