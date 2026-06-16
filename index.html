@@ -12836,7 +12836,10 @@ function dlOpml() {
 }
 async function writeH(h) {
   try { const w=await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); }
-  catch(e) { alert('Save failed: '+e.message); }
+  catch(e) {
+    if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the workspace folder — reconnect, or use Save As to keep your work.');
+    else alert('Save failed: ' + e.message);
+  }
 }
 
 // ─── workspace folder (connect · persist · reconnect) ─────────────────────────
@@ -13006,14 +13009,26 @@ async function disconnectWorkspace() {
   flashHint('Folder disconnected — the file is still there.');
 }
 
+// Single degrade point: clear the folder-backed file, flip the affordance to Reconnect,
+// and warn once. Called from both the auto-write path and the manual Save path so they
+// behave identically on access loss.
+function degradeWorkspace(msg) {
+  workspaceFile = null;
+  if (workspaceDir) { pendingDir = workspaceDir; workspaceDir = null; renderWorkspaceAffordance(); }
+  showWorkspaceWarn(msg || 'Lost access to the workspace folder — reconnect, or use Save As to keep your work.');
+}
+
 // Continuous auto-write to the folder-backed file (brief #4). Called (not awaited) on
 // every debounced autosave tick when the doc is folder-backed. A coalesced async flush:
 // at most one write is in flight; if edits land mid-write, _wsPending re-runs it once
 // with the latest tree (so the file always converges on the newest state, never a torn
 // or stale write). Same withFoldedActive serialize as Save/autosave. A real-disk write
 // counts as saved → markClean. On lost access (permission revoked / file or folder gone)
-// it degrades: stop auto-writing, flip the affordance to Reconnect, warn ONCE — never a
-// per-keystroke alert, never silent loss.
+// it degrades via degradeWorkspace: stop auto-writing, flip the affordance to Reconnect,
+// warn ONCE — never a per-keystroke alert, never silent loss.
+// NOTE: deleting only the file while the folder survives is not reliably detected —
+// Chrome doesn't dependably throw on the next write to a file removed under a live handle,
+// so no warning fires in that specific case. No polling detector is built.
 async function flushWorkspaceFile() {
   if (!workspaceFile) return;
   if (_wsWriting) { _wsPending = true; return; } // coalesce — re-run after the in-flight write
@@ -13024,9 +13039,7 @@ async function flushWorkspaceFile() {
     await w.write(opml); await w.close();
     markClean();
   } catch (e) {
-    workspaceFile = null;
-    if (workspaceDir) { pendingDir = workspaceDir; workspaceDir = null; renderWorkspaceAffordance(); }
-    showWorkspaceWarn('Lost access to the workspace folder — reconnect or use Save to keep your work.');
+    degradeWorkspace();
   } finally {
     _wsWriting = false;
     if (_wsPending) { _wsPending = false; flushWorkspaceFile(); }

@@ -602,9 +602,14 @@ Implemented:
     converges on the newest state, never torn or stale. A real-disk write counts as saved, so
     the **dirty dot clears ~debounce after you pause** (reads as "saved" — a later polish may
     add an explicit Saving…/Saved indicator). **Lost access** (permission revoked / file or
-    folder gone) degrades: auto-write stops, the affordance flips to **Reconnect**, and a
-    single soft, dismissible banner shows (`showWorkspaceWarn`) — never a per-keystroke alert,
-    never silent loss; manual Save still works. Reconnecting re-arms continuous write for that
+    folder gone) degrades via a single `degradeWorkspace()` helper called from both the
+    auto-write path and the manual Save path: auto-write stops, the affordance flips to
+    **Reconnect**, and a single soft, dismissible banner shows (`showWorkspaceWarn`) — never
+    a per-keystroke alert, never silent loss; manual Save still works. **Known gap:** deleting
+    only the file while the folder survives is not reliably detected — Chrome doesn’t
+    dependably throw on the next write to a file removed under a live handle, so the banner
+    may not fire in that specific case; data is never lost (localStorage buffer and Ctrl+S /
+    Save As both recover it). No polling detector is built. Reconnecting re-arms continuous write for that
     same session's doc. **Manual single-file mode is unchanged** — a doc opened via Open or
     saved via Save As (not in the workspace) keeps manual-Save behavior; continuous write is
     the workspace tier only. *(Not yet: new/opened docs auto-landing in the folder, or a
