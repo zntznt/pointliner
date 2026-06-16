@@ -7355,7 +7355,7 @@ function exitEdit(content, node) {
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   node.checked = todoDoneFromText(node.text);
-  if (!_suppressPruneOnFlush) { pruneDice(node); pruneMarkov(node); pruneMath(node); pruneEst(node); pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node); } // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
+  if (!_suppressPruneOnFlush) pruneArtifacts(node); // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   markDirty();
@@ -12641,6 +12641,13 @@ function editDice(node, key) {
   });
 }
 
+// Drop every sidecar record whose inline token no longer appears in node.text — the
+// exit-edit cleanup, reused by the caret-split (UXP-60) so each half sheds the other
+// half's orphaned artifact records.
+function pruneArtifacts(node) {
+  pruneDice(node); pruneMarkov(node); pruneMath(node); pruneEst(node);
+  pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node);
+}
 // Drop dice records whose [[dice:KEY]] token no longer appears in the text.
 function pruneDice(node) {
   if (!node.dice?.length) return;
@@ -12693,15 +12700,72 @@ function rerenderNode(id) {
 
 // ─── tree mutations ───────────────────────────────────────────────────────────
 
+// Pure core (UXP-60): split `text` at `offset` for an Enter-keystroke sibling.
+// The leading half stays on the source; the trailing half — prefixed with the
+// format-continuation marker so a split to-do/quote stays one — becomes the new
+// sibling. Offset is clamped to [0, len]; an offset at len yields an empty trailing
+// half (the classic "append an empty continuation" case the caller falls through to).
+function splitForSibling(text, offset, contPrefix) {
+  const s = text == null ? '' : String(text);
+  const o = Math.max(0, Math.min(offset | 0, s.length));
+  return { before: s.slice(0, o), after: (contPrefix || '') + s.slice(o) };
+}
+
+// Token-keyed sidecars (the 8 with prune functions). Cloned whole onto a split's new
+// half; each node's pruneArtifacts then sheds the records whose token lives elsewhere
+// (clone-both-then-prune — safer than partitioning by key). props/note stay on the
+// source: a split continues the text, not the point's metadata.
+const ARTIFACT_SIDECARS = ['footnotes','dice','markov','math','vars','grammar','est','seq'];
+function cloneArtifactSidecars(srcNode, dst) {
+  for (const k of ARTIFACT_SIDECARS) {
+    if (Array.isArray(srcNode[k])) dst[k] = srcNode[k].map(r => JSON.parse(JSON.stringify(r)));
+  }
+}
+
 function insertSiblingAfter(id) {
   const parent = parentOf(id);
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
   const srcNode = nodeById(id);
-  // Format-continuation aid: inside a formatted node the next point continues the
-  // format BY TEXT — a new to-do gets its `- [ ]` (keyword form continues the same
-  // keyword, DONE restarts as TODO), a new quote its `> `. The type then derives
-  // from that markdown. Elsewhere, type inheritance covers ul/ol/para as before.
+
+  // Caret-aware split (UXP-60): when the source point is actively being edited and
+  // the caret has a trailing half, that half moves to the new sibling (children stay
+  // on the leading half — peer-standard). An empty trailing half falls through to the
+  // classic empty-continuation append below. Mirrors applyInlineReplace's fold dance:
+  // capture the unfolded caret, blur to commit (refold + promote + prune → folded
+  // text), then foldedOffsetFor translates — and snaps the caret out of any unfolded
+  // {…} pill (never severs a working artifact) and absorbs promotions.
+  const ed = (srcNode && srcNode.type !== 'base')
+    ? document.querySelector(`.node-content[data-id="${id}"][data-editing]`)
+    : null;
+  const off = ed ? getCaretOffset(ed) : -1;
+  if (ed && off >= 0 && off < editableText(ed).length) {
+    pushUndo();                                   // flush typing (folded) + snapshot tree
+    ed.blur();                                    // exit edit: refold + promote + prune → srcNode.text folded
+    const foff = foldedOffsetFor(srcNode, off);
+    const cont = continuationPrefix(srcNode.text);
+    const { before, after } = splitForSibling(srcNode.text, foff, cont);
+    const nn = mkNode(after, deriveTypeFromText(after) || 'ul');
+    cloneArtifactSidecars(srcNode, nn);           // clone-both-then-prune
+    nn.checked = todoDoneFromText(after);
+    srcNode.text = before;
+    const bt = deriveTypeFromText(before);
+    if (bt) srcNode.type = bt;
+    else if (srcNode.type in BLOCK_PREFIX_MAP || srcNode.type === 'todo' || srcNode.type === 'divider' || srcNode.type === 'ol') srcNode.type = 'ul';
+    srcNode.checked = todoDoneFromText(before);
+    pruneArtifacts(srcNode);                       // source text is final → drop the moved half's orphans
+    parent.children.splice(idx + 1, 0, nn);
+    nodeMap.set(nn.id, nn); parentMap.set(nn.id, parent);
+    markDirty();
+    render();
+    focusNodeAtOffset(nn.id, cont.length);         // caret at the START of the new half's body
+    return;
+  }
+
+  // Classic empty-continuation append: inside a formatted node the next point
+  // continues the format BY TEXT — a new to-do gets its `- [ ]` (keyword form
+  // continues the same keyword, DONE restarts as TODO), a new quote its `> `. The
+  // type then derives from that markdown. Elsewhere, type inheritance covers ul/ol/para.
   const cont = srcNode ? continuationPrefix(srcNode.text) : '';
   const nn = cont
     ? mkNode(cont, deriveTypeFromText(cont) || 'ul')
@@ -12826,6 +12890,27 @@ function focusNode(id) {
     const r = document.createRange();
     r.selectNodeContents(el); r.collapse(false);
     const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  });
+}
+
+// Like focusNode but lands the caret at a logical character `offset` (unfolded
+// coordinates — enterEdit unfolds first) instead of at the end. Used by the
+// caret-split (UXP-60) to park the caret at the start of the new half's body.
+function focusNodeAtOffset(id, offset) {
+  requestAnimationFrame(() => {
+    ensureRowVisible(id);
+    const el = document.querySelector(`.node-content[data-id="${id}"]`);
+    if (!el) return;
+    const node = nodeById(id);
+    if (node?.type === 'base') return;
+    if (!el.dataset.editing && node) enterEdit(el, node);
+    el.focus();
+    try { setCaretByOffset(el, offset); }
+    catch (_) {
+      const r = document.createRange();
+      r.selectNodeContents(el); r.collapse(false);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    }
   });
 }
 

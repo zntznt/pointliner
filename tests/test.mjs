@@ -2561,7 +2561,8 @@ test('@-dialog insert keeps its sidecar record (regression: mid-insert prune dro
   // mode on click. The flush now suppresses pruning; the next real exit prunes normally.
   assert.ok(_src.includes('_suppressPruneOnFlush'), 'prune-suppression flag missing');
   assert.match(_src, /_suppressPruneOnFlush = true;\s*ed\.blur\(\);\s*_suppressPruneOnFlush = false;/, 'flush must wrap ed.blur() in the suppression flag');
-  assert.match(_src, /if \(!_suppressPruneOnFlush\)\s*\{[\s\S]{0,200}pruneGrammar\(node\)/, 'exitEdit prune must honor the flag');
+  assert.match(_src, /if \(!_suppressPruneOnFlush\)\s*pruneArtifacts\(node\)/, 'exitEdit prune must honor the flag');
+  assert.match(_src, /function pruneArtifacts\(node\)\s*\{[\s\S]{0,200}pruneGrammar\(node\)/, 'pruneArtifacts bundles the per-type prunes incl. pruneGrammar');
 });
 
 test('rollPickSource: dice source rolls through the dice core', () => {
@@ -5333,4 +5334,60 @@ test('findOrCreateDatedEntry matches iso space-prefixed', () => {
   const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
   assert.equal(created, false);
   assert.equal(entry.id, 'h2');
+});
+
+// ─── splitForSibling (UXP-60: Enter splits at the caret) ──────────────────────
+test('splitForSibling caret-at-start: whole text moves to the trailing half', () => {
+  assert.deepEqual(host(c.splitForSibling('hello world', 0, '')), { before: '', after: 'hello world' });
+});
+
+test('splitForSibling caret-mid: clean split at the offset', () => {
+  assert.deepEqual(host(c.splitForSibling('hello world', 6, '')), { before: 'hello ', after: 'world' });
+});
+
+test('splitForSibling caret-at-end: empty trailing half (classic-append case)', () => {
+  assert.deepEqual(host(c.splitForSibling('hello world', 11, '')), { before: 'hello world', after: '' });
+});
+
+test('splitForSibling continues a to-do marker on the trailing half', () => {
+  // '- [ ] buy milk', caret after the marker (offset 6) → empty to-do + a to-do with the text
+  assert.deepEqual(
+    host(c.splitForSibling('- [ ] buy milk', 6, '- [ ] ')),
+    { before: '- [ ] ', after: '- [ ] buy milk' });
+});
+
+test('splitForSibling continues a quote marker on the trailing half', () => {
+  assert.deepEqual(
+    host(c.splitForSibling('> hello there', 8, '> ')),
+    { before: '> hello ', after: '> there' });
+});
+
+test('splitForSibling inside-prefix: literal slice (documents v1 behavior)', () => {
+  // Caret inside the raw marker — the literal formula prefixes the trailing half; the
+  // leading half keeps the partial marker. A rare edit-mode edge, pinned for stability.
+  assert.deepEqual(
+    host(c.splitForSibling('- [ ] buy milk', 2, '- [ ] ')),
+    { before: '- ', after: '- [ ] [ ] buy milk' });
+});
+
+test('splitForSibling clamps the offset to [0, len]', () => {
+  assert.deepEqual(host(c.splitForSibling('hi', 99, '')), { before: 'hi', after: '' });
+  assert.deepEqual(host(c.splitForSibling('hi', -5, '')), { before: '', after: 'hi' });
+});
+
+test('splitForSibling tolerates null/undefined text', () => {
+  assert.deepEqual(host(c.splitForSibling(null, 0, '')), { before: '', after: '' });
+  assert.deepEqual(host(c.splitForSibling(undefined, 3, 'x')), { before: '', after: 'x' });
+});
+
+test('caret-split wiring: insertSiblingAfter has the caret-aware path', () => {
+  // Source-introspection pins: the split path clones sidecars and prunes both halves,
+  // lands the caret at the new half's body start, and falls through when the trailing
+  // half is empty (classic empty-continuation append).
+  assert.ok(_src.includes('cloneArtifactSidecars'), 'cloneArtifactSidecars missing');
+  assert.ok(_src.includes('focusNodeAtOffset'), 'focusNodeAtOffset missing');
+  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1200}foldedOffsetFor\(srcNode, off\)/,
+    'insertSiblingAfter must translate the caret via foldedOffsetFor');
+  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1400}splitForSibling\(srcNode\.text, foff, cont\)/,
+    'insertSiblingAfter must split on the folded text at the translated offset');
 });
