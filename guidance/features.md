@@ -584,51 +584,63 @@ Implemented:
     C2); preserving the author's theme/accent prefs (those ride the JSON autosave, not the
     OPML); a localStorage-vs-snapshot merge (the snapshot is authoritative on load).
 
-- **Workspace folder** (Phase 1, steps 3–4 — `guidance/roadmap.md`) — a durable on-disk
-  backing folder, the "hard gate" for the coming multi-document workspace. **File menu →
+- **Workspace folder** (Phase 1, steps 3–5a — `guidance/roadmap.md`) — a durable on-disk
+  backing folder, the “hard gate” for the coming multi-document workspace. **File menu →
   Connect folder…** (Chromium only, gated on `'showDirectoryPicker' in window`) picks a
   folder, writes the current document into it once as a `.opml`, and **remembers the
-  folder** so the app auto-reconnects next launch. Mental model: *"put this notebook in a
-  folder I'll remember."*
+  folder** so the app reopens the doc from disk on every subsequent load. Mental model:
+  *"put this notebook in a folder I’ll remember — the folder is the source of truth."*
   - **Reuses the existing Save path** — the folder just supplies the backing
     `fileHandle`; the initial write is `writeH` (the same OPML writer as Save As).
   - **Continuous auto-write** (Phase 1, step 4) — once a document is folder-backed
-    (`workspaceFile !== null` — set by Connect, this session), **every debounced edit writes
+    (`workspaceFile !== null` — set by Connect or reopen), **every debounced edit writes
     the OPML to its file automatically**, no manual Save. The localStorage autosave stays as
-    the sub-second crash buffer; the folder file is the durable store (so the continuous
-    write still runs even when the autosave is paused for a too-large tree). The writer
-    (`flushWorkspaceFile`) is a **coalesced async flush** — at most one write in flight; if
-    edits land mid-write, a single re-run with the latest tree follows, so the file always
-    converges on the newest state, never torn or stale. A real-disk write counts as saved, so
-    the **dirty dot clears ~debounce after you pause** (reads as "saved" — a later polish may
-    add an explicit Saving…/Saved indicator). **Lost access** (permission revoked / file or
-    folder gone) degrades via a single `degradeWorkspace()` helper called from both the
-    auto-write path and the manual Save path: auto-write stops, the affordance flips to
-    **Reconnect**, and a single soft, dismissible banner shows (`showWorkspaceWarn`) — never
-    a per-keystroke alert, never silent loss; manual Save still works. **Known gap:** deleting
-    only the file while the folder survives is not reliably detected — Chrome doesn’t
-    dependably throw on the next write to a file removed under a live handle, so the banner
-    may not fire in that specific case; data is never lost (localStorage buffer and Ctrl+S /
-    Save As both recover it). No polling detector is built. Reconnecting re-arms continuous write for that
-    same session's doc. **Manual single-file mode is unchanged** — a doc opened via Open or
-    saved via Save As (not in the workspace) keeps manual-Save behavior; continuous write is
-    the workspace tier only. *(Not yet: new/opened docs auto-landing in the folder, or a
-    multi-file switcher — those need collision-safe naming and are Phase 1, step 5.)*
+    the sub-second crash buffer (now with a `savedAt` timestamp); the folder file is the
+    durable store (so the continuous write still runs even when the autosave is paused for a
+    too-large tree). The writer (`flushWorkspaceFile`) is a **coalesced async flush** — at
+    most one write in flight; if edits land mid-write, a single re-run with the latest tree
+    follows, so the file always converges on the newest state, never torn or stale. A
+    real-disk write counts as saved, so the **dirty dot clears ~debounce after you pause**.
+    **Lost access** (permission revoked / file or folder gone) degrades via a single
+    `degradeWorkspace()` helper called from both the auto-write path and the manual Save
+    path: auto-write stops, the affordance flips to **Reconnect**, and a single soft,
+    dismissible banner shows (`showWorkspaceWarn`) — never a per-keystroke alert, never
+    silent loss; manual Save still works. **Known gap:** deleting only the file while the
+    folder survives is not reliably detected — Chrome doesn’t dependably throw on the next
+    write to a file removed under a live handle, so the banner may not fire in that specific
+    case; data is never lost (localStorage buffer and Ctrl+S / Save As both recover it). No
+    polling detector is built. **Manual single-file mode is unchanged** — a doc opened via
+    Open or saved via Save As (not in the workspace) keeps manual-Save behavior; continuous
+    write is the workspace tier only. *(Not yet: new/opened docs auto-landing in the folder,
+    or a multi-file switcher — those need collision-safe naming and are Phase 1, step 5b.)*
+  - **Reopen on load — the folder is the source of truth** (Phase 1, step 5a): on every
+    load after the initial connect, `reopenStoredWorkspace` reads the stored `{ dir, name }`
+    from IndexedDB, verifies reachability (`reopenWorkspaceDoc` — `requestPermission`
+    re-grants even a deleted folder, so the grant alone is not proof), and applies the
+    **newer-wins rule**: if `file.lastModified ≥ lastAutosaveSavedAt()` the folder copy
+    wins and the doc is reopened; otherwise the localStorage copy (which may hold
+    post-degrade edits) is kept and the write target is rebound so the next edit
+    reconverges the two. Either way the doc is folder-backed and auto-write resumes.
+    The shared snapshot (C1) is authoritative and skips this. A gone file/folder is
+    forgotten gracefully (IndexedDB key deleted, offers Connect again). **Reconnect
+    (user gesture)** also verifies reachability: if the folder was deleted, it now
+    honestly says "no longer available" and returns to the Connect state instead of
+    claiming success.
   - **Persistence:** a `FileSystemDirectoryHandle` is structured-cloneable but not
-    JSON-serializable, so it can't ride the localStorage autosave — it lives in **IndexedDB**
+    JSON-serializable, so it can’t ride the localStorage autosave — it lives in **IndexedDB**
     (`idbOpen`/`idbGet`/`idbSet`/`idbDel`, a single `kv` store, key `workspaceDir`).
-  - **Reconnect on load:** `queryPermission` needs no gesture, so a still-granted handle
-    reconnects **silently**; a handle that needs re-permission becomes `pendingDir` and the
-    menu shows **Reconnect folder** (re-requesting permission needs a user gesture). A
-    moved/deleted folder is forgotten gracefully (no crash, offers Connect again).
-  - **Disconnect** forgets the connection only — it never deletes the file or the folder;
-    the backing `fileHandle` stays, so Save still writes the same file.
+    The value is `{ dir, name }` (handle + file name); pre-5a stores (raw `dir`) trigger a
+    silent one-time re-connect prompt on next load.
+  - **Disconnect** forgets the connection and stops auto-writing. Does not delete the file
+    or folder; manual Save still writes the same file.
   - **Affordance state machine:** the pure core `workspaceAffordance({hasWorkspace,
     connected, pending})` → `hidden | connected | reconnect | connect` (the gate wins,
     then connected, then pending). The fresh-file name comes from `workspaceFileName(doc,
     currentName)` (keep a real name; else derive from `firstLineTitle(doc)`; else
-    `outline`; single `.opml` suffix; path-separators/reserved chars sanitized). Both pure
-    + Node-tested; the picker, IndexedDB, and re-permission flow are browser-side
+    `outline`; single `.opml` suffix; path-separators/reserved chars sanitized).
+    `lastAutosaveSavedAt()` reads `savedAt` from the localStorage autosave payload (0 if
+    absent — covers fresh sessions and legacy saves without the field). All three pure +
+    Node-tested; the picker, IndexedDB, and re-permission flow are browser-side
     (Chromium-manual-verified).
   - **Non-Chromium** (Firefox/Safari): the menu item is simply hidden — everything else
     works as today.

@@ -3517,6 +3517,35 @@ test('workspaceFileName: sanitizes path separators and reserved characters', () 
   assert.equal(c.workspaceFileName(odd, 'unsaved'), 'outline.opml');
 });
 
+test('lastAutosaveSavedAt: returns 0 when localStorage has no autosave', () => {
+  // The vm sandbox's localStorage stub returns null from getItem — same as a fresh session.
+  assert.equal(c.lastAutosaveSavedAt(), 0);
+});
+
+test('lastAutosaveSavedAt: returns the savedAt timestamp when present', () => {
+  const ls = c._context.localStorage;
+  const orig = ls.getItem;
+  ls.getItem = () => JSON.stringify({ savedAt: 1_700_000_000_000 });
+  assert.equal(c.lastAutosaveSavedAt(), 1_700_000_000_000);
+  ls.getItem = orig;
+});
+
+test('lastAutosaveSavedAt: returns 0 for a payload without savedAt (legacy autosave)', () => {
+  const ls = c._context.localStorage;
+  const orig = ls.getItem;
+  ls.getItem = () => JSON.stringify({ root: {}, fileName: 'test.opml' });
+  assert.equal(c.lastAutosaveSavedAt(), 0);
+  ls.getItem = orig;
+});
+
+test('lastAutosaveSavedAt: returns 0 for malformed JSON', () => {
+  const ls = c._context.localStorage;
+  const orig = ls.getItem;
+  ls.getItem = () => 'not json {{{';
+  assert.equal(c.lastAutosaveSavedAt(), 0);
+  ls.getItem = orig;
+});
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
