@@ -987,6 +987,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 /* multi-select */
 .node-selected>.node-row{background:color-mix(in srgb,var(--acc) 10%,transparent);border-radius:4px}
 @media(prefers-color-scheme:dark){.node-selected>.node-row{background:color-mix(in srgb,var(--acc) 12%,transparent)}}
+.node-cursor>.node-row{background:color-mix(in srgb,var(--acc) 4%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 20%,transparent);outline-offset:-1px;border-radius:4px}
 @keyframes bar-up{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 #node-sel-bar{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px 10px;display:none;align-items:center;gap:6px;box-shadow:var(--sh-1);font-size:13px;white-space:nowrap}
 #node-sel-bar.on{display:flex;animation:bar-up .16s ease}
@@ -1315,6 +1316,7 @@ let nodeMap   = new Map(); // id → node
 let parentMap = new Map(); // id → parent node (null for root)
 let selectedIds  = new Set();
 let selAnchorId  = null;
+let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
@@ -7274,11 +7276,13 @@ function enterEdit(content, node) {
     content.contentEditable = 'true';
     content.textContent = node.text;
     activeContentId = node.id;
+    selFocusId = node.id;
     scheduleReconcile();
     return;
   }
   if (selectedIds.size > 0) clearSelection();
   selAnchorId = node.id;
+  selFocusId = node.id;
   content.dataset.editing = '1';
   content.dataset.prevText = node.text; // baseline for a lightweight text-undo entry
   unfoldArtifacts(node); // inline-able [[type:key]] tokens → editable {…} grammar text
@@ -7663,16 +7667,19 @@ function onKeyDown(e, id, content) {
 function clearSelection() {
   selectedIds.clear();
   selAnchorId = null;
+  selFocusId  = null;
   updateSelVisuals();
   updateNodeSelBar();
 }
 
 function updateSelVisuals() {
   if (!vlist) return;
+  const showCursor = selectedIds.size === 0 && activeContentId == null;
   vlist.querySelectorAll('.node[data-id]').forEach(el => {
     const sel = selectedIds.has(el.dataset.id);
     el.classList.toggle('node-selected', sel);
     el.setAttribute('aria-selected', sel ? 'true' : 'false'); // treeitem state (UXP-19)
+    el.classList.toggle('node-cursor', showCursor && el.dataset.id === selFocusId);
   });
 }
 
@@ -7693,6 +7700,16 @@ function rangeSelectTo(id) {
   for (let i = lo; i <= hi; i++) selectedIds.add(flatRows[i].node.id);
   updateSelVisuals();
   updateNodeSelBar();
+}
+
+function flatRowStep(id, dir, rows, idx) {
+  rows = rows != null ? rows : flatRows;
+  idx  = idx  != null ? idx  : flatIndex;
+  const i = idx.get(id);
+  if (i == null) return null;
+  const ni = i + dir;
+  if (ni < 0 || ni >= rows.length) return null;
+  return rows[ni].node.id;
 }
 
 function getTopLevelSelected() {
@@ -15658,6 +15675,29 @@ document.addEventListener('keydown', e => {
   if (e.key==='Tab' && selectedIds.size > 0 && activeContentId == null) {
     e.preventDefault();
     if (e.shiftKey) outdentSelected(); else indentSelected();
+  }
+  // Arrow row-nav and Shift+Arrow range selection in non-editing state (UXP-57)
+  if ((e.key==='ArrowDown' || e.key==='ArrowUp') && activeContentId == null && !ctrl && !e.altKey) {
+    const ae = document.activeElement;
+    if (ae && ae.tagName === 'INPUT') return; // search box / other text inputs
+    if (!flatRows.length) return;
+    const dir = e.key === 'ArrowDown' ? 1 : -1;
+    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;
+    const nextId = flatRowStep(fromId, dir);
+    if (!nextId) return;
+    e.preventDefault();
+    if (e.shiftKey) {
+      if (!selAnchorId) selAnchorId = fromId;
+      selFocusId = nextId;
+      rangeSelectTo(nextId);
+    } else {
+      selectedIds.clear();
+      selAnchorId = nextId;
+      selFocusId  = nextId;
+      ensureRowVisible(nextId);
+      updateSelVisuals();
+      updateNodeSelBar();
+    }
   }
 });
 // Only block reload when data would genuinely be lost:

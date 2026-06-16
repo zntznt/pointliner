@@ -189,6 +189,7 @@ export function loadCores() {
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','urgencyMark',
     'todayISO','journalFileName','findOrCreateDatedEntry',
     'splitForSibling',
+    'flatRowStep',
   ];
   const cores = {};
   const missing = [];
