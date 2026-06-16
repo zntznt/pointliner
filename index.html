@@ -1177,6 +1177,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-save"><div class="cmd-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save</span><span class="cmd-desc">Write to the current file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Save a copy as a new OPML file</span></div></div>
   <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect folder…</span><span class="cmd-desc" id="workspace-desc">Save into a folder and reopen it automatically</span></div></div>
+  <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open, and create documents in the workspace</span></div></div>
   <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Workspace connected — Save writes here</span></div></div>
 
   <div class="fm-group">Export</div>
@@ -5897,6 +5898,81 @@ function openTemplatePicker(nodeId) {
   ioCard.setAttribute('aria-label', 'Stamp a template');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
+}
+
+// The document switcher (brief #5b): an io-card list of the connected folder's .opml docs.
+// Click a row → switch; trash → delete (confirmed); "+ New document" → create. Rows are
+// keyboard-operable (↑/↓ move, Enter switches, Delete removes). Re-renders in place after a
+// delete (the list shrinks; deleting the current doc switches first). Mirrors the
+// openTemplatePicker list pattern (same .tpl-* CSS), so it reads identically.
+async function openWorkspaceSwitcher() {
+  if (!workspaceDir) return;
+  let names;
+  try { names = await listWorkspaceNames(workspaceDir); }
+  catch (e) { alert('Could not read the workspace folder: ' + (e.message || e)); return; }
+
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, { fa: 'fa-solid fa-folder-open', fb: '▣' });
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Documents';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const sub = document.createElement('p');
+  sub.style.cssText = 'font-size:12px;color:var(--muted);margin:-2px 0 12px;line-height:1.5';
+  sub.textContent = 'Workspace: ' + (workspaceDir.name || 'folder');
+  ioCard.appendChild(sub);
+
+  if (names.length) {
+    const tlist = document.createElement('div'); tlist.className = 'tpl-list';
+    names.forEach(name => {
+      const isCur = name === fileName;
+      const row = document.createElement('div'); row.className = 'tpl-row';
+      const pick = document.createElement('button');
+      pick.className = 'tpl-pick'; pick.type = 'button';
+      pick.setAttribute('aria-label', 'Open ' + name + (isCur ? ' (current document)' : ''));
+      if (isCur) pick.setAttribute('aria-current', 'true');
+      const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = name;
+      const tag = document.createElement('span'); tag.className = 'tpl-count'; tag.textContent = isCur ? 'current' : '';
+      pick.append(nm, tag);
+      pick.addEventListener('click', async () => { closeIo(); await switchWorkspaceDoc(name); });
+      const del = document.createElement('button');
+      del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-trash-can', fb: '🗑' });
+      del.title = 'Delete'; del.setAttribute('aria-label', 'Delete ' + name);
+      del.addEventListener('click', async () => { if (await deleteWorkspaceDoc(name)) openWorkspaceSwitcher(); });
+      row.append(pick, del);
+      tlist.appendChild(row);
+    });
+    // ↑/↓ move between rows, Delete removes the focused row's doc (Enter is the button default).
+    tlist.addEventListener('keydown', e => {
+      const picks = [...tlist.querySelectorAll('.tpl-pick')];
+      const i = picks.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); picks[Math.min(i + 1, picks.length - 1)]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); picks[Math.max(i - 1, 0)]?.focus(); }
+      else if (e.key === 'Delete' && i >= 0) { e.preventDefault(); document.activeElement.closest('.tpl-row')?.querySelector('.io-btn')?.click(); }
+    });
+    ioCard.appendChild(tlist);
+  } else {
+    const empty = document.createElement('p');
+    empty.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 14px;line-height:1.55';
+    empty.textContent = 'No documents in this folder yet. Create one below.';
+    ioCard.appendChild(empty);
+  }
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const newBtn = document.createElement('button'); newBtn.className = 'io-btn'; newBtn.textContent = '+ New document';
+  newBtn.setAttribute('aria-label', 'New document in the workspace');
+  newBtn.addEventListener('click', async () => { closeIo(); await newWorkspaceDoc(); });
+  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', closeIo);
+  foot.append(newBtn, closeBtn); ioCard.appendChild(foot);
+  ioCancel = closeIo;
+
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Workspace documents');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick[aria-current]') || ioCard.querySelector('.tpl-pick') || newBtn).focus(); });
 }
 
 // Stamp a fresh copy of a saved template as a new point. Replaces the invoking
@@ -12776,6 +12852,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
 }
 
 async function newFile() {
+  if (workspaceDir) { await newWorkspaceDoc(); return; }   // folder connected → the new doc lands in the notebook (brief #5b)
   if (dirty && !await openConfirmDialog({
     title: 'Discard unsaved changes?',
     message: 'Your current outline has unsaved changes. Starting a new file will discard them permanently.',
@@ -12860,11 +12937,13 @@ let _wsWarned = false;     // one lost-access warning per event — never re-nag
 const WORKSPACE_KEY = 'workspaceDir';
 
 // Pure: the File-menu affordance state machine. Precedence — the capability gate wins
-// first, then a live connection, then a rehydrated-but-unpermissioned handle, else the
-// offer to connect. (Node-testable; no DOM.)
-function workspaceAffordance({ hasWorkspace, connected, pending }) {
+// first, then a live connection (split by whether the current doc is folder-backed:
+// 'connected' = Save writes here; 'connected-detached' = folder connected but this doc
+// isn't in it, Finding 8), then a rehydrated-but-unpermissioned handle, else the offer
+// to connect. (Node-testable; no DOM.)
+function workspaceAffordance({ hasWorkspace, connected, pending, backed }) {
   if (!hasWorkspace) return 'hidden';
-  if (connected) return 'connected';
+  if (connected) return backed ? 'connected' : 'connected-detached';
   if (pending) return 'reconnect';
   return 'connect';
 }
@@ -12896,6 +12975,35 @@ function workspaceFileName(doc, currentName) {
   return base + '.opml';
 }
 
+// Pure: a collision-safe filename within the folder (brief #5b). `existing` is the set of
+// names already present (array or Set); `base` is a workspaceFileName(...) result. If the
+// base is free, keep it; else insert '-2', '-3', … before the '.opml' suffix until free.
+// Case-insensitive compare (filesystems are often case-insensitive). (Node-testable.)
+function uniqueWorkspaceName(existing, base) {
+  const taken = new Set([...(existing || [])].map(n => String(n).toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  const stem = base.replace(/\.opml$/i, '');
+  for (let i = 2; ; i++) {
+    const cand = stem + '-' + i + '.opml';
+    if (!taken.has(cand.toLowerCase())) return cand;
+  }
+}
+
+// Pure: shape a raw directory listing into the document list — keep only '.opml' files
+// (case-insensitive), de-dupe (case-insensitive, first spelling wins), and sort locale-
+// aware/case-insensitive for a stable menu. (Node-testable; no DOM.)
+function workspaceDocList(names) {
+  const seen = new Set();
+  const out = [];
+  for (const n of (names || [])) {
+    if (!/\.opml$/i.test(n)) continue;
+    const lc = n.toLowerCase();
+    if (seen.has(lc)) continue;
+    seen.add(lc); out.push(n);
+  }
+  return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
 // ── IndexedDB handle store ────────────────────────────────────────────────────
 // A FileSystemDirectoryHandle is structured-cloneable but NOT JSON-serializable, so it
 // can't ride localStorage like the autosave snapshot — it must live in IndexedDB. A
@@ -12922,28 +13030,45 @@ async function idbDel(k) {
   return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite').objectStore('kv').delete(k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); });
 }
 
-// Reflect the current workspace state into the two File-menu rows. The connect/reconnect
-// action and the disconnect action are distinct button rows (each keyboard-operable, no
-// nested interactives); the connected state shows the disconnect row carrying the folder
-// name. Called on every menu open and after any state change.
+// Reflect the current workspace state into the File-menu rows: a connect/reconnect/
+// save-to-workspace action row, a "Switch document…" row, and a disconnect row (each
+// keyboard-operable, no nested interactives). The detached state (folder connected but
+// the current doc isn't in it — Finding 8) is honest about it and offers "Save to
+// workspace" instead of a misleading "Save writes here". Called on every menu open and
+// after any state change.
 function renderWorkspaceAffordance() {
   const connect = document.getElementById('btn-workspace');
   const disconnect = document.getElementById('btn-workspace-disconnect');
-  if (!connect || !disconnect) return;
-  const state = workspaceAffordance({ hasWorkspace, connected: !!workspaceDir, pending: !!pendingDir });
+  const switchBtn = document.getElementById('btn-workspace-switch');
+  if (!connect || !disconnect || !switchBtn) return;
+  const state = workspaceAffordance({ hasWorkspace, connected: !!workspaceDir, pending: !!pendingDir, backed: !!workspaceFile });
+  const name = workspaceDir?.name || 'folder';
+  const label = document.getElementById('workspace-label');
+  const desc = document.getElementById('workspace-desc');
+  // The "Switch document…" door is available whenever a folder is connected (either state).
+  switchBtn.style.display = (state === 'connected' || state === 'connected-detached') ? '' : 'none';
+
   if (state === 'connected') {
     connect.style.display = 'none';
     disconnect.style.display = '';
-    const name = workspaceDir?.name || 'folder';
     document.getElementById('workspace-dc-desc').textContent = 'Workspace: ' + name + ' — Save writes here';
+    disconnect.setAttribute('aria-label', 'Disconnect workspace folder ' + name);
+    return;
+  }
+  if (state === 'connected-detached') {
+    connect.style.display = '';
+    disconnect.style.display = '';
+    label.textContent = 'Save to workspace';
+    desc.textContent = 'Workspace: ' + name + ' · this document isn’t in it';
+    connect.setAttribute('aria-label', 'Save this document into the workspace folder ' + name);
+    connect.dataset.wsAction = 'save-to-workspace';
+    document.getElementById('workspace-dc-desc').textContent = 'Workspace: ' + name;
     disconnect.setAttribute('aria-label', 'Disconnect workspace folder ' + name);
     return;
   }
   disconnect.style.display = 'none';
   if (state === 'hidden') { connect.style.display = 'none'; return; }
   connect.style.display = '';
-  const label = document.getElementById('workspace-label');
-  const desc = document.getElementById('workspace-desc');
   if (state === 'reconnect') {
     label.textContent = 'Reconnect folder';
     desc.textContent = 'Grant access to “' + (pendingDir?.name || 'your folder') + '” again';
@@ -13015,6 +13140,86 @@ async function reopenWorkspaceDoc(dir, name) {
     document.getElementById('file-name').textContent = name; updateTitle();
   }
   _wsWarned = false;
+  return true;
+}
+
+// ── document switcher (brief #5b: the multi-doc workspace) ────────────────────
+// The connected folder is a notebook of .opml docs; these read/switch/create/delete
+// within it. switchWorkspaceDoc is a plain read (NOT reopenWorkspaceDoc — its newer-wins
+// compares against THIS doc's localStorage, which is wrong for a different file). Each
+// switch/create persists the new {dir,name} so reopen-on-load restores the doc you last
+// had open. Chromium-gated; the pure shaping (uniqueWorkspaceName/workspaceDocList) is
+// Node-tested, the FSA calls are browser-side (§8 manual-verified).
+
+// List the connected folder's .opml documents (shaped + sorted by the pure core).
+async function listWorkspaceNames(dir) {
+  const out = [];
+  for await (const [name, h] of dir.entries()) if (h.kind === 'file') out.push(name);
+  return workspaceDocList(out);
+}
+
+const DISCARD_CONFIRM = {
+  title: 'Discard unsaved changes?',
+  message: 'Your current document has unsaved changes. Switching documents will discard them permanently.',
+  confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+};
+
+// Switch to a different doc already in the folder. Dirty-guarded like Open.
+async function switchWorkspaceDoc(name) {
+  if (name === fileName) return true;
+  if (dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return false;
+  try {
+    const fh = await workspaceDir.getFileHandle(name);
+    adoptDoc(fromOpml(await (await fh.getFile()).text()), { fileName: name, fileHandle: fh, workspaceFile: fh });
+    await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
+    _wsWarned = false; renderWorkspaceAffordance(); return true;
+  } catch (e) { alert('Could not open “' + name + '”: ' + (e.message || e)); return false; }
+}
+
+// New document inside the folder (collision-safe). Reroutes File → New when a folder is
+// connected, so a fresh outline lands in the notebook and auto-writes from the first edit.
+async function newWorkspaceDoc() {
+  if (dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
+  const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), 'outline.opml');
+  const fh = await workspaceDir.getFileHandle(name, { create: true });
+  adoptDoc(mkRoot(), { fileName: name, fileHandle: fh, workspaceFile: fh });
+  await writeH(fh);                                   // materialize the empty doc on disk
+  await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
+  renderWorkspaceAffordance();
+  flashHint('New document “' + name + '” in the workspace');
+}
+
+// File the CURRENT (detached) document into the folder under a collision-safe name and
+// folder-back it (Finding 8's "Save to workspace" action). Like newWorkspaceDoc but keeps
+// the live root rather than starting blank.
+async function saveToWorkspaceDoc() {
+  if (!workspaceDir) return;
+  const base = workspaceFileName(root, fileName);
+  const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), base);
+  const fh = await workspaceDir.getFileHandle(name, { create: true });
+  fileHandle = fh; fileName = name; workspaceFile = fh; _wsWarned = false;
+  await writeH(fh);
+  await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
+  document.getElementById('file-name').textContent = name; updateTitle();
+  renderWorkspaceAffordance();
+  flashHint('Saved to workspace as “' + name + '”');
+}
+
+// Delete a doc from the folder (confirmed). If it was the current doc, fall through to the
+// first remaining doc, or a fresh new doc when the folder is now empty.
+async function deleteWorkspaceDoc(name) {
+  if (!await openConfirmDialog({
+    title: 'Delete “' + name + '”?',
+    message: 'This permanently removes the file from the workspace folder. This can’t be undone.',
+    confirmLabel: 'Delete', cancelLabel: 'Cancel',
+  })) return false;
+  try { await workspaceDir.removeEntry(name); }
+  catch (e) { alert('Could not delete “' + name + '”: ' + (e.message || e)); return false; }
+  if (name === fileName) {
+    const rest = await listWorkspaceNames(workspaceDir);
+    if (rest.length) await switchWorkspaceDoc(rest[0]);
+    else await newWorkspaceDoc();
+  }
   return true;
 }
 
@@ -14358,9 +14563,13 @@ document.getElementById('btn-open').addEventListener('click', () => { openFile()
 document.getElementById('btn-save').addEventListener('click', () => { saveFile(); closeFileMenu(); });
 document.getElementById('btn-save-as').addEventListener('click', () => { saveAsFile(); closeFileMenu(); });
 document.getElementById('btn-workspace').addEventListener('click', () => {
-  (document.getElementById('btn-workspace').dataset.wsAction === 'reconnect' ? reconnectWorkspace() : connectWorkspace());
+  const action = document.getElementById('btn-workspace').dataset.wsAction;
+  if (action === 'reconnect') reconnectWorkspace();
+  else if (action === 'save-to-workspace') saveToWorkspaceDoc();
+  else connectWorkspace();
   closeFileMenu();
 });
+document.getElementById('btn-workspace-switch').addEventListener('click', () => { openWorkspaceSwitcher(); closeFileMenu(); });
 document.getElementById('btn-workspace-disconnect').addEventListener('click', () => { disconnectWorkspace(); closeFileMenu(); });
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });

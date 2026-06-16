@@ -3475,14 +3475,52 @@ test('_docid: ensureDocId + toOpml pipeline produces a stable id', () => {
 test('workspaceAffordance: capability gate wins, then connected > pending > connect', () => {
   // gate first — !hasWorkspace is always 'hidden', even if connected/pending claim true
   assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: false, pending: false }), 'hidden');
-  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: true, pending: true }), 'hidden');
-  // connected beats a stale pending handle
-  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: false }), 'connected');
-  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: true }), 'connected');
+  assert.equal(c.workspaceAffordance({ hasWorkspace: false, connected: true, pending: true, backed: true }), 'hidden');
+  // connected + folder-backed beats a stale pending handle
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: false, backed: true }), 'connected');
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: true, backed: true }), 'connected');
   // a rehydrated-but-unpermissioned handle offers reconnect
   assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: false, pending: true }), 'reconnect');
   // nothing stored → offer to connect
   assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: false, pending: false }), 'connect');
+});
+
+test('workspaceAffordance: connected but not folder-backed → detached (Finding 8)', () => {
+  // folder connected, current doc NOT in it (e.g. an external file was opened)
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: false, backed: false }), 'connected-detached');
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: true,  backed: false }), 'connected-detached');
+  // backed flips it back to the plain connected state
+  assert.equal(c.workspaceAffordance({ hasWorkspace: true, connected: true, pending: false, backed: true }), 'connected');
+});
+
+test('uniqueWorkspaceName: returns the base when free', () => {
+  assert.equal(c.uniqueWorkspaceName([], 'outline.opml'), 'outline.opml');
+  assert.equal(c.uniqueWorkspaceName(['other.opml'], 'outline.opml'), 'outline.opml');
+});
+
+test('uniqueWorkspaceName: inserts -2, -3, … before .opml on collision', () => {
+  assert.equal(c.uniqueWorkspaceName(['outline.opml'], 'outline.opml'), 'outline-2.opml');
+  assert.equal(c.uniqueWorkspaceName(['outline.opml', 'outline-2.opml'], 'outline.opml'), 'outline-3.opml');
+  // a Set works as the existing-collection too
+  assert.equal(c.uniqueWorkspaceName(new Set(['outline.opml']), 'outline.opml'), 'outline-2.opml');
+});
+
+test('uniqueWorkspaceName: case-insensitive collision detection', () => {
+  assert.equal(c.uniqueWorkspaceName(['OUTLINE.OPML'], 'outline.opml'), 'outline-2.opml');
+  assert.equal(c.uniqueWorkspaceName(['Notes.opml'], 'notes.opml'), 'notes-2.opml');
+});
+
+test('workspaceDocList: keeps only .opml, de-dupes, sorts case-insensitive', () => {
+  assert.deepEqual(
+    host(c.workspaceDocList(['b.opml', 'a.opml', 'readme.txt', 'C.OPML'])),
+    ['a.opml', 'b.opml', 'C.OPML']
+  );
+  // de-dupe is case-insensitive, first spelling wins
+  assert.deepEqual(host(c.workspaceDocList(['Doc.opml', 'doc.opml'])), ['Doc.opml']);
+  // non-opml and empties filtered; empty input → []
+  assert.deepEqual(host(c.workspaceDocList(['notes.md', 'x.opml'])), ['x.opml']);
+  assert.deepEqual(host(c.workspaceDocList([])), []);
+  assert.deepEqual(host(c.workspaceDocList(undefined)), []);
 });
 
 test('firstLineTitle: first point\'s display text, first line, markdown-stripped', () => {
