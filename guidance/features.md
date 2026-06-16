@@ -671,3 +671,22 @@ Implemented:
     action. A **Copy link** button copies the current page URL so the user can paste it into
     Chrome or Edge and open the workspace there. No banner, no nag, no dismissal state — the
     row is always visible on non-Chromium and invisible on Chromium.
+  - **Cross-document link index** (CF-1, Phase 2 step 5 foundation — *internal, no UI*):
+    on connecting/reopening/switching/creating/deleting/saving-to a workspace, the folder is
+    scanned (`scanWorkspace`) and every `.opml` file's links are folded into one in-memory
+    cross-document index (`buildWorkspaceIndex`), held on the module global `workspaceIndex`
+    (`null` when no workspace; nulled on disconnect/degrade). This is the foundation CF-2 (the
+    cross-doc token), CF-3 (the picker) and CF-4 (cross-doc backlinks) will read — **no token,
+    rendering, or navigation lands here.** A **cross-doc-aware token** carries an optional
+    `docId` before the `#` (`[[docB#nodeId|label]]`); a bare `[[#nodeId]]` targets its own doc.
+    The index is `{ titles: Map(docId→Map(nodeId→title)), outgoing: [{src…,dst…,label}],
+    backlinks: Map("dstDocId#dstNodeId"→[{srcDocId,srcNodeId}]), candidates: [{docId,nodeId,
+    title,docName}], nameByDocId: Map(docId→name) }`. A file without a stable `_docid` is
+    **skipped** (it has no cross-file address until the app opens + stamps it — the scan never
+    writes `_docid` back); an unreadable/unparseable file is skipped, never thrown. It is
+    **not a `_varsVer` doc-cache** — it spans documents and rebuilds on filesystem events, not
+    per-edit; it trails the current doc by ≤ one ~0.8 s autosave debounce tick (the scan reads
+    each doc's on-disk copy, which the current doc auto-writes continuously). The **same-doc
+    path is untouched** (`collectLinks`/`LINK_RE`/`renderLinkPill`/`linkCandidates` unchanged).
+    Pure cores `parseLinkToken`/`buildWorkspaceIndex` are Node-pinned; the FSA scan is
+    mock-handle-verified headless. (`WLINK_RE`/`scanWorkspace`/`refreshWorkspaceIndex`.)

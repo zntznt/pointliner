@@ -3584,6 +3584,127 @@ test('lastAutosaveSavedAt: returns 0 for malformed JSON', () => {
   ls.getItem = orig;
 });
 
+// ── cross-document link index (CF-1) ──────────────────────────────────────────
+// Pure cores only — parseLinkToken (the cross-doc-aware token parser) and
+// buildWorkspaceIndex (the index builder over already-parsed docs). The folder scan
+// (scanWorkspace/refreshWorkspaceIndex) reads fromOpml, which needs a real DOMParser,
+// so it is browser-side and verified via a throwaway mock-dir Playwright harness.
+
+test('parseLinkToken: same-doc form (no docId)', () => {
+  assert.deepEqual(host(c.parseLinkToken('[[#n1]]')), { docId: null, nodeId: 'n1', label: '' });
+  assert.deepEqual(host(c.parseLinkToken('[[#n1|]]')), { docId: null, nodeId: 'n1', label: '' });
+  assert.deepEqual(host(c.parseLinkToken('[[#n1|See it]]')), { docId: null, nodeId: 'n1', label: 'See it' });
+});
+
+test('parseLinkToken: cross-doc form (with docId)', () => {
+  assert.deepEqual(host(c.parseLinkToken('[[docb#m2]]')), { docId: 'docb', nodeId: 'm2', label: '' });
+  assert.deepEqual(host(c.parseLinkToken('[[docb#m2|Other doc]]')), { docId: 'docb', nodeId: 'm2', label: 'Other doc' });
+  // label may contain spaces and punctuation (anything but ] and newline)
+  assert.deepEqual(host(c.parseLinkToken('[[abc123#x9|a, b & c]]')), { docId: 'abc123', nodeId: 'x9', label: 'a, b & c' });
+});
+
+test('parseLinkToken: malformed / non-link tokens → null', () => {
+  assert.equal(c.parseLinkToken('not a token'), null);
+  assert.equal(c.parseLinkToken('[[dice:abc]]'), null);   // artifact token (colon, no #)
+  assert.equal(c.parseLinkToken('[[#]]'), null);          // empty nodeId
+  assert.equal(c.parseLinkToken('[[docb#]]'), null);      // empty nodeId with docId
+  assert.equal(c.parseLinkToken('[[#n1]] trailing'), null); // anchored — not a bare token
+  assert.equal(c.parseLinkToken(' [[#n1]] '), null);      // anchored — surrounding whitespace
+  assert.equal(c.parseLinkToken(''), null);
+  assert.equal(c.parseLinkToken(null), null);
+  assert.equal(c.parseLinkToken(undefined), null);
+});
+
+// Helpers for the index builder: a doc wrapper + a point with a fixed id.
+function cfDoc(docId, name) { const root = c.mkRoot(); root.docId = docId; return { docId, name, root }; }
+function cfPt(id, text) { const n = c.mkNode(text); n.id = id; return n; }
+
+test('buildWorkspaceIndex: titles, same-doc + cross-doc edges, reverse backlinks, candidates', () => {
+  const da = cfDoc('da', 'a.opml');
+  da.root.children.push(cfPt('n1', 'Source [[#n2]] [[db#m1|to Gamma]]'));  // bare same-doc + explicit cross-doc
+  da.root.children.push(cfPt('n2', 'Beta'));                               // plain titled point
+  da.root.children.push(cfPt('nx', ''));                                   // untitled — in titles, NOT a candidate
+  const db = cfDoc('db', 'b.opml');
+  db.root.children.push(cfPt('m1', 'Gamma [[da#n2]]'));                    // cross-doc back to da#n2
+
+  const idx = c.buildWorkspaceIndex([da, db]);
+
+  // titles: every point (Map of Maps), empty title preserved as '' so existence is knowable
+  assert.equal(idx.titles.get('da').get('n2'), 'Beta');
+  assert.equal(idx.titles.get('da').get('nx'), '');
+  assert.equal(idx.titles.get('db').get('m1'), 'Gamma [[da#n2]]');
+
+  // nameByDocId: so a resolver can switch to the backing file
+  assert.equal(idx.nameByDocId.get('da'), 'a.opml');
+  assert.equal(idx.nameByDocId.get('db'), 'b.opml');
+
+  const out = host(idx.outgoing);
+  // a bare [[#n2]] written in da resolves to da (dstDocId === ownDocId)
+  assert.deepEqual(out.find(e => e.srcNodeId === 'n1' && e.dstNodeId === 'n2'),
+    { srcDocId: 'da', srcNodeId: 'n1', dstDocId: 'da', dstNodeId: 'n2', label: '' });
+  // an explicit cross-doc [[db#m1|to Gamma]] keeps its docId + label
+  assert.deepEqual(out.find(e => e.dstDocId === 'db' && e.dstNodeId === 'm1'),
+    { srcDocId: 'da', srcNodeId: 'n1', dstDocId: 'db', dstNodeId: 'm1', label: 'to Gamma' });
+  // an explicit [[da#n2]] written in db also resolves to da#n2
+  assert.deepEqual(out.find(e => e.srcDocId === 'db'),
+    { srcDocId: 'db', srcNodeId: 'm1', dstDocId: 'da', dstNodeId: 'n2', label: '' });
+
+  // reverse backlinks: keyed "dstDocId#dstNodeId". da#n2 is targeted by BOTH n1 (same-doc)
+  // and m1 (cross-doc) → two sources, in walk order (da before db).
+  assert.deepEqual(host(idx.backlinks.get('da#n2')),
+    [{ srcDocId: 'da', srcNodeId: 'n1' }, { srcDocId: 'db', srcNodeId: 'm1' }]);
+  assert.deepEqual(host(idx.backlinks.get('db#m1')),
+    [{ srcDocId: 'da', srcNodeId: 'n1' }]);
+
+  // candidates: titled points only (nx excluded), carrying the docName for the picker
+  assert.equal(idx.candidates.length, 3);
+  assert.deepEqual(host(idx.candidates).find(x => x.nodeId === 'n2'),
+    { docId: 'da', nodeId: 'n2', title: 'Beta', docName: 'a.opml' });
+  assert.ok(!host(idx.candidates).some(x => x.nodeId === 'nx'));
+});
+
+test('buildWorkspaceIndex: outgoing keeps every occurrence; backlinks dedupe per source node', () => {
+  const d = cfDoc('d', 'd.opml');
+  d.root.children.push(cfPt('a', 'x [[#t]] y [[#t]] z'));  // same node links target t twice
+  const idx = c.buildWorkspaceIndex([d]);
+  // every occurrence in outgoing
+  assert.equal(host(idx.outgoing).filter(e => e.dstNodeId === 't').length, 2);
+  // but the source appears once in the reverse map
+  assert.deepEqual(host(idx.backlinks.get('d#t')), [{ srcDocId: 'd', srcNodeId: 'a' }]);
+});
+
+test('buildWorkspaceIndex: walks points only (not the doc-title root) and recurses children', () => {
+  const d = cfDoc('d', 'd.opml');
+  d.root.text = 'Document Title [[#ghost]]';   // root text is the doc title — never indexed
+  const parent = cfPt('p', 'Parent');
+  parent.children.push(cfPt('kid', 'Kid [[#p]]'));   // a nested child link
+  d.root.children.push(parent);
+  const idx = c.buildWorkspaceIndex([d]);
+  // the root's own [[#ghost]] is NOT indexed (root is the container, not a point)
+  assert.equal(host(idx.outgoing).some(e => e.dstNodeId === 'ghost'), false);
+  assert.equal(idx.titles.get('d').has(d.root.id), false);
+  // the nested child IS walked
+  assert.deepEqual(host(idx.backlinks.get('d#p')), [{ srcDocId: 'd', srcNodeId: 'kid' }]);
+  assert.equal(idx.titles.get('d').get('kid'), 'Kid [[#p]]');
+});
+
+test('buildWorkspaceIndex: skips docs missing docId or root; empty input → empty index', () => {
+  const empty = c.buildWorkspaceIndex([]);
+  assert.equal(empty.titles.size, 0);
+  assert.equal(empty.outgoing.length, 0);
+  assert.equal(empty.candidates.length, 0);
+  assert.equal(empty.nameByDocId.size, 0);
+  assert.deepEqual(host(c.buildWorkspaceIndex(undefined).outgoing), []);
+
+  const good = cfDoc('g', 'g.opml'); good.root.children.push(cfPt('n', 'Node'));
+  const bad1 = { docId: '', name: 'no-id.opml', root: c.mkRoot() };  // no stable docId
+  const bad2 = { docId: 'x', name: 'no-root.opml', root: null };      // no tree
+  const idx = c.buildWorkspaceIndex([bad1, good, bad2, null]);
+  assert.deepEqual(host([...idx.nameByDocId.keys()]), ['g']);
+  assert.equal(idx.candidates.length, 1);
+  assert.equal(idx.titles.get('g').get('n'), 'Node');
+});
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation

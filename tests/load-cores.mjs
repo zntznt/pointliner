@@ -143,6 +143,7 @@ export function loadCores() {
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'collectRules', 'collectLinks', 'linkCandidates', 'linkCreateOption',
     'collectUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
+    'parseLinkToken', 'buildWorkspaceIndex',   // CF-1: cross-doc link index pure cores
     'validPluginPack', 'mergePackRules', 'packVarDefs',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
