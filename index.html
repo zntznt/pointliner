@@ -12745,16 +12745,18 @@ const OPML_TYPE = { description:'OPML outline', accept:{'text/x-opml':['.opml']}
 // it also restores app prefs / snapshot mode and is structurally different.)
 //
 // Per-document state RESET here (the switcher will later make exactly these
-// per-doc): root · fileHandle · fileName · dirty · focusedId ·
+// per-doc): root · fileHandle · fileName · workspaceFile · dirty · focusedId ·
 // searchQuery/searchQueryLC/searchTerms · undoStack/redoStack ·
 // autosaveDisabled · storageWarnState.
 // App-wide prefs NOT touched (they survive a swap): showDone · showNotes ·
 // forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
 // agendaShowDone.
-function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null } = {}) {
+function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null } = {}) {
   root = newRoot;
   fileHandle = fh;
   fileName = fname;
+  workspaceFile = wf;   // a new/opened/swapped doc is not folder-backed (deferred to #5); a future caller may pass one
+  _wsWarned = false;    // fresh doc → a later lost-access event may warn again
   focusedId = null;
   clearTimeout(searchDebounce);
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
@@ -12849,6 +12851,9 @@ async function writeH(h) {
 const hasWorkspace = 'showDirectoryPicker' in window;
 let workspaceDir = null;   // the permission-granted FileSystemDirectoryHandle this session, or null
 let pendingDir = null;     // a rehydrated stored handle awaiting a re-permission gesture (→ 'reconnect')
+let workspaceFile = null;  // the current doc's FileSystemFileHandle within the folder, or null. Folder-backed ⇔ non-null (brief #4: continuous auto-write)
+let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
+let _wsWarned = false;     // one lost-access warning per event — never re-nag per tick (reset on reconnect/disconnect/swap)
 const WORKSPACE_KEY = 'workspaceDir';
 
 // Pure: the File-menu affordance state machine. Precedence — the capability gate wins
@@ -12958,6 +12963,8 @@ async function connectWorkspace() {
     const fh = await dir.getFileHandle(name, { create: true });
     await writeH(fh);                  // reuse the OPML writer (also markClean()s)
     fileHandle = fh; fileName = name;  // the folder file is now the backing file
+    workspaceFile = fh;                // …and folder-backed: every edit auto-writes here (brief #4)
+    _wsWarned = false;
     workspaceDir = dir; pendingDir = null;
     await idbSet(WORKSPACE_KEY, dir);
     document.getElementById('file-name').textContent = fileName;
@@ -12978,6 +12985,11 @@ async function reconnectWorkspace() {
     const perm = await pendingDir.requestPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
       workspaceDir = pendingDir; pendingDir = null;
+      // Resume continuous write for a doc that was folder-backed THIS session and lost
+      // access: the flush catch clears workspaceFile but NOT fileHandle, so re-arm from
+      // the surviving handle. A freshly-reloaded doc has fileHandle === null (handles
+      // don't survive a reload) and stays manual until #5 wires reopen-rebinding.
+      if (fileHandle) { workspaceFile = fileHandle; _wsWarned = false; }
       renderWorkspaceAffordance();
       flashHint('Folder reconnected — “' + (workspaceDir.name || 'folder') + '”');
     }
@@ -12989,8 +13001,36 @@ async function reconnectWorkspace() {
 async function disconnectWorkspace() {
   try { await idbDel(WORKSPACE_KEY); } catch (_) {}
   workspaceDir = null; pendingDir = null;
+  workspaceFile = null; _wsWarned = false;  // stop auto-writing; fileHandle stays so manual Save still works
   renderWorkspaceAffordance();
   flashHint('Folder disconnected — the file is still there.');
+}
+
+// Continuous auto-write to the folder-backed file (brief #4). Called (not awaited) on
+// every debounced autosave tick when the doc is folder-backed. A coalesced async flush:
+// at most one write is in flight; if edits land mid-write, _wsPending re-runs it once
+// with the latest tree (so the file always converges on the newest state, never a torn
+// or stale write). Same withFoldedActive serialize as Save/autosave. A real-disk write
+// counts as saved → markClean. On lost access (permission revoked / file or folder gone)
+// it degrades: stop auto-writing, flip the affordance to Reconnect, warn ONCE — never a
+// per-keystroke alert, never silent loss.
+async function flushWorkspaceFile() {
+  if (!workspaceFile) return;
+  if (_wsWriting) { _wsPending = true; return; } // coalesce — re-run after the in-flight write
+  _wsWriting = true;
+  try {
+    const opml = withFoldedActive(() => toOpml(root));
+    const w = await workspaceFile.createWritable();
+    await w.write(opml); await w.close();
+    markClean();
+  } catch (e) {
+    workspaceFile = null;
+    if (workspaceDir) { pendingDir = workspaceDir; workspaceDir = null; renderWorkspaceAffordance(); }
+    showWorkspaceWarn('Lost access to the workspace folder — reconnect or use Save to keep your work.');
+  } finally {
+    _wsWriting = false;
+    if (_wsPending) { _wsPending = false; flushWorkspaceFile(); }
+  }
 }
 
 // ─── plain-text / markdown export ─────────────────────────────────────────────
@@ -14551,7 +14591,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'File & history', rows: [
     { keys: [`${MOD}+S`, `${MOD}+O`], desc: 'Save / open' },
-    { keys: ['Connect folder'],       desc: 'File menu: save this document into a folder the app remembers, so it reconnects automatically next launch (Chromium only)' },
+    { keys: ['Connect folder'],       desc: 'File menu: save this document into a folder the app remembers — it reconnects next launch and then saves to its file automatically as you type, no Ctrl+S needed (Chromium only)' },
     { keys: [`${MOD}+F`],             desc: 'Search' },
     { keys: [`${MOD}+Z`, `${MOD}+Y`], desc: 'Undo / redo' },
   ]},
@@ -14678,25 +14718,47 @@ function hideStorageWarn() {
   // it clears only when a save succeeds comfortably under the limit
 }
 
+// Lost-workspace-access banner (brief #4). Reuses the dismissible #storage-warn alert
+// element (its Save-to-file + ✕ buttons are the right fallback here) but with its own
+// one-shot guard so it shows ONCE per lost-access event, never per autosave tick. The
+// guard (_wsWarned) resets on reconnect/disconnect/swap so a later loss can warn again.
+// Renders error-tier (red, no .soft). Does not touch storageWarnState (independent guard).
+function showWorkspaceWarn(msg) {
+  if (_wsWarned) return;
+  _wsWarned = true;
+  storageWarnMsg.textContent = msg;
+  storageWarn.classList.remove('soft');
+  storageWarn.classList.add('on');
+  storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
+
 function scheduleAutosave() {
-  // Once an outline is too large for localStorage, stop re-serializing the whole
-  // tree every 800ms only to fail — the OPML file is the store for big outlines.
-  if (autosaveDisabled) return;
+  // Once an outline is too large for localStorage, stop re-serializing the whole tree
+  // every 800ms only to fail — the OPML file is the store for big outlines. But a
+  // folder-backed doc (brief #4) still needs its continuous folder write, which is NOT
+  // size-limited and IS the durable store, so don't bail entirely when we have one.
+  if (autosaveDisabled && !workspaceFile) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone }));
-    try {
-      localStorage.setItem(AUTOSAVE_KEY, payload);
-      if (payload.length > STORAGE_SOFT_LIMIT) {
-        showStorageWarn('soft', 'This outline is getting large — auto-backup may stop soon. Save it to a file to be safe.');
-      } else if (storageWarnState) {
-        storageWarnState = null; hideStorageWarn(); // back under the limit
-      }
-    } catch(e) {
-      autosaveDisabled = true; // don't thrash on every keystroke for a tree that can't fit
-      showStorageWarn('hard', 'This outline is too large for browser auto-backup — your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
-    }
+    if (!autosaveDisabled) writeLocalAutosave();         // localStorage crash buffer (logic unchanged)
+    if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
   }, 800);
+}
+// The localStorage crash-buffer write, factored out of scheduleAutosave so the folder
+// write can run alongside it (and still run when this is disabled by a too-large tree).
+function writeLocalAutosave() {
+  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone }));
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, payload);
+    if (payload.length > STORAGE_SOFT_LIMIT) {
+      showStorageWarn('soft', 'This outline is getting large — auto-backup may stop soon. Save it to a file to be safe.');
+    } else if (storageWarnState) {
+      storageWarnState = null; hideStorageWarn(); // back under the limit
+    }
+  } catch(e) {
+    autosaveDisabled = true; // don't thrash on every keystroke for a tree that can't fit
+    showStorageWarn('hard', 'This outline is too large for browser auto-backup — your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
+  }
 }
 
 // C1: a self-contained export inlines its outline in #pl-embedded-doc. When that
