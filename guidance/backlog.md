@@ -14,8 +14,59 @@ truth, tree model with one parent per node, virtualized rendering, tree-walk cac
 Outlining + folding + collapse-to-level; ordered / unordered / checkbox / description lists;
 footnotes; rich inline + block markdown (headings, quote, code, divider); static tables;
 hashtag tags with click-to-filter; OPML / Markdown / plain-text export; theming + touch;
-**virtualized rendering** (handles large trees); and the **generative artifact layer**
-(dice, grammar, math, variables, date math) — the differentiator no peer tool has.
+**virtualized rendering** (handles large trees); the **generative + computational artifact layer**
+(dice, grammar, estimates, math, aggregation, checks, variables, date math) — the differentiator no
+peer tool has; and, as of June 2026, a **multi-document Zettelkasten** (disk-backed workspace,
+cross-file links + backlinks, whole-folder search).
+
+---
+
+## What's worth doing next — value assessment (June 2026)
+With Tier 1–2 and the PKM arc delivered, **the app is feature-saturated**: it's a mature
+generative + computational Zettelkasten. So the highest *leverage* is no longer "more features" —
+it's making the power it already has **discoverable**. Remaining work ranked by **value vs.
+effort/risk** (V/E/R = High/Medium/Low):
+
+**🟢 Best return**
+1. **Daily notes** — V:M-H · E:L · R:L. The best bang-for-buck. A "Today" button that opens/creates
+   a date-named `.opml` in the workspace — nearly free given the multi-doc infra (`newWorkspaceDoc`
+   + date naming). Cornerstone journaling/log pattern; pairs with capture. *Value is workflow-
+   dependent (high if you log daily, near-zero if not).*
+2. **Lean ↔ guided verbosity modes** — V:**H (highest ceiling)** · E:**H** · R:M. Addresses the app's
+   *actual* weakness — powerful but hard to discover (the reason `ux-discipline.md`/`ux.md` exist).
+   A lean default + guided overlays (hints, menu descriptions, the verbosity dial) serves new *and*
+   power users, and makes self-contained-HTML exports usable by people you hand them to. **Highest
+   raw value, worst ratio** — a deliberate cross-cutting investment, not a quick win.
+
+**🟡 Situational**
+3. **Cross-document unlinked references (view-only)** — V:M · E:L-M · R:M. Cheaper than first judged:
+   WS-1's index already retains every doc's full tree, so the text is *there*. Ship **view-only**
+   (surface "mentioned in N other notes," click to navigate; **no** cross-doc auto-Link write — that
+   write-into-an-unopened-file is the risky part). The real drag is **noise** across a vault; the
+   min-length/word-boundary floor decides useful-vs-clutter.
+4. **Workspace "broken links" report** — V:L-M · E:L · R:L. The cross-doc index already computes broken
+   targets; a small maintenance view surfaces cross-file links whose target note/point is gone.
+5. **Tag inheritance + `OR`** — V:L-M · E:L-M · R:L. The only remaining "tag power" (tags-as-index
+   already works: clicking `#tag` runs a workspace-wide search). Minor; do only when a real query
+   demands `OR`.
+
+**🟠 Niche / poor ratio** (Tier 3 below)
+- **Board / Kanban view** — V:M (PM niche) · E:**H** · R:M (a whole new view).
+- **Generative engine continuations** (more `evalMath` primitives, dice/grammar variants) — V:L-M ·
+  E:L · R:L. Cheap + additive but the engine is **saturated**; excellent *interleave filler*, never
+  a headline.
+- **Clocking / time tracking** · **Reference notes** · **Plugins authoring UI / emoji packs** — all
+  niche for a single-user tool.
+
+**🔧 Tech debt** — **`makeDocCache` registry refactor**: no user value, cheap insurance; do
+opportunistically the next time a doc-cache is added (see Tech debt below).
+
+**⛔ Off the table (by decision)** — **CRDT / version-control pivot** (parked; would break the
+single-file identity + reintroduce the out-of-scope sync/collab — revisit only if the "more than a
+single file" gate trips); **Mirrors / cloned items** and **Archive done items** (shelved).
+
+> **TL;DR:** best cheap win = **Daily notes**; highest-impact investment = **verbosity /
+> discoverability**; everything below #5 is interleave-filler or niche.
 
 ---
 

@@ -180,6 +180,14 @@ Drop a contained generative feature between the heavy phases — e.g. another `e
 primitive, a dice/oracle variant, or a grammar feature — so both identities keep moving and
 Phase 1's weight is broken up.
 
+### Next directions (June 2026)
+With Phases 0–3 + cross-file links + whole-folder search delivered, the planned roadmap is
+**essentially complete**. The app is now feature-saturated, so the next moves are a judgment call
+rather than a fixed plan — **the prioritized value-vs-effort assessment lives in
+`guidance/backlog.md` → "What's worth doing next"**. Headlines: best cheap win = **daily notes**;
+highest-impact investment = **lean↔guided discoverability modes**; the rest is interleave-filler or
+niche. CRDT/version-control stays parked; mirrors/archive stay shelved.
+
 ---
 
 ## Open questions to resolve as we go
