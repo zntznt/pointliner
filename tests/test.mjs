@@ -5267,3 +5267,70 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes('agendaGantt'), 'agenda Gantt core missing');
   assert.ok(_src.includes('agendaMonthCells'), 'agenda calendar core missing');
 });
+
+
+// ─── journal pure cores ───────────────────────────────────────────────────────
+test('todayISO returns YYYY-MM-DD shape', () => {
+  const iso = c.todayISO();
+  assert.match(iso, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('journalFileName per-day (default)', () => {
+  assert.equal(c.journalFileName('2026-06-16', false, null), '2026-06-16.opml');
+  assert.equal(c.journalFileName('2026-06-16', false, '143022'), '2026-06-16.opml');
+});
+
+test('journalFileName per-entry with stamp', () => {
+  assert.equal(c.journalFileName('2026-06-16', true, '143022'), '2026-06-16-143022.opml');
+});
+
+test('journalFileName per-entry without stamp falls back to per-day', () => {
+  assert.equal(c.journalFileName('2026-06-16', true, null), '2026-06-16.opml');
+  assert.equal(c.journalFileName('2026-06-16', true, ''), '2026-06-16.opml');
+});
+
+test('findOrCreateDatedEntry creates when absent', () => {
+  const home = { children: [] };
+  const mk = t => ({ id: 'x1', text: t, children: [] });
+  const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
+  assert.equal(created, true);
+  assert.equal(entry.text, '2026-06-16');
+  assert.equal(home.children.length, 1);
+});
+
+test('findOrCreateDatedEntry is idempotent (returns same entry)', () => {
+  const home = { children: [] };
+  let n = 0;
+  const mk = t => ({ id: 'x' + (++n), text: t, children: [] });
+  const r1 = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
+  assert.equal(r1.created, true);
+  const r2 = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
+  assert.equal(r2.created, false);
+  assert.equal(r2.entry.id, r1.entry.id);
+  assert.equal(home.children.length, 1);
+});
+
+test('findOrCreateDatedEntry distinct entries for different dates', () => {
+  const home = { children: [] };
+  let n = 0;
+  const mk = t => ({ id: 'x' + (++n), text: t, children: [] });
+  c.findOrCreateDatedEntry(home, '2026-06-15', mk);
+  c.findOrCreateDatedEntry(home, '2026-06-16', mk);
+  assert.equal(home.children.length, 2);
+});
+
+test('findOrCreateDatedEntry matches iso: prefixed heading', () => {
+  const home = { children: [{ id: 'h1', text: '2026-06-16: My day', children: [] }] };
+  const mk = t => ({ id: 'x1', text: t, children: [] });
+  const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
+  assert.equal(created, false);
+  assert.equal(entry.id, 'h1');
+});
+
+test('findOrCreateDatedEntry matches iso space-prefixed', () => {
+  const home = { children: [{ id: 'h2', text: '2026-06-16 notes', children: [] }] };
+  const mk = t => ({ id: 'x1', text: t, children: [] });
+  const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
+  assert.equal(created, false);
+  assert.equal(entry.id, 'h2');
+});
