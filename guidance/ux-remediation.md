@@ -19,7 +19,9 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > **batch 4 (UXP-61, UXP-62, UXP-65, UXP-66) is ✓ closed** (visual + a11y consistency polish:
 > theme-aware `--sh-up` panel shadow, agenda-calendar grid parity, transient Tab-group carve-out,
 > non-colour urgency marker);
-> **UXP-57, UXP-60, UXP-63, UXP-67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> **UXP-60 is ✓ closed** (Enter splits the point at the caret — `splitForSibling` + the
+> `applyInlineReplace` fold dance, clone-both-then-prune sidecars);
+> **UXP-57, UXP-63, UXP-67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
 
@@ -431,14 +433,26 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   note…" variant when a workspace folder is connected). CSS: `#search-empty` inherits `--muted` and
   is centered under the outline's max-width.
 
-### UXP-60 ☐ Enter doesn't split the point at the caret (P1 — product decision) 🟡
-- **Problem:** `insertSiblingAfter` ignores the caret — Enter mid-text drops an empty sibling and **orphans
+### UXP-60 ✓ Enter doesn't split the point at the caret (P1 — product decision) 🟡 — **RESOLVED**
+- **Problem:** `insertSiblingAfter` ignored the caret — Enter mid-text dropped an empty sibling and **orphaned
   the trailing text** on the original point. Every peer outliner (Workflowy/Logseq/Roam/Notion/Dynalist)
-  splits at the caret; this is the most surprising deviation a new user hits. (§3 says "Enter = new point"
+  splits at the caret; this was the most surprising deviation a new user hit. (§3 says "Enter = new point"
   but doesn't pin split-vs-append, so not a literal violation — a strong P1 expectation gap.)
-- **Needs a deliberate split-vs-append decision** before implementing. **Target (if split):** split
-  `node.text` at the caret, keep the head, seed the new sibling with the tail (after the continuation
-  prefix), caret at the tail start; guard the no-active-edit (programmatic) path.
+- **Decision (split):** when the point is actively being edited and the caret has a **trailing half**, that
+  half moves to the new sibling; the leading half and any **children stay on the source** (peer-standard).
+  An empty trailing half (caret at end) falls through to the prior **empty-continuation append**, so the
+  no-active-edit / programmatic paths (ghost-row) are unchanged.
+- **Fix:** pure core `splitForSibling(text, offset, contPrefix) → {before, after}` (leading half + the
+  continuation-prefixed trailing half, so a split to-do/quote stays one). `insertSiblingAfter` mirrors
+  `applyInlineReplace`'s fold dance: capture the unfolded caret, `blur()` to commit (refold + promote +
+  prune → folded text), then `foldedOffsetFor` translates the offset — which **snaps the caret out of any
+  unfolded `{…}` pill** (never severs a working artifact) and absorbs promotions. Sidecars are cloned whole
+  onto the new half (`cloneArtifactSidecars`) and each node's `pruneArtifacts` sheds the other half's
+  orphaned records (clone-both-then-prune). Caret lands at the start of the new half's body
+  (`focusNodeAtOffset`). `pruneArtifacts` is extracted and reused by `exitEdit`. **No new syntax (P5).**
+  Pinned: 8 `splitForSibling` cases (caret-at-start/mid/end, to-do + quote continuation, inside-prefix,
+  clamping, null-tolerance) + a wiring pin; headless-verified plain/to-do/children/caret/undo and both
+  inline-unfolded (dice) and atomic (markov) artifacts moving with their sidecars.
 
 ### UXP-61 ✓ Bottom-docked panel shadows invisible in dark mode (design-language) 🟢 — **RESOLVED**
 - **Problem:** `#fn-panel` / `#bl-panel` / `#var-panel` used a hardcoded `box-shadow:0 -4px 24px
