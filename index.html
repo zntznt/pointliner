@@ -15680,7 +15680,7 @@ const GUIDE = [
   // Bodies are written plainly: lead with what you can DO, then how, no jargon.
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
-    body:"Find points fast. Type words and every word has to appear. Put a minus sign before a word to leave it out, quotes around an exact phrase, or a #tag to find points with that label. Extra filters like is:done or due:today narrow things down further.",
+    body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks, or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase, or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further.",
     examples:[
       { syn:'word word',              desc:'all terms must match' },
       { syn:'-term',                  desc:'exclude matches' },
@@ -15694,13 +15694,13 @@ const GUIDE = [
     ] },
   { id:'workspace-search', cat:'getting-around',
     title:'Searching all your notes',
-    body:"When several notes share one connected folder, the search box looks through all of them, not just the note you have open. Matches from other notes show up in a 'Found in other notes' list — click one to jump straight there.",
+    body:"When several notes are in the same folder, search covers all of them at once — not just the one you're reading. Useful when you know something is in your notes but can't remember which file. Matches from other notes appear in a 'Found in other notes' list — click one to jump straight there.",
     examples:[] },
 
   // ── Writing & formatting (guide) ──────────────────────────────────────────
   { id:'point-types', cat:'writing', covers:['ul','ol','h1','h2','h3','para','code','divider','quote','base'],
     title:'Point types',
-    body:"A point can be more than a bullet. Turn it into a heading, a numbered item, a quote, a code block, or a spreadsheet-style table. Type / at the start of a point to open the menu and pick a type.",
+    body:"Give your outline real document structure. Add headings to divide a long note into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage, or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.",
     examples:[
       { syn:'# Heading',    desc:'heading (one to six # marks for smaller sizes)' },
       { syn:'> quote',      desc:'quote block' },
@@ -15710,7 +15710,7 @@ const GUIDE = [
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',
-    body:"Style words inside a point — bold, italic, underline, strikethrough, highlight, or code. Wrap the text in the marks shown below. You can also drop in links, images, and emoji the same way.",
+    body:"Make key words stand out, mark something as code, highlight a phrase for review, or drop in a clickable link to a source — all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes.",
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
       { syn:'*italic* or _italic_',     desc:'italic' },
@@ -15723,14 +15723,14 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Make a table by typing rows separated by | bars, with a row of dashes under the header. It shows as a tidy grid. If you want a table you can click into and edit cell by cell, type /base instead.",
+    body:"Put information in columns to compare options, lay out a small dataset, or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell — or add formulas — type /base instead.",
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
     ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
-    body:"Add a small reference mark that links to a note at the bottom, or drop in a clickable link or an image. Type @ and choose Footnote, Link, or Image.",
+    body:"Annotate a claim without cluttering the main text, link out to a source or a website, or embed an image. Footnotes are useful for research notes and annotated reading — the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link, or Image.",
     examples:[
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
@@ -15740,7 +15740,7 @@ const GUIDE = [
   // ── To-dos & organizing (guide) ───────────────────────────────────────────
   { id:'todo-syntax', cat:'todos', covers:['todo'],
     title:'To-dos & tasks',
-    body:"Turn a point into a task with a checkbox, or give it a status word like TODO, NEXT, or DONE. Click the colored badge on a task to change its status or set a priority. Press Enter on a task and the next point stays a task too.",
+    body:"Track a shopping list, a reading list, a project backlog, or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or give it a status word like TODO, NEXT, or DONE. Click the colored badge to change the status or set a priority (A, B, or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
     examples:[
       { syn:'- [ ] task',              desc:'task with a checkbox' },
       { syn:'- [x] done',              desc:'checked-off task' },
@@ -15750,28 +15750,28 @@ const GUIDE = [
     ] },
   { id:'sequences', cat:'todos', covers:['sequence'],
     title:'Custom workflows',
-    body:"The built-in statuses are TODO, NEXT, WAITING, and DONE — but you can make your own set, like DRAFT, REVIEW, then PUBLISHED. Type @ and choose Sequence to define one. Anything to the right of the | counts as finished.",
+    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Type @ and choose Sequence to define one — states to the right of | count as done.",
     examples:[
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },
       { syn:'DRAFT REVIEW | PUBLISHED', desc:'a workflow you define' },
     ] },
   { id:'progress', cat:'todos', covers:['progress'],
     title:'Progress bars',
-    body:"Show how far along you are. Type @ and choose Progress, or just type [/] for a count like 2/5, or [%] for a percentage. It updates on its own as you check off the tasks underneath.",
+    body:"Put a live progress bar on a project, a checklist, or any parent point and see how much is done at a glance. As you check off the tasks underneath, the count updates automatically — no manual tracking. Type [/] for a count like 2/5, or [%] for a percentage.",
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
     ] },
   { id:'templates', cat:'todos', covers:['template'],
     title:'Templates',
-    body:"Save a point and everything under it as a reusable template, then stamp a fresh copy whenever you need it. Save one from a point's menu; drop a copy in with /template.",
+    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist, or any subtree you use repeatedly — then stamp a fresh copy in one step with /template. Save a template from any point's menu.",
     examples:[
       { syn:'/template',                         desc:'pick and drop in a saved template' },
       { syn:'Menu → Save as template',           desc:'save this point as a template' },
     ] },
   { id:'aliases', cat:'todos', covers:['alias'],
     title:'Nicknames (aliases)',
-    body:"Give a point extra names so links and mentions can find it even when you don't use its exact title. Type /alias and list the other names, separated by commas.",
+    body:"Make a point findable under different names. Useful when a concept has a short form and a long form — add 'JS' as an alias for a 'JavaScript' note, or 'NYC' for 'New York City'. The [[ link picker and the unlinked-references panel both recognize any alias, so links and mentions find the right point regardless of which name you used. Type /alias to add them, separated by commas.",
     examples:[
       { syn:'/alias',       desc:'add extra names to this point' },
       { syn:'wyrm, drake',  desc:'extra names, comma-separated' },
@@ -15780,7 +15780,7 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Give a point a start date, a due date, or both. Type /due to open the date picker. Dates can be exact, like 2026-01-15, or relative, like today or today+7 for a week from now.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase, or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue, and you can filter to it in search. Type /due to open the date picker — dates can be exact or relative like today+7.",
     examples:[
       { syn:'/due',       desc:'open the date picker' },
       { syn:'2026-01-15', desc:'an exact date' },
@@ -15789,7 +15789,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See everything with a date in one place. The calendar button in the toolbar opens a list of what's due, a timeline of bars across the days, and a month calendar. Click any item to jump to it.",
+    body:"See all your upcoming work without scrolling the outline. The agenda shows a list of what's due soon, a Gantt-style timeline of overlapping tasks, and a month calendar. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
     examples:[
       { syn:'Due',        desc:'deadlines not started yet' },
       { syn:'Running',    desc:'things in progress' },
@@ -15798,7 +15798,7 @@ const GUIDE = [
     ] },
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',
-    body:"Keep a dated entry for each day. Type /journal, or use the calendar-day button, to open or start today's entry.",
+    body:"Keep a running log of what you worked on, decisions you made, or anything worth noting each day. Each entry is dated automatically, so over time you build a searchable diary inside your outline. Type /journal, or the calendar button, to open or create today's entry.",
     examples:[
       { syn:'/journal', desc:"open or start today's entry" },
     ] },
@@ -15806,7 +15806,7 @@ const GUIDE = [
   // ── Generators (guide) ────────────────────────────────────────────────────
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
-    body:"Roll dice and get a random result you can re-roll with a click — handy for games or any time you want a random number. Type @ and choose Dice roll, or just type the dice in braces like {2d6} for two six-sided dice. You can keep the highest, explode, or count successes.",
+    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces — {2d6} for two six-sided dice. Advanced options let you keep the highest rolls, explode on a max, reroll low results, or count successes against a threshold.",
     examples:[
       { syn:'{2d6}',      desc:'roll two six-sided dice' },
       { syn:'{4d6kh3}',   desc:'roll 4, keep the highest 3' },
@@ -15817,7 +15817,7 @@ const GUIDE = [
     ] },
   { id:'grammar', cat:'generators', covers:['grammar','rolltable'],
     title:'Random picks & tables',
-    body:"The simplest generator: a list of choices in braces, with one picked at random. Put a number after a choice to make it more likely — the same thing works as a weighted roll table. You can even drop a dice roll or a sum into the mix. Type @ and choose Grammar, or Roll table, to start. Click the result to roll again.",
+    body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts, or make a raffle picker. Write choices in braces and one is picked at random each click. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
     examples:[
       { syn:'{red|blue|green}',       desc:'pick one at random' },
       { syn:'{sword|gem 5}',          desc:'weighted — gem 5x as likely as sword' },
@@ -15826,7 +15826,7 @@ const GUIDE = [
     ] },
   { id:'gen-rules', cat:'generators',
     title:'Building generators',
-    body:"For anything bigger than one list, give your lists names and let them call each other. Write a rule as name: choices, then use {name} wherever you want it. Rules can call other rules, roll dice, and run calculations, so one short rule can build a whole sentence — and a choice's odds can even depend on a variable.",
+    body:"Build a name generator, an encounter table for a game, a full story prompt, or a procedural character description. Give each list a name and let them call each other — a sentence generator might call rules for 'subject', 'verb', and 'object', each pulling from their own list. Because rules can also roll dice and calculate, complex outputs stay short and easy to read.",
     examples:[
       { syn:'color: red | blue | green', desc:'define a named list (a rule)' },
       { syn:'{color}',                desc:'use it anywhere' },
@@ -15837,7 +15837,7 @@ const GUIDE = [
     ] },
   { id:'gen-modifiers', cat:'generators',
     title:'Text modifiers',
-    body:"Add a dot and a keyword after a reference to tidy up how the text reads — capitalize it, make it plural, add a or an, and so on. Stack several with more dots and they apply left to right.",
+    body:"Make generator output read like real prose instead of raw picks. Without modifiers, a result like 'they grab axe' reads awkwardly. With them: 'they grab an axe'. Capitalize the first word of a sentence, put the right article in front (a vs. an), make a noun plural, or put a verb in past tense. Add a dot and a keyword after any reference, and stack several for more control.",
     examples:[
       { syn:'{beast.cap}',   desc:'capitalize the first letter' },
       { syn:'{name.title}',  desc:'Capitalize Each Word' },
@@ -15850,7 +15850,7 @@ const GUIDE = [
     ] },
   { id:'gen-conditions', cat:'generators',
     title:'Conditions & item details',
-    body:"Two finishing touches. A condition shows one thing or another depending on a comparison. An item detail keeps related facts in sync — pick a weapon once, then read its name and damage from that same pick.",
+    body:"Two tools for smarter generators. A condition lets output adapt to the numbers you're tracking — show 'alive' or 'dead' depending on a hit-points variable, or change a description based on a stat. An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
     examples:[
       { syn:'{hp>0: alive|dead}', desc:'show the first if true, else the second' },
       { syn:'{luck>=10: lucky!}', desc:'the else part is optional' },
@@ -15861,7 +15861,7 @@ const GUIDE = [
     ] },
   { id:'deck', cat:'generators', covers:['deck'],
     title:'Decks & repeats',
-    body:"Draw from a list without repeats, like dealing cards, or step through items in order. shuffle deals a fresh card each click; cycle goes in order and loops around. You can also repeat a template several times, each with its own result.",
+    body:"Step through a list without repeating, cycle through states in rotation, or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts, or any 'what's next' situation. You can also expand a template multiple times at once — each expansion rolls independently, so you get several different results in one click.",
     examples:[
       { syn:'{shuffle: a|b|c}', desc:'deal without repeats' },
       { syn:'{cycle: a|b|c}',   desc:'go in order, then loop' },
@@ -15871,14 +15871,14 @@ const GUIDE = [
     ] },
   { id:'markov', cat:'generators', covers:['markov'],
     title:'Markov chains',
-    body:"Generate text that wanders from one piece to the next based on a pattern you set — good for invented words or rambling prose. Type @ and choose Markov chain. Click to generate a new run.",
+    body:"Generate made-up text that sounds like it belongs to a style you define: invented place names, character names in the style of a language, sample dialogue, or procedural flavour text. You give it a set of example words or phrases, and it produces new ones that feel like they came from the same source. Type @ and choose Markov chain. Click to generate a new run.",
     examples:[
       { syn:'@ → Markov chain', desc:'add a Markov chain' },
       { syn:'{chainName}',     desc:'use it inside a generator' },
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
-    body:"Ask a yes-or-no question and get an answer at odds you pick, from 'almost certain' to 'very unlikely.' Type @ and choose Oracle. Click to ask again.",
+    body:"Resolve uncertain questions at a glance — useful in solo tabletop games, creative writing, brainstorming, or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels — 'almost certain' to 'very unlikely' — then click to ask. Type @ and choose Oracle.",
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
       { syn:'Yes 4 | No 1',      desc:'custom odds (80% yes here)' },
@@ -15887,7 +15887,7 @@ const GUIDE = [
   // ── Compute (guide) ───────────────────────────────────────────────────────
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
-    body:"Do math right inside a point and watch it update as your variables change. Start with = and write the sum, like {= 2 * 3}. You get the usual operators, parentheses, percentages, comparisons, and if-this-then-that choices, plus built-in constants like pi and today.",
+    body:"Build a budget where every line total adds to a running sum, track a project cost that recalculates when you change a rate, or convert a measurement — all live in the outline. Write {= expression} and the result appears inline. Change a variable the expression uses and it updates instantly. You get arithmetic, parentheses, percentages, comparisons (>, <, ==), and a ternary if-this-then-that.",
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },
       { syn:'{= 2 ^ 10}',        desc:'powers (^) and remainder (%)' },
@@ -15898,7 +15898,7 @@ const GUIDE = [
     ] },
   { id:'math-fns', cat:'compute',
     title:'Math functions',
-    body:"A library of ready-made functions for rounding, ranges, percentages, and the usual scientific math. Call one by name with the value in parentheses; they mix freely with everything else.",
+    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, compute a percentage change, or run a scientific calculation. Call any function by name — they mix freely with variables, dice, and other functions.",
     examples:[
       { syn:'{= round(3.7)}',     desc:'round (also floor, ceil, trunc)' },
       { syn:'{= abs(-5)}',        desc:'absolute value; sign(x) for the sign' },
@@ -15910,7 +15910,7 @@ const GUIDE = [
     ] },
   { id:'math-dates', cat:'compute',
     title:'Dates & units in math',
-    body:"Math understands calendar dates and common unit conversions. Dates count as numbers, so you can add days or compare them; wrap the result in asdate(…) to show it as a date. Conversions are named from-to, like c2f.",
+    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed, or convert between units for a recipe, a travel plan, or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works — wrap the result in asdate(…) to display it as a calendar date.",
     examples:[
       { syn:'{= today + 30}',      desc:'30 days from today' },
       { syn:'{= asdate(today+30)}',desc:'show that as a calendar date' },
@@ -15922,7 +15922,7 @@ const GUIDE = [
     ] },
   { id:'variables', cat:'compute', covers:['var'],
     title:'Variables',
-    body:"Save a value under a name and reuse it anywhere. Type @ and choose Variable to set one — a fixed number, a formula, or a random pick. Then write {name} to drop that value in wherever you need it.",
+    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap, or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. Variables can be a fixed number, a formula that depends on other variables, or a frozen random pick.",
     examples:[
       { syn:'@ → Variable', desc:'set a named value' },
       { syn:'{name}',      desc:'drop the value in' },
@@ -15930,7 +15930,7 @@ const GUIDE = [
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
-    body:"When you're not sure of an exact number, give a range instead, like {5 to 10}. The app treats it as an uncertain value and shows the average plus a little chart of the spread. Click to re-sample. Ranges add and multiply together.",
+    body:"Plan honestly when you don't have exact numbers. Instead of pretending a task takes exactly 3 days, say it takes {2 to 5}. The estimate shows the average and a spread chart so you can see the realistic range. Estimates add and multiply together correctly — if three phases each take '2 to 5 days', the total shows the true combined uncertainty, not just the midpoints added up.",
     examples:[
       { syn:'{5 to 10}',      desc:'a 90% range — most likely 5 to 10' },
       { syn:'normal(8, 2)',   desc:'a bell curve around 8' },
@@ -15939,7 +15939,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Add up or summarize a value across the points nested underneath. Type {= sum(cost)} to total a 'cost' on each child, or use avg, count, min, or max. The total updates as you change the children.",
+    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set, or surface the latest deadline in a project. The result updates whenever a child changes — no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max.",
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of each child' },
       { syn:'{= avg(score)}', desc:'average the scores' },
@@ -15948,7 +15948,7 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',
-    body:"Set a rule a point has to follow and get a live pass-or-fail badge — for example, the costs underneath must stay within a budget. Type /check and write the rule with a comparison like <= or >=. Find everything that's failing with is:failing.",
+    body:"Automatically flag when a constraint breaks — a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check and write the condition with a comparison like <= or >=.",
     examples:[
       { syn:'sum(cost) <= budget', desc:'stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
@@ -15959,7 +15959,7 @@ const GUIDE = [
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
     title:'Linking points',
-    body:"Connect one point to another. Type [[ and pick the point you want — the link shows that point's current title, so renaming it keeps the link right. Leave the label empty to show the linked point's content inline.",
+    body:"Build a personal wiki where ideas refer to each other, create a table of contents that links to sections, or connect a task to its full context note. Type [[ and pick the point to link to — the link always shows the current title, so renaming a point keeps every link to it correct. Leave the label empty and the linked point's content appears inline wherever the link is placed.",
     examples:[
       { syn:'[[',                   desc:'open the link picker' },
       { syn:'[[#id|label]]',        desc:'link with your own wording' },
@@ -15967,14 +15967,14 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See what links to the point you're on. A panel at the bottom lists them. It also spots places that mention the title without a link, so you can turn a mention into a real link with one click.",
+    body:"See the full web of what connects to an idea — not just what you linked from this point, but everything across your notes that links to it. Useful in a personal wiki or research notes when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click.",
     examples:[
       { syn:'Linked from',          desc:'points that link here' },
       { syn:'Unlinked references',  desc:'mentions — click Link to connect them' },
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across notes',
-    body:"In a connected folder you can link to points in your other notes, not just this one. The [[ picker lists those too, and an arrow mark shows when a link points to another note.",
+    body:"Weave together a network of notes — link a project note to a person note, connect a meeting note to an action item in another file, or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your notes, not just the one you're in.",
     examples:[
       { syn:'[[…]]',                desc:'pick a point in another note' },
       { syn:'+ New note',           desc:'make a new note and link to it at once' },
@@ -15983,7 +15983,7 @@ const GUIDE = [
   // ── Files & workspace (guide) ─────────────────────────────────────────────
   { id:'saving', cat:'files',
     title:'Saving your work',
-    body:"Your work saves automatically in the browser as you type. To keep a copy on your computer, press Ctrl/Cmd+S. Connect a folder once and the app writes to its file continuously — no saving needed.",
+    body:"You don't need to think about saving — the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step.",
     examples:[
       { syn:`${MOD}+S`,              desc:'save a copy to your computer' },
       { syn:`${MOD}+O`,              desc:'open a saved file' },
@@ -15991,7 +15991,7 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"Turn your outline into a file to read or share — plain Markdown, plain text, or a single self-contained web page that works on its own, offline, with everything still interactive inside it. All in the File menu.",
+    body:"Share your outline with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file — it works offline, opens in any browser, and keeps all the interactive features (dice, generators, calculations) live. All in the File menu.",
     examples:[
       { syn:'File → Export Markdown',      desc:'a plain text snapshot' },
       { syn:'File → Self-contained HTML',  desc:'a shareable interactive page' },
