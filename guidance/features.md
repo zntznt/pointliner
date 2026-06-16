@@ -527,7 +527,27 @@ Implemented:
     leave the sibling stub invisible), never a mid-edit `render()` (which would destroy the caret); one
     `pushUndo()` reverts both the node and the link. Pure core
     `linkCreateOption(rawQuery)` (trimmed raw-case title, or null → no row). **Zero new syntax** —
-    reuses `[[` + `[[#id|]]`, no inventory addition. Same-document only (cross-file create is Phase 1).
+    reuses `[[` + `[[#id|]]`, no inventory addition. The cross-file companion is "+ New note" (CF-5, below).
+  - **Cross-document link-and-create — "+ New note" (CF-5, Chromium/workspace-gated):** the
+    Zettelkasten "declare by linking" move, now across files. When a folder is connected, the
+    `[[` picker offers **both** create rows for a non-empty query: **"+ New point"** (a stub in
+    THIS note — #96, the outliner-native grain, listed **first**) and **"+ New note: ‹title›"**
+    (a whole new `.opml` note in the folder, linked cross-doc). The user picks the granularity —
+    Pointliner's strength is rich nested docs, so we never nudge toward a fragmented file-per-idea
+    structure; both grains are offered. `createWorkspaceNote(title)` builds a fresh doc
+    (`mkRoot`+`ensureDocId`, the title as its first point, **markdown-aware** like the stub path),
+    writes it under a collision-safe name (`uniqueWorkspaceName`+`workspaceFileName`) **in the
+    background**, and inserts a `[[docId#nodeId|]]` cross-doc link — and you **stay where you
+    are** (never a doc switch; the capture / "+ New point" principle). Freshness trick: a link is
+    plain editable text in edit mode, so the inserted token needs no caption until the point
+    exits edit — by which time the un-awaited `refreshWorkspaceIndex()` has finished and CF-2
+    resolves the live title (no broken-flash, no blocking await). `lpApply` became `async` (only
+    the note branch awaits; the point + pick branches are unchanged in timing). A failed file
+    create surfaces an error (P4), never silent; `flashHint` confirms success. **Zero new syntax**
+    (reuses the CF-2 `[[docId#id]]` token). No workspace → only "+ New point" (today's behavior).
+    Mock-`workspaceDir` Playwright-verified (both rows, no-switch, collision-safe name, OPML
+    content, no-workspace + empty-query cases). **This closes the cross-file lane (CF-1…CF-5):
+    index → token → picker → backlinks → create.**
   - **Unlinked references (same-document, Phase 3):** the backlinks panel gains a second section
     — **"Unlinked references · N"** — listing other points that **mention the focused point's title
     in plain prose but haven't linked to it yet**. Each row has a **Link** button that wraps the
