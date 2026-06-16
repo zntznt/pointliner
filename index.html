@@ -12969,7 +12969,7 @@ async function connectWorkspace() {
     workspaceFile = fh;                // …and folder-backed: every edit auto-writes here (brief #4)
     _wsWarned = false;
     workspaceDir = dir; pendingDir = null;
-    await idbSet(WORKSPACE_KEY, dir);
+    await idbSet(WORKSPACE_KEY, { dir, name });
     document.getElementById('file-name').textContent = fileName;
     updateTitle();
     renderWorkspaceAffordance();
@@ -12981,32 +12981,50 @@ async function connectWorkspace() {
 }
 
 // Reconnect (user gesture): a stored handle was rehydrated but lacks permission; re-request
-// it. Granted → live; denied/dismissed → stays pending (the 'Reconnect folder' affordance).
+// it. Granted → verify reachability via reopenWorkspaceDoc (requestPermission re-grants even
+// a deleted folder, so the grant alone is not proof); denied/dismissed → stays pending.
 async function reconnectWorkspace() {
   if (!pendingDir) return;
   try {
     const perm = await pendingDir.requestPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
       workspaceDir = pendingDir; pendingDir = null;
-      // Resume continuous write for a doc that was folder-backed THIS session and lost
-      // access: the flush catch clears workspaceFile but NOT fileHandle, so re-arm from
-      // the surviving handle. A freshly-reloaded doc has fileHandle === null (handles
-      // don't survive a reload) and stays manual until #5 wires reopen-rebinding.
-      if (fileHandle) { workspaceFile = fileHandle; _wsWarned = false; }
+      const stored = await idbGet(WORKSPACE_KEY);
+      const ok = stored && await reopenWorkspaceDoc(workspaceDir, stored.name);
+      if (!ok) { workspaceDir = null; flashHint('That folder is no longer available — connect another.'); }
+      else      { flashHint('Folder reconnected — “' + (workspaceDir?.name || 'folder') + '”'); }
       renderWorkspaceAffordance();
-      flashHint('Folder reconnected — “' + (workspaceDir.name || 'folder') + '”');
     }
   } catch (_) { /* denied / dismissed — stays pending, no error toast */ }
 }
 
-// Disconnect: forget the connection only. Never deletes the file or the folder; the
-// backing fileHandle is left intact so Save still writes the same file.
+// Reopen the workspace doc from disk, honoring newer-wins, and rebind for auto-write.
+// Returns true if the folder/file was reachable, false if it's gone (→ forget the workspace).
+async function reopenWorkspaceDoc(dir, name) {
+  let fh, file;
+  try { fh = await dir.getFileHandle(name); file = await fh.getFile(); }
+  catch (_) {                                   // file/folder gone — not reachable
+    workspaceDir = null; try { await idbDel(WORKSPACE_KEY); } catch (_) {}
+    return false;
+  }
+  if (file.lastModified >= lastAutosaveSavedAt()) {      // folder is the newer/authoritative copy
+    try { adoptDoc(fromOpml(await file.text()), { fileName: name, fileHandle: fh, workspaceFile: fh }); }
+    catch (_) { fileHandle = fh; workspaceFile = fh; fileName = name; }   // unreadable OPML → keep local, rebind
+  } else {                                               // local copy is newer (post-degrade edit) — keep it, just rebind
+    fileHandle = fh; workspaceFile = fh; fileName = name;
+    document.getElementById('file-name').textContent = name; updateTitle();
+  }
+  _wsWarned = false;
+  return true;
+}
+
+// Disconnect: forget the connection and stop auto-writing. Does not delete the file or folder.
 async function disconnectWorkspace() {
   try { await idbDel(WORKSPACE_KEY); } catch (_) {}
   workspaceDir = null; pendingDir = null;
-  workspaceFile = null; _wsWarned = false;  // stop auto-writing; fileHandle stays so manual Save still works
+  workspaceFile = null; _wsWarned = false;  // stop auto-writing; fileHandle stays so Save still works
   renderWorkspaceAffordance();
-  flashHint('Folder disconnected — the file is still there.');
+  flashHint('Workspace disconnected — auto-save off. Use Save to keep a copy.');
 }
 
 // Single degrade point: clear the folder-backed file, flip the affordance to Reconnect,
@@ -14760,7 +14778,7 @@ function scheduleAutosave() {
 // The localStorage crash-buffer write, factored out of scheduleAutosave so the folder
 // write can run alongside it (and still run when this is disabled by a too-large tree).
 function writeLocalAutosave() {
-  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone }));
+  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, savedAt: Date.now() }));
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -14772,6 +14790,13 @@ function writeLocalAutosave() {
     autosaveDisabled = true; // don't thrash on every keystroke for a tree that can't fit
     showStorageWarn('hard', 'This outline is too large for browser auto-backup — your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
   }
+}
+
+// Returns the savedAt epoch-ms from the localStorage autosave, or 0 if absent/unreadable.
+// Used by reopenWorkspaceDoc to compare against file.lastModified for the newer-wins rule.
+function lastAutosaveSavedAt() {
+  try { const d = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || '{}'); return typeof d.savedAt === 'number' ? d.savedAt : 0; }
+  catch (_) { return 0; }
 }
 
 // C1: a self-contained export inlines its outline in #pl-embedded-doc. When that
@@ -14856,22 +14881,23 @@ requestAnimationFrame(() => {
   if (flatRows.length > 0) focusNode(flatRows[0].node.id);
 });
 
-// Re-permission on load (Phase 1, step 3): if a workspace folder was connected in a
-// previous session, rehydrate its handle from IndexedDB and decide silently vs. prompt.
-// queryPermission needs no gesture, so a still-granted handle reconnects silently; a
-// non-granted one becomes pendingDir and surfaces the 'Reconnect folder' affordance
-// instead (requestPermission needs a gesture). A moved/deleted folder is forgotten.
-if (hasWorkspace) (async function reconnectStoredWorkspace() {
+// Reopen on load (Phase 1, steps 3–5a): if a workspace folder was connected in a previous
+// session, rehydrate it from IndexedDB and either silently reopen the doc (granted) or
+// surface the 'Reconnect folder' affordance (needs a gesture). The shared snapshot (C1)
+// is authoritative and skips this entirely. A moved/deleted folder is forgotten.
+// Newer-wins rule: if the folder file is as new or newer than the localStorage autosave,
+// the folder copy wins; otherwise the local copy (which may hold post-degrade edits) is
+// kept and the write target is simply rebound so the next edit reconverges the two.
+if (hasWorkspace) (async function reopenStoredWorkspace() {
+  if (loadedFromEmbed) return;                  // a shared snapshot is authoritative
   try {
-    const dir = await idbGet(WORKSPACE_KEY);
-    if (dir) {
-      const perm = await dir.queryPermission({ mode: 'readwrite' });
-      if (perm === 'granted') workspaceDir = dir; // silent reconnect
-      else pendingDir = dir;                       // → 'reconnect' affordance
-    }
-  } catch (_) {
-    try { await idbDel(WORKSPACE_KEY); } catch (_) {} // moved/deleted handle → forget it
-  }
+    const stored = await idbGet(WORKSPACE_KEY);
+    if (!stored || !stored.dir) return;         // no stored workspace (or pre-#5a format → re-connect)
+    const { dir, name } = stored;
+    const perm = await dir.queryPermission({ mode: 'readwrite' });   // no gesture needed
+    if (perm === 'granted') { workspaceDir = dir; await reopenWorkspaceDoc(dir, name); }
+    else { pendingDir = dir; }                   // needs a gesture → 'Reconnect' affordance
+  } catch (_) { try { await idbDel(WORKSPACE_KEY); } catch (_) {} workspaceDir = null; }
   renderWorkspaceAffordance();
 })();
 </script>
