@@ -654,16 +654,20 @@ Implemented:
   - **Disconnect** forgets the connection and stops auto-writing. Does not delete the file
     or folder; manual Save still writes the same file.
   - **Affordance state machine:** the pure core `workspaceAffordance({hasWorkspace,
-    connected, pending, backed})` → `hidden | connected | connected-detached | reconnect |
-    connect` (the gate wins, then a live connection — split by `backed` = `!!workspaceFile`
-    into the plain and detached states — then a pending handle). The fresh-file name comes
-    from `workspaceFileName(doc, currentName)` (keep a real name; else derive from
-    `firstLineTitle(doc)`; else `outline`; single `.opml` suffix; path-separators/reserved
-    chars sanitized); `uniqueWorkspaceName(existing, base)` makes it collision-safe;
-    `workspaceDocList(names)` shapes a raw listing; `lastAutosaveSavedAt()` reads `savedAt`
-    from the localStorage autosave payload (0 if absent — covers fresh sessions and legacy
-    saves without the field). All pure + Node-tested; the picker, IndexedDB, directory
-    iteration, and re-permission flow are browser-side (the switch/new/delete logic is
-    mock-handle-verified headless; real folder switching is Chromium-manual-verified).
-  - **Non-Chromium** (Firefox/Safari): the menu item is simply hidden — everything else
-    works as today.
+    connected, pending, backed})` → `invite | connected | connected-detached | reconnect |
+    connect` (the capability gate wins first; then a live connection — split by `backed` =
+    `!!workspaceFile` into the plain and detached states — then a pending handle). The
+    fresh-file name comes from `workspaceFileName(doc, currentName)` (keep a real name; else
+    derive from `firstLineTitle(doc)`; else `outline`; single `.opml` suffix;
+    path-separators/reserved chars sanitized); `uniqueWorkspaceName(existing, base)` makes
+    it collision-safe; `workspaceDocList(names)` shapes a raw listing; `lastAutosaveSavedAt()`
+    reads `savedAt` from the localStorage autosave payload (0 if absent — covers fresh
+    sessions and legacy saves without the field). All pure + Node-tested; the picker,
+    IndexedDB, directory iteration, and re-permission flow are browser-side (the
+    switch/new/delete logic is mock-handle-verified headless; real folder switching is
+    Chromium-manual-verified).
+  - **Non-Chromium** (Firefox/Safari — `hasWorkspace` false): the File menu shows a
+    non-actionable **"Linked notebooks"** info row (`.cmd-note`) in place of the connect
+    action. A **Copy link** button copies the current page URL so the user can paste it into
+    Chrome or Edge and open the workspace there. No banner, no nag, no dismissal state — the
+    row is always visible on non-Chromium and invisible on Chromium.

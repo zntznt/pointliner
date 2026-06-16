@@ -676,6 +676,7 @@ mark{background:rgba(255,200,0,.38);color:inherit;border-radius:2px;padding:0 1p
 .cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:var(--r-md);cursor:pointer}
 .cmd-item:hover,.cmd-item.hi{background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .cmd-item:hover .cmd-icon,.cmd-item.hi .cmd-icon{color:var(--fg)}
+.cmd-note{cursor:default;color:var(--muted)}.cmd-note:hover,.cmd-note.hi{background:transparent}.cmd-note:hover .cmd-icon{color:var(--muted)}.cmd-note button{pointer-events:auto;cursor:pointer;flex-shrink:0}
 /* keyboard focus rings inside the point-actions menu (UXP-14) */
 #bpop .cmd-item:focus,#bpop .cmd-item:focus-visible{background:var(--bdr);outline:2px solid var(--acc);outline-offset:-2px}
 #bpop .bpop-type:focus,#bpop .bpop-type:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
@@ -1179,6 +1180,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect folder…</span><span class="cmd-desc" id="workspace-desc">Save into a folder and reopen it automatically</span></div></div>
   <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open, and create documents in the workspace</span></div></div>
   <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Workspace connected — Save writes here</span></div></div>
+  <div class="cmd-item cmd-note" id="workspace-invite" role="note" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Linked notebooks</span><span class="cmd-desc">Open in Chrome or Edge to save into a folder &amp; switch between notes</span></div><button class="io-btn xsm" id="workspace-invite-copy" type="button" aria-label="Copy this page's link to open in Chrome or Edge">Copy link</button></div>
 
   <div class="fm-group">Export</div>
   <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">.md — artifacts frozen</span></div></div>
@@ -12942,7 +12944,7 @@ const WORKSPACE_KEY = 'workspaceDir';
 // isn't in it, Finding 8), then a rehydrated-but-unpermissioned handle, else the offer
 // to connect. (Node-testable; no DOM.)
 function workspaceAffordance({ hasWorkspace, connected, pending, backed }) {
-  if (!hasWorkspace) return 'hidden';
+  if (!hasWorkspace) return 'invite';
   if (connected) return backed ? 'connected' : 'connected-detached';
   if (pending) return 'reconnect';
   return 'connect';
@@ -13040,13 +13042,15 @@ function renderWorkspaceAffordance() {
   const connect = document.getElementById('btn-workspace');
   const disconnect = document.getElementById('btn-workspace-disconnect');
   const switchBtn = document.getElementById('btn-workspace-switch');
+  const invite = document.getElementById('workspace-invite');
   if (!connect || !disconnect || !switchBtn) return;
   const state = workspaceAffordance({ hasWorkspace, connected: !!workspaceDir, pending: !!pendingDir, backed: !!workspaceFile });
   const name = workspaceDir?.name || 'folder';
   const label = document.getElementById('workspace-label');
   const desc = document.getElementById('workspace-desc');
-  // The "Switch document…" door is available whenever a folder is connected (either state).
+  // The “Switch document…” door is available whenever a folder is connected (either state).
   switchBtn.style.display = (state === 'connected' || state === 'connected-detached') ? '' : 'none';
+  if (invite) invite.style.display = 'none';
 
   if (state === 'connected') {
     connect.style.display = 'none';
@@ -13067,7 +13071,11 @@ function renderWorkspaceAffordance() {
     return;
   }
   disconnect.style.display = 'none';
-  if (state === 'hidden') { connect.style.display = 'none'; return; }
+  if (state === 'invite') {
+    connect.style.display = 'none';
+    if (invite) invite.style.display = '';
+    return;
+  }
   connect.style.display = '';
   if (state === 'reconnect') {
     label.textContent = 'Reconnect folder';
@@ -14571,6 +14579,12 @@ document.getElementById('btn-workspace').addEventListener('click', () => {
 });
 document.getElementById('btn-workspace-switch').addEventListener('click', () => { openWorkspaceSwitcher(); closeFileMenu(); });
 document.getElementById('btn-workspace-disconnect').addEventListener('click', () => { disconnectWorkspace(); closeFileMenu(); });
+document.getElementById('workspace-invite-copy').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const url = location.href;
+  if (navigator.clipboard) { navigator.clipboard.writeText(url).then(() => flashHint('Link copied — open it in Chrome or Edge')).catch(() => flashHint('Copy link: ' + url)); }
+  else { flashHint('Link copied — open it in Chrome or Edge'); }
+});
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
 document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenu(); });
