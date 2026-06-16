@@ -9705,6 +9705,78 @@ function collectLinks(rootNode) {
   return result;
 }
 
+// ── cross-document link index (CF-1: the workspace-wide link/backlink foundation) ──
+// The same-doc link path above (LINK_RE / collectLinks) is per-document and stays exactly
+// as it is. This is its cross-file analog — a parser plus a pure index builder over MANY
+// already-parsed docs — the foundation CF-2 (the cross-doc token), CF-3 (the picker) and
+// CF-4 (cross-doc backlinks) all read. A cross-doc token carries an optional docId before
+// the '#' ([[docB#nodeId|label]]); a bare [[#nodeId]] targets the doc it is written in.
+// These are index-only: they do NOT replace LINK_RE, mdInline, renderLinkPill or the [[
+// picker, and the workspace index is NOT a _varsVer doc-cache (it spans documents and is
+// rebuilt on filesystem events, not per-edit — see scanWorkspace/refreshWorkspaceIndex).
+//
+// WLINK_RE: group 1 = optional docId, 2 = nodeId, 3 = optional label. (g+i — reset
+// lastIndex before each scan, the same shared-global discipline collectLinks uses.)
+const WLINK_RE = /\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
+
+// Pure: parse a SINGLE [[...]] token (anchored) -> { docId|null, nodeId, label }, else null.
+// Absent docId => same-doc (null). The CF-2 renderer/promoter reads this per-token; the
+// index builder below walks node text with WLINK_RE directly rather than token-by-token.
+function parseLinkToken(raw) {
+  const m = /^\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]$/i.exec(String(raw ?? ''));
+  if (!m) return null;
+  return { docId: m[1] || null, nodeId: m[2], label: m[3] ?? '' };
+}
+
+// Pure: build the whole-workspace link index from already-parsed docs.
+//   docs = [{ docId, name, root }]   (root = a parsed tree; its .children are the points)
+// Returns:
+//   titles      Map(docId -> Map(nodeId -> title))          every point's textForDisplay (may be '')
+//   outgoing    [{ srcDocId, srcNodeId, dstDocId, dstNodeId, label }]   every token occurrence
+//   backlinks   Map("dstDocId#dstNodeId" -> [{ srcDocId, srcNodeId }]) the reverse map (CF-4 payoff)
+//   candidates  [{ docId, nodeId, title, docName }]         titled points only (the CF-3 source)
+//   nameByDocId Map(docId -> name)                          so a resolver can switch to the file
+// A bare [[#n]] resolves to its own doc (dstDocId = the token's docId || ownDocId). Mirrors
+// collectLinks: outgoing keeps every occurrence; backlinks dedupe per source node. titles
+// holds EVERY point (empty title -> '') so a resolver can tell "exists, untitled" from
+// "missing" — the cross-doc analog of collectLinks' id set. Walks points only (root.children),
+// never the doc-title root, exactly like collectLinks/linkCandidates.
+function buildWorkspaceIndex(docs) {
+  const titles = new Map();
+  const outgoing = [];
+  const backlinks = new Map();
+  const candidates = [];
+  const nameByDocId = new Map();
+  for (const d of (docs || [])) {
+    if (!d || !d.docId || !d.root) continue;
+    const ownDocId = d.docId;
+    nameByDocId.set(ownDocId, d.name);
+    let titleMap = titles.get(ownDocId);
+    if (!titleMap) { titleMap = new Map(); titles.set(ownDocId, titleMap); }
+    const walk = (n) => {
+      const title = textForDisplay(n) || '';
+      titleMap.set(n.id, title);
+      if (title) candidates.push({ docId: ownDocId, nodeId: n.id, title, docName: d.name });
+      const seen = new Set();
+      let m; WLINK_RE.lastIndex = 0;
+      while ((m = WLINK_RE.exec(n.text || '')) !== null) {
+        const dstDocId = m[1] || ownDocId, dstNodeId = m[2], label = m[3] ?? '';
+        outgoing.push({ srcDocId: ownDocId, srcNodeId: n.id, dstDocId, dstNodeId, label });
+        const key = dstDocId + '#' + dstNodeId;
+        if (!seen.has(key)) {
+          seen.add(key);
+          let arr = backlinks.get(key);
+          if (!arr) { arr = []; backlinks.set(key, arr); }
+          arr.push({ srcDocId: ownDocId, srcNodeId: n.id });
+        }
+      }
+      for (const c of (n.children || [])) walk(c);
+    };
+    for (const c of (d.root.children || [])) walk(c);
+  }
+  return { titles, outgoing, backlinks, candidates, nameByDocId };
+}
+
 // Minimum title length for unlinked-reference matching (1-2 char titles would match too broadly).
 const UNLINKED_MIN_LEN = 3;
 
@@ -12934,6 +13006,7 @@ const hasWorkspace = 'showDirectoryPicker' in window;
 let workspaceDir = null;   // the permission-granted FileSystemDirectoryHandle this session, or null
 let pendingDir = null;     // a rehydrated stored handle awaiting a re-permission gesture (→ 'reconnect')
 let workspaceFile = null;  // the current doc's FileSystemFileHandle within the folder, or null. Folder-backed ⇔ non-null (brief #4: continuous auto-write)
+let workspaceIndex = null; // CF-1: the in-memory cross-doc link/backlink index (buildWorkspaceIndex), or null when no workspace. NOT a _varsVer doc-cache — rebuilt on workspace/FS events, not per-edit.
 let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
 let _wsWarned = false;     // one lost-access warning per event — never re-nag per tick (reset on reconnect/disconnect/swap)
 const WORKSPACE_KEY = 'workspaceDir';
@@ -13106,6 +13179,7 @@ async function connectWorkspace() {
     document.getElementById('file-name').textContent = fileName;
     updateTitle();
     renderWorkspaceAffordance();
+    refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
     flashHint('Folder connected — saved “' + name + '”');
   } catch (e) {
     if (e && e.name === 'AbortError') return; // user cancelled the picker — silent no-op (P4)
@@ -13127,6 +13201,7 @@ async function reconnectWorkspace() {
       if (!ok) { workspaceDir = null; flashHint('That folder is no longer available — connect another.'); }
       else      { flashHint('Folder reconnected — “' + (workspaceDir?.name || 'folder') + '”'); }
       renderWorkspaceAffordance();
+      refreshWorkspaceIndex();           // CF-1: rebuild after a successful reconnect
     }
   } catch (_) { /* denied / dismissed — stays pending, no error toast */ }
 }
@@ -13151,7 +13226,39 @@ async function reopenWorkspaceDoc(dir, name) {
   return true;
 }
 
-// ── document switcher (brief #5b: the multi-doc workspace) ────────────────────
+// ── workspace link index (CF-1: scan the folder into the cross-doc index) ─────
+// Scan every .opml file in the connected folder into one in-memory cross-document
+// link/backlink index (the pure buildWorkspaceIndex). A file without a stable _docid
+// is skipped — it has no cross-file address until the app opens and stamps it (#100);
+// we never write _docid back during a scan (no editing files the user didn't open).
+// An unreadable / unparseable file is skipped, never thrown. The index trails the
+// current doc by <= one ~0.8s autosave debounce tick: the scan reads each doc's
+// on-disk copy and the current doc auto-writes continuously (#104), so its scanned
+// slice is ~live; sub-tick precision (overlaying the live tree) is a CF-2 concern,
+// not built here. Full re-scan each time — folders are small; incremental is later.
+async function scanWorkspace(dir) {
+  const docs = [];
+  for (const name of await listWorkspaceNames(dir)) {
+    try {
+      const fh = await dir.getFileHandle(name);
+      const r = fromOpml(await (await fh.getFile()).text());
+      if (!r.docId) continue;            // no stable address yet -> not cross-link-targetable
+      docs.push({ docId: r.docId, name, root: r });
+    } catch (_) { /* skip unreadable / unparseable file */ }
+  }
+  return buildWorkspaceIndex(docs);
+}
+
+// Rebuild the index from the connected folder. Call (do NOT await — background) after any
+// workspace/FS change: connect, reopen-on-load, reconnect, switch, new, delete, save-to.
+// No workspace -> null; a transient scan failure leaves the prior index in place.
+async function refreshWorkspaceIndex() {
+  if (!workspaceDir) { workspaceIndex = null; return; }
+  try { workspaceIndex = await scanWorkspace(workspaceDir); }
+  catch (_) { /* transient FS error -> keep prior index */ }
+}
+
+// ── document switcher (brief #5b: the multi-doc workspace) ────────────────────────
 // The connected folder is a notebook of .opml docs; these read/switch/create/delete
 // within it. switchWorkspaceDoc is a plain read (NOT reopenWorkspaceDoc — its newer-wins
 // compares against THIS doc's localStorage, which is wrong for a different file). Each
@@ -13180,7 +13287,7 @@ async function switchWorkspaceDoc(name) {
     const fh = await workspaceDir.getFileHandle(name);
     adoptDoc(fromOpml(await (await fh.getFile()).text()), { fileName: name, fileHandle: fh, workspaceFile: fh });
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
-    _wsWarned = false; renderWorkspaceAffordance(); return true;
+    _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;
   } catch (e) { alert('Could not open “' + name + '”: ' + (e.message || e)); return false; }
 }
 
@@ -13194,6 +13301,7 @@ async function newWorkspaceDoc() {
   await writeH(fh);                                   // materialize the empty doc on disk
   await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
   renderWorkspaceAffordance();
+  refreshWorkspaceIndex();           // CF-1: a new doc joined the notebook
   flashHint('New document “' + name + '” in the workspace');
 }
 
@@ -13210,6 +13318,7 @@ async function saveToWorkspaceDoc() {
   await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
   document.getElementById('file-name').textContent = name; updateTitle();
   renderWorkspaceAffordance();
+  refreshWorkspaceIndex();           // CF-1: a previously-detached doc joined the notebook
   flashHint('Saved to workspace as “' + name + '”');
 }
 
@@ -13225,8 +13334,10 @@ async function deleteWorkspaceDoc(name) {
   catch (e) { alert('Could not delete “' + name + '”: ' + (e.message || e)); return false; }
   if (name === fileName) {
     const rest = await listWorkspaceNames(workspaceDir);
-    if (rest.length) await switchWorkspaceDoc(rest[0]);
-    else await newWorkspaceDoc();
+    if (rest.length) await switchWorkspaceDoc(rest[0]);   // switch refreshes the index
+    else await newWorkspaceDoc();                          // new refreshes the index
+  } else {
+    refreshWorkspaceIndex();                               // CF-1: a non-current doc was removed
   }
   return true;
 }
@@ -13236,6 +13347,7 @@ async function disconnectWorkspace() {
   try { await idbDel(WORKSPACE_KEY); } catch (_) {}
   workspaceDir = null; pendingDir = null;
   workspaceFile = null; _wsWarned = false;  // stop auto-writing; fileHandle stays so Save still works
+  workspaceIndex = null;                    // CF-1: no workspace -> no cross-doc index
   renderWorkspaceAffordance();
   flashHint('Workspace disconnected — auto-save off. Use Save to keep a copy.');
 }
@@ -13244,7 +13356,7 @@ async function disconnectWorkspace() {
 // and warn once. Called from both the auto-write path and the manual Save path so they
 // behave identically on access loss.
 function degradeWorkspace(msg) {
-  workspaceFile = null;
+  workspaceFile = null; workspaceIndex = null;   // CF-1: lost folder access -> drop the cross-doc index
   if (workspaceDir) { pendingDir = workspaceDir; workspaceDir = null; renderWorkspaceAffordance(); }
   showWorkspaceWarn(msg || 'Lost access to the workspace folder — reconnect, or use Save As to keep your work.');
 }
@@ -15122,6 +15234,7 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
     else { pendingDir = dir; }                   // needs a gesture → 'Reconnect' affordance
   } catch (_) { try { await idbDel(WORKSPACE_KEY); } catch (_) {} workspaceDir = null; }
   renderWorkspaceAffordance();
+  refreshWorkspaceIndex();           // CF-1: build the index from the reopened folder (no-op when none)
 })();
 </script>
 </body>
