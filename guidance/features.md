@@ -445,6 +445,20 @@ Implemented:
   **Shift+Enter** is a line break. Until an inbox is set the Capture button is disabled
   and the action routes to the picker (no silent no-op — P4). Helpers `openCaptureDialog`
   / `doCapture` / `resolveInbox`. No new syntax.
+- **Journal / daily notes** — open or create today's dated entry from anywhere. **Four P2 doors:**
+  toolbar `#btn-journal` (calendar-day icon, beside the capture button), `/journal` slash verb,
+  "Set as journal home" bullet-menu item (toggles to "Unset as journal home"), and the keyboard
+  shortcuts panel. **Two modes** — set via `root.journal.mode`, persisted as `<_journal>` OPML
+  head element:
+  - *Append mode* (default): auto-finds or creates a top-level "Journal" home point (or uses
+    a user-designated point via "Set as journal home") and a dated direct-child entry
+    `YYYY-MM-DD`, then zooms in. Idempotent — re-clicking the same day lands on the same entry.
+    Works in any doc, no workspace required.
+  - *File mode* (workspace-gated): opens/creates a `YYYY-MM-DD.opml` per day in the connected
+    folder; if no folder is connected, falls back to append mode with a hint.
+  **Pure cores**: `todayISO()`, `journalFileName(iso, perEntry, stamp)`,
+  `findOrCreateDatedEntry(home, iso, mk)` — all Node-testable, pinned in `tests/test.mjs`.
+  `findOrCreateJournalHome()` + `openJournalEntry()` are the DOM-side helpers. No new syntax.
 - **Multi-document workspace** — a **workspace of many `.opml` notes in a real disk folder**, the
   durable backing for cross-file linking (Phase 1). **Chromium-gated** — the directory picker /
   `queryPermission` are a separate File System Access surface from the single-file open/save, so

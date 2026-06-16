@@ -28,10 +28,13 @@ it's making the power it already has **discoverable**. Remaining work ranked by 
 effort/risk** (V/E/R = High/Medium/Low):
 
 **🟢 Best return**
-1. **Daily notes** — V:M-H · E:L · R:L. The best bang-for-buck. A "Today" button that opens/creates
-   a date-named `.opml` in the workspace — nearly free given the multi-doc infra (`newWorkspaceDoc`
-   + date naming). Cornerstone journaling/log pattern; pairs with capture. *Value is workflow-
-   dependent (high if you log daily, near-zero if not).*
+1. ✓ **Daily notes / Journal** — V:M-H · E:L · R:L. **Delivered June 2026.** Toolbar `#btn-journal`
+   (calendar-day icon), `/journal` slash verb, "Set as journal home" bullet-menu door.
+   Append mode: auto-creates a "Journal" top-level home (or uses any user-designated home point)
+   and a dated child entry for today (`YYYY-MM-DD`), then zooms in. File mode (workspace-gated):
+   opens/creates a `YYYY-MM-DD.opml` per day in the folder. Config persists as `<_journal>` OPML
+   head element. Pure cores: `todayISO`, `journalFileName`, `findOrCreateDatedEntry` (all
+   Node-testable). Cornerstone journaling/log pattern; pairs with capture.
 2. **Lean ↔ guided verbosity modes** — V:**H (highest ceiling)** · E:**H** · R:M. Addresses the app's
    *actual* weakness — powerful but hard to discover (the reason `ux-discipline.md`/`ux.md` exist).
    A lean default + guided overlays (hints, menu descriptions, the verbosity dial) serves new *and*

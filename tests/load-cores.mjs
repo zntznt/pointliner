@@ -187,6 +187,7 @@ export function loadCores() {
     'pickerTitle','treeRows','migrateEmphasisText',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','urgencyMark',
+    'todayISO','journalFileName','findOrCreateDatedEntry',
   ];
   const cores = {};
   const missing = [];

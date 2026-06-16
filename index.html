@@ -114,7 +114,7 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 button{cursor:pointer;border:1px solid transparent;background:transparent;color:var(--fg);font-family:inherit;font-size:12.5px;padding:4px 10px;border-radius:var(--r-sm);transition:background .1s;white-space:nowrap;flex-shrink:0}
 button:hover{background:var(--bdr)}
 button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
-#btn-done,#btn-notes,#btn-capture,#btn-agenda{height:28px;min-width:30px}
+#btn-done,#btn-notes,#btn-capture,#btn-journal,#btn-agenda{height:28px;min-width:30px}
 /* hidden-note indicator: a whisper-level trailing mark after the point text
    (the .fn-ref metrics, but muted ink — accent would read as a link-jump) */
 .note-ind{color:var(--muted);font-size:.72em;vertical-align:super;cursor:pointer;line-height:0;margin-left:.35em;user-select:none}
@@ -1180,6 +1180,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
     <button id="btn-capture" title="Capture to inbox" aria-label="Capture to inbox"><i class="fa-solid fa-inbox"></i></button>
+    <button id="btn-journal" title="New journal entry" aria-label="New journal entry"><i class="fa-solid fa-calendar-day"></i></button>
     <button id="btn-agenda" title="Agenda — dated points" aria-label="Agenda — dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-done" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
     <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
@@ -1317,7 +1318,7 @@ let selAnchorId  = null;
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxId: null, plugins: [], docId: null };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxId: null, plugins: [], docId: null, journal: { mode: 'append', targetId: null } };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -1783,6 +1784,33 @@ function evalCheck(node, vars = {}) {
 function dueDateToday() {
   const d = new Date();
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+}
+
+// ─── journal / daily-notes pure cores ────────────────────────────────────────
+// todayISO() — pure, but depends on current time. Returns 'YYYY-MM-DD'.
+function todayISO() { return formatEpochDays(dueDateToday()); }
+
+// journalFileName(iso, perEntry, stamp) — pure, Node-testable.
+// perEntry=true → one file per capture (iso + '-' + stamp + '.opml').
+// perEntry=false → one file per day (iso + '.opml').  stamp is a string suffix (e.g. '143022').
+function journalFileName(iso, perEntry, stamp) {
+  if (perEntry && stamp) return iso + '-' + stamp + '.opml';
+  return iso + '.opml';
+}
+
+// findOrCreateDatedEntry(home, iso, mk) — pure tree operation, no DOM, Node-testable.
+// Looks for a direct child of `home` whose text starts with iso (e.g. '2026-06-16').
+// Returns { entry, created }.  mk(text) is called to create a new mkNode when absent.
+function findOrCreateDatedEntry(home, iso, mk) {
+  for (const ch of (home.children || [])) {
+    const line = (ch.text || '').split('\n', 1)[0].trim();
+    if (line === iso || line.startsWith(iso + ' ') || line.startsWith(iso + ':')) {
+      return { entry: ch, created: false };
+    }
+  }
+  const entry = mk(iso);
+  home.children.push(entry);
+  return { entry, created: true };
 }
 
 // Parse a due-property value string → epoch-day number, or null on failure.
@@ -3374,7 +3402,7 @@ function toOpml(r) {
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
   // doc-level config in the head, each via the shared headEl serializer (F6)
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId) + headEl('_plugins', r.plugins) + headEl('_docid', r.docId);
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inbox', r.inboxId) + headEl('_plugins', r.plugins) + headEl('_docid', r.docId) + headEl('_journal', r.journal);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -3450,11 +3478,13 @@ function fromOpml(xml) {
   const savedSearches = headJSONArray(doc, '_savedSearches', s => typeof s === 'string');
   const templates     = headJSONArray(doc, '_templates', t => t && typeof t.name === 'string' && t.node);
   const inboxId       = doc.querySelector('head > _inbox')?.textContent?.trim() || null;
+  const journalRaw    = doc.querySelector('head > _journal')?.textContent?.trim();
+  const journal       = (() => { try { const j = JSON.parse(journalRaw || 'null'); return (j && typeof j.mode === 'string') ? j : { mode: 'append', targetId: null }; } catch(_) { return { mode: 'append', targetId: null }; } })();
   const docId         = doc.querySelector('head > _docid')?.textContent?.trim() || null;
   // data packs (plugins): the validator drops shape-invalid packs (no string id);
   // bad rules/vars inside a kept pack are neutralized defensively at collect time.
   const plugins       = headJSONArray(doc, '_plugins', validPluginPack);
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId, plugins, docId,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxId, plugins, docId, journal,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -3480,6 +3510,7 @@ const BLOCK_CMDS = [
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Shows in the Agenda.', ex:'start → due', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children — sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title.', ex:'wyrm, drake', section:'Organize' },
+  { id:'journal', icon:'📓',  fa:'fa-solid fa-calendar-day',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -6457,6 +6488,89 @@ function doCapture() {
   renderCaptureMain(); // clear + keep open for the next capture (brain-dump flow)
 }
 
+// ─── journal / daily-notes ────────────────────────────────────────────────────
+// Open (or create) today's journal entry and zoom into it.
+// Append mode: find or create a "Journal" top-level home point, then find or create
+//   a dated child point for today. Zoom + focus the entry.
+// File mode (workspace-gated): open/create YYYY-MM-DD.opml in the workspace folder;
+//   if no workspace is connected, fall back to append mode with a hint.
+
+function findOrCreateJournalHome() {
+  // If a targetId is set, use that point (user-designated home).
+  if (root.journal?.targetId) {
+    const n = nodeById(root.journal.targetId);
+    if (n) return n;
+    // Stale pointer — clear it and fall through to auto-create.
+    root.journal = { mode: root.journal?.mode || 'append', targetId: null };
+  }
+  // Look for an existing top-level point whose first line is exactly "Journal".
+  for (const ch of root.children) {
+    const line = (ch.text || '').split('\n', 1)[0].trim();
+    if (line === 'Journal') return ch;
+  }
+  // Auto-create a top-level "Journal" point.
+  pushUndo();
+  const home = mkNode('Journal');
+  home.type = 'ul';
+  root.children.push(home);
+  nodeMap.set(home.id, home);
+  parentMap.set(home.id, root);
+  markDirty();
+  return home;
+}
+
+async function openJournalEntry() {
+  const mode = root.journal?.mode || 'append';
+  const iso = todayISO();
+
+  if (mode === 'file') {
+    if (!workspaceDir) {
+      flashHint('Connect a workspace folder to use file-per-day journal mode. Using in-doc mode.');
+      // fall through to append mode
+    } else {
+      const name = journalFileName(iso, false, null);
+      const names = await listWorkspaceNames(workspaceDir);
+      if (!names.includes(name)) {
+        // Create the new day file.
+        try {
+          const doc = mkRoot(); ensureDocId(doc);
+          const entry = mkNode(iso);
+          entry.type = 'ul';
+          doc.children.push(entry);
+          const fh = await workspaceDir.getFileHandle(name, { create: true });
+          const w = await fh.createWritable(); await w.write(toOpml(doc)); await w.close();
+          refreshWorkspaceIndex();
+        } catch (e) { flashError('Could not create journal file: ' + (e.message || e)); return; }
+      }
+      const ok = await switchWorkspaceDoc(name);
+      if (!ok) return;
+      // After switching, zoom to the first child (the dated entry).
+      const first = root.children[0];
+      if (first) { zoomInto(first.id); focusNode(first.id); }
+      flashHint('Journal — ' + iso);
+      return;
+    }
+  }
+
+  // Append mode: find/create home then dated entry.
+  const home = findOrCreateJournalHome();
+  const { entry, created } = findOrCreateDatedEntry(home, iso, t => {
+    const n = mkNode(t);
+    n.type = 'ul';
+    nodeMap.set(n.id, n);
+    parentMap.set(n.id, home);
+    return n;
+  });
+  if (created) {
+    if (home.collapsed) home.collapsed = false;
+    markDirty();
+    render();
+  }
+  zoomInto(entry.id);
+  focusNode(entry.id);
+  flashHint(created ? 'New journal entry — ' + iso : 'Journal — ' + iso);
+}
+
 // ─── search ───────────────────────────────────────────────────────────────────
 // The search box speaks a small operator language (UXP-20-routed: operators over
 // the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
@@ -7966,6 +8080,18 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
         if (root.inboxId === nodeId) { root.inboxId = null; markDirty(); flashHint('Inbox cleared'); }
         else { root.inboxId = nodeId; markDirty(); flashHint('Inbox set to ' + crumbLabel(node)); }
       } },
+    { icon:{ fa:'fa-solid fa-calendar-day', fb:'📓' },
+      label: root.journal?.targetId === nodeId ? 'Unset as journal home' : 'Set as journal home',
+      fn: () => {
+        hideBpop();
+        if (root.journal?.targetId === nodeId) {
+          root.journal = { mode: root.journal?.mode || 'append', targetId: null };
+          markDirty(); flashHint('Journal home cleared');
+        } else {
+          root.journal = { mode: root.journal?.mode || 'append', targetId: nodeId };
+          markDirty(); flashHint('Journal home set to ' + crumbLabel(node));
+        }
+      } },
     { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
@@ -8313,6 +8439,10 @@ function slashApply() {
   }
   if (trigger !== '@' && cmd.id === 'alias') {
     openAliasDialog(nodeId);
+    return;
+  }
+  if (trigger !== '@' && cmd.id === 'journal') {
+    openJournalEntry();
     return;
   }
   if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
@@ -15278,6 +15408,7 @@ document.getElementById('btn-notes').addEventListener('click', () => {
   render();
 });
 document.getElementById('btn-capture').addEventListener('click', () => openCaptureDialog());
+document.getElementById('btn-journal').addEventListener('click', () => openJournalEntry());
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. The modifier
 // key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
@@ -15320,6 +15451,7 @@ const SHORTCUTS = [
   ]},
   { sec: 'Dates & agenda', rows: [
     { keys: ['/due'],     desc: 'Schedule a start and/or due date (also in the bullet menu → Set / Edit dates)' },
+    { keys: ['/journal'], desc: 'Open or create today\'s journal entry (toolbar calendar-day button does the same; set a home via the bullet menu)' },
     { keys: ['Agenda'],   desc: 'Toolbar calendar button: List, Timeline (Gantt) and Calendar views of every dated point' },
     { keys: ['due:today', 'start:<date'], desc: 'Filter the outline to dated points (see Search & filter)' },
   ]},
