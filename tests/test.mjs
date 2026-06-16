@@ -3974,6 +3974,86 @@ test('searchWorkspace: per-doc context (collectVars) is computed only when an is
   assert.ok(afterIs >= 1, 'an is: search computes per-doc vars (once per other doc)');
 });
 
+// ── searchSnippet (UXP-64) ───────────────────────────────────────────────────
+// Context-aware snippet: windows around a text needle, names a field for structural
+// terms, falls back to the title slice.
+{
+  const node = (text, note, props) => ({ id:'x', text: text||'', note: note||null, props: props||[], children:[] });
+  const terms = (q) => c.parseSearchQuery(q);
+
+  test('searchSnippet: text hit windows around the needle', () => {
+    const n = node('The quick brown fox jumps over the lazy dog near a very long suffix here indeed');
+    const s = c.searchSnippet(n, terms('fox'));
+    assert.ok(s.toLowerCase().includes('fox'), 'snippet must contain the needle');
+    assert.ok(s.length < 150, 'snippet should be compact');
+  });
+
+  test('searchSnippet: note hit also included in body', () => {
+    const n = node('boring title', 'hidden needle in note text');
+    const s = c.searchSnippet(n, terms('needle'));
+    assert.ok(s.includes('needle'), 'note body is searched for text hits');
+  });
+
+  test('searchSnippet: #tag hit reads from raw node.text', () => {
+    const n = node('point with #mytag inside');
+    const s = c.searchSnippet(n, terms('#mytag'));
+    assert.ok(s.includes('#mytag'), 'tag hit returns snippet from raw text');
+  });
+
+  test('searchSnippet: prop hit returns "key: val"', () => {
+    const n = node('title', null, [{key:'cost', val:'42'}]);
+    const s = c.searchSnippet(n, terms('cost:42'));
+    assert.equal(s, 'cost: 42');
+  });
+
+  test('searchSnippet: has: hit returns "key: val"', () => {
+    const n = node('title', null, [{key:'status', val:'active'}]);
+    const s = c.searchSnippet(n, terms('has:status'));
+    assert.equal(s, 'status: active');
+  });
+
+  test('searchSnippet: is: hit returns "is:<value>"', () => {
+    const n = node('#TODO buy milk');
+    const s = c.searchSnippet(n, terms('is:todo'));
+    assert.equal(s, 'is:todo');
+  });
+
+  test('searchSnippet: due: hit returns "due: <val>"', () => {
+    const n = node('meeting', null, [{key:'due', val:'2026-07-01'}]);
+    const s = c.searchSnippet(n, terms('due:2026-07-01'));
+    assert.equal(s, 'due: 2026-07-01');
+  });
+
+  test('searchSnippet: start: hit returns "start: <val>"', () => {
+    const n = node('sprint', null, [{key:'start', val:'2026-06-01'}]);
+    const s = c.searchSnippet(n, terms('start:2026-06-01'));
+    assert.equal(s, 'start: 2026-06-01');
+  });
+
+  test('searchSnippet: no needle match falls back to title slice', () => {
+    const n = node('a regular title with no special terms');
+    const s = c.searchSnippet(n, terms('is:done'));  // is: → structural, no text needle, not matched
+    // falls back to title slice (may be empty string for is: with no prop hit either)
+    assert.ok(typeof s === 'string', 'always returns a string');
+  });
+
+  test('searchSnippet: long text adds ellipsis', () => {
+    const long = 'a'.repeat(50) + 'needle' + 'b'.repeat(100);
+    const n = node(long);
+    const s = c.searchSnippet(n, terms('needle'));
+    assert.ok(s.includes('needle'), 'needle present');
+    assert.ok(s.endsWith('…'), 'trailing ellipsis when text continues after window');
+  });
+
+  test('searchSnippet: negated terms are not used for snippet field matching', () => {
+    const n = node('title', null, [{key:'cost', val:'9'}]);
+    // -cost:9 is negated, so even though the node has cost:9, the snippet skips it
+    const s = c.searchSnippet(n, terms('-cost:9'));
+    // should fall back to title slice, not "cost: 9"
+    assert.notEqual(s, 'cost: 9');
+  });
+}
+
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
 // Eight whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
