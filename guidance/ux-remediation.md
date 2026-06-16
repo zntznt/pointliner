@@ -12,9 +12,9 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > **Current state (June 2026):** Tiers 1–3, the correctness batch, and the drift/a11y
 > fixes (UXP-3…39) are ✓ closed. A six-domain **UX audit (June 2026)** then surfaced a
 > fresh set of non-conformances, tracked below as **UXP-40…67**: **batch 1 (UXP-40…52) is
-> ✓ closed** (data-safety + zero-risk conformance one-liners, landed + verified together);
-> **UXP-53…67 are ☐ open**, sequenced for follow-up PRs (the a11y-reachability batch
-> first). **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> ✓ closed** (data-safety + zero-risk conformance one-liners); **batch 2 (UXP-53…56) is
+> ✓ closed** (the a11y-reachability batch — links, backlinks, footnote refs, todo picker);
+> **UXP-57…67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
 
@@ -367,7 +367,7 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
 
 ---
 
-### UXP-53 ☐ Node-link pills are keyboard-dead in display mode (P3) 🟡
+### UXP-53 ✓ Node-link pills keyboard-operable in display mode — **RESOLVED** 🟡
 - **Problem:** `.node-link` / `-mirror` / `-broken` / `-cross` render as `<span contenteditable="false">`
   with **no `tabindex`/`role`/`aria-label`** and are absent from the pill-body keydown dispatch
   (`onKeyDown` ~7417) — link navigation is mouse-only; a screen reader gets an unnamed span.
@@ -375,8 +375,9 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
 - **Violates:** P3-1/P3-2. **Target:** the UXP-39 pattern — `role="link"` + `tabindex="-1"` + `aria-label`
   on all `.node-link*` variants, and a `.node-link` branch in the keydown block (zoom same-doc / switch+zoom
   cross-doc) added **beside** `mousedown`+`preventDefault`. `renderLinkPill` (~2350) / `renderCrossLinkPill`.
+- **Resolved:** all six link-pill variants (`renderLinkPill` broken/mirror×2/plain + `renderCrossLinkPill` broken/cross) carry `role="link"` + `tabindex="-1"` (broken/cross already had `aria-label`; plain/mirror are named by their content); a `.node-link` branch in the `onKeyDown` Enter/Space block dispatches the display-mode `mousedown` the existing handler processes (zoom same-doc / switch+zoom cross-doc), and a `.node-link:focus-visible` ring. Headless-pinned (role/tabindex present; Enter on a link navigates to its target).
 
-### UXP-54 ☐ Backlinks panel rows are keyboard-unreachable (P3) 🟡
+### UXP-54 ✓ Backlinks panel rows keyboard-operable + reachable — **RESOLVED** 🟡
 - **Problem:** `.bl-item` (same-doc) and `.bl-cross` rows in `renderBlPanel` (~14148) are plain `<div>`s
   with a `click` listener only — no `role`/`tabindex`/`keydown`, and the same-doc rows have **no accessible
   name** (cross-doc rows at least carry one). The panel surfaces on edit-focus but isn't a Tab stop, so a
@@ -384,16 +385,18 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   internal word "node" in `title` (V/§1 vocabulary).
 - **Violates:** P3-1/P3-2 (+ vocabulary). **Target:** `role="button"`+`tabindex`+`aria-label`+Enter/Space on
   rows, a focus path into the panel, "point" in copy.
+- **Resolved:** the same-doc + cross-doc backlink rows **and** the unlinked-ref title carry `role="link"` + `tabindex="0"` (matching the panel's existing `.bl-link-btn`) + `aria-label` + an Enter/Space `keydown` beside the `click`, with "point" vocabulary; **`scheduleBlHide` now keeps the panel open when focus is within `#bl-panel`** (the `scheduleFnHide` precedent), so focusing a row no longer dismisses it; `.bl-item:focus-visible` ring. Headless-pinned (role/tabindex/aria; panel stays open on row focus; Enter navigates to the source).
 
-### UXP-55 ☐ Footnote refs are hover-only — no keyboard / touch / AT (P3) 🟡
+### UXP-55 ✓ Footnote refs keyboard / touch / AT-operable — **RESOLVED** 🟡
 - **Problem:** `<sup class="fn-ref">` (mdInline ~2408) has no `tabindex`/`role`/`aria-label` and is driven
   only by `mouseover`/`mouseout` to reveal the footnote panel — no click, no Enter/Space, no
   `@media(hover:none)` tap fallback. Unreachable by keyboard and on touch; AT announces a bare `[1]`.
   Violates the app's own "hover-only affordances need a touch fallback" rule.
 - **Violates:** P3 + touch invariant. **Target:** `role="button"`+`tabindex="-1"`+`aria-label="Footnote N"`,
   an Enter/Space + tap path opening/scrolling the panel, mirrored into the `@media(hover:none)` block.
+- **Resolved:** the `fn-ref` render carries `role="button"` + `tabindex="-1"` + `aria-label="Footnote N"`; a new **`activateFnRef(key, nodeId)`** reveals + locks the footnote panel, highlights the matching entry, and scrolls it into view — wired as a content-`mousedown` branch (click/**tap**, display mode) and an `onKeyDown` Enter/Space branch, **beside** the existing hover reveal (kept for mouse). `.fn-ref:focus-visible` ring. The tap path is the touch fallback (`.fn-ref` was already in the touch-callout group). Headless-pinned.
 
-### UXP-56 ☐ `showTodoPicker` reuses `#bpop` but is keyboard-dead (P1/P3) 🟡
+### UXP-56 ✓ Todo state/priority picker keyboard-operable — **RESOLVED** 🟡
 - **Problem:** `#bpop` is a full `role="menu"` (roving focus, Enter/Space, Esc-restore) as the bullet popup,
   but `showTodoPicker` (~8011) rebuilds it with mouse-only `<div class="tp-chip">` chips (no
   role/tabindex/keydown) and never moves focus in — so reached via the keyboard-operable bullet popup
@@ -401,6 +404,7 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   (`/state:`), so P3-2 holds, but the same element being a real menu in one mode and dead in another is P1.
 - **Violates:** P1 / P3-1. **Target:** give the chips the `role`/`tabindex`/keydown the bullet popup already
   applies; move focus in when entered from the keyboard.
+- **Resolved:** the `.tp-chip`s carry `role="menuitemradio"` + `tabindex="-1"` + `aria-checked` + `aria-label` (priority chips `aria-disabled` without a keyword); the **shared `#bpop` keydown handler now navigates `.tp-chip`** too (Arrows/Home/End/Enter/Esc — the same handler the bullet popup uses); `showTodoPicker` moves focus to the current (or first) chip and sets `bpopReturnFocus` so Esc restores focus to the point; `.tp-chip:focus-visible` ring. The same `#bpop` element is now a real menu in **both** modes (P1). Headless-pinned (role/tabindex/aria-checked; focus-in; ArrowDown roving; Enter applies).
 
 ### UXP-57 ☐ No `Shift+Arrow` point selection (P1/P3) 🟡
 - **Problem:** the §3 "Shift = extend" law and the multi-select capability have **no keyboard door between
