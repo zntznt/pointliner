@@ -146,6 +146,7 @@ export function loadCores() {
     'parseLinkToken', 'buildWorkspaceIndex',   // CF-1: cross-doc link index pure cores
     'renderCrossLinkPill',                      // CF-2: cross-doc link pill (reads root.docId + workspaceIndex via vm)
     'workspaceCandidates',                      // CF-3: cross-doc [[ picker candidates (pure)
+    'workspaceBacklinks',                       // CF-4: cross-doc backlinks (pure)
     'validPluginPack', 'mergePackRules', 'packVarDefs',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',

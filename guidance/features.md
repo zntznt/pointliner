@@ -482,6 +482,24 @@ Implemented:
     makes a same-doc stub — a cross-doc "+ New note" is a clean follow-on, not v1). With no
     workspace the picker is exactly as before. `workspaceCandidates` is Node-pinned; the live
     merge / hint / token-insertion is mock-index Playwright-verified.
+  - **Cross-document backlinks (CF-4, Chromium/workspace-gated):** the backlinks panel's
+    **"Linked from"** list now answers *"what links here across my whole notebook"* — it
+    includes inbound links from **other docs in the connected folder**, not just this one.
+    Same-doc sources still come live from `collectLinks`; cross-doc sources come from CF-1's
+    `workspaceIndex.backlinks` via the pure core `workspaceBacklinks(targetDocId,
+    targetNodeId, index)` (same-doc sources are **excluded there** to avoid a duped,
+    scan-time-stale copy). They fold into the same "Linked from" section (the header count is
+    the **total** — same-doc + cross), each cross row reusing `.bl-item` with a `· ‹note›`
+    doc hint (`.bl-doc-hint`) and an `aria-label` naming the source note. **Clicking a cross
+    row navigates like CF-2**: `switchWorkspaceDoc(name)` (dirty-guarded — a cancelled discard
+    aborts the jump) then `zoomInto`. The **unlinked-references** section + its "Link" action
+    stay **same-doc** (cross-doc prose scanning is a heavier follow-on, not v1). **Freshness:**
+    cross-doc backlinks read other docs' on-disk copies (re-scanned on switch — CF-1), so a
+    link you just added appears in another note's panel after this doc auto-writes (≤ ~0.8 s)
+    and you switch — the same ≤1-tick bound as CF-1; no filesystem-watching in v1.
+    `workspaceBacklinks` is Node-pinned; the panel merge / hint / click→switch+zoom is
+    mock-index Playwright-verified. **This completes the cross-file lane (CF-1…CF-4): index →
+    token → picker → backlinks.**
   - **Caption vs. mirror:** `[[#id|My text]]` shows a fixed caption; **`[[#id|]]`
     (empty label) "mirrors"** the target — it renders the target's *live* content,
     pills included, in their current state, **display-only and inline**. Rename or
