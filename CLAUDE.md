@@ -540,8 +540,10 @@ footnote ref `[^key]`), so it round-trips through OPML as plain text with no `_l
 attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption for
 `[[#id|text]]`, the target's **live** title for `[[#id|]]`, or — when the label is empty
 — *mirrors* the target by transcluding its rendered content (display-only, inline; see
-the re-entrancy note above). Missing target → `.node-link-broken`. Same-document only
-(cross-document waits on the multi-doc workspace). Creation paths: typing `[[`
+the re-entrancy note above). Missing target → `.node-link-broken`. **Cross-document links**
+(`[[docId#nodeId|label]]`) now also ship on the multi-doc workspace (delivered June 2026: the
+workspace-wide index CF-1, navigation CF-2, the folder-spanning `[[` picker CF-3, cross-doc
+backlinks CF-4, "+ New note" CF-5; see `guidance/features.md`). Creation paths: typing `[[`
 opens the **link picker** (`LINK_PICKER_ENABLED`, now a kill switch defaulting on —
 UXP-4; candidates via the pure `linkCandidates`, applied as the live-title form
 `[[#id|]]`; the trigger regex excludes `#` so a raw token is never intercepted), or
@@ -626,7 +628,11 @@ Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodie
 `classifyBraceBody` keeps edit-mode styling and exit promotion in agreement) ·
 Footnotes · Hashtags (incl. the `#` tag picker sourced from `collectTags`) ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
-Node links (same-doc, incl. live-title "mirror" and the `[[` picker) ·
+Node links (same-doc **and cross-document** `[[docId#nodeId|label]]`, incl. live-title "mirror",
+the `[[` picker, backlinks, link-and-create / "+ New note", aliases, unlinked refs) ·
+Multi-document workspace (a folder of `.opml` notes on real disk — FSA + IndexedDB, Chromium-gated;
+durable continuous auto-write, document switcher, reopen-across-reloads, non-Chromium invite) ·
+Whole-folder search (one search box over every note in the folder) ·
 Click-anywhere-to-edit ·
 Per-point notes (`node.note` + `_note` OPML attr: a muted plain-text block under the
 point — bullet-menu door, click-to-edit in place, Esc/blur commits, clearing deletes;

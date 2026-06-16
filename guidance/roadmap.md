@@ -107,32 +107,41 @@ Independent of the storage refactor; keeps the "balance" promise while Phase 1 i
   user-definable state sets declared via `@sequence`, applied via `/`. Zero new syntax.
   See `guidance/features.md`. *(backlog: Rich TODO states + priorities)*
 
-### Phase 1 — Multi-document foundation (the big lift; Chromium, real disk folder)
+### Phase 1 — Multi-document foundation (the big lift; Chromium, real disk folder) — ✅ DELIVERED
 The largest, least-test-covered phase. Restructures the core single-`root`/single-autosave
 assumptions into a workspace + current-document model.
-1. **Capability gate + invite UX** — feature-detect `showDirectoryPicker`. If absent, the
-   workspace is hidden and a gentle "open in Chrome/Edge to unlock linked notebooks" prompt
-   appears where the user would reach for it; single-file mode stays fully functional.
-2. **Backing folder** — `showDirectoryPicker({ mode: 'readwrite' })`; persist the handle in
-   IndexedDB; on load, `queryPermission` / `requestPermission` to reconnect (one user click).
-   The workspace doesn't open until a folder is established — this *is* the hard gate.
-3. **Stable per-doc id** (`_docid` in OPML head; migrate-on-load if absent).
-4. **Document switcher UI** — open / create / rename / delete `.opml` files in the folder.
-5. **Continuous auto-write** — every edit debounced to its file (extend the existing autosave
-   path); keep the localStorage autosave as the crash buffer for the debounce window. Persist
-   which doc was last open.
 
-### Phase 2 — Linking core
+> **Status: ✅ delivered (June 2026).** All five steps shipped, plus the `adoptDoc` state-seam
+> that made the rest safe. See the **Multi-document workspace** entry in `guidance/features.md`.
+> Because the File System Access picker/permission flow can't be driven headless, this phase was
+> verified by a **human manual pass** at each step (the pure cores stayed Node-pinned).
+
+1. ✅ **Capability gate + invite UX** — `showDirectoryPicker` feature-detect; non-Chromium hides
+   the workspace and shows a File-menu invite ("open in Chrome/Edge to unlock linked notebooks" +
+   Copy link). Single-file mode stays fully functional everywhere.
+2. ✅ **Backing folder** — `showDirectoryPicker({mode:'readwrite'})`; handle persisted in IndexedDB;
+   `queryPermission`/`requestPermission` reconnect on load; **continuous auto-write** + reopen-from-
+   disk + `degradeWorkspace`/verified-reconnect on lost access (`#103`–`#106`).
+3. ✅ **Stable per-doc id** — `_docid` in the OPML head, `ensureDocId`, migrate-on-load (`#100`).
+4. ✅ **Document switcher UI** — open / create-in-folder / switch / delete `.opml` files; document-
+   aware menu; reopen-the-last-doc across reloads (`#107`). *(Rename deferred — FSA has no atomic
+   rename.)*
+5. ✅ **Continuous auto-write** — every edit debounced to its file (`flushWorkspaceFile`); localStorage
+   autosave kept as the crash buffer; the last-open note persisted + reopened (`#105`).
+   *(Plus the `adoptDoc` runtime document-swap chokepoint, `#101`, and the `Ctrl+S` double-fire
+   fix, `#102`.)*
+
+### Phase 2 — Linking core — ✅ DELIVERED (same-doc **and** cross-file)
 **Steps 1–4 are ungated** — they work in every browser on a single document (no folder backing,
-no Phase 1 dependency). **Only step 5 (cross-file) requires the gated workspace.** This means
-same-document Zettelkasten ships first and everywhere; the multi-file network rides on Phase 1.
+no Phase 1 dependency). **Only step 5 (cross-file) requires the gated workspace.** Same-document
+Zettelkasten shipped first and everywhere; the multi-file network rode on Phase 1.
 
-> **Status:** steps 1–4 + a bonus mirror are **shipped** (same-document). `collectLinks` index
-> + backlinks panel + `[[#id|label]]` token + copy-link + keyboard-first creation are in; the
-> **mirror** (`[[#id|]]` transcludes the target's live rendered content, display-only, inline) is
-> a real partial slice of the shelved "mirror" feature. Step 4 (the `[[` picker) is **live**
-> (un-gated by UXP-4; `LINK_PICKER_ENABLED` remains as a kill switch defaulting on); step 5
-> (cross-file) waits on Phase 1. See `guidance/features.md`.
+> **Status: ✅ delivered (June 2026).** Steps 1–4 + the mirror shipped same-document; **step 5
+> (cross-file) is now done too**, via the **CF-1…CF-5** arc on top of the Phase-1 workspace:
+> **CF-1** the workspace-wide link index (`scanWorkspace`/`buildWorkspaceIndex` over every `.opml`),
+> **CF-2** the `[[docId#nodeId|label]]` token (render + click-to-navigate), **CF-3** the `[[` picker
+> spanning the whole folder, **CF-4** cross-doc backlinks ("what links here, across my notebook"),
+> **CF-5** cross-doc link-and-create ("+ New note"). See `guidance/features.md`.
 
 1. ✅ **Same-file link token** `[[#nodeId|label]]` + resolver (click → zoom to target). Links are
    plain editable text in edit mode (not atomic pills); render as a widget in display mode.
@@ -143,17 +152,28 @@ same-document Zettelkasten ships first and everywhere; the multi-file network ri
    picker (pure `linkCandidates` core); apply writes the live-title form `[[#id|]]`;
    `LINK_PICKER_ENABLED` survives only as a kill switch defaulting on.
    *(backlog: Node links & backlinks)*
-5. **Generalize to cross-file** — `[[docId#nodeId|label]]` once Phase 1 lands; the index now
-   spans all docs in the folder. **(This step — and only this step — needs the gated
-   workspace.)** *(backlog: Node links & backlinks)*
+5. ✅ **Generalize to cross-file** — `[[docId#nodeId|label]]`; the workspace-wide index spans every
+   doc in the folder (CF-1…CF-5: token, picker, backlinks, "+ New note"). The cross-file lane is
+   complete. *(backlog: Node links & backlinks)*
 
-### Phase 3 — Networked-notes UX
-- **Link-and-create while typing**, **aliases**, **unlinked references**
-  *(all sub-features of backlog: Node links & backlinks)*.
+### Phase 3 — Networked-notes UX — ✅ DELIVERED
+- ✅ **Link-and-create while typing** (same-doc "+ New point", `#96`; cross-doc "+ New note", CF-5),
+  ✅ **aliases** (`#98` — a reserved `aliases` property feeding the picker + matching), ✅ **unlinked
+  references** (`#97` — same-doc; the panel surfaces unlinked mentions with a one-click Link).
+  *(Cross-doc unlinked references — scanning other docs' prose — is **deferred**: high cost, secondary
+  value; see backlog. Graph view → Phase 4, parked.)*
 
 ### Phase 4 — Later
-- **Graph view** *(backlog: Node links & backlinks)*; **daily notes** and **dates + agenda
-  view** *(backlog: Dates + agenda)*.
+- ⊘ **Graph view** — **parked** (product call: low actionable value for a single notebook; the
+  backlinks panel + cross-doc backlinks cover navigation). **daily notes** — not started; **dates +
+  agenda view** — ✅ shipped (`@due`/agenda, 2026-06-13). *(backlog: Node links & backlinks / Dates)*
+
+### Beyond the plan — ✅ Whole-folder search (delivered)
+Not in the original phases, but the natural everyday gap once the notebook had many docs: **one
+search box scans every `.opml` in the folder**. **WS-1** retains the parsed docs in the index and
+adds the pure `searchWorkspace` (reusing `parseSearchQuery`/`queryMatchesNode` verbatim — same query
+language, exact `is:` across docs); **WS-2** shows a "Found in other notes · N" results list under
+the search box, click to switch+zoom. See `guidance/features.md`.
 
 ### Interleaving (the "balance")
 Drop a contained generative feature between the heavy phases — e.g. another `evalMath`
