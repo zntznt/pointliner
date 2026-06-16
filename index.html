@@ -12743,12 +12743,15 @@ function splitForSibling(text, offset, contPrefix) {
 
 // Pure core (UXP-68): merge `body` (the prefix-stripped trailing point) onto the end of
 // `prevText` (the previous visible point) when Backspace is pressed at offset 0 — the
-// inverse of splitForSibling. No separator is inserted (Backspace joins flush, like every
-// peer outliner); the returned `offset` is the FOLDED join position (prevText's length),
-// turned into a caret by unfoldedPrefixLen at the call site.
+// inverse of splitForSibling. Joins FLUSH onto the target's last *content* line: a
+// trailing blank line on the target (a stray `\n` — e.g. a contenteditable filler `<br>`
+// that `editableText` turns into `\n`, common on parent points) and a leading blank line
+// on the body are trimmed at the seam, so the body never lands on a spurious second line.
+// The returned `offset` is the FOLDED join position, turned into a caret by
+// unfoldedPrefixLen at the call site.
 function mergeUpText(prevText, body) {
-  const p = prevText == null ? '' : String(prevText);
-  const b = body == null ? '' : String(body);
+  const p = (prevText == null ? '' : String(prevText)).replace(/\n+$/, '');
+  const b = (body == null ? '' : String(body)).replace(/^\n+/, '');
   return { text: p + b, offset: p.length };
 }
 
@@ -12854,7 +12857,9 @@ function mergeUpInto(id) {
 
   const oldPrevText = target.text;
   const body = textForDisplay(node);              // prefix/marker stripped; folded tokens preserved
-  target.text = mergeUpText(oldPrevText, body).text;
+  const { text: merged, offset: joinFolded } = mergeUpText(oldPrevText, body);
+  const joinPrefix = merged.slice(0, joinFolded); // target's text minus any trailing blank line — the seam
+  target.text = merged;
   mergeArtifactSidecars(node, target);            // target gains node's records…
   target.checked = todoDoneFromText(target.text);
   pruneArtifacts(target);                          // …then shed any whose token didn't come along
@@ -12870,7 +12875,7 @@ function mergeUpInto(id) {
   deregisterSubtree(node);
   markDirty();
   render();
-  focusNodeAtOffset(target.id, unfoldedPrefixLen(target, oldPrevText)); // caret at the join
+  focusNodeAtOffset(target.id, unfoldedPrefixLen(target, joinPrefix)); // caret at the join
   return true;
 }
 

@@ -5394,6 +5394,18 @@ test('mergeUpText tolerates null/undefined', () => {
   assert.deepEqual(host(c.mergeUpText(null, null)), { text: '', offset: 0 });
   assert.deepEqual(host(c.mergeUpText('hi', undefined)), { text: 'hi', offset: 2 });
 });
+test('mergeUpText trims a trailing blank line on the target (the second-line bug)', () => {
+  // a parent point often carries a stray trailing \n (a contenteditable filler <br>);
+  // the body must continue its last content line, not drop onto a spurious second line
+  assert.deepEqual(host(c.mergeUpText('Parent\n', 'child')), { text: 'Parentchild', offset: 6 });
+  assert.deepEqual(host(c.mergeUpText('Parent\n\n', 'child')), { text: 'Parentchild', offset: 6 });
+});
+test('mergeUpText keeps a genuinely multi-line target, appending to its last line', () => {
+  assert.deepEqual(host(c.mergeUpText('x\ny', 'z')), { text: 'x\nyz', offset: 3 });
+});
+test('mergeUpText trims a leading blank line on the body', () => {
+  assert.deepEqual(host(c.mergeUpText('foo', '\nbar')), { text: 'foobar', offset: 3 });
+});
 
 test('UXP-68 wiring: Backspace-at-start merges up via mergeUpInto', () => {
   assert.ok(_src.includes('function mergeUpInto'), 'mergeUpInto must be defined');
@@ -5402,7 +5414,7 @@ test('UXP-68 wiring: Backspace-at-start merges up via mergeUpInto', () => {
   assert.match(_src, /function mergeUpInto[\s\S]{0,700}lastVis\(parent\.children\[idx - 1\]\)/,
     'mergeUpInto targets the previous visible point via lastVis');
   // mirrors the fold dance: caret lands at the folded join via unfoldedPrefixLen
-  assert.match(_src, /function mergeUpInto[\s\S]{0,2000}unfoldedPrefixLen\(target, oldPrevText\)/,
+  assert.match(_src, /function mergeUpInto[\s\S]{0,2000}unfoldedPrefixLen\(target, joinPrefix\)/,
     'mergeUpInto lands the caret at the folded join');
   // keydown gate: only when the selection is collapsed at offset 0
   assert.match(_src, /getCaretOffset\(content\) === 0 && mergeUpInto\(id\)/,
