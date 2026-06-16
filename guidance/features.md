@@ -787,3 +787,22 @@ Implemented:
     doc's states), exact for another doc's custom sequence. Pure core `searchWorkspace` is
     Node-pinned (incl. cross-doc `is:done`/`is:failing` exactness + the lazy-context guard); the
     scan→`roots`→search path is mock-dir-verified headless.
+  - **Whole-folder search results** (WS-2, Chromium/workspace-gated): the visible half of
+    workspace-wide search — one search box scans the **whole notebook**. The in-doc filter
+    (`render()` dims the current doc to its matches) is **unchanged**; this adds a **"Found in
+    other notes · N"** list atop the focus-shown search panel (`#sh-workspace`, the most
+    prominent thing while typing), showing `searchWorkspace` hits from other docs. Each row
+    carries the point title, its **note name**, and a md-stripped snippet (when distinct from
+    the title); clicking/Enter (`openWorkspaceSearchHit`) **switches to that doc** (dirty-guarded
+    — a cancelled discard aborts the jump), **clears the filter** for a clean landing, and
+    **zooms** to the point (the CF-2 navigation model). Rows are `role="option"`, keyboard-
+    operable, `aria-label`ed with the target note; the panel stays open via `:focus-within`
+    (rows live inside `#search-hint`), and `mousedown`+`preventDefault` mirrors the saved-search
+    chips. The section appears **only** when a folder is connected, the query is non-empty, and
+    there are other-doc hits (else hidden — empty query / no workspace / no matches). **Zero new
+    syntax** — the same operators, now folder-wide and **exact across docs** (WS-1 passes each
+    doc's own sequences/vars). `renderWorkspaceSearchResults` wires into `applySearch` (covers
+    typing/clear/programmatic) + the search-box focus handler; mock-index Playwright-verified
+    (render, count, snippet, click→switch+clear+zoom, cancelled-discard no-zoom, no-stale-rows,
+    empty/no-workspace hidden). Front door: the results list itself + the **`?` panel's Search &
+    filter** "across notes" row.

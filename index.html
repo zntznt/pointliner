@@ -180,6 +180,15 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .sh-chip-x{color:var(--muted);font-size:12px;line-height:1;border-radius:3px;padding:0 1px}
 .sh-chip-x:hover{color:var(--bad)}
 .sh-chip-x:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* workspace search results (WS-2): cross-doc hits — the interactive island atop the hint panel */
+#sh-workspace{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
+#sh-workspace-list{display:flex;flex-direction:column;gap:1px;max-width:340px}
+.sh-ws-item{display:block;cursor:pointer;padding:3px 5px;border-radius:var(--r-sm);max-width:340px}
+.sh-ws-item:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.sh-ws-item:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);outline:2px solid var(--acc);outline-offset:-2px}
+.sh-ws-title{color:var(--fg);font-size:12px}
+.sh-ws-doc{color:var(--muted);font-size:11px}
+.sh-ws-snip{color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:330px}
 #search-save{position:absolute;right:26px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);
   font-size:12px;display:none;line-height:1;border:none;background:transparent;padding:2px}
 #search-save.on{display:block}
@@ -1139,6 +1148,10 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button id="search-save" title="Save this search" aria-label="Save this search" aria-pressed="false"></button>
       <button id="search-clear" title="Clear search">✕</button>
       <div id="search-hint" role="group" aria-label="Search filters">
+        <div id="sh-workspace" hidden>
+          <div class="sh-saved-title" id="sh-workspace-title">Found in other notes</div>
+          <div id="sh-workspace-list" role="listbox" aria-label="Matches in other notes"></div>
+        </div>
         <div id="sh-saved" hidden>
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
@@ -13784,6 +13797,7 @@ function applySearch(q) {
   document.getElementById('search-clear').classList.toggle('on', !!q);
   syncSearchSave();
   render();
+  renderWorkspaceSearchResults(searchQuery);   // WS-2: refresh cross-doc results (covers typing, clear, programmatic)
 }
 
 document.getElementById('search-box').addEventListener('input', function() {
@@ -13801,6 +13815,7 @@ document.getElementById('search-clear').addEventListener('click', () => {
 document.getElementById('search-box').addEventListener('focus', () => {
   armChromeReturn();
   renderSavedSearches();   // refresh after doc loads/switches — cheap, n is small
+  renderWorkspaceSearchResults(document.getElementById('search-box').value.trim());  // WS-2: re-show cross-doc hits for an active query
 });
 
 // ── saved searches wiring ──
@@ -13860,6 +13875,52 @@ function forgetSavedSearch(q) {
   renderSavedSearches();
   syncSearchSave();
   document.getElementById('search-box').focus();
+}
+
+// WS-2: cross-doc search results in the focus-shown search panel. The in-doc filter (render()
+// dims the current doc to its matches) is unchanged; this surfaces matches in OTHER workspace
+// docs as a "Found in other notes · N" list, each row jumping to its point. Shown only when a
+// folder is connected, the query is non-empty, and there are other-doc hits.
+function renderWorkspaceSearchResults(query) {
+  const sec  = document.getElementById('sh-workspace');
+  const list = document.getElementById('sh-workspace-list');
+  if (!sec || !list) return;
+  const results = (workspaceDir && workspaceIndex && query)
+    ? searchWorkspace(query, workspaceIndex, root.docId) : [];
+  if (!results.length) { sec.hidden = true; list.innerHTML = ''; return; }
+  document.getElementById('sh-workspace-title').textContent = `Found in other notes · ${results.length}`;
+  list.innerHTML = '';
+  results.forEach(({ docId, nodeId, title, docName, snippet }) => {
+    const row = document.createElement('div');
+    row.className = 'sh-ws-item';
+    row.setAttribute('role', 'option');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-label', `${title} — in ${docName || 'another note'}`);
+    const t = document.createElement('span'); t.className = 'sh-ws-title'; t.textContent = title;
+    const d = document.createElement('span'); d.className = 'sh-ws-doc';   d.textContent = ` · ${docName || 'another note'}`;
+    row.append(t, d);
+    if (snippet && snippet !== title) {
+      const s = document.createElement('div'); s.className = 'sh-ws-snip'; s.textContent = snippet; row.appendChild(s);
+    }
+    const go = () => openWorkspaceSearchHit(docId, nodeId);
+    row.addEventListener('mousedown', e => { e.preventDefault(); go(); });   // act before blur (the saved-chip pattern)
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    list.appendChild(row);
+  });
+  sec.hidden = false;
+}
+
+// Jump to a workspace search hit: switch to its doc (dirty-guarded), drop the filter for a
+// clean landing, then zoom to the point. A cancelled discard (ok === false) aborts the jump.
+function openWorkspaceSearchHit(docId, nodeId) {
+  const name = workspaceIndex?.nameByDocId?.get(docId);
+  if (!name) return;
+  switchWorkspaceDoc(name).then(ok => {
+    if (!ok) return;
+    document.getElementById('search-box').value = '';
+    applySearch('');
+    if (nodeById(nodeId)) zoomInto(nodeId);
+  });
 }
 
 document.getElementById('search-save').addEventListener('mousedown', e => e.preventDefault());
@@ -15107,6 +15168,7 @@ const SHORTCUTS = [
     { keys: ['-term', '-#tag'], desc: 'Exclude matches' },
     { keys: ['"a b"'],     desc: 'Exact phrase' },
     { keys: ['★'],         desc: 'Star a search to save it with the document — saved searches appear under the box while it has focus' },
+    { keys: ['across notes'], desc: 'In a connected workspace folder, search also scans your other notes — matches appear as a “Found in other notes” list under the box (with the note name); click one to jump there. Same operators, folder-wide' },
   ]},
   { sec: 'Edit structure', rows: [
     { keys: ['Enter'],            desc: 'New point' },
