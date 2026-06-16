@@ -5380,6 +5380,50 @@ test('splitForSibling tolerates null/undefined text', () => {
   assert.deepEqual(host(c.splitForSibling(undefined, 3, 'x')), { before: '', after: 'x' });
 });
 
+// ─── flatRowStep ──────────────────────────────────────────────────────────────
+
+test('flatRowStep steps forward through a flat row list', () => {
+  const rows = [{ node: { id: 'a' } }, { node: { id: 'b' } }, { node: { id: 'c' } }];
+  const idx  = new Map([['a', 0], ['b', 1], ['c', 2]]);
+  assert.equal(c.flatRowStep('a', 1, rows, idx), 'b');
+  assert.equal(c.flatRowStep('b', 1, rows, idx), 'c');
+});
+
+test('flatRowStep steps backward through a flat row list', () => {
+  const rows = [{ node: { id: 'a' } }, { node: { id: 'b' } }, { node: { id: 'c' } }];
+  const idx  = new Map([['a', 0], ['b', 1], ['c', 2]]);
+  assert.equal(c.flatRowStep('c', -1, rows, idx), 'b');
+  assert.equal(c.flatRowStep('b', -1, rows, idx), 'a');
+});
+
+test('flatRowStep returns null at boundaries', () => {
+  const rows = [{ node: { id: 'a' } }, { node: { id: 'b' } }];
+  const idx  = new Map([['a', 0], ['b', 1]]);
+  assert.equal(c.flatRowStep('a', -1, rows, idx), null, 'past start');
+  assert.equal(c.flatRowStep('b',  1, rows, idx), null, 'past end');
+});
+
+test('flatRowStep returns null for an unknown id', () => {
+  const rows = [{ node: { id: 'a' } }];
+  const idx  = new Map([['a', 0]]);
+  assert.equal(c.flatRowStep('z', 1, rows, idx), null);
+});
+
+test('flatRowStep works on a single-row list', () => {
+  const rows = [{ node: { id: 'x' } }];
+  const idx  = new Map([['x', 0]]);
+  assert.equal(c.flatRowStep('x',  1, rows, idx), null);
+  assert.equal(c.flatRowStep('x', -1, rows, idx), null);
+});
+
+test('UXP-57 wiring: Arrow keydown handler calls flatRowStep and rangeSelectTo', () => {
+  assert.ok(_src.includes('flatRowStep'), 'flatRowStep must be defined');
+  assert.match(_src, /ArrowDown.*ArrowUp|ArrowUp.*ArrowDown/, 'Arrow handler exists');
+  assert.match(_src, /flatRowStep\(fromId, dir\)/, 'Arrow handler calls flatRowStep(fromId, dir)');
+  assert.match(_src, /rangeSelectTo\(nextId\)/, 'Shift+Arrow calls rangeSelectTo(nextId)');
+  assert.ok(_src.includes('selFocusId'), 'selFocusId must be declared');
+});
+
 test('caret-split wiring: insertSiblingAfter has the caret-aware path', () => {
   // Source-introspection pins: the split path clones sidecars and prunes both halves,
   // lands the caret at the new half's body start, and falls through when the trailing

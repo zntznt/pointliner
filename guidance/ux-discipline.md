@@ -207,6 +207,8 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Enter` | New point | **All** blocks — *Paragraph is the sanctioned exception — see P1-1* |
 | `Shift + Enter` | Line break in the point | **All** blocks — *Paragraph is the sanctioned exception — see P1-1* |
 | `Tab` / `Shift+Tab` | Indent / outdent | Points **and** table cells |
+| `↑/↓` (non-editing) | Move the row cursor between points | Fires in the global handler when `activeContentId == null` and focus is not in an input — moves `selFocusId` one step via `flatRowStep`, clears any selection, scrolls the row into view, shows a `.node-cursor` highlight. Prerequisite to Shift+Arrow |
+| `Shift + ↑/↓` (non-editing) | Extend / contract the multi-point selection | Fixes `selAnchorId` at the cursor position (inherited from the last-edited point), moves `selFocusId` one step, calls `rangeSelectTo` — identical model to Shift+click (UXP-57). `Esc` clears |
 | `Alt + ↑/↓` | Move the point (reorder) | The movement modifier — reserved for movement |
 | `Ctrl/⌘ + . / ,` | Collapse / expand | Replaces the `Ctrl+↑/↓` binding (which collides with caret-to-edges) |
 | `Ctrl/⌘ + Enter` | Zoom into point | — |

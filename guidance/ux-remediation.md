@@ -21,7 +21,9 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > non-colour urgency marker);
 > **UXP-60 is ✓ closed** (Enter splits the point at the caret — `splitForSibling` + the
 > `applyInlineReplace` fold dance, clone-both-then-prune sidecars);
-> **UXP-57, UXP-63, UXP-67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
+> **UXP-57 is ✓ closed** (Shift+Arrow range selection in non-editing state — `flatRowStep` +
+> `selFocusId` + `rangeSelectTo`; plain Arrow row-nav + `.node-cursor` visual);
+> **UXP-63, UXP-67 are ☐ open**, sequenced for follow-up PRs. **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
 
@@ -413,12 +415,21 @@ UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *se
   applies; move focus in when entered from the keyboard.
 - **Resolved:** the `.tp-chip`s carry `role="menuitemradio"` + `tabindex="-1"` + `aria-checked` + `aria-label` (priority chips `aria-disabled` without a keyword); the **shared `#bpop` keydown handler now navigates `.tp-chip`** too (Arrows/Home/End/Enter/Esc — the same handler the bullet popup uses); `showTodoPicker` moves focus to the current (or first) chip and sets `bpopReturnFocus` so Esc restores focus to the point; `.tp-chip:focus-visible` ring. The same `#bpop` element is now a real menu in **both** modes (P1). Headless-pinned (role/tabindex/aria-checked; focus-in; ArrowDown roving; Enter applies).
 
-### UXP-57 ☐ No `Shift+Arrow` point selection (P1/P3) 🟡
+### UXP-57 ✓ No `Shift+Arrow` point selection (P1/P3) 🟡 — **RESOLVED**
 - **Problem:** the §3 "Shift = extend" law and the multi-select capability have **no keyboard door between
   points** — `rangeSelectTo` is reachable only from shift-**click**; `onKeyDown`'s arrow branches require
   `!e.shiftKey`. Keyboard users cannot grow a multi-point selection.
 - **Violates:** P1 (Shift extends *everywhere except* between points) / P3-2. **Target:** `Shift+↑/↓` branches
   that, at the caret's first/last line, blur + `rangeSelectTo(prev/next)` from the current point as anchor.
+- **Resolved:** Global keydown handler (`activeContentId == null`, `!ctrl`, `!alt`) intercepts `ArrowUp/Down`.
+  **Plain Arrow**: moves `selFocusId` to the next/prev row via `flatRowStep(fromId, dir)`, scrolls it into
+  view, applies `.node-cursor` highlight (subtle accent tint + outline). **Shift+Arrow**: fixes `selAnchorId`
+  at the starting position (inherits the last-edited node via `enterEdit`) and extends to `nextId` via
+  `rangeSelectTo` — identical model to shift-click. `selFocusId` is a new module-level cursor variable;
+  `clearSelection` resets it; `updateSelVisuals` toggles `.node-cursor` on the cursor row (suppressed during
+  editing and when a selection is active). Existing Delete/Escape/Tab/Ctrl+C/X on `selectedIds` are unchanged.
+  Pure core `flatRowStep(id, dir, rows?, idx?)` is testable and pinned (5 cases). INPUT guard prevents
+  conflict with search box. 6 new tests, 562/562 pass.
 
 ### UXP-58 ✓ Native `alert()` for workspace/file errors (P4 channel) 🟡 — **RESOLVED**
 - **Problem:** ~9 sites surfaced errors via native `alert()` — un-themed, unannounced.
