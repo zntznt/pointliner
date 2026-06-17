@@ -195,6 +195,17 @@ test('walkMarkov — stops early at a terminal state', () => {
   assert.deepEqual(host(c.walkMarkov(p, 'A', 5)), ['A', 'B', 'C']);
 });
 
+test('parseMarkov — an empty RHS declares a terminal, not a dead chain (B4)', () => {
+  const p = c.parseMarkov('a -> b\nb ->'); // `b ->` registers b as a known terminal
+  assert.notEqual(p, null);                // the whole chain stays valid (was: null)
+  assert.deepEqual(host(p.order), ['a', 'b']);
+  assert.ok(!p.trans.b || !p.trans.b.length, 'b has no outgoing transitions');
+  assert.deepEqual(host(c.walkMarkov(p, 'a', 5)), ['a', 'b']); // walk ends at the terminal
+  assert.deepEqual(host(c.walkMarkov(p, 'b', 5)), ['b']);      // starting at the terminal stays put
+  // a missing FROM side is still rejected (the guard above the RHS check is unchanged)
+  assert.equal(c.parseMarkov('-> b'), null);
+});
+
 // ── grammar engine ─────────────────────────────────────────────────────────
 test('runGrammar — deterministic single-alternative expansion', () => {
   assert.equal(c.runGrammar('origin: hello', 'origin', {}, {}), 'hello');
@@ -279,7 +290,7 @@ test('modParts — base + known modifier suffix(es); rejects non-modifiers', () 
   assert.equal(c.modParts('file.txt'), null);    // txt ∉ modifiers
   assert.equal(c.modParts('cap'), null);         // no dot → a bare word, not a modref
   assert.equal(c.modParts('beast.badmod'), null);
-  assert.equal(c.modParts('2d6.cap'), null);     // base must be an identifier
+  assert.equal(c.modParts('2d6.cap'), null);     // base must be an identifier or pure integer; 2d6 is neither
 });
 
 test('pluralize — regular English heuristic', () => {
@@ -327,6 +338,22 @@ test('resolveBrace — a modified reference resolves the base then shapes it', (
   assert.equal(c.resolveBrace('ghost.cap', ctx({}, {})), '{ghost?}'); // undefined base → marker, mods not applied
 });
 
+test('modParts / resolveBrace — a literal-integer base resolves to itself ({3.ord} → 3rd) (B2)', () => {
+  const ctx = (rules, vars) => ({ rules, vars, depth: 0, stack: [] });
+  // modParts now accepts a pure-integer base alongside an identifier base
+  assert.deepEqual(host(c.modParts('3.ord')), { base: '3', mods: ['ord'] });
+  assert.deepEqual(host(c.modParts('21.ord')), { base: '21', mods: ['ord'] });
+  // the literal base resolves to the digits, mods fold over it — no rule/var lookup needed
+  assert.equal(c.resolveBrace('3.ord', ctx({}, {})), '3rd');
+  assert.equal(c.resolveBrace('21.ord', ctx({}, {})), '21st');
+  assert.equal(c.resolveBrace('2.ord', ctx({}, {})), '2nd');
+  // a dice-shaped base is neither integer nor identifier → still null (unchanged)
+  assert.equal(c.modParts('2d6.ord'), null);
+  assert.equal(c.modParts('2d6.cap'), null);
+  // a numeric base with a NON-modifier suffix is not a modref (stays null → literal/field path)
+  assert.equal(c.modParts('3.foo'), null);
+});
+
 test('classifyBraceBody / braceTypeLabel — a modref is a (grammar) artifact when its base is defined', () => {
   const rules = { beast: [{ template: 'dragon', weight: 1 }] }, vars = { name: 'alice' };
   assert.equal(c.classifyBraceBody('beast.cap', rules, vars), 'artifact');
@@ -334,6 +361,9 @@ test('classifyBraceBody / braceTypeLabel — a modref is a (grammar) artifact wh
   assert.equal(c.classifyBraceBody('ghost.cap', rules, vars), 'invalid');  // undefined base, mod-shaped
   assert.equal(c.classifyBraceBody('file.txt', rules, vars), 'literal');    // not a modifier
   assert.deepEqual(host(c.braceTypeLabel('beast.cap', rules, vars)), ['grammar', null]);
+  // a literal-integer base always resolves, so {3.ord} promotes with no rule/var defined (B2)
+  assert.equal(c.classifyBraceBody('3.ord', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('3.ord', {}, {})), ['grammar', null]);
 });
 
 test('runGrammar — modifiers compose with rule expansion (the promoted shape)', () => {
@@ -1404,7 +1434,7 @@ import assert2 from 'node:assert/strict';
     a.text = `see [[#${b.id}|B]]`;
     const root = c2.mkRoot(); root.children.push(a, b);
     const idx = c2.collectLinks(root);
-    assert2.deepEqual(host2(idx.outgoing[a.id]), [{ target: b.id, label: 'B' }]);
+    assert2.deepEqual(host2(idx.outgoing[a.id]), [{ target: b.id, label: 'B', mirror: false }]);
     assert2.deepEqual(host2(idx.backlinks[b.id]), [a.id]);
     assert2.deepEqual(host2(idx.broken), []);
   });
@@ -1414,6 +1444,24 @@ import assert2 from 'node:assert/strict';
     a.text = `[[#${b.id}]]`;
     const root = c2.mkRoot(); root.children.push(a, b);
     assert2.equal(c2.collectLinks(root).outgoing[a.id][0].label, '');
+  });
+
+  ltest('collectLinks — mirror flag distinguishes [[#id|]] (mirror) from [[#id]] (plain) (C4)', () => {
+    const a = mk2(''), b = mk2(''), t = mk2('T');
+    a.text = `[[#${t.id}|]]`;   // empty-pipe → mirror (transclusion form)
+    b.text = `[[#${t.id}]]`;    // no pipe    → plain link
+    const root = c2.mkRoot(); root.children.push(a, b, t);
+    const idx = c2.collectLinks(root);
+    const ra = idx.outgoing[a.id][0], rb = idx.outgoing[b.id][0];
+    assert2.equal(ra.mirror, true);
+    assert2.equal(rb.mirror, false);
+    // both collapse label to '' — mirror is the ONLY field that tells them apart
+    assert2.equal(ra.label, ''); assert2.equal(rb.label, '');
+    assert2.notDeepEqual(host2(ra), host2(rb));
+    // a captioned link [[#id|text]] is a fixed caption, never a mirror
+    const cnode = mk2(''); cnode.text = `[[#${t.id}|see]]`;
+    root.children.push(cnode);
+    assert2.equal(c2.collectLinks(root).outgoing[cnode.id][0].mirror, false);
   });
 
   ltest('collectLinks — a missing target is flagged broken', () => {
@@ -2515,6 +2563,21 @@ test('parseSequence: invalid forms return null (callers branch on null)', () => 
   assert.equal(c.parseSequence('TO DO! | DONE'), null);      // bad token
   assert.equal(c.parseSequence('A B | A'), null);            // duplicate state
   assert.equal(c.parseSequence(''), null);
+});
+
+test('sequenceLint: flags a whitespace-split state, quiet for single-word states (C5)', () => {
+  // tokenizer is unchanged — "IN PROGRESS" silently became 2 states; the lint surfaces it
+  const w = c.sequenceLint('OPEN IN PROGRESS | RESOLVED');
+  assert.ok(w, 'a multi-word side is flagged');
+  assert.match(w, /4 states/);
+  assert.match(w, /OPEN, IN, PROGRESS, RESOLVED/);
+  // single-word states on each side: nothing to warn about
+  assert.equal(c.sequenceLint('BACKLOG | DONE'), null);
+  // a parse failure is the dialog's hard error, not the lint's job → null
+  assert.equal(c.sequenceLint('no pipe here'), null);
+  assert.equal(c.sequenceLint('TODO | '), null);
+  // a legit multi-STATE side (the canonical default) also reports the split — accurate, not an error
+  assert.ok(c.sequenceLint('TODO NEXT WAITING | DONE'));
 });
 
 test('sequenceForKeyword: first-match across default + declared; default wins collisions', () => {
@@ -5348,6 +5411,18 @@ test('agendaGantt — today is always inside the range even with only future ite
   assert.ok(g.rangeStart <= today && today <= g.rangeEnd, 'today must be within the axis range');
   // a far-future deadline still anchors back to today (range starts a day before today)
   assert.equal(g.rangeStart, today - 1);
+});
+
+test('agendaGantt — a row carries the item done flag through to the renderer (B3)', () => {
+  const today = c.parseDueDate('2026-06-14');
+  const g = host(c.agendaGantt([
+    { id: 'o', start: null, due: c.parseDueDate('2026-06-18'), title: 'Open', done: false },
+    { id: 'd', start: null, due: c.parseDueDate('2026-06-20'), title: 'Done', done: true },
+  ], today));
+  const byId = Object.fromEntries(g.rows.map(r => [r.id, r]));
+  // done must survive the layout so renderAgendaGantt can dim/strike it (.done class)
+  assert.equal(byId.o.done, false);
+  assert.equal(byId.d.done, true);
 });
 
 test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today flags', () => {

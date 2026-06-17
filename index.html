@@ -844,6 +844,7 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .io-chip:hover{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
 .io-preview{margin-top:8px;min-height:22px;line-height:1.5}
 .io-preview-bad{font-size:12px;color:var(--del)}
+.io-preview-note{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
 
 /* shortcuts / syntax reference */
 .sc-panel{position:fixed;bottom:54px;right:16px;width:338px;max-width:calc(100vw - 32px);max-height:calc(100vh - 90px);overflow-y:auto;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:14px 16px 16px;font-size:12px;color:var(--fg);box-shadow:var(--sh-2);display:none;z-index:100;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
@@ -1484,6 +1485,23 @@ function parseSequence(def) {
   const states = [...left, ...right].map(w => w.toUpperCase());
   if (new Set(states).size !== states.length) return null;
   return { states, doneFrom: left.length };
+}
+
+// Pure P4 advisory for the @sequence dialog (C5). parseSequence tokenizes states on
+// whitespace, so a multi-word phrase like "IN PROGRESS" SILENTLY becomes two states
+// (IN, PROGRESS). We can't read intent, so we surface the split: when a side carries
+// internal whitespace (>1 token), return a note that lists the resulting states and
+// the single-state remedy (join words with _). Returns null when there's nothing to
+// flag — the parse fails (the dialog's hard error covers that) or every state is a
+// lone token. The tokenizer is deliberately UNCHANGED; this only warns.
+function sequenceLint(def) {
+  const p = parseSequence(def);
+  if (!p) return null;
+  const sides = String(def == null ? '' : def).split('|');
+  const multiWord = sides.some(side => side.trim().split(/\s+/).filter(Boolean).length > 1);
+  if (!multiWord) return null;
+  return `Spaces separate states → ${p.states.length} states: ${p.states.join(', ')}. `
+       + `For one multi-word state, join the words (e.g. IN_PROGRESS).`;
 }
 
 // Document-wide declared sequences in document order (token-gated like the other
@@ -2819,8 +2837,11 @@ function parseMarkov(def) {
       note(to);
       targets.push({ to, w });
     }
-    if (!targets.length) return null;
-    (trans[from] ||= []).push(...targets);
+    // An empty RHS (`b ->`) DECLARES a terminal: `from` is a known state with no
+    // outgoing transitions (walkMarkov already stops at one). We registered it via
+    // note(from) above; we simply add no edges — the whole chain stays valid rather
+    // than collapsing to null, so `a -> b\nb ->` is a 2-state chain ending at b.
+    if (targets.length) (trans[from] ||= []).push(...targets);
   }
   return { trans, order };
 }
@@ -7179,8 +7200,9 @@ function classifyBraceBody(body, rules, vars) {
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
-  const mp = modParts(body);                                           // {beast.cap}
+  const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
+    if (/^\d+$/.test(mp.base)) return 'artifact';                      // literal integer base always resolves
     const low = mp.base.toLowerCase();
     return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
   }
@@ -9688,7 +9710,11 @@ const MODIFIERS = Object.assign(Object.create(null), {
 function modParts(body) {
   const segs = (body || '').trim().split('.');
   if (segs.length < 2) return null;
-  if (!/^[a-z_]\w*$/i.test(segs[0])) return null;
+  // base: a bare identifier (a rule/var reference) OR a literal integer — {3.ord} → "3rd".
+  // The literal-integer base is the only base that resolves to ITSELF (no rule/var lookup);
+  // resolveBrace/classifyBraceBody/promoteBraceBody branch on /^\d+$/ to apply the mods
+  // directly to the digits. `2d6` matches neither arm, so {2d6.cap} stays null (a dice body).
+  if (!/^(\d+|[a-z_]\w*)$/i.test(segs[0])) return null;
   const mods = segs.slice(1);
   if (!mods.every(m => m in MODIFIERS)) return null;
   return { base: segs[0], mods };
@@ -9824,11 +9850,13 @@ function resolveBrace(body, ctx) {
   }
   const mp = modParts(body);
   if (mp) {
-    // a modified reference: resolve the base (rule or variable) then shape it. An
-    // undefined base → visible marker (P4), modifiers not applied.
+    // a modified reference: resolve the base (rule, variable, or a literal integer) then
+    // shape it. A literal-integer base ({3.ord}) resolves to itself; an undefined name →
+    // visible marker (P4), modifiers not applied.
     const low = mp.base.toLowerCase();
     let s;
-    if (ctx.rules[low]) s = expandRule(low, ctx);
+    if (/^\d+$/.test(mp.base)) s = mp.base;             // literal integer base → apply mods to the digits
+    else if (ctx.rules[low]) s = expandRule(low, ctx);
     else if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, low)) s = formatVarValue(ctx.vars[low]);
     else return `{${mp.base}?}`;
     return applyMods(s, mp.mods);
@@ -10109,16 +10137,21 @@ function collectLinks(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
   if (useCache && _linksCacheVer === _varsVer && _linksCached) return _linksCached;
-  const outgoing = {};   // sourceId -> [{ target, label }]  (every occurrence)
-  const backlinks = {};  // targetId -> [sourceId]           (each source once)
+  const outgoing = {};   // sourceId -> [{ target, label, mirror }]  (every occurrence)
+  const backlinks = {};  // targetId -> [sourceId]                   (each source once)
   const ids = new Set(); // every node id, to flag broken targets
   function walk(n) {
     ids.add(n.id);
     const seen = new Set();
     let m; LINK_RE.lastIndex = 0;
     while ((m = LINK_RE.exec(n.text)) !== null) {
-      const target = m[1], label = m[2] ?? '';
-      (outgoing[n.id] ||= []).push({ target, label });
+      // m[2] distinguishes the two empty-caption forms that both collapse to label '':
+      //   [[#id]]   → m[2] === undefined → a PLAIN link (renders the target's title)
+      //   [[#id|]]  → m[2] === ''        → a MIRROR (the pipe-with-empty-label transclusion form)
+      // A non-empty label ([[#id|text]]) is a fixed caption, never a mirror. `mirror` carries
+      // the bit `?? ''` would otherwise lose, so the index can tell a transclusion from a plain ref.
+      const target = m[1], label = m[2] ?? '', mirror = m[2] === '';
+      (outgoing[n.id] ||= []).push({ target, label, mirror });
       if (!seen.has(target)) { seen.add(target); (backlinks[target] ||= []).push(n.id); }
     }
     for (const c of n.children) walk(c);
@@ -10656,7 +10689,7 @@ function promoteBraceBody(node, body) {
   // load-bearing A1 decision — both rule and var bases route through grammar, never
   // the var-pill path). Undefined base → falls through → stays literal (escape hatch).
   const mp = modParts(body);
-  if (mp && (collectRules()[mp.base.toLowerCase()] || mp.base.toLowerCase() in collectVars())) {
+  if (mp && (/^\d+$/.test(mp.base) || collectRules()[mp.base.toLowerCase()] || mp.base.toLowerCase() in collectVars())) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
@@ -11755,10 +11788,12 @@ function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
         preview: (v) => {
           const p = parseSequence(v);
           if (!p) return '<span class="io-preview-bad">Need states on both sides of one “|” (e.g. BACKLOG DOING | SHIPPED)</span>';
-          return p.states.map((st, i) =>
+          const chips = p.states.map((st, i) =>
             `<span class="todo-state${i >= p.doneFrom ? ' todo-state-isdone' : ''}">${escHtml(st)}</span>`).join(' ');
+          const note = sequenceLint(v);   // C5: surface the whitespace state-split (P4 — never silent)
+          return chips + (note ? `<div class="io-preview-note">${escHtml(note)}</div>` : '');
         },
-        hint: 'States left of the | are active; right of it count as done (strikethrough / hide-done).' },
+        hint: 'Each space-separated word is its own state; states left of the | are active, right of it count as done (strikethrough / hide-done). For a multi-word state, join the words (IN_PROGRESS).' },
     ],
     validate: (v) => !!v.name && !!parseSequence(v.def),
     onSubmit: (v) => {
