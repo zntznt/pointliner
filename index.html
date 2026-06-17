@@ -7493,6 +7493,13 @@ function handlePaste(e, node, content) {
     }
     return;
   }
+  // Para (prose) block: keep all pasted lines inside the same point as line breaks,
+  // since Enter = line break (not new point) is the prose-mode contract.
+  if (node.type === 'para') {
+    document.execCommand('insertText', false, lines.join('\n'));
+    node.text = editableText(content); markDirty();
+    return;
+  }
   const parsed = parseMLlines(lines);
   const parent = parentOf(node.id);
   if (!parent) { document.execCommand('insertText', false, text); return; }
