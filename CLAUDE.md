@@ -6,6 +6,11 @@ variables). Everything — HTML, CSS, JS, and a subsetted Font Awesome — lives
 `index.html`. No build step, no runtime dependencies, no network. Open the file
 in a browser and it runs.
 
+**Storage & sync model:** Pointliner runs on the user's computer. The user's
+filesystem is storage; the user's choice of sync (Dropbox/iCloud/git/none) is
+sync. No backend, no auth, no accounts. Features that require running a backend
+are out of scope — not deferred, out.
+
 > **For reviewers / other AIs giving suggestions:** read "Core architecture" and
 > "The two-engine reality" first. The single most important constraint is that
 > **`node.text` is the source of truth and is plain text** — every widget is an
