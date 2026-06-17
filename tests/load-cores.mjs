@@ -174,7 +174,7 @@ export function loadCores() {
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
-    'parseSequence','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
+    'parseSequence','sequenceLint','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles',
     'toggleSavedSearch','isSavedSearch',
