@@ -3234,8 +3234,15 @@ function computeTable(model, tblfm, vars = {}) {
   }
   for (const f of fieldFormulas) fmap.set(f.target.row + ',' + f.target.col, f.expr);
 
-  const memo = new Map();      // "r,c" -> number | null (null = blank/non-numeric)
+  const memo = new Map();      // "r,c" -> number | null | ERR_OWN | ERR_UP
   const stack = new Set();     // targets currently evaluating (cycle detection)
+  // Two error sentinels so the output loop can distinguish source vs. propagated errors
+  // even when a dependent cell was memoized before the output loop reached it.
+  // ERR_OWN: this cell's formula itself returned null/non-finite (e.g. bad ref).
+  // ERR_UP:  this cell's formula threw UPSTREAM — it referenced an already-errored cell.
+  const ERR_OWN = Object.create(null);
+  const ERR_UP  = Object.create(null);
+  const isErrCell = v => v === ERR_OWN || v === ERR_UP;
   const literal = (r, c) => {
     const cell = (rows[r] && rows[r][c] != null ? String(rows[r][c]) : '').trim();
     if (cell === '') return null;
@@ -3250,7 +3257,16 @@ function computeTable(model, tblfm, vars = {}) {
     if (stack.has(key)) throw new Error('CYCLE');
     stack.add(key);
     let v;
-    try { v = evalOrgFormula(fmap.get(key), { row: r, col: c }); } finally { stack.delete(key); }
+    try {
+      v = evalOrgFormula(fmap.get(key), { row: r, col: c });
+    } catch (err) {
+      // Memoize upstream errors so later refs to this cell skip recomputation.
+      if (err && err.message === 'UPSTREAM') memo.set(key, ERR_UP);
+      throw err;
+    } finally { stack.delete(key); }
+    // A formula cell returning null or non-finite is itself the error source.
+    // Blank literal cells stay null (Org convention: read as 0).
+    if (v === null || !isFinite(v)) { memo.set(key, ERR_OWN); return ERR_OWN; }
     memo.set(key, v);
     return v;
   }
@@ -3263,6 +3279,7 @@ function computeTable(model, tblfm, vars = {}) {
     for (let r = Math.min(a.row, b.row); r <= Math.max(a.row, b.row); r++)
       for (let c = Math.min(a.col, b.col); c <= Math.max(a.col, b.col); c++) {
         const v = valueAt(r, c);
+        if (isErrCell(v)) throw new Error('UPSTREAM'); // never sum around an errored cell
         if (v !== null) vals.push(v);       // Org suppresses empty fields in ranges
       }
     return vals;
@@ -3290,11 +3307,12 @@ function computeTable(model, tblfm, vars = {}) {
     const RANGE = TBLFM_REF + '\\.\\.' + TBLFM_REF;
     e = e.replace(new RegExp('\\b(vsum|vmean|vmax|vmin|vcount|vmedian)\\s*\\(\\s*(' + RANGE + ')\\s*\\)', 'g'),
       (_, fn, range) => '(' + aggregate(fn, rangeValues(range, ctx)) + ')');
-    // 3. scalar field references → number (blank → 0)
+    // 3. scalar field references → number (blank → 0; errored cell → propagate)
     e = e.replace(new RegExp(TBLFM_REF, 'g'), (tok) => {
       const ref = parseOrgRef(tok, ctx, dims);
       if (!ref) return tok;
       const v = valueAt(ref.row, ref.col);
+      if (isErrCell(v)) throw new Error('UPSTREAM');
       return '(' + (v === null ? 0 : v) + ')';
     });
     // The full math grammar — including document variables — is available in cell
@@ -3308,11 +3326,20 @@ function computeTable(model, tblfm, vars = {}) {
     let disp;
     try {
       const v = valueAt(r, c);
-      if (v === null || !isFinite(v)) {
+      if (v === ERR_OWN) {
+        // This cell's formula is itself the error source — show the specific reason.
         const reason = mathErrorReason(fmap.get(key), vars);
         disp = reason ? `#ERR (${reason})` : '#ERR';
-      } else disp = formatMathResult(v);
-    } catch (e) { disp = (e && e.message === 'CYCLE') ? '#ERR (cycle)' : '#ERR'; }
+      } else if (v === ERR_UP) {
+        disp = '#ERR (upstream)';
+      } else {
+        disp = formatMathResult(v);
+      }
+    } catch (e) {
+      if (e && e.message === 'CYCLE') disp = '#ERR (cycle)';
+      else if (e && e.message === 'UPSTREAM') disp = '#ERR (upstream)';
+      else disp = '#ERR';
+    }
     if (out[r]) out[r][c] = disp;
   }
   return out;

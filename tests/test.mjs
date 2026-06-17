@@ -1577,6 +1577,47 @@ test('table: cycle detection yields #ERR (cycle), not a hang', () => {
   assert.equal(out[1][1], '#ERR (cycle)');
 });
 
+// ── Error-propagation tests (brief-table-error-propagation) ──────────────────
+// Regression for the silent-wrong-total bug: an errored formula cell (null/non-finite
+// result) was indistinguishable from a blank cell in valueAt, so dependent formulas
+// substituted 0 and silently produced a plausible-but-wrong total.
+
+test('table: errored formula cell propagates #ERR (upstream) to dependents — not silently 0', () => {
+  // @3$2 references an undefined variable → #ERR (bad ref).
+  // @4$2 = @2$1 + @3$2: must NOT read @3$2 as 0 and print 100; must show #ERR (upstream).
+  const m = { aligns: [null, null], rows: [
+    ['price', 'result'],
+    ['100', ''],
+    ['', ''],
+    ['', ''],
+  ] };
+  const out = computeTable(m, '@3$2=@2$1*bad_var :: @4$2=@2$1+@3$2', {});
+  assert.ok(/^#ERR/.test(out[2][1]), 'source cell must error, got: ' + out[2][1]);
+  assert.equal(out[3][1], '#ERR (upstream)',
+    'dependent cell must show upstream, not a plausible-but-wrong total');
+});
+
+test('table: blank literal cell still reads as 0 after error-sentinel change (regression guard)', () => {
+  // Blank cells are literal (no formula), so they must remain null → 0 — the
+  // sentinel change must not affect them.
+  const m = { aligns: [null, null], rows: [['x', 'y'], ['', '4'], ['2', '6']] };
+  assert.equal(computeTable(m, '@2$2=@2$1+10')[1][1], '10');  // blank @2$1 reads as 0
+});
+
+test('table: range aggregate over an errored cell propagates #ERR (upstream) — not a partial sum', () => {
+  // vsum must not silently skip an errored cell the way it skips blank cells.
+  const m = { aligns: [null, null, null], rows: [
+    ['a', 'b', 'sum'],
+    ['1', '', ''],
+    ['', '', ''],
+  ] };
+  // @2$2 errors (undefined variable); vsum(@2$2..@2$3) covers that cell.
+  const out = computeTable(m, '@2$2=bad_var :: @3$3=vsum(@2$2..@2$3)', {});
+  assert.ok(/^#ERR/.test(out[1][1]), 'errored source cell: ' + out[1][1]);
+  assert.equal(out[2][2], '#ERR (upstream)',
+    'range aggregate over errored cell must propagate the error, not silently sum around it');
+});
+
 test('table: field formula overrides column formula regardless of source order', () => {
   // footer-total idiom: column formula fills all data rows (incl. the total row,
   // where it would be 0*0); a field formula overrides just the total cell. Field
