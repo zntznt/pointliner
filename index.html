@@ -7799,7 +7799,7 @@ function copySelection() {
   if (selectedIds.size === 0) return;
   const tops = getTopLevelSelected();
   if (!tops.length) return;
-  nodeClipboard = { nodes: tops.map(n => JSON.parse(JSON.stringify(n))) };
+  nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };
   const text = serializeNodesToText(tops);
   navigator.clipboard?.writeText(text).catch(() => {});
   clearSelection();
@@ -12798,7 +12798,7 @@ function mergeUpText(prevText, body) {
 const ARTIFACT_SIDECARS = ['footnotes','dice','markov','math','vars','grammar','est','seq'];
 function cloneArtifactSidecars(srcNode, dst) {
   for (const k of ARTIFACT_SIDECARS) {
-    if (Array.isArray(srcNode[k])) dst[k] = srcNode[k].map(r => JSON.parse(JSON.stringify(r)));
+    if (Array.isArray(srcNode[k])) dst[k] = srcNode[k].map(r => structuredClone(r));
   }
 }
 
@@ -12808,7 +12808,7 @@ function cloneArtifactSidecars(srcNode, dst) {
 function mergeArtifactSidecars(srcNode, dst) {
   for (const k of ARTIFACT_SIDECARS) {
     if (Array.isArray(srcNode[k]) && srcNode[k].length) {
-      const cloned = srcNode[k].map(r => JSON.parse(JSON.stringify(r)));
+      const cloned = srcNode[k].map(r => structuredClone(r));
       dst[k] = (Array.isArray(dst[k]) ? dst[k] : []).concat(cloned);
     }
   }
@@ -16188,7 +16188,7 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='x' && selectedIds.size > 0) {
     e.preventDefault();
     const tops = getTopLevelSelected();
-    nodeClipboard = { nodes: tops.map(n => JSON.parse(JSON.stringify(n))) };
+    nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };
     deleteSelected('Cut');
   }
   if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {
