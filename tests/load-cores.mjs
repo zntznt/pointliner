@@ -141,7 +141,7 @@ export function loadCores() {
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'fieldParts',
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
-    'collectVars', 'collectRules', 'collectLinks', 'linkCandidates', 'linkCreateOption',
+    'collectVars', 'collectRules', 'collectLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'collectUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'parseLinkToken', 'buildWorkspaceIndex',   // CF-1: cross-doc link index pure cores
     'renderCrossLinkPill',                      // CF-2: cross-doc link pill (reads root.docId + workspaceIndex via vm)
