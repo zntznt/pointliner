@@ -3234,8 +3234,15 @@ function computeTable(model, tblfm, vars = {}) {
   }
   for (const f of fieldFormulas) fmap.set(f.target.row + ',' + f.target.col, f.expr);
 
-  const memo = new Map();      // "r,c" -> number | null (null = blank/non-numeric)
+  const memo = new Map();      // "r,c" -> number | null | ERR_OWN | ERR_UP
   const stack = new Set();     // targets currently evaluating (cycle detection)
+  // Two error sentinels so the output loop can distinguish source vs. propagated errors
+  // even when a dependent cell was memoized before the output loop reached it.
+  // ERR_OWN: this cell's formula itself returned null/non-finite (e.g. bad ref).
+  // ERR_UP:  this cell's formula threw UPSTREAM — it referenced an already-errored cell.
+  const ERR_OWN = Object.create(null);
+  const ERR_UP  = Object.create(null);
+  const isErrCell = v => v === ERR_OWN || v === ERR_UP;
   const literal = (r, c) => {
     const cell = (rows[r] && rows[r][c] != null ? String(rows[r][c]) : '').trim();
     if (cell === '') return null;
@@ -3250,7 +3257,16 @@ function computeTable(model, tblfm, vars = {}) {
     if (stack.has(key)) throw new Error('CYCLE');
     stack.add(key);
     let v;
-    try { v = evalOrgFormula(fmap.get(key), { row: r, col: c }); } finally { stack.delete(key); }
+    try {
+      v = evalOrgFormula(fmap.get(key), { row: r, col: c });
+    } catch (err) {
+      // Memoize upstream errors so later refs to this cell skip recomputation.
+      if (err && err.message === 'UPSTREAM') memo.set(key, ERR_UP);
+      throw err;
+    } finally { stack.delete(key); }
+    // A formula cell returning null or non-finite is itself the error source.
+    // Blank literal cells stay null (Org convention: read as 0).
+    if (v === null || !isFinite(v)) { memo.set(key, ERR_OWN); return ERR_OWN; }
     memo.set(key, v);
     return v;
   }
@@ -3263,6 +3279,7 @@ function computeTable(model, tblfm, vars = {}) {
     for (let r = Math.min(a.row, b.row); r <= Math.max(a.row, b.row); r++)
       for (let c = Math.min(a.col, b.col); c <= Math.max(a.col, b.col); c++) {
         const v = valueAt(r, c);
+        if (isErrCell(v)) throw new Error('UPSTREAM'); // never sum around an errored cell
         if (v !== null) vals.push(v);       // Org suppresses empty fields in ranges
       }
     return vals;
@@ -3290,11 +3307,12 @@ function computeTable(model, tblfm, vars = {}) {
     const RANGE = TBLFM_REF + '\\.\\.' + TBLFM_REF;
     e = e.replace(new RegExp('\\b(vsum|vmean|vmax|vmin|vcount|vmedian)\\s*\\(\\s*(' + RANGE + ')\\s*\\)', 'g'),
       (_, fn, range) => '(' + aggregate(fn, rangeValues(range, ctx)) + ')');
-    // 3. scalar field references → number (blank → 0)
+    // 3. scalar field references → number (blank → 0; errored cell → propagate)
     e = e.replace(new RegExp(TBLFM_REF, 'g'), (tok) => {
       const ref = parseOrgRef(tok, ctx, dims);
       if (!ref) return tok;
       const v = valueAt(ref.row, ref.col);
+      if (isErrCell(v)) throw new Error('UPSTREAM');
       return '(' + (v === null ? 0 : v) + ')';
     });
     // The full math grammar — including document variables — is available in cell
@@ -3308,11 +3326,20 @@ function computeTable(model, tblfm, vars = {}) {
     let disp;
     try {
       const v = valueAt(r, c);
-      if (v === null || !isFinite(v)) {
+      if (v === ERR_OWN) {
+        // This cell's formula is itself the error source — show the specific reason.
         const reason = mathErrorReason(fmap.get(key), vars);
         disp = reason ? `#ERR (${reason})` : '#ERR';
-      } else disp = formatMathResult(v);
-    } catch (e) { disp = (e && e.message === 'CYCLE') ? '#ERR (cycle)' : '#ERR'; }
+      } else if (v === ERR_UP) {
+        disp = '#ERR (upstream)';
+      } else {
+        disp = formatMathResult(v);
+      }
+    } catch (e) {
+      if (e && e.message === 'CYCLE') disp = '#ERR (cycle)';
+      else if (e && e.message === 'UPSTREAM') disp = '#ERR (upstream)';
+      else disp = '#ERR';
+    }
     if (out[r]) out[r][c] = disp;
   }
   return out;
@@ -15652,6 +15679,7 @@ const GUIDE = [
   // ── Edit structure (essentials only) ──────────────────────────────────────
   { id:'edit-enter',   essential:true, essSection:'Edit', keys:['Enter'],               essLabel:'New point' },
   { id:'edit-break',   essential:true, essSection:'Edit', keys:['⇧+Enter'],               essLabel:'Line break' },
+  { id:'edit-merge',   essential:true, essSection:'Edit', keys:['Bksp at start'],            essLabel:'Merge point up' },
   { id:'edit-indent',  essential:true, essSection:'Edit', keys:['Tab','⇧+Tab'],           essLabel:'Indent / outdent' },
   { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','↓'],         essLabel:'Move point up / down' },
   { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
@@ -15671,6 +15699,7 @@ const GUIDE = [
 
   // ── Multi-select (essentials only) ────────────────────────────────────────
   { id:'sel-range',  essential:true, essSection:'Select', keys:['⇧+Click'],            essLabel:'Select a range' },
+  { id:'sel-arrows', essential:true, essSection:'Select', keys:['⇧+↑','⇧+↓'],          essLabel:'Extend selection up / down' },
   { id:'sel-copy',   essential:true, essSection:'Select', keys:[`${MOD}+C`,`${MOD}+X`], essLabel:'Copy / cut selection' },
   { id:'sel-indent', essential:true, essSection:'Select', keys:['Tab','⇧+Tab'],         essLabel:'Indent / outdent selection' },
   { id:'sel-del',    essential:true, essSection:'Select', keys:['Delete'],         essLabel:'Delete selection' },
@@ -15680,7 +15709,7 @@ const GUIDE = [
   // Bodies are written plainly: lead with what you can DO, then how, no jargon.
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
-    body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks, or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase, or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further.",
+    body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks, or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further.",
     examples:[
       { syn:'word word',              desc:'all terms must match' },
       { syn:'-term',                  desc:'exclude matches' },
@@ -15700,7 +15729,7 @@ const GUIDE = [
   // ── Writing & formatting (guide) ──────────────────────────────────────────
   { id:'point-types', cat:'writing', covers:['ul','ol','h1','h2','h3','para','code','divider','quote','base'],
     title:'Point types',
-    body:"Give your outline real document structure. Add headings to divide a long note into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage, or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.",
+    body:"Give your outline real document structure. Add headings to divide a long note into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.",
     examples:[
       { syn:'# Heading',    desc:'heading (one to six # marks for smaller sizes)' },
       { syn:'> quote',      desc:'quote block' },
@@ -15723,14 +15752,14 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset, or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell — or add formulas — type /base instead.",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell — or add formulas — type /base instead.",
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
     ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
-    body:"Annotate a claim without cluttering the main text, link out to a source or a website, or embed an image. Footnotes are useful for research notes and annotated reading — the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link, or Image.",
+    body:"Annotate a claim without cluttering the main text, link out to a source or a website, or embed an image. Footnotes are useful for research notes and annotated reading — the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
     examples:[
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
@@ -15740,12 +15769,12 @@ const GUIDE = [
   // ── To-dos & organizing (guide) ───────────────────────────────────────────
   { id:'todo-syntax', cat:'todos', covers:['todo'],
     title:'To-dos & tasks',
-    body:"Track a shopping list, a reading list, a project backlog, or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or give it a status word like TODO, NEXT, or DONE. Click the colored badge to change the status or set a priority (A, B, or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
+    body:"Track a shopping list, a reading list, a project backlog or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or give it a status word like TODO, NEXT or DONE. Click the colored badge to change the status or set a priority (A, B or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
     examples:[
       { syn:'- [ ] task',              desc:'task with a checkbox' },
       { syn:'- [x] done',              desc:'checked-off task' },
       { syn:'#TODO body',              desc:'task with a status word' },
-      { syn:'#NEXT [#A] body',         desc:'with a priority (A, B, or C)' },
+      { syn:'#NEXT [#A] body',         desc:'with a priority (A, B or C)' },
       { syn:'/todo',                   desc:'menu sets the status too' },
     ] },
   { id:'sequences', cat:'todos', covers:['sequence'],
@@ -15757,14 +15786,14 @@ const GUIDE = [
     ] },
   { id:'progress', cat:'todos', covers:['progress'],
     title:'Progress bars',
-    body:"Put a live progress bar on a project, a checklist, or any parent point and see how much is done at a glance. As you check off the tasks underneath, the count updates automatically — no manual tracking. Type [/] for a count like 2/5, or [%] for a percentage.",
+    body:"Put a live progress bar on a project, a checklist or any parent point and see how much is done at a glance. As you check off the tasks underneath, the count updates automatically — no manual tracking. Type [/] for a count like 2/5, or [%] for a percentage.",
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
     ] },
   { id:'templates', cat:'todos', covers:['template'],
     title:'Templates',
-    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist, or any subtree you use repeatedly — then stamp a fresh copy in one step with /template. Save a template from any point's menu.",
+    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly — then stamp a fresh copy in one step with /template. Save a template from any point's menu.",
     examples:[
       { syn:'/template',                         desc:'pick and drop in a saved template' },
       { syn:'Menu → Save as template',           desc:'save this point as a template' },
@@ -15780,7 +15809,7 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase, or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue, and you can filter to it in search. Type /due to open the date picker — dates can be exact or relative like today+7.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due to open the date picker — dates can be exact or relative like today+7.",
     examples:[
       { syn:'/due',       desc:'open the date picker' },
       { syn:'2026-01-15', desc:'an exact date' },
@@ -15789,7 +15818,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. The agenda shows a list of what's due soon, a Gantt-style timeline of overlapping tasks, and a month calendar. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. The agenda shows a list of what's due soon, a Gantt-style timeline of overlapping tasks and a month calendar. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
     examples:[
       { syn:'Due',        desc:'deadlines not started yet' },
       { syn:'Running',    desc:'things in progress' },
@@ -15798,7 +15827,7 @@ const GUIDE = [
     ] },
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',
-    body:"Keep a running log of what you worked on, decisions you made, or anything worth noting each day. Each entry is dated automatically, so over time you build a searchable diary inside your outline. Type /journal, or the calendar button, to open or create today's entry.",
+    body:"Keep a running log of what you worked on, decisions you made or anything worth noting each day. Each entry is dated automatically, so over time you build a searchable diary inside your outline. Type /journal, or the calendar button, to open or create today's entry.",
     examples:[
       { syn:'/journal', desc:"open or start today's entry" },
     ] },
@@ -15806,7 +15835,7 @@ const GUIDE = [
   // ── Generators (guide) ────────────────────────────────────────────────────
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
-    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces — {2d6} for two six-sided dice. Advanced options let you keep the highest rolls, explode on a max, reroll low results, or count successes against a threshold.",
+    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces — {2d6} for two six-sided dice. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
     examples:[
       { syn:'{2d6}',      desc:'roll two six-sided dice' },
       { syn:'{4d6kh3}',   desc:'roll 4, keep the highest 3' },
@@ -15826,7 +15855,7 @@ const GUIDE = [
     ] },
   { id:'gen-rules', cat:'generators',
     title:'Building generators',
-    body:"Build a name generator, an encounter table for a game, a full story prompt, or a procedural character description. Give each list a name and let them call each other — a sentence generator might call rules for 'subject', 'verb', and 'object', each pulling from their own list. Because rules can also roll dice and calculate, complex outputs stay short and easy to read.",
+    body:"Build a name generator, an encounter table for a game, a full story prompt or a procedural character description. Give each list a name and let them call each other — a sentence generator might call rules for 'subject', 'verb' and 'object', each pulling from their own list. Because rules can also roll dice and calculate, complex outputs stay short and easy to read.",
     examples:[
       { syn:'color: red | blue | green', desc:'define a named list (a rule)' },
       { syn:'{color}',                desc:'use it anywhere' },
@@ -15837,7 +15866,7 @@ const GUIDE = [
     ] },
   { id:'gen-modifiers', cat:'generators',
     title:'Text modifiers',
-    body:"Make generator output read like real prose instead of raw picks. Without modifiers, a result like 'they grab axe' reads awkwardly. With them: 'they grab an axe'. Capitalize the first word of a sentence, put the right article in front (a vs. an), make a noun plural, or put a verb in past tense. Add a dot and a keyword after any reference, and stack several for more control.",
+    body:"Make generator output read like real prose instead of raw picks. Without modifiers, a result like 'they grab axe' reads awkwardly. With them: 'they grab an axe'. Capitalize the first word of a sentence, put the right article in front (a vs. an), make a noun plural or put a verb in past tense. Add a dot and a keyword after any reference, and stack several for more control.",
     examples:[
       { syn:'{beast.cap}',   desc:'capitalize the first letter' },
       { syn:'{name.title}',  desc:'Capitalize Each Word' },
@@ -15861,7 +15890,7 @@ const GUIDE = [
     ] },
   { id:'deck', cat:'generators', covers:['deck'],
     title:'Decks & repeats',
-    body:"Step through a list without repeating, cycle through states in rotation, or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts, or any 'what's next' situation. You can also expand a template multiple times at once — each expansion rolls independently, so you get several different results in one click.",
+    body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. You can also expand a template multiple times at once — each expansion rolls independently, so you get several different results in one click.",
     examples:[
       { syn:'{shuffle: a|b|c}', desc:'deal without repeats' },
       { syn:'{cycle: a|b|c}',   desc:'go in order, then loop' },
@@ -15871,14 +15900,14 @@ const GUIDE = [
     ] },
   { id:'markov', cat:'generators', covers:['markov'],
     title:'Markov chains',
-    body:"Generate made-up text that sounds like it belongs to a style you define: invented place names, character names in the style of a language, sample dialogue, or procedural flavour text. You give it a set of example words or phrases, and it produces new ones that feel like they came from the same source. Type @ and choose Markov chain. Click to generate a new run.",
+    body:"Generate made-up text that sounds like it belongs to a style you define: invented place names, character names in the style of a language, sample dialogue or procedural flavor text. You give it a set of example words or phrases, and it produces new ones that feel like they came from the same source. Type @ and choose Markov chain. Click to generate a new run.",
     examples:[
       { syn:'@ → Markov chain', desc:'add a Markov chain' },
       { syn:'{chainName}',     desc:'use it inside a generator' },
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
-    body:"Resolve uncertain questions at a glance — useful in solo tabletop games, creative writing, brainstorming, or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels — 'almost certain' to 'very unlikely' — then click to ask. Type @ and choose Oracle.",
+    body:"Resolve uncertain questions at a glance — useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels — 'almost certain' to 'very unlikely' — then click to ask. Type @ and choose Oracle.",
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
       { syn:'Yes 4 | No 1',      desc:'custom odds (80% yes here)' },
@@ -15887,7 +15916,7 @@ const GUIDE = [
   // ── Compute (guide) ───────────────────────────────────────────────────────
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
-    body:"Build a budget where every line total adds to a running sum, track a project cost that recalculates when you change a rate, or convert a measurement — all live in the outline. Write {= expression} and the result appears inline. Change a variable the expression uses and it updates instantly. You get arithmetic, parentheses, percentages, comparisons (>, <, ==), and a ternary if-this-then-that.",
+    body:"Build a budget where every line total adds to a running sum, track a project cost that recalculates when you change a rate, or convert a measurement — all live in the outline. Write {= expression} and the result appears inline. Change a variable the expression uses and it updates instantly. You get arithmetic, parentheses, percentages, comparisons (>, <, ==) and a ternary if-this-then-that.",
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },
       { syn:'{= 2 ^ 10}',        desc:'powers (^) and remainder (%)' },
@@ -15898,7 +15927,7 @@ const GUIDE = [
     ] },
   { id:'math-fns', cat:'compute',
     title:'Math functions',
-    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, compute a percentage change, or run a scientific calculation. Call any function by name — they mix freely with variables, dice, and other functions.",
+    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, compute a percentage change or run a scientific calculation. Call any function by name — they mix freely with variables, dice and other functions.",
     examples:[
       { syn:'{= round(3.7)}',     desc:'round (also floor, ceil, trunc)' },
       { syn:'{= abs(-5)}',        desc:'absolute value; sign(x) for the sign' },
@@ -15910,7 +15939,7 @@ const GUIDE = [
     ] },
   { id:'math-dates', cat:'compute',
     title:'Dates & units in math',
-    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed, or convert between units for a recipe, a travel plan, or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works — wrap the result in asdate(…) to display it as a calendar date.",
+    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed, or convert between units for a recipe, a travel plan or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works — wrap the result in asdate(…) to display it as a calendar date.",
     examples:[
       { syn:'{= today + 30}',      desc:'30 days from today' },
       { syn:'{= asdate(today+30)}',desc:'show that as a calendar date' },
@@ -15922,7 +15951,7 @@ const GUIDE = [
     ] },
   { id:'variables', cat:'compute', covers:['var'],
     title:'Variables',
-    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap, or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. Variables can be a fixed number, a formula that depends on other variables, or a frozen random pick.",
+    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. Variables can be a fixed number, a formula that depends on other variables or a frozen random pick.",
     examples:[
       { syn:'@ → Variable', desc:'set a named value' },
       { syn:'{name}',      desc:'drop the value in' },
@@ -15930,7 +15959,7 @@ const GUIDE = [
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
-    body:"Plan honestly when you don't have exact numbers. Instead of pretending a task takes exactly 3 days, say it takes {2 to 5}. The estimate shows the average and a spread chart so you can see the realistic range. Estimates add and multiply together correctly — if three phases each take '2 to 5 days', the total shows the true combined uncertainty, not just the midpoints added up.",
+    body:"Plan honestly when you don't have exact numbers. Instead of pretending a task takes exactly three days, say it takes {2 to 5}. The estimate shows the average and a spread chart so you can see the realistic range. Estimates add and multiply together correctly — if three phases each take '2 to 5 days', the total shows the true combined uncertainty, not just the midpoints added up.",
     examples:[
       { syn:'{5 to 10}',      desc:'a 90% range — most likely 5 to 10' },
       { syn:'normal(8, 2)',   desc:'a bell curve around 8' },
@@ -15939,7 +15968,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set, or surface the latest deadline in a project. The result updates whenever a child changes — no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max.",
+    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes — no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max.",
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of each child' },
       { syn:'{= avg(score)}', desc:'average the scores' },
@@ -15959,7 +15988,7 @@ const GUIDE = [
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
     title:'Linking points',
-    body:"Build a personal wiki where ideas refer to each other, create a table of contents that links to sections, or connect a task to its full context note. Type [[ and pick the point to link to — the link always shows the current title, so renaming a point keeps every link to it correct. Leave the label empty and the linked point's content appears inline wherever the link is placed.",
+    body:"Build a personal wiki where ideas refer to each other, create a table of contents that links to sections or connect a task to its full context note. Type [[ and pick the point to link to — the link always shows the current title, so renaming a point keeps every link to it correct. Leave the label empty and the linked point's content appears inline wherever the link is placed.",
     examples:[
       { syn:'[[',                   desc:'open the link picker' },
       { syn:'[[#id|label]]',        desc:'link with your own wording' },
@@ -15974,7 +16003,7 @@ const GUIDE = [
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across notes',
-    body:"Weave together a network of notes — link a project note to a person note, connect a meeting note to an action item in another file, or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your notes, not just the one you're in.",
+    body:"Weave together a network of notes — link a project note to a person note, connect a meeting note to an action item in another file or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your notes, not just the one you're in.",
     examples:[
       { syn:'[[…]]',                desc:'pick a point in another note' },
       { syn:'+ New note',           desc:'make a new note and link to it at once' },
@@ -15991,7 +16020,7 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"Share your outline with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file — it works offline, opens in any browser, and keeps all the interactive features (dice, generators, calculations) live. All in the File menu.",
+    body:"Share your outline with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file — it works offline, opens in any browser and keeps all the interactive features (dice, generators and calculations) live. All in the File menu.",
     examples:[
       { syn:'File → Export Markdown',      desc:'a plain text snapshot' },
       { syn:'File → Self-contained HTML',  desc:'a shareable interactive page' },
