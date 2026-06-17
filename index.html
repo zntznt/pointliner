@@ -7517,9 +7517,16 @@ function handlePaste(e, node, content) {
   }
   // Para (prose) block: keep all pasted lines inside the same point as line breaks,
   // since Enter = line break (not new point) is the prose-mode contract.
+  // execCommand('insertText', '\n') lets Chrome insert <div> blocks rather than
+  // text-node \n characters, which editableText can't serialize. Splice into
+  // node.text directly and rebuild the edit DOM so the DOM stays clean.
   if (node.type === 'para') {
-    document.execCommand('insertText', false, lines.join('\n'));
-    node.text = editableText(content); markDirty();
+    const off = getCaretOffset(content);
+    const pasted = lines.join('\n');
+    node.text = node.text.slice(0, off) + pasted + node.text.slice(off);
+    content.innerHTML = editModeHTML(node);
+    setCaretByOffset(content, off + pasted.length);
+    markDirty();
     return;
   }
   const parsed = parseMLlines(lines);
