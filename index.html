@@ -7700,6 +7700,88 @@ function onKeyDown(e, id, content) {
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); tagApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideTagMenu(); return; }
   }
+  // Inline keyboard chords (keyboard-a11y, P3): edit-mode shortcuts for link navigation,
+  // task toggling, and to-do state/priority cycling — added alongside mousedown handlers,
+  // never replacing them (caret invariant). All guarded by Ctrl/⌘+Shift to avoid colliding
+  // with plain-text editing; no Alt+letter (Mac-unsafe).
+  if (ctrl && e.shiftKey) {
+    const node = nodeById(id);
+    if (node) {
+      // Follow link under caret (Ctrl/⌘ + Shift + Enter)
+      if (e.key === 'Enter') {
+        const text = editableText(content);
+        const off  = getCaretOffset(content);
+        const tk   = tokenUnderCaret(text, off);
+        if (tk) {
+          e.preventDefault();
+          const { docId, nodeId: tid } = tk;
+          if (docId && docId !== (root.docId || '')) {
+            const name = workspaceIndex?.nameByDocId?.get(docId);
+            if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(tid)) zoomInto(tid); });
+          } else if (nodeById(tid)) {
+            zoomInto(tid);
+          }
+        }
+        return; // Ctrl+Shift+Enter is consumed here; no fallthrough to zoom
+      }
+      // Toggle task checkbox on current line (Ctrl/⌘ + Shift + X)
+      if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        const text  = editableText(content);
+        const off   = getCaretOffset(content);
+        const lines = text.split('\n');
+        let charOff = 0, toggled = false;
+        for (let i = 0; i < lines.length; i++) {
+          const lineEnd = charOff + lines[i].length;
+          if (off >= charOff && off <= lineEnd) {
+            const m = lines[i].match(TASK_LINE_RE);
+            if (m) {
+              const checked = m[2].toLowerCase() === 'x';
+              lines[i] = m[1] + '[' + (checked ? ' ' : 'x') + ']' + (m[3] || '');
+              toggled = true;
+            }
+            break;
+          }
+          charOff += lines[i].length + 1;
+        }
+        if (toggled) {
+          node.text = lines.join('\n');
+          content.innerHTML = editModeHTML(node);
+          setCaretByOffset(content, off);
+        }
+        return;
+      }
+      // Cycle to-do state forward (Ctrl/⌘ + Shift + S)
+      if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        const text    = editableText(content);
+        const off     = getCaretOffset(content);
+        const newText = cycleTodoState(text, 1);
+        if (newText !== text) {
+          node.text = newText;
+          content.innerHTML = editModeHTML(node);
+          setCaretByOffset(content, Math.min(off, newText.length));
+          announce(parseTodo(newText).keyword || 'state cleared');
+        }
+        return;
+      }
+      // Cycle to-do priority forward (Ctrl/⌘ + Shift + P)
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        const text    = editableText(content);
+        const off     = getCaretOffset(content);
+        const newText = cycleTodoPriority(text, 1);
+        if (newText !== text) {
+          node.text = newText;
+          content.innerHTML = editModeHTML(node);
+          setCaretByOffset(content, Math.min(off, newText.length));
+          const prio = parseTodo(newText).priority;
+          announce(prio ? `Priority ${prio}` : 'priority cleared');
+        }
+        return;
+      }
+    }
+  }
   // Paragraph is the sanctioned prose-mode exception (P1-1): Enter = line break, Shift+Enter = new point.
   const isPara = nodeById(id)?.type === 'para';
   if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); isPara ? insertSiblingAfter(id) : insertLineBreak(content); }
@@ -10055,6 +10137,22 @@ function parseLinkToken(raw) {
   const m = /^\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]$/i.exec(String(raw ?? ''));
   if (!m) return null;
   return { docId: m[1] || null, nodeId: m[2], label: m[3] ?? '' };
+}
+
+// Pure: find the link token at or spanning `offset` in `text` (edit-mode caret offset).
+// Returns { docId, nodeId, label, start, end } when the caret is inside a [[...]] link
+// token, null otherwise. Both same-doc [[#id|label]] and cross-doc [[docId#id|label]]
+// are matched. Offset at either boundary (start or end) counts as inside.
+function tokenUnderCaret(text, offset) {
+  const re = /\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index, end = m.index + m[0].length;
+    if (end < offset) continue;        // token ends before caret — keep searching
+    if (start > offset) return null;   // token starts after caret — no match possible
+    return { docId: m[1] || null, nodeId: m[2], label: m[3] ?? '', start, end };
+  }
+  return null;
 }
 
 // Pure: build the whole-workspace link index from already-parsed docs.
@@ -15675,6 +15773,7 @@ const GUIDE = [
   { id:'nav-esc',     essential:true, essSection:'Navigate', keys:['Esc'],           essLabel:'Zoom out / close panel' },
   { id:'nav-search',  essential:true, essSection:'Navigate', keys:[`${MOD}+F`],      essLabel:'Search' },
   { id:'nav-jump',    essential:true, essSection:'Navigate', keys:['↓ from search'],   essLabel:'Jump to first match' },
+  { id:'nav-link',    essential:true, essSection:'Navigate', keys:[`${MOD}+⇧+Enter`],  essLabel:'Follow link under caret' },
 
   // ── Edit structure (essentials only) ──────────────────────────────────────
   { id:'edit-enter',   essential:true, essSection:'Edit', keys:['Enter'],               essLabel:'New point' },
@@ -15684,6 +15783,9 @@ const GUIDE = [
   { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','↓'],         essLabel:'Move point up / down' },
   { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
   { id:'edit-capture', essential:true, essSection:'Edit', keys:['⬓ Capture'],            essLabel:'Add to inbox from anywhere' },
+  { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Toggle task on current line' },
+  { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state' },
+  { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority' },
 
   // ── Insert triggers (essentials only) ─────────────────────────────────────
   { id:'insert-slash',  essential:true, essSection:'Insert', keys:['/'],           essLabel:'Block type / template' },

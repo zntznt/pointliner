@@ -1459,6 +1459,114 @@ import assert2 from 'node:assert/strict';
   });
 }
 
+// ─── tokenUnderCaret ──────────────────────────────────────────────────────
+// Pure core: returns the link token spanning the given offset, or null.
+// Covers same-doc [[#id|label]] and cross-doc [[docId#id|label]].
+// ─────────────────────────────────────────────────────────────────────────
+{
+  const { tokenUnderCaret } = c;
+  test('tokenUnderCaret: caret inside a same-doc link returns token data', () => {
+    const text = 'before [[#abc123|My Link]] after';
+    // token spans indices 7-26; offset 15 is inside
+    const tk = tokenUnderCaret(text, 15);
+    assert.ok(tk !== null, 'should return a token');
+    assert.equal(tk.nodeId, 'abc123');
+    assert.equal(tk.docId, null);
+    assert.equal(tk.label, 'My Link');
+    assert.equal(tk.start, 7);
+    assert.equal(tk.end, 26);
+  });
+  test('tokenUnderCaret: caret inside a cross-doc link returns token with docId', () => {
+    const text = 'see [[docxyz#abc123|Title]]';
+    const tk = tokenUnderCaret(text, 10);
+    assert.ok(tk !== null);
+    assert.equal(tk.docId, 'docxyz');
+    assert.equal(tk.nodeId, 'abc123');
+    assert.equal(tk.label, 'Title');
+  });
+  test('tokenUnderCaret: caret at token start boundary is inside', () => {
+    const text = '[[#abc123|link]]';
+    const tk = tokenUnderCaret(text, 0);
+    assert.ok(tk !== null, 'boundary start should be inside');
+    assert.equal(tk.nodeId, 'abc123');
+  });
+  test('tokenUnderCaret: caret at token end boundary is inside', () => {
+    const text = '[[#abc123|link]]';
+    const tk = tokenUnderCaret(text, 16); // length = 16
+    assert.ok(tk !== null, 'boundary end should be inside');
+  });
+  test('tokenUnderCaret: caret before token returns null', () => {
+    const text = 'hello [[#abc123|link]]';
+    assert.equal(tokenUnderCaret(text, 3), null);
+  });
+  test('tokenUnderCaret: caret after token returns null', () => {
+    const text = 'hello [[#abc123|link]] world';
+    assert.equal(tokenUnderCaret(text, 23), null, 'one char after closing ]] is outside');
+  });
+  test('tokenUnderCaret: no link token in text returns null', () => {
+    assert.equal(tokenUnderCaret('plain text', 3), null);
+  });
+  test('tokenUnderCaret: artifact token (not a link) returns null', () => {
+    assert.equal(tokenUnderCaret('[[dice:key123]]', 5), null);
+  });
+  test('tokenUnderCaret: link with no label returns token', () => {
+    const text = '[[#xyz789]]';
+    const tk = tokenUnderCaret(text, 5);
+    assert.ok(tk !== null);
+    assert.equal(tk.nodeId, 'xyz789');
+    assert.equal(tk.label, '');
+    assert.equal(tk.docId, null);
+  });
+  test('tokenUnderCaret: picks the correct token when multiple are present', () => {
+    const text = '[[#aaa|first]] middle [[#bbb|second]]';
+    // offset 5 = inside first token (spans 0-14)
+    const tk1 = tokenUnderCaret(text, 5);
+    assert.ok(tk1 !== null);
+    assert.equal(tk1.nodeId, 'aaa');
+    // offset 28 = inside second token (spans 22-37)
+    const tk2 = tokenUnderCaret(text, 28);
+    assert.ok(tk2 !== null);
+    assert.equal(tk2.nodeId, 'bbb');
+    // offset 16 = between tokens
+    assert.equal(tokenUnderCaret(text, 16), null);
+  });
+}
+
+// Wiring pins: cycleTodoState and cycleTodoPriority are bound to keydown chords —
+// verify the cycle logic is intact (keyboard-a11y, P3).
+{
+  const { cycleTodoState, cycleTodoPriority, parseTodo } = c;
+  test('cycleTodoState wiring: forward advances through the full state cycle', () => {
+    const t0 = 'body text';
+    const t1 = cycleTodoState(t0, 1);
+    assert.ok(t1.startsWith('#TODO'), `expected #TODO, got: ${t1}`);
+    const t2 = cycleTodoState(t1, 1);
+    assert.ok(t2.startsWith('#NEXT'), `expected #NEXT, got: ${t2}`);
+    const t3 = cycleTodoState(t2, 1);
+    assert.ok(t3.startsWith('#WAITING'), `expected #WAITING, got: ${t3}`);
+    const t4 = cycleTodoState(t3, 1);
+    assert.ok(t4.startsWith('#DONE'), `expected #DONE, got: ${t4}`);
+    const t5 = cycleTodoState(t4, 1);
+    // wraps back to cleared (no keyword at start)
+    assert.ok(!parseTodo(t5).keyword, `expected cleared, got: ${parseTodo(t5).keyword}`);
+  });
+  test('cycleTodoPriority wiring: forward cycles A→B→C→cleared when state is present', () => {
+    const base = '#TODO task';
+    const p1 = cycleTodoPriority(base, 1);
+    assert.ok(p1.includes('[#A]'), `expected [#A], got: ${p1}`);
+    const p2 = cycleTodoPriority(p1, 1);
+    assert.ok(p2.includes('[#B]'), `expected [#B], got: ${p2}`);
+    const p3 = cycleTodoPriority(p2, 1);
+    assert.ok(p3.includes('[#C]'), `expected [#C], got: ${p3}`);
+    const p4 = cycleTodoPriority(p3, 1);
+    assert.ok(!p4.includes('[#'), `expected no priority, got: ${p4}`);
+  });
+  test('cycleTodoPriority wiring: no-op on a point without a state keyword', () => {
+    const text = 'plain text no state';
+    assert.equal(cycleTodoPriority(text, 1), text);
+  });
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Table formulas (Org-mode spreadsheet conventions)
 // Cores are pure (no DOM); they translate Org @ROW$COLUMN references + ranges
