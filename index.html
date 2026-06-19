@@ -1761,9 +1761,51 @@ function aggregateChildren(node, fn, prop) {
 // no comma). The spreadsheet MIN(col) vs MIN(a,b) split. Pure; a null node aggregates
 // over an empty child set, which is how node-less validation stays valid.
 function expandAggExpr(expr, node) {
-  if (!expr || !/\b(?:sum|avg|count|min|max)\s*\(/.test(expr)) return expr;
-  return String(expr).replace(/\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
-    (_, fn, prop) => '(' + aggregateChildren(node, fn, prop) + ')');
+  if (!expr) return expr;
+  let e = String(expr);
+  if (/\b(?:sum|avg|count|min|max)\s*\(/.test(e)) {
+    e = e.replace(/\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
+      (_, fn, prop) => '(' + aggregateChildren(node, fn, prop) + ')');
+  }
+  // words(scope) — a prose word count over a SCOPE of the render node, substituted to a
+  // number before evalMath (the same translation model as the property rollups above).
+  // The scope is an explicit closed-set keyword: subtree (self + all descendants), self,
+  // or children (direct only, parallel to the prop rollups). Reading time falls out of
+  // composition — {= words(subtree) / 200} — so there is no separate readtime function.
+  // An unknown scope is left literal → evalMath surfaces #ERR (P4), never a silent miscount.
+  if (/\bwords\s*\(/.test(e)) {
+    e = e.replace(/\bwords\s*\(\s*(subtree|self|children)\s*\)/g,
+      (_, scope) => '(' + subtreeWords(node, scope) + ')');
+  }
+  return e;
+}
+
+// Pure: an estimate-grade word count of prose — block + inline markdown, artifact tokens,
+// links and footnote refs stripped so only readable words count (a link's label counts,
+// its token/url does not). A "word" is a run of letters/digits (apostrophes/hyphens
+// internal). Node-testable.
+function countWords(text) {
+  const s = String(text || '')
+    .replace(/^[ \t]*(?:#{1,6}|>|\d+\.|[-*+])[ \t]+(?:\[[ xX]\][ \t]*)?/gm, ' ') // heading/quote/list/task markers
+    .replace(/\[\[[^\]\n]*?\|([^\]\n]*)\]\]/g, ' $1 ')   // [[…|label]] / [[#id|label]] → keep the label
+    .replace(/\[\[[^\]\n]*\]\]/g, ' ')                   // [[type:key]] artifact tokens / bare [[#id]] → drop
+    .replace(/\[\^[^\]\n]+\]/g, ' ')                     // [^footnote] refs → drop
+    .replace(/!?\[([^\]]*)\]\([^)\n]*\)/g, ' $1 ');      // [text](url) / ![alt](url) → text/alt (drops the url)
+  const m = s.match(/[\p{L}\p{N}][\p{L}\p{N}'’\-]*/gu);
+  return m ? m.length : 0;
+}
+
+// Pure: word count over a SCOPE of `node`. subtree = node's own text+note plus every
+// descendant's; self = node only; children = direct children only (not self — parallel
+// to aggregateChildren). A per-point note is prose too, so it counts. Node-testable.
+function subtreeWords(node, scope) {
+  if (!node) return 0;
+  const own = n => countWords(n.text) + countWords(n.note);
+  if (scope === 'self') return own(node);
+  if (scope === 'children') return (node.children || []).reduce((a, c) => a + own(c), 0);
+  let total = own(node);                                  // subtree (default)
+  for (const c of (node.children || [])) total += subtreeWords(c, 'subtree');
+  return total;
 }
 
 // ─── outline constraints / lint (F2) ─────────────────────────────────────────
@@ -11845,10 +11887,10 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
       {
         key: 'expr',
         label: 'Expression',
-        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost)',
+        placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, abs, sin/cos/tan, log (base-10 — use ln for natural; log2/log10 too), min/max, … · π/e/today. Units (c2f, km2mi — the from2to pattern; also f2c, mi2km). Dates: a fixed date is date(2026,12,31); date math returns a NUMBER, so wrap it in asdate(…) to show a calendar (asdate(today+90)); daysuntil(due), clamp(x,0,10). Roll up a child points’ property — sum/avg/count/min/max(prop), e.g. sum(cost) — this aggregates a property over child points; it is NOT SUM(1,2,3), so add literals with 1+2+3. min/max over no matching child → ∞ / −∞ (the empty-set identity).',
+        hint: 'Functions: sqrt, abs, sin/cos/tan, log (base-10 — use ln for natural; log2/log10 too), min/max, … · π/e/today. Units (c2f, km2mi — the from2to pattern; also f2c, mi2km). Dates: a fixed date is date(2026,12,31); date math returns a NUMBER, so wrap it in asdate(…) to show a calendar (asdate(today+90)); daysuntil(due), clamp(x,0,10). Roll up a child points’ property — sum/avg/count/min/max(prop), e.g. sum(cost) — this aggregates a property over child points; it is NOT SUM(1,2,3), so add literals with 1+2+3. min/max over no matching child → ∞ / −∞ (the empty-set identity). words(subtree) counts every word beneath the point (also words(self) / words(children)) — a live writing target; reading time = words(subtree)/200.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -16119,12 +16161,13 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes — no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max.",
+    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes — no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max. You can also roll up the prose itself: words(subtree) counts every word beneath a point — a live writing target — and reading time is just words(subtree) / 200.",
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of each child' },
       { syn:'{= avg(score)}', desc:'average the scores' },
       { syn:'{= count(done)}',desc:'count children with that value' },
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
+      { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',

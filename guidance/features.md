@@ -205,7 +205,12 @@ Implemented:
   child date (wrap in `asdate(...)` to display it as a date) and F2 gets real **date-range checks**
   (`max(due) <= deadline`). Only strict date-shaped strings parse; a plain word still → `null`.
   Works in the math pill (`{= …}`) and F2 `check` constraints, not in a grammar
-  `{cond:…}`/composition (no node context there).
+  `{cond:…}`/composition (no node context there). **Word count** `{= words(subtree|self|children)}`
+  (`subtreeWords`/`countWords`) is the same family over **prose** instead of a property — it counts
+  words in a **scope**: `subtree` = self + all descendants (so it *recurses*, unlike the
+  direct-children property rollups), `self`, or `children` (a per-point note counted too). Reading
+  time is composition (`{= words(subtree)/200}`); no separate `readtime`. Same `expandAggExpr`
+  substitution, so it resolves in pills, the math/check dialogs, and export.
 - **Outline constraints / lint** (F2) — a point may carry a reserved **`check` property**
   holding an `evalMath` boolean assertion that spans the point and its **direct children**:
   `sum(cost) <= budget`, `sum(weight) == 100`, `count(score) >= 3`, own-prop `hours <= 8`. **Zero
