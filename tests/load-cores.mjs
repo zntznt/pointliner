@@ -179,7 +179,7 @@ export function loadCores() {
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles',
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie',
-    'childPropNumber','aggregateChildren','expandAggExpr',
+    'childPropNumber','aggregateChildren','expandAggExpr','countWords','subtreeWords',
     'evalCheck','nodePropVars','checkExprOf',
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',

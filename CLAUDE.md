@@ -467,7 +467,12 @@ identifier* — so a comma'd `min(a, b)` keeps the numeric-variadic meaning, unt
 a date-property extremal like `max(due)`/`min(start)` **now aggregates** — `childPropNumber` tries
 `Number` first (so `"5"` stays `5`), then `parseDueDate`, so date-shaped values roll up as
 **epoch-days** (wrap in `asdate(...)` to display the result as a date). Only date-shaped strings
-parse (strict `parseDueDate`); a plain word still → `null` (skipped).
+parse (strict `parseDueDate`); a plain word still → `null` (skipped). **Word count joins the
+family over *prose* (2026-06-19):** `{= words(subtree|self|children)}` — `subtreeWords`/`countWords`,
+the *same* `expandAggExpr` substitution, so it resolves in pills, the math/check dialogs, and export
+alike — counts words in a **scope** rather than a property: `subtree` = self + every descendant (so it
+**recurses**, unlike the direct-children property rollups), `self`, or `children` (a per-point note
+counted too). Reading time is composition (`{= words(subtree)/200}`); there is no separate `readtime`.
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
