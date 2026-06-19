@@ -5809,3 +5809,33 @@ test('caret-split wiring: insertSiblingAfter has the caret-aware path', () => {
   assert.match(_src, /function insertSiblingAfter[\s\S]{0,1400}splitForSibling\(srcNode\.text, foff, cont\)/,
     'insertSiblingAfter must split on the folded text at the translated offset');
 });
+
+// ── linkText: link tokens render legibly in no-pill contexts ─────────────────
+// Breadcrumbs and "Linked from" show titles as PLAIN TEXT — a raw [[#id|]]/[[#id]]
+// there is noise. linkText prettifies a title: a labelled link → its label; a token
+// with no resolvable target → the bare id (never the raw [[…]] token); text without
+// tokens passes through untouched. (The target-title-resolution path reads the
+// module-level nodeMap/workspaceIndex, which the vm harness can't rebind — that
+// branch is verified in-browser, like renderCrossLinkPill's live lookups.)
+test('linkText — labelled link → label; no token → passthrough; unresolved → bare id', () => {
+  assert.equal(c.linkText('just text'), 'just text', 'no token → untouched');
+  assert.equal(c.linkText('ref [[#a1|the alpha]]'), 'ref the alpha', 'labelled link → label, not token');
+  assert.equal(c.linkText('cross [[da#n2|Gamma]]'), 'cross Gamma', 'cross-doc labelled link → label');
+  assert.equal(c.linkText('two [[#a|X]] and [[#b|Y]]'), 'two X and Y', 'multiple tokens each resolve');
+  // bare, unresolvable (no nodeMap entry in this harness) → bare id, NOT the raw token
+  assert.equal(c.linkText('gone [[#zzz]]'), 'gone zzz', 'unresolved bare link → id, never [[…]]');
+  assert.equal(c.linkText('gone [[#zzz|]]'), 'gone zzz', 'empty-label link → id, never [[…]]');
+});
+
+// The no-pill sinks must route titles through the legible wrapper, not raw
+// textForDisplay (which stays raw so it can build the workspace titles index).
+test('breadcrumb + backlinks render link-legible titles (displayTitle/linkText wiring)', () => {
+  assert.match(_src, /function displayTitle\(node\)\s*\{\s*return linkText\(textForDisplay\(node\)\)/,
+    'displayTitle must wrap textForDisplay in linkText');
+  assert.match(_src, /function crumbLabel[\s\S]{0,160}displayTitle\(n\)/,
+    'crumbLabel must use displayTitle');
+  assert.match(_src, /bl-item['"];\s*\n\s*const t = displayTitle\(src\)/,
+    'same-doc backlink rows must use displayTitle');
+  assert.ok(!/function textForDisplay\([^)]*\)\s*\{[\s\S]{0,400}linkText/.test(_src),
+    'textForDisplay must NOT call linkText (keeps the workspace titles index raw)');
+});
