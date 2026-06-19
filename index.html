@@ -950,6 +950,9 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:3px}
 .agg-today{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 65%,transparent);z-index:2}
 .agg-today-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:700;letter-spacing:.04em;color:var(--acc);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}
+/* hover slice — muted twin of the today line, follows the cursor's day (display:none until placed) */
+.agg-hover{position:absolute;top:0;bottom:0;width:1px;background:color-mix(in srgb,var(--muted) 55%,transparent);z-index:1;display:none;pointer-events:none}
+.agg-hover-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:600;color:var(--muted);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}
 .agg-row{position:relative;height:23px}
 .agg-bar{position:absolute;top:50%;transform:translateY(-50%);height:15px;border-radius:var(--r-sm);border:1px solid;box-sizing:border-box;cursor:pointer;min-width:6px;z-index:3}
 .agg-bar.overdue{background:color-mix(in srgb,var(--bad) 18%,transparent);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
@@ -15426,6 +15429,14 @@ function renderAgendaGantt(host, visible, totalDated) {
     inner.appendChild(tl);
   }
 
+  // hover slice — a muted vertical line that snaps to the day under the cursor,
+  // the same geometry as the today line (day d centered at d*px + px/2). Wired to
+  // the scroll container below so it tracks the mouse across the whole chart.
+  const hover = document.createElement('div'); hover.className = 'agg-hover'; hover.setAttribute('aria-hidden', 'true');
+  const hoverLbl = document.createElement('span'); hoverLbl.className = 'agg-hover-lbl';
+  hover.appendChild(hoverLbl);
+  inner.appendChild(hover);
+
   for (const r of layout.rows) {
     // name row (left panel) — click/Enter also zooms in like the bar
     const nameRow = document.createElement('div');
@@ -15459,6 +15470,17 @@ function renderAgendaGantt(host, visible, totalDated) {
   };
   scroll.addEventListener('scroll', () => { namesInner.scrollTop = scroll.scrollTop; updateFade(); });
   requestAnimationFrame(updateFade);
+
+  // hover slice: snap to the day under the cursor and label it (the axis's date format).
+  scroll.addEventListener('mousemove', e => {
+    const x = e.clientX - inner.getBoundingClientRect().left;     // inner-local X (scroll already folded in)
+    const day = Math.max(0, Math.min(layout.rangeDays - 1, Math.floor(x / px)));
+    const date = new Date((layout.rangeStart + day) * 86400000);
+    hover.style.left = (day * px + px / 2) + 'px';
+    hoverLbl.textContent = CAL_MONTHS[date.getUTCMonth()].slice(0, 3) + ' ' + date.getUTCDate();
+    hover.style.display = 'block';
+  });
+  scroll.addEventListener('mouseleave', () => { hover.style.display = 'none'; });
 }
 
 function renderAgendaCalendar(host, visible, totalDated) {
