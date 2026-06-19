@@ -1425,6 +1425,37 @@ function textForDisplay(node) {
   return t;
 }
 
+// Render `[[…]]` link tokens in a title to legible PLAIN TEXT for the no-pill,
+// display-only sinks — breadcrumbs and the "Linked from" panel — where a bare #id
+// is noise. NOT used by textForDisplay itself: that function also builds the
+// workspace `titles` index (buildWorkspaceIndex), which must stay raw — resolving
+// a link there would mean resolving against the very index being built. So this is
+// a thin display wrapper, applied only at the sinks.
+// A token resolves to: its label (`[[#id|Foo]]` → Foo), else the target point's
+// title (`[[#id]]`/`[[#id|]]` → the live title, same-doc via nodeById, cross-doc
+// via the workspace index), else the bare id. `depth` guards recursion: a bare
+// link reads its target's title one level deep, and any link inside that title
+// collapses to its label-or-id without re-resolving, so an A↔B cycle can't loop.
+function linkText(str, depth = 0) {
+  if (!str || str.indexOf('[[') === -1) return str;
+  WLINK_RE.lastIndex = 0;
+  return str.replace(WLINK_RE, (_, docId, id, label) => {
+    if (label) return label;                                   // explicit caption wins
+    if (depth > 0) return id;                                  // inside a resolved title — don't recurse
+    if (!docId || docId === (root.docId || '')) {              // same-doc: live title
+      const tn = nodeById(id);
+      if (tn) return linkText(textForDisplay(tn), depth + 1) || id;
+    } else {                                                   // cross-doc: workspace index
+      const title = workspaceIndex?.titles?.get(docId)?.get(id);
+      if (title) return linkText(title, depth + 1) || id;
+    }
+    return id;                                                 // unresolvable → bare id (better than the raw token)
+  });
+}
+// Title for a no-pill display sink: textForDisplay (prefixes/markers stripped) with
+// link tokens resolved to legible text. Use this for breadcrumbs / "Linked from".
+function displayTitle(node) { return linkText(textForDisplay(node)); }
+
 // A point's alternate names — the reserved `aliases` property, comma-split, trimmed,
 // empties dropped. The shared helper that broadens link-picker + unlinked-reference
 // matching beyond the canonical title. Pure; no DOM. (ALIAS_KEY defined near CHECK_KEY.)
@@ -3839,7 +3870,7 @@ function renderBreadcrumb() {
 }
 // A base has no prose title (its text is the table markdown), so show a clean label
 // rather than a row of pipes in the breadcrumb.
-function crumbLabel(n) { return n && n.type === 'base' ? '▦ Base' : ((n && textForDisplay(n)) || '(untitled)'); }
+function crumbLabel(n) { return n && n.type === 'base' ? '▦ Base' : ((n && displayTitle(n)) || '(untitled)'); }
 function mkCrumb(t, fn) {
   const s = document.createElement('span');
   s.className = 'crumb';
@@ -14831,7 +14862,7 @@ function renderBlPanel(sources, unlinked, cross) {
   sources.forEach(src => {
     const item = document.createElement('div');
     item.className = 'bl-item';
-    const t = textForDisplay(src) || '(untitled)';
+    const t = displayTitle(src) || '(untitled)';
     item.textContent = t;
     item.title = 'Open this point';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable backlink rows
@@ -14848,7 +14879,8 @@ function renderBlPanel(sources, unlinked, cross) {
   cross.forEach(({ docId, nodeId, title, docName }) => {
     const item = document.createElement('div');
     item.className = 'bl-item bl-cross';
-    item.textContent = title;
+    const t = linkText(title) || '(untitled)';   // index title may hold link tokens — render legibly
+    item.textContent = t;
     const hint = document.createElement('span');
     hint.className = 'bl-doc-hint';
     hint.textContent = ` · ${docName || 'another note'}`;
@@ -14856,7 +14888,7 @@ function renderBlPanel(sources, unlinked, cross) {
     item.title = 'Open this note';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable cross-doc backlink rows
     item.setAttribute('tabindex', '0');
-    item.setAttribute('aria-label', `Linked from "${title}" in ${docName || 'another note'} — open`);
+    item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another note'} — open`);
     const go = () => {
       hideBlPanel();
       const name = workspaceIndex?.nameByDocId?.get(docId);
