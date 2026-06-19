@@ -16420,7 +16420,10 @@ document.addEventListener('keydown', e => {
     const id = el?.dataset?.id ?? (flatRows.length ? flatRows[flatRows.length - 1].node.id : null);
     if (id) pasteFromNodeClipboard(id);
   }
-  if (e.key==='Delete' && selectedIds.size > 0 && activeContentId == null && !ctrl) { e.preventDefault(); deleteSelected(); }
+  // Backspace deletes the selection too — on Mac the only "delete" key IS Backspace
+  // (no forward-Delete). Safe here: this block only runs when not editing text
+  // (activeContentId == null), so in-text Backspace is never intercepted.
+  if ((e.key==='Delete' || e.key==='Backspace') && selectedIds.size > 0 && activeContentId == null && !ctrl) { e.preventDefault(); deleteSelected(); }
   if (e.key==='Escape' && selectedIds.size > 0 && activeContentId == null) { clearSelection(); }
   if (e.key==='Tab' && selectedIds.size > 0 && activeContentId == null) {
     e.preventDefault();
