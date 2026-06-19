@@ -5092,6 +5092,58 @@ test('subtree aggregation: min/max empty set makes a range constraint vacuously 
   assert.equal(c.evalMath(c.expandAggExpr('max(due) <= 100', p), {}), 1);   // -∞ <= 100 → true
 });
 
+// ── word count: {= words(scope)} prose roll-up ──────────────────────────────
+test('word count: countWords strips markdown / tokens / markers, counts prose', () => {
+  assert.equal(c.countWords('hello world'), 2);
+  assert.equal(c.countWords('# Heading here'), 2);              // ATX marker stripped
+  assert.equal(c.countWords('**bold** _ital_ text'), 3);       // emphasis ignored
+  assert.equal(c.countWords('- [ ] buy milk'), 2);             // bullet + task marker stripped
+  assert.equal(c.countWords('1. first'), 1);                   // ordinal stripped
+  assert.equal(c.countWords('see [[#id|the target]] now'), 4); // link label counts
+  assert.equal(c.countWords('roll [[dice:r3k9x]] now'), 2);    // artifact token dropped
+  assert.equal(c.countWords('a [link](http://x.com/page) b'), 3); // url dropped, text kept
+  assert.equal(c.countWords('foo [^1] bar'), 2);               // footnote ref dropped
+  assert.equal(c.countWords(''), 0);
+  assert.equal(c.countWords(null), 0);
+});
+
+test('word count: subtreeWords scopes — subtree / self / children', () => {
+  const root = c.mkNode('alpha beta');                         // self = 2
+  const a = c.mkNode('one two three');                         // 3
+  const b = c.mkNode('four five');                             // 2
+  const gc = c.mkNode('deep deeper deepest');                  // 3 (a grandchild under a)
+  a.children = [gc];
+  root.children = [a, b];
+  assert.equal(c.subtreeWords(root, 'self'), 2);
+  assert.equal(c.subtreeWords(root, 'children'), 5);           // a(3) + b(2): not self, not the grandchild
+  assert.equal(c.subtreeWords(root, 'subtree'), 10);           // 2 + 3 + 2 + 3
+  assert.equal(c.subtreeWords(null, 'subtree'), 0);
+});
+
+test('word count: a per-point note counts as prose', () => {
+  const n = c.mkNode('title words here');                      // 3
+  n.note = 'a note with five words';                            // 5
+  assert.equal(c.subtreeWords(n, 'self'), 8);
+});
+
+test('word count: expandAggExpr substitutes words(scope); reading-time idiom; unknown scope literal', () => {
+  const root = c.mkNode('alpha beta');                         // self 2
+  root.children = [c.mkNode('one two three')];                 // 3
+  assert.equal(c.expandAggExpr('words(subtree)', root), '(5)');
+  assert.equal(c.expandAggExpr('words(self)', root), '(2)');
+  assert.equal(c.expandAggExpr('words(children)', root), '(3)');
+  assert.equal(c.evalMath(c.expandAggExpr('words(subtree) / 5', root), {}), 1); // {= words(subtree)/200} reading-time idiom
+  assert.equal(c.expandAggExpr('words(foo)', root), 'words(foo)');              // unknown scope → left literal (→ #ERR)
+  assert.equal(c.expandAggExpr('words(subtree)', null), '(0)');                 // node-less validation → 0
+});
+
+test('word count: cores + front door wired (src pins)', () => {
+  assert.ok(_src.includes('function countWords'), 'countWords core missing');
+  assert.ok(_src.includes('function subtreeWords'), 'subtreeWords core missing');
+  assert.ok(_src.includes('subtreeWords(node, scope)'), 'expandAggExpr words branch missing');
+  assert.ok(_src.includes("syn:'{= words(subtree)}'"), 'GUIDE words front-door example missing (P2/P5-4)');
+});
+
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
   assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode)'), 'renderMathPill live-aggregation wiring missing');
   assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
