@@ -977,14 +977,14 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .agc-dow span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center;padding:2px 0}
 .agc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
 .agc-week{display:contents}
-.agc-cell{min-height:56px;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;overflow:hidden;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default}
+.agc-cell{min-height:56px;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default}
 .agc-cell:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
 .agc-cell.oom{opacity:.35}
 .agc-cell.today{background:color-mix(in srgb,var(--acc) 9%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
 .agc-cell.has-items{background:color-mix(in srgb,var(--fg) 6%,transparent)}
-.agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding:0 1px}
+.agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding:0 1px;flex-shrink:0}
 .agc-cell.today .agc-dom{color:var(--acc);font-weight:800;background:color-mix(in srgb,var(--acc) 18%,transparent);border-radius:3px;padding:0 4px}
-.agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg)}
+.agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg);flex-shrink:0}
 .agc-item:hover{opacity:.82}
 .agc-item:focus-visible{outline:2px solid var(--acc);outline-offset:1px;opacity:1}
 .agc-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
@@ -992,7 +992,7 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .agc-item.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
 .agc-item.future,.agc-item.none{background:color-mix(in srgb,var(--fg) 5%,transparent);border-color:color-mix(in srgb,var(--fg) 14%,transparent)}
 .agc-item.done{opacity:.5;text-decoration:line-through}
-.agc-more{font-size:10px;font-weight:600;color:var(--muted);padding-left:2px;line-height:1.3}
+.agc-more{font-size:10px;font-weight:600;color:var(--muted);padding-left:2px;line-height:1.3;flex-shrink:0}
 @media(hover:none){
   .agc-nav{width:36px;height:36px;font-size:18px}
   .agc-today{padding:5px 12px}
