@@ -7105,6 +7105,16 @@ function attachContentEvents(content, node) {
       } else if (tid && nodeById(tid)) zoomInto(tid);            // same-doc (unchanged)
       return;
     }
+    // autolinked bare URL (a plain <a>, not a .node-link pill): in display mode open it.
+    // preventDefault is required — clicking would otherwise focus the contenteditable, and
+    // the focus listener enters edit mode (swallowing the navigation). So we suppress that
+    // and open the URL ourselves (same target=_blank/noopener the anchor carries).
+    const aLink = e.target.closest?.('a[href]');
+    if (aLink && !aLink.classList.contains('node-link') && !content.dataset.editing && e.button === 0) {
+      e.preventDefault(); e.stopPropagation();
+      window.open(aLink.href, '_blank', 'noopener');
+      return;
+    }
     // footnote ref (UXP-55): click/tap reveals + highlights its footnote (display mode only;
     // in edit mode the ref is plain [^key] text). The keyboard twin is in onKeyDown.
     const fnref = e.target.closest?.('.fn-ref');
