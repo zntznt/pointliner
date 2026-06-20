@@ -232,6 +232,28 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .node-row:hover{background:rgba(0,0,0,.028)}
 @media(prefers-color-scheme:dark){.node-row:hover{background:rgba(255,255,255,.04)}}
 .search-ctx .node-row:hover{background:transparent}
+/* Hover-reveal dwell: point affordances appear only after the cursor RESTS ~160ms,
+   so sweeping the mouse across points doesn't flash controls all over. The delay sits
+   on the :hover (reveal-in) selectors only — the base rules keep delay:0 so leaving a
+   point hides them instantly. A control the cursor is actually ON (e.g. a pencil being
+   clicked) reacts immediately; this only gates the pass-through reveal. */
+.node-row:hover,
+.bullet:hover .bullet-dot,.bullet-base:hover .bullet-base-ic,
+.nt-divider>.node-row>.bullet:hover .bullet-dot,.nt-ol>.node-row>.bullet:hover .bullet-dot,
+.dice-roll:hover .dice-edit,.mk-roll:hover .mk-edit,.gr-roll:hover .gr-edit,
+.math-roll:hover .math-edit,.est-pill:hover .est-edit,.var-pill:hover .var-edit,
+.md-table-static:hover .mt-promote,.mt-rowh:hover::before{transition-delay:.16s}
+/* but a control the cursor lands on directly (the pencil itself, the grip itself)
+   confirms instantly — no dwell on the inner :hover */
+.dice-edit:hover,.mk-edit:hover,.gr-edit:hover,.math-edit:hover,.est-edit:hover,
+.var-edit:hover,.mt-promote:hover{transition-delay:0s}
+@media(prefers-reduced-motion:reduce){
+  .node-row:hover,.bullet:hover .bullet-dot,.bullet-base:hover .bullet-base-ic,
+  .nt-divider>.node-row>.bullet:hover .bullet-dot,.nt-ol>.node-row>.bullet:hover .bullet-dot,
+  .dice-roll:hover .dice-edit,.mk-roll:hover .mk-edit,.gr-roll:hover .gr-edit,
+  .math-roll:hover .math-edit,.est-pill:hover .est-edit,.var-pill:hover .var-edit,
+  .md-table-static:hover .mt-promote,.mt-rowh:hover::before{transition-delay:0s}
+}
 .node-row:has(.node-content[data-editing]){background:color-mix(in srgb,var(--acc) 5.5%,transparent)}
 /* While editing an ordered-list point, the raw "N. " marker is revealed in the text
    (markdown-first, like "#" for a heading). Hide the computed gutter ordinal so the
