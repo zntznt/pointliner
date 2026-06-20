@@ -5347,8 +5347,13 @@ function renderRow(r) {
       // No hover on touch: long-press the bullet to open the node menu (type/move/delete/zoom).
       attachBulletLongPress(bullet, node);
     } else {
-      bullet.addEventListener('mouseenter', () => { if (!dragId) showBulletPopup(node.id, bullet); });
-      bullet.addEventListener('mouseleave', () => scheduleBpopHide());
+      // dwell before showing: sweeping the cursor across bullets shouldn't pop the menu
+      // on each one. Only open after the cursor rests ~200ms; a mouseleave cancels it.
+      bullet.addEventListener('mouseenter', () => {
+        clearTimeout(bpopShowTimer);
+        bpopShowTimer = setTimeout(() => { if (!dragId) showBulletPopup(node.id, bullet); }, 200);
+      });
+      bullet.addEventListener('mouseleave', () => { clearTimeout(bpopShowTimer); scheduleBpopHide(); });
     }
     attachDragHandlers(bullet, row, node);
   }
@@ -8305,6 +8310,7 @@ function applyInlineFormat(fmt) {
 
 const bpop = document.getElementById('bpop');
 let bpopTimer = null;
+let bpopShowTimer = null;   // dwell-before-show timer for the bullet hover
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
@@ -8351,6 +8357,7 @@ document.addEventListener('click', e => {
 
 function showBulletPopup(nodeId, bulletEl, opts = {}) {
   clearTimeout(bpopTimer);
+  clearTimeout(bpopShowTimer);   // any pending hover-show is now moot
   const node = nodeById(nodeId);
   if (!node) return;
   bpop.innerHTML = '';
