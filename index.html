@@ -933,7 +933,18 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .ag-pane{min-width:0;display:flex;flex-direction:column;border-top:1px solid var(--bdr);margin-top:5px;padding-top:6px}
 /* ── Timeline (Gantt) — fixed names column left, scrollable chart right ── */
 .agg-outer{display:flex;min-width:0;align-items:flex-start}
-.agg-names-col{flex:0 0 auto;width:clamp(90px,20%,180px);display:flex;flex-direction:column;border-right:1px solid var(--bdr);padding-right:6px;overflow:hidden;max-height:min(46vh,300px)}
+.agg-names-col{flex:0 0 auto;width:clamp(90px,20%,180px);display:flex;flex-direction:column;padding-right:6px;overflow:hidden;max-height:min(46vh,300px);position:relative}
+/* resize handle BETWEEN the titles and the chart — its own flex item (not inside the
+   overflow:hidden names column, which was clipping it). The hairline separator lives
+   here now; a dotted grip (the same radial-gradient idiom as the table row handle)
+   sits on it ALWAYS so resizability is discoverable at rest (P2), strengthening to
+   accent on hover/drag. */
+.agg-names-resize{flex:0 0 auto;width:11px;align-self:stretch;min-height:40px;max-height:min(46vh,300px);position:relative;cursor:col-resize;touch-action:none;border-radius:3px}
+.agg-names-resize::before{content:'';position:absolute;inset:0;margin:auto;width:4px;height:46%;min-height:18px;background:radial-gradient(circle,var(--muted) 1.4px,transparent 1.4px) center/4px 6px repeat-y;opacity:.85}
+.agg-names-resize:hover::before,body.agg-resizing .agg-names-resize::before,.agg-names-resize:focus-visible::before{background-image:radial-gradient(circle,var(--acc) 1.4px,transparent 1.4px);opacity:1}
+.agg-names-resize:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+body.agg-resizing{cursor:col-resize;user-select:none}
+@media(hover:none){.agg-names-resize{display:none}}
 .agg-names-inner{display:flex;flex-direction:column;overflow-y:hidden;overflow-x:hidden}
 .agg-axis-spacer{height:17px;flex-shrink:0}
 .agg-name-row{height:23px;display:flex;align-items:center;font-size:11px;color:var(--fg);overflow:hidden;white-space:nowrap;cursor:pointer;flex-shrink:0;gap:4px}
@@ -945,7 +956,7 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .agg-chart-col::after{content:'';position:absolute;right:0;top:0;bottom:0;width:24px;background:linear-gradient(to right,transparent,var(--hbg));pointer-events:none;z-index:4;opacity:0;transition:opacity .15s}
 .agg-chart-col.can-scroll::after{opacity:1}
 .ag-gantt{max-height:min(46vh,300px);overflow-x:auto;overflow-y:auto;scrollbar-width:thin}
-.agg-inner{position:relative;min-height:100%}
+.agg-inner{position:relative;min-height:100%;min-width:100%;box-sizing:border-box}
 .agg-axis{position:relative;height:15px;margin-bottom:2px}
 .agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:3px}
 .agg-today{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 65%,transparent);z-index:2}
@@ -965,8 +976,10 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .agg-bar:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── Calendar pane — month grid ── */
 .ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px}
-.agc-head{display:flex;align-items:center;gap:6px}
-.agc-title{font-size:14px;font-weight:700;color:var(--fg);flex:1;font-variant-numeric:tabular-nums}
+.agc-head{display:flex;align-items:center;gap:6px;padding:2px 0 6px}
+/* month nav fills the bar and centers ‹ title › ; Today is pushed to the right edge */
+.agc-monthnav{flex:1;display:flex;align-items:center;justify-content:center;gap:10px}
+.agc-title{font-size:15px;font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums;text-align:center;min-width:11ch}
 .agc-nav{flex:0 0 auto;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--bdr-ui);background:transparent;color:var(--fg);cursor:pointer;border-radius:var(--r-sm);font-size:16px;line-height:1;user-select:none}
 .agc-nav:hover{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 60%,transparent);background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .agc-nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -15230,6 +15243,8 @@ let agendaBars = { timeline: false, calendar: false };  // which extra bars are 
 let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
 let agendaMonth = null;         // Calendar bar: any epoch-day in the shown month (session-only)
+let ganttNamesW = null;         // Timeline: pinned width (px) of the titles column, null = CSS clamp default
+let ganttResize = null;         // in-flight names-column resize gesture { startX, startW }
 
 function mkAgToggle(label, on, onToggle) {
   const b = document.createElement('span');
@@ -15349,7 +15364,11 @@ function renderAgenda() {
   const bar = () => { const p = document.createElement('div'); p.className = 'ag-pane'; strip.appendChild(p); return p; };
   if (agendaBars.timeline) renderAgendaGantt(bar(), visible, all.length);
   if (agendaBars.calendar) renderAgendaCalendar(bar(), visible, all.length);
+  // keyboard resize re-renders the whole strip; restore focus to the new handle so a
+  // keyboard user can keep adjusting (parity with the calendar nav's focus-stable repaint).
+  if (_refocusGanttResize) { _refocusGanttResize = false; strip.querySelector('.agg-names-resize')?.focus(); }
 }
+let _refocusGanttResize = false;
 
 function renderAgendaList(host, visible, totalDated) {
   if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
@@ -15378,25 +15397,40 @@ function renderAgendaList(host, visible, totalDated) {
 // Range bars span start→due, deadline-only points are 1-day bars, started-but-
 // undeadlined points are open-ended ('ongoing', dashed) bars to today.
 // Names and chart share the same row heights and scroll together vertically.
+// Titles-column width bounds: readable floor, and a ceiling so the chart keeps room.
+const GANTT_NAMES_MIN = 70, GANTT_NAMES_MAX = 360, GANTT_NAMES_STEP = 16;
+function clampGanttNamesW(w) { return Math.max(GANTT_NAMES_MIN, Math.min(GANTT_NAMES_MAX, Math.round(w))); }
+
 function renderAgendaGantt(host, visible, totalDated) {
   if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
   const layout = agendaGantt(visible);
   if (!layout.rows.length) { host.appendChild(agMini('Nothing to show — adjust the toggles.')); return; }
   const today = dueDateToday();
-  // px/day: roomy for short ranges, compressed (then scrolled) for long ones
-  const px = Math.max(7, Math.min(28, Math.round(900 / layout.rangeDays)));
-  const totalW = layout.rangeDays * px;
 
   // two-panel layout: fixed names column + scrollable chart
   const outer = document.createElement('div'); outer.className = 'agg-outer';
 
   // left: item names (no scrollbar, driven by JS scroll sync)
   const namesCol = document.createElement('div'); namesCol.className = 'agg-names-col';
+  if (ganttNamesW != null) namesCol.style.width = ganttNamesW + 'px';
   const namesInner = document.createElement('div'); namesInner.className = 'agg-names-inner';
   const spacer = document.createElement('div'); spacer.className = 'agg-axis-spacer';
   namesInner.appendChild(spacer);
   namesCol.appendChild(namesInner);
   outer.appendChild(namesCol);
+
+  // drag handle BETWEEN the columns (its own flex item, so the names column's
+  // overflow:hidden can't clip it) — resizes the titles column, persisted
+  const nresize = document.createElement('div'); nresize.className = 'agg-names-resize';
+  nresize.title = 'Drag or use ← → to resize · double-click / Enter to reset';
+  // P3: a focusable, keyboard-operable separator (aria-valuenow tracks the px width)
+  nresize.setAttribute('role', 'separator');
+  nresize.setAttribute('aria-orientation', 'vertical');
+  nresize.setAttribute('aria-label', 'Resize titles column');
+  nresize.setAttribute('tabindex', '0');
+  nresize.setAttribute('aria-valuemin', String(GANTT_NAMES_MIN));
+  nresize.setAttribute('aria-valuemax', String(GANTT_NAMES_MAX));
+  outer.appendChild(nresize);
 
   // right: scrollable chart
   const chartCol = document.createElement('div'); chartCol.className = 'agg-chart-col';
@@ -15404,6 +15438,17 @@ function renderAgendaGantt(host, visible, totalDated) {
   scroll.setAttribute('role', 'group'); scroll.setAttribute('aria-label', 'Timeline of dated points');
   chartCol.appendChild(scroll);
   outer.appendChild(chartCol);
+
+  // Append the shell BEFORE sizing so we can measure the chart column's real width
+  // and spread the days to fill it — otherwise a short range leaves the right half
+  // of the chart empty. px/day: fill the available width, but never below a readable
+  // floor (7px) so a long range still compresses-then-scrolls, nor so wide that a
+  // 1-day range becomes absurd (cap 56px).
+  host.appendChild(outer);
+  const avail = scroll.clientWidth || 600;                       // measured; 600 fallback if hidden
+  const fillPx = Math.floor((avail - 1) / layout.rangeDays);     // -1 so the last tick's border isn't clipped
+  const px = Math.max(7, Math.min(56, fillPx));
+  const totalW = layout.rangeDays * px;
 
   const inner = document.createElement('div'); inner.className = 'agg-inner'; inner.style.width = totalW + 'px';
 
@@ -15460,7 +15505,6 @@ function renderAgendaGantt(host, visible, totalDated) {
   }
 
   scroll.appendChild(inner);
-  host.appendChild(outer);
 
   // vertical scroll sync: names column tracks the chart's scrollTop
   // right-fade shadow: visible when there is more content to the right
@@ -15481,6 +15525,58 @@ function renderAgendaGantt(host, visible, totalDated) {
     hover.style.display = 'block';
   });
   scroll.addEventListener('mouseleave', () => { hover.style.display = 'none'; });
+
+  // names-column resize: drag the border handle (live), commit + re-render on release
+  // so the chart's width-aware px recomputes against the new available space.
+  // Double-click resets to the CSS clamp default.
+  nresize.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    ganttResize = { startX: e.clientX, startW: namesCol.getBoundingClientRect().width, col: namesCol, moved: false };
+    document.body.classList.add('agg-resizing');
+  });
+  nresize.addEventListener('dblclick', e => {
+    e.preventDefault(); e.stopPropagation();
+    ganttNamesW = null; renderAgenda(); scheduleAutosave();
+  });
+  // P3-1: announce the current width to AT (the measured px, after layout)
+  nresize.setAttribute('aria-valuenow', String(Math.round(namesCol.getBoundingClientRect().width)));
+  // P3-2: keyboard operability beside the mouse path — ←/→ step, Home/End min/max,
+  // Enter/Backspace reset to the CSS default. Re-renders so the chart refills.
+  nresize.addEventListener('keydown', e => {
+    const cur = Math.round(namesCol.getBoundingClientRect().width);
+    let w = null;
+    if (e.key === 'ArrowLeft')  w = cur - GANTT_NAMES_STEP;
+    else if (e.key === 'ArrowRight') w = cur + GANTT_NAMES_STEP;
+    else if (e.key === 'Home')  w = GANTT_NAMES_MIN;
+    else if (e.key === 'End')   w = GANTT_NAMES_MAX;
+    else if (e.key === 'Enter' || e.key === 'Backspace') { e.preventDefault(); ganttNamesW = null; _refocusGanttResize = true; renderAgenda(); scheduleAutosave(); return; }
+    else return;
+    e.preventDefault();
+    ganttNamesW = clampGanttNamesW(w); _refocusGanttResize = true; renderAgenda(); scheduleAutosave();
+  });
+  ganttInitGlobal();
+}
+
+// One-time document-level move/up for the Timeline names-column resize (mirrors
+// mtInitGlobal). Live-resizes via the in-flight gesture; commits ganttNamesW and
+// re-renders the agenda on release so the chart refills the freed/taken width.
+let ganttGlobalInit = false;
+function ganttInitGlobal() {
+  if (ganttGlobalInit) return; ganttGlobalInit = true;
+  document.addEventListener('mousemove', e => {
+    if (!ganttResize) return;
+    if (Math.abs(e.clientX - ganttResize.startX) > 1) ganttResize.moved = true;
+    const w = clampGanttNamesW(ganttResize.startW + (e.clientX - ganttResize.startX));
+    ganttResize.col.style.width = w + 'px';                 // live; chart px refits on commit
+    e.preventDefault();
+  });
+  document.addEventListener('mouseup', e => {
+    if (!ganttResize) return;
+    const { startX, startW, moved } = ganttResize;
+    ganttResize = null;
+    document.body.classList.remove('agg-resizing');
+    if (moved) { ganttNamesW = clampGanttNamesW(startW + (e.clientX - startX)); renderAgenda(); scheduleAutosave(); }
+  });
 }
 
 function renderAgendaCalendar(host, visible, totalDated) {
@@ -15496,10 +15592,16 @@ function renderAgendaCalendar(host, visible, totalDated) {
   const todayBtn = document.createElement('span'); todayBtn.className = 'agc-today'; todayBtn.textContent = 'Today';
   todayBtn.setAttribute('role', 'button'); todayBtn.setAttribute('tabindex', '0');
   todayBtn.setAttribute('aria-label', 'Jump to current month');
-  head.append(prev, title, next, todayBtn);
+  // centered month nav (‹ Month YYYY ›) with Today anchored to the right
+  const monthNav = document.createElement('div'); monthNav.className = 'agc-monthnav';
+  monthNav.append(prev, title, next);
+  head.append(monthNav, todayBtn);
   wrap.appendChild(head);
 
-  if (!totalDated) wrap.appendChild(agMini('No dated points yet. Set dates via /due or the bullet menu.'));
+  // No empty-state line here: unlike List/Timeline (which have nothing to render),
+  // the calendar still draws a usable empty month grid, so a stray "No dated points"
+  // line just adds dead space below the month nav. The /due hint lives in the List/
+  // Timeline empty states, the / menu, and the ? panel.
 
   // day-of-week header (aria-hidden — each cell carries its full date label)
   const dow = document.createElement('div'); dow.className = 'agc-dow'; dow.setAttribute('aria-hidden', 'true');
@@ -16584,7 +16686,7 @@ function scheduleAutosave() {
 // The localStorage crash-buffer write, factored out of scheduleAutosave so the folder
 // write can run alongside it (and still run when this is disabled by a too-large tree).
 function writeLocalAutosave() {
-  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, savedAt: Date.now() }));
+  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (payload.length > STORAGE_SOFT_LIMIT) {
@@ -16653,6 +16755,7 @@ let loadedFromEmbed = false;
       }
       if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
       if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
+      if (typeof data.ganttNamesW === 'number' && data.ganttNamesW > 0) ganttNamesW = clampGanttNamesW(data.ganttNamesW);
       if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) {
         accentId = data.accentId;
       }
