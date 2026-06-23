@@ -4008,8 +4008,14 @@ function render() {
       const r = caretFromPoint(e.clientX, e.clientY, te);
       if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
     });
-    te.addEventListener('focus', () => { if (!te.dataset.editing) enterZoomEdit(); });
-    te.addEventListener('blur',  () => { if (te.dataset.editing) exitZoomEdit(); });
+    te.addEventListener('focus', () => {
+      if (!te.dataset.editing) enterZoomEdit();
+      updateBlPanel(vp.id);   // "Linked from" / unlinked-refs footer, same as outline rows
+    });
+    te.addEventListener('blur',  () => {
+      if (te.dataset.editing) exitZoomEdit();
+      scheduleBlHide();
+    });
     te.addEventListener('input', () => {
       if (!te.dataset.editing) return;
       vp.text = editableText(te); markDirty(); renderBreadcrumb();
@@ -14893,7 +14899,10 @@ function scheduleBlHide() {
   blHideTimer = setTimeout(() => {
     const panel = document.getElementById('bl-panel');
     if (panel?.contains(document.activeElement)) return;   // UXP-54: focus moved into the panel — keep it open
-    if (document.activeElement?.classList.contains('node-content')) return;
+    // keep open while an editable point header holds focus: outline rows (.node-content)
+    // or the zoomed-in title (.zoom-title), which is a separate hand-rolled editor.
+    const ae = document.activeElement;
+    if (ae?.classList.contains('node-content') || ae?.classList.contains('zoom-title')) return;
     hideBlPanel();
   }, 150);
 }
