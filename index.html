@@ -1322,6 +1322,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <button class="nsb-btn" id="nsb-indent">Indent →</button>
   <button class="nsb-btn" id="nsb-outdent">← Outdent</button>
   <span class="nsb-sep"></span>
+  <button class="nsb-btn" id="nsb-state">State</button>
+  <button class="nsb-btn" id="nsb-dates">Dates</button>
+  <button class="nsb-btn" id="nsb-check">Check</button>
+  <button class="nsb-btn" id="nsb-props">Properties</button>
+  <button class="nsb-btn" id="nsb-type">Turn into</button>
+  <span class="nsb-sep"></span>
   <button class="nsb-btn danger" id="nsb-delete">Delete</button>
   <button class="nsb-btn" id="nsb-clear">✕</button>
 </div>
@@ -5702,14 +5708,18 @@ function buildPropsRow(node, opts = {}) {
 }
 
 // Properties editor dialog — opens from bullet menu or chip click.
-function openPropsDialog(nodeId) {
-  const node = nodeById(nodeId);
+function openPropsDialog(nodeId, targets = null) {
+  const node = targets ? targets[0] : nodeById(nodeId);
   if (!node) return;
+  const applyList = targets || [node];
   // Reserved properties (due/start → Schedule dialog; check → Check dialog;
   // aliases → Aliases dialog) are managed by their own editors, not here — hide
   // them from the generic editor and merge them back untouched on save.
   const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY || k === ALIAS_KEY;
-  let props = (node.props || []).filter(p => !reserved(p.key.trim().toLowerCase())).map(p => ({ key: p.key, val: p.val }));
+  // bulk over many points: start blank — what you type is merged onto every point.
+  // single point: prefill its own (non-reserved) props for editing.
+  let props = applyList.length > 1 ? [{ key: '', val: '' }]
+    : (node.props || []).filter(p => !reserved(p.key.trim().toLowerCase())).map(p => ({ key: p.key, val: p.val }));
   const reservedProps = (node.props || []).filter(p => reserved(p.key.trim().toLowerCase()));
 
   ioCard.innerHTML = '';
@@ -5791,11 +5801,24 @@ function openPropsDialog(nodeId) {
     }
     errDiv.style.display = 'none';
     pushUndo();
-    // merge the preserved reserved props (dates + check) back; a reserved key typed
-    // into the generic editor overrides the preserved one (kept = those NOT re-typed)
-    const typed = new Set(cleaned.filter(p => reserved(p.key.toLowerCase())).map(p => p.key.toLowerCase()));
-    const keptReserved = reservedProps.filter(p => !typed.has(p.key.toLowerCase()));
-    node.props = [...keptReserved, ...cleaned];
+    if (applyList.length === 1) {
+      // single point: the dialog showed its full prop set, so replace wholesale.
+      // merge the preserved reserved props (dates + check) back; a reserved key typed
+      // into the generic editor overrides the preserved one (kept = those NOT re-typed)
+      const typed = new Set(cleaned.filter(p => reserved(p.key.toLowerCase())).map(p => p.key.toLowerCase()));
+      const keptReserved = reservedProps.filter(p => !typed.has(p.key.toLowerCase()));
+      node.props = [...keptReserved, ...cleaned];
+    } else {
+      // bulk: the points have differing props, so MERGE — set the keys typed here on
+      // every point, leaving each point's other (untouched) props alone. An empty value
+      // removes that key. (The dialog started blank for bulk, so `cleaned` is only what
+      // the user entered.)
+      const setKeys = new Set(cleaned.map(p => p.key.toLowerCase()));
+      for (const t of applyList) {
+        const kept = (t.props || []).filter(p => !setKeys.has(p.key.trim().toLowerCase()));
+        t.props = [...kept, ...cleaned.filter(p => p.val !== '')];
+      }
+    }
     markDirty(); render(); closeIo();
   }
   cancelBtn.addEventListener('click', closeIo);
@@ -6032,9 +6055,10 @@ const CHECK_ICON = { fa: 'fa-solid fa-circle-check', fb: '✓' };
 // removes the check. Reached by /check, the bullet menu, or clicking the chip —
 // mirrors the dates feature. Zero new syntax: the value is the existing evalMath
 // language + B1 aggregation.
-function openCheckDialog(nodeId) {
-  const node = nodeById(nodeId);
+function openCheckDialog(nodeId, targets = null) {
+  const node = targets ? targets[0] : nodeById(nodeId);
   if (!node) return;
+  const applyList = targets || [node];   // captured in onSubmit's closure — no global race with closeIo
   const cur = checkExprOf(node) || '';
   // a node mirror whose `check` is the typed expr, for the live preview
   const previewNode = expr => ({
@@ -6073,9 +6097,11 @@ function openCheckDialog(nodeId) {
     onSubmit: v => {
       pushUndo();
       const expr = (v.expr || '').trim();
-      const props = (node.props || []).filter(p => p.key.trim().toLowerCase() !== CHECK_KEY);
-      if (expr) props.push({ key: CHECK_KEY, val: expr });
-      node.props = props;
+      for (const t of applyList) {
+        const props = (t.props || []).filter(p => p.key.trim().toLowerCase() !== CHECK_KEY);
+        if (expr) props.push({ key: CHECK_KEY, val: expr });
+        t.props = props;
+      }
       markDirty(); render();
     },
   });
@@ -8243,6 +8269,75 @@ document.getElementById('nsb-indent').addEventListener('click', indentSelected);
 document.getElementById('nsb-outdent').addEventListener('click', outdentSelected);
 document.getElementById('nsb-delete').addEventListener('click', deleteSelected);
 document.getElementById('nsb-clear').addEventListener('click', clearSelection);
+
+// Bulk edit a multi-selection the same way the bullet popup edits one point: the
+// per-point dialogs/pickers take an optional targets[] list and apply to all of them.
+// Every selected point is its own target (these are per-point property/state writes),
+// so use the flat selection, not just the top-level roots.
+function selectedNodes() {
+  return flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node);
+}
+document.getElementById('nsb-state').addEventListener('click', () => {
+  const t = selectedNodes(); if (!t.length) return;
+  showTodoPicker(null, document.getElementById('nsb-state'), t);
+});
+document.getElementById('nsb-dates').addEventListener('click', () => {
+  const t = selectedNodes().filter(n => n.type !== 'base'); if (!t.length) return;
+  openDueDateDialog(null, t);
+});
+document.getElementById('nsb-check').addEventListener('click', () => {
+  const t = selectedNodes().filter(n => n.type !== 'base'); if (!t.length) return;
+  openCheckDialog(null, t);
+});
+document.getElementById('nsb-props').addEventListener('click', () => {
+  const t = selectedNodes().filter(n => n.type !== 'base'); if (!t.length) return;
+  openPropsDialog(null, t);
+});
+document.getElementById('nsb-type').addEventListener('click', () => {
+  showSelTypeMenu(document.getElementById('nsb-type'));
+});
+
+// A compact "turn into" menu for the selection — the same type-switcher row the
+// bullet popup shows, but each pick loops applyBlockCmd over every selected point.
+function showSelTypeMenu(anchorEl) {
+  const targets = selectedNodes().filter(n => n.type !== 'base');
+  if (!targets.length) return;
+  clearTimeout(bpopTimer); clearTimeout(bpopShowTimer);
+  bpop.innerHTML = '';
+  bpopReturnFocus = null;
+  const typeRow = document.createElement('div');
+  typeRow.className = 'bpop-types';
+  BLOCK_CMDS.filter(c => c.turn).forEach(cmd => {
+    const btn = document.createElement('div');
+    btn.className = 'bpop-type';
+    setIcon(btn, { fa: cmd.fa, fb: cmd.icon });
+    btn.title = cmd.label;
+    btn.setAttribute('role', 'menuitem');
+    btn.setAttribute('tabindex', '-1');
+    btn.setAttribute('aria-label', 'Turn selection into ' + cmd.label);
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      pushUndo();
+      for (const n of targets) applyBlockCmd(cmd.id, n.id, n);
+      markDirty(); render(); hideBpop();
+      flashHint(`Turned ${ptsLabel(targets.length)} into ${cmd.label}`);
+    });
+    typeRow.appendChild(btn);
+  });
+  bpop.appendChild(typeRow);
+  const rect = anchorEl.getBoundingClientRect();
+  bpop.style.left = rect.left + 'px';
+  bpop.style.top  = (rect.top - 8) + 'px';
+  bpop.classList.add('on');
+  requestAnimationFrame(() => {
+    const pr = bpop.getBoundingClientRect();
+    if (pr.right > window.innerWidth - 8) bpop.style.left = (window.innerWidth - pr.width - 8) + 'px';
+    bpop.style.top = (rect.top - pr.height - 4) + 'px';     // above the bar
+    if (parseFloat(bpop.style.top) < 8) bpop.style.top = (rect.bottom + 4) + 'px';
+    bpop.querySelector('.bpop-type')?.focus();
+  });
+}
+
 document.getElementById('node-sel-bar').addEventListener('mousedown', e => e.stopPropagation());
 
 function updateSelToolbar() {
@@ -8274,7 +8369,7 @@ function hideSelTb() { selTb.classList.remove('on'); }
 document.addEventListener('selectionchange', updateSelToolbar);
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('#sel-tb')) hideSelTb();
-  if (selectedIds.size > 0 && !e.target.closest('.sel-check') && !e.target.closest('#node-sel-bar') && !e.target.closest('.bullet')) clearSelection();
+  if (selectedIds.size > 0 && !e.target.closest('.sel-check') && !e.target.closest('#node-sel-bar') && !e.target.closest('#bpop') && !e.target.closest('.bullet')) clearSelection();
 });
 
 function applyInlineFormat(fmt) {
@@ -8534,23 +8629,31 @@ function hideBpop() { bpop.classList.remove('on'); }
 document.addEventListener('click', e => {
   // .todo-state/.todo-prio open the picker on mousedown; ignore the trailing click
   // so it doesn't immediately dismiss the popover it just opened.
-  if (!e.target.closest('#bpop') && !e.target.closest('.bullet') && !e.target.closest('.todo-state,.todo-prio')) hideBpop();
+  // #node-sel-bar: the State / Turn-into buttons open the popover; ignore that click too.
+  if (!e.target.closest('#bpop') && !e.target.closest('.bullet') && !e.target.closest('.todo-state,.todo-prio') && !e.target.closest('#node-sel-bar')) hideBpop();
 });
 
 // Compact state + priority picker for a todo node. Reuses the #bpop element (so
 // touch + positioning + outside-click dismiss all come for free). One click sets
 // the value directly via the setTodoState/setTodoPriority cores — no cycling.
-function showTodoPicker(nodeId, anchorEl) {
+function showTodoPicker(nodeId, anchorEl, targets = null) {
   clearTimeout(bpopTimer);
-  const node = nodeById(nodeId);
+  const node = targets ? targets[0] : nodeById(nodeId);
   if (!node || node.type === 'base') return; // any text point can take a state keyword
+  const applyList = (targets || [node]).filter(n => n.type !== 'base');
   const { keyword, priority } = parseTodo(node.text);
   bpop.innerHTML = '';
 
+  // The chips mutate the anchor's text; for a bulk selection mirror the same write
+  // onto every selected point so they all take the chosen state/priority.
+  const writeAll = mutate => { for (const t of applyList) t.text = mutate(t.text); };
+
   const apply = () => {
     // type + checked are derived hints — re-derive from the text the picker wrote
-    node.type = deriveTypeFromText(node.text) || (node.type === 'todo' ? 'ul' : node.type);
-    node.checked = todoDoneFromText(node.text);
+    for (const t of applyList) {
+      t.type = deriveTypeFromText(t.text) || (t.type === 'todo' ? 'ul' : t.type);
+      t.checked = todoDoneFromText(t.text);
+    }
     markDirty(); render(); hideBpop();
   };
 
@@ -8570,7 +8673,7 @@ function showTodoPicker(nodeId, anchorEl) {
     chip.setAttribute('tabindex', '-1');
     chip.setAttribute('aria-checked', String(keyword === val));
     chip.setAttribute('aria-label', val === '' ? 'No state' : ('State ' + val));
-    chip.addEventListener('mousedown', e => { e.preventDefault(); node.text = setTodoState(node.text, val); apply(); });
+    chip.addEventListener('mousedown', e => { e.preventDefault(); writeAll(t => setTodoState(t, val)); apply(); });
     stChips.appendChild(chip);
   });
   stGroup.appendChild(stChips);
@@ -8595,7 +8698,7 @@ function showTodoPicker(nodeId, anchorEl) {
     chip.addEventListener('mousedown', e => {
       e.preventDefault();
       if (!keyword) return; // no priority without a state
-      node.text = setTodoPriority(node.text, val); apply();
+      writeAll(t => setTodoPriority(t, val)); apply();
     });
     prChips.appendChild(chip);
   });
