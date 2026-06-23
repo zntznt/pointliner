@@ -145,6 +145,7 @@ export function loadCores() {
     'collectUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'parseLinkToken', 'buildWorkspaceIndex',   // CF-1: cross-doc link index pure cores
     'linkText',                                 // render link tokens to legible plain text (breadcrumb/backlinks)
+    'displayText',                              // rendered display text (markdown/pills resolved) for backlinks + unlinked-ref matching
     'renderCrossLinkPill',                      // CF-2: cross-doc link pill (reads root.docId + workspaceIndex via vm)
     'workspaceCandidates',                      // CF-3: cross-doc [[ picker candidates (pure)
     'workspaceBacklinks',                       // CF-4: cross-doc backlinks (pure)

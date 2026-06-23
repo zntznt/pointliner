@@ -1501,6 +1501,29 @@ function linkText(str, depth = 0) {
 // link tokens resolved to legible text. Use this for breadcrumbs / "Linked from".
 function displayTitle(node) { return linkText(textForDisplay(node)); }
 
+// A point's text as it READS on screen — markdown, pill, and {…} syntax resolved
+// away to the displayed values, not the raw source. Block prefix stripped
+// (textForDisplay), every artifact [[type:key]] pill frozen to its shown value
+// (flattenArtifacts), and inline markdown markers removed (stripInlineMd). Used by
+// the backlinks panel (row labels) and unlinked-reference matching, so only
+// DISPLAYED text is matched/shown — never `**`, `{2d6}`, or pill `[[…]]` syntax.
+// `opts.forMatch` controls how LINK tokens (`[[#id|label]]`) are treated:
+//   • default (display): links resolve to their caption/title via linkText — legible
+//     labels for the panel rows.
+//   • forMatch: link + footnote tokens are STRIPPED, not resolved — a name appearing
+//     only inside an existing link is already linked, so it must not count as an
+//     unlinked reference (and a footnote marker `[^k]` is never displayed prose).
+// Pure-ish: flattenArtifacts/linkText read sidecars + the live title/var maps, the
+// same reads the render already does.
+function displayText(node, { forMatch = false, varMap } = {}) {
+  let t = textForDisplay(node) || '';
+  t = flattenArtifacts(t, node, varMap || globalVarMap);  // dice/grammar/math/etc → shown value
+  t = forMatch
+    ? t.replace(/\[\[[^\]]*\]\]/g, ' ').replace(/\[\^[^\]]*\]/g, ' ')  // drop link + footnote tokens
+    : linkText(t);                                                     // resolve links to legible text
+  return stripInlineMd(t).replace(/\s+/g, ' ').trim();
+}
+
 // A point's alternate names — the reserved `aliases` property, comma-split, trimmed,
 // empties dropped. The shared helper that broadens link-picker + unlinked-reference
 // matching beyond the canonical title. Pure; no DOM. (ALIAS_KEY defined near CHECK_KEY.)
@@ -10632,7 +10655,13 @@ function collectUnlinkedRefs(targetId, rootNode) {
     for (const c of n.children || []) find(c);
   })(rootNode);
   if (!target) return [];
-  const names = nodeNames(target).map(s => s.trim()).filter(s => s.length >= UNLINKED_MIN_LEN);
+  // Match the target's names as they READ (display text), so a `**Roadmap**` title
+  // matches the word "Roadmap" rendered in a source — not the asterisks. The title
+  // resolves through displayText (match mode: pills frozen, syntax stripped); aliases
+  // are already plain.
+  const titleDisp = displayText(target, { forMatch: true });
+  const names = [titleDisp, ...aliasesOf(target)]
+    .map(s => (s || '').trim()).filter((s, i, a) => s.length >= UNLINKED_MIN_LEN && a.indexOf(s) === i);
   if (!names.length) return [];
   const alt = names.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
   const re = new RegExp(`(?<![a-zA-Z0-9])(?:${alt})(?![a-zA-Z0-9])`, 'i');
@@ -10640,8 +10669,12 @@ function collectUnlinkedRefs(targetId, rootNode) {
   const out = [];
   (function walk(n) {
     if (n.id !== targetId && !linkers.has(n.id)) {
-      const stripped = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
-      if (re.test(stripped)) out.push({ id: n.id, title: textForDisplay(n) || '(untitled)' });
+      // match against DISPLAYED text only: markdown stripped, pills/{…} resolved to
+      // their shown values, link + footnote tokens removed — so syntax never trips a
+      // false ref and a name living only inside an existing link doesn't count.
+      if (re.test(displayText(n, { forMatch: true }))) {
+        out.push({ id: n.id, title: displayText(n) || '(untitled)' });  // row label: legible (links resolved)
+      }
     }
     for (const c of n.children || []) walk(c);
   })(rootNode);
@@ -15068,7 +15101,7 @@ function renderBlPanel(sources, unlinked, cross) {
   sources.forEach(src => {
     const item = document.createElement('div');
     item.className = 'bl-item';
-    const t = displayTitle(src) || '(untitled)';
+    const t = displayText(src) || '(untitled)';
     item.textContent = t;
     item.title = 'Open this point';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable backlink rows
