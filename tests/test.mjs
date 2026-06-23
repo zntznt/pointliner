@@ -3439,6 +3439,41 @@ test('collectUnlinkedRefs: mention inside existing [[…]] token is excluded', (
   assert.equal(out.length, 0, 'mention inside a token must not count');
 });
 
+test('collectUnlinkedRefs: matches the displayed word inside markdown, row title is clean', () => {
+  const root2 = c.mkRoot();
+  const target = c.mkNode('Dragon'); target.id = 'drgm';
+  // "Dragon" appears wrapped in bold markers — it must still match (display = "Dragon"),
+  // and the row's shown title must be the rendered text, not the raw markdown.
+  const sib = c.mkNode('the **Dragon** is bold'); sib.id = 'smd';
+  root2.children.push(target, sib);
+  const out = c.collectUnlinkedRefs('drgm', root2);
+  assert.equal(out.length, 1, 'word inside markdown still counts');
+  assert.equal(out[0].id, 'smd');
+  assert.equal(out[0].title, 'the Dragon is bold', 'row title strips markdown syntax');
+});
+
+test('collectUnlinkedRefs: a title that only collides with markdown syntax does not false-match', () => {
+  const root2 = c.mkRoot();
+  // a literal asterisk-pair title can never appear in DISPLAYED text (md is stripped),
+  // so a source whose only "match" is the raw `**` must not register.
+  const target = c.mkNode('**'); target.id = 'star';   // below min-len anyway, but the point is no syntax match
+  const sib = c.mkNode('this has **emphasis** here'); sib.id = 'se';
+  root2.children.push(target, sib);
+  const out = c.collectUnlinkedRefs('star', root2);
+  assert.equal(out.length, 0, 'markdown syntax characters are never matchable text');
+});
+
+test('displayText: resolves markdown to shown text (default) and strips link tokens (forMatch)', () => {
+  const root2 = c.mkRoot();
+  const other = c.mkNode('Other'); other.id = 'oth';
+  const n = c.mkNode('a **bold** word and [[#oth|Linked]]'); n.id = 'n1';
+  root2.children.push(other, n);
+  // default: markdown stripped, link resolved to its caption
+  assert.equal(c.displayText(n), 'a bold word and Linked');
+  // forMatch: link token removed entirely (an existing link is not an unlinked ref)
+  assert.equal(c.displayText(n, { forMatch: true }), 'a bold word and');
+});
+
 test('collectUnlinkedRefs: 2-char title → [] (below UNLINKED_MIN_LEN)', () => {
   const root2 = c.mkRoot();
   const target = c.mkNode('ab'); target.id = 'ab1';
@@ -5834,8 +5869,8 @@ test('breadcrumb + backlinks render link-legible titles (displayTitle/linkText w
     'displayTitle must wrap textForDisplay in linkText');
   assert.match(_src, /function crumbLabel[\s\S]{0,160}displayTitle\(n\)/,
     'crumbLabel must use displayTitle');
-  assert.match(_src, /bl-item['"];\s*\n\s*const t = displayTitle\(src\)/,
-    'same-doc backlink rows must use displayTitle');
+  assert.match(_src, /bl-item['"];\s*\n\s*const t = displayText\(src\)/,
+    'same-doc backlink rows must use displayText (resolves markdown/pills to shown text)');
   assert.ok(!/function textForDisplay\([^)]*\)\s*\{[\s\S]{0,400}linkText/.test(_src),
     'textForDisplay must NOT call linkText (keeps the workspace titles index raw)');
 });
