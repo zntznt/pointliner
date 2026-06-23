@@ -5839,3 +5839,60 @@ test('breadcrumb + backlinks render link-legible titles (displayTitle/linkText w
   assert.ok(!/function textForDisplay\([^)]*\)\s*\{[\s\S]{0,400}linkText/.test(_src),
     'textForDisplay must NOT call linkText (keeps the workspace titles index raw)');
 });
+
+// ── search: sequence status as key:value (state:/status:) ───────────────────
+const _defSeqs = c.allSequences({ children: [] }); // [DEFAULT_SEQUENCE] — TODO/NEXT/WAITING/DONE
+
+test('parseSearchQuery — state: parses to a state term', () => {
+  assert.deepEqual(host(c.parseSearchQuery('state:waiting')),
+    [{ neg: false, kind: 'state', value: 'waiting' }]);
+  assert.deepEqual(host(c.parseSearchQuery('-state:todo')),
+    [{ neg: true, kind: 'state', value: 'todo' }]);           // negation preserved
+});
+
+test('parseSearchQuery — state: does not steal the generic key:value prop term', () => {
+  // a non-state key stays a prop term; only state: routes to the state term.
+  assert.deepEqual(host(c.parseSearchQuery('owner:zeo')),
+    [{ neg: false, kind: 'prop', key: 'owner', value: 'zeo' }]);
+  // status: is intentionally NOT a state synonym — it stays the generic property lookup,
+  // so a point with a `status` property keeps matching status:done (no collision).
+  assert.deepEqual(host(c.parseSearchQuery('status:done')),
+    [{ neg: false, kind: 'prop', key: 'status', value: 'done' }]);
+  assert.equal(c.parseSearchQuery('state:doing urgent').map(t => t.kind).join(','), 'state,text');
+});
+
+test('termMatchesNode — state: matches the point’s sequence keyword', () => {
+  const waiting = { text: '#WAITING follow up', props: [] };
+  assert.equal(c.termMatchesNode({ kind: 'state', value: 'waiting' }, waiting, _defSeqs), true);
+  assert.equal(c.termMatchesNode({ kind: 'state', value: 'done' },    waiting, _defSeqs), false);
+  // case-insensitive value; keyword is stored uppercase
+  assert.equal(c.termMatchesNode({ kind: 'state', value: 'waiting' },
+    { text: '#WAITING x', props: [] }, _defSeqs), true);
+});
+
+test('termMatchesNode — state: ignores a leading #WORD that is not a declared state', () => {
+  // #SHOUT is hashtag-shaped but not in any sequence → never a state match (P1: a
+  // state filter means a real status, not any capitalized #word).
+  assert.equal(c.termMatchesNode({ kind: 'state', value: 'shout' },
+    { text: '#SHOUT hey', props: [] }, _defSeqs), false);
+  // a point with no keyword at all
+  assert.equal(c.termMatchesNode({ kind: 'state', value: 'todo' },
+    { text: 'plain point', props: [] }, _defSeqs), false);
+});
+
+test('queryMatchesNode — state: composes with AND/NOT like other terms', () => {
+  const next = { text: '#NEXT ship it', props: [], children: [] };
+  assert.equal(c.queryMatchesNode(c.parseSearchQuery('state:next ship'), next, _defSeqs), true);
+  assert.equal(c.queryMatchesNode(c.parseSearchQuery('state:next -state:done'), next, _defSeqs), true);
+  assert.equal(c.queryMatchesNode(c.parseSearchQuery('-state:next'), next, _defSeqs), false);
+});
+
+test('searchHighlightNeedles — state: (and other field filters) produce no needles', () => {
+  // only literal text + tags highlight; state:/prop/has/due are field matches.
+  assert.deepEqual(host(c.searchHighlightNeedles(c.parseSearchQuery('state:waiting'))), []);
+  assert.deepEqual(host(c.searchHighlightNeedles(c.parseSearchQuery('owner:zeo'))), []);
+  assert.deepEqual(host(c.searchHighlightNeedles(c.parseSearchQuery('has:owner'))), []);
+  // text + tag still surface
+  assert.deepEqual(host(c.searchHighlightNeedles(c.parseSearchQuery('ship #urgent state:next'))),
+    ['ship', '#urgent']);
+});
