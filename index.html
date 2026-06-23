@@ -3988,6 +3988,20 @@ function render() {
 
     te.addEventListener('mousedown', e => {
       if (te.dataset.editing) return;
+      // display mode: a node-link in the title navigates rather than entering edit
+      // mode (mirrors the outline handler, ~line 7099). Without this the title's
+      // catch-all enterZoomEdit swallows the click. Same-doc zooms; cross-doc
+      // switches doc then zooms (CF-2).
+      const lnk = e.target.closest?.('.node-link');
+      if (lnk) {
+        e.preventDefault();
+        const did = lnk.dataset.doc, tid = lnk.dataset.target;
+        if (did && did !== (root.docId || '')) {
+          const name = workspaceIndex?.nameByDocId?.get(did);
+          if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(tid)) zoomInto(tid); });
+        } else if (tid && nodeById(tid)) zoomInto(tid);
+        return;
+      }
       e.preventDefault();
       enterZoomEdit();
       te.focus();
@@ -4002,6 +4016,12 @@ function render() {
       updateFnPanel(vp);
     });
     te.addEventListener('keydown', e => {
+      // display mode: Enter/Space on a focused node-link follows it (the keyboard twin
+      // of the mousedown above, same dispatch pattern as the outline rows, UXP-53).
+      if (!te.dataset.editing && (e.key === 'Enter' || e.key === ' ')) {
+        const lnk = e.target.closest?.('.node-link');
+        if (lnk) { e.preventDefault(); lnk.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return; }
+      }
       if (e.key === 'Enter') { e.preventDefault(); if (vp.children.length) focusNode(vp.children[0].id); }
       if (e.key === 'Escape') { e.preventDefault(); zoomOut(); }
     });
@@ -5914,9 +5934,10 @@ function attachDateCalendar(input, host, isDate) {
 // inline calendar (see attachDateCalendar) shown while the field is focused.
 const DUE_ICON = { fa: 'fa-solid fa-calendar-day', fb: '📅' };
 
-function openDueDateDialog(nodeId) {
-  const node = nodeById(nodeId);
+function openDueDateDialog(nodeId, targets = null) {
+  const node = targets ? targets[0] : nodeById(nodeId);
   if (!node) return;
+  const applyList = targets || [node];   // bulk: apply the saved dates to every selected point
   const propVal = k => ((node.props || []).find(p => p.key.toLowerCase() === k) || {}).val || '';
   const startInit = propVal('start');
   const dueInit   = propVal('due') || (startInit ? '' : formatEpochDays(dueDateToday()));
@@ -5974,10 +5995,12 @@ function openDueDateDialog(nodeId) {
     if (!dueF.valid())   { dueF.inp.focus();   return; }
     pushUndo();
     const sv = startF.inp.value.trim(), dv = dueF.inp.value.trim();
-    const props = (node.props || []).filter(p => { const k = p.key.toLowerCase(); return k !== 'start' && k !== 'due'; });
-    if (sv) props.push({ key: 'start', val: sv });
-    if (dv) props.push({ key: 'due',   val: dv });
-    node.props = props;
+    for (const t of applyList) {
+      const props = (t.props || []).filter(p => { const k = p.key.toLowerCase(); return k !== 'start' && k !== 'due'; });
+      if (sv) props.push({ key: 'start', val: sv });
+      if (dv) props.push({ key: 'due',   val: dv });
+      t.props = props;
+    }
     markDirty(); render();
     if (agendaOpen) renderAgenda();
     closeIo();
