@@ -3994,20 +3994,46 @@ function render() {
 
     te.addEventListener('mousedown', e => {
       if (te.dataset.editing) return;
+      // display mode: a node-link in the title navigates rather than entering edit
+      // mode (mirrors the outline handler, ~line 7099). Without this the title's
+      // catch-all enterZoomEdit swallows the click. Same-doc zooms; cross-doc
+      // switches doc then zooms (CF-2).
+      const lnk = e.target.closest?.('.node-link');
+      if (lnk) {
+        e.preventDefault();
+        const did = lnk.dataset.doc, tid = lnk.dataset.target;
+        if (did && did !== (root.docId || '')) {
+          const name = workspaceIndex?.nameByDocId?.get(did);
+          if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(tid)) zoomInto(tid); });
+        } else if (tid && nodeById(tid)) zoomInto(tid);
+        return;
+      }
       e.preventDefault();
       enterZoomEdit();
       te.focus();
       const r = caretFromPoint(e.clientX, e.clientY, te);
       if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
     });
-    te.addEventListener('focus', () => { if (!te.dataset.editing) enterZoomEdit(); });
-    te.addEventListener('blur',  () => { if (te.dataset.editing) exitZoomEdit(); });
+    te.addEventListener('focus', () => {
+      if (!te.dataset.editing) enterZoomEdit();
+      updateBlPanel(vp.id);   // "Linked from" / unlinked-refs footer, same as outline rows
+    });
+    te.addEventListener('blur',  () => {
+      if (te.dataset.editing) exitZoomEdit();
+      scheduleBlHide();
+    });
     te.addEventListener('input', () => {
       if (!te.dataset.editing) return;
       vp.text = editableText(te); markDirty(); renderBreadcrumb();
       updateFnPanel(vp);
     });
     te.addEventListener('keydown', e => {
+      // display mode: Enter/Space on a focused node-link follows it (the keyboard twin
+      // of the mousedown above, same dispatch pattern as the outline rows, UXP-53).
+      if (!te.dataset.editing && (e.key === 'Enter' || e.key === ' ')) {
+        const lnk = e.target.closest?.('.node-link');
+        if (lnk) { e.preventDefault(); lnk.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return; }
+      }
       if (e.key === 'Enter') { e.preventDefault(); if (vp.children.length) focusNode(vp.children[0].id); }
       if (e.key === 'Escape') { e.preventDefault(); zoomOut(); }
     });
@@ -14976,7 +15002,10 @@ function scheduleBlHide() {
   blHideTimer = setTimeout(() => {
     const panel = document.getElementById('bl-panel');
     if (panel?.contains(document.activeElement)) return;   // UXP-54: focus moved into the panel — keep it open
-    if (document.activeElement?.classList.contains('node-content')) return;
+    // keep open while an editable point header holds focus: outline rows (.node-content)
+    // or the zoomed-in title (.zoom-title), which is a separate hand-rolled editor.
+    const ae = document.activeElement;
+    if (ae?.classList.contains('node-content') || ae?.classList.contains('zoom-title')) return;
     hideBlPanel();
   }, 150);
 }
