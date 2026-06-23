@@ -1243,7 +1243,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points — <code>YYYY-MM-DD</code>, <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase — terms combine (AND)</span></div>
-        <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters — <code>has:status</code>, <code>status:done</code></span></div>
+        <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters — <code>has:owner</code>, <code>owner:zeo</code></span></div>
+        <div class="sh-row"><kbd>state:value</kbd><span>sequence status — <code>state:waiting</code>, <code>state:done</code></span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -6892,6 +6893,7 @@ function parseSearchQuery(q) {
       if (dval.toLowerCase() === 'overdue') { terms.push({ neg, kind, op: 'overdue' }); }
       else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
     }
+    else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });
     else if ((t = tok.match(/^([\w][\w-]*):([\w][\w-]*)$/)) && t[1].toLowerCase() !== 'is') terms.push({ neg, kind: 'prop', key: t[1].toLowerCase(), value: t[2].toLowerCase() });
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
   }
@@ -6927,6 +6929,17 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     const done = todoDoneFromText(node.text, seqs);
     return term.value === 'done' ? done : !done;
   }
+  if (term.kind === 'state') {
+    // a point's sequence status (the leading #KEYWORD) as key:value — state:waiting,
+    // state:done. (`status:` is intentionally NOT a synonym: it already means the generic
+    // `status` PROPERTY lookup, so reusing it would shadow that.) Seq-aware like is: above:
+    // the keyword must be a recognized state in THESE seqs (so a bare #SHOUT that isn't a
+    // declared state never matches). The value compares case-insensitively (keywords are
+    // stored uppercase).
+    const km = (node.text || '').match(LEAD_WORD_RE);
+    if (!km || !sequenceForKeyword(km[1], seqs)) return false;
+    return km[1].toLowerCase() === term.value;
+  }
   if (term.kind === 'has') {
     return (node.props || []).some(p => p.key.toLowerCase() === term.value);
   }
@@ -6960,8 +6973,11 @@ function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMa
 function searchHighlightNeedles(terms) {
   const out = [];
   for (const t of terms || []) {
-    if (t.neg || t.kind === 'is') continue;
-    out.push(t.kind === 'tag' ? '#' + t.value : t.value);
+    if (t.neg) continue;
+    // only literal text and tags highlight; structural filters (is:/has:/prop/due/
+    // start/state) are field matches with nothing to <mark> in the rendered body.
+    if (t.kind === 'text') out.push(t.value);
+    else if (t.kind === 'tag') out.push('#' + t.value);
   }
   return out;
 }
@@ -16273,7 +16289,8 @@ const GUIDE = [
       { syn:'#tag',                   desc:'tag or state keyword (#todo, #done)' },
       { syn:'is:todo / is:done / is:note', desc:'open tasks / done tasks / noted points' },
       { syn:'is:failing',             desc:'points that break a check (the lint filter)' },
-      { syn:'has:key / key:value',    desc:'property filters (has:status, priority:high)' },
+      { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo)' },
+      { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
       { syn:'start:<date',            desc:'started before date (YYYY-MM-DD or today±N)' },
     ] },
