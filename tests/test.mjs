@@ -3291,19 +3291,19 @@ test('mdToHtml: a thematic break line renders a real <hr> (the divider visual so
 
 test('pill aria-labels: each renderer emits an accurate label', () => {
   const dice = c.renderDicePill('k', { key: 'k', expr: '2d6', total: 7, parts: [] });
-  assert.ok(dice.includes('aria-label="Dice roll 2d6 = 7 — click to re-roll"'), dice);
+  assert.ok(dice.includes('aria-label="Dice roll 2d6 = 7. Click to re-roll"'), dice);
   const mk = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'] });
-  assert.ok(mk.includes('aria-label="Markov chain: a → b — click to re-roll"'), mk);
+  assert.ok(mk.includes('aria-label="Markov chain: a → b. Click to re-roll"'), mk);
   const named = c.renderMarkovPill('m', { key: 'm', def: 'a -> b', start: 'a', steps: 1, path: ['a', 'b'], name: 'walk' });
   assert.ok(named.includes('aria-label="Markov chain walk: a → b'), named);
   // a named (non-anon) grammar — incl. a collapsed roll table — speaks its callable name
   const namedGr = c.renderGrammarPill('r', { key: 'r', def: 'loot: a sword', origin: 'loot', result: 'a sword' });
-  assert.ok(namedGr.includes('aria-label="Grammar loot: a sword — click to re-generate"'), namedGr);
+  assert.ok(namedGr.includes('aria-label="Grammar loot: a sword. Click to re-generate"'), namedGr);
   assert.ok(namedGr.includes('Callable as {loot}'), namedGr);
   const gr = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x!', anon: true });
-  assert.ok(gr.includes('aria-label="Grammar: x! — click to re-generate"'), gr);
+  assert.ok(gr.includes('aria-label="Grammar: x!. Click to re-generate"'), gr);
   const sq = c.renderSeqPill('q', { key: 'q', name: 'Flow', states: ['A', 'B', 'C'], doneFrom: 2 });
-  assert.ok(sq.includes('aria-label="Sequence Flow — active: A B; done: C — click to edit"'), sq);
+  assert.ok(sq.includes('aria-label="Sequence Flow. Active: A B; done: C. Click to edit"'), sq);
 });
 
 test('pill aria-labels: dead-record fallbacks are labeled too', () => {
