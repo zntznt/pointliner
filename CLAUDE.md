@@ -115,7 +115,7 @@ The project has strong architecture discipline and, historically, **no UX discip
 - **Keyboard is added *alongside* `mousedown`+`preventDefault`, never by converting to `click`/`<button>`** (the caret invariant — the single most load-bearing UX rule).
 - **A key never silently changes meaning by block type.** `Enter` = new point, `Shift+Enter` = line break in every block — **Paragraph is the one documented exception** (prose mode: Enter = line break, Shift+Enter = new point; advertised in the `/` menu and empty-state hint). New shortcuts MUST fit the keyboard grammar in `ux-discipline.md` §3.
 - **One authoring language.** New generative/computed content plugs into the `{…}` grammar engine or `evalMath` — **not** a new syntax. The §2/P5 syntax inventory is a **closed set**; growing it is an explicit, recorded decision, never a side effect of a feature. (This is the direct counterweight to "fits very well" above.)
-- **Built ≠ shipped-discoverable.** A capability reachable only by typed syntax, or gated entirely off with no front door at any verbosity, is non-conformant.
+- **Built ≠ shipped-discoverable.** A capability reachable only by typed syntax, or gated entirely off with no front door at any verbosity, is non-conformant. A user-facing feature also ships its entry in the **in-app concept guide** (the `const GUIDE = [` array, surfaced by the "Concept guide ›" button) in the same change — see `guidance/concept-guide.md` for the entry shape, the drift-guard contract, and the AP-style house rules. Every `/` and `@` command id MUST appear in some entry's `covers:[…]` (drift-guard test); bullet-menu/toolbar-only features have no command id and are kept documented by hand.
 
 **Opening PRs (so the gate passes first try):** The CI gate reads the **PR description only** — not commit messages, not comments. Every UI-touching PR's description MUST contain the Conformance Statement: start with the literal words `UX Conformance`, a ✅ or N/A on each of P1–P5, and no `< >` placeholders. When creating a PR with `gh pr create`, put the full statement in `--body` (it overrides the PR template). For a non-UI change, the description is just: `UI: none`.
 
@@ -773,6 +773,11 @@ The product direction is now set. Read these before proposing or building:
   descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.
   Where `ux.md` (vision) and `ux-discipline.md` (standard) ever differ, the standard governs
   behavior; `ux.md` governs the staging of guidance overlays.
+- `guidance/concept-guide.md` — **how to add/fix an in-app concept-guide entry** (the
+  `const GUIDE = [` array surfaced by the "Concept guide ›" button): entry shape, the
+  category set, the drift-guard contract (every `/`+`@` command id covered, and keep the
+  test's hardcoded id lists in sync), and the AP-style house rules. Read before adding a
+  user-facing feature — its concept entry ships in the same change.
 
 Note: internal links + backlinks and a multi-document workspace — previously "out of
 scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
