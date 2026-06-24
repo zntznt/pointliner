@@ -121,6 +121,8 @@ The project has strong architecture discipline and, historically, **no UX discip
 
 **Canonical vocabulary split:** code keeps `node`/`artifact`; **user-facing copy says "point" and "pill."** Use the standard's §1 terms in every string and `aria-label`. Do not rename the internal identifiers.
 
+**No em dashes in user-facing copy (`—` is banned as punctuation).** Every string a user reads — `cmd-label`/`cmd-desc`, slash/insert command `desc`, tooltips/`title`, `aria-label`, shortcut hints, `GUIDE` bodies, flash/status/error messages — uses AP-style punctuation only: a period, comma, colon, semicolon, or parentheses, or a restructured sentence. **Never** substitute a hyphen (`-`) for the dash; if a clause can't stand without a dash, rewrite it. The ONLY surviving `—` are content glyphs, never punctuation: the Divider block icon (`icon:'—'`), the empty-value placeholder in the state/priority dropdowns, the spent-deck marker, and the undefined-variable display. Comments and `guidance/` docs are exempt — this rule is for what renders to the user. (Cleared wholesale in PR #158; do not reintroduce.)
+
 ---
 
 ## Core architecture
