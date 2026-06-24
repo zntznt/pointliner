@@ -1237,14 +1237,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
         </div>
-        <div class="sh-row"><kbd>#tag</kbd><span>points with a tag — state keywords too (<code>#todo</code>)</span></div>
+        <div class="sh-row"><kbd>#tag</kbd><span>points with a tag, including state keywords (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
-        <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails — the lint filter</span></div>
-        <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points — <code>YYYY-MM-DD</code>, <code>today±N</code></span></div>
+        <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails (the lint filter)</span></div>
+        <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
-        <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase — terms combine (AND)</span></div>
-        <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters — <code>has:owner</code>, <code>owner:zeo</code></span></div>
-        <div class="sh-row"><kbd>state:value</kbd><span>sequence status — <code>state:waiting</code>, <code>state:done</code></span></div>
+        <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
+        <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code></span></div>
+        <div class="sh-row"><kbd>state:value</kbd><span>sequence status, like <code>state:waiting</code> or <code>state:done</code></span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -1256,7 +1256,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     </div>
     <button id="btn-capture" title="Capture to inbox" aria-label="Capture to inbox"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" title="New journal entry" aria-label="New journal entry"><i class="fa-solid fa-calendar-day"></i></button>
-    <button id="btn-agenda" title="Agenda — dated points" aria-label="Agenda — dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
+    <button id="btn-agenda" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-done" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
     <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
@@ -1280,13 +1280,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc">Save a copy as a new OPML file</span></div></div>
   <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect folder…</span><span class="cmd-desc" id="workspace-desc">Save into a folder and reopen it automatically</span></div></div>
   <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open, and create documents in the workspace</span></div></div>
-  <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Workspace connected — Save writes here</span></div></div>
+  <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Workspace connected; Save writes here</span></div></div>
   <div class="cmd-item cmd-note" id="workspace-invite" role="note" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Linked notebooks</span><span class="cmd-desc">Open in Chrome or Edge to save into a folder &amp; switch between notes</span></div><button class="io-btn xsm" id="workspace-invite-copy" type="button" aria-label="Copy this page's link to open in Chrome or Edge">Copy link</button></div>
 
   <div class="fm-group">Export</div>
-  <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">.md — artifacts frozen</span></div></div>
-  <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">.txt — plain outline</span></div></div>
-  <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Self-contained HTML</span><span class="cmd-desc">.html — a shareable file that is the app + this outline</span></div></div>
+  <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">.md with artifacts frozen</span></div></div>
+  <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">.txt as a plain outline</span></div></div>
+  <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Self-contained HTML</span><span class="cmd-desc">.html, a shareable file that is the app plus this outline</span></div></div>
 
   <div class="fm-group">Appearance</div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
@@ -2623,7 +2623,7 @@ function renderCrossLinkPill(docId, target, label) {
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another note)')}">${cap}</span>`;
   }
   const docName = workspaceIndex.nameByDocId?.get(docId) || 'another note';
-  return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docName)}" aria-label="${escQ(capText + ' — link to a point in ' + docName)}">${cap}</span>`;
+  return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docName)}" aria-label="${escQ(capText + ', link to a point in ' + docName)}">${cap}</span>`;
 }
 
 function mdInline(s) {
@@ -2936,7 +2936,7 @@ function renderDicePill(key, d) {
   if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}" aria-label="Dice roll (missing data)">🎲 ?</span>`;
   const totalStr = diceTotalStr(d);
   return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to re-roll"`
-    + ` aria-label="Dice roll ${escQ(d.expr)} = ${escQ(totalStr)} — click to re-roll">`
+    + ` aria-label="Dice roll ${escQ(d.expr)} = ${escQ(totalStr)}. Click to re-roll">`
     + `<span class="dice-ico"><i class="fa-solid fa-dice-d20"></i></span>`
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
     + `<span class="dice-eq">=</span>`
@@ -3029,10 +3029,10 @@ function renderMarkovPill(key, mk) {
   const path = mk.path
     .map(s => `<span class="mk-state">${escHtml(s)}</span>`)
     .join('<span class="mk-arrow">→</span>')
-    + (stoppedEarly ? `<span class="mk-arrow">→</span><span class="mk-terminal" title="Walk ended — last state has no outgoing transitions. Add more rules to continue.">…</span>` : '');
+    + (stoppedEarly ? `<span class="mk-arrow">→</span><span class="mk-terminal" title="Walk ended. The last state has no outgoing transitions. Add more rules to continue.">…</span>` : '');
   const nameTag = mk.name ? `<span class="mk-name" title="Callable as {${escQ(mk.name)}}">${escHtml(mk.name)}</span>` : '';
-  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${mk.name ? `{${escQ(mk.name)}} — click to re-roll` : 'Click to re-roll'}"`
-    + ` aria-label="Markov chain${mk.name ? ' ' + escQ(mk.name) : ''}: ${escQ(mk.path.join(' → '))} — click to re-roll">`
+  return `<span class="mk-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${mk.name ? `{${escQ(mk.name)}}. Click to re-roll` : 'Click to re-roll'}"`
+    + ` aria-label="Markov chain${mk.name ? ' ' + escQ(mk.name) : ''}: ${escQ(mk.path.join(' → '))}. Click to re-roll">`
     + `<span class="mk-ico"><i class="fa-solid fa-circle-nodes"></i></span>`
     + nameTag
     + `<span class="mk-path">${path}</span>`
@@ -3367,8 +3367,8 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
 // and #ERR pills explain a failure the SAME way (P1/P4 — legible, consistent). ''
 // for a generic/unknown code (the caller supplies its own "syntax error" fallback).
 function mathReasonPhrase(why) {
-  return why === 'estimate'    ? 'an estimate (lo to hi / normal / uniform) — a separate engine, not usable in math or a check'
-       : why === 'bad ref'     ? 'an unknown name — a missing property or variable'
+  return why === 'estimate'    ? 'an estimate (lo to hi / normal / uniform), a separate engine that does not work in math or a check'
+       : why === 'bad ref'     ? 'an unknown name (a missing property or variable)'
        : why === 'non-numeric' ? 'a non-numeric value (e.g. a text pick)'
        : why === 'cycle'       ? 'a reference cycle'
        : '';
@@ -3718,7 +3718,7 @@ function fromOpml(xml) {
 // Point-level commands — change WHAT THIS POINT IS. Triggered by "/".
 const BLOCK_CMDS = [
   // Lists — the everyday blocks, shown first
-  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point — the default block.', ex:'- text', section:'Lists', turn:true },
+  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point, the default block.', ex:'- text', section:'Lists', turn:true },
   { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Lists', turn:true },
   { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Lists', turn:true },
   // Headings
@@ -3726,14 +3726,14 @@ const BLOCK_CMDS = [
   { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium sub-section heading.',             ex:'## text', section:'Headings', turn:true },
   { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Smallest heading.',                       ex:'### text', section:'Headings', turn:true },
   // Blocks
-  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Prose block — Enter = line break, Shift+Enter = new point.', ex:'text\nmore text', section:'Blocks', turn:true },
-  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block — Shift+Enter adds lines (Enter exits to a new point).',     ex:'```', section:'Blocks', turn:true },
+  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Prose block where Enter makes a line break and Shift+Enter starts a new point.', ex:'text\nmore text', section:'Blocks', turn:true },
+  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid — editable cells, alignment, Calculate, formulas.', section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Shows in the Agenda.', ex:'start → due', section:'Organize' },
-  { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children — sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
+  { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title.', ex:'wyrm, drake', section:'Organize' },
   { id:'journal', icon:'📓',  fa:'fa-solid fa-calendar-day',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
 ];
@@ -3787,14 +3787,14 @@ const INSERT_CMDS = [
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
-  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table — one grammar rule; click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
+  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value — a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
-  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value — a 90% range, normal/uniform, or a sum over child points; shows mean ± range + a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
+  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
   // Organize — document-wide state sets
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Apply states via /.', ex:'Flow: BACKLOG DOING | SHIPPED', section:'Organize' },
 ];
@@ -4132,8 +4132,8 @@ function render() {
   const seEl = document.createElement('div');
   seEl.id = 'search-empty';
   const seMsg = workspaceDir
-    ? 'No points in this note match “' + searchQuery + '” — Esc to clear'
-    : 'No points match “' + searchQuery + '” — Esc to clear';
+    ? 'Nothing in this note matches “' + searchQuery + '”. Press Esc to clear'
+    : 'Nothing matches “' + searchQuery + '”. Press Esc to clear';
   seEl.textContent = seMsg;
   seEl.hidden = !(searchQuery && flatRows.length === 0);
   container.appendChild(seEl);
@@ -4603,7 +4603,7 @@ function openFormulaDialog(node, lhs, kindLabel, disp) {
   const col1 = disp.c + 1;
   openInsertDialog({
     icon: { fa: 'fa-solid fa-calculator', fb: '=' },
-    title: `${kindLabel} formula — ${lhs}`,
+    title: `${kindLabel} formula for ${lhs}`,
     submitLabel: cur != null ? 'Save' : 'Set formula',
     fields: [{
       key: 'expr',
@@ -4617,7 +4617,7 @@ function openFormulaDialog(node, lhs, kindLabel, disp) {
       hint: 'References: $N = column N in this row · @R$C = a cell · @-1 = the row above · @2 / @> = first data / last row · vsum/vmean/vcount/vmin/vmax over a range like @2$' + col1 + '..@-1$' + col1 + '. Document variables and the full math grammar work. Leave empty to clear the formula.',
       preview: src => {
         src = (src || '').trim();
-        if (!src) return cur != null ? '<span class="io-preview-bad">Empty — saving clears this formula</span>' : '';
+        if (!src) return cur != null ? '<span class="io-preview-bad">Empty. Saving clears this formula</span>' : '';
         const probe = tblfmSetAssign(extractTblfm(node.text), lhs, src);
         const rows = computeTable(model, probe, collectVars());
         const val = rows[disp.r] ? rows[disp.r][disp.c] : '';
@@ -5424,7 +5424,7 @@ function renderRow(r) {
   content.contentEditable = (opts.searchCtx || isTable) ? 'false' : 'true';
   content.spellcheck = !isTable;
   content.dataset.id = node.id;
-  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block — Enter = line break · ⇧+Enter = new point' : (depth === 0 && !focusedId ? 'Start writing…' : '');
+  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block. Enter = line break · ⇧+Enter = new point' : (depth === 0 && !focusedId ? 'Start writing…' : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
     // not as a separate button under the grid.
@@ -5650,18 +5650,18 @@ function buildPropsArea(node) {
         const dateLabel = propK === 'start' ? df.label.replace(/(\d+)d overdue/, '$1d ago') : df.label;
         displayVal = (propK === 'start' ? '▸ ' : '') + dateLabel;
         chip.classList.add('prop-' + propK + '-' + df.state);
-        chip.title = df.iso + ' — click to edit';
-        chip.setAttribute('aria-label', `${propK}: ${dateLabel} (${df.iso}) — click to edit properties`);
+        chip.title = df.iso + '. Click to edit';
+        chip.setAttribute('aria-label', `${propK}: ${dateLabel} (${df.iso}). Click to edit properties`);
       }
     }
     if (propK === ALIAS_KEY) {
       // reserved alias prop renders as a normal chip (unlike check), but routes to
       // the Aliases dialog and reads as such (P4)
       chip.title = 'Click to edit aliases';
-      chip.setAttribute('aria-label', `aliases: ${val} — click to edit aliases`);
+      chip.setAttribute('aria-label', `aliases: ${val}. Click to edit aliases`);
     }
     if (!chip.title) chip.title = 'Edit properties';
-    if (!chip.getAttribute('aria-label')) chip.setAttribute('aria-label', `${key}: ${val} — click to edit properties`);
+    if (!chip.getAttribute('aria-label')) chip.setAttribute('aria-label', `${key}: ${val}. Click to edit properties`);
     const k = document.createElement('span'); k.className = 'prop-key'; k.textContent = key;
     const s = document.createElement('span'); s.className = 'prop-sep';  s.textContent = ':';
     const v = document.createElement('span'); v.className = 'prop-val';  v.textContent = displayVal;
@@ -5697,8 +5697,8 @@ function buildCheckChip(node) {
   chip.setAttribute('tabindex', '-1');
   chip.dataset.propsId = node.id;
   chip.dataset.propKey = CHECK_KEY;
-  chip.title = `Check: ${expr} — ${word} (click to edit)`;
-  chip.setAttribute('aria-label', `Check: ${expr} — ${word} — click to edit`);
+  chip.title = `Check ${expr} is ${word} (click to edit)`;
+  chip.setAttribute('aria-label', `Check ${expr} is ${word}. Click to edit`);
   const g = document.createElement('span'); g.className = 'prop-check-glyph'; g.textContent = glyph;
   const t = document.createElement('span'); t.className = 'prop-val'; t.textContent = label;
   chip.append(g, t);
@@ -5818,7 +5818,7 @@ function openPropsDialog(nodeId, targets = null) {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
     const badIdx = props.findIndex(p => DATE_KEYS.has(p.key.trim().toLowerCase()) && p.val.trim() && parseDueDate(p.val.trim()) === null);
     if (badIdx >= 0) {
-      errDiv.textContent = 'Invalid date — use YYYY-MM-DD, today, today+7';
+      errDiv.textContent = 'Invalid date. Use YYYY-MM-DD, today, today+7';
       errDiv.style.display = '';
       list.querySelectorAll('.val-in')[badIdx]?.focus();
       return;
@@ -6021,7 +6021,7 @@ function openDueDateDialog(nodeId, targets = null) {
       const v = inp.value.trim();
       if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank to clear'; return; }
       const ep = parseDueDate(v);
-      if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date — try YYYY-MM-DD'; return; }
+      if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date. Try YYYY-MM-DD'; return; }
       const df = formatDueDate(ep);
       preview.style.color = df.state === 'overdue' ? 'var(--bad)' : df.state === 'today' ? 'var(--ok)' : 'var(--muted)';
       preview.textContent = df.label + ' · ' + df.iso;
@@ -6102,7 +6102,7 @@ function openCheckDialog(nodeId, targets = null) {
           { label: '<=',       insert: ' <= ' },
           { label: '==',       insert: ' == ' },
         ],
-        hint: 'A true/false test over this point and its direct children — it MUST contain a comparison (> >= < <= == !=); a bare value like sum(cost) is not a test and reports an error, not a pass. sum/avg/count/min/max(prop) roll up a child property — numeric, or a date (start/due) as epoch-days; a bare name is this point’s own number. e.g. sum(cost) <= budget · count(score) >= 3 · max(cost) <= cap · max(due) <= today+30 · hours <= 8',
+        hint: 'A true/false test over this point and its direct children. It MUST contain a comparison (> >= < <= == !=); a bare value like sum(cost) is not a test and reports an error, not a pass. sum/avg/count/min/max(prop) roll up a child property, either numeric or a date (start/due) as epoch-days; a bare name is this point’s own number. e.g. sum(cost) <= budget · count(score) >= 3 · max(cost) <= cap · max(due) <= today+30 · hours <= 8',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -6826,7 +6826,7 @@ async function openJournalEntry() {
       // After switching, zoom to the first child (the dated entry).
       const first = root.children[0];
       if (first) { zoomInto(first.id); focusNode(first.id); }
-      flashHint('Journal — ' + iso);
+      flashHint('Opened journal for ' + iso);
       return;
     }
   }
@@ -6847,7 +6847,7 @@ async function openJournalEntry() {
   }
   zoomInto(entry.id);
   focusNode(entry.id);
-  flashHint(created ? 'New journal entry — ' + iso : 'Journal — ' + iso);
+  flashHint(created ? 'Created a journal entry for ' + iso : 'Opened journal for ' + iso);
 }
 
 // ─── search ───────────────────────────────────────────────────────────────────
@@ -7513,7 +7513,7 @@ function highlightGrammarText(str, unfoldedSet) {
           // the user can tell a typo from intended literal text (UXP-6).
           out += cls === 'artifact'
             ? `<span class="gr-src">${escHtml(brace)}</span>`
-            : `<span class="gr-src gr-bad" title="Not recognized — stays plain text">${escHtml(brace)}</span>`;
+            : `<span class="gr-src gr-bad" title="Not recognized, so it stays plain text">${escHtml(brace)}</span>`;
           i = j + 1; continue;
         }
       }
@@ -8191,7 +8191,7 @@ function deleteSelected(verb = 'Deleted') {  // verb: 'Cut' on the Ctrl+X path (
   clearSelection();
   markDirty();
   render();
-  if (removed) flashHint(`${verb} ${ptsLabel(removed)} — ${MOD}+Z to undo`);
+  if (removed) flashHint(`${verb} ${ptsLabel(removed)}. ${MOD}+Z to undo`);
 }
 
 function indentSelected() {
@@ -8791,7 +8791,7 @@ function slashFooterHTML(cmd, trigger) {
   if (!cmd) return '';
   let html = `<span class="sf-desc">${escHtml(cmd.desc || '')}</span>`;
   if (cmd.ex) html += `<span class="sf-ex">${escHtml(cmd.ex)}</span>`;
-  if (trigger === '/') html += `<span class="sf-tip">Type @ to insert a pill — dice, links, variables…</span>`;
+  if (trigger === '/') html += `<span class="sf-tip">Type @ to insert a pill like dice, links, or variables…</span>`;
   else if (trigger === '@') html += `<span class="sf-tip">Type / to change what this point is</span>`;
   return html;
 }
@@ -8993,7 +8993,7 @@ function renderSizePicker() {
   const wrap = document.createElement('div');
   wrap.id = 'size-picker';
   wrap.setAttribute('role', 'dialog');
-  wrap.setAttribute('aria-label', 'Table size — arrow keys to size, Enter to create, Escape to cancel');
+  wrap.setAttribute('aria-label', 'Table size. Arrow keys to size, Enter to create, Escape to cancel');
   const grid = document.createElement('div');
   grid.className = 'sp-grid';
   grid.style.gridTemplateColumns = `repeat(${SIZE_PICKER_MAX}, 15px)`;
@@ -9076,7 +9076,7 @@ function createBaseAt(nodeId, rows, cols) {
 // the original text lands somewhere, and the whole move is one undo step.
 function promoteStaticTable(node, l0, l1) {
   const plan = planTablePromote(node.text, l0, l1);
-  if (!plan) { flashHint('Couldn’t locate that table — edit the point and try again'); return; }
+  if (!plan) { flashHint('Couldn’t locate that table. Edit the point and try again'); return; }
   // normalize the grid + bake computed cells, exactly like the markdown-editor exit path
   const tblfm = extractTblfm(plan.table);
   const baseText = serializeTable(parseTable(stripTblfm(plan.table))) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
@@ -9744,7 +9744,7 @@ function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = ''
         hint:'One rule per line: State -> Target weight, … (weights need not sum to 1)' },
       { key:'start', label:'Start state', placeholder:'defaults to the first state', value:start },
       { key:'steps', label:'Steps', placeholder:'5', value:steps === '' ? '' : String(steps) },
-      { key:'name', label:'Name (optional)', placeholder:'e.g. weather — lets {weather} call this chain', value:name,
+      { key:'name', label:'Name (optional)', placeholder:'e.g. weather, so {weather} calls this chain', value:name,
         hint:'Give the chain a name to call its walk from grammar/shorthand as {name}.' },
     ],
     validate: v => !!parseMarkov(v.def) && (!v.start || parseMarkov(v.def).order.includes(v.start)) && (!v.name || VAR_NAME_RE.test(v.name)),
@@ -10759,8 +10759,8 @@ function renderSeqGenPill(key, g) {
   const ended = g.result === '';
   const shown = ended ? '—' : g.result;
   const ariaVal = ended ? '(end)' : g.result;
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}) — click to ${verb}"`
-    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)} — click to ${verb}">`
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}). Click to ${verb}"`
+    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}. Click to ${verb}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
     + `</span>`;
@@ -10773,8 +10773,8 @@ function renderGrammarPill(key, g) {
   // show it (the named-table affordance: tells you what {name} calls)
   const name = !g.anon && g.origin ? g.origin : '';
   const nameTag = name ? `<span class="gr-name" title="Callable as {${escQ(name)}}">${escHtml(name)}</span>` : '';
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}} — click to re-generate` : 'Click to re-generate'}"`
-    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)} — click to re-generate">`
+  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. Click to re-generate` : 'Click to re-generate'}"`
+    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. Click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
     + `<span class="gr-result">${escHtml(g.result)}</span>`
@@ -10808,7 +10808,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text (the comparison reads a document variable — declare it via @ → Variable), {3x: {rule}} to repeat a template a literal N (1–99) times — N is a fixed number, not a roll. Define sub-rules key.field: … (sword.damage: 1d8) and read them with {item.field}; for the SAME item across fields, declare a pick variable through @ → Variable → Random pick (w = {weapon}, NOT a rule line here) then use {w.name}/{w.damage}. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives, each weighted by a trailing number or {= expr}; any other trailing token (e.g. 1d6) is read as entry text, not a weight.',
+          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text (the comparison reads a document variable, so declare it via @ → Variable), {3x: {rule}} to repeat a template a literal N (1 to 99) times. N is a fixed number, not a roll. Define sub-rules key.field: … (sword.damage: 1d8) and read them with {item.field}; for the SAME item across fields, declare a pick variable through @ → Variable → Random pick (w = {weapon}, NOT a rule line here) then use {w.name}/{w.damage}. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives, each weighted by a trailing number or {= expr}; any other trailing token (e.g. 1d6) is read as entry text, not a weight.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -10849,7 +10849,7 @@ function openDeckDialog({ title, submitLabel, body = 'shuffle: a | b | c', onRes
     fields: [
       { key:'body', label:'Mode and items (mode: a | b | c)', type:'textarea', rows:3, value:body, chips: SEQ_CHIPS,
         placeholder:'shuffle: ace | king | queen | jack',
-        hint:'Start with a mode — shuffle (a deck: draws without replacement, reshuffles when empty) · cycle (loops in order) · once (each once, then nothing) · stopping (advances, then stays on the last) — then items separated by |. Items may roll dice / call rules. Click the pill to advance.',
+        hint:'Start with a mode: shuffle (a deck: draws without replacement, reshuffles when empty) · cycle (loops in order) · once (each once, then nothing) · stopping (advances, then stays on the last). Then add items separated by |. Items may roll dice / call rules. Click the pill to advance.',
         preview: v => {
           const sp = seqParts(v);
           if (!sp) return `<span class="io-preview-bad">Start with shuffle / cycle / once / stopping, then items</span>`;
@@ -10891,7 +10891,7 @@ function openOracleDialog({ onResult }) {
     fields: [
       { key: 'body', label: 'Odds (Yes weight | No weight)', value: 'Yes 1 | No 1', chips: ORACLE_CHIPS,
         placeholder: 'Yes 3 | No 1',
-        hint: 'Pick a likelihood, or set the odds yourself — the weight after each option tunes its chance. A weight can be a {= expression} over variables for dynamic odds. Click the pill to ask again.',
+        hint: 'Pick a likelihood, or set the odds yourself. The weight after each option tunes its chance. A weight can be a {= expression} over variables for dynamic odds. Click the pill to ask again.',
         preview: v => {
           if (splitTopLevel(v, '|').length < 2) return `<span class="io-preview-bad">Two options, e.g. Yes 3 | No 1</span>`;
           const roll = build(v);
@@ -11280,7 +11280,7 @@ function checkInlineHighlight(content, node) {
   const braceCls = classifyBraceBody(body, collectRules(), collectVars());
   if (braceCls === 'literal') { hideBracePreview(); return false; }
   // the marker's AT twin (UXP-15): the visual signal is also announced
-  if (braceCls === 'invalid') { hideBracePreview(); announce('Not recognized — stays plain text'); }
+  if (braceCls === 'invalid') { hideBracePreview(); announce('Not recognized, so it stays plain text'); }
   content.innerHTML = editModeHTML(node);
   // Preview: show what the valid body promotes to (UXP-7). Sync after innerHTML set
   // so positionCaretMenu's getBoundingClientRect sees the updated DOM layout.
@@ -11864,8 +11864,8 @@ function renderEstPill(key, e) {
   const samples = sampleUncertain(e.expr, EST_N, e.seed, cookieNode);
   const sm = samples && distSummary(samples);
   if (!sm) {
-    return `<span class="est-pill est-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit — expression invalid"`
-      + ` aria-label="Estimate ${escQ(e.expr)} — #ERR — click to edit">`
+    return `<span class="est-pill est-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Invalid expression. Click to edit"`
+      + ` aria-label="Estimate ${escQ(e.expr)} shows #ERR. Click to edit">`
       + `<span class="est-ico" aria-hidden="true"><i class="fa-solid fa-left-right"></i></span>`
       + `<span class="est-expr">${escHtml(e.expr)}</span>`
       + `<span class="est-summary">#ERR</span>`
@@ -11873,8 +11873,8 @@ function renderEstPill(key, e) {
       + `</span>`;
   }
   const headline = `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})`;
-  return `<span class="est-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Uncertain estimate — click to re-sample"`
-    + ` aria-label="Estimate ${escQ(e.expr)}: mean ${escQ(headline)} — click to re-sample">`
+  return `<span class="est-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Uncertain estimate. Click to re-sample"`
+    + ` aria-label="Estimate ${escQ(e.expr)}: mean ${escQ(headline)}. Click to re-sample">`
     + `<span class="est-ico" aria-hidden="true"><i class="fa-solid fa-left-right"></i></span>`
     + `<span class="est-expr">${escHtml(e.expr)}</span>`
     + `<span class="est-eq">≈</span>`
@@ -11898,7 +11898,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
     submitLabel: submitLabel || 'Add',
     fields: [
       { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,
-        hint:'A 90% range lo to hi (lognormal — or normal if a bound ≤ 0), normal(mean, sd), uniform(lo, hi). Combine with + − × ÷ — each estimate is sampled INDEPENDENTLY (variances add); reuse one uncertain value by giving children a property and rolling it up with sum(prop)/avg(prop). The sparkline is a density histogram across the full sampled range; the ± shows mean and the inner 90% [p5,p95]. Estimates are their own engine — they don’t work inside a {= …} math pill. The lo/hi order doesn’t matter (5 to 10 ≡ 10 to 5). Click to re-sample.',
+        hint:'A 90% range lo to hi (lognormal, or normal if a bound ≤ 0), normal(mean, sd), uniform(lo, hi). Combine with + − × ÷. Each estimate is sampled INDEPENDENTLY (variances add); reuse one uncertain value by giving children a property and rolling it up with sum(prop)/avg(prop). The sparkline is a density histogram across the full sampled range; the ± shows mean and the inner 90% [p5,p95]. Estimates are their own engine, so they don’t work inside a {= …} math pill. The lo/hi order doesn’t matter (5 to 10 ≡ 10 to 5). Click to re-sample.',
         preview: v => {
           const ex = (v.expr || '').trim();
           if (!ex) return '';
@@ -11971,8 +11971,8 @@ function renderMathPill(key, m) {
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
     const reason = mathErrorReason(expr, globalVarMap, _varCycles);
     const label = reason ? `#ERR (${reason})` : '#ERR';
-    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit — reference unresolved"`
-      + ` aria-label="Math ${escQ(m.expr)} — ${escQ(label)} — click to edit">`
+    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Unresolved reference. Click to edit"`
+      + ` aria-label="Math ${escQ(m.expr)} shows ${escQ(label)}. Click to edit">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
       + `<span class="math-expr">${escHtml(m.expr)}</span>`
       + `<span class="math-eq">=</span>`
@@ -11982,7 +11982,7 @@ function renderMathPill(key, m) {
   }
   const display = formatMathDisplay(fresh, m.expr);
   return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)} — click to edit">`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}. Click to edit">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
@@ -12003,10 +12003,10 @@ function renderVarPill(key, v) {
     const rolled = String(v.rolled ?? '');
     let cls = 'var-pill var-pick';
     if (shadowed) cls += ' var-shadowed';
-    const title = shadowed ? 'Shadowed — a later declaration of this name takes effect'
+    const title = shadowed ? 'Shadowed by a later declaration of this name'
       : 'Click to re-roll · pencil to edit';
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
-      + ` aria-label="Random variable ${escQ(v.name)} = ${escQ(rolled)} — click to re-roll">`
+      + ` aria-label="Random variable ${escQ(v.name)} = ${escQ(rolled)}. Click to re-roll">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-eq">=</span>`
@@ -12019,9 +12019,9 @@ function renderVarPill(key, v) {
     const val = globalVarMap[(v.name || '').toLowerCase()];
     const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
-    const title = val === undefined ? 'Variable not found — click to edit' : `$${v.name} = ${display} — click to edit`;
-    const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found — click to edit`
-      : `Variable ${escQ(v.name)} = ${escQ(display)} — click to edit`;
+    const title = val === undefined ? 'Variable not found. Click to edit' : `$${v.name} = ${display}. Click to edit`;
+    const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found. Click to edit`
+      : `Variable ${escQ(v.name)} = ${escQ(display)}. Click to edit`;
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${refLabel}">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
@@ -12036,11 +12036,11 @@ function renderVarPill(key, v) {
   let cls = 'var-pill';
   if (cyclic)   cls += ' var-cycle';
   if (shadowed) cls += ' var-shadowed';
-  const title = cyclic   ? 'Circular reference — click to edit'
-    : shadowed ? 'Shadowed — a later declaration of this name takes effect'
+  const title = cyclic   ? 'Circular reference. Click to edit'
+    : shadowed ? 'Shadowed by a later declaration of this name'
     : 'Click to edit';
-  const declLabel = cyclic ? `Variable ${escQ(v.name)}: circular reference — click to edit`
-    : `Variable ${escQ(v.name)} = ${escQ(display)}${shadowed ? ' (shadowed by a later declaration)' : ''} — click to edit`;
+  const declLabel = cyclic ? `Variable ${escQ(v.name)}: circular reference. Click to edit`
+    : `Variable ${escQ(v.name)} = ${escQ(display)}${shadowed ? ' (shadowed by a later declaration)' : ''}. Click to edit`;
   return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${declLabel}">`
     + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
     + `<span class="var-name">${escHtml(v.name)}</span>`
@@ -12075,8 +12075,8 @@ function renderSeqPill(key, sq) {
   const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
     + '<span class="seq-pipe">|</span>'
     + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
-  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Sequence ${escQ(sq.name)} — click to edit"`
-    + ` aria-label="Sequence ${escQ(sq.name)} — active: ${escQ(sq.states.slice(0, sq.doneFrom).join(' '))}; done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))} — click to edit">`
+  return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Sequence ${escQ(sq.name)}. Click to edit"`
+    + ` aria-label="Sequence ${escQ(sq.name)}. Active: ${escQ(sq.states.slice(0, sq.doneFrom).join(' '))}; done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))}. Click to edit">`
     + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
     + `<span class="seq-name">${escHtml(sq.name)}</span>`
     + `<span class="seq-states">${states}</span>`
@@ -12157,7 +12157,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, abs, sin/cos/tan, log (base-10 — use ln for natural; log2/log10 too), min/max, … · π/e/today. Units (c2f, km2mi — the from2to pattern; also f2c, mi2km). Dates: a fixed date is date(2026,12,31); date math returns a NUMBER, so wrap it in asdate(…) to show a calendar (asdate(today+90)); daysuntil(due), clamp(x,0,10). Roll up a child points’ property — sum/avg/count/min/max(prop), e.g. sum(cost) — this aggregates a property over child points; it is NOT SUM(1,2,3), so add literals with 1+2+3. min/max over no matching child → ∞ / −∞ (the empty-set identity). words(subtree) counts every word beneath the point (also words(self) / words(children)) — a live writing target; reading time = words(subtree)/200.',
+        hint: 'Functions: sqrt, abs, sin/cos/tan, log (base-10, or ln for natural; log2/log10 too), min/max, … · π/e/today. Units (c2f, km2mi follow the from2to pattern; also f2c, mi2km). Dates: a fixed date is date(2026,12,31); date math returns a NUMBER, so wrap it in asdate(…) to show a calendar (asdate(today+90)); daysuntil(due), clamp(x,0,10). Roll up a child points’ property with sum/avg/count/min/max(prop), e.g. sum(cost). This aggregates a property over child points; it is NOT SUM(1,2,3), so add literals with 1+2+3. min/max over no matching child → ∞ / −∞ (the empty-set identity). words(subtree) counts every word beneath the point (also words(self) / words(children)), a live writing target; reading time = words(subtree)/200.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -12165,7 +12165,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
           const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
           if (r === null) {
             const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node), vars));
-            return `<span class="io-preview-bad">Invalid expression${phrase ? ' — ' + phrase : ''}</span>`;
+            return `<span class="io-preview-bad">Invalid expression${phrase ? ': ' + phrase : ''}</span>`;
           }
           const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
           try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) }); }
@@ -12291,7 +12291,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   const exprWrap = document.createElement('div'); exprWrap.className = 'io-field';
   const exprLab  = document.createElement('label'); exprLab.textContent = 'Value (optional)';
   const exprInp  = document.createElement('input'); exprInp.type = 'text';
-  exprInp.placeholder = 'e.g. 5, 2*pi, sqrt(16) — leave blank to just display';
+  exprInp.placeholder = 'e.g. 5, 2*pi, sqrt(16); leave blank to just display';
   exprInp.value = expr; exprInp.spellcheck = false; exprInp.autocomplete = 'off';
   const prev = document.createElement('div'); prev.className = 'io-preview';
   const updatePrev = () => {
@@ -12300,7 +12300,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
       // sample expansion — display only; the real roll happens once, on submit
       const sample = rollPickSource(v);
       prev.innerHTML = sample === null ? ''
-        : `<span class="var-preview-result">${escHtml(sample)}</span> <span class="io-hint" style="display:inline">— sample; rolls fresh on ${existing ? 'save' : 'insert'}</span>`;
+        : `<span class="var-preview-result">${escHtml(sample)}</span> <span class="io-hint" style="display:inline">(sample; rolls fresh on ${existing ? 'save' : 'insert'})</span>`;
       return;
     }
     const r = evalMath(v, collectVars());
@@ -12332,7 +12332,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     exprLab.textContent = pick ? 'Pick from' : 'Value (optional)';
     exprInp.placeholder = pick
       ? 'e.g. dragon|wyrm 2|drake · 2d6 · {color} {beast} · a table name'
-      : 'e.g. 5, 2*pi, sqrt(16) — leave blank to just display';
+      : 'e.g. 5, 2*pi, sqrt(16); leave blank to just display';
     exprHint.textContent = pick
       ? 'Options split on | (weights: dragon 2), dice (2d6), a rule/table name, or a template like {color} {beast}. Rolled once; every {name} reference shows the same value until you re-roll the pill.'
       : 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
@@ -12549,7 +12549,7 @@ function renderLinkMenu() {
       hint.className = 'lp-doc-hint';
       hint.textContent = ` · ${nd.docName || 'another note'}`;
       item.appendChild(hint);
-      item.setAttribute('aria-label', `${nd.title} — in ${nd.docName || 'another note'}`);
+      item.setAttribute('aria-label', `${nd.title}, in ${nd.docName || 'another note'}`);
     } else if (nd.alias) {
       // alias hint: when an alias (not the title) caused this match, say so (P4 — no
       // silent "why did that appear?"). Additive markup; the title stays the label.
@@ -13438,7 +13438,7 @@ function deleteNode(id) {
   // Confirm destruction of real content (UXP-12). Backspace on an empty leaf is
   // an editing-flow delete — visible at the caret — and stays quiet.
   if (removedNode.children.length || removedNode.text.trim()) {
-    flashHint(`Deleted ${ptsLabel(countPoints(removedNode))} — ${MOD}+Z to undo`);
+    flashHint(`Deleted ${ptsLabel(countPoints(removedNode))}. ${MOD}+Z to undo`);
   }
   let ft = null;
   if (idx > 0) ft = lastVis(parent.children[idx-1]).id;
@@ -13975,7 +13975,7 @@ function markClean() {
   document.getElementById('fm-dirty-dot').style.display = 'none';
 }
 function updateTitle() {
-  document.title = fileName === 'unsaved' ? 'Pointliner' : `${fileName} — Pointliner`;
+  document.title = fileName === 'unsaved' ? 'Pointliner' : `${fileName} · Pointliner`;
 }
 
 // ─── file I/O ─────────────────────────────────────────────────────────────────
@@ -14084,7 +14084,7 @@ function dlOpml() {
 async function writeH(h) {
   try { const w=await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); return true; }
   catch(e) {
-    if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the workspace folder — reconnect, or use Save As to keep your work.');
+    if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the workspace folder. Reconnect, or use Save As to keep your work.');
     else flashError('Save failed: ' + e.message);
     return false;
   }
@@ -14225,7 +14225,7 @@ function renderWorkspaceAffordance() {
   if (state === 'connected') {
     connect.style.display = 'none';
     disconnect.style.display = '';
-    document.getElementById('workspace-dc-desc').textContent = 'Workspace: ' + name + ' — Save writes here';
+    document.getElementById('workspace-dc-desc').textContent = 'Workspace: ' + name + '. Save writes here';
     disconnect.setAttribute('aria-label', 'Disconnect workspace folder ' + name);
     return;
   }
@@ -14277,7 +14277,7 @@ async function connectWorkspace() {
     updateTitle();
     renderWorkspaceAffordance();
     refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
-    flashHint('Folder connected — saved “' + name + '”');
+    flashHint('Folder connected. Saved “' + name + '”');
   } catch (e) {
     if (e && e.name === 'AbortError') return; // user cancelled the picker — silent no-op (P4)
     flashError('Could not connect folder: ' + (e && e.message ? e.message : e));
@@ -14295,8 +14295,8 @@ async function reconnectWorkspace() {
       workspaceDir = pendingDir; pendingDir = null;
       const stored = await idbGet(WORKSPACE_KEY);
       const ok = stored && await reopenWorkspaceDoc(workspaceDir, stored.name);
-      if (!ok) { workspaceDir = null; flashHint('That folder is no longer available — connect another.'); }
-      else      { flashHint('Folder reconnected — “' + (workspaceDir?.name || 'folder') + '”'); }
+      if (!ok) { workspaceDir = null; flashHint('That folder is no longer available. Connect another.'); }
+      else      { flashHint('Folder reconnected: “' + (workspaceDir?.name || 'folder') + '”'); }
       renderWorkspaceAffordance();
       refreshWorkspaceIndex();           // CF-1: rebuild after a successful reconnect
     }
@@ -14469,7 +14469,7 @@ async function disconnectWorkspace() {
   workspaceFile = null; _wsWarned = false;  // stop auto-writing; fileHandle stays so Save still works
   workspaceIndex = null;                    // CF-1: no workspace -> no cross-doc index
   renderWorkspaceAffordance();
-  flashHint('Workspace disconnected — auto-save off. Use Save to keep a copy.');
+  flashHint('Workspace disconnected. Auto-save is off; use Save to keep a copy.');
 }
 
 // Single degrade point: clear the folder-backed file, flip the affordance to Reconnect,
@@ -14478,7 +14478,7 @@ async function disconnectWorkspace() {
 function degradeWorkspace(msg) {
   workspaceFile = null; workspaceIndex = null;   // CF-1: lost folder access -> drop the cross-doc index
   if (workspaceDir) { pendingDir = workspaceDir; workspaceDir = null; renderWorkspaceAffordance(); }
-  showWorkspaceWarn(msg || 'Lost access to the workspace folder — reconnect, or use Save As to keep your work.');
+  showWorkspaceWarn(msg || 'Lost access to the workspace folder. Reconnect, or use Save As to keep your work.');
 }
 
 // Continuous auto-write to the folder-backed file (brief #4). Called (not awaited) on
@@ -14701,7 +14701,7 @@ function exportSelfContainedHtml() {
   const island = clone.querySelector('#pl-embedded-doc'); if (island) island.textContent = '';
   const shell = '<!DOCTYPE html>\n' + clone.outerHTML;
   downloadText(embedOpmlIntoHtml(shell, opml), '.html', 'text/html');
-  flashHint('Saved a self-contained copy — it opens as this app with your outline inside.');
+  flashHint('Saved a self-contained copy. It opens as this app with your outline inside.');
 }
 
 // ─── search wiring ────────────────────────────────────────────────────────────
@@ -14817,7 +14817,7 @@ function renderWorkspaceSearchResults(query) {
     row.className = 'sh-ws-item';
     row.setAttribute('role', 'option');
     row.setAttribute('tabindex', '0');
-    row.setAttribute('aria-label', `${title} — in ${docName || 'another note'}`);
+    row.setAttribute('aria-label', `${title}, in ${docName || 'another note'}`);
     const t = document.createElement('span'); t.className = 'sh-ws-title'; t.textContent = title;
     const d = document.createElement('span'); d.className = 'sh-ws-doc';   d.textContent = ` · ${docName || 'another note'}`;
     row.append(t, d);
@@ -15106,7 +15106,7 @@ function renderBlPanel(sources, unlinked, cross) {
     item.title = 'Open this point';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable backlink rows
     item.setAttribute('tabindex', '0');
-    item.setAttribute('aria-label', `Linked from "${t}" — open`);
+    item.setAttribute('aria-label', `Linked from "${t}". Open`);
     const go = () => { hideBlPanel(); zoomInto(src.id); };
     item.addEventListener('click', go);
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
@@ -15127,7 +15127,7 @@ function renderBlPanel(sources, unlinked, cross) {
     item.title = 'Open this note';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable cross-doc backlink rows
     item.setAttribute('tabindex', '0');
-    item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another note'} — open`);
+    item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another note'}. Open`);
     const go = () => {
       hideBlPanel();
       const name = workspaceIndex?.nameByDocId?.get(docId);
@@ -15242,7 +15242,7 @@ function renderFnPanel(node, refs) {
     keyEl.className = 'fn-key';
     keyEl.setAttribute('role', 'button');
     keyEl.setAttribute('tabindex', '0');
-    keyEl.setAttribute('aria-label', `Footnote [^${key}] — jump to reference`);
+    keyEl.setAttribute('aria-label', `Footnote [^${key}]. Jump to reference`);
     keyEl.textContent = `[^${key}]`;
     keyEl.title = 'Hover to highlight · click to jump to reference';
     keyEl.addEventListener('mouseenter', () => {
@@ -15499,7 +15499,7 @@ function agMini(text) {
 // title — due/starts <relative>[, running Nd][, done][· breadcrumb].
 function agItemAria(it) {
   const pathStr = it.path.length ? ' · ' + it.path.join(' › ') : '';
-  let s = it.title + ' — ' + (it.due !== null ? 'due ' : it.start !== null ? 'starts ' : '') + it.label;
+  let s = it.title + ', ' + (it.due !== null ? 'due ' : it.start !== null ? 'starts ' : '') + it.label;
   if (it.started && it.runningDays != null) s += it.runningDays === 0 ? ', started today' : ', running ' + it.runningDays + 'd';
   if (it.done) s += ', done';
   return s + pathStr;
@@ -15534,13 +15534,13 @@ function mkAgChip(it, kind) {
       chip.appendChild(dl); deadlineTxt = ', due ' + it.label;
     }
     const runTxt = it.runningDays === 0 ? 'started today' : 'running ' + it.runningDays + 'd';
-    aria = it.title + ' — ' + runTxt + deadlineTxt + pathStr;
+    aria = it.title + ', ' + runTxt + deadlineTxt + pathStr;
   } else {
     // upcoming deadline
     chip.className = 'ag-chip ' + it.state + (it.done ? ' done' : '');
     const badge = document.createElement('span'); badge.className = 'ag-badge deadline'; badge.textContent = it.label;
     chip.appendChild(badge);
-    aria = it.title + ' — due ' + it.label + pathStr;
+    aria = it.title + ', due ' + it.label + pathStr;
   }
   const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
   chip.appendChild(titleEl);
@@ -15601,7 +15601,7 @@ function renderAgendaList(host, visible, totalDated) {
   const dueItems = visible.filter(it => it.due !== null && !it.started).sort((a, b) => a.due - b.due);
   const runItems = visible.filter(it => it.started)
     .sort((a, b) => (a.due ?? Infinity) - (b.due ?? Infinity) || a.start - b.start);
-  if (!dueItems.length && !runItems.length) { body.appendChild(agMini('Nothing to show — adjust the toggles.')); return; }
+  if (!dueItems.length && !runItems.length) { body.appendChild(agMini('Nothing to show. Adjust the toggles.')); return; }
 
   const dueRow = mkAgRow('Due');
   if (dueItems.length) for (const it of dueItems) dueRow.appendChild(mkAgChip(it, 'due'));
@@ -15627,7 +15627,7 @@ function clampGanttNamesW(w) { return Math.max(GANTT_NAMES_MIN, Math.min(GANTT_N
 function renderAgendaGantt(host, visible, totalDated) {
   if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
   const layout = agendaGantt(visible);
-  if (!layout.rows.length) { host.appendChild(agMini('Nothing to show — adjust the toggles.')); return; }
+  if (!layout.rows.length) { host.appendChild(agMini('Nothing to show. Adjust the toggles.')); return; }
   const today = dueDateToday();
 
   // two-panel layout: fixed names column + scrollable chart
@@ -15909,7 +15909,7 @@ function renderAgendaCalendar(host, visible, totalDated) {
       if (cell.items.length > MAX_PER_CELL) {
         const more = document.createElement('div'); more.className = 'agc-more';
         more.textContent = '+' + (cell.items.length - MAX_PER_CELL);
-        more.title = (cell.items.length - MAX_PER_CELL) + ' more — open List or Timeline to see all';
+        more.title = (cell.items.length - MAX_PER_CELL) + ' more. Open List or Timeline to see all';
         c.appendChild(more);
       }
       week.appendChild(c);
@@ -15970,8 +15970,8 @@ const logoBtn   = document.getElementById('logo-btn');
 function updateFmStatus() {
   const status = document.getElementById('fm-status');
   if (!status) return;
-  if (fileName === 'unsaved')      status.textContent = 'Autosaved in this browser — not saved to a file';
-  else if (dirty)                  status.textContent = 'Unsaved changes — ' + fmtKey('S') + ' saves to file';
+  if (fileName === 'unsaved')      status.textContent = 'Autosaved in this browser, not saved to a file';
+  else if (dirty)                  status.textContent = 'Unsaved changes. ' + fmtKey('S') + ' saves to file';
   else                             status.textContent = 'All changes saved';
 }
 
@@ -16047,7 +16047,7 @@ document.getElementById('btn-workspace-disconnect').addEventListener('click', ()
 document.getElementById('workspace-invite-copy').addEventListener('click', (e) => {
   e.stopPropagation();
   const url = location.href;
-  const done = () => flashHint('Link copied — open it in Chrome or Edge');
+  const done = () => flashHint('Link copied. Open it in Chrome or Edge');
   if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done)); }
   else { fallbackCopy(url, done); }   // UX audit: actually copy (was a false-success claim with no clipboard)
 });
@@ -16296,7 +16296,7 @@ const GUIDE = [
     ] },
   { id:'saved-searches', cat:'getting-around',
     title:'Saved searches',
-    body:"Keep a search you run often within one click instead of retyping it. Pin filters like open tasks tagged a project, everything overdue or notes mentioning a person, then bring any of them back later. Type your search, then click the star at the right of the search box to save it — the star fills in once it's kept. Saved searches show as chips under the Saved heading whenever the search box has focus; click one to run it again, or the ✕ on a chip to forget it. Click the filled star to forget the one you're currently looking at.",
+    body:"Keep a search you run often within one click instead of retyping it. Pin filters like open tasks tagged a project, everything overdue or notes mentioning a person, then bring any of them back later. Type your search, then click the star at the right of the search box to save it. The star fills in once it's kept. Saved searches show as chips under the Saved heading whenever the search box has focus; click one to run it again, or the ✕ on a chip to forget it. Click the filled star to forget the one you're currently looking at.",
     examples:[
       { syn:'☆ star button', desc:'save the search you just typed' },
       { syn:'★ filled star', desc:'forget the current search' },
@@ -16305,11 +16305,11 @@ const GUIDE = [
     ] },
   { id:'workspace-search', cat:'getting-around',
     title:'Searching all your notes',
-    body:"When several notes are in the same folder, search covers all of them at once — not just the one you're reading. Useful when you know something is in your notes but can't remember which file. Matches from other notes appear in a 'Found in other notes' list — click one to jump straight there.",
+    body:"When several notes are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your notes but can't remember which file. Matches from other notes appear in a 'Found in other notes' list; click one to jump straight there.",
     examples:[] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
-    body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point — like #idea or #urgent — and it becomes a clickable tag. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",
+    body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point (like #idea or #urgent) and it becomes a clickable tag. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",
     examples:[
       { syn:'#tag',        desc:'label a point by topic, status or project' },
       { syn:'#',           desc:"opens a menu of tags you've used, with counts" },
@@ -16317,7 +16317,7 @@ const GUIDE = [
     ] },
   { id:'refile', cat:'getting-around',
     title:'Refile a point',
-    body:"Move a point and everything under it to a new home far across the outline — drop a stray idea into the right project, tuck a finished item under an archive or pull a buried note up to the top. Open the point's menu and choose Refile to browse the whole outline as a searchable tree: type to filter to a destination, walk it with the arrow keys, then press Enter to move the point there as the chosen parent's last child. Pick Top level to lift it out of all nesting. It's the searchable alternative to dragging or indenting one step at a time.",
+    body:"Move a point and everything under it to a new home far across the outline: drop a stray idea into the right project, tuck a finished item under an archive or pull a buried note up to the top. Open the point's menu and choose Refile to browse the whole outline as a searchable tree: type to filter to a destination, walk it with the arrow keys, then press Enter to move the point there as the chosen parent's last child. Pick Top level to lift it out of all nesting. It's the searchable alternative to dragging or indenting one step at a time.",
     examples:[
       { syn:'Menu → Refile…',   desc:'open the destination picker' },
       { syn:'type to search',   desc:'filter the tree to a destination' },
@@ -16326,7 +16326,7 @@ const GUIDE = [
     ] },
   { id:'multi-select', cat:'getting-around',
     title:'Selecting many points',
-    body:"Work on many points at once instead of one at a time — copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete the lot. Start a selection by Shift+clicking a point or pressing Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.",
+    body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete the lot. Start a selection by Shift+clicking a point or pressing Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.",
     examples:[
       { syn:'Shift+Click',            desc:'select a range of points' },
       { syn:'Shift+↑ / Shift+↓',      desc:'extend the selection up or down' },
@@ -16337,7 +16337,7 @@ const GUIDE = [
     ] },
   { id:'zoom', cat:'getting-around',
     title:'Zoom into a point',
-    body:"Work on one branch full-screen with the rest of the outline out of sight — drill into a single project, a chapter or a busy task list so only it and its children fill the page. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet, or open the point's menu and choose Zoom into. The zoomed point becomes a large editable title with its note and children below. A breadcrumb row appears at the top — Home then each ancestor then the current point, separated by › — and you climb back out through it: click or press Enter on any ancestor crumb to jump to that level, or the Home crumb to return to the full outline. Press Esc to step up just one level toward the parent rather than exiting all the way.",
+    body:"Work on one branch full-screen with the rest of the outline out of sight: drill into a single project, a chapter or a busy task list so only it and its children fill the page. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet, or open the point's menu and choose Zoom into. The zoomed point becomes a large editable title with its note and children below. A breadcrumb row appears at the top, showing Home then each ancestor then the current point, separated by ›, and you climb back out through it: click or press Enter on any ancestor crumb to jump to that level, or the Home crumb to return to the full outline. Press Esc to step up just one level toward the parent rather than exiting all the way.",
     examples:[
       { syn:'Ctrl/Cmd+Enter',  desc:"zoom into the point you're editing" },
       { syn:'click the bullet', desc:'zoom into that point' },
@@ -16360,7 +16360,7 @@ const GUIDE = [
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',
-    body:"Make key words stand out, mark something as code, highlight a phrase for review, or drop in a clickable link to a source — all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes.",
+    body:"Make key words stand out, mark something as code, highlight a phrase for review, or drop in a clickable link to a source, all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes.",
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
       { syn:'*italic* or _italic_',     desc:'italic' },
@@ -16373,14 +16373,14 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell — or add formulas — type /base instead.",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead.",
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
     ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
-    body:"Annotate a claim without cluttering the main text, link out to a source or a website, or embed an image. Footnotes are useful for research notes and annotated reading — the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
+    body:"Annotate a claim without cluttering the main text, link out to a source or a website, or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
     examples:[
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
@@ -16388,7 +16388,7 @@ const GUIDE = [
     ] },
   { id:'notes', cat:'writing',
     title:'Per-point notes',
-    body:"Tuck a bit of context under any point without cluttering the line — a source, a reminder, a caption or a few sentences of background. The note sits below the point as a quiet plain-text block you click to edit in place; press Enter for a line break and Esc or click away to save, and clearing all the text removes it. Open a point's menu and choose Add note, or Edit note if it already has one. Notes are searched along with the rest of your outline and you can hide them all with the notes button in the header — a small mark stays on each noted point so you can click to peek.",
+    body:"Tuck a bit of context under any point without cluttering the line: a source, a reminder, a caption or a few sentences of background. The note sits below the point as a quiet plain-text block you click to edit in place; press Enter for a line break and Esc or click away to save, and clearing all the text removes it. Open a point's menu and choose Add note, or Edit note if it already has one. Notes are searched along with the rest of your outline and you can hide them all with the notes button in the header. A small mark stays on each noted point so you can click to peek.",
     examples:[
       { syn:'Menu → Add note',  desc:'start a note under this point' },
       { syn:'Menu → Edit note', desc:'open an existing note to change it' },
@@ -16409,14 +16409,14 @@ const GUIDE = [
     ] },
   { id:'sequences', cat:'todos', covers:['sequence'],
     title:'Custom workflows',
-    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Type @ and choose Sequence to define one — states to the right of | count as done.",
+    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Type @ and choose Sequence to define one; states to the right of | count as done.",
     examples:[
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },
       { syn:'DRAFT REVIEW | PUBLISHED', desc:'a workflow you define' },
     ] },
   { id:'properties', cat:'todos',
     title:'Properties',
-    body:"Tag a point with structured facts — an owner, a status, a cost, a category — so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Open a point's menu and choose Add property to open the editor, type a key and a value, then Save. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one — and child properties feed the roll-up totals.",
+    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Open a point's menu and choose Add property to open the editor, type a key and a value, then Save. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one. Child properties feed the roll-up totals.",
     examples:[
       { syn:'Menu → Add property', desc:'open the key:value editor' },
       { syn:'owner:zeo',           desc:'a property pill below the point' },
@@ -16425,21 +16425,21 @@ const GUIDE = [
     ] },
   { id:'progress', cat:'todos', covers:['progress'],
     title:'Progress bars',
-    body:"Put a live progress bar on a project, a checklist or any parent point and see how much is done at a glance. As you check off the tasks underneath, the count updates automatically — no manual tracking. Type [/] for a count like 2/5, or [%] for a percentage.",
+    body:"Put a live progress bar on a project, a checklist or any parent point and see how much is done at a glance. As you check off the tasks underneath, the count updates automatically, with no manual tracking. Type [/] for a count like 2/5, or [%] for a percentage.",
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
     ] },
   { id:'templates', cat:'todos', covers:['template'],
     title:'Templates',
-    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly — then stamp a fresh copy in one step with /template. Save a template from any point's menu.",
+    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step with /template. Save a template from any point's menu.",
     examples:[
       { syn:'/template',                         desc:'pick and drop in a saved template' },
       { syn:'Menu → Save as template',           desc:'save this point as a template' },
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Pick any point as your inbox, then capture into it from anywhere and each entry lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed - [ ] becomes a to-do. Click the inbox button in the toolbar to open the Capture dialog, or set the destination from a point's menu with Set as inbox. The dialog stays open after each capture with a running count, so you can empty your head in one sitting — Enter captures, Shift+Enter adds a line break.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Pick any point as your inbox, then capture into it from anywhere and each entry lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed - [ ] becomes a to-do. Click the inbox button in the toolbar to open the Capture dialog, or set the destination from a point's menu with Set as inbox. The dialog stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break.",
     examples:[
       { syn:'Toolbar inbox button', desc:'open the Capture dialog from anywhere' },
       { syn:'Menu → Set as inbox',  desc:'make this point the capture destination' },
@@ -16448,7 +16448,7 @@ const GUIDE = [
     ] },
   { id:'aliases', cat:'todos', covers:['alias'],
     title:'Nicknames (aliases)',
-    body:"Make a point findable under different names. Useful when a concept has a short form and a long form — add 'JS' as an alias for a 'JavaScript' note, or 'NYC' for 'New York City'. The [[ link picker and the unlinked-references panel both recognize any alias, so links and mentions find the right point regardless of which name you used. Type /alias to add them, separated by commas.",
+    body:"Make a point findable under different names. Useful when a concept has a short form and a long form: add 'JS' as an alias for a 'JavaScript' note, or 'NYC' for 'New York City'. The [[ link picker and the unlinked-references panel both recognize any alias, so links and mentions find the right point regardless of which name you used. Type /alias to add them, separated by commas.",
     examples:[
       { syn:'/alias',       desc:'add extra names to this point' },
       { syn:'wyrm, drake',  desc:'extra names, comma-separated' },
@@ -16457,7 +16457,7 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due to open the date picker — dates can be exact or relative like today+7.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due to open the date picker; dates can be exact or relative like today+7.",
     examples:[
       { syn:'/due',       desc:'open the date picker' },
       { syn:'2026-01-15', desc:'an exact date' },
@@ -16466,7 +16466,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). It shows a list of what's due soon, a Gantt-style timeline of overlapping tasks and a month calendar — Timeline and Calendar are independent toggles, so open either, both or neither. Turn on Done to include completed points; toggle Running to show or hide started work. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). It shows a list of what's due soon, a Gantt-style timeline of overlapping tasks and a month calendar. Timeline and Calendar are independent toggles, so open either, both or neither. Turn on Done to include completed points; toggle Running to show or hide started work. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
     examples:[
       { syn:'Due',        desc:'deadlines not started yet' },
       { syn:'Running',    desc:'things in progress' },
@@ -16483,7 +16483,7 @@ const GUIDE = [
   // ── Generators (guide) ────────────────────────────────────────────────────
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
-    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces — {2d6} for two six-sided dice. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
+    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
     examples:[
       { syn:'{2d6}',      desc:'roll two six-sided dice' },
       { syn:'{4d6kh3}',   desc:'roll 4, keep the highest 3' },
@@ -16497,13 +16497,13 @@ const GUIDE = [
     body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts, or make a raffle picker. Write choices in braces and one is picked at random each click. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
     examples:[
       { syn:'{red|blue|green}',       desc:'pick one at random' },
-      { syn:'{sword|gem 5}',          desc:'weighted — gem 5x as likely as sword' },
+      { syn:'{sword|gem 5}',          desc:'weighted: gem 5x as likely as sword' },
       { syn:'a {2d6} gold purse',     desc:'mix in a dice roll' },
       { syn:'{= 1 + 1} apples',       desc:'mix in a calculation' },
     ] },
   { id:'gen-rules', cat:'generators',
     title:'Building generators',
-    body:"Build a name generator, an encounter table for a game, a full story prompt or a procedural character description. Give each list a name and let them call each other — a sentence generator might call rules for 'subject', 'verb' and 'object', each pulling from their own list. Because rules can also roll dice and calculate, complex outputs stay short and easy to read.",
+    body:"Build a name generator, an encounter table for a game, a full story prompt or a procedural character description. Give each list a name and let them call each other: a sentence generator might call rules for 'subject', 'verb' and 'object', each pulling from their own list. Because rules can also roll dice and calculate, complex outputs stay short and easy to read.",
     examples:[
       { syn:'color: red | blue | green', desc:'define a named list (a rule)' },
       { syn:'{color}',                desc:'use it anywhere' },
@@ -16523,11 +16523,11 @@ const GUIDE = [
       { syn:'{sword.s}',     desc:'make it plural' },
       { syn:'{walk.ed}',     desc:'past tense, e.g. walked' },
       { syn:'{3.ord}',       desc:'1st, 2nd, 3rd…' },
-      { syn:'{beast.a.cap}', desc:'chain them — An ogre' },
+      { syn:'{beast.a.cap}', desc:'chain them: An ogre' },
     ] },
   { id:'gen-conditions', cat:'generators',
     title:'Conditions & item details',
-    body:"Two tools for smarter generators. A condition lets output adapt to the numbers you're tracking — show 'alive' or 'dead' depending on a hit-points variable, or change a description based on a stat. An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
+    body:"Two tools for smarter generators. A condition lets output adapt to the numbers you're tracking: show 'alive' or 'dead' depending on a hit-points variable, or change a description based on a stat. An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
     examples:[
       { syn:'{hp>0: alive|dead}', desc:'show the first if true, else the second' },
       { syn:'{luck>=10: lucky!}', desc:'the else part is optional' },
@@ -16538,7 +16538,7 @@ const GUIDE = [
     ] },
   { id:'deck', cat:'generators', covers:['deck'],
     title:'Decks & repeats',
-    body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. You can also expand a template multiple times at once — each expansion rolls independently, so you get several different results in one click.",
+    body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. You can also expand a template multiple times at once, and each expansion rolls independently, so you get several different results in one click.",
     examples:[
       { syn:'{shuffle: a|b|c}', desc:'deal without repeats' },
       { syn:'{cycle: a|b|c}',   desc:'go in order, then loop' },
@@ -16555,7 +16555,7 @@ const GUIDE = [
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
-    body:"Resolve uncertain questions at a glance — useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels — 'almost certain' to 'very unlikely' — then click to ask. Type @ and choose Oracle.",
+    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (from 'almost certain' to 'very unlikely'), then click to ask. Type @ and choose Oracle.",
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
       { syn:'Yes 4 | No 1',      desc:'custom odds (80% yes here)' },
@@ -16564,7 +16564,7 @@ const GUIDE = [
   // ── Compute (guide) ───────────────────────────────────────────────────────
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
-    body:"Build a budget where every line total adds to a running sum, track a project cost that recalculates when you change a rate, or convert a measurement — all live in the outline. Write {= expression} and the result appears inline. Change a variable the expression uses and it updates instantly. You get arithmetic, parentheses, percentages, comparisons (>, <, ==) and a ternary if-this-then-that.",
+    body:"Build a budget where every line total adds to a running sum, track a project cost that recalculates when you change a rate, or convert a measurement, all live in the outline. Write {= expression} and the result appears inline. Change a variable the expression uses and it updates instantly. You get arithmetic, parentheses, percentages, comparisons (>, <, ==) and a ternary if-this-then-that.",
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },
       { syn:'{= 2 ^ 10}',        desc:'powers (^) and remainder (%)' },
@@ -16575,7 +16575,7 @@ const GUIDE = [
     ] },
   { id:'math-fns', cat:'compute',
     title:'Math functions',
-    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, compute a percentage change or run a scientific calculation. Call any function by name — they mix freely with variables, dice and other functions.",
+    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, compute a percentage change or run a scientific calculation. Call any function by name; they mix freely with variables, dice and other functions.",
     examples:[
       { syn:'{= round(3.7)}',     desc:'round (also floor, ceil, trunc)' },
       { syn:'{= abs(-5)}',        desc:'absolute value; sign(x) for the sign' },
@@ -16587,7 +16587,7 @@ const GUIDE = [
     ] },
   { id:'math-dates', cat:'compute',
     title:'Dates & units in math',
-    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed, or convert between units for a recipe, a travel plan or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works — wrap the result in asdate(…) to display it as a calendar date.",
+    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed, or convert between units for a recipe, a travel plan or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date.",
     examples:[
       { syn:'{= today + 30}',      desc:'30 days from today' },
       { syn:'{= asdate(today+30)}',desc:'show that as a calendar date' },
@@ -16607,16 +16607,16 @@ const GUIDE = [
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
-    body:"Plan honestly when you don't have exact numbers. Instead of pretending a task takes exactly three days, say it takes {2 to 5}. The estimate shows the average and a spread chart so you can see the realistic range. Estimates add and multiply together correctly — if three phases each take '2 to 5 days', the total shows the true combined uncertainty, not just the midpoints added up.",
+    body:"Plan honestly when you don't have exact numbers. Instead of pretending a task takes exactly three days, say it takes {2 to 5}. The estimate shows the average and a spread chart so you can see the realistic range. Estimates add and multiply together correctly: if three phases each take '2 to 5 days', the total shows the true combined uncertainty, not just the midpoints added up.",
     examples:[
-      { syn:'{5 to 10}',      desc:'a 90% range — most likely 5 to 10' },
+      { syn:'{5 to 10}',      desc:'a 90% range, most likely 5 to 10' },
       { syn:'normal(8, 2)',   desc:'a bell curve around 8' },
       { syn:'uniform(1, 6)',  desc:'any value 1 to 6, equally likely' },
       { syn:'{5 to 10} + {2 to 4}', desc:'add two ranges together' },
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes — no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max. You can also roll up the prose itself: words(subtree) counts every word beneath a point — a live writing target — and reading time is just words(subtree) / 200.",
+    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max. You can also roll up the prose itself: words(subtree) counts every word beneath a point (a live writing target), and reading time is just words(subtree) / 200.",
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of each child' },
       { syn:'{= avg(score)}', desc:'average the scores' },
@@ -16626,7 +16626,7 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks — a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check and write the condition with a comparison like <= or >=.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check and write the condition with a comparison like <= or >=.",
     examples:[
       { syn:'sum(cost) <= budget', desc:'stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
@@ -16637,7 +16637,7 @@ const GUIDE = [
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
     title:'Linking points',
-    body:"Build a personal wiki where ideas refer to each other, create a table of contents that links to sections or connect a task to its full context note. Type [[ and pick the point to link to — the link always shows the current title, so renaming a point keeps every link to it correct. Leave the label empty and the linked point's content appears inline wherever the link is placed.",
+    body:"Build a personal wiki where ideas refer to each other, create a table of contents that links to sections or connect a task to its full context note. Type [[ and pick the point to link to. The link always shows the current title, so renaming a point keeps every link to it correct. Leave the label empty and the linked point's content appears inline wherever the link is placed.",
     examples:[
       { syn:'[[',                   desc:'open the link picker' },
       { syn:'[[#id|label]]',        desc:'link with your own wording' },
@@ -16645,14 +16645,14 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea — not just what you linked from this point, but everything across your notes that links to it. Useful in a personal wiki or research notes when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your notes that links to it. Useful in a personal wiki or research notes when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click.",
     examples:[
       { syn:'Linked from',          desc:'points that link here' },
-      { syn:'Unlinked references',  desc:'mentions — click Link to connect them' },
+      { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across notes',
-    body:"Weave together a network of notes — link a project note to a person note, connect a meeting note to an action item in another file or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your notes, not just the one you're in.",
+    body:"Weave together a network of notes: link a project note to a person note, connect a meeting note to an action item in another file or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your notes, not just the one you're in.",
     examples:[
       { syn:'[[…]]',                desc:'pick a point in another note' },
       { syn:'+ New note',           desc:'make a new note and link to it at once' },
@@ -16661,7 +16661,7 @@ const GUIDE = [
   // ── Files & workspace (guide) ─────────────────────────────────────────────
   { id:'saving', cat:'files',
     title:'Saving your work',
-    body:"You don't need to think about saving — the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step.",
+    body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step.",
     examples:[
       { syn:`${MOD}+S`,              desc:'save a copy to your computer' },
       { syn:`${MOD}+O`,              desc:'open a saved file' },
@@ -16669,7 +16669,7 @@ const GUIDE = [
     ] },
   { id:'workspace-documents', cat:'files',
     title:'Working with a folder of notes',
-    body:"Keep a whole library of notes in one folder on your computer and move between them the way you would tabs — a project note, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome or Edge only) and every note saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the notes in the folder, jump to one, add a fresh + New document or delete an old one. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in Chrome or Edge instead.",
+    body:"Keep a whole library of notes in one folder on your computer and move between them the way you would tabs: a project note, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome or Edge only) and every note saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the notes in the folder, jump to one, add a fresh + New document or delete an old one. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in Chrome or Edge instead.",
     examples:[
       { syn:'File → Connect folder…',   desc:'link a folder of notes (Chromium only)' },
       { syn:'File → Switch document…',  desc:'list, open, create or delete notes' },
@@ -16678,16 +16678,16 @@ const GUIDE = [
     ] },
   { id:'appearance-controls', cat:'files',
     title:'Appearance & display',
-    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or reveal completed tasks you'd normally keep out of the way. The theme, color and width controls live in the File menu under Appearance — theme cycles system, light then dark each click. Show done points is the checkmark button in the toolbar; turn it on and finished to-dos and DONE points reappear in the outline.",
+    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or reveal completed tasks you'd normally keep out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Show done points is the checkmark button in the toolbar; turn it on and finished to-dos and DONE points reappear in the outline.",
     examples:[
       { syn:'File → Theme',      desc:'cycle system, light then dark' },
       { syn:'File → Color',      desc:'pick an accent color' },
       { syn:'File → Full width', desc:'widen or narrow the editing column' },
-      { syn:'Show done points',  desc:'toolbar button — reveal completed points' },
+      { syn:'Show done points',  desc:'toolbar button: reveal completed points' },
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"Share your outline with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file — it works offline, opens in any browser and keeps all the interactive features (dice, generators and calculations) live. All in the File menu.",
+    body:"Share your outline with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file: it works offline, opens in any browser and keeps all the interactive features (dice, generators and calculations) live. All in the File menu.",
     examples:[
       { syn:'File → Export Markdown',      desc:'a plain text snapshot' },
       { syn:'File → Self-contained HTML',  desc:'a shareable interactive page' },
@@ -17007,13 +17007,13 @@ function writeLocalAutosave() {
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (payload.length > STORAGE_SOFT_LIMIT) {
-      showStorageWarn('soft', 'This outline is getting large — auto-backup may stop soon. Save it to a file to be safe.');
+      showStorageWarn('soft', 'This outline is getting large; auto-backup may stop soon. Save it to a file to be safe.');
     } else if (storageWarnState) {
       storageWarnState = null; hideStorageWarn(); // back under the limit
     }
   } catch(e) {
     autosaveDisabled = true; // don't thrash on every keystroke for a tree that can't fit
-    showStorageWarn('hard', 'This outline is too large for browser auto-backup — your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
+    showStorageWarn('hard', 'This outline is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
   }
 }
 
@@ -17100,7 +17100,7 @@ requestAnimationFrame(() => {
   // raw shorthand). It is also read-into-memory, not saved-to-disk, so say so once (P4)
   // — edits-then-reload data loss is never silent.
   if (loadedFromEmbed) {
-    flashHint('Opened a shared snapshot — edits stay in this browser; export again to save a copy.');
+    flashHint('Opened a shared snapshot. Edits stay in this browser; export again to save a copy.');
     return;
   }
   // Otherwise focus the first node so the user can start typing immediately.
