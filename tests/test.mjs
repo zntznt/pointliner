@@ -5658,13 +5658,13 @@ test('journalFileName per-entry without stamp falls back to per-day', () => {
   assert.equal(c.journalFileName('2026-06-16', true, ''), '2026-06-16.opml');
 });
 
-test('findOrCreateDatedEntry creates when absent', () => {
+test('findOrCreateDatedEntry creates when absent (leaf is the day, nested)', () => {
   const home = { children: [] };
   const mk = t => ({ id: 'x1', text: t, children: [] });
   const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
   assert.equal(created, true);
-  assert.equal(entry.text, '2026-06-16');
-  assert.equal(home.children.length, 1);
+  assert.equal(entry.text, '16');          // returned leaf is the day, not the full iso
+  assert.equal(home.children.length, 1);   // home > 2026 > 06 > 16
 });
 
 test('findOrCreateDatedEntry is idempotent (returns same entry)', () => {
@@ -5676,28 +5676,33 @@ test('findOrCreateDatedEntry is idempotent (returns same entry)', () => {
   const r2 = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
   assert.equal(r2.created, false);
   assert.equal(r2.entry.id, r1.entry.id);
-  assert.equal(home.children.length, 1);
+  assert.equal(home.children.length, 1);   // still one year node
 });
 
-test('findOrCreateDatedEntry distinct entries for different dates', () => {
+test('findOrCreateDatedEntry distinct days share the month (one year, one month)', () => {
   const home = { children: [] };
   let n = 0;
   const mk = t => ({ id: 'x' + (++n), text: t, children: [] });
   c.findOrCreateDatedEntry(home, '2026-06-15', mk);
   c.findOrCreateDatedEntry(home, '2026-06-16', mk);
-  assert.equal(home.children.length, 2);
+  assert.equal(home.children.length, 1);                          // one year
+  assert.equal(home.children[0].children.length, 1);              // one month
+  assert.equal(home.children[0].children[0].children.length, 2);  // two days
 });
 
-test('findOrCreateDatedEntry matches iso: prefixed heading', () => {
-  const home = { children: [{ id: 'h1', text: '2026-06-16: My day', children: [] }] };
+test('findOrCreateDatedEntry matches a day with an iso: style title suffix', () => {
+  // pre-seed the nested path with a titled day node
+  const day = { id: 'h1', text: '16: My day', children: [] };
+  const home = { children: [{ text: '2026', children: [{ text: '06', children: [day] }] }] };
   const mk = t => ({ id: 'x1', text: t, children: [] });
   const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
   assert.equal(created, false);
   assert.equal(entry.id, 'h1');
 });
 
-test('findOrCreateDatedEntry matches iso space-prefixed', () => {
-  const home = { children: [{ id: 'h2', text: '2026-06-16 notes', children: [] }] };
+test('findOrCreateDatedEntry matches a space-suffixed day node', () => {
+  const day = { id: 'h2', text: '16 notes', children: [] };
+  const home = { children: [{ text: '2026', children: [{ text: '06', children: [day] }] }] };
   const mk = t => ({ id: 'x1', text: t, children: [] });
   const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mk);
   assert.equal(created, false);
@@ -5930,4 +5935,68 @@ test('searchHighlightNeedles — state: (and other field filters) produce no nee
   // text + tag still surface
   assert.deepEqual(host(c.searchHighlightNeedles(c.parseSearchQuery('ship #urgent state:next'))),
     ['ship', '#urgent']);
+});
+
+// ── journal: year > month > day nesting ─────────────────────────────────────
+// mk factory mirrors openJournalEntry's: a node with a children array. The pure
+// core wires the tree; the caller wires DOM maps via the parent arg.
+const mkJ = (t) => ({ text: t, children: [] });
+
+test('findOrCreateDatedEntry — nests iso as year > month > day', () => {
+  const home = { text: 'Journal', children: [] };
+  const { entry, created } = c.findOrCreateDatedEntry(home, '2026-06-16', mkJ);
+  assert.equal(created, true);
+  // home > 2026 > 06 > 16
+  assert.equal(home.children.length, 1);
+  const year = home.children[0];
+  assert.equal(year.text, '2026');
+  assert.equal(year.children.length, 1);
+  const month = year.children[0];
+  assert.equal(month.text, '06');
+  assert.equal(month.children.length, 1);
+  const day = month.children[0];
+  assert.equal(day.text, '16');
+  assert.equal(entry, day); // returned entry is the leaf day node
+});
+
+test('findOrCreateDatedEntry — same day is idempotent (no duplicates)', () => {
+  const home = { text: 'Journal', children: [] };
+  c.findOrCreateDatedEntry(home, '2026-06-16', mkJ);
+  const second = c.findOrCreateDatedEntry(home, '2026-06-16', mkJ);
+  assert.equal(second.created, false);
+  assert.equal(home.children.length, 1);              // one year
+  assert.equal(home.children[0].children.length, 1);  // one month
+  assert.equal(home.children[0].children[0].children.length, 1); // one day
+});
+
+test('findOrCreateDatedEntry — reuses year/month, adds a new day under them', () => {
+  const home = { text: 'Journal', children: [] };
+  c.findOrCreateDatedEntry(home, '2026-06-16', mkJ);
+  const r = c.findOrCreateDatedEntry(home, '2026-06-17', mkJ);
+  assert.equal(r.created, true);
+  assert.equal(home.children.length, 1);                 // still one year
+  const month = home.children[0].children[0];
+  assert.equal(month.text, '06');
+  assert.equal(month.children.length, 2);                // two days now
+  assert.deepEqual(month.children.map(d => d.text), ['16', '17']);
+});
+
+test('findOrCreateDatedEntry — a different month forks under the same year', () => {
+  const home = { text: 'Journal', children: [] };
+  c.findOrCreateDatedEntry(home, '2026-06-16', mkJ);
+  c.findOrCreateDatedEntry(home, '2026-07-01', mkJ);
+  assert.equal(home.children.length, 1);                 // one year
+  assert.deepEqual(home.children[0].children.map(m => m.text), ['06', '07']);
+});
+
+test('findOrCreateDatedEntry — leaf day matches fuzzily (titled day reused)', () => {
+  const home = { text: 'Journal', children: [] };
+  // pre-seed a titled day node by hand under the nested path
+  const year = mkJ('2026'); home.children.push(year);
+  const month = mkJ('06'); year.children.push(month);
+  const titled = mkJ('16 Tuesday'); month.children.push(titled);
+  const r = c.findOrCreateDatedEntry(home, '2026-06-16', mkJ);
+  assert.equal(r.created, false);
+  assert.equal(r.entry, titled);          // reused, not duplicated
+  assert.equal(month.children.length, 1);
 });
