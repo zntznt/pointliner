@@ -4375,6 +4375,16 @@ function isVisible(node) {
   return showDone || node.type !== 'todo' || !node.checked;
 }
 
+// A checked to-do is filtered out of the outline while show-done is off, so the row
+// just disappears — which reads like a delete (P4 silent-ish failure). Any check
+// action calls this AFTER recomputing node.checked: if the point just became done
+// AND is now hidden, flash a cue naming what happened and how to see it again.
+function flashHiddenIfDone(node, wasDone) {
+  if (!wasDone && node && node.checked && !isVisible(node)) {
+    flashHint('Done, now hidden. Turn on Show done to view it.');
+  }
+}
+
 function createChildModel(parent) {
   const n = mkNode();
   parent.children.push(n);
@@ -8732,11 +8742,17 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
 
   const apply = () => {
     // type + checked are derived hints — re-derive from the text the picker wrote
+    let hiddenCount = 0;
     for (const t of applyList) {
+      const wasDone = t.checked;
       t.type = deriveTypeFromText(t.text) || (t.type === 'todo' ? 'ul' : t.type);
       t.checked = todoDoneFromText(t.text);
+      if (!wasDone && t.checked && !isVisible(t)) hiddenCount++;
     }
     markDirty(); render(); hideBpop();
+    // P4: a state that just hid one or more rows must say so, never vanish silently.
+    if (hiddenCount === 1) flashHint('Done, now hidden. Turn on Show done to view it.');
+    else if (hiddenCount > 1) flashHint(hiddenCount + ' done, now hidden. Turn on Show done to view them.');
   };
 
   // States — sequence-aware: offer the states of the node's keyword's sequence
@@ -13049,6 +13065,7 @@ function applyBlockCmd(id, nodeId, node, content) {
   // checked flags then DERIVE from the text (markdown-first; no type forcing).
   if (id.startsWith('state:')) {
     const kw = id.slice(6);
+    const wasDone = node.checked;
     const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
     if (oldPrefix && node.text.startsWith(oldPrefix)) node.text = node.text.slice(oldPrefix.length);
     node.text = setTodoState(node.text, kw);
@@ -13058,6 +13075,7 @@ function applyBlockCmd(id, nodeId, node, content) {
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
     markDirty();
     rerenderNode(nodeId);
+    flashHiddenIfDone(node, wasDone);   // P4: setting DONE while show-done is off hides the row; say so
     return;
   }
   // /todo: a markdown-writing helper, not a type. Ensure the node's text starts
@@ -13231,7 +13249,7 @@ function toggleTaskInNode(node, taskIndex) {
   node.text = lines.join('\n');
   node.checked = todoDoneFromText(node.text);
   markDirty();
-  if (node.checked !== wasDone) { render(); return; }
+  if (node.checked !== wasDone) { flashHiddenIfDone(node, wasDone); render(); return; }
   // done-ness unchanged → targeted repaint of this node (skips a full render)…
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
