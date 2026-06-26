@@ -3930,6 +3930,27 @@ function commitActiveEdit() {
 function zoomInto(id) { focusedId = id; render(); } // render() commits any active edit
 function zoomTo(id)   { focusedId = id; render(); }
 
+// Follow a node link to (did, tid): zoom same-doc, switch+zoom cross-doc. The single
+// home for both behaviors AND the P4 broken-link feedback — activating a link whose
+// target is missing must SAY so (flashHint also reaches AT via #a11y-live), never
+// fall through silently. Used by every link-follow path: the title + outline
+// mousedown handlers (via followNodeLink, which reads the span's dataset), the
+// Enter/Space keyboard path (via mousedown dispatch), and the follow-link-under-caret
+// shortcut (which parses did/tid from the token text).
+function followLinkTarget(did, tid) {
+  if (did && did !== (root.docId || '')) {                    // cross-doc → switch doc, then zoom (CF-2)
+    const name = workspaceIndex?.nameByDocId?.get(did);
+    if (!name) { flashHint("That note isn't in this workspace anymore."); return; }
+    switchWorkspaceDoc(name).then(ok => {
+      if (!ok) return;                                         // switch failed (already flashed its own error)
+      if (nodeById(tid)) zoomInto(tid);
+      else flashHint("That link's point no longer exists in the note.");
+    });
+  } else if (tid && nodeById(tid)) zoomInto(tid);             // same-doc, target present
+  else flashHint("That link's target point no longer exists.");
+}
+function followNodeLink(lnk) { followLinkTarget(lnk.dataset.doc, lnk.dataset.target); }
+
 // Copy a ready-to-paste link token for a node onto the clipboard. Always uses the
 // empty-label form ([[#id|]]) — the empty label renders the target's live title,
 // so nothing is lost, and we avoid dumping the node body into the label slot.
@@ -4090,11 +4111,7 @@ function render() {
       const lnk = e.target.closest?.('.node-link');
       if (lnk) {
         e.preventDefault();
-        const did = lnk.dataset.doc, tid = lnk.dataset.target;
-        if (did && did !== (root.docId || '')) {
-          const name = workspaceIndex?.nameByDocId?.get(did);
-          if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(tid)) zoomInto(tid); });
-        } else if (tid && nodeById(tid)) zoomInto(tid);
+        followNodeLink(lnk);                                     // zoom / switch+zoom, or flash if broken (P4)
         return;
       }
       e.preventDefault();
@@ -7284,11 +7301,7 @@ function attachContentEvents(content, node) {
     const lnk = e.target.closest?.('.node-link');
     if (lnk && !content.dataset.editing) {
       e.preventDefault(); e.stopPropagation();
-      const did = lnk.dataset.doc, tid = lnk.dataset.target;
-      if (did && did !== (root.docId || '')) {                   // cross-doc → switch doc, then zoom (CF-2)
-        const name = workspaceIndex?.nameByDocId?.get(did);
-        if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(tid)) zoomInto(tid); });
-      } else if (tid && nodeById(tid)) zoomInto(tid);            // same-doc (unchanged)
+      followNodeLink(lnk);                                       // zoom / switch+zoom, or flash if broken (P4)
       return;
     }
     // autolinked bare URL (a plain <a>, not a .node-link pill): in display mode open it.
@@ -8062,13 +8075,7 @@ function onKeyDown(e, id, content) {
         const tk   = tokenUnderCaret(text, off);
         if (tk) {
           e.preventDefault();
-          const { docId, nodeId: tid } = tk;
-          if (docId && docId !== (root.docId || '')) {
-            const name = workspaceIndex?.nameByDocId?.get(docId);
-            if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(tid)) zoomInto(tid); });
-          } else if (nodeById(tid)) {
-            zoomInto(tid);
-          }
+          followLinkTarget(tk.docId, tk.nodeId);                // zoom / switch+zoom, or flash if broken (P4)
         }
         return; // Ctrl+Shift+Enter is consumed here; no fallthrough to zoom
       }
@@ -15272,8 +15279,7 @@ function renderBlPanel(sources, unlinked, cross) {
     item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another note'}. Open`);
     const go = () => {
       hideBlPanel();
-      const name = workspaceIndex?.nameByDocId?.get(docId);
-      if (name) switchWorkspaceDoc(name).then(ok => { if (ok && nodeById(nodeId)) zoomInto(nodeId); });
+      followLinkTarget(docId, nodeId);                          // open source note, or flash if it's gone (P4)
     };
     item.addEventListener('click', go);
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
