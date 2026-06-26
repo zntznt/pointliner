@@ -6,22 +6,29 @@ variables). Everything — HTML, CSS, JS, and a subsetted Font Awesome — lives
 `index.html`. No build step, no runtime dependencies, no network. Open the file
 in a browser and it runs.
 
-**The single-file rule has exactly one sanctioned exception: the PWA companion
-files** — `manifest.webmanifest`, `service-worker.js`, `icon.svg`, and the icon PNGs
-`icon-192.png` / `icon-512.png`. They make the **hosted** copy (GitHub Pages,
-`https://zntznt.com/pointliner/`) installable + offline-cached, and they are **pure
-enhancement**: `index.html` never depends on them. The SW registration is guarded (skips
-`file:`/non-secure contexts, swallows errors), so a **downloaded `index.html` opened from
-disk still runs identically with no PWA wiring** — the download-and-run identity is
-preserved. These are permanent source (not build artifacts); do not delete them as stray,
-and keep paths **relative** (`./`) since the app is served from a subpath. Bump
-`CACHE_VERSION` in `service-worker.js` when shipping a build that the cache must refresh.
-**The two PNGs are the deliberate, necessary exception to "no binary files in git":** the
-installed-app icon (manifest + `apple-touch-icon`) genuinely requires raster PNG (iOS
-ignores an SVG `apple-touch-icon` and falls back to the **root domain's** `/favicon.ico` —
-the bug this fixed), so `icon.svg` alone is not enough. Regenerate them from `icon.svg`
-(render to a canvas at 192/512 and export PNG) if the mark changes; the in-tab favicon is
-separate and stays the dynamic accent-tinted `updateFavicon` data-URL.
+**The single-file / no-binaries rules have one sanctioned class of exception: PWA
+install assets — and the test for any future one is the safeguard, not the file list.**
+An extra companion file (or a binary) is allowed **iff all three hold:** (1) it only
+upgrades the **hosted** copy (install / offline / standalone), never the app's logic;
+(2) it is **pure enhancement** — `index.html` never depends on it, and its wiring is
+**guarded** to be inert + silent where it can't apply (the SW registration skips
+`file:`/non-secure contexts and swallows errors); and (3) the **download-and-run identity
+is preserved** — a `index.html` opened from disk runs byte-for-byte the same with the file
+absent. Meet those and the exception is fine; that is the rule, so don't treat the list
+below as frozen (a future `screenshot`/`shortcut` icon, etc. qualifies the same way) — but
+don't smuggle app behavior in under the PWA banner either.
+
+The current PWA assets: `manifest.webmanifest`, `service-worker.js`, `icon.svg`, and the
+icon PNGs `icon-192.png` / `icon-512.png` (GitHub Pages, `https://zntznt.com/pointliner/`).
+They are permanent source (not build artifacts); do not delete them as stray, and keep
+paths **relative** (`./`) since the app is served from a subpath. Bump `CACHE_VERSION` in
+`service-worker.js` when shipping a build the cache must refresh. **The two PNGs are the
+necessary "no binary files in git" exception:** the installed-app icon (manifest +
+`apple-touch-icon`) genuinely requires raster PNG (iOS ignores an SVG `apple-touch-icon`
+and falls back to the **root domain's** `/favicon.ico`), so `icon.svg` alone is not enough.
+Regenerate them from `icon.svg` (render to a canvas at 192/512, export PNG) if the mark
+changes; the in-tab favicon is separate and stays the dynamic accent-tinted
+`updateFavicon` data-URL.
 
 **Storage & sync model:** Pointliner runs on the user's computer. The user's
 filesystem is storage; the user's choice of sync (Dropbox/iCloud/git/none) is
