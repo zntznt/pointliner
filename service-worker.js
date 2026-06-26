@@ -5,8 +5,13 @@
 // for the hosted copy; if it is absent (a downloaded index.html opened from disk, or any
 // host without these companion files) the app is unaffected.
 //
-// Cache-first for the app shell, network-first nothing — there is no backend, no API,
-// no runtime fetches, so the shell IS the app. Bump CACHE_VERSION to ship a new build.
+// Freshness model (this is the part that decides whether an install traps you on an old
+// build — it does NOT): navigations are NETWORK-FIRST, so an online open/refresh always
+// fetches the live index.html and only falls back to the cache when offline. The cache is
+// the offline safety net, not the source of truth. Static assets (the icon) are cache-
+// first; bump CACHE_VERSION to force those (and a cold offline shell) to refresh.
+// skipWaiting + clients.claim mean a new SW takes over immediately, never waiting for all
+// tabs to close. There is no backend/API/runtime fetch, so the shell IS the app.
 const CACHE_VERSION = 'pointliner-v1';
 // Relative URLs: the app is served from a subpath (/pointliner/), so the SW scope is its
 // own directory. './' caches the directory index (index.html) under the navigated URL.
