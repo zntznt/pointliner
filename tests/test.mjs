@@ -6000,3 +6000,34 @@ test('findOrCreateDatedEntry — leaf day matches fuzzily (titled day reused)', 
   assert.equal(r.entry, titled);          // reused, not duplicated
   assert.equal(month.children.length, 1);
 });
+
+// ── parseDateSlash: the /due:value keyboard bridge ──────────────────────────
+test('parseDateSlash — due:tomorrow → { due, tomorrow }', () => {
+  assert.deepEqual(host(c.parseDateSlash('due:tomorrow')), { key: 'due', raw: 'tomorrow' });
+});
+test('parseDateSlash — start:YYYY-MM-DD', () => {
+  assert.deepEqual(host(c.parseDateSlash('start:2026-07-01')), { key: 'start', raw: '2026-07-01' });
+});
+test('parseDateSlash — relative today+N', () => {
+  assert.deepEqual(host(c.parseDateSlash('due:today+3')), { key: 'due', raw: 'today+3' });
+});
+test('parseDateSlash — case-insensitive key, value case preserved', () => {
+  assert.deepEqual(host(c.parseDateSlash('DUE:Tomorrow')), { key: 'due', raw: 'Tomorrow' });
+});
+test('parseDateSlash — trims surrounding whitespace in the value', () => {
+  assert.deepEqual(host(c.parseDateSlash('due:  today ')), { key: 'due', raw: 'today' });
+});
+test('parseDateSlash — bare verb (no value) → null (falls through to dialog)', () => {
+  assert.equal(c.parseDateSlash('due'), null);
+  assert.equal(c.parseDateSlash('due:'), null);
+  assert.equal(c.parseDateSlash('due:   '), null);
+});
+test('parseDateSlash — a non-date verb is not a date slash', () => {
+  assert.equal(c.parseDateSlash('todo:tomorrow'), null);
+  assert.equal(c.parseDateSlash('check:x>1'), null);
+  assert.equal(c.parseDateSlash(''), null);
+});
+test('parseDateSlash — only the FIRST colon splits key from value', () => {
+  // a value could itself contain a colon (none today, but be robust)
+  assert.deepEqual(host(c.parseDateSlash('due:a:b')), { key: 'due', raw: 'a:b' });
+});

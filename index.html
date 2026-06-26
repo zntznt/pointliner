@@ -2078,6 +2078,28 @@ function formatDueDate(epochDay) {
   return { iso, label, state };
 }
 
+// parseDateSlash(query) — pure, Node-testable. The keyboard bridge for scheduling
+// without the dialog: a slash query like "due:tomorrow" or "start:2026-07-01" →
+// { key, raw } where key is 'due'|'start' and raw is the date string to validate
+// with parseDueDate. Returns null when the query isn't a date verb with a value,
+// so a bare "/due" still falls through to the Schedule dialog. Case-insensitive on
+// the key; the value keeps its case (parseDueDate lowercases internally).
+function parseDateSlash(query) {
+  const m = String(query || '').match(/^(due|start):(.+)$/i);
+  if (!m) return null;
+  const raw = m[2].trim();
+  if (!raw) return null;
+  return { key: m[1].toLowerCase(), raw };
+}
+
+// Set (or, with a falsy val, leave untouched) one date property on a node, replacing
+// any existing same-key prop. Shared by the Schedule dialog and the /due:val slash path.
+function setDateProp(node, key, val) {
+  const props = (node.props || []).filter(p => p.key.toLowerCase() !== key);
+  if (val) props.push({ key, val });
+  node.props = props;
+}
+
 // Walk the tree and collect every point with a parseable "start" and/or "due"
 // property — a point can carry a date range (start → due, project-management
 // style). Each item carries both epoch dates plus derived running/done state;
@@ -3751,7 +3773,7 @@ const BLOCK_CMDS = [
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
-  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Shows in the Agenda.', ex:'start → due', section:'Organize' },
+  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title.', ex:'wyrm, drake', section:'Organize' },
   { id:'journal', icon:'📓',  fa:'fa-solid fa-calendar-day',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
@@ -6068,10 +6090,8 @@ function openDueDateDialog(nodeId, targets = null) {
     pushUndo();
     const sv = startF.inp.value.trim(), dv = dueF.inp.value.trim();
     for (const t of applyList) {
-      const props = (t.props || []).filter(p => { const k = p.key.toLowerCase(); return k !== 'start' && k !== 'due'; });
-      if (sv) props.push({ key: 'start', val: sv });
-      if (dv) props.push({ key: 'due',   val: dv });
-      t.props = props;
+      setDateProp(t, 'start', sv);   // blank clears that date (setDateProp drops the key)
+      setDateProp(t, 'due',   dv);
     }
     markDirty(); render();
     if (agendaOpen) renderAgenda();
@@ -8793,17 +8813,36 @@ slashMenu.addEventListener('mousedown', e => e.preventDefault());
 function checkSlash(content, nodeId) {
   const pos = getCaretOffset(content);
   const before = editableText(content).slice(0, pos);
-  const m = before.match(/(^|[\s])([/@])(\w*)$/);
+  // The query is the word after the trigger, plus — for the date verbs only — an
+  // optional ":value" so "/due:tomorrow" stays one slash token (date strings are
+  // space-free, so [^\s] keeps the value but stops at the next word).
+  const m = before.match(/(^|[\s])([/@])(\w*(?::[^\s]*)?)$/);
   if (!m) { hideSlashMenu(); return; }
   const trigger = m[2];
-  const query = m[3].toLowerCase();
-  const slashOffset = pos - query.length - 1;
+  const rawQuery = m[3];                                // what the regex captured (orig case)
+  // The trigger char sits right before the captured query; pin the offset to that
+  // position so it stays correct even when we trim a non-date ":value" off the query.
+  const slashOffset = pos - rawQuery.length - 1;
+  let query = rawQuery.toLowerCase();
+  const word = query.split(':', 1)[0];                 // the command part, before any ":value"
+  let hasArg = query.length > word.length;             // a ":value" suffix was typed
+  // The ":value" arm is ONLY for the /-trigger date verbs. For anything else a colon
+  // is plain text, not a slash arg: drop it from the query so the command still matches
+  // on its word and the strip leaves ":value" in the node text untouched.
+  if (hasArg && !(trigger === '/' && /^(due|start)$/.test(word))) { query = word; hasArg = false; }
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
+  // "start" is an alias of the single "due" (Schedule) command so /start:VALUE has a
+  // menu door too; the actual key (due vs start) is read from the query at apply time.
+  const matchWord = (trigger === '/' && word === 'start') ? 'due' : word;
   const matches = pool.filter(c =>
-    c.id.startsWith(query) || c.label.toLowerCase().includes(query)
+    c.id.startsWith(matchWord) || c.label.toLowerCase().includes(matchWord)
   );
   if (!matches.length) { hideSlashMenu(); return; }
-  slashState = { nodeId, content, slashOffset, query, activeIdx:0, matches, trigger };
+  // When a ":value" was typed, keep the matching date verb selected (so Enter applies
+  // it) rather than whatever fuzzy-matches the label.
+  let activeIdx = 0;
+  if (hasArg) { const i = matches.findIndex(c => c.id === 'due'); if (i >= 0) activeIdx = i; }
+  slashState = { nodeId, content, slashOffset, query, activeIdx, matches, trigger };
   renderSlashMenu();
   positionSlashMenu(content, slashOffset);
 }
@@ -8907,13 +8946,15 @@ function slashMove(dir) {
 function slashApply() {
   if (!slashState) return;
   if (slashState.cell) { cellSlashApply(); return; }
-  const { nodeId, content, slashOffset, activeIdx, matches, trigger } = slashState;
+  const { nodeId, content, slashOffset, activeIdx, matches, trigger, query } = slashState;
   const cmd = matches[activeIdx];
   hideSlashMenu();
-  // strip the trigger char + the query the user typed after it
+  // strip the trigger char + exactly the query checkSlash settled on (its length
+  // matches the source text regardless of case). For a date verb the query includes
+  // the ":value" suffix (e.g. "due:tomorrow"); for other verbs a trailing ":x" was
+  // already excluded from the query, so it stays in the node text.
   const currentText = editableText(content);
-  const afterTrigger = currentText.slice(slashOffset+1).match(/^\w*/)?.[0] ?? '';
-  const rawLen = 1 + afterTrigger.length;
+  const rawLen = 1 + query.length;
   const newText = currentText.slice(0, slashOffset) + currentText.slice(slashOffset + rawLen);
   const node = nodeById(nodeId);
   if (node) {
@@ -8958,6 +8999,27 @@ function slashApply() {
     return;
   }
   if (trigger !== '@' && cmd.id === 'due') {
+    // Keyboard bridge: "/due:tomorrow" or "/start:2026-07-01" sets the date inline,
+    // skipping the dialog. A bare "/due" (no value) still opens the Schedule dialog.
+    const ds = parseDateSlash(query);
+    if (ds) {
+      if (parseDueDate(ds.raw) === null) {                     // P4: invalid value isn't silently dropped
+        flashHint('Not a valid date: ' + ds.raw + '. Try YYYY-MM-DD, today, tomorrow or today+N.');
+        return;
+      }
+      // LEAVE edit mode before mutating + rendering: a still-editing node's
+      // blur-during-render would exitEdit-clobber node.text back to the pre-strip
+      // buffer (the /due:val token would reappear). Mirrors the @table path above.
+      const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+      if (ed) ed.blur();
+      const cur = nodeById(nodeId); if (!cur) return;
+      pushUndo();
+      setDateProp(cur, ds.key, ds.raw);
+      markDirty(); render();
+      if (agendaOpen) renderAgenda();
+      flashHint('Set ' + ds.key + ' to ' + formatDueDate(parseDueDate(ds.raw)).label + '.');
+      return;
+    }
     openDueDateDialog(nodeId);
     return;
   }
@@ -16481,12 +16543,12 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due to open the date picker; dates can be exact or relative like today+7.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the date picker. Dates can be exact or relative like today+7.",
     examples:[
-      { syn:'/due',       desc:'open the date picker' },
-      { syn:'2026-01-15', desc:'an exact date' },
-      { syn:'today',      desc:"today's date" },
-      { syn:'today+7',    desc:'a week from now' },
+      { syn:'/due:tomorrow',    desc:'set the due date inline' },
+      { syn:'/start:2026-07-01',desc:'set the start date inline' },
+      { syn:'/due',             desc:'open the date picker' },
+      { syn:'today+7',          desc:'a week from now (also today, today-N)' },
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
