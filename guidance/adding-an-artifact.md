@@ -43,6 +43,11 @@ Every artifact follows the same path. To add one (say `@weather`):
 8. **Slash menu** — add an entry to `INSERT_CMDS` and a branch in
    `insertInlineArtifact` (which splices the token and pushes the record). The entry
    MUST carry `label` + `desc` + the typed syntax, so the menu teaches it (P2-2).
+   If the verb should take an **inline argument** (`/verb:value`, to skip a dialog —
+   like `/due:tomorrow`), follow the narrow-gate contract in `ux-discipline.md` §7.1a:
+   gate the `:value` arm to your verb only, trigger-pin the strip, dialog on a bare
+   verb, flash on a bad value (P4). Do **not** widen the shared slash matcher for all
+   verbs.
 9. **Click handler** — add a `closest('.weather-pill')` branch to the
    `mousedown` handler in `attachContentEvents`. Follow the existing convention
    (`e.preventDefault()` keeps focus off the node so it never enters edit mode):

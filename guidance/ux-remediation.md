@@ -584,6 +584,15 @@ A grab-bag of small, independent items from the audit (low priority; each a one-
 
 ---
 
+### UXP-69 ✓ Inline-argument verbs (`/verb:value`) — keyboard-first scheduling (P2/P3/P4) 🟢 — **RESOLVED**
+- **Problem:** typing `due:tomorrow` in a point produced no date, no chip, no error. Dates are properties set only via the Schedule dialog; there is no inline text→property promotion; and `due:` is a search-only operator (the UXP-20 "zero new authoring syntax" decision). A plausible input was swallowed silently (P4 violation + false affordance) — and, more broadly, several dialog-only verbs had **no keyboard-complete path** (P3 gap): you could open the door but not fill it without the mouse.
+- **Decision (instead of inline text syntax):** bridge through the **existing `/` door**, not a new text sigil. `/due:value` / `/start:value` set the date inline and skip the dialog; a bare `/due` still opens it. This adds **no §2 syntax-inventory entry** and does not touch the `due:` search operator, so UXP-20 stands.
+- **Fix:** pure core `parseDateSlash(query)` → `{key, raw} | null` (null for a bare verb → dialog fallthrough); `checkSlash` widened to capture an optional `:value` **gated to the arg-verbs only** (a colon on any other verb stays plain text — `/quote:x` keeps `:x`), with the strip **pinned to the trigger position** so a trimmed query never mangles surrounding text; `slashApply` validates via `parseDueDate`, flashes on a bad value (P4), and writes through the shared `setDateProp` (now used by the dialog too). `start` aliases the single `due` Schedule command. Discoverability: slash desc/example + the concept-guide Dates entry. 8 pinned `parseDateSlash` cases incl. the non-arg-verb-with-colon gate.
+- **The reusable rule (the durable output):** any dialog-only verb can gain a `/verb:value` fast path to become keyboard-complete — a real P2/P3 win — **but the shared slash parser MUST be widened narrowly**: gate the `:value` arm to the opted-in verb, trigger-pin the strip, dialog on a bare verb, P4 on a bad value, value-parse a pure `null`-on-miss core. Codified as the binding contract in `ux-discipline.md` §7.1a + a §3 grammar row; mirrored into the always-loaded `CLAUDE.md` UX invariants and the `adding-an-artifact.md` step-8 note, so the next verb follows it by default rather than re-discovering the `/quote:x` footgun.
+- **Disposition:** shipped (PR #163); the cross-cutting guideline baked into the standard so it applies to every future inline-argument verb.
+
+---
+
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
 - **Problem:** the loudest symptom of the scattered direction is the steady flood of new authoring syntaxes and grammars, each invented per-feature. The architecture *encourages* it (`CLAUDE.md`: "a new token type / expression primitive fits very well"), so the pressure is structural and continuous — this guard never fully closes.
 - **Violates:** P5 (one authoring language).
