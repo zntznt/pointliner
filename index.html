@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Pointliner</title>
+<!-- PWA install (hosted copy only): the manifest + companion files make the app
+     installable/standalone when served over https. All OPTIONAL and self-disabling —
+     a downloaded index.html opened from file:// just ignores them and runs as a plain
+     self-contained page (the service worker registration below is guarded). -->
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#4a90d9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pointliner">
+<link rel="apple-touch-icon" href="./icon.svg">
 <!-- favicon: FontAwesome circle-minus, inline SVG so it works offline; tinted to the
      current accent at runtime by updateFavicon(), which also re-asserts the link and
      rasterizes a PNG so a root-site /favicon.ico can't override the accent icon. -->
@@ -17353,6 +17363,25 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
   } catch (_) { try { await idbDel(WORKSPACE_KEY); } catch (_) {} workspaceDir = null; }
   renderWorkspaceAffordance();
   refreshWorkspaceIndex();           // CF-1: build the index from the reopened folder (no-op when none)
+})();
+
+// PWA: register the service worker so the HOSTED copy is installable + offline-cached.
+// Strictly optional and self-disabling — the app is a self-contained index.html and never
+// depends on the SW. Guards keep it inert (and silent) when it can't or shouldn't run:
+//   • file:// (a downloaded index.html opened from disk) — SW can't register there anyway,
+//     but we also skip so there's no console noise; the page already runs fully offline.
+//   • non-secure context, or no SW support.
+//   • any registration error (e.g. the companion service-worker.js isn't deployed) is
+//     swallowed, so a copy hosted somewhere without these files still works untouched.
+(function registerPWA() {
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    if (location.protocol === 'file:') return;           // disk copy: nothing to register
+    if (!window.isSecureContext) return;                 // SW needs https (or localhost)
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+    });
+  } catch (_) { /* never let PWA wiring affect the app */ }
 })();
 </script>
 </body>

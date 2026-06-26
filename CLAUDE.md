@@ -6,6 +6,17 @@ variables). Everything — HTML, CSS, JS, and a subsetted Font Awesome — lives
 `index.html`. No build step, no runtime dependencies, no network. Open the file
 in a browser and it runs.
 
+**The single-file rule has exactly one sanctioned exception: the PWA companion
+files** — `manifest.webmanifest`, `service-worker.js`, and `icon.svg`. They make the
+**hosted** copy (GitHub Pages, `https://zntznt.com/pointliner/`) installable + offline-
+cached, and they are **pure enhancement**: `index.html` never depends on them. The SW
+registration is guarded (skips `file:`/non-secure contexts, swallows errors), so a
+**downloaded `index.html` opened from disk still runs identically with no PWA wiring** —
+the download-and-run identity is preserved. These three are permanent source (not build
+artifacts); do not delete them as stray, and keep paths **relative** (`./`) since the app
+is served from a subpath. Bump `CACHE_VERSION` in `service-worker.js` when shipping a
+build that the cache must refresh.
+
 **Storage & sync model:** Pointliner runs on the user's computer. The user's
 filesystem is storage; the user's choice of sync (Dropbox/iCloud/git/none) is
 sync. No backend, no auth, no accounts. Features that require running a backend
