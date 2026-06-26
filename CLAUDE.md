@@ -7,15 +7,21 @@ variables). Everything — HTML, CSS, JS, and a subsetted Font Awesome — lives
 in a browser and it runs.
 
 **The single-file rule has exactly one sanctioned exception: the PWA companion
-files** — `manifest.webmanifest`, `service-worker.js`, and `icon.svg`. They make the
-**hosted** copy (GitHub Pages, `https://zntznt.com/pointliner/`) installable + offline-
-cached, and they are **pure enhancement**: `index.html` never depends on them. The SW
-registration is guarded (skips `file:`/non-secure contexts, swallows errors), so a
-**downloaded `index.html` opened from disk still runs identically with no PWA wiring** —
-the download-and-run identity is preserved. These three are permanent source (not build
-artifacts); do not delete them as stray, and keep paths **relative** (`./`) since the app
-is served from a subpath. Bump `CACHE_VERSION` in `service-worker.js` when shipping a
-build that the cache must refresh.
+files** — `manifest.webmanifest`, `service-worker.js`, `icon.svg`, and the icon PNGs
+`icon-192.png` / `icon-512.png`. They make the **hosted** copy (GitHub Pages,
+`https://zntznt.com/pointliner/`) installable + offline-cached, and they are **pure
+enhancement**: `index.html` never depends on them. The SW registration is guarded (skips
+`file:`/non-secure contexts, swallows errors), so a **downloaded `index.html` opened from
+disk still runs identically with no PWA wiring** — the download-and-run identity is
+preserved. These are permanent source (not build artifacts); do not delete them as stray,
+and keep paths **relative** (`./`) since the app is served from a subpath. Bump
+`CACHE_VERSION` in `service-worker.js` when shipping a build that the cache must refresh.
+**The two PNGs are the deliberate, necessary exception to "no binary files in git":** the
+installed-app icon (manifest + `apple-touch-icon`) genuinely requires raster PNG (iOS
+ignores an SVG `apple-touch-icon` and falls back to the **root domain's** `/favicon.ico` —
+the bug this fixed), so `icon.svg` alone is not enough. Regenerate them from `icon.svg`
+(render to a canvas at 192/512 and export PNG) if the mark changes; the in-tab favicon is
+separate and stays the dynamic accent-tinted `updateFavicon` data-URL.
 
 **Storage & sync model:** Pointliner runs on the user's computer. The user's
 filesystem is storage; the user's choice of sync (Dropbox/iCloud/git/none) is
