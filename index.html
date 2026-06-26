@@ -271,12 +271,19 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0;position:relative;z-index:2}
 .bullet-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;transition:background .12s,transform .12s}
 .bullet:hover .bullet-dot{background:var(--bullet-h);transform:scale(1.3)}
-/* base bullet: the /base grid icon stands in for the dot — an at-a-glance "this point is
+/* base bullet: a small "rows" glyph stands in for the dot — an at-a-glance "this point is
    a base" signal. It behaves like any bullet: click zooms in, hover/long-press opens the
    base menu. (A base is a normal point in the outline; it only goes full-width when zoomed
    into — see `body.base-zoom`.) */
-.bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:var(--muted);transition:color .12s,transform .12s}
-.bullet-base:hover .bullet-base-ic{color:var(--acc);transform:scale(1.12)}
+/* A custom CSS glyph — one narrow column of three stacked cells — drawn at the dot's
+   slim weight so it lives in the bullet gutter cleanly (the 12px Font Awesome grid icon
+   was too wide/heavy: it bulged left of the dot column and read as a widget, not a
+   bullet). Signals "rows of data" at a glance; click/hover behave like any bullet. */
+.bullet-base{align-items:flex-start}
+.bullet-base .bullet-base-ic{display:flex;flex-direction:column;gap:1.5px;width:6px;flex-shrink:0;margin-top:17px;transition:transform .12s}
+.bullet-base .bullet-base-ic>i{display:block;height:2.5px;border-radius:1px;background:var(--bullet);transition:background .12s}
+.bullet-base:hover .bullet-base-ic{transform:scale(1.15)}
+.bullet-base:hover .bullet-base-ic>i{background:var(--bullet-h)}
 
 /* node content */
 .node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
@@ -2078,6 +2085,28 @@ function formatDueDate(epochDay) {
   return { iso, label, state };
 }
 
+// parseDateSlash(query) — pure, Node-testable. The keyboard bridge for scheduling
+// without the dialog: a slash query like "due:tomorrow" or "start:2026-07-01" →
+// { key, raw } where key is 'due'|'start' and raw is the date string to validate
+// with parseDueDate. Returns null when the query isn't a date verb with a value,
+// so a bare "/due" still falls through to the Schedule dialog. Case-insensitive on
+// the key; the value keeps its case (parseDueDate lowercases internally).
+function parseDateSlash(query) {
+  const m = String(query || '').match(/^(due|start):(.+)$/i);
+  if (!m) return null;
+  const raw = m[2].trim();
+  if (!raw) return null;
+  return { key: m[1].toLowerCase(), raw };
+}
+
+// Set (or, with a falsy val, leave untouched) one date property on a node, replacing
+// any existing same-key prop. Shared by the Schedule dialog and the /due:val slash path.
+function setDateProp(node, key, val) {
+  const props = (node.props || []).filter(p => p.key.toLowerCase() !== key);
+  if (val) props.push({ key, val });
+  node.props = props;
+}
+
 // Walk the tree and collect every point with a parseable "start" and/or "due"
 // property — a point can carry a date range (start → due, project-management
 // style). Each item carries both epoch dates plus derived running/done state;
@@ -3539,6 +3568,23 @@ function stripTblfm(text) {
   return (text || '').replace(TBLFM_LINE_RE, '').replace(/\n+$/, '');
 }
 
+// Detect a *spreadsheet-style* formula a user typed straight into a base cell —
+// `=A1+B1`, `=$1*$2`, `=SUM(...)`. Bases don't compute cell-level `=` formulas (Org's
+// #+TBLFM: recipe + the Calculate menu own that, by design), so such a cell stays
+// dead literal text; this lets the commit path flash a signpost to the real door
+// instead of swallowing the attempt silently (P4). Pure, Node-testable. Tight on
+// purpose: must START with `=` and the body must carry a ref/arithmetic signal, so a
+// plain literal that merely begins with `=` (e.g. an emoticon, "=)") never trips it.
+function looksLikeCellFormula(text) {
+  const s = String(text || '').trim();
+  if (s[0] !== '=' || s.length < 2) return false;
+  const body = s.slice(1);
+  return /[A-Za-z]+\d+/.test(body)          // A1-style cell ref (Excel/Sheets habit)
+      || /[@$][<>#]|[@$][+-]?\d/.test(body) // Org @row/$col ref typed with a leading =
+      || /\w[ ]*[-+*/][ ]*\w/.test(body)    // arithmetic between operands (=2*3, =cost+tax)
+      || /^[A-Za-z]+\s*\(/.test(body);      // a function call (=SUM(...), =avg(...))
+}
+
 // ─── static markdown tables (render-anywhere, read-only) ─────────────────────
 // A pipe table written in ANY point renders the same way a `#` renders a heading:
 // `mdToHtml` detects it and emits a static <table>. This is purely a RENDER path —
@@ -3751,7 +3797,7 @@ const BLOCK_CMDS = [
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
-  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Shows in the Agenda.', ex:'start → due', section:'Organize' },
+  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title.', ex:'wyrm, drake', section:'Organize' },
   { id:'journal', icon:'📓',  fa:'fa-solid fa-calendar-day',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
@@ -4368,6 +4414,16 @@ function appendGhostRow(parent, container) {
 
 function isVisible(node) {
   return showDone || node.type !== 'todo' || !node.checked;
+}
+
+// A checked to-do is filtered out of the outline while show-done is off, so the row
+// just disappears — which reads like a delete (P4 silent-ish failure). Any check
+// action calls this AFTER recomputing node.checked: if the point just became done
+// AND is now hidden, flash a cue naming what happened and how to see it again.
+function flashHiddenIfDone(node, wasDone) {
+  if (!wasDone && node && node.checked && !isVisible(node)) {
+    flashHint('Done, now hidden. Turn on Show done to view it.');
+  }
 }
 
 function createChildModel(parent) {
@@ -5059,6 +5115,7 @@ function buildTableWidget(node, readOnly) {
     forceIncludeId = node.id;
     const m = mtModel(node);
     cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    cell.dataset.enterVal = cell.textContent;   // value on entry — for the focusout formula-signpost diff
     // Keyboard-driven focus (Tab into the grid, arrow/Tab/Enter cell nav): select the
     // whole cell for type-to-overwrite. Pointer focus keeps the browser's click caret.
     if (!mtPointerFocus) mtSelectCellContents(cell);
@@ -5079,11 +5136,21 @@ function buildTableWidget(node, readOnly) {
     if (slashState?.cell && slashState.content === cell) hideSlashMenu();
     if (cell.classList.contains('mt-computed')) return;
     const raw = cell.textContent;
+    const enteredWith = cell.dataset.enterVal ?? '';   // value when the cell was focused
+    delete cell.dataset.enterVal;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
     mtCommit(node, m);
     cell.innerHTML = mtInline(node, raw);
     forceIncludeId = null;
+    // P4: a spreadsheet-style `=…` formula typed into a cell is dead text here — bases
+    // compute via the Column menu's Calculate/Formula (#+TBLFM:), not cell formulas.
+    // Signpost it, but only when the value actually CHANGED this edit (the input handler
+    // keeps the model synced every keystroke, so diff against the focus-in value, not the
+    // model) — so tabbing through a cell that already holds `=…` text doesn't re-nag.
+    if (raw !== enteredWith && looksLikeCellFormula(raw)) {
+      flashHint('Cells hold values. For a formula, open the column menu and use Calculate or Formula.');
+    }
     // A source-cell edit may feed a formula: recompute and repaint the target cells in
     // place (rebuilding the widget here would steal focus from the next-clicked cell).
     if (mtRecompute(node)) mtPatchCells(node, cell);
@@ -5401,9 +5468,13 @@ function renderRow(r) {
   if (node.type === 'base') {
     // A base's bullet is the /base grid icon (signals "this point is a base"). It still
     // behaves like any bullet — click zooms in, hover/long-press opens the base menu.
+    // A custom CSS glyph: a single narrow column of stacked cells. It signals "rows of
+    // data" (a base) while keeping a dot-like slim footprint, so it sits in the bullet
+    // gutter without the weight/width of the 12px Font Awesome grid icon. Three <i> rungs.
     const ic = document.createElement('span');
     ic.className = 'bullet-base-ic';
-    setIcon(ic, { fa:'fa-solid fa-table-cells', fb:'▦' });
+    ic.setAttribute('aria-hidden', 'true');
+    ic.innerHTML = '<i></i><i></i><i></i>';
     bullet.appendChild(ic);
   } else {
     const dot = document.createElement('span');
@@ -6085,10 +6156,8 @@ function openDueDateDialog(nodeId, targets = null) {
     pushUndo();
     const sv = startF.inp.value.trim(), dv = dueF.inp.value.trim();
     for (const t of applyList) {
-      const props = (t.props || []).filter(p => { const k = p.key.toLowerCase(); return k !== 'start' && k !== 'due'; });
-      if (sv) props.push({ key: 'start', val: sv });
-      if (dv) props.push({ key: 'due',   val: dv });
-      t.props = props;
+      setDateProp(t, 'start', sv);   // blank clears that date (setDateProp drops the key)
+      setDateProp(t, 'due',   dv);
     }
     markDirty(); render();
     if (agendaOpen) renderAgenda();
@@ -8719,11 +8788,17 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
 
   const apply = () => {
     // type + checked are derived hints — re-derive from the text the picker wrote
+    let hiddenCount = 0;
     for (const t of applyList) {
+      const wasDone = t.checked;
       t.type = deriveTypeFromText(t.text) || (t.type === 'todo' ? 'ul' : t.type);
       t.checked = todoDoneFromText(t.text);
+      if (!wasDone && t.checked && !isVisible(t)) hiddenCount++;
     }
     markDirty(); render(); hideBpop();
+    // P4: a state that just hid one or more rows must say so, never vanish silently.
+    if (hiddenCount === 1) flashHint('Done, now hidden. Turn on Show done to view it.');
+    else if (hiddenCount > 1) flashHint(hiddenCount + ' done, now hidden. Turn on Show done to view them.');
   };
 
   // States — sequence-aware: offer the states of the node's keyword's sequence
@@ -8800,17 +8875,36 @@ slashMenu.addEventListener('mousedown', e => e.preventDefault());
 function checkSlash(content, nodeId) {
   const pos = getCaretOffset(content);
   const before = editableText(content).slice(0, pos);
-  const m = before.match(/(^|[\s])([/@])(\w*)$/);
+  // The query is the word after the trigger, plus — for the date verbs only — an
+  // optional ":value" so "/due:tomorrow" stays one slash token (date strings are
+  // space-free, so [^\s] keeps the value but stops at the next word).
+  const m = before.match(/(^|[\s])([/@])(\w*(?::[^\s]*)?)$/);
   if (!m) { hideSlashMenu(); return; }
   const trigger = m[2];
-  const query = m[3].toLowerCase();
-  const slashOffset = pos - query.length - 1;
+  const rawQuery = m[3];                                // what the regex captured (orig case)
+  // The trigger char sits right before the captured query; pin the offset to that
+  // position so it stays correct even when we trim a non-date ":value" off the query.
+  const slashOffset = pos - rawQuery.length - 1;
+  let query = rawQuery.toLowerCase();
+  const word = query.split(':', 1)[0];                 // the command part, before any ":value"
+  let hasArg = query.length > word.length;             // a ":value" suffix was typed
+  // The ":value" arm is ONLY for the /-trigger date verbs. For anything else a colon
+  // is plain text, not a slash arg: drop it from the query so the command still matches
+  // on its word and the strip leaves ":value" in the node text untouched.
+  if (hasArg && !(trigger === '/' && /^(due|start)$/.test(word))) { query = word; hasArg = false; }
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
+  // "start" is an alias of the single "due" (Schedule) command so /start:VALUE has a
+  // menu door too; the actual key (due vs start) is read from the query at apply time.
+  const matchWord = (trigger === '/' && word === 'start') ? 'due' : word;
   const matches = pool.filter(c =>
-    c.id.startsWith(query) || c.label.toLowerCase().includes(query)
+    c.id.startsWith(matchWord) || c.label.toLowerCase().includes(matchWord)
   );
   if (!matches.length) { hideSlashMenu(); return; }
-  slashState = { nodeId, content, slashOffset, query, activeIdx:0, matches, trigger };
+  // When a ":value" was typed, keep the matching date verb selected (so Enter applies
+  // it) rather than whatever fuzzy-matches the label.
+  let activeIdx = 0;
+  if (hasArg) { const i = matches.findIndex(c => c.id === 'due'); if (i >= 0) activeIdx = i; }
+  slashState = { nodeId, content, slashOffset, query, activeIdx, matches, trigger };
   renderSlashMenu();
   positionSlashMenu(content, slashOffset);
 }
@@ -8914,13 +9008,15 @@ function slashMove(dir) {
 function slashApply() {
   if (!slashState) return;
   if (slashState.cell) { cellSlashApply(); return; }
-  const { nodeId, content, slashOffset, activeIdx, matches, trigger } = slashState;
+  const { nodeId, content, slashOffset, activeIdx, matches, trigger, query } = slashState;
   const cmd = matches[activeIdx];
   hideSlashMenu();
-  // strip the trigger char + the query the user typed after it
+  // strip the trigger char + exactly the query checkSlash settled on (its length
+  // matches the source text regardless of case). For a date verb the query includes
+  // the ":value" suffix (e.g. "due:tomorrow"); for other verbs a trailing ":x" was
+  // already excluded from the query, so it stays in the node text.
   const currentText = editableText(content);
-  const afterTrigger = currentText.slice(slashOffset+1).match(/^\w*/)?.[0] ?? '';
-  const rawLen = 1 + afterTrigger.length;
+  const rawLen = 1 + query.length;
   const newText = currentText.slice(0, slashOffset) + currentText.slice(slashOffset + rawLen);
   const node = nodeById(nodeId);
   if (node) {
@@ -8965,6 +9061,27 @@ function slashApply() {
     return;
   }
   if (trigger !== '@' && cmd.id === 'due') {
+    // Keyboard bridge: "/due:tomorrow" or "/start:2026-07-01" sets the date inline,
+    // skipping the dialog. A bare "/due" (no value) still opens the Schedule dialog.
+    const ds = parseDateSlash(query);
+    if (ds) {
+      if (parseDueDate(ds.raw) === null) {                     // P4: invalid value isn't silently dropped
+        flashHint('Not a valid date: ' + ds.raw + '. Try YYYY-MM-DD, today, tomorrow or today+N.');
+        return;
+      }
+      // LEAVE edit mode before mutating + rendering: a still-editing node's
+      // blur-during-render would exitEdit-clobber node.text back to the pre-strip
+      // buffer (the /due:val token would reappear). Mirrors the @table path above.
+      const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+      if (ed) ed.blur();
+      const cur = nodeById(nodeId); if (!cur) return;
+      pushUndo();
+      setDateProp(cur, ds.key, ds.raw);
+      markDirty(); render();
+      if (agendaOpen) renderAgenda();
+      flashHint('Set ' + ds.key + ' to ' + formatDueDate(parseDueDate(ds.raw)).label + '.');
+      return;
+    }
     openDueDateDialog(nodeId);
     return;
   }
@@ -12994,6 +13111,7 @@ function applyBlockCmd(id, nodeId, node, content) {
   // checked flags then DERIVE from the text (markdown-first; no type forcing).
   if (id.startsWith('state:')) {
     const kw = id.slice(6);
+    const wasDone = node.checked;
     const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
     if (oldPrefix && node.text.startsWith(oldPrefix)) node.text = node.text.slice(oldPrefix.length);
     node.text = setTodoState(node.text, kw);
@@ -13003,6 +13121,7 @@ function applyBlockCmd(id, nodeId, node, content) {
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
     markDirty();
     rerenderNode(nodeId);
+    flashHiddenIfDone(node, wasDone);   // P4: setting DONE while show-done is off hides the row; say so
     return;
   }
   // /todo: a markdown-writing helper, not a type. Ensure the node's text starts
@@ -13176,7 +13295,7 @@ function toggleTaskInNode(node, taskIndex) {
   node.text = lines.join('\n');
   node.checked = todoDoneFromText(node.text);
   markDirty();
-  if (node.checked !== wasDone) { render(); return; }
+  if (node.checked !== wasDone) { flashHiddenIfDone(node, wasDone); render(); return; }
   // done-ness unchanged → targeted repaint of this node (skips a full render)…
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
@@ -16487,12 +16606,12 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due to open the date picker; dates can be exact or relative like today+7.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the date picker. Dates can be exact or relative like today+7.",
     examples:[
-      { syn:'/due',       desc:'open the date picker' },
-      { syn:'2026-01-15', desc:'an exact date' },
-      { syn:'today',      desc:"today's date" },
-      { syn:'today+7',    desc:'a week from now' },
+      { syn:'/due:tomorrow',    desc:'set the due date inline' },
+      { syn:'/start:2026-07-01',desc:'set the start date inline' },
+      { syn:'/due',             desc:'open the date picker' },
+      { syn:'today+7',          desc:'a week from now (also today, today-N)' },
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',

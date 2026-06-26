@@ -6000,3 +6000,66 @@ test('findOrCreateDatedEntry — leaf day matches fuzzily (titled day reused)', 
   assert.equal(r.entry, titled);          // reused, not duplicated
   assert.equal(month.children.length, 1);
 });
+
+// ── parseDateSlash: the /due:value keyboard bridge ──────────────────────────
+test('parseDateSlash — due:tomorrow → { due, tomorrow }', () => {
+  assert.deepEqual(host(c.parseDateSlash('due:tomorrow')), { key: 'due', raw: 'tomorrow' });
+});
+test('parseDateSlash — start:YYYY-MM-DD', () => {
+  assert.deepEqual(host(c.parseDateSlash('start:2026-07-01')), { key: 'start', raw: '2026-07-01' });
+});
+test('parseDateSlash — relative today+N', () => {
+  assert.deepEqual(host(c.parseDateSlash('due:today+3')), { key: 'due', raw: 'today+3' });
+});
+test('parseDateSlash — case-insensitive key, value case preserved', () => {
+  assert.deepEqual(host(c.parseDateSlash('DUE:Tomorrow')), { key: 'due', raw: 'Tomorrow' });
+});
+test('parseDateSlash — trims surrounding whitespace in the value', () => {
+  assert.deepEqual(host(c.parseDateSlash('due:  today ')), { key: 'due', raw: 'today' });
+});
+test('parseDateSlash — bare verb (no value) → null (falls through to dialog)', () => {
+  assert.equal(c.parseDateSlash('due'), null);
+  assert.equal(c.parseDateSlash('due:'), null);
+  assert.equal(c.parseDateSlash('due:   '), null);
+});
+test('parseDateSlash — a non-date verb is not a date slash', () => {
+  assert.equal(c.parseDateSlash('todo:tomorrow'), null);
+  assert.equal(c.parseDateSlash('check:x>1'), null);
+  assert.equal(c.parseDateSlash(''), null);
+});
+test('parseDateSlash — only the FIRST colon splits key from value', () => {
+  // a value could itself contain a colon (none today, but be robust)
+  assert.deepEqual(host(c.parseDateSlash('due:a:b')), { key: 'due', raw: 'a:b' });
+});
+
+// ── looksLikeCellFormula: signpost spreadsheet-style cell formulas (P4) ──────
+test('looksLikeCellFormula — Excel A1-style refs', () => {
+  assert.equal(c.looksLikeCellFormula('=A1+B1'), true);
+  assert.equal(c.looksLikeCellFormula('=A1'), true);
+  assert.equal(c.looksLikeCellFormula('= a1 * b2'), true);
+});
+test('looksLikeCellFormula — Org $col/@row refs typed with a leading =', () => {
+  assert.equal(c.looksLikeCellFormula('=$1*$2'), true);
+  assert.equal(c.looksLikeCellFormula('=@2$3'), true);
+  assert.equal(c.looksLikeCellFormula('=$>'), true);
+});
+test('looksLikeCellFormula — arithmetic and function calls', () => {
+  assert.equal(c.looksLikeCellFormula('=2*3'), true);
+  assert.equal(c.looksLikeCellFormula('=cost + tax'), true);
+  assert.equal(c.looksLikeCellFormula('=SUM(A1:A3)'), true);
+  assert.equal(c.looksLikeCellFormula('=avg(score)'), true);
+});
+test('looksLikeCellFormula — plain literals that merely start with = do NOT trip', () => {
+  assert.equal(c.looksLikeCellFormula('=)'), false);        // emoticon
+  assert.equal(c.looksLikeCellFormula('='), false);         // lone equals
+  assert.equal(c.looksLikeCellFormula('=='), false);        // just signs, no operand
+  assert.equal(c.looksLikeCellFormula('= yes'), false);     // a word, no ref/arith
+});
+test('looksLikeCellFormula — non-formula cell content is false', () => {
+  assert.equal(c.looksLikeCellFormula('42'), false);
+  assert.equal(c.looksLikeCellFormula('Hello'), false);
+  assert.equal(c.looksLikeCellFormula('2026-06-26'), false);// a date is a literal value
+  assert.equal(c.looksLikeCellFormula(''), false);
+  assert.equal(c.looksLikeCellFormula('  '), false);
+  assert.equal(c.looksLikeCellFormula(null), false);
+});
