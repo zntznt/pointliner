@@ -332,7 +332,7 @@ The punch list. ✅ conformant · ⚠️ partial · ❌ non-conformant — with 
 
 | Feature | P1 predictable | P2 discoverable | P3 reachable | P4 responsive |
 |---|---|---|---|---|
-| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ | ✅ (flat ARIA tree: treeitem + level/posinset/setsize/expanded/selected — UXP-19; collapse-btn + breadcrumb named/keyboard-operable — UXP-14) | ✅ |
+| Outline nav / move / indent | ✅ (collapse on `Ctrl/⌘+./,`; UXP-5) | ✅ (`Tab`/`Shift+Tab` + Alt-arrows keyboard; mouse bullet-drag; **touch: drag the bullet sideways to indent/outdent + reorder — UXP-70**, closing the prior gap where touch had no nesting-depth front door) | ✅ (flat ARIA tree: treeitem + level/posinset/setsize/expanded/selected — UXP-19; collapse-btn + breadcrumb named/keyboard-operable — UXP-14) | ✅ |
 | Paragraph block | ✅ (documented prose-mode exception) | ✅ | ✅ (same treeitem/grid structure as all points; the prose-mode Enter carve-out is P1's documented exception, not a P3 gap) | ✅ |
 | `/` and `@` menus | ✅ | ✅ | ✅ (listbox + option + activedescendant; arrow/Enter/Esc nav — a11y Ph1 complete) | ✅ |
 | Markdown / TODO states | ✅ | ✅ | ✅ (badges emit keyword text, not color alone; done = strikethrough; priority = `[#A]` text — P3-4 satisfied) | ✅ |

@@ -5507,8 +5507,9 @@ function renderRow(r) {
       }
     });
     if (IS_TOUCH) {
-      // No hover on touch: long-press the bullet to open the node menu (type/move/delete/zoom).
-      attachBulletLongPress(bullet, node);
+      // No hover on touch: hold the bullet to open the node menu, or drag it sideways to
+      // reorder + change nesting depth (the touch indent/outdent front door).
+      attachBulletTouchGestures(bullet, node);
     } else {
       // dwell before showing: sweeping the cursor across bullets shouldn't pop the menu
       // on each one. Only open after the cursor rests ~200ms; a mouseleave cancels it.
@@ -13878,16 +13879,64 @@ function attachDragHandlers(bullet, row, node) {
   });
 }
 
-// Touch replacement for the desktop hover popup: a ~450ms press on a bullet opens the
-// node menu. A small move budget keeps scrolling from triggering it; the menu's own
-// Move up/down/Delete/type buttons give reordering + actions without HTML5 drag.
-function attachBulletLongPress(bullet, node) {
-  let timer = null, sx = 0, sy = 0;
-  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+// Touch gestures on a bullet (HTML5 drag never fires on touch, so this is the touch
+// front door for BOTH the node menu AND drag-to-reorder/nest — the latter being the
+// only way to change nesting depth on a phone, the whole point of an outliner):
+//   • hold still ~450ms                → open the node menu (the desktop hover popup)
+//   • move horizontally past a threshold → pick up and DRAG (reorder + nest), like the
+//     mouse HTML5 drag; vertical movement first is a scroll and cancels (unchanged).
+// The drag reuses the mouse path's drop model exactly (before/after/child via the same
+// Y-45%/X-past-content math, the same #drop-line/.drop-child-hi visuals, performDrop).
+function attachBulletTouchGestures(bullet, node) {
+  let timer = null, sx = 0, sy = 0, dragging = false;
+  const cancelTimer = () => { if (timer) { clearTimeout(timer); timer = null; } };
+
+  // Resolve the drop target+position under a touch point, mirroring the dragover handler.
+  function dropAt(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    const targetRow = el?.closest?.('.node-row');
+    const targetNodeEl = targetRow?.closest?.('.node');
+    const targetId = targetNodeEl?.dataset?.id;
+    if (!targetId || targetId === node.id || isDescOf(node.id, targetId)) return null;
+    const rr = targetRow.getBoundingClientRect();
+    const isTop = clientY < rr.top + rr.height * 0.45;
+    const contentEl = targetRow.querySelector('.node-content');
+    const cLeft = contentEl ? contentEl.getBoundingClientRect().left : rr.left + 36;
+    const isChild = !isTop && clientX > cLeft;
+    return { targetId, position: isTop ? 'before' : isChild ? 'child' : 'after', rr, cLeft };
+  }
+  function paintDrop(info) {
+    clearDropVisuals();
+    if (!info) return;
+    if (info.position === 'child') {
+      document.querySelector(`.node[data-id="${info.targetId}"]`)?.classList.add('drop-child-hi');
+    } else {
+      const y = (info.position === 'before' ? info.rr.top : info.rr.bottom) - 1;
+      dropLine.style.display = 'block';
+      dropLine.style.top  = y + 'px';
+      dropLine.style.left = info.cLeft + 'px';
+      dropLine.style.width = Math.max(0, info.rr.right - info.cLeft - 8) + 'px';
+    }
+  }
+  const endDrag = (commit, clientX, clientY) => {
+    if (!dragging) return;
+    dragging = false;
+    bullet.style.touchAction = '';
+    document.querySelector(`.node[data-id="${node.id}"]`)?.classList.remove('dragging');
+    const info = commit ? dropAt(clientX, clientY) : null;
+    dragDropInfo = null; dragId = null;
+    clearDropVisuals();
+    if (info) performDrop(node.id, info.targetId, info.position);
+    // The flag suppresses the trailing click's zoom; a post-move touchend may not emit a
+    // click at all, so clear it ourselves after any such click would have fired — else the
+    // NEXT tap on a bullet gets swallowed (line ~5497).
+    setTimeout(() => { bulletLongPressed = false; }, 350);
+  };
+
   bullet.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse') return;   // a real mouse still uses hover (hybrid devices)
-    sx = e.clientX; sy = e.clientY;
-    cancel();
+    sx = e.clientX; sy = e.clientY; dragging = false;
+    cancelTimer();
     timer = setTimeout(() => {
       timer = null;
       bulletLongPressed = true;              // suppress the trailing click's zoom
@@ -13896,10 +13945,31 @@ function attachBulletLongPress(bullet, node) {
     }, 450);
   });
   bullet.addEventListener('pointermove', e => {
-    if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel();
+    if (dragging) {
+      e.preventDefault();
+      paintDrop(dropAt(e.clientX, e.clientY));
+      return;
+    }
+    if (!timer) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    // Horizontal intent (and past threshold) → start a drag. A vertical-first move is a
+    // scroll: cancel the menu and let the page scroll (the original behavior).
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+      cancelTimer();
+      dragging = true;
+      bulletLongPressed = true;              // the trailing click must not also zoom
+      bullet.style.touchAction = 'none';     // stop the browser scrolling mid-drag
+      try { bullet.setPointerCapture(e.pointerId); } catch (_) {}
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+      dragId = node.id;
+      document.querySelector(`.node[data-id="${node.id}"]`)?.classList.add('dragging');
+      paintDrop(dropAt(e.clientX, e.clientY));
+    } else if (Math.hypot(dx, dy) > 10) {
+      cancelTimer();                          // a vertical/scroll move cancels the menu
+    }
   });
-  bullet.addEventListener('pointerup', cancel);
-  bullet.addEventListener('pointercancel', cancel);
+  bullet.addEventListener('pointerup', e => { cancelTimer(); endDrag(true, e.clientX, e.clientY); });
+  bullet.addEventListener('pointercancel', () => { cancelTimer(); endDrag(false); });
 }
 
 function performDrop(fromId, targetId, position) {
@@ -16483,6 +16553,14 @@ const GUIDE = [
       { syn:'Ctrl/Cmd+C',             desc:'copy the selection (Ctrl/Cmd+X cuts, Ctrl/Cmd+V pastes)' },
       { syn:'Tab / Shift+Tab',        desc:'indent or outdent the selection' },
       { syn:'Delete',                 desc:'delete the selection (Esc clears it)' },
+    ] },
+  { id:'move-nest', cat:'getting-around',
+    title:'Moving and nesting points',
+    body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point (it becomes a child of the point above) and Shift+Tab outdents it (it pops out to its parent's level); Alt+up/down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it. On a phone or tablet there is no Tab key, so drag the bullet sideways instead: press it and slide right to nest deeper, left to pop out, or up and down to reorder. Holding the bullet still opens its menu, and dragging straight up or down scrolls the page as usual.",
+    examples:[
+      { syn:'Tab / Shift+Tab',  desc:'indent / outdent (keyboard)' },
+      { syn:'Alt+↑ / Alt+↓',    desc:'move a point among its siblings' },
+      { syn:'Drag the bullet',  desc:'reorder, or drop to the right to nest (mouse and touch)' },
     ] },
   { id:'zoom', cat:'getting-around',
     title:'Zoom into a point',
