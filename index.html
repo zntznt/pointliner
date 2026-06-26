@@ -271,20 +271,19 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0;position:relative;z-index:2}
 .bullet-dot{width:6px;height:6px;border-radius:50%;background:var(--bullet);flex-shrink:0;transition:background .12s,transform .12s}
 .bullet:hover .bullet-dot{background:var(--bullet-h);transform:scale(1.3)}
-/* base bullet: the /base grid icon stands in for the dot — an at-a-glance "this point is
+/* base bullet: a small "rows" glyph stands in for the dot — an at-a-glance "this point is
    a base" signal. It behaves like any bullet: click zooms in, hover/long-press opens the
    base menu. (A base is a normal point in the outline; it only goes full-width when zoomed
    into — see `body.base-zoom`.) */
-/* A base's content is the whole grid (tall), so centering the icon in the 26px bullet
-   floats it well above the grid's header — it reads as misaligned next to a normal
-   point's dot, which sits on its text line. Pin the bullet to the top and drop the icon
-   onto the column-name row. The offset targets the header NAME TEXT, not the header
-   cell's box center: the name pill is vertical-align:bottom with extra line-height, so
-   its box sits higher than the visible bold text — aligning to the box (~14px) still
-   looks high, so this is tuned by eye to the rendered glyphs (~19px). */
+/* A custom CSS glyph — one narrow column of three stacked cells — drawn at the dot's
+   slim weight so it lives in the bullet gutter cleanly (the 12px Font Awesome grid icon
+   was too wide/heavy: it bulged left of the dot column and read as a widget, not a
+   bullet). Signals "rows of data" at a glance; click/hover behave like any bullet. */
 .bullet-base{align-items:flex-start}
-.bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;margin-top:19px;color:var(--muted);transition:color .12s,transform .12s}
-.bullet-base:hover .bullet-base-ic{color:var(--acc);transform:scale(1.12)}
+.bullet-base .bullet-base-ic{display:flex;flex-direction:column;gap:1.5px;width:6px;flex-shrink:0;margin-top:17px;transition:transform .12s}
+.bullet-base .bullet-base-ic>i{display:block;height:2.5px;border-radius:1px;background:var(--bullet);transition:background .12s}
+.bullet-base:hover .bullet-base-ic{transform:scale(1.15)}
+.bullet-base:hover .bullet-base-ic>i{background:var(--bullet-h)}
 
 /* node content */
 .node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
@@ -5452,9 +5451,13 @@ function renderRow(r) {
   if (node.type === 'base') {
     // A base's bullet is the /base grid icon (signals "this point is a base"). It still
     // behaves like any bullet — click zooms in, hover/long-press opens the base menu.
+    // A custom CSS glyph: a single narrow column of stacked cells. It signals "rows of
+    // data" (a base) while keeping a dot-like slim footprint, so it sits in the bullet
+    // gutter without the weight/width of the 12px Font Awesome grid icon. Three <i> rungs.
     const ic = document.createElement('span');
     ic.className = 'bullet-base-ic';
-    setIcon(ic, { fa:'fa-solid fa-table-cells', fb:'▦' });
+    ic.setAttribute('aria-hidden', 'true');
+    ic.innerHTML = '<i></i><i></i><i></i>';
     bullet.appendChild(ic);
   } else {
     const dot = document.createElement('span');
