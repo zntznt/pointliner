@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pointliner">
+  <!-- Maskable-safe: opaque background fills the canvas; the mark sits inside the ~80%
+       safe zone so the OS icon mask (circle/squircle/rounded) never clips it. -->
+  <rect width="512" height="512" rx="96" fill="#4a90d9"/>
+  <!-- circle-minus mark, white, scaled into the safe zone (center 256,256; r ~150) -->
+  <g fill="#ffffff" transform="translate(256 256) scale(0.62) translate(-256 -256)">
+    <path fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM184 232H328c13.3 0 24 10.7 24 24s-10.7 24-24 24H184c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/>
+  </g>
+</svg>
