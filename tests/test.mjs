@@ -6031,3 +6031,35 @@ test('parseDateSlash — only the FIRST colon splits key from value', () => {
   // a value could itself contain a colon (none today, but be robust)
   assert.deepEqual(host(c.parseDateSlash('due:a:b')), { key: 'due', raw: 'a:b' });
 });
+
+// ── looksLikeCellFormula: signpost spreadsheet-style cell formulas (P4) ──────
+test('looksLikeCellFormula — Excel A1-style refs', () => {
+  assert.equal(c.looksLikeCellFormula('=A1+B1'), true);
+  assert.equal(c.looksLikeCellFormula('=A1'), true);
+  assert.equal(c.looksLikeCellFormula('= a1 * b2'), true);
+});
+test('looksLikeCellFormula — Org $col/@row refs typed with a leading =', () => {
+  assert.equal(c.looksLikeCellFormula('=$1*$2'), true);
+  assert.equal(c.looksLikeCellFormula('=@2$3'), true);
+  assert.equal(c.looksLikeCellFormula('=$>'), true);
+});
+test('looksLikeCellFormula — arithmetic and function calls', () => {
+  assert.equal(c.looksLikeCellFormula('=2*3'), true);
+  assert.equal(c.looksLikeCellFormula('=cost + tax'), true);
+  assert.equal(c.looksLikeCellFormula('=SUM(A1:A3)'), true);
+  assert.equal(c.looksLikeCellFormula('=avg(score)'), true);
+});
+test('looksLikeCellFormula — plain literals that merely start with = do NOT trip', () => {
+  assert.equal(c.looksLikeCellFormula('=)'), false);        // emoticon
+  assert.equal(c.looksLikeCellFormula('='), false);         // lone equals
+  assert.equal(c.looksLikeCellFormula('=='), false);        // just signs, no operand
+  assert.equal(c.looksLikeCellFormula('= yes'), false);     // a word, no ref/arith
+});
+test('looksLikeCellFormula — non-formula cell content is false', () => {
+  assert.equal(c.looksLikeCellFormula('42'), false);
+  assert.equal(c.looksLikeCellFormula('Hello'), false);
+  assert.equal(c.looksLikeCellFormula('2026-06-26'), false);// a date is a literal value
+  assert.equal(c.looksLikeCellFormula(''), false);
+  assert.equal(c.looksLikeCellFormula('  '), false);
+  assert.equal(c.looksLikeCellFormula(null), false);
+});

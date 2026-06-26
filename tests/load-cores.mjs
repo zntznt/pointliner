@@ -190,7 +190,7 @@ export function loadCores() {
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','urgencyMark',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
-    'parseDateSlash',
+    'parseDateSlash','looksLikeCellFormula',
     'splitForSibling', 'mergeUpText',
     'flatRowStep',
   ];

@@ -3561,6 +3561,23 @@ function stripTblfm(text) {
   return (text || '').replace(TBLFM_LINE_RE, '').replace(/\n+$/, '');
 }
 
+// Detect a *spreadsheet-style* formula a user typed straight into a base cell —
+// `=A1+B1`, `=$1*$2`, `=SUM(...)`. Bases don't compute cell-level `=` formulas (Org's
+// #+TBLFM: recipe + the Calculate menu own that, by design), so such a cell stays
+// dead literal text; this lets the commit path flash a signpost to the real door
+// instead of swallowing the attempt silently (P4). Pure, Node-testable. Tight on
+// purpose: must START with `=` and the body must carry a ref/arithmetic signal, so a
+// plain literal that merely begins with `=` (e.g. an emoticon, "=)") never trips it.
+function looksLikeCellFormula(text) {
+  const s = String(text || '').trim();
+  if (s[0] !== '=' || s.length < 2) return false;
+  const body = s.slice(1);
+  return /[A-Za-z]+\d+/.test(body)          // A1-style cell ref (Excel/Sheets habit)
+      || /[@$][<>#]|[@$][+-]?\d/.test(body) // Org @row/$col ref typed with a leading =
+      || /\w[ ]*[-+*/][ ]*\w/.test(body)    // arithmetic between operands (=2*3, =cost+tax)
+      || /^[A-Za-z]+\s*\(/.test(body);      // a function call (=SUM(...), =avg(...))
+}
+
 // ─── static markdown tables (render-anywhere, read-only) ─────────────────────
 // A pipe table written in ANY point renders the same way a `#` renders a heading:
 // `mdToHtml` detects it and emits a static <table>. This is purely a RENDER path —
@@ -5074,6 +5091,7 @@ function buildTableWidget(node, readOnly) {
     forceIncludeId = node.id;
     const m = mtModel(node);
     cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    cell.dataset.enterVal = cell.textContent;   // value on entry — for the focusout formula-signpost diff
     // Keyboard-driven focus (Tab into the grid, arrow/Tab/Enter cell nav): select the
     // whole cell for type-to-overwrite. Pointer focus keeps the browser's click caret.
     if (!mtPointerFocus) mtSelectCellContents(cell);
@@ -5094,11 +5112,21 @@ function buildTableWidget(node, readOnly) {
     if (slashState?.cell && slashState.content === cell) hideSlashMenu();
     if (cell.classList.contains('mt-computed')) return;
     const raw = cell.textContent;
+    const enteredWith = cell.dataset.enterVal ?? '';   // value when the cell was focused
+    delete cell.dataset.enterVal;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
     mtCommit(node, m);
     cell.innerHTML = mtInline(node, raw);
     forceIncludeId = null;
+    // P4: a spreadsheet-style `=…` formula typed into a cell is dead text here — bases
+    // compute via the Column menu's Calculate/Formula (#+TBLFM:), not cell formulas.
+    // Signpost it, but only when the value actually CHANGED this edit (the input handler
+    // keeps the model synced every keystroke, so diff against the focus-in value, not the
+    // model) — so tabbing through a cell that already holds `=…` text doesn't re-nag.
+    if (raw !== enteredWith && looksLikeCellFormula(raw)) {
+      flashHint('Cells hold values. For a formula, open the column menu and use Calculate or Formula.');
+    }
     // A source-cell edit may feed a formula: recompute and repaint the target cells in
     // place (rebuilding the widget here would steal focus from the next-clicked cell).
     if (mtRecompute(node)) mtPatchCells(node, cell);
