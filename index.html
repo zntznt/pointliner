@@ -275,7 +275,13 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    a base" signal. It behaves like any bullet: click zooms in, hover/long-press opens the
    base menu. (A base is a normal point in the outline; it only goes full-width when zoomed
    into — see `body.base-zoom`.) */
-.bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:var(--muted);transition:color .12s,transform .12s}
+/* A base's content is the whole grid (tall), so centering the icon in the 26px bullet
+   floats it ~8px above the grid's header row — it reads as misaligned next to a normal
+   point's dot, which sits on its text line. Pin the bullet to the top and drop the icon
+   onto the header row (margin-top tuned to the fixed host+header padding); the offset is
+   stable across base sizes (within ~2px on touch's taller header, still well-aligned). */
+.bullet-base{align-items:flex-start}
+.bullet-base .bullet-base-ic{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;margin-top:14px;color:var(--muted);transition:color .12s,transform .12s}
 .bullet-base:hover .bullet-base-ic{color:var(--acc);transform:scale(1.12)}
 
 /* node content */
