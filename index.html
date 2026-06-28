@@ -1212,9 +1212,16 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
-  /* edit pencils on pills are hover-revealed on desktop — always show on touch */
-  .dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,.est-edit{
-    opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr)}
+  /* Edit pencils on pills are hover-revealed on desktop — always show on touch. */
+  .dice-edit,.mk-edit,.gr-edit,.var-edit,.est-edit{
+    opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr);position:relative}
+  /* Grow the TAP TARGET to ~44px without growing the visible 26px chip or the pill's line
+     height: an invisible ::before overlay extends the hit area outward, biased to the right
+     (away from the re-roll body, which is the icon+result to the pencil's left), so a near-
+     miss opens edit instead of re-rolling (D6). Layout-neutral — the overlay is positioned. */
+  .dice-edit::before,.mk-edit::before,.gr-edit::before,.var-edit::before,.est-edit::before{
+    content:'';position:absolute;top:50%;left:0;transform:translateY(-50%);
+    width:44px;height:44px}
   /* table row handle: wider tap target on touch, always show the grip cue */
   .mt-rowh{width:22px}
   .mt-rowh::before{opacity:.5}
@@ -16833,7 +16840,7 @@ const GUIDE = [
   // ── To-dos & organizing (guide) ───────────────────────────────────────────
   { id:'todo-syntax', cat:'todos', covers:['todo'],
     title:'To-dos & tasks',
-    body:"Track a shopping list, a reading list, a project backlog or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or give it a status word like TODO, NEXT or DONE. Click the colored badge to change the status or set a priority (A, B or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
+    body:"Track a shopping list, a reading list, a project backlog or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or start it with an UPPERCASE status word prefixed by #, like #TODO, #NEXT or #DONE (the # and the capitals are required: plain TODO stays text, and lowercase #todo is a tag that filters by status rather than a badge). Easiest is /todo, which writes the status for you. Click the colored badge to change the status or set a priority (A, B or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
     examples:[
       { syn:'- [ ] task',              desc:'task with a checkbox' },
       { syn:'- [x] done',              desc:'checked-off task' },
@@ -16917,7 +16924,7 @@ const GUIDE = [
   // ── Generators (guide) ────────────────────────────────────────────────────
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
-    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
+    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. The braces are what make it a pill, so bare 2d6 stays plain text, and an unclosed {2d6 waits until you type the closing brace. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
     examples:[
       { syn:'{2d6}',      desc:'roll two six-sided dice' },
       { syn:'{4d6kh3}',   desc:'roll 4, keep the highest 3' },
@@ -16928,7 +16935,7 @@ const GUIDE = [
     ] },
   { id:'grammar', cat:'generators', covers:['grammar','rolltable'],
     title:'Random picks & tables',
-    body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts, or make a raffle picker. Write choices in braces and one is picked at random each click. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
+    body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts, or make a raffle picker. Write choices in CURLY braces and one is picked at random each click: {red|blue|green}. Square brackets [red|blue] are not a pill, they stay plain text, so use { } not [ ]. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
     examples:[
       { syn:'{red|blue|green}',       desc:'pick one at random' },
       { syn:'{sword|gem 5}',          desc:'weighted: gem 5x as likely as sword' },
