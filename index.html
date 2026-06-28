@@ -1529,8 +1529,14 @@ function linkText(str, depth = 0) {
   });
 }
 // Title for a no-pill display sink: textForDisplay (prefixes/markers stripped) with
+// ARTIFACT tokens flattened to their shown value ([[dice:KEY]] → "2d6 = 8", etc.) and
 // link tokens resolved to legible text. Use this for breadcrumbs / "Linked from".
-function displayTitle(node) { return linkText(textForDisplay(node)); }
+// flattenArtifacts is the same resolver displayText uses for backlink/search labels —
+// without it a colon-form artifact token (which linkText's #-only regex doesn't touch)
+// leaks raw into the crumb's text/title/aria (the CLAUDE.md "never user-visible" invariant).
+function displayTitle(node) {
+  return linkText(flattenArtifacts(textForDisplay(node), node, globalVarMap));
+}
 
 // A point's text as it READS on screen — markdown, pill, and {…} syntax resolved
 // away to the displayed values, not the raw source. Block prefix stripped

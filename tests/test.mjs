@@ -5870,8 +5870,11 @@ test('linkText — labelled link → label; no token → passthrough; unresolved
 // The no-pill sinks must route titles through the legible wrapper, not raw
 // textForDisplay (which stays raw so it can build the workspace titles index).
 test('breadcrumb + backlinks render link-legible titles (displayTitle/linkText wiring)', () => {
-  assert.match(_src, /function displayTitle\(node\)\s*\{\s*return linkText\(textForDisplay\(node\)\)/,
-    'displayTitle must wrap textForDisplay in linkText');
+  // displayTitle resolves both layers for the no-pill sinks: artifact tokens flattened to
+  // their shown value (F1 — [[dice:KEY]] must never leak raw into a crumb), then link
+  // tokens to legible text. So: linkText wraps a flattenArtifacts(textForDisplay(...)) call.
+  assert.match(_src, /function displayTitle\(node\)\s*\{\s*return linkText\(flattenArtifacts\(textForDisplay\(node\)/,
+    'displayTitle must flatten artifacts (F1) then wrap in linkText');
   assert.match(_src, /function crumbLabel[\s\S]{0,160}displayTitle\(n\)/,
     'crumbLabel must use displayTitle');
   assert.match(_src, /bl-item['"];\s*\n\s*const t = displayText\(src\)/,
