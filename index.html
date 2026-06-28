@@ -527,9 +527,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-expr{color:var(--muted);font-family:var(--mono);font-size:.9em}
 .math-eq{color:var(--muted);opacity:.55;padding:0 3px}
 .math-result{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
-.math-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
-.math-roll:hover .math-edit{opacity:.6}
-.math-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
+/* (no .math-edit pencil — math is a single-gesture pill, body-click edits; E3) */
 .math-roll.math-bad{color:var(--del);border-style:dashed;cursor:default}
 .math-roll.math-bad:hover{box-shadow:none;border-color:var(--bdr)}
 .math-roll.math-err{border-color:var(--bad);border-style:dashed}
@@ -1214,9 +1212,16 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
-  /* edit pencils on pills are hover-revealed on desktop — always show on touch */
-  .dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,.est-edit{
-    opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr)}
+  /* Edit pencils on pills are hover-revealed on desktop — always show on touch. */
+  .dice-edit,.mk-edit,.gr-edit,.var-edit,.est-edit{
+    opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr);position:relative}
+  /* Grow the TAP TARGET to ~44px without growing the visible 26px chip or the pill's line
+     height: an invisible ::before overlay extends the hit area outward, biased to the right
+     (away from the re-roll body, which is the icon+result to the pencil's left), so a near-
+     miss opens edit instead of re-rolling (D6). Layout-neutral — the overlay is positioned. */
+  .dice-edit::before,.mk-edit::before,.gr-edit::before,.var-edit::before,.est-edit::before{
+    content:'';position:absolute;top:50%;left:0;transform:translateY(-50%);
+    width:44px;height:44px}
   /* table row handle: wider tap target on touch, always show the grip cue */
   .mt-rowh{width:22px}
   .mt-rowh::before{opacity:.5}
@@ -8731,6 +8736,44 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#mt-colpanel')) hideColPanel();
 });
 
+// Build the inline-artifact (pill) action rows for a point's Shift+F10 menu (C4) — the
+// keyboard front door to the pill wall. For each artifact record in the node's sidecars,
+// emit a primary-action row (re-roll/advance/re-sample, or edit for non-generators) and,
+// where the pill has a separate editor, an edit row. A short suffix (expr/name/result)
+// disambiguates when a point has several pills. Skips records whose token is gone (a
+// dead sidecar pruned on exitEdit). Returns [] when the node has no live pills.
+function collectPillActions(node) {
+  if (!node) return [];
+  const rows = [];
+  const has = (type, key) => node.text.includes(`[[${type}:${key}]]`);
+  const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
+  const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
+  for (const d of node.dice || []) if (has('dice', d.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'⚄' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
+    rows.push({ icon:PEN, label:'Edit dice' + tag(d.expr), fn:() => editDice(node, d.key) });
+  }
+  for (const g of node.grammar || []) if (has('grammar', g.key)) {
+    const verb = g.mode ? (g.mode === 'shuffle' ? 'Draw next' : 'Advance deck') : 'Re-generate';
+    rows.push({ icon:{ fa:'fa-solid fa-shuffle', fb:'❖' }, label:verb + tag(g.mode ? g.mode : (g.origin || g.result)), fn:() => rerollGrammar(node, g.key) });
+    rows.push({ icon:PEN, label:(g.mode ? 'Edit deck' : 'Edit grammar') + tag(g.mode ? g.mode : g.origin), fn:() => editGrammar(node, g.key) });
+  }
+  for (const m of node.math || []) if (has('math', m.key)) {
+    rows.push({ icon:PEN, label:'Edit expression' + tag(m.expr), fn:() => editMath(node, m.key) });
+  }
+  for (const e of node.est || []) if (has('est', e.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-left-right', fb:'∿' }, label:'Re-sample estimate' + tag(e.expr), fn:() => rerollEst(node, e.key) });
+    rows.push({ icon:PEN, label:'Edit estimate' + tag(e.expr), fn:() => editEst(node, e.key) });
+  }
+  for (const mk of node.markov || []) if (has('markov', mk.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-circle-nodes', fb:'⤳' }, label:'Re-walk chain' + tag(mk.name), fn:() => rerollMarkov(node, mk.key) });
+    rows.push({ icon:PEN, label:'Edit chain' + tag(mk.name), fn:() => editMarkov(node, mk.key) });
+  }
+  for (const v of node.vars || []) if (v.kind === 'pick' && has('var', v.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-roll pick' + tag(v.name), fn:() => rerollPickVar(node, v.key) });
+  }
+  return rows;
+}
+
 function showBulletPopup(nodeId, bulletEl, opts = {}) {
   clearTimeout(bpopTimer);
   clearTimeout(bpopShowTimer);   // any pending hover-show is now moot
@@ -8856,6 +8899,23 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { pushUndo(); node.children.sort((a,b) => compareTodo(a.text, b.text)); markDirty(); render(); hideBpop(); },
     });
   }
+  // Inline-artifact (pill) actions (C4): the pill wall is keyboard-reachable only by
+  // landing focus on a tabindex=-1 pill, which a sighted keyboard-only user can't do. So
+  // surface each pill's action (re-roll/advance/re-sample + edit) here, in the keyboard
+  // hub that opens on Shift+F10. Generators get a primary re-roll row; everything gets an
+  // edit row. A short label suffix (the expr/result) disambiguates multiple pills.
+  const pillRows = collectPillActions(node);
+  if (pillRows.length) {
+    const sep = document.createElement('div'); sep.className = 'cmd-sep'; bpop.appendChild(sep);
+    pillRows.forEach(({ icon, label, fn }) => {
+      const item = mkCmdItem(icon, label, '', () => { fn(); hideBpop(); });
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('tabindex', '-1');
+      bpop.appendChild(item);
+    });
+    const sep2 = document.createElement('div'); sep2.className = 'cmd-sep'; bpop.appendChild(sep2);
+  }
+
   actions.forEach(({ icon, label, fn, danger }) => {
     const item = mkCmdItem(icon, label, '', fn);
     item.setAttribute('role', 'menuitem');
@@ -11024,6 +11084,7 @@ function renderSeqGenPill(key, g) {
     + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}. Click to ${verb}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
+    + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -11171,6 +11232,7 @@ function rerollGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
   if (g.mode) {                                   // stateful sequence: ADVANCE, don't re-roll
+    if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
     g.result = advanceSeq(g);
     markDirty();
     announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
@@ -11180,6 +11242,7 @@ function rerollGrammar(node, key) {
   }
   const result = runGrammar(g.def, g.origin);
   if (result === null) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   g.result = result;
   markDirty();
   announce(`Re-generated: ${g.result}`);
@@ -11190,7 +11253,25 @@ function rerollGrammar(node, key) {
 function editGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
-  if (g.mode) return;  // a stateful sequence has no pencil — it's edited inline (unfolds to {mode: …})
+  if (g.mode) {
+    // A deck/sequence: its config is `mode: a | b | c`, not the rule grammar, so it
+    // gets the Deck dialog (not openGrammarDialog). Editing the items resets the draw
+    // state — a fresh deck/cycle — via makeSeqGen, while keeping the same record key so
+    // the [[grammar:KEY]] token in node.text still resolves (E4).
+    openDeckDialog({
+      title: 'Edit deck',
+      submitLabel: 'Save',
+      body: `${g.mode}: ${(g.items || []).join(' | ')}`,
+      onResult: rec => {
+        const fresh = makeSeqGen(rec.mode, rec.items, key);   // reuse the key; reset pos/bag
+        if (!fresh) return;
+        Object.assign(g, fresh);
+        markDirty();
+        repaintNodeContent(node);
+      },
+    });
+    return;
+  }
   openGrammarDialog({
     title: 'Edit grammar',
     submitLabel: 'Save & generate',
@@ -12188,6 +12269,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
 function rerollEst(node, key) {
   const e = node?.est?.find(x => x.key === key);
   if (!e) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   e.seed = estNewSeed();
   markDirty();
   const sm = (() => { const s = sampleUncertain(e.expr, EST_N, e.seed, node); return s && distSummary(s); })();
@@ -12238,17 +12320,19 @@ function renderMathPill(key, m) {
       + `<span class="math-expr">${escHtml(m.expr)}</span>`
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(label)}</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
+  // No edit pencil: math has ONE gesture — the whole body click edits (title/aria say so),
+  // so a pencil would be a redundant no-op duplicate (E3). Matches renderSeqPill, which
+  // likewise omits a pencil for a single-gesture pill. Generative pills (dice/grammar/etc.)
+  // keep their pencil because there the body does something else (re-roll).
   return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
     + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}. Click to edit">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
-    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -12683,6 +12767,7 @@ function rerollPickVar(node, key, opts) {
   if (!v || v.kind !== 'pick') return;
   const rolled = rollPickSource(v.expr);
   if (rolled === null) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   v.rolled = rolled;
   markDirty();
   announce(`${v.name} re-rolled: ${rolled}`);
@@ -13428,6 +13513,8 @@ function rerollDice(node, key) {
   if (!d) return;
   const terms = parseDice(d.expr, collectVars());
   if (!terms) return;
+  if (activeContentId == null) pushUndo();   // display-mode re-roll is undoable (E2); in edit
+                                             // mode the text-edit undo machinery owns the stack
   const { total, parts } = rollParsed(terms);
   d.total = total; d.parts = parts;
   markDirty();
@@ -13472,6 +13559,7 @@ function rerollMarkov(node, key) {
   if (!mk) return;
   const parsed = parseMarkov(mk.def);
   if (!parsed) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   mk.path = walkMarkov(parsed, mk.start, mk.steps);
   markDirty();
   announce(`${mk.name || 'Chain'} re-rolled: ${mk.path.join(' → ')}`);
@@ -16752,7 +16840,7 @@ const GUIDE = [
   // ── To-dos & organizing (guide) ───────────────────────────────────────────
   { id:'todo-syntax', cat:'todos', covers:['todo'],
     title:'To-dos & tasks',
-    body:"Track a shopping list, a reading list, a project backlog or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or give it a status word like TODO, NEXT or DONE. Click the colored badge to change the status or set a priority (A, B or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
+    body:"Track a shopping list, a reading list, a project backlog or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or start it with an UPPERCASE status word prefixed by #, like #TODO, #NEXT or #DONE (the # and the capitals are required: plain TODO stays text, and lowercase #todo is a tag that filters by status rather than a badge). Easiest is /todo, which writes the status for you. Click the colored badge to change the status or set a priority (A, B or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
     examples:[
       { syn:'- [ ] task',              desc:'task with a checkbox' },
       { syn:'- [x] done',              desc:'checked-off task' },
@@ -16836,7 +16924,7 @@ const GUIDE = [
   // ── Generators (guide) ────────────────────────────────────────────────────
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
-    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
+    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. The braces are what make it a pill, so bare 2d6 stays plain text, and an unclosed {2d6 waits until you type the closing brace. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
     examples:[
       { syn:'{2d6}',      desc:'roll two six-sided dice' },
       { syn:'{4d6kh3}',   desc:'roll 4, keep the highest 3' },
@@ -16847,7 +16935,7 @@ const GUIDE = [
     ] },
   { id:'grammar', cat:'generators', covers:['grammar','rolltable'],
     title:'Random picks & tables',
-    body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts, or make a raffle picker. Write choices in braces and one is picked at random each click. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
+    body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts, or make a raffle picker. Write choices in CURLY braces and one is picked at random each click: {red|blue|green}. Square brackets [red|blue] are not a pill, they stay plain text, so use { } not [ ]. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
     examples:[
       { syn:'{red|blue|green}',       desc:'pick one at random' },
       { syn:'{sword|gem 5}',          desc:'weighted: gem 5x as likely as sword' },
