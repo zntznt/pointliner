@@ -1206,7 +1206,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
   .bullet{height:30px;padding:0 7px;gap:6px}
-  .bullet-dot{width:8px;height:8px}
+  /* Touch has no hover, so the bullet's press-hold menu + drag-to-nest are invisible.
+     A faint always-on ring makes the dot read as an interactive control (more than a
+     decorative dot), hinting it's pressable. Single-tap still zooms; the ring is the
+     "there's more here" cue, the one-time hint toast teaches the gesture (D4). */
+  .bullet-dot{width:8px;height:8px;box-shadow:0 0 0 4px color-mix(in srgb,var(--bullet) 22%,transparent)}
+  /* dimmed-dot block types (headings/quote/code/para/divider) keep their muted look:
+     no ring where the dot itself is faded or hidden. */
+  .nt-h1>.node-row .bullet-dot,.nt-h2>.node-row .bullet-dot,.nt-h3>.node-row .bullet-dot,.nt-h4>.node-row .bullet-dot,.nt-h5>.node-row .bullet-dot,.nt-h6>.node-row .bullet-dot,.nt-quote>.node-row .bullet-dot,.nt-code>.node-row .bullet-dot,.nt-para>.node-row .bullet-dot,.nt-divider>.node-row .bullet-dot{box-shadow:none}
   .md-task-check{width:20px;height:20px}
   .nt-ol>.node-row>.bullet .bullet-dot,.nt-divider>.node-row>.bullet .bullet-dot{opacity:.45}
   .md-task{gap:.6em}
@@ -4015,6 +4022,24 @@ function flashHint(msg) {
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   clearTimeout(_hintTimer);
   _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
+}
+
+// One-time touch onboarding (D4): on touch there's no hover, so the bullet's press-hold
+// menu and drag-to-nest gestures are invisible. Teach them once with a longer-lived toast
+// the first time the app runs on a touch device. Persisted so it never nags again; a
+// failed localStorage read just skips it (never blocks boot).
+const TOUCH_HINT_KEY = 'pointliner_touchhint';
+function maybeShowTouchHint() {
+  if (!IS_TOUCH) return;
+  try { if (localStorage.getItem(TOUCH_HINT_KEY)) return; } catch (_) { return; }
+  try { localStorage.setItem(TOUCH_HINT_KEY, '1'); } catch (_) {}
+  let el = document.getElementById('flash-hint');
+  if (!el) { flashHint(''); el = document.getElementById('flash-hint'); }       // ensure the toast exists
+  el.textContent = 'Tip: press and hold a bullet for actions; drag it sideways to indent.';
+  announce(el.textContent);
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
+  clearTimeout(_hintTimer);
+  _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 5200);             // longer: it's instructional
 }
 // Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
 // announces what it touched via flashHint — counts include descendants, since a
@@ -16518,6 +16543,9 @@ const GUIDE = [
   { id:'edit-indent',  essential:true, essSection:'Edit', keys:['Tab','⇧+Tab'],           essLabel:'Indent / outdent' },
   { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','↓'],         essLabel:'Move point up / down' },
   { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
+  // Touch gestures (shown only on touch — the keyboard chords above don't apply there).
+  { id:'touch-menu',   essential:true, touchOnly:true, essSection:'Touch', keys:['Hold bullet'],  essLabel:'Point menu (move, delete, notes…)' },
+  { id:'touch-nest',   essential:true, touchOnly:true, essSection:'Touch', keys:['Drag bullet'],   essLabel:'Drag sideways to indent / outdent, or up / down to reorder' },
   { id:'edit-capture', essential:true, essSection:'Edit', keys:['⬓ Capture'],            essLabel:'Add to inbox from anywhere' },
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Toggle task on current line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state' },
@@ -16975,6 +17003,7 @@ const GUIDE = [
   const secMap = Object.create(null);
   for (const e of GUIDE) {
     if (!e.essential) continue;
+    if (e.touchOnly && !IS_TOUCH) continue;   // gesture rows only make sense on touch
     if (!secMap[e.essSection]) { secMap[e.essSection] = []; sections.push(e.essSection); }
     secMap[e.essSection].push(e);
   }
@@ -17420,6 +17449,10 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
     });
   } catch (_) { /* never let PWA wiring affect the app */ }
 })();
+
+// One-time touch onboarding (D4): teach the press-hold menu + drag-to-nest gestures the
+// first run on a touch device. Deferred so it lands after the initial render, not amid boot.
+setTimeout(maybeShowTouchHint, 900);
 </script>
 </body>
 </html>
