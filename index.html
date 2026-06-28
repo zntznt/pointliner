@@ -11171,6 +11171,7 @@ function rerollGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
   if (g.mode) {                                   // stateful sequence: ADVANCE, don't re-roll
+    if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
     g.result = advanceSeq(g);
     markDirty();
     announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
@@ -11180,6 +11181,7 @@ function rerollGrammar(node, key) {
   }
   const result = runGrammar(g.def, g.origin);
   if (result === null) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   g.result = result;
   markDirty();
   announce(`Re-generated: ${g.result}`);
@@ -12188,6 +12190,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
 function rerollEst(node, key) {
   const e = node?.est?.find(x => x.key === key);
   if (!e) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   e.seed = estNewSeed();
   markDirty();
   const sm = (() => { const s = sampleUncertain(e.expr, EST_N, e.seed, node); return s && distSummary(s); })();
@@ -12683,6 +12686,7 @@ function rerollPickVar(node, key, opts) {
   if (!v || v.kind !== 'pick') return;
   const rolled = rollPickSource(v.expr);
   if (rolled === null) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   v.rolled = rolled;
   markDirty();
   announce(`${v.name} re-rolled: ${rolled}`);
@@ -13428,6 +13432,8 @@ function rerollDice(node, key) {
   if (!d) return;
   const terms = parseDice(d.expr, collectVars());
   if (!terms) return;
+  if (activeContentId == null) pushUndo();   // display-mode re-roll is undoable (E2); in edit
+                                             // mode the text-edit undo machinery owns the stack
   const { total, parts } = rollParsed(terms);
   d.total = total; d.parts = parts;
   markDirty();
@@ -13472,6 +13478,7 @@ function rerollMarkov(node, key) {
   if (!mk) return;
   const parsed = parseMarkov(mk.def);
   if (!parsed) return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   mk.path = walkMarkov(parsed, mk.start, mk.steps);
   markDirty();
   announce(`${mk.name || 'Chain'} re-rolled: ${mk.path.join(' → ')}`);
