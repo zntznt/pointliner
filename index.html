@@ -11024,6 +11024,7 @@ function renderSeqGenPill(key, g) {
     + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}. Click to ${verb}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
+    + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -11192,7 +11193,25 @@ function rerollGrammar(node, key) {
 function editGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
-  if (g.mode) return;  // a stateful sequence has no pencil — it's edited inline (unfolds to {mode: …})
+  if (g.mode) {
+    // A deck/sequence: its config is `mode: a | b | c`, not the rule grammar, so it
+    // gets the Deck dialog (not openGrammarDialog). Editing the items resets the draw
+    // state — a fresh deck/cycle — via makeSeqGen, while keeping the same record key so
+    // the [[grammar:KEY]] token in node.text still resolves (E4).
+    openDeckDialog({
+      title: 'Edit deck',
+      submitLabel: 'Save',
+      body: `${g.mode}: ${(g.items || []).join(' | ')}`,
+      onResult: rec => {
+        const fresh = makeSeqGen(rec.mode, rec.items, key);   // reuse the key; reset pos/bag
+        if (!fresh) return;
+        Object.assign(g, fresh);
+        markDirty();
+        repaintNodeContent(node);
+      },
+    });
+    return;
+  }
   openGrammarDialog({
     title: 'Edit grammar',
     submitLabel: 'Save & generate',
