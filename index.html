@@ -158,6 +158,13 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #accent-row{display:flex;align-items:center;gap:8px;padding:5px 9px 8px 45px}
 .acc-row-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;flex-shrink:0}
 #accent-swatches{display:flex;gap:6px;flex-wrap:wrap}
+/* file-menu level mirror: hidden by default (the toolbar carries the level control);
+   the @media(max-width:560px) block reveals it where the toolbar version is hidden. */
+#fm-levels-group,#fm-levels-row{display:none}
+#fm-levels-row{align-items:center}
+#fm-levels{display:flex;gap:2px;margin-left:auto;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px;background:var(--cbg);flex-shrink:0}
+#fm-levels .lvl-btn{border:none;border-radius:4px;min-width:34px;min-height:34px;padding:0 6px;font-size:13px;color:var(--muted);background:transparent;cursor:pointer}
+#fm-levels .lvl-btn:hover{background:var(--hbg);color:var(--fg)}
 .acc-swatch{width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s,box-shadow .12s;padding:0;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
 .acc-swatch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .acc-swatch:hover{transform:scale(1.22)}
@@ -1113,6 +1120,24 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .logo-mark{width:20px;height:20px}
   #toolbar-row{gap:6px;padding:0 8px}
   #toolbar-row .spacer{display:none}
+  /* Phone toolbar can't hold logo + search + 4 level buttons + 5 icon toggles at 390px
+     (search collapsed to 0, last icon clipped). Declutter: the level control moves into
+     the logo/file menu (#fm-levels), and search collapses to a tappable magnifier that
+     expands to a full-width overlay on focus. The icon toggles then fit on one row. */
+  #level-ctl{display:none}
+  #fm-levels-group,#fm-levels-row{display:flex}   /* level control lives in the menu on phones */
+  /* collapsed search: a ~40px magnifier button; the input is hidden until focus */
+  #search-wrap{flex:0 0 auto;width:40px;min-width:40px;height:40px}
+  #search-box{width:40px;padding:0;border-color:transparent;background:transparent;cursor:pointer;color:transparent;height:40px}
+  #search-box::placeholder{color:transparent}
+  #search-wrap::before{left:50%;transform:translate(-50%,-50%);font-size:15px;color:var(--muted)}
+  #search-key{display:none}
+  /* expand on focus: overlay the whole toolbar with a full-width field */
+  #search-wrap:focus-within{position:absolute;left:8px;right:8px;width:auto;z-index:70;background:var(--bg)}
+  #search-wrap:focus-within #search-box{width:100%;padding:5px 44px 5px 32px;border-color:var(--acc);background:var(--hbg);color:var(--fg);cursor:text}
+  #search-wrap:focus-within #search-box::placeholder{color:var(--muted)}
+  #search-wrap:focus-within::before{left:12px;transform:translateY(-50%)}
+  #search-wrap:focus-within #search-clear{display:flex}
   #level-ctl .lvl-btn{padding:5px 9px}
   :root{--ind:16px}
   #outline{padding:20px 14px 140px}
@@ -1324,6 +1349,20 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">.md with artifacts frozen</span></div></div>
   <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">.txt as a plain outline</span></div></div>
   <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Self-contained HTML</span><span class="cmd-desc">.html, a shareable file that is the app plus this outline</span></div></div>
+
+  <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
+       version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels). -->
+  <div class="fm-group" id="fm-levels-group">Outline</div>
+  <div class="cmd-item" id="fm-levels-row">
+    <div class="cmd-icon" data-fa="fa-solid fa-list-ul" data-fb="≡">≡</div>
+    <div class="cmd-info"><span class="cmd-label">Show levels</span><span class="cmd-desc">Collapse deeper points</span></div>
+    <div id="fm-levels" role="group" aria-label="Show outline levels">
+      <button class="lvl-btn" data-lvl="1" aria-label="Show 1 level">1</button>
+      <button class="lvl-btn" data-lvl="2" aria-label="Show 2 levels">2</button>
+      <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
+      <button class="lvl-btn" data-lvl="0" aria-label="Show all levels">All</button>
+    </div>
+  </div>
 
   <div class="fm-group">Appearance</div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
@@ -16353,6 +16392,16 @@ document.getElementById('level-ctl').addEventListener('click', e => {
   if (!btn) return;
   if (btn.id === 'lvl-all') expandAll();
   else collapseToLevel(+btn.dataset.lvl);
+});
+// The file-menu mirror of the level control (phone, where the toolbar one is hidden).
+// data-lvl="0" is All here; otherwise collapse to N. Closes the menu after, like every row.
+document.getElementById('fm-levels').addEventListener('click', e => {
+  const btn = e.target.closest('.lvl-btn');
+  if (!btn) return;
+  e.stopPropagation();   // the row's own click shouldn't also do anything
+  if (+btn.dataset.lvl === 0) expandAll();
+  else collapseToLevel(+btn.dataset.lvl);
+  closeFileMenu();
 });
 
 // ─── theme + accent ──────────────────────────────────────────────────────────
