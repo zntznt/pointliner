@@ -132,14 +132,15 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .note-ind:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
 /* outline level control (segmented) */
 #level-ctl{display:flex;border:1px solid var(--bdr);background:var(--cbg);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;padding:2px;gap:1px;height:28px;align-items:stretch}
-#level-ctl .lvl-btn{border:none;border-radius:4px;padding:2px 8px;font-size:12px;min-width:26px;color:var(--muted)}
-#level-ctl .lvl-btn:hover{background:var(--hbg);color:var(--fg)}
+/* shared segmented-control button skin — toolbar #level-ctl and the file-menu #fm-levels mirror */
+#level-ctl .lvl-btn,#fm-levels .lvl-btn{border:none;border-radius:var(--r-xs);padding:2px 8px;font-size:12px;min-width:26px;color:var(--muted);background:transparent;cursor:pointer}
+#level-ctl .lvl-btn:hover,#fm-levels .lvl-btn:hover{background:var(--hbg);color:var(--fg)}
 #level-ctl #lvl-all{font-size:12px}
 /* search — absolutely centered, pointer-events guard keeps it from blocking toolbar sides */
 #search-wrap{position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}
 #search-wrap>*{pointer-events:auto}
 /* file menu */
-#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;min-width:252px;box-shadow:var(--sh-2)}
+#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;min-width:252px;box-shadow:var(--sh-2);max-height:85vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;overscroll-behavior:contain}
 @keyframes menu-pop{from{opacity:0;transform:scale(.96) translateY(-8px)}to{opacity:1;transform:none}}
 #file-menu.on{display:block;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
 /* header */
@@ -159,12 +160,12 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .acc-row-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;flex-shrink:0}
 #accent-swatches{display:flex;gap:6px;flex-wrap:wrap}
 /* file-menu level mirror: hidden by default (the toolbar carries the level control);
-   the @media(max-width:560px) block reveals it where the toolbar version is hidden. */
+   the @media(max-width:560px) block reveals it where the toolbar version is hidden.
+   Reuses the toolbar #level-ctl segmented-control skin (same border/cbg/r-sm/lvl-btn
+   recipe) rather than inventing a new control shape — only the height grows for touch. */
 #fm-levels-group,#fm-levels-row{display:none}
 #fm-levels-row{align-items:center}
-#fm-levels{display:flex;gap:2px;margin-left:auto;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px;background:var(--cbg);flex-shrink:0}
-#fm-levels .lvl-btn{border:none;border-radius:4px;min-width:34px;min-height:34px;padding:0 6px;font-size:13px;color:var(--muted);background:transparent;cursor:pointer}
-#fm-levels .lvl-btn:hover{background:var(--hbg);color:var(--fg)}
+#fm-levels{display:flex;border:1px solid var(--bdr);background:var(--cbg);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;padding:2px;gap:1px;align-items:stretch;margin-left:auto}
 .acc-swatch{width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s,box-shadow .12s;padding:0;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
 .acc-swatch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .acc-swatch:hover{transform:scale(1.22)}
@@ -1226,7 +1227,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      compact — padding/min-height grows the hit area, the glyph stays put). */
   #btn-done,#btn-notes,#btn-capture,#btn-journal,#btn-agenda{min-height:44px;min-width:44px}
   #level-ctl{height:auto}
-  #level-ctl .lvl-btn{min-height:40px;padding:5px 11px;display:flex;align-items:center}
+  /* touch sizing for the segmented control on both the toolbar (tablet) and the menu (phone) */
+  #level-ctl .lvl-btn,#fm-levels .lvl-btn{min-height:40px;padding:5px 11px;display:flex;align-items:center;justify-content:center}
   .logo{min-height:44px;display:flex;align-items:center}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
