@@ -905,9 +905,10 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 #sc-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #sc-toggle:hover{color:var(--fg);border-color:var(--acc)}
 #sc-toggle.on{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--acc)}
-/* keep the help affordance from colliding with the footnote panel */
-#fn-panel.on ~ #sc-toggle{bottom:calc(256px + env(safe-area-inset-bottom))}
-#fn-panel.on ~ .sc-panel{bottom:calc(296px + env(safe-area-inset-bottom))}
+/* The help button + its panel are kept above any open bottom panel (footnotes AND
+   backlinks, which stack) by syncHelpBtnBottom() in JS — it measures the live stack
+   height, so it handles either panel alone or both open. (Was a fn-panel-only CSS rule
+   that missed the backlinks panel, letting the ? button cover its Link buttons.) */
 .sc-footer{border-top:1px solid var(--bdr);margin-top:10px;padding-top:8px}
 .sc-guide-btn{background:none;border:none;color:var(--acc);cursor:pointer;font-size:12px;padding:2px 0;font-weight:500}
 .sc-guide-btn:hover{opacity:.8}
@@ -15485,6 +15486,24 @@ function syncBlPanelBottom() {
   const fn = document.getElementById('fn-panel');
   const fnH = (fn?.classList.contains('on')) ? fn.offsetHeight : 0;
   bl.style.bottom = (bl.classList.contains('on') && fnH > 0) ? fnH + 'px' : '0';
+  syncHelpBtnBottom();
+}
+
+// Keep the floating help button (#sc-toggle) and its panel above whatever bottom panels
+// are open, so they never cover a panel's content (e.g. the Link buttons in the unlinked-
+// references section of the backlinks panel). The footnote + backlinks panels stack
+// vertically (bl above fn — see syncBlPanelBottom), so the stack height is the sum of the
+// open panels' heights. CSS only handled the fn-panel case; this covers bl-panel and both.
+function syncHelpBtnBottom() {
+  const tog = document.getElementById('sc-toggle');
+  if (!tog) return;
+  const panel = document.querySelector('.sc-panel');
+  const on = id => { const el = document.getElementById(id); return el?.classList.contains('on') ? el.offsetHeight : 0; };
+  const stack = on('fn-panel') + on('bl-panel');   // 0 when neither is open
+  const safe = 'env(safe-area-inset-bottom)';
+  // 16px = the toggle's resting bottom; +16px gap above the panel stack.
+  tog.style.bottom = stack ? `calc(${stack + 16}px + ${safe})` : `calc(16px + ${safe})`;
+  if (panel) panel.style.bottom = stack ? `calc(${stack + 16 + 44}px + ${safe})` : '';
 }
 
 function showBlPanel(nodeId) {
@@ -15625,6 +15644,7 @@ function syncFnPanelBottom() {
   const kbH = (open && window.visualViewport)
     ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
   panel.style.bottom = kbH + 'px';
+  syncHelpBtnBottom();   // keep the help button clear of the panel when it shows/moves
 }
 
 function updateFnPanel(node) {
