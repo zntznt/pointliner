@@ -7459,6 +7459,19 @@ function attachContentEvents(content, node) {
     if (r && content.contains(r.startContainer)) { s.removeAllRanges(); s.addRange(r); }
     else { const rng = document.createRange(); rng.selectNodeContents(content); rng.collapse(false); s.removeAllRanges(); s.addRange(rng); }
   });
+
+  // Keyboard checkbox commit: the task checkbox is a real <input> with no tabindex, so a
+  // keyboard user can Tab to it and toggle with Space — which fires `change`, NOT the
+  // `mousedown` the click path uses. Without this the native tick flips but node.text is
+  // never written, so autosave persists the old state and a reload reverts it (data loss).
+  // Mouse clicks preventDefault() the native toggle in mousedown, so they never reach here.
+  content.addEventListener('change', e => {
+    if (content.dataset.editing) return;
+    if (e.target.classList && e.target.classList.contains('md-task-check')) {
+      toggleTaskInNode(node, +e.target.dataset.task);
+    }
+  });
+
   content.addEventListener('focus', () => {
     if (!content.dataset.editing) enterEdit(content, node);
     clearTimeout(fnHideTimer);
