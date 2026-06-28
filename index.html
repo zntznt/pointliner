@@ -527,9 +527,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-expr{color:var(--muted);font-family:var(--mono);font-size:.9em}
 .math-eq{color:var(--muted);opacity:.55;padding:0 3px}
 .math-result{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
-.math-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
-.math-roll:hover .math-edit{opacity:.6}
-.math-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
+/* (no .math-edit pencil — math is a single-gesture pill, body-click edits; E3) */
 .math-roll.math-bad{color:var(--del);border-style:dashed;cursor:default}
 .math-roll.math-bad:hover{box-shadow:none;border-color:var(--bdr)}
 .math-roll.math-err{border-color:var(--bad);border-style:dashed}
@@ -8731,6 +8729,44 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#mt-colpanel')) hideColPanel();
 });
 
+// Build the inline-artifact (pill) action rows for a point's Shift+F10 menu (C4) — the
+// keyboard front door to the pill wall. For each artifact record in the node's sidecars,
+// emit a primary-action row (re-roll/advance/re-sample, or edit for non-generators) and,
+// where the pill has a separate editor, an edit row. A short suffix (expr/name/result)
+// disambiguates when a point has several pills. Skips records whose token is gone (a
+// dead sidecar pruned on exitEdit). Returns [] when the node has no live pills.
+function collectPillActions(node) {
+  if (!node) return [];
+  const rows = [];
+  const has = (type, key) => node.text.includes(`[[${type}:${key}]]`);
+  const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
+  const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
+  for (const d of node.dice || []) if (has('dice', d.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'⚄' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
+    rows.push({ icon:PEN, label:'Edit dice' + tag(d.expr), fn:() => editDice(node, d.key) });
+  }
+  for (const g of node.grammar || []) if (has('grammar', g.key)) {
+    const verb = g.mode ? (g.mode === 'shuffle' ? 'Draw next' : 'Advance deck') : 'Re-generate';
+    rows.push({ icon:{ fa:'fa-solid fa-shuffle', fb:'❖' }, label:verb + tag(g.mode ? g.mode : (g.origin || g.result)), fn:() => rerollGrammar(node, g.key) });
+    rows.push({ icon:PEN, label:(g.mode ? 'Edit deck' : 'Edit grammar') + tag(g.mode ? g.mode : g.origin), fn:() => editGrammar(node, g.key) });
+  }
+  for (const m of node.math || []) if (has('math', m.key)) {
+    rows.push({ icon:PEN, label:'Edit expression' + tag(m.expr), fn:() => editMath(node, m.key) });
+  }
+  for (const e of node.est || []) if (has('est', e.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-left-right', fb:'∿' }, label:'Re-sample estimate' + tag(e.expr), fn:() => rerollEst(node, e.key) });
+    rows.push({ icon:PEN, label:'Edit estimate' + tag(e.expr), fn:() => editEst(node, e.key) });
+  }
+  for (const mk of node.markov || []) if (has('markov', mk.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-circle-nodes', fb:'⤳' }, label:'Re-walk chain' + tag(mk.name), fn:() => rerollMarkov(node, mk.key) });
+    rows.push({ icon:PEN, label:'Edit chain' + tag(mk.name), fn:() => editMarkov(node, mk.key) });
+  }
+  for (const v of node.vars || []) if (v.kind === 'pick' && has('var', v.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-roll pick' + tag(v.name), fn:() => rerollPickVar(node, v.key) });
+  }
+  return rows;
+}
+
 function showBulletPopup(nodeId, bulletEl, opts = {}) {
   clearTimeout(bpopTimer);
   clearTimeout(bpopShowTimer);   // any pending hover-show is now moot
@@ -8856,6 +8892,23 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { pushUndo(); node.children.sort((a,b) => compareTodo(a.text, b.text)); markDirty(); render(); hideBpop(); },
     });
   }
+  // Inline-artifact (pill) actions (C4): the pill wall is keyboard-reachable only by
+  // landing focus on a tabindex=-1 pill, which a sighted keyboard-only user can't do. So
+  // surface each pill's action (re-roll/advance/re-sample + edit) here, in the keyboard
+  // hub that opens on Shift+F10. Generators get a primary re-roll row; everything gets an
+  // edit row. A short label suffix (the expr/result) disambiguates multiple pills.
+  const pillRows = collectPillActions(node);
+  if (pillRows.length) {
+    const sep = document.createElement('div'); sep.className = 'cmd-sep'; bpop.appendChild(sep);
+    pillRows.forEach(({ icon, label, fn }) => {
+      const item = mkCmdItem(icon, label, '', () => { fn(); hideBpop(); });
+      item.setAttribute('role', 'menuitem');
+      item.setAttribute('tabindex', '-1');
+      bpop.appendChild(item);
+    });
+    const sep2 = document.createElement('div'); sep2.className = 'cmd-sep'; bpop.appendChild(sep2);
+  }
+
   actions.forEach(({ icon, label, fn, danger }) => {
     const item = mkCmdItem(icon, label, '', fn);
     item.setAttribute('role', 'menuitem');
@@ -12260,17 +12313,19 @@ function renderMathPill(key, m) {
       + `<span class="math-expr">${escHtml(m.expr)}</span>`
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(label)}</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
+  // No edit pencil: math has ONE gesture — the whole body click edits (title/aria say so),
+  // so a pencil would be a redundant no-op duplicate (E3). Matches renderSeqPill, which
+  // likewise omits a pencil for a single-gesture pill. Generative pills (dice/grammar/etc.)
+  // keep their pencil because there the body does something else (re-roll).
   return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
     + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}. Click to edit">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
-    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
