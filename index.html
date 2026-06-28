@@ -748,7 +748,7 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 #sel-tb.cell-sel .seltb-fn{display:none} /* footnotes are node-level, not per-cell */
 
 /* bullet popup */
-#bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;box-shadow:var(--sh-1);min-width:210px}
+#bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;box-shadow:var(--sh-1);min-width:210px;max-height:85vh;overflow-y:auto;scrollbar-width:thin}
 #bpop.on{display:block}
 .bpop-types{display:flex;gap:3px;padding:4px 4px 7px;flex-wrap:wrap;border-bottom:1px solid var(--bdr);margin-bottom:3px}
 .bpop-type{width:26px;height:26px;border-radius:var(--r-sm);background:var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);font-family:var(--mono);transition:background .1s,color .1s;flex-shrink:0}
@@ -968,7 +968,7 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .ag-run{font-size:11px;font-weight:600;color:var(--muted);flex-shrink:0}
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
 .ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
-.ag-mini{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-style:normal}
+.ag-mini{font-size:11px;color:var(--muted);white-space:normal;flex-shrink:1;min-width:0;font-style:normal}
 .ag-pane{min-width:0;display:flex;flex-direction:column;border-top:1px solid var(--bdr);margin-top:5px;padding-top:6px}
 /* ── Timeline (Gantt) — fixed names column left, scrollable chart right ── */
 .agg-outer{display:flex;min-width:0;align-items:flex-start}
@@ -1098,15 +1098,21 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #node-sel-bar{bottom:calc(72px + env(safe-area-inset-bottom))}
 
 /* ── narrow screens: reflow toolbar so search can't overlap the level control ── */
+/* The absolutely-centered search wrap overlaps and steals taps from the level buttons
+   on a narrow toolbar (reproduced at 768px tablet: buttons "1"/"2" sit inside the search
+   rect). Reflow it to an in-flow flex item below the width where the centered layout no
+   longer has room — 820px covers tablet portrait, not just phones (the prior 560px gate
+   was too low, so tablets stayed broken). The phone-only shrinking stays at 560px. */
+@media(max-width:820px){
+  #search-wrap{position:relative;left:auto;transform:none;flex:1 1 auto;min-width:0}
+  #search-box{width:100%}
+}
 @media(max-width:560px){
   .logo .logo-text{display:none}
   .logo{padding:4px 3px}
   .logo-mark{width:20px;height:20px}
   #toolbar-row{gap:6px;padding:0 8px}
   #toolbar-row .spacer{display:none}
-  /* search becomes an in-flow flex item (was absolutely centered → overlapped) */
-  #search-wrap{position:relative;left:auto;transform:none;flex:1 1 auto;min-width:0}
-  #search-box{width:100%}
   #level-ctl .lvl-btn{padding:5px 9px}
   :root{--ind:16px}
   #outline{padding:20px 14px 140px}
@@ -1190,6 +1196,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .mt-rowh::before{opacity:.5}
   /* name-pill header: keep a comfortable tap height (tap around the pill = Column menu) */
   .mt-colhead{padding-top:5px;padding-bottom:5px}
+  /* toolbar controls: meet the coarse-pointer tap-target floor (~44px). The icon/level/
+     logo buttons are 28px tall on desktop; give them a 44px touch height (keep the visual
+     compact — padding/min-height grows the hit area, the glyph stays put). */
+  #btn-done,#btn-notes,#btn-capture,#btn-journal,#btn-agenda{min-height:44px;min-width:44px}
+  #level-ctl{height:auto}
+  #level-ctl .lvl-btn{min-height:40px;padding:5px 11px;display:flex;align-items:center}
+  .logo{min-height:44px;display:flex;align-items:center}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
   .bullet{height:30px;padding:0 7px;gap:6px}
@@ -8494,8 +8507,13 @@ function showSelTypeMenu(anchorEl) {
   requestAnimationFrame(() => {
     const pr = bpop.getBoundingClientRect();
     if (pr.right > window.innerWidth - 8) bpop.style.left = (window.innerWidth - pr.width - 8) + 'px';
-    bpop.style.top = (rect.top - pr.height - 4) + 'px';     // above the bar
-    if (parseFloat(bpop.style.top) < 8) bpop.style.top = (rect.bottom + 4) + 'px';
+    let top = rect.top - pr.height - 4;                     // prefer above the anchor
+    if (top < 8) top = rect.bottom + 4;                     // no room above → go below
+    // Clamp so the popup (capped at 85vh + scroll in CSS) stays fully on-screen even on a
+    // short viewport — otherwise a tall menu below the anchor runs off the bottom edge.
+    const maxTop = window.innerHeight - 8 - pr.height;
+    if (top > maxTop) top = Math.max(8, maxTop);
+    bpop.style.top = top + 'px';
     bpop.querySelector('.bpop-type')?.focus();
   });
 }
