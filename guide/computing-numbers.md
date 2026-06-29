@@ -1,11 +1,11 @@
 # Computing numbers
 
-*Part of the [generative & computational guide](README.md). This is the **Compute** family —
-pills that do math: arithmetic, dates, sums that roll up your outline, uncertain estimates,
-and pass/fail checks.*
+*Part of the [generative & computational guide](README.md). This is the **Compute** family:
+pills that do math, including arithmetic, dates, sums that roll up your outline, uncertain
+estimates, and pass/fail checks.*
 
 The core is one syntax: **`{= expression}`**. The leading `=` says "compute this." Type it, click
-away, and you get a math pill showing the result. Unlike a dice roll, **a math pill is live** — it
+away, and you get a math pill showing the result. Unlike a dice roll, **a math pill is live**: it
 recomputes on its own whenever something it depends on changes.
 
 The **`@` → Math** dialog gives you the same thing with a live preview and a function reminder.
@@ -39,7 +39,7 @@ Call a function with parentheses. The big ones:
 
 **Percentages:** `pctof(part, whole)` → part as a % of whole; `pctchange(from, to)` → % change.
 
-**Conditionals** — two equivalent forms:
+**Conditionals**, two equivalent forms:
 
 ```
 {= hp > 0 ? "alive" : "dead"}     ternary
@@ -55,7 +55,7 @@ Comparisons (`> >= < <= == !=`) return `1`/`0`, so they compose with arithmetic.
 Conversions are just functions, named `from2to`:
 
 ```
-{= c2f(20)}      → 68      Celsius → Fahrenheit
+{= c2f(20)}      → 68      Celsius to Fahrenheit (and f2c the other way)
 {= km2mi(10)}    → 6.21    and mi2km, m2ft, ft2m, cm2in, in2cm
 {= kg2lb(70)}    → 154.3   lb2kg
 {= mph2kmh(60)}  kmh2mph, l2gal, gal2l
@@ -84,7 +84,7 @@ A math result that's a date renders as an **ISO date** automatically when you wr
 {= asdate(today + 90)}     → 2026-09-13
 ```
 
-> Dates also live as point **properties** (`start` / `due`) with their own scheduling UI — see the
+> Dates also live as point **properties** (`start` / `due`) with their own scheduling UI; see the
 > `/due` "Schedule" command. The functions above let you *compute* with those dates.
 
 ---
@@ -101,12 +101,12 @@ r = 5
 ```
 
 Variables can reference other variables (`area = pi*r^2`). Change `r` and every dependent pill
-updates live. A variable that holds *text* (a random pick) can't be used as a number — it fails
+updates live. A variable that holds *text* (a random pick) can't be used as a number; it fails
 visibly rather than guessing.
 
 ---
 
-## 6. Roll a number up your outline — aggregation
+## 6. Roll a number up your outline (aggregation)
 
 This is the one that makes the math pill see the *tree*. A `{= …}` expression can **roll up a
 property of the point's direct children**:
@@ -120,26 +120,39 @@ property of the point's direct children**:
 
 The argument (`cost`, `score`) is a **property key**, not a value. To use it:
 
-1. Give each child point a property — bullet menu → **Add property**, e.g. `cost: 12`.
+1. Give each child point a property (bullet menu → **Add property**), e.g. `cost: 12`.
 2. On the parent, write `{= sum(cost)}`.
 
-It recomputes **live** as you add, remove, or edit children — like a spreadsheet column total.
+It recomputes **live** as you add, remove, or edit children, like a spreadsheet column total.
 You can combine aggregations with the rest of math: `{= sum(cost) / count(cost)}` is the average
 the long way; `{= sum(hours) * rate}` mixes a rollup with a variable.
 
 Numeric properties roll up; date-shaped ones roll up as epoch-days (so `max(due)` finds the latest
-deadline — wrap it in `asdate(...)` to display it as a date).
+deadline, wrap it in `asdate(...)` to display it as a date).
+
+**Count words, not properties.** The same `{= …}` form also counts prose over a **scope** instead
+of a property:
+
+```
+{= words(subtree)}    self + every descendant (recurses the whole branch)
+{= words(self)}       just this point's text + note
+{= words(children)}   this point and its direct children
+```
+
+So a heading can carry a live word total of everything under it, and reading time is just
+composition: `{= words(subtree) / 200}` (about 200 words a minute). Unlike the property rollups,
+`words(subtree)` recurses the full branch, not only direct children.
 
 ---
 
-## 7. Uncertain values — estimates
+## 7. Uncertain values (estimates)
 
-Some numbers aren't a single value — they're a *range*. An **estimate** pill models that with a
+Some numbers aren't a single value; they're a *range*. An **estimate** pill models that with a
 quick Monte-Carlo simulation and shows you **mean ± [low, high]** plus a little sparkline of the
 distribution. Build one in **`@` → Estimate**, or type the shorthand:
 
 ```
-{5 to 10}          a 90% confidence range (5th–95th percentile)
+{5 to 10}          a 90% confidence range (5th to 95th percentile)
 {normal(8, 2)}     a normal distribution, mean 8, std-dev 2
 {uniform(1, 6)}    flat between 1 and 6
 ```
@@ -154,16 +167,16 @@ Click the pill to **re-sample**. The result is reproducible (it stores a seed, n
 so it survives save/reload and exports.
 
 **Rolling up estimates:** like `sum(cost)`, an estimate can aggregate **children's uncertain
-properties** — `sum(effort)` / `avg(effort)` over child points whose `effort` property is itself an
+properties** with `sum(effort)` / `avg(effort)` over child points whose `effort` property is itself an
 estimate. That's how you Fermi-estimate a whole project from uncertain parts (see the
 [Cookbook](cookbook.md)).
 
 > Estimates are a **separate engine** from `{= …}` math (a distribution isn't a single number), so
-> you can't put an estimate inside a `{= …}` expression — it fails visibly if you try.
+> you can't put an estimate inside a `{= …}` expression; it fails visibly if you try.
 
 ---
 
-## 8. Make the outline check itself — constraints
+## 8. Make the outline check itself (constraints)
 
 A **check** is a pass/fail rule you attach to a point with **`/check`** (or bullet menu → Add
 check). It's an `evalMath` boolean over the point and its children:
@@ -176,8 +189,8 @@ max(due) <= deadline       no child due after the deadline
 ```
 
 The point grows a small chip: a muted **✓** when it passes, a visible flag when it **fails** or
-can't evaluate. To sweep the whole document for problems, search **`is:failing`** — it lists every
-point whose check fails or errors. (Same machinery as section 6 — zero new syntax, just a boolean.)
+can't evaluate. To sweep the whole document for problems, search **`is:failing`**, which lists every
+point whose check fails or errors. (Same machinery as section 6: zero new syntax, just a boolean.)
 
 ---
 
@@ -192,7 +205,7 @@ Packing [%]      → Packing [40%]
 ```
 
 It counts each checkbox in the point plus each child task, and updates as you tick things off.
-It's plain text in the point — no setup, and it round-trips through save for free.
+It's plain text in the point, so there's no setup, and it round-trips through save for free.
 
 ---
 
@@ -210,10 +223,10 @@ A markdown table can carry a spreadsheet-style formula line, Org-mode style:
 
 The `#+TBLFM:` line computes the column and is hidden in the rendered table. For richer
 spreadsheet-like grids, the **`/base`** command makes an interactive base. (Tables are a deeper
-topic — this is just the pointer.)
+topic; this is just the pointer.)
 
 ---
 
-**Next:** the [Cookbook](cookbook.md) — ready-to-paste recipes that combine generate + compute: a
+**Next:** the [Cookbook](cookbook.md), ready-to-paste recipes that combine generate + compute: a
 budget that rolls up and lints itself, a deadline countdown, a Fermi estimate, and more. Or revisit
 [Generating text](generating-text.md).
