@@ -841,12 +841,19 @@ The product direction is now set. Read these before proposing or building:
 Note: internal links + backlinks and a multi-document workspace — previously "out of
 scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
 
-**Two more directories, not to be confused with `guidance/`:**
+**Three more directories, not to be confused with `guidance/`:**
 - `guide/` — the **end-user** guide (4 markdown files: a README + Generating text / Computing
   numbers / Cookbook), linked from the root `README.md`. This is the user-facing *how to use the
   pills* doc, distinct from `guidance/` (the dev-facing build-steering docs). **When you ship a
   user-facing feature, freshen `guide/` if the feature is something a user types or clicks** — it
   drifts the same way the concept guide does. (Same no-em-dash rule as all user-facing copy.)
+- `solorpg-guides/` — **user-facing worked examples** for using Pointliner at a solo-RPG table
+  (the use it was born from). A landing `README.md` plus one folder per case; each case ships a
+  walkthrough `.md` **and an importable demo `.opml`**. Linked from the root `README.md` and
+  `guide/README.md`. Convention for a new case: add `solorpg-guides/<case>/<case>.md` +
+  `<case>-demo.opml`, then list it in `solorpg-guides/README.md`. Demos use plain `{…}` source
+  (they promote to live pills on import), and any borrowed notation/oracle is credited and
+  linked, not reproduced (mind third-party licenses, e.g. the Lonelog example is CC BY-SA).
 - `parked/` — **deliberately shelved** direction docs (currently just the parked version-control
   pivot). Not stray, not active. Don't resurrect what's parked here without sign-off, and don't
   delete it as cruft.
