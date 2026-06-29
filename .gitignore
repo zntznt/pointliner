@@ -1,0 +1,8 @@
+# macOS Finder metadata
+.DS_Store
+
+# stray verification/build artifacts (this is a no-build, single-file repo —
+# any node_modules/package*.json come from throwaway test runs, never source)
+node_modules/
+package.json
+package-lock.json
