@@ -4388,6 +4388,51 @@ test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
     `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
 });
 
+// ── User-guide drift guards ───────────────────────────────────────────────────
+// The user guide (guide/**) restates a few CLOSED enumerated lists that also live
+// in the live code (MODIFIERS, the is: search operators). Those lists are the kind
+// the project's own P5 philosophy expects to GROW, so the prose copies drift the
+// moment someone extends the code and forgets the docs. These guards read the
+// canonical list out of index.html and assert the user guide enumerates exactly it
+// — the same wire-trip pattern as the GUIDE/SHORTCUTS guards above, extended to the
+// user docs (which previously had no drift guard at all). Read behavior, not prose.
+const _guidePath = (name) => resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', name);
+
+test('user-guide drift: generating-text.md lists exactly the code MODIFIERS set', () => {
+  // Canonical source: the MODIFIERS object keys in index.html.
+  const objStart = _src.indexOf('const MODIFIERS = ');
+  assert.ok(objStart !== -1, 'MODIFIERS object not found in index.html (renamed?)');
+  const objBody = _src.slice(objStart, _src.indexOf('}', objStart));
+  const codeMods = [...objBody.matchAll(/(?:^|[{,\s])([a-z]+)\s*:/g)].map(m => m[1]);
+  assert.ok(codeMods.length >= 6, `expected the modifier set, parsed only: ${codeMods.join(',')}`);
+
+  // The user-facing enumeration: the "The full set:" line in generating-text.md.
+  const doc = readFileSync(_guidePath('generating-text.md'), 'utf8');
+  const setLine = doc.split('\n').find(l => /full set:/i.test(l));
+  assert.ok(setLine, '"The full set:" modifier line not found in generating-text.md');
+  const docMods = [...setLine.matchAll(/`([a-z]+)`/g)].map(m => m[1]);
+
+  assert.deepEqual([...docMods].sort(), [...codeMods].sort(),
+    `generating-text.md modifier list has drifted from code MODIFIERS.\n` +
+    `  code: ${codeMods.sort().join(', ')}\n  docs: ${docMods.sort().join(', ')}\n` +
+    `Update the "The full set:" line in guide/generating-text.md to match.`);
+});
+
+test('user-guide drift: features.md lists every is: search operator from the code', () => {
+  // Canonical source: the is:(...) alternation in parseSearchQuery.
+  const m = _src.match(/is:\(([a-z|]+)\)/i);
+  assert.ok(m, 'is:(...) operator regex not found in index.html (parseSearchQuery changed?)');
+  const codeOps = m[1].split('|');
+  assert.ok(codeOps.length >= 3, `parsed too few is: operators: ${codeOps.join(',')}`);
+
+  // Every is:<op> must appear somewhere in the user-facing features.md.
+  const doc = readFileSync(_guidePath('features.md'), 'utf8');
+  const missing = codeOps.filter(op => !doc.includes(`is:${op}`));
+  assert.deepEqual(missing, [],
+    `features.md is missing these shipped is: search operators: ${missing.map(o => 'is:' + o).join(', ')}\n` +
+    `Add them to the "Search and filter" line in guide/features.md.`);
+});
+
 test('GUIDE drift guard: openGuide function is wired to the Concept guide button', () => {
   assert.ok(_src.includes('openGuide()'), 'openGuide() call missing — Concept guide button is not wired');
   assert.ok(_src.includes('function openGuide('), 'openGuide function declaration missing');
