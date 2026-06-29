@@ -62,7 +62,8 @@ An outliner with the usual depth, plus:
 - **Files:** OPML is the native format; export to Markdown, plain text, or a
   self-contained interactive HTML.
 
-A full, current capability list lives in [`guidance/features.md`](guidance/features.md).
+A friendly, scannable feature overview lives in [**What Pointliner can do**](guide/features.md).
+(The exhaustive engine-level reference for contributors is [`guidance/features.md`](guidance/features.md).)
 
 ## Quick start
 

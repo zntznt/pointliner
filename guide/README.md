@@ -61,6 +61,8 @@ There are two families of pills:
 
 ## Where to go next
 
+- **[What Pointliner can do](features.md):** a scannable map of every feature in one line each, with
+  links into the deep guides. Start here if you just want to know "can it do X?"
 - **[Generating text](generating-text.md):** alternation, weights, named rules, dice, modifiers
   (`{beast.a}` becomes "an ogre"), conditionals, decks, repeats, variables, item fields, roll
   tables, oracles, Markov chains. Build a name generator, a loot table, an NPC.
