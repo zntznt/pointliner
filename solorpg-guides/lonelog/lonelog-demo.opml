@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>Lonelog-style solo journal (Pointliner demo)</title></head>
+  <body>
+    <outline text="Lonelog-style solo journal" _id="llg00001">
+      <outline text="A demo of a Lonelog-inspired session log in Pointliner. Markers: &gt; do, ? ask, d: roll, -&gt; answer, =&gt; consequence. The {2d6} rolls are live, click one to re-roll. Lonelog notation by Roberto Bisceglie (CC BY-SA 4.0): https://lonelog.itch.io/lonelog" _id="llg00002"/>
+      <outline text="Scene: The nervous merchant" _id="llg00010">
+        <outline text="&gt; I sit down across from the merchant and ask about the back room." _id="llg00011"/>
+        <outline text="? Is he hiding something?  (likely)" _id="llg00012"/>
+        <outline text="d: {2d6}" _id="llg00013"/>
+        <outline text="-&gt; Yes, and..." _id="llg00014"/>
+        <outline text="=&gt; He freezes, then forces a smile. Something is back there, and it scares him. #thread/torn-letter" _id="llg00015"/>
+        <outline text="&gt; I lean in and lower my voice: I can help, if you tell me what it is." _id="llg00016"/>
+        <outline text="? Does he trust me enough to talk?" _id="llg00017"/>
+        <outline text="d: {2d6}" _id="llg00018"/>
+        <outline text="-&gt; No, but..." _id="llg00019"/>
+        <outline text="=&gt; He won't say it aloud, but he slides a torn scrap of paper across the table. #thread/torn-letter" _id="llg00020"/>
+      </outline>
+      <outline text="Scene: Reading the scrap" _id="llg00030">
+        <outline text="&gt; Outside, I unfold the scrap and read it." _id="llg00031"/>
+        <outline text="? Is the message a warning or a plea?" _id="llg00032"/>
+        <outline text="d: {2d6}" _id="llg00033"/>
+        <outline text="-&gt; A plea." _id="llg00034"/>
+        <outline text="=&gt; Three words, hard-pressed into the paper: They took her. #thread/torn-letter" _id="llg00035"/>
+      </outline>
+      <outline text="Tracker" _id="llg00040">
+        <outline text="Gold: {= 50 + 12}" _id="llg00041"/>
+        <outline text="Open threads: click #thread/torn-letter on any beat to gather them" _id="llg00042"/>
+      </outline>
+      <outline text="How to use this demo" _id="llg00050">
+        <outline text="Click a {2d6} pill to re-roll it. Notice the prose lines never change, only the rolls do, and only when you click." _id="llg00051"/>
+        <outline text="Click the bullet of a Scene line to fold the whole scene closed. A long campaign becomes a stack of scene headers." _id="llg00052"/>
+        <outline text="Click a #thread/torn-letter tag to pull up every beat that touches that thread across the whole journal." _id="llg00053"/>
+        <outline text="Full guide: solorpg-guides/lonelog/lonelog.md in the Pointliner repo." _id="llg00054"/>
+      </outline>
+    </outline>
+  </body>
+</opml>
