@@ -78,7 +78,8 @@ Turn the outline into a lightweight planner.
 - **Agenda.** A built-in calendar, timeline (Gantt), and due-list view of your dated points.
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
 - **Search and filter.** Search across the outline with operators: `#tag`, `is:done`, `is:failing`,
-  `due:overdue`, `key:value`, exact `"phrases"`, and `-` to exclude. Star a search to save it.
+  `state:waiting`, `due:overdue`, `key:value`, exact `"phrases"`, and `-` to exclude. Star a search
+  to save it.
 
 ## Linking and connecting notes
 
