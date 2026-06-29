@@ -623,7 +623,8 @@ A grab-bag of small, independent items from the audit (low priority; each a one-
 - **Decision recorded (owner, 2026-06-13) — search queries ship as search-box operators.**
   The "Boolean tag queries" watch item below is resolved: the query language is operators
   over the **existing** vocabulary — implicit AND, `-` negation, `"a b"` phrases, `#tag`
-  (the hashtag row reused, word-anchored), and `is:done`/`is:todo`/`is:note` (the one new
+  (the hashtag row reused, word-anchored and hierarchical, so `#thread` matches
+  `#thread/torn-letter`), and `is:done`/`is:todo`/`is:note` (the one new
   field-prefix pattern, a closed set). **OR is deferred** (precedence isn't worth deciding
   until real queries demand it). **No `state:` operator** — `#KEYWORD` states are
   hashtag-shaped, so `#waiting` already filters by state. The `evalMath` route

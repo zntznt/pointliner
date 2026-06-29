@@ -1307,7 +1307,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
         </div>
-        <div class="sh-row"><kbd>#tag</kbd><span>points with a tag, including state keywords (<code>#todo</code>)</span></div>
+        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><span>points with a tag (nested ok; <code>#tag</code> also matches <code>#tag/sub</code>), including state keywords (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails (the lint filter)</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
@@ -2818,8 +2818,9 @@ function mdInline(s) {
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
-  // hashtags
-  s = s.replace(/(?<![a-zA-Z0-9])#(\w+)/g, (_,t) => `<a class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`);
+  // hashtags: segments are [\w-]+, joined by / for nested tags (#thread/torn-letter).
+  // A trailing / is NOT consumed (so "#a/" tags as #a), keeping the slug clean.
+  s = s.replace(/(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g, (_,t) => `<a class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`);
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>tok[+i]);
   return s;
 }
@@ -7091,7 +7092,7 @@ function parseSearchQuery(q) {
     }
     const tok = m[3];
     let t;
-    if ((t = tok.match(/^#(\w+)$/)))                            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
+    if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)))            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^is:(done|todo|note|failing)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
@@ -7117,9 +7118,13 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
   if (term.kind === 'tag') {
     // mirror collectTags: hashtags live in node.text with [[…]] tokens blanked
     // (so link targets never read as tags); word-anchored both sides so #todo
-    // never matches #todos. term.value is \w+ by construction — regex-safe.
+    // never matches #todos. Nested tags are hierarchical: a query for #thread
+    // matches #thread AND #thread/torn-letter (the trailing boundary allows a /
+    // continuation but not another [\w-] char). term.value may contain / and -,
+    // so escape it for regex safety.
     const text = (node.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
-    return new RegExp('(?<![a-zA-Z0-9])#' + term.value + '(?![\\w])', 'i').test(text);
+    const esc = term.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i').test(text);
   }
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
@@ -10724,7 +10729,7 @@ function collectTags(rootNode) {
   if (useCache) rootNode = root;
   if (useCache && _tagsCacheVer === _varsVer && _tagsCached) return _tagsCached;
   const counts = new Map();
-  const TAG_RE = /(?<![a-zA-Z0-9])#(\w+)/g; // mirror mdInline's hashtag rule
+  const TAG_RE = /(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g; // mirror mdInline's hashtag rule (nested tags via /)
   function walk(n) {
     const text = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
     let m; TAG_RE.lastIndex = 0;
@@ -11409,6 +11414,21 @@ function promoteInlineShorthand(node) {
   }
   if (changed) node.text = out;
   return changed;
+}
+
+// Promote {…} shorthand across a whole loaded document. The edit-commit path
+// promotes a node on blur, but a doc arriving via OPML/HTML import (adoptDoc)
+// never passes through that path, so its typed {2d6}/{= …}/{a|b} would otherwise
+// render as raw source text. Walk the tree once on load and promote each node.
+// Returns the count promoted (handy for tests). Pure over the passed root.
+function promoteLoadedShorthand(rootNode) {
+  let n = 0;
+  (function walk(node) {
+    if (!node) return;
+    if (node.text && promoteInlineShorthand(node)) n++;
+    for (const c of node.children || []) walk(c);
+  })(rootNode);
+  return n;
 }
 
 // Inline-able artifact ⇄ grammar source. Returns the {…} text an artifact
@@ -14434,6 +14454,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   document.getElementById('search-box').value = '';            // normalization #1: clear stale search UI on every swap (the <input> path skipped this)
   document.getElementById('search-clear').classList.remove('on');
   migrateNodePrefixes(root);
+  promoteLoadedShorthand(root);   // typed-but-unpromoted {…} from an imported/loaded doc → fresh pills
   buildIndex(root, null);
   resetDocCaches();
   const assigned = !root.docId; ensureDocId(root);
@@ -16739,7 +16760,7 @@ const GUIDE = [
       { syn:'word word',              desc:'all terms must match' },
       { syn:'-term',                  desc:'exclude matches' },
       { syn:'"a b"',                  desc:'exact phrase' },
-      { syn:'#tag',                   desc:'tag or state keyword (#todo, #done)' },
+      { syn:'#tag',                   desc:'tag or state keyword (#todo, #done); #tag also matches nested #tag/sub' },
       { syn:'is:todo / is:done / is:note', desc:'open tasks / done tasks / noted points' },
       { syn:'is:failing',             desc:'points that break a check (the lint filter)' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo)' },
@@ -16762,11 +16783,12 @@ const GUIDE = [
     examples:[] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
-    body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point (like #idea or #urgent) and it becomes a clickable tag. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",
+    body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point (like #idea or #urgent) and it becomes a clickable tag. Nest tags with a slash to build a little hierarchy, like #thread/torn-letter under #thread: a search for the parent #thread rounds up every point under it, while #thread/torn-letter narrows to just that branch. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",
     examples:[
-      { syn:'#tag',        desc:'label a point by topic, status or project' },
-      { syn:'#',           desc:"opens a menu of tags you've used, with counts" },
-      { syn:'click a tag', desc:'filter to every point that shares it' },
+      { syn:'#tag',         desc:'label a point by topic, status or project' },
+      { syn:'#tag/subtag',  desc:'nest a tag; searching #tag also finds #tag/subtag' },
+      { syn:'#',            desc:"opens a menu of tags you've used, with counts" },
+      { syn:'click a tag',  desc:'filter to every point that shares it' },
     ] },
   { id:'refile', cat:'getting-around',
     title:'Refile a point',
