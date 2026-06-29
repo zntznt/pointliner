@@ -165,8 +165,10 @@ Zettelkasten shipped first and everywhere; the multi-file network rode on Phase 
 
 ### Phase 4 — Later
 - ⊘ **Graph view** — **parked** (product call: low actionable value for a single notebook; the
-  backlinks panel + cross-doc backlinks cover navigation). **daily notes** — not started; **dates +
-  agenda view** — ✅ shipped (`@due`/agenda, 2026-06-13). *(backlog: Node links & backlinks / Dates)*
+  backlinks panel + cross-doc backlinks cover navigation). **daily notes** — ✅ shipped (the Journal /
+  daily-notes feature: toolbar button + `/journal`, in-doc append + on-disk file-per-day modes,
+  delivered June 2026); **dates + agenda view** — ✅ shipped (`@due`/agenda, 2026-06-13).
+  *(backlog: Node links & backlinks / Dates)*
 
 ### Beyond the plan — ✅ Whole-folder search (delivered)
 Not in the original phases, but the natural everyday gap once the notebook had many docs: **one
@@ -184,9 +186,10 @@ Phase 1's weight is broken up.
 With Phases 0–3 + cross-file links + whole-folder search delivered, the planned roadmap is
 **essentially complete**. The app is now feature-saturated, so the next moves are a judgment call
 rather than a fixed plan — **the prioritized value-vs-effort assessment lives in
-`guidance/backlog.md` → "What's worth doing next"**. Headlines: best cheap win = **daily notes**;
-highest-impact investment = **lean↔guided discoverability modes**; the rest is interleave-filler or
-niche. CRDT/version-control stays parked; mirrors/archive stay shelved.
+`guidance/backlog.md` → "What's worth doing next"**. Highest-impact investment =
+**lean↔guided discoverability modes**; the rest is interleave-filler or niche. (Daily notes, once the
+"best cheap win" here, has since shipped — see Phase 4.) CRDT/version-control stays parked;
+mirrors/archive stay shelved.
 
 ---
 
@@ -219,28 +222,30 @@ unit conversion, and **random variables** — a variable whose value is a frozen
 re-rollable grammar pick, the Perchance-style generation model — are **done**; see
 `guidance/features.md` and `guidance/generation-direction.md`. The earlier per-expansion
 *bound picks* attempt (`{a := …}`, PR #51) was **reverted** and is superseded by random
-variables — do not reintroduce it. The oracle was reverted and is listed below as pending.)
-- **Oracle (tunable yes/no) — pending:** a configurable odds-based oracle pill — pick a
-  likelihood, get a yes/no (optionally with degrees of yes/no and a random-event nudge),
-  straight off the artifact recipe. **IP guardrail:** the odds bands and any result/word
-  tables must be **original or user-defined** — do **not** copy the specific values or tables
-  from any existing published oracle system; those are copyrighted. The mechanic (tunable
-  yes/no odds) is fine; only the data has to be your own. (A prior version that used such
-  tables verbatim was built then reverted for this reason — the artifact wiring is understood;
-  only the data/values need to be original.)
-- **Dice:** reroll (`r`); extend success pools with bane/botch counting.
+variables — do not reintroduce it.)
+- **Oracle (tunable yes/no) — ✅ shipped** (the `@` "Oracle (yes/no)" door; `openOracleDialog`/
+  `ORACLE_BANDS`, a likelihood picker over **original** odds bands building an anonymous
+  `Yes N | No M` weighted-alt pill). The earlier version that copied a published oracle's tables
+  verbatim was reverted; the shipped one uses original bands. **IP guardrail (still binding for any
+  future tweak):** odds bands and any result/word tables must be **original or user-defined** — do
+  **not** copy specific values from any published oracle system; the mechanic is fine, only the data
+  has to be your own.
+- **Dice:** reroll-once (`rK`) — ✅ shipped (`4d6r1`). Still open: extend success pools with
+  bane/botch counting (`generative-status.md` marks bane/botch won't-do).
 - **Math:** more `evalMath` primitives as wanted (date-format variants, more units) — all
   additive, no architecture change.
 - **Inline quick syntax** `{= expr}` / `{NdM}` that evaluates at render *without* a stored
-  record — an additive second syntax alongside `[[type:key]]`. (Distinct from typed `{…}`
-  shorthand, which *promotes* to a stored pill; this would be the render-only variant.)
-  **⚠ UXP-20 flag:** as written this is a P5-3 violation — a second path for the same
-  capability. It ships only if it *replaces/subsumes* the promote behavior (one `{…}`
-  semantics, not two), with the inventory updated; see `ux-remediation.md` UXP-20.
-- **Aggregations over children** (`sum`/`count`/`avg` of a subtree) — a render-time subtree
-  walk; reuse `markDirty`/`_varsVer` invalidation. **⚠ UXP-20 route:** prefer an `evalMath`
-  primitive / `resolveBrace` branch (children-scope functions inside `{…}`) over the
-  "new token type" sketch — a new token needs the explicit-decision path. *(heavier)*
+  record — an additive second syntax alongside `[[type:key]]`. **Not shipped, and not as written:**
+  the typed `{…}` shorthand that *promotes* to a stored pill **did** ship (you can type `{2d6}`/`{= …}`
+  and get a pill — `promoteInlineShorthand`/`classifyBraceBody`), which covers the user-facing need.
+  The render-only-without-record variant remains a P5-3 violation (a second path for the same
+  capability) and ships only if it *subsumes* the promote behavior, one `{…}` semantics, not two; see
+  `ux-remediation.md` UXP-20.
+- **Aggregations over children** (`sum`/`count`/`avg`/`min`/`max` of a subtree) — ✅ **shipped as
+  B1.** It took exactly the UXP-20-preferred route below: a render-time substitution before
+  `evalMath` (`expandAggExpr`/`aggregateChildren`), no new token type, reusing `_varsVer`
+  invalidation. `{= words(subtree|self|children)}` later joined the family over prose. See
+  `guidance/features.md`.
 - **Decks / bags** (draw without replacement) — ✓ **shipped (2026-06-14) as stateful
   sequences.** `{shuffle|cycle|once|stopping: a|b|c}` — shuffle is the deck (draw without
   replacement, reshuffle when empty); the persisted per-instance state (`pos`/`bag`) rides

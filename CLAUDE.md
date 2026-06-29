@@ -690,9 +690,11 @@ Sequences (user-definable state sets: the built-in `TODO NEXT WAITING | DONE` is
 `@sequence` declares a `[[seq:key]]` pill + `node.seq` sidecar; `/` applies any state as
 `#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) ·
 Search query operators (the UXP-20-routed decision: implicit AND, `-` NOT, `"a b"` phrases,
-`#tag` word-anchored, `is:done/todo/note`; malformed tokens stay literal text — the `{…}`
-escape-hatch rule; OR deferred; no `state:` operator — `#KEYWORD` states are hashtag-shaped
-so `#waiting` filters by state for free; pure cores `parseSearchQuery`/`queryMatchesNode`;
+`#tag` word-anchored, `is:done/todo/note/failing`; malformed tokens stay literal text — the `{…}`
+escape-hatch rule; OR deferred. `#KEYWORD` states are hashtag-shaped so `#waiting` filters by
+state for free, AND there is a seq-aware **`state:value`** operator (`state:waiting`/`state:done`,
+matched only against recognized states; `status:` stays the generic property lookup, not a
+synonym); pure cores `parseSearchQuery`/`queryMatchesNode`;
 doors: the focus-shown legend under the search box + the `?` panel's "Search & filter"
 section; the search path ignores the show-done toggle as it always has, so `is:done`/
 `-is:done` are the explicit override) ·

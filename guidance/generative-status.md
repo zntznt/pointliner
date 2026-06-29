@@ -11,7 +11,9 @@
 As of 2026-06-15 the **generative + computational catalogue is complete** — every item in
 `enhancement-research.md`'s A/B inspiration tables is either shipped or a recorded, deliberate
 deferral. The two engines (the `{…}` grammar + `evalMath`) plus the B2 sampler cover the whole
-surface. The next frontier is a *different chapter* — the PKM / multi-document workspace.
+surface. The PKM / multi-document workspace — once "the next frontier" — has since shipped too
+(connected workspace folder, cross-document links + backlinks, whole-folder search; see
+`features.md` and `roadmap.md`), so that chapter is no longer the open frontier either.
 
 ## Shipped (the engine, end to end)
 
@@ -102,9 +104,11 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
 - **New top-level syntax in general** — the §2 inventory is closed; growth needs explicit sign-off and
   retirement of what it overlaps (P5).
 
-## The next frontier (a separate, heavier chapter)
+## The PKM chapter — also shipped (update 2026-06)
 
 **PKM / multi-document workspace** (Zettelkasten): cross-document links + backlinks, the
-multi-document workspace itself, storage/durability, and the lean↔guided UX modes. Same-document node
-links + the `[[` picker already ship; the multi-doc workspace is the unbuilt part. Locked direction:
-`guidance/roadmap.md`. This is genuinely a good place to pause and *use* the engine before opening it.
+multi-document workspace itself, and whole-folder search. Once flagged here as the next frontier,
+this chapter has since **shipped** — same-document node links + the `[[` picker, then the connected
+workspace folder (FSA + IndexedDB), cross-document `[[docId#nodeId]]` links + backlinks, and
+folder-wide search (CF-1…CF-5 / WS-1…WS-2). See `features.md` and `roadmap.md`. What remains genuinely
+open lives in `backlog.md` (e.g. clocking, board/Kanban, tag inheritance) — not here.
