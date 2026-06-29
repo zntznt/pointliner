@@ -1,38 +1,13 @@
 # The Pointliner guide
 
-The home for everything written to help you *use* Pointliner. Whatever you came for, start here.
-
-**The guides:**
-
-- **[What Pointliner can do](features.md)** is the scannable feature map: every capability in one
-  line, with links to where you learn it. Skim this if you just want to know "can it do X?"
-- **The generative & computational guide** (this page, below) teaches the **pills**: the live
-  widgets you drop inside a point. It splits into [Generating text](generating-text.md) (dice,
-  tables, name makers, oracles) and [Computing numbers](computing-numbers.md) (math, dates,
-  rollups, estimates).
-- **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
-- **[Solo RPG guides](solo-rpg/README.md)** are worked examples for the use Pointliner was born
-  from: playing and journaling a tabletop game in one file, each with an importable demo.
-
-The plain outliner (nested points, markdown, to-dos, dates, links, search) is self-explanatory;
-the rest of this page is the friendly introduction to the pills.
-
----
-
-## The pills: generative & computational
-
-Pointliner isn't just an outliner. Inside any point you can drop a **pill**: a little live widget
-that rolls dice, generates names, picks from a table, does math, tracks a budget, or models an
-uncertain estimate, all offline, in the one file, with nothing to install.
-
-This part of the guide explains **how the hell all that works** and how to use it. No coding
-required: if you can type `{` you can use everything here.
-
----
+Pointliner is an **outliner**: a document of nested bullet points (each one is called a
+**point**), with markdown, to-dos, dates, and search. That part is self-explanatory, you just
+type. What makes Pointliner different is the **pill**.
 
 ## The one big idea: `{curly braces}` become pills
 
-Type something inside `{…}` and, **when you click away from the point**, it turns into a **pill**:
+Type something inside `{…}` in a point and, **when you click away**, it turns into a **pill**: a
+little live widget you can click.
 
 | You type | It becomes |
 |---|---|
@@ -41,13 +16,36 @@ Type something inside `{…}` and, **when you click away from the point**, it tu
 | `{= 2 * 19}` | a math pill showing **38** |
 | `{5 to 10}` | an estimate pill: **7.2 (5 to 10) ▁▂▄▆█▆▄▂▁** |
 
-That's the whole model. **Type in braces, get a live pill.** To edit a pill, click the **text
-around** it and it unfolds back into the `{…}` you typed; fix it and click away again.
+That's the whole model. **Type in braces, get a live pill.** No coding required: if you can type
+`{` you can use everything in this guide. There are two families of pills, **Generate** (random
+text: dice, tables, name generators, decks, oracles) and **Compute** (math: arithmetic, dates,
+sums that roll up your outline, uncertain estimates), and we will get to how the hell all of it
+works.
 
-There are two families of pills:
+## Your first pill (30 seconds)
 
-- **Generate** makes *random text*: dice, tables, name generators, decks, oracles. See [Generating text](generating-text.md).
-- **Compute** does *math*: arithmetic, dates, sums that roll up your outline, uncertain estimates. See [Computing numbers](computing-numbers.md).
+1. Open Pointliner and click into the empty point. Type `Treasure: {2d6} gold`.
+2. Press `Enter` (or click a different point) to **click away**. The `{2d6}` becomes a dice pill
+   showing a rolled number, e.g. **Treasure: 7 gold**.
+3. **Click the pill.** It re-rolls. Click again, a new number each time.
+4. To change it, click the **words** next to the pill (not the pill itself). It unfolds back to
+   `{2d6}` so you can retype it; click away to turn it back into a pill.
+
+That is the entire interaction model. Everything else is just more kinds of `{…}`.
+
+---
+
+## The guides
+
+- **[What Pointliner can do](features.md)** is the scannable feature map: every capability in one
+  line, with links to where you learn it. Skim this if you just want to know "can it do X?"
+- **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
+  the two deep guides for the pill families above.
+- **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
+- **[Solo RPG guides](solo-rpg/README.md)** are worked examples for the use Pointliner was born
+  from: playing and journaling a tabletop game in one file, each with an importable demo.
+
+The rest of this page is the friendly introduction to how pills behave.
 
 ---
 
@@ -80,7 +78,9 @@ There are two families of pills:
 
 ---
 
-## Go deeper
+## Go deeper into the two families
+
+The two deep guides (linked above) each cover one pill family in full:
 
 - **[Generating text](generating-text.md):** alternation, weights, named rules, dice, modifiers
   (`{beast.a}` becomes "an ogre"), conditionals, decks, repeats, variables, item fields, roll
@@ -88,12 +88,6 @@ There are two families of pills:
 - **[Computing numbers](computing-numbers.md):** expressions, functions, units, dates, variables,
   **rolling sums up the tree** (`{= sum(cost)}`), **uncertain estimates** (`{5 to 10}`), **checks**
   (`sum(cost) <= budget`), progress cookies, table formulas.
-- **[Cookbook](cookbook.md):** copy-paste recipes such as a name generator, a dungeon stocker, a
-  yes/no oracle, a budget that rolls up and lints itself, a deadline countdown, a Fermi estimate,
-  a card deck.
-- **[Solo RPG guides](solo-rpg/README.md):** worked examples for playing and journaling a
-  solo tabletop game in one file (dice, oracles, tables, the log all together), each with a
-  walkthrough and an importable demo `.opml`. A Lonelog-style session log is the first.
 
 > **One file, fully offline.** Everything here runs locally with no network. And because a document
 > *is* the generator, you can **export a self-contained `.html`** (File menu) and hand someone a
