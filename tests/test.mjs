@@ -4543,7 +4543,7 @@ test('search query: malformed tokens stay literal text (the escape hatch)', () =
   assert.deepEqual(host(c.parseSearchQuery('#')),
     [{ neg: false, kind: 'text', value: '#' }]);
   assert.deepEqual(host(c.parseSearchQuery('#foo-bar')),
-    [{ neg: false, kind: 'text', value: '#foo-bar' }]);     // non-\w tag form is literal
+    [{ neg: false, kind: 'tag', value: 'foo-bar' }]);       // hyphens are valid tag chars (nested-tag support)
 });
 
 test('search query: tag terms are word-anchored and token-blind', () => {
@@ -6065,4 +6065,51 @@ test('looksLikeCellFormula — non-formula cell content is false', () => {
   assert.equal(c.looksLikeCellFormula(''), false);
   assert.equal(c.looksLikeCellFormula('  '), false);
   assert.equal(c.looksLikeCellFormula(null), false);
+});
+
+// ── nested (hierarchical) hashtags: #tag/subtag ──────────────────────────────
+// collectTags must capture the full nested slug (segments joined by /), and a
+// search for a parent tag must match its subtags (hierarchical), while an exact
+// subtag query matches only itself. Mirrors the three regexes in index.html.
+const tagNode = (text, children = []) => ({ text, children });
+
+test('collectTags — captures a nested tag as one slug', () => {
+  const root = tagNode('', [tagNode('a beat #thread/torn-letter here')]);
+  const tags = host(c.collectTags(root)).map(t => t.name);
+  assert.ok(tags.includes('thread/torn-letter'), `got ${JSON.stringify(tags)}`);
+});
+
+test('collectTags — nested and flat tags coexist; hyphens allowed', () => {
+  const root = tagNode('', [
+    tagNode('#thread and #thread/torn-letter and #plain-tag'),
+  ]);
+  const tags = host(c.collectTags(root)).map(t => t.name).sort();
+  assert.deepEqual(tags, ['plain-tag', 'thread', 'thread/torn-letter']);
+});
+
+test('parseSearchQuery — accepts a nested tag token', () => {
+  const terms = host(c.parseSearchQuery('#thread/torn-letter'));
+  assert.equal(terms.length, 1);
+  assert.equal(terms[0].kind, 'tag');
+  assert.equal(terms[0].value, 'thread/torn-letter');
+});
+
+test('termMatchesNode — parent tag matches its subtag (hierarchical)', () => {
+  const node = tagNode('the clue #thread/torn-letter');
+  const parent = host(c.parseSearchQuery('#thread'))[0];
+  assert.equal(c.termMatchesNode(parent, node, []), true, '#thread should match #thread/torn-letter');
+});
+
+test('termMatchesNode — exact subtag query matches only itself', () => {
+  const sub = tagNode('the clue #thread/torn-letter');
+  const other = tagNode('a different #thread/letter');
+  const q = host(c.parseSearchQuery('#thread/torn-letter'))[0];
+  assert.equal(c.termMatchesNode(q, sub, []), true);
+  assert.equal(c.termMatchesNode(q, other, []), false);
+});
+
+test('termMatchesNode — parent tag does NOT bleed into a longer word', () => {
+  const node = tagNode('#threads of fate');     // #threads, not #thread
+  const q = host(c.parseSearchQuery('#thread'))[0];
+  assert.equal(c.termMatchesNode(q, node, []), false, '#thread must not match #threads');
 });
