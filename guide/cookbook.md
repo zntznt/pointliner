@@ -165,9 +165,9 @@ On the parent:
 Total effort: {sum(effort)} days
 ```
 
-The parent shows **mean ± [low, high]** with a sparkline: the whole project's uncertainty,
-composed from the parts. Click to re-sample. (Build the children's estimates with `@` → Estimate
-if you prefer the dialog.)
+The parent shows the **mean with its low-to-high range** and a sparkline: the whole project's
+uncertainty, composed from the parts. Click to re-sample. (Build the children's estimates with
+`@` → Estimate if you prefer the dialog.)
 
 A standalone Fermi line works too:
 

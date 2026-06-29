@@ -148,8 +148,9 @@ composition: `{= words(subtree) / 200}` (about 200 words a minute). Unlike the p
 ## 7. Uncertain values (estimates)
 
 Some numbers aren't a single value; they're a *range*. An **estimate** pill models that with a
-quick Monte-Carlo simulation and shows you **mean ± [low, high]** plus a little sparkline of the
-distribution. Build one in **`@` → Estimate**, or type the shorthand:
+quick Monte-Carlo simulation and shows you the **mean with a low-to-high range** in parentheses
+(e.g. `7.2 (5 to 10)`) plus a little sparkline of the distribution. Build one in
+**`@` → Estimate**, or type the shorthand:
 
 ```
 {5 to 10}          a 90% confidence range (5th to 95th percentile)
