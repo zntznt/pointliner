@@ -70,6 +70,9 @@ There are two families of pills:
 - **[Cookbook](cookbook.md):** copy-paste recipes such as a name generator, a dungeon stocker, a
   yes/no oracle, a budget that rolls up and lints itself, a deadline countdown, a Fermi estimate,
   a card deck.
+- **[Solo RPG guides](../solorpg-guides/README.md):** worked examples for playing and journaling a
+  solo tabletop game in one file (dice, oracles, tables, the log all together), each with a
+  walkthrough and an importable demo `.opml`. A Lonelog-style session log is the first.
 
 > **One file, fully offline.** Everything here runs locally with no network. And because a document
 > *is* the generator, you can **export a self-contained `.html`** (File menu) and hand someone a
