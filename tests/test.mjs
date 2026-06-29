@@ -1727,10 +1727,10 @@ test('table: $< / $> immutable first/last column references', () => {
   assert.equal(computeTable(m, '@2$2=$<+$>')[1][1], '11');
 });
 
-test('table: cycle detection yields #ERR (cycle), not a hang', () => {
+test('table: cycle detection yields #ERR (loops on itself), not a hang', () => {
   const out = computeTable(tblModel(), '@2$1=@2$2 :: @2$2=@2$1');
-  assert.equal(out[1][0], '#ERR (cycle)');
-  assert.equal(out[1][1], '#ERR (cycle)');
+  assert.equal(out[1][0], '#ERR (loops on itself)');
+  assert.equal(out[1][1], '#ERR (loops on itself)');
 });
 
 // ── Error-propagation tests (brief-table-error-propagation) ──────────────────
@@ -1738,9 +1738,9 @@ test('table: cycle detection yields #ERR (cycle), not a hang', () => {
 // result) was indistinguishable from a blank cell in valueAt, so dependent formulas
 // substituted 0 and silently produced a plausible-but-wrong total.
 
-test('table: errored formula cell propagates #ERR (upstream) to dependents — not silently 0', () => {
+test('table: errored formula cell propagates #ERR (another cell) to dependents — not silently 0', () => {
   // @3$2 references an undefined variable → #ERR (bad ref).
-  // @4$2 = @2$1 + @3$2: must NOT read @3$2 as 0 and print 100; must show #ERR (upstream).
+  // @4$2 = @2$1 + @3$2: must NOT read @3$2 as 0 and print 100; must show #ERR (another cell).
   const m = { aligns: [null, null], rows: [
     ['price', 'result'],
     ['100', ''],
@@ -1749,8 +1749,8 @@ test('table: errored formula cell propagates #ERR (upstream) to dependents — n
   ] };
   const out = computeTable(m, '@3$2=@2$1*bad_var :: @4$2=@2$1+@3$2', {});
   assert.ok(/^#ERR/.test(out[2][1]), 'source cell must error, got: ' + out[2][1]);
-  assert.equal(out[3][1], '#ERR (upstream)',
-    'dependent cell must show upstream, not a plausible-but-wrong total');
+  assert.equal(out[3][1], '#ERR (another cell)',
+    'dependent cell must show the upstream-error marker, not a plausible-but-wrong total');
 });
 
 test('table: blank literal cell still reads as 0 after error-sentinel change (regression guard)', () => {
@@ -1760,7 +1760,7 @@ test('table: blank literal cell still reads as 0 after error-sentinel change (re
   assert.equal(computeTable(m, '@2$2=@2$1+10')[1][1], '10');  // blank @2$1 reads as 0
 });
 
-test('table: range aggregate over an errored cell propagates #ERR (upstream) — not a partial sum', () => {
+test('table: range aggregate over an errored cell propagates #ERR (another cell) — not a partial sum', () => {
   // vsum must not silently skip an errored cell the way it skips blank cells.
   const m = { aligns: [null, null, null], rows: [
     ['a', 'b', 'sum'],
@@ -1770,7 +1770,7 @@ test('table: range aggregate over an errored cell propagates #ERR (upstream) —
   // @2$2 errors (undefined variable); vsum(@2$2..@2$3) covers that cell.
   const out = computeTable(m, '@2$2=bad_var :: @3$3=vsum(@2$2..@2$3)', {});
   assert.ok(/^#ERR/.test(out[1][1]), 'errored source cell: ' + out[1][1]);
-  assert.equal(out[2][2], '#ERR (upstream)',
+  assert.equal(out[2][2], '#ERR (another cell)',
     'range aggregate over errored cell must propagate the error, not silently sum around it');
 });
 
@@ -2981,10 +2981,16 @@ test('regression: formula-only variables are untouched by the pick branch', () =
   });
 
   test('mathReasonPhrase — one human phrase per code, shared by the dialogs (P1)', () => {
-    assert.match(c.mathReasonPhrase('estimate'), /separate engine/);
-    assert.match(c.mathReasonPhrase('bad ref'), /unknown name/);
-    assert.match(c.mathReasonPhrase('non-numeric'), /non-numeric/);
-    assert.match(c.mathReasonPhrase('cycle'), /cycle/);
+    // Each code maps to a non-empty, plain-language phrase. The phrases name the
+    // problem in user terms (no engine jargon) and, where there is one, the fix.
+    assert.match(c.mathReasonPhrase('estimate'), /estimate/);
+    assert.match(c.mathReasonPhrase('estimate'), /5 to 10/);          // shows the user form, not "separate engine"
+    assert.match(c.mathReasonPhrase('bad ref'), /declare it|add it as a property/); // names the fix
+    assert.match(c.mathReasonPhrase('non-numeric'), /not a number/);
+    assert.match(c.mathReasonPhrase('cycle'), /depends on itself/);
+    // jargon must NOT reappear (the de-jargon pass, this commit)
+    assert.doesNotMatch(c.mathReasonPhrase('estimate'), /separate engine/);
+    assert.doesNotMatch(c.mathReasonPhrase('non-numeric'), /text pick/);
     assert.equal(c.mathReasonPhrase(''), '');         // generic → caller's own fallback
     assert.equal(c.mathReasonPhrase('whatever'), ''); // unknown code → no phrase
   });
