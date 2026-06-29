@@ -4433,6 +4433,76 @@ test('user-guide drift: features.md lists every is: search operator from the cod
     `Add them to the "Search and filter" line in guide/features.md.`);
 });
 
+test('user-guide drift: computing-numbers.md only names math functions that exist', () => {
+  // The guide lists "the big ones" (a curated SUBSET of FN1/FN2/FN3), so we assert
+  // the subset relation: every backticked name on the **Math:** line must exist in a
+  // code FN table. Catches a typo or a renamed function; does not require the doc to
+  // list every function (curation is intentional).
+  const fnNames = new Set();
+  for (const tbl of ['FN1', 'FN2', 'FN3']) {
+    const start = _src.indexOf(`const ${tbl} = `);
+    if (start === -1) continue;
+    const body = _src.slice(start, _src.indexOf('});', start));
+    for (const m of body.matchAll(/(?:^|[{,\s])([a-z][a-z0-9]*)\s*:/gi)) fnNames.add(m[1]);
+  }
+  assert.ok(fnNames.size > 20, `parsed too few FN names (${fnNames.size}); FN tables changed?`);
+
+  const doc = readFileSync(_guidePath('computing-numbers.md'), 'utf8');
+  const mathLine = doc.split('\n').find(l => /^\*\*Math:\*\*/.test(l));
+  assert.ok(mathLine, '**Math:** function line not found in computing-numbers.md');
+  // backticked bare identifiers on that line (skip ones with parens/args shown)
+  const named = [...mathLine.matchAll(/`([a-z][a-z0-9]*)`/gi)].map(m => m[1]);
+  const ghost = named.filter(n => !fnNames.has(n));
+  assert.deepEqual(ghost, [],
+    `computing-numbers.md names math functions not present in any FN table: ${ghost.join(', ')}\n` +
+    `(a typo or a renamed/removed function — fix the **Math:** line in guide/computing-numbers.md)`);
+});
+
+// ── User-guide ANCHOR integrity guard ─────────────────────────────────────────
+// The repo has no markdown link-checker, so a broken in-page anchor ships silently
+// to GitHub Pages. This resolves EVERY `](...#fragment)` link across the user guide
+// against the real heading slugs of its target file, using GitHub's slug algorithm.
+// Generic (not tied to one list): it guards all current anchors AND every future
+// one, and it specifically protects the de-numbered deep-guide headings (UXP work)
+// from a rename silently orphaning the 16 inbound links.
+test('user-guide anchor integrity: every #anchor link resolves to a real heading', () => {
+  const guideDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide');
+  const files = ['README.md', 'features.md', 'generating-text.md', 'computing-numbers.md',
+    'cookbook.md', 'solo-rpg/README.md', 'solo-rpg/lonelog/lonelog.md']
+    .map(f => resolve(guideDir, f));
+  files.push(resolve(guideDir, '..', 'README.md')); // root README too
+
+  // GitHub heading -> slug: lowercase, strip non-alphanumeric (except space/hyphen),
+  // spaces -> hyphens. (No de-duplication suffixes needed; the guide has unique slugs.)
+  const slugify = (h) => h.replace(/^#+\s+/, '').toLowerCase()
+    .replace(/[^a-z0-9 -]/g, '').replace(/ +/g, '-');
+  const slugsOf = (path) => new Set(
+    readFileSync(path, 'utf8').split('\n')
+      .filter(l => /^#{1,6}\s/.test(l)).map(slugify));
+
+  const slugCache = new Map();
+  const getSlugs = (path) => {
+    if (!slugCache.has(path)) slugCache.set(path, slugsOf(path));
+    return slugCache.get(path);
+  };
+
+  const broken = [];
+  for (const srcPath of files) {
+    const text = readFileSync(srcPath, 'utf8');
+    const srcDir = dirname(srcPath);
+    for (const m of text.matchAll(/\]\(([^)\s]*?)#([a-z0-9-]+)\)/gi)) {
+      const [, rel, frag] = m;
+      const targetPath = rel ? resolve(srcDir, rel) : srcPath; // empty rel = same file
+      let slugs;
+      try { slugs = getSlugs(targetPath); }
+      catch { broken.push(`${srcPath}: target file missing for #${frag} (${rel})`); continue; }
+      if (!slugs.has(frag)) broken.push(`${srcPath}: #${frag} -> ${rel || '(self)'} (no such heading)`);
+    }
+  }
+  assert.deepEqual(broken, [],
+    `Broken anchor links in the user guide (heading renamed or anchor typo):\n  ${broken.join('\n  ')}`);
+});
+
 test('GUIDE drift guard: openGuide function is wired to the Concept guide button', () => {
   assert.ok(_src.includes('openGuide()'), 'openGuide() call missing — Concept guide button is not wired');
   assert.ok(_src.includes('function openGuide('), 'openGuide function declaration missing');
