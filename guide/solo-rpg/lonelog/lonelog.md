@@ -125,6 +125,8 @@ What you get back is a log that **does things**:
 If that sounds worth the trade, this is a comfortable home for the style. If it does not, the
 notebook is right there, and that is genuinely fine.
 
+**Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).
+
 ---
 
 ## Credits

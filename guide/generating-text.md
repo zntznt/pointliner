@@ -86,6 +86,8 @@ The dice engine speaks the common tabletop notations:
 |---|---|
 | `{4d6kh3}` | roll 4, **keep highest 3** (classic stat roll) |
 | `{4d6kl3}` | roll 4, **keep lowest 3** |
+| `{4d6dl1}` | roll 4, **drop lowest 1** (same idea, stated as what to discard) |
+| `{4d6dh1}` | roll 4, **drop highest 1** |
 | `{4d6r1}`  | roll 4, **reroll any die ≤ 1 once** |
 | `{2d6!}`   | **exploding** (a max-value die rolls again and adds) |
 | `{4dF}`    | **Fate/Fudge dice** (each −1, 0, or +1) |
@@ -303,3 +305,5 @@ Because the names are document-wide, you can also drop `{role}` or `{trait}` int
 **Next:** [Computing numbers](computing-numbers.md), the math side: expressions, dates, sums that
 roll up your outline, and uncertain estimates. Or jump to the [Cookbook](cookbook.md) for
 ready-made recipes.
+
+**Back to:** [the guide](README.md).
