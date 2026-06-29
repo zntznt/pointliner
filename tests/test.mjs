@@ -4509,6 +4509,36 @@ test('user-guide anchor integrity: every #anchor link resolves to a real heading
     `Broken anchor links in the user guide (heading renamed or anchor typo):\n  ${broken.join('\n  ')}`);
 });
 
+// ── Cross-surface guard: in-app GUIDE vs the web guide markdown ────────────────
+// The two machine->human surfaces only truly overlap on the generators + compute
+// pill families. They had ONE demonstrated contradiction — the dice reroll `rK`,
+// described as "reroll any 1" (exact-match) in the GUIDE but "reroll any die ≤ 1"
+// (threshold) in markdown. The code is threshold (≤ K). This guard pins the
+// reconciliation: neither surface may describe rK as exact-match, and the core
+// dice tokens markdown teaches must also appear in the GUIDE (no silent divergence
+// on the shared surface). Robust by design — it pins the specific drift, not the
+// independently-curated structure of either doc.
+test('cross-surface: GUIDE and markdown agree on dice reroll semantics (threshold, not exact)', () => {
+  const guideDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide');
+  const genMd = readFileSync(resolve(guideDir, 'generating-text.md'), 'utf8');
+  // The GUIDE dice reroll desc (in the GUIDE source string) must not claim exact-match.
+  const reroll = _src.match(/\{[0-9]*d[0-9]+r1\}',\s*desc:'([^']*)'/);
+  assert.ok(reroll, 'GUIDE dice reroll entry not found (syntax changed?)');
+  assert.doesNotMatch(reroll[1], /any 1 once$/,
+    `GUIDE reroll desc "${reroll[1]}" describes rK as exact-match; the code is threshold (≤ K). ` +
+    `Say "1 or lower" / "≤ 1", matching generating-text.md.`);
+  // Markdown must describe it as a threshold too (it already says "≤ 1").
+  assert.match(genMd, /reroll any die ≤ 1 once|reroll any die 1 or lower/,
+    'generating-text.md no longer describes rK as a threshold; keep it in sync with the GUIDE + code.');
+
+  // Core dice tokens taught in markdown must also be present in the GUIDE source
+  // (the one place both surfaces deeply cover — they may not silently diverge).
+  for (const tok of ['2d6', '4d6kh3', '4dF']) {
+    assert.ok(_src.includes(tok),
+      `dice token ${tok} is taught in generating-text.md but absent from the in-app GUIDE`);
+  }
+});
+
 test('GUIDE drift guard: openGuide function is wired to the Concept guide button', () => {
   assert.ok(_src.includes('openGuide()'), 'openGuide() call missing — Concept guide button is not wired');
   assert.ok(_src.includes('function openGuide('), 'openGuide function declaration missing');
