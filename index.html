@@ -2119,6 +2119,10 @@ function findOrCreateDatedEntry(home, iso, mk) {
 }
 
 // Parse a due-property value string → epoch-day number, or null on failure.
+// The accepted date forms, in one place so every "invalid date" message stays
+// in sync with what parseDueDate actually accepts (P1: one error, one wording).
+const DATE_FORMS_HINT = 'Use YYYY-MM-DD, today, tomorrow, or today+N.';
+
 // Pure for absolute dates; depends on current time only for relative forms.
 // Impossible calendar dates (2026-02-30, 2026-13-01, day 00) are rejected:
 // Date.UTC silently overflow-normalizes (Feb 30 → Mar 2), so we round-trip the
@@ -3500,10 +3504,10 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
 // and #ERR pills explain a failure the SAME way (P1/P4 — legible, consistent). ''
 // for a generic/unknown code (the caller supplies its own "syntax error" fallback).
 function mathReasonPhrase(why) {
-  return why === 'estimate'    ? 'an estimate (lo to hi / normal / uniform), a separate engine that does not work in math or a check'
-       : why === 'bad ref'     ? 'an unknown name (a missing property or variable)'
-       : why === 'non-numeric' ? 'a non-numeric value (e.g. a text pick)'
-       : why === 'cycle'       ? 'a reference cycle'
+  return why === 'estimate'    ? 'an estimate like 5 to 10, which works on its own but not inside a math formula or check'
+       : why === 'bad ref'     ? 'a name with no value here; declare it as a variable or add it as a property'
+       : why === 'non-numeric' ? 'a value that is not a number (a word or random pick can\'t be used in math)'
+       : why === 'cycle'       ? 'a loop where a value depends on itself'
        : '';
 }
 
@@ -3626,13 +3630,13 @@ function computeTable(model, tblfm, vars = {}) {
         const reason = mathErrorReason(fmap.get(key), vars);
         disp = reason ? `#ERR (${reason})` : '#ERR';
       } else if (v === ERR_UP) {
-        disp = '#ERR (upstream)';
+        disp = '#ERR (another cell)';
       } else {
         disp = formatMathResult(v);
       }
     } catch (e) {
-      if (e && e.message === 'CYCLE') disp = '#ERR (cycle)';
-      else if (e && e.message === 'UPSTREAM') disp = '#ERR (upstream)';
+      if (e && e.message === 'CYCLE') disp = '#ERR (loops on itself)';
+      else if (e && e.message === 'UPSTREAM') disp = '#ERR (another cell)';
       else disp = '#ERR';
     }
     if (out[r]) out[r][c] = disp;
@@ -3936,7 +3940,7 @@ const INSERT_CMDS = [
   { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and child tasks. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
-  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b→c',         section:'Random' },
+  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b (one per line)', section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
@@ -6029,7 +6033,7 @@ function openPropsDialog(nodeId, targets = null) {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
     const badIdx = props.findIndex(p => DATE_KEYS.has(p.key.trim().toLowerCase()) && p.val.trim() && parseDueDate(p.val.trim()) === null);
     if (badIdx >= 0) {
-      errDiv.textContent = 'Invalid date. Use YYYY-MM-DD, today, today+7';
+      errDiv.textContent = 'Not a valid date. ' + DATE_FORMS_HINT;
       errDiv.style.display = '';
       list.querySelectorAll('.val-in')[badIdx]?.focus();
       return;
@@ -6232,7 +6236,7 @@ function openDueDateDialog(nodeId, targets = null) {
       const v = inp.value.trim();
       if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank to clear'; return; }
       const ep = parseDueDate(v);
-      if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date. Try YYYY-MM-DD'; return; }
+      if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date. ' + DATE_FORMS_HINT; return; }
       const df = formatDueDate(ep);
       preview.style.color = df.state === 'overdue' ? 'var(--bad)' : df.state === 'today' ? 'var(--ok)' : 'var(--muted)';
       preview.textContent = df.label + ' · ' + df.iso;
@@ -9247,7 +9251,7 @@ function slashApply() {
     const ds = parseDateSlash(query);
     if (ds) {
       if (parseDueDate(ds.raw) === null) {                     // P4: invalid value isn't silently dropped
-        flashHint('Not a valid date: ' + ds.raw + '. Try YYYY-MM-DD, today, tomorrow or today+N.');
+        flashHint('Not a valid date: ' + ds.raw + '. ' + DATE_FORMS_HINT);
         return;
       }
       // LEAVE edit mode before mutating + rendering: a still-editing node's
@@ -12336,8 +12340,10 @@ function renderMathPill(key, m) {
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
     const reason = mathErrorReason(expr, globalVarMap, _varCycles);
     const label = reason ? `#ERR (${reason})` : '#ERR';
-    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Unresolved reference. Click to edit"`
-      + ` aria-label="Math ${escQ(m.expr)} shows ${escQ(label)}. Click to edit">`
+    const phrase = mathReasonPhrase(reason);
+    const tip = phrase ? `This uses ${phrase}. Click to edit.` : 'This can\'t be computed. Click to edit.';
+    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} shows ${escQ(label)}. ${escQ(tip)}">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
       + `<span class="math-expr">${escHtml(m.expr)}</span>`
       + `<span class="math-eq">=</span>`
@@ -16734,7 +16740,7 @@ const GUIDE = [
 
   // ── Insert triggers (essentials only) ─────────────────────────────────────
   { id:'insert-slash',  essential:true, essSection:'Insert', keys:['/'],           essLabel:'Block type / template' },
-  { id:'insert-at',     essential:true, essSection:'Insert', keys:['@'],           essLabel:'Insert pill or widget' },
+  { id:'insert-at',     essential:true, essSection:'Insert', keys:['@'],           essLabel:'Insert a pill' },
   { id:'insert-link',   essential:true, essSection:'Insert', keys:['[['],          essLabel:'Link to a point' },
   { id:'insert-tag',    essential:true, essSection:'Insert', keys:['#'],           essLabel:'Hashtag' },
   { id:'insert-cpylink',essential:true, essSection:'Insert', keys:[`${MOD}+⇧+L`], essLabel:'Copy link to point' },
@@ -17039,7 +17045,7 @@ const GUIDE = [
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
-    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (from 'almost certain' to 'very unlikely'), then click to ask. Type @ and choose Oracle.",
+    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely, or Impossible), then click to ask. Type @ and choose Oracle.",
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
       { syn:'Yes 4 | No 1',      desc:'custom odds (80% yes here)' },
@@ -17104,7 +17110,7 @@ const GUIDE = [
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of each child' },
       { syn:'{= avg(score)}', desc:'average the scores' },
-      { syn:'{= count(done)}',desc:'count children with that value' },
+      { syn:'{= count(cost)}',desc:'how many children have a cost' },
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
       { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
     ] },
