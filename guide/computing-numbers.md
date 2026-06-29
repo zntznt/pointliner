@@ -232,3 +232,5 @@ topic; this is just the pointer.)
 **Next:** the [Cookbook](cookbook.md), ready-to-paste recipes that combine generate + compute: a
 budget that rolls up and lints itself, a deadline countdown, a Fermi estimate, and more. Or revisit
 [Generating text](generating-text.md).
+
+**Back to:** [the guide](README.md).
