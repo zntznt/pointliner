@@ -795,6 +795,12 @@ The product direction is now set. Read these before proposing or building:
   Perchance / Ink / Twine / oracles / Soulver / Calca / Frink / Squiggle / Guesstimate / org-mode /
   TiddlyWiki / Decker, each mapped to a code seam + a P5 verdict). Candidate material for the
   roadmap's interleaving clause — **not a commitment**; companion to `outliner-frontier-report.md`.
+- `guidance/performance.md` — **measured performance baseline** (per-keystroke / render / scroll /
+  search / autosave / undo across 1k–50k nodes, the three ceilings, why virtualization + lazy
+  caches hold). Comfortable to ~10k; the hard limit is **storage (~17k via localStorage), not lag**.
+  Dated + commit-tagged with a re-run harness embedded — re-measure and update before claiming a perf
+  win/regression, and fire the **real `input`-event keystroke path on a fully-expanded tree** (a bare
+  `render()` call lies).
 - `guidance/ux.md` — the discoverability / verbosity-dial UX *strategy* (vision). **Build discipline:**
   ship a feature's bare interaction first, then add its helpers (chips, hints, menu
   descriptions) as a separate, verbosity-gated overlay, so the app stays lean-compatible.
