@@ -142,7 +142,7 @@ The project has strong architecture discipline and, historically, **no UX discip
 - **Inline-argument verbs (`/verb:value`) reuse the `/` door, gated narrowly.** Making a dialog-only verb keyboard-first by letting it take a typed argument (`/due:tomorrow` sets the date and skips the dialog; bare `/due` still opens it) is a real P2/P3 win and is **not** new syntax (it reuses the `/` menu, doesn't grow the §2 inventory). But the slash-query parser is **shared by every command**, so the `:value` arm MUST be gated to the specific opted-in verbs (`due`/`start` today) — on any other verb a colon stays plain text (`/quote:x` → quote, `:x` untouched) — and the text-strip MUST be **pinned to the trigger position**, not a possibly-trimmed query length, or it mangles surrounding text. Bare verb → dialog; invalid value → flash why (P4), never silent. Keep the value-parse a pure, `null`-on-miss core (`parseDateSlash`) and pin the gate cases. Full contract: `ux-discipline.md` §7.1a + §3 (UXP-69).
 - **Built ≠ shipped-discoverable.** A capability reachable only by typed syntax, or gated entirely off with no front door at any verbosity, is non-conformant. A user-facing feature also ships its entry in the **in-app concept guide** (the `const GUIDE = [` array, surfaced by the "Concept guide ›" button) in the same change — see `guidance/concept-guide.md` for the entry shape, the drift-guard contract, and the AP-style house rules. Every `/` and `@` command id MUST appear in some entry's `covers:[…]` (drift-guard test); bullet-menu/toolbar-only features have no command id and are kept documented by hand.
 
-**Opening PRs (so the gate passes first try):** The CI gate reads the **PR description only** — not commit messages, not comments. Every UI-touching PR's description MUST contain the Conformance Statement: start with the literal words `UX Conformance`, a ✅ or N/A on each of P1–P5, and no `< >` placeholders. When creating a PR with `gh pr create`, put the full statement in `--body` (it overrides the PR template). For a non-UI change, the description is just: `UI: none`.
+**Opening PRs (so the gate passes first try):** The CI gate reads the **PR description only** — not commit messages, not comments. Every UI-touching PR's description MUST contain the Conformance Statement: start with the literal words `UX Conformance`, a ✅ or N/A on each of P1–P5, and no `< >` placeholders. When creating a PR with `gh pr create`, put the full statement in `--body` (it overrides the PR template). For a non-UI change, the description is just: `UI: none`. **A local `PreToolUse` hook (`.claude/hooks/check-pr-conformance.mjs`, see `.claude/README.md`) blocks `gh pr create`/`gh pr edit` whose `--body` fails this same check, so a malformed PR is caught before push, not just in CI.**
 
 **Canonical vocabulary split:** code keeps `node`/`artifact`; **user-facing copy says "point" and "pill."** Use the standard's §1 terms in every string and `aria-label`. Do not rename the internal identifiers.
 
@@ -282,6 +282,10 @@ text — `flushActiveTextEdit` records `foldedTextForSave(node)`, never the raw
 buffer (UXP-31). Typed `{…}` shorthand is no
 longer promoted live; it stays grammar-styled text while editing and promotes on
 exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
+**A document arriving via `adoptDoc` (OPML/HTML import, new file, swap) never
+passes through `exitEdit`, so it would render typed `{…}` as raw source.**
+`promoteLoadedShorthand(root)` (a tree-walk over `promoteInlineShorthand`) runs in
+`adoptDoc` to promote it on load. Keep it there, or imported docs lose their pills.
 
 ### Render context globals (read this before touching rendering)
 
@@ -446,7 +450,9 @@ when proposing features:
   you can **write** an artifact instead of using a dialog. Typing a `{…}` whose body
   is a valid artifact promotes it to the matching pill — `{2d6}`→dice, `{= 2*r}`→
   math, `{a|b}` / `{knownRule/table}`→grammar, `{knownVar}`→display-only variable
-  pill. Promotion happens on `exitEdit` (catch-all, also covers paste / multiple),
+  pill. Promotion happens on `exitEdit` (catch-all, also covers paste / multiple)
+  **and on document load** (`promoteLoadedShorthand` in `adoptDoc`, so an
+  OPML/HTML-imported doc's typed `{…}` renders as pills, not raw source),
   **not live** — while editing, a completed `{…}` just picks up `.gr-src` grammar
   styling (`checkInlineHighlight`), staying editable text so you can keep tweaking
   it. This is the same mechanism as the unfold model above: in edit mode artifacts
@@ -575,6 +581,11 @@ executes. Pick-vars, emoji packs, and any authoring/management UI are out of v1.
 **hashtags** a fourth: `collectTags(rootNode = root)` walks the tree with mdInline's
 sigil rule (`[[…]]` tokens stripped first so link targets never read as tags), cached
 on `_varsVer`; it sources the `#` tag-picker menu (same §7.1 pattern as the `{` picker).
+The tag grammar is `#` + `[\w-]+` segments joined by `/` for **nested tags**
+(`#thread/torn-letter`); search is hierarchical (`#thread` matches `#thread` and any
+`#thread/…`, an exact subtag matches only itself). This pattern is **mirrored in three
+places that must stay in lockstep**: `mdInline` (render), `collectTags` (index), and
+the search-query parser/`termMatchesNode`. Change one, change all three.
 `collectLinks(rootNode = root)` walks the tree for `[[#TARGETID|label]]` tokens and
 returns `{ outgoing, backlinks, broken }`, cached on `_varsVer`. A link is **token-in-
 text, not a sidecar artifact** — the target id lives directly in `node.text` (like a
@@ -690,7 +701,8 @@ Sequences (user-definable state sets: the built-in `TODO NEXT WAITING | DONE` is
 `@sequence` declares a `[[seq:key]]` pill + `node.seq` sidecar; `/` applies any state as
 `#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) ·
 Search query operators (the UXP-20-routed decision: implicit AND, `-` NOT, `"a b"` phrases,
-`#tag` word-anchored, `is:done/todo/note/failing`; malformed tokens stay literal text — the `{…}`
+`#tag` word-anchored (and hierarchical: `#thread` matches `#thread/torn-letter`),
+`is:done/todo/note/failing`; malformed tokens stay literal text — the `{…}`
 escape-hatch rule; OR deferred. `#KEYWORD` states are hashtag-shaped so `#waiting` filters by
 state for free, AND there is a seq-aware **`state:value`** operator (`state:waiting`/`state:done`,
 matched only against recognized states; `status:` stays the generic property lookup, not a

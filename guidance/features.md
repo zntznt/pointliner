@@ -258,7 +258,8 @@ Implemented:
     (v1; inline `{a := …}` shorthand, modifiers, and per-reference re-roll are
     explicitly deferred).
 - **Typed shorthand** — write `{2d6}`, `{= 2*r}`, `{a|b|c}`, `{knownRule}` and it
-  promotes to the matching pill when you leave the node (and on paste); while
+  promotes to the matching pill when you leave the node (and on paste, and on
+  document load/import via `promoteLoadedShorthand` in `adoptDoc`); while
   editing it stays grammar-styled text. Invalid/unknown bodies stay literal text.
 - **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
   inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
@@ -327,14 +328,19 @@ Implemented:
   pre-existing behavior, now per-term), `"a b"` matches an exact phrase, `-term`
   negates any term form, `#tag` matches a tag **word-anchored** (mirrors
   `collectTags`' rule — `[[…]]` tokens blanked so link targets never read as
-  tags; `#work` ≠ `#workshops`) — because `#KEYWORD` states are
+  tags; `#work` ≠ `#workshops`) and **hierarchical**: a tag is `#` + `[\w-]+`
+  segments joined by `/` (`#thread/torn-letter`), and a parent query matches its
+  subtags (`#thread` finds `#thread/torn-letter`; an exact subtag matches only
+  itself). Hyphens are valid tag chars (`#plain-tag`). The grammar is mirrored in
+  three sites that must stay in lockstep: `mdInline`, `collectTags`, and the parser
+  / `termMatchesNode`. Because `#KEYWORD` states are
   hashtag-shaped, `#waiting` filters by state for free, and a seq-aware
   **`state:value`** operator also exists (`state:waiting` / `state:done`, matched
   only against recognized states; `status:` stays the generic property lookup, not
   a synonym) — and `is:todo` / `is:done` / `is:note` filter structurally (open to-do /
   finished to-do / has a note; done-ness derives from the text via
   `todoDoneFromText`, sequence-aware). Anything malformed (unknown `is:` value,
-  lone `-`, `#non-word`) stays a **literal text term** — the `{…}` invalid-body
+  lone `-`, a bare `#`) stays a **literal text term** — the `{…}` invalid-body
   escape-hatch rule, so a query never silently matches everything. `OR` is
   deliberately absent (no precedence rule until real queries demand one). Pure
   cores: `parseSearchQuery` (string → terms), `termMatchesNode` /
