@@ -287,9 +287,11 @@ A six-domain UX review (editing/keyboard, artifacts/pills, navigation/links, sea
 workspace/files, visual/responsive) against `ux-discipline.md` (P1–P5) + `design-language.md`.
 **Batch 1 (UXP-40…52)** — the data-safety trio + zero-risk conformance one-liners — shipped + verified
 together (behavioral fixes headless-pinned; declarative fixes verified by inspection + green suite).
-**UXP-53…67** are open, sequenced for follow-up. The dominant theme: the a11y pass (UXP-19 pills /
-UXP-39 hashtags) never reached the *reference tokens* (links, footnotes) and *secondary panels*
-(backlinks, todo-picker) — that is the UXP-53…56 batch.
+**UXP-53…70** have since all been resolved (the rows below carry the per-entry evidence). The
+dominant theme of that run: the a11y pass (UXP-19 pills / UXP-39 hashtags) had not reached the
+*reference tokens* (links, footnotes) or *secondary panels* (backlinks, todo-picker) — that was the
+UXP-53…56 batch. This file is append-only: closed rows are retained as the record, so the only
+permanently-open entry is the standing syntax-sprawl guard (UXP-20).
 
 ### UXP-40 ✓ IME composition unguarded in `onKeyDown` — **RESOLVED** (batch 1) 🔴
 - **Problem:** Enter/Tab/Backspace during a CJK/IME composition fired the structural editor

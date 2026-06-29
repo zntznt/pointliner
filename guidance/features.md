@@ -327,9 +327,11 @@ Implemented:
   pre-existing behavior, now per-term), `"a b"` matches an exact phrase, `-term`
   negates any term form, `#tag` matches a tag **word-anchored** (mirrors
   `collectTags`' rule — `[[…]]` tokens blanked so link targets never read as
-  tags; `#work` ≠ `#workshops`) — and because `#KEYWORD` states are
-  hashtag-shaped, `#waiting` filters by state with no `state:` operator —
-  and `is:todo` / `is:done` / `is:note` filter structurally (open to-do /
+  tags; `#work` ≠ `#workshops`) — because `#KEYWORD` states are
+  hashtag-shaped, `#waiting` filters by state for free, and a seq-aware
+  **`state:value`** operator also exists (`state:waiting` / `state:done`, matched
+  only against recognized states; `status:` stays the generic property lookup, not
+  a synonym) — and `is:todo` / `is:done` / `is:note` filter structurally (open to-do /
   finished to-do / has a note; done-ness derives from the text via
   `todoDoneFromText`, sequence-aware). Anything malformed (unknown `is:` value,
   lone `-`, `#non-word`) stays a **literal text term** — the `{…}` invalid-body
@@ -464,6 +466,27 @@ Implemented:
   **Pure cores**: `todayISO()`, `journalFileName(iso, perEntry, stamp)`,
   `findOrCreateDatedEntry(home, iso, mk)` — all Node-testable, pinned in `tests/test.mjs`.
   `findOrCreateJournalHome()` + `openJournalEntry()` are the DOM-side helpers. No new syntax.
+- **Dates (start + due) + Agenda** — a point carries a **start→due range** as two reserved
+  properties (`start` / `due` in `node.props`, value `YYYY-MM-DD` or `today`/`today±N`/`tomorrow`).
+  **Zero new authoring syntax** — both keys reuse the properties system and parse through the pure
+  `parseDueDate` (which rejects impossible calendar dates — Feb 30, month 13 — that `Date.UTC` would
+  silently normalize, and bounds the year to 1900–2200). **Doors:** the `/due` slash verb (labelled
+  **"Schedule"**) and the bullet-menu "Set / Edit dates" open a two-field Start+Due dialog
+  (`openDueDateDialog`), each field carrying a **full-width inline `role=grid` calendar**
+  (`buildDatePicker`/`attachDateCalendar`, caret-invariant: day cells act on `mousedown`); clicking a
+  `due`/`start` property **chip** routes to the same dialog, and date keys are hidden from the generic
+  Properties editor (`DATE_KEYS`-filtered, merged back on save). Chips are **urgency-colored**: Today
+  (green) / Tomorrow + this week (accent) / Later (muted) / Overdue (red); the start chip carries a
+  leading `▸` and never-overdue ink. **Agenda** is a toggleable vertical stack inside the toolbar
+  (`#btn-agenda`, no sidebar so it never constrains the outline width), with three surfaces over the
+  same dated points (`collectDueDates`): a **List** (Due row + a Running row for started points, with
+  elapsed `▶ Nd`), a **Timeline** Gantt chart (`agendaGantt` — range bars start→due, 1-day bars for
+  deadline-only points, dashed open-ended bars for started-no-deadline, with a "today" line), and a
+  month **Calendar** (`agendaMonthCells` over `calendarMonthGrid`, ‹ ›/Today nav, up to 3 chips/cell
+  then `+N`). Timeline and Calendar are independent toggles (persisted `agendaBars`). The two layout
+  models are **pure cores**, test-pinned. Search operators `due:`/`start:` take
+  `today`/`overdue`/`<date`/`>date`. Pure cores: `parseDueDate`, `formatDueDate`, `collectDueDates`,
+  `agendaGantt`, `agendaMonthCells`, `calendarMonthGrid`, `addMonths`.
 - **Multi-document workspace** — a **workspace of many `.opml` notes in a real disk folder**, the
   durable backing for cross-file linking (Phase 1). **Chromium-gated** — the directory picker /
   `queryPermission` are a separate File System Access surface from the single-file open/save, so
@@ -676,7 +699,8 @@ Implemented:
   - **Not included (future work):** state *cycling* (advance-to-next) for custom sequences,
     per-item sequence switching beyond `/`+typing, priority `[#A]` semantics per sequence,
     inline `{}` reference of a sequence, `CANCELLED` in the default set, logbook /
-    `CLOSED:` timestamps, per-file `#+TODO:` declarations, agenda/scheduling.
+    `CLOSED:` timestamps, per-file `#+TODO:` declarations. (Agenda/scheduling itself has since
+    shipped — see Dates + Agenda below.)
 
 - **Self-contained HTML export** (C1) — File menu → **Self-contained HTML** writes one
   `.html` file that *is* the app **and** the document. `exportSelfContainedHtml()` clones

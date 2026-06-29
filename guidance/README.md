@@ -95,14 +95,21 @@ the reviewer catches the lie. Both failure modes (lazy skip + false claim) are c
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ux-discipline.md`                          | **The binding standard** — vocabulary, the five principles, keyboard grammar, the syntax inventory, pattern catalog, per-feature conformance matrix |
 | `ux-definition-of-done.md`                  | **The gate** — the merge checklist + "How this gate is run" (the due process + Conformance Statement)                                               |
-| `ux-remediation.md`                         | **The fix list** — every current non-conformance as a tracked defect (`UXP-1…20`), incl. the standing syntax-sprawl guard                           |
+| `ux-remediation.md`                         | **The fix list** — every non-conformance as a tracked defect (`UXP-1…70`, append-only record), incl. the standing syntax-sprawl guard               |
 | `adding-an-artifact.md`                     | The 12-step recipe for a new artifact + the step-13 UX gate                                                                                         |
+| `concept-guide.md`                          | How to add/fix an in-app concept-guide entry (the `GUIDE` array) + the drift-guard contract                                                         |
+| `design-language.md`                        | **The locked visual standard** — type roles, palettes, contrast floors, component rules, anti-decisions                                             |
 | `ux.md`                                     | Discoverability *strategy* / verbosity dial (vision — the standard governs behavior where they differ)                                              |
-| `accessibility.md`                          | A11y *sequencing* (phased tickets — the standard points down to it for order)                                                                       |
-| `roadmap.md` · `backlog.md` · `features.md` | Direction, gaps, and current feature status                                                                                                         |
+| `accessibility.md`                          | A11y *sequencing* (phased tickets, now **complete** — the standard points down to it for order)                                                     |
+| `roadmap.md` · `backlog.md` · `features.md` | Direction, gaps, and current feature status                                                                                                          |
+| `generative-status.md`                      | Completion ledger for the generative + computational lane (shipped / deferred / out-of-scope)                                                       |
+| `bases-direction.md` · `generation-direction.md` · `plugins-direction.md` · `plugins-data-packs-prerequisites.md` | Locked direction for tables/bases, the generation model, and declarative-data-pack plugins |
+| `enhancement-research.md` · `outliner-frontier-report.md` | Inspiration catalogue + competitive-landscape snapshot (candidate material, not commitments)                          |
+| `performance.md`                            | Measured performance baseline + an embedded re-run harness                                                                                          |
 
 
-Engineering invariants and architecture live in the root `CLAUDE.md`.
+Engineering invariants and architecture live in the root `CLAUDE.md`. (User-facing how-to-use-the-pills
+docs live in the sibling `guide/` directory, not here.)
 
 ---
 
