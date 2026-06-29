@@ -4,6 +4,17 @@
 
 Implemented:
 
+- [Generators (random text)](#generators-random-text)
+- [Computation (the math engine)](#computation-the-math-engine)
+- [Editing & pill interaction](#editing--pill-interaction)
+- [Outline structure & content](#outline-structure--content)
+- [Search & organization](#search--organization)
+- [Dates, journal & agenda](#dates-journal--agenda)
+- [Linking, workspace & knowledge (PKM)](#linking-workspace--knowledge-pkm)
+- [Export & files](#export--files)
+
+### Generators (random text)
+
 - **Dice** — `@dice`: `NdM`, `+/-` modifiers, `@var` modifiers, **exploding**
   (`2d6!`), **reroll-once** (`4d6r1` — reroll any die ≤K a single time, then keep the
   new value; the canonical `4d6r1kh3`; v1 excludes Fate / exploding / success pools,
@@ -143,6 +154,8 @@ Implemented:
   `{Yes N | No M}`. Because the odds field IS the weighted-alt body, the odds can be A5
   `{= expr}` weights for **state-modulated** odds (e.g. `Yes {= 3 + chaos} | No`).
   `openOracleDialog`/`ORACLE_BANDS`.
+### Computation (the math engine)
+
 - **Estimate / uncertainty fields (B2)** — `@estimate` (or the `{lo to hi}` shorthand):
   an **uncertain value** sampled Monte-Carlo and displayed as **mean ± [p5,p95] + a
   unicode sparkline** (`7.2 (5 – 10) ▁▂▄▆█…`); click the pill to re-sample. This is the
@@ -257,6 +270,8 @@ Implemented:
     (`rollPickSource` is the pure core). Direction: `guidance/generation-direction.md`
     (v1; inline `{a := …}` shorthand, modifiers, and per-reference re-roll are
     explicitly deferred).
+### Editing & pill interaction
+
 - **Typed shorthand** — write `{2d6}`, `{= 2*r}`, `{a|b|c}`, `{knownRule}` and it
   promotes to the matching pill when you leave the node (and on paste, and on
   document load/import via `promoteLoadedShorthand` in `adoptDoc`); while
@@ -268,6 +283,8 @@ Implemented:
   click re-rolls/re-generates in place and **stays rendered** (never enters edit
   mode), the pencil opens the dialog. To edit the surrounding text, click the text,
   not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
+### Outline structure & content
+
 - **Table formulas** — Org-mode `#+TBLFM:` spreadsheet conventions. The formula line
   lives as a trailing `#+TBLFM:` line *inside* `node.text` (Org-style), so it round-trips
   through OPML / Markdown / plain-text for free — no sidecar, no new attribute. **Cells hold
@@ -323,6 +340,8 @@ Implemented:
   `line-height:1.5` (the sanctioned step), `--muted` ink, regular upright (no
   italic — that's the blockquote register), no border-left, and the placeholder
   uses plain `--muted` (the `opacity:.7` contrast-floor violation was fixed).
+### Search & organization
+
 - **Search query operators** — the search box speaks a small filter language
   (the UXP-20-routed decision, 2026-06-13): bare terms AND together (the
   pre-existing behavior, now per-term), `"a b"` matches an exact phrase, `-term`
@@ -458,6 +477,8 @@ Implemented:
   **Shift+Enter** is a line break. Until an inbox is set the Capture button is disabled
   and the action routes to the picker (no silent no-op — P4). Helpers `openCaptureDialog`
   / `doCapture` / `resolveInbox`. No new syntax.
+### Dates, journal & agenda
+
 - **Journal / daily notes** — open or create today's dated entry from anywhere. **Four P2 doors:**
   toolbar `#btn-journal` (calendar-day icon, beside the capture button), `/journal` slash verb,
   "Set as journal home" bullet-menu item (toggles to "Unset as journal home"), and the keyboard
@@ -493,6 +514,8 @@ Implemented:
   models are **pure cores**, test-pinned. Search operators `due:`/`start:` take
   `today`/`overdue`/`<date`/`>date`. Pure cores: `parseDueDate`, `formatDueDate`, `collectDueDates`,
   `agendaGantt`, `agendaMonthCells`, `calendarMonthGrid`, `addMonths`.
+### Linking, workspace & knowledge (PKM)
+
 - **Multi-document workspace** — a **workspace of many `.opml` notes in a real disk folder**, the
   durable backing for cross-file linking (Phase 1). **Chromium-gated** — the directory picker /
   `queryPermission` are a separate File System Access surface from the single-file open/save, so
@@ -707,6 +730,8 @@ Implemented:
     inline `{}` reference of a sequence, `CANCELLED` in the default set, logbook /
     `CLOSED:` timestamps, per-file `#+TODO:` declarations. (Agenda/scheduling itself has since
     shipped — see Dates + Agenda below.)
+
+### Export & files
 
 - **Self-contained HTML export** (C1) — File menu → **Self-contained HTML** writes one
   `.html` file that *is* the app **and** the document. `exportSelfContainedHtml()` clones
