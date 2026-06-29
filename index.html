@@ -1307,7 +1307,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
         </div>
-        <div class="sh-row"><kbd>#tag</kbd><span>points with a tag, including state keywords (<code>#todo</code>)</span></div>
+        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><span>points with a tag (nested ok; <code>#tag</code> also matches <code>#tag/sub</code>), including state keywords (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails (the lint filter)</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
@@ -16760,7 +16760,7 @@ const GUIDE = [
       { syn:'word word',              desc:'all terms must match' },
       { syn:'-term',                  desc:'exclude matches' },
       { syn:'"a b"',                  desc:'exact phrase' },
-      { syn:'#tag',                   desc:'tag or state keyword (#todo, #done)' },
+      { syn:'#tag',                   desc:'tag or state keyword (#todo, #done); #tag also matches nested #tag/sub' },
       { syn:'is:todo / is:done / is:note', desc:'open tasks / done tasks / noted points' },
       { syn:'is:failing',             desc:'points that break a check (the lint filter)' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo)' },
@@ -16783,11 +16783,12 @@ const GUIDE = [
     examples:[] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
-    body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point (like #idea or #urgent) and it becomes a clickable tag. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",
+    body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point (like #idea or #urgent) and it becomes a clickable tag. Nest tags with a slash to build a little hierarchy, like #thread/torn-letter under #thread: a search for the parent #thread rounds up every point under it, while #thread/torn-letter narrows to just that branch. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",
     examples:[
-      { syn:'#tag',        desc:'label a point by topic, status or project' },
-      { syn:'#',           desc:"opens a menu of tags you've used, with counts" },
-      { syn:'click a tag', desc:'filter to every point that shares it' },
+      { syn:'#tag',         desc:'label a point by topic, status or project' },
+      { syn:'#tag/subtag',  desc:'nest a tag; searching #tag also finds #tag/subtag' },
+      { syn:'#',            desc:"opens a menu of tags you've used, with counts" },
+      { syn:'click a tag',  desc:'filter to every point that shares it' },
     ] },
   { id:'refile', cat:'getting-around',
     title:'Refile a point',

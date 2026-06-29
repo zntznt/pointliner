@@ -282,6 +282,10 @@ text — `flushActiveTextEdit` records `foldedTextForSave(node)`, never the raw
 buffer (UXP-31). Typed `{…}` shorthand is no
 longer promoted live; it stays grammar-styled text while editing and promotes on
 exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
+**A document arriving via `adoptDoc` (OPML/HTML import, new file, swap) never
+passes through `exitEdit`, so it would render typed `{…}` as raw source.**
+`promoteLoadedShorthand(root)` (a tree-walk over `promoteInlineShorthand`) runs in
+`adoptDoc` to promote it on load. Keep it there, or imported docs lose their pills.
 
 ### Render context globals (read this before touching rendering)
 
@@ -446,7 +450,9 @@ when proposing features:
   you can **write** an artifact instead of using a dialog. Typing a `{…}` whose body
   is a valid artifact promotes it to the matching pill — `{2d6}`→dice, `{= 2*r}`→
   math, `{a|b}` / `{knownRule/table}`→grammar, `{knownVar}`→display-only variable
-  pill. Promotion happens on `exitEdit` (catch-all, also covers paste / multiple),
+  pill. Promotion happens on `exitEdit` (catch-all, also covers paste / multiple)
+  **and on document load** (`promoteLoadedShorthand` in `adoptDoc`, so an
+  OPML/HTML-imported doc's typed `{…}` renders as pills, not raw source),
   **not live** — while editing, a completed `{…}` just picks up `.gr-src` grammar
   styling (`checkInlineHighlight`), staying editable text so you can keep tweaking
   it. This is the same mechanism as the unfold model above: in edit mode artifacts
@@ -575,6 +581,11 @@ executes. Pick-vars, emoji packs, and any authoring/management UI are out of v1.
 **hashtags** a fourth: `collectTags(rootNode = root)` walks the tree with mdInline's
 sigil rule (`[[…]]` tokens stripped first so link targets never read as tags), cached
 on `_varsVer`; it sources the `#` tag-picker menu (same §7.1 pattern as the `{` picker).
+The tag grammar is `#` + `[\w-]+` segments joined by `/` for **nested tags**
+(`#thread/torn-letter`); search is hierarchical (`#thread` matches `#thread` and any
+`#thread/…`, an exact subtag matches only itself). This pattern is **mirrored in three
+places that must stay in lockstep**: `mdInline` (render), `collectTags` (index), and
+the search-query parser/`termMatchesNode`. Change one, change all three.
 `collectLinks(rootNode = root)` walks the tree for `[[#TARGETID|label]]` tokens and
 returns `{ outgoing, backlinks, broken }`, cached on `_varsVer`. A link is **token-in-
 text, not a sidecar artifact** — the target id lives directly in `node.text` (like a
@@ -690,7 +701,8 @@ Sequences (user-definable state sets: the built-in `TODO NEXT WAITING | DONE` is
 `@sequence` declares a `[[seq:key]]` pill + `node.seq` sidecar; `/` applies any state as
 `#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) ·
 Search query operators (the UXP-20-routed decision: implicit AND, `-` NOT, `"a b"` phrases,
-`#tag` word-anchored, `is:done/todo/note/failing`; malformed tokens stay literal text — the `{…}`
+`#tag` word-anchored (and hierarchical: `#thread` matches `#thread/torn-letter`),
+`is:done/todo/note/failing`; malformed tokens stay literal text — the `{…}`
 escape-hatch rule; OR deferred. `#KEYWORD` states are hashtag-shaped so `#waiting` filters by
 state for free, AND there is a seq-aware **`state:value`** operator (`state:waiting`/`state:done`,
 matched only against recognized states; `status:` stays the generic property lookup, not a
