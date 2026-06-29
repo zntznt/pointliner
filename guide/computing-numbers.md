@@ -12,7 +12,7 @@ The **`@` → Math** dialog gives you the same thing with a live preview and a f
 
 ---
 
-## 1. Expressions
+## Expressions
 
 Ordinary arithmetic, the operators you'd expect:
 
@@ -29,7 +29,7 @@ You can use `×` `÷` `−` and `√` if you like typing them; `pi`, `e`, `tau` 
 
 ---
 
-## 2. Functions
+## Functions
 
 Call a function with parentheses. The big ones:
 
@@ -50,7 +50,7 @@ Comparisons (`> >= < <= == !=`) return `1`/`0`, so they compose with arithmetic.
 
 ---
 
-## 3. Units
+## Units
 
 Conversions are just functions, named `from2to`:
 
@@ -63,7 +63,7 @@ Conversions are just functions, named `from2to`:
 
 ---
 
-## 4. Dates
+## Dates
 
 Dates work as plain numbers (epoch-days), so they **compose with arithmetic and variables**. The
 constant **`today`** is the anchor:
@@ -89,7 +89,7 @@ A math result that's a date renders as an **ISO date** automatically when you wr
 
 ---
 
-## 5. Variables in math
+## Variables in math
 
 Declare a variable once (**`@` → Variable**, e.g. `r = 5`) and reference it bare inside an
 expression:
@@ -106,7 +106,7 @@ visibly rather than guessing.
 
 ---
 
-## 6. Roll a number up your outline (aggregation)
+## Roll a number up your outline (aggregation)
 
 This is the one that makes the math pill see the *tree*. A `{= …}` expression can **roll up a
 property of the point's direct children**:
@@ -145,7 +145,7 @@ composition: `{= words(subtree) / 200}` (about 200 words a minute). Unlike the p
 
 ---
 
-## 7. Uncertain values (estimates)
+## Uncertain values (estimates)
 
 Some numbers aren't a single value; they're a *range*. An **estimate** pill models that with a
 quick Monte-Carlo simulation and shows you the **mean with a low-to-high range** in parentheses
@@ -177,7 +177,7 @@ estimate. That's how you Fermi-estimate a whole project from uncertain parts (se
 
 ---
 
-## 8. Make the outline check itself (constraints)
+## Make the outline check itself (constraints)
 
 A **check** is a pass/fail rule you attach to a point with **`/check`** (or bullet menu → Add
 check). It's an `evalMath` boolean over the point and its children:
@@ -191,11 +191,12 @@ max(due) <= deadline       no child due after the deadline
 
 The point grows a small chip: a muted **✓** when it passes, a visible flag when it **fails** or
 can't evaluate. To sweep the whole document for problems, search **`is:failing`**, which lists every
-point whose check fails or errors. (Same machinery as section 6: zero new syntax, just a boolean.)
+point whose check fails or errors. (Same machinery as [aggregation](#roll-a-number-up-your-outline-aggregation):
+zero new syntax, just a boolean.)
 
 ---
 
-## 9. Progress cookies
+## Progress cookies
 
 Drop **`[/]`** or **`[%]`** in a point (or use **`@` → Progress**) for a live tally of its
 checkboxes and child to-dos:
@@ -210,7 +211,7 @@ It's plain text in the point, so there's no setup, and it round-trips through sa
 
 ---
 
-## 10. Table formulas (briefly)
+## Table formulas (briefly)
 
 A markdown table can carry a spreadsheet-style formula line, Org-mode style:
 
