@@ -1,4 +1,6 @@
-> On-demand reference — read this only when adding a new artifact type or icon. Not loaded by default.
+> On-demand **engine-level** reference for contributors — read this only when adding a new artifact
+> type or icon. Not loaded by default. (For the friendly, user-facing feature overview, see
+> [`guide/features.md`](../guide/features.md) instead.)
 
 ## Feature status
 
