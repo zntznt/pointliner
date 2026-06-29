@@ -67,7 +67,7 @@ quirk: never makes eye contact | talks too much | owes a debt | hums constantly 
 ```
 
 Click to ask again. Want the odds to shift with the fiction? Use a [dynamic
-weight](generating-text.md#9-when-the-odds-depend-on-something-dynamic-odds):
+weight](generating-text.md#when-the-odds-depend-on-something-dynamic-odds):
 `{Yes | No {= danger}}`.
 
 ---
@@ -199,7 +199,7 @@ then roll an attack with the bonus baked in: `Attack {1d20 + str_mod}` → rolls
 
 ## 11. Consistent character across a sentence
 
-The trick from [item fields](generating-text.md#10-items-with-fields-itemfield): freeze the pick
+The trick from [item fields](generating-text.md#items-with-fields-itemfield): freeze the pick
 in a variable so it stays the same everywhere.
 
 **`@` → Grammar** (define the item + fields):

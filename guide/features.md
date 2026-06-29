@@ -34,19 +34,19 @@ Random generators for names, loot, prompts, oracles, anything. Type it in `{curl
 becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 
 - **Pick from a list.** `{sword | shield | potion}` shows one at random, click to re-pick.
-  ([weights too](generating-text.md#1-pick-one-of-several-alternation): make some choices rarer.)
+  ([weights too](generating-text.md#pick-one-of-several-alternation): make some choices rarer.)
 - **Roll dice.** `{2d6}`, `{1d20+5}`, plus exploding, keep-highest, Fate, and success pools.
-  ([dice](generating-text.md#3-roll-dice-ndm))
+  ([dice](generating-text.md#roll-dice-ndm))
 - **Named rules.** Build a name generator or loot table once, reuse it anywhere.
-  ([rules](generating-text.md#2-name-things-youll-reuse-rules))
+  ([rules](generating-text.md#name-things-youll-reuse-rules))
 - **Shape words.** `{beast.a}` becomes "an ogre"; pluralize, capitalize, past tense.
-  ([modifiers](generating-text.md#4-shape-the-words-modifiers))
+  ([modifiers](generating-text.md#shape-the-words-modifiers))
 - **Conditionals.** Say different things in different cases: `{hp>0: still standing | defeated}`.
-  ([conditionals](generating-text.md#5-say-different-things-in-different-cases-conditionals))
+  ([conditionals](generating-text.md#say-different-things-in-different-cases-conditionals))
 - **Decks.** Draw without repeating, like a real deck of cards.
-  ([decks](generating-text.md#6-draw-without-repeating-decks))
+  ([decks](generating-text.md#draw-without-repeating-decks))
 - **Markov chains and a yes/no oracle** for organic sequences and solo-play decisions.
-  ([Markov](generating-text.md#12-markov-chains) · [oracle](generating-text.md#13-yesno-oracle))
+  ([Markov](generating-text.md#markov-chains) · [oracle](generating-text.md#yesno-oracle))
 
 ## Computing with numbers
 
@@ -54,20 +54,20 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 **[Computing numbers](computing-numbers.md)**.
 
 - **Expressions.** `{= 2 * 19}` shows **38**; the usual arithmetic, powers, roots, functions.
-  ([expressions](computing-numbers.md#1-expressions))
+  ([expressions](computing-numbers.md#expressions))
 - **Units and dates.** Convert units (`{= c2f(20)}`), do date math (`{= daysuntil(due)}`).
-  ([units](computing-numbers.md#3-units) · [dates](computing-numbers.md#4-dates))
+  ([units](computing-numbers.md#units) · [dates](computing-numbers.md#dates))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
-  spreadsheet column. ([aggregation](computing-numbers.md#6-roll-a-number-up-your-outline-aggregation))
+  spreadsheet column. ([aggregation](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
 - **Word counts.** `{= words(subtree)}` counts everything under a heading.
 - **Uncertain estimates.** `{5 to 10}` models a range with a little distribution sparkline, and the
-  uncertainty propagates through math. ([estimates](computing-numbers.md#7-uncertain-values-estimates))
+  uncertainty propagates through math. ([estimates](computing-numbers.md#uncertain-values-estimates))
 - **Self-checking outlines.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
-  it breaks. ([constraints](computing-numbers.md#8-make-the-outline-check-itself-constraints))
+  it breaks. ([constraints](computing-numbers.md#make-the-outline-check-itself-constraints))
 - **Progress cookies.** Drop `[/]` or `[%]` for a live tally of checkboxes and child to-dos.
-  ([progress](computing-numbers.md#9-progress-cookies))
+  ([progress](computing-numbers.md#progress-cookies))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
-  ([variables](computing-numbers.md#5-variables-in-math))
+  ([variables](computing-numbers.md#variables-in-math))
 
 ## Dates, planning, and journaling
 

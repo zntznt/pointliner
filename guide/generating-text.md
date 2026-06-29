@@ -13,7 +13,7 @@ teaches you the form as you fill it in. This page is the *why* behind those dial
 
 ---
 
-## 1. Pick one of several (alternation)
+## Pick one of several (alternation)
 
 The simplest generator. Separate choices with `|`:
 
@@ -36,11 +36,11 @@ Put a number after a choice to weight it (default weight is 1):
 ```
 
 Here `rare` is five times as likely as `common`. Weights can even be **live expressions** over
-your variables: see [dynamic odds](#9-when-the-odds-depend-on-something-dynamic-odds).
+your variables: see [dynamic odds](#when-the-odds-depend-on-something-dynamic-odds).
 
 ---
 
-## 2. Name things you'll reuse (rules)
+## Name things you'll reuse (rules)
 
 A **rule** is a named generator you can call from anywhere by its name in braces. You build rules
 in the **`@` → Grammar** dialog, one per line, `name: choices`:
@@ -68,7 +68,7 @@ treasure: {2d6} gold | a {color} gem | nothing
 
 ---
 
-## 3. Roll dice: `{NdM}`
+## Roll dice: `{NdM}`
 
 Dice are a built-in generator. The pattern is **N**d**M** (roll N dice of M sides):
 
@@ -95,7 +95,7 @@ Click the pill to re-roll. (All of this is also in the **`@` → Dice** dialog.)
 
 ---
 
-## 4. Shape the words (modifiers)
+## Shape the words (modifiers)
 
 A `.modifier` after a rule or variable transforms its text. This is how you get *"an ogre"*
 instead of *"a ogre"*, or a plural, or a capital letter, without writing a separate rule for
@@ -129,7 +129,7 @@ Modifiers **chain**, left to right:
 
 ---
 
-## 5. Say different things in different cases (conditionals)
+## Say different things in different cases (conditionals)
 
 Emit one text when a comparison holds, another when it doesn't:
 
@@ -150,7 +150,7 @@ The branches are full templates, so they can roll dice or call rules:
 
 ---
 
-## 6. Draw without repeating (decks)
+## Draw without repeating (decks)
 
 Alternation can repeat the same choice twice in a row. A **deck** won't: it draws *without
 replacement*. Build one in the **`@` → Deck** dialog, or type a mode keyword before the `:`
@@ -173,7 +173,7 @@ Its position is saved with the document.
 
 ---
 
-## 7. Do it N times (repeat)
+## Do it N times (repeat)
 
 Emit a template several times, **re-rolled independently each time**:
 
@@ -186,7 +186,7 @@ The count is 1 to 99; results are joined by spaces. (For draw-*without*-repeat, 
 
 ---
 
-## 8. Store a value and reuse it (variables)
+## Store a value and reuse it (variables)
 
 A **variable** is a named value you declare once and reference with `{name}`. Declare one in the
 **`@` → Variable** dialog. Two kinds:
@@ -205,7 +205,7 @@ The {beast} guards the hoard. Only a fool wakes a {beast}.
 
 ---
 
-## 9. When the odds depend on something (dynamic odds)
+## When the odds depend on something (dynamic odds)
 
 A weight can be a **live expression** over your variables, written `{= expr}`:
 
@@ -218,7 +218,7 @@ against the document's variables.
 
 ---
 
-## 10. Items with fields: `{item.field}`
+## Items with fields: `{item.field}`
 
 Sometimes a picked thing has *properties*. Define an item as a set of dotted sub-rules, then read a
 field:
@@ -240,11 +240,12 @@ w = {weapon}
 The {w} deals {w.damage} damage and weighs {w.weight} lb.
 ```
 
-(`w = {weapon}` is a random-pick variable, section 8, so `{w}` stays one weapon.)
+(`w = {weapon}` is a random-pick variable, see [variables](#store-a-value-and-reuse-it-variables),
+so `{w}` stays one weapon.)
 
 ---
 
-## 11. Roll tables
+## Roll tables
 
 A **roll table** is just a named one-rule grammar; the **`@` → Roll table** door gives you a
 table-flavored dialog for it:
@@ -259,7 +260,7 @@ table" is just a familiar name for it.
 
 ---
 
-## 12. Markov chains
+## Markov chains
 
 A **Markov chain** generates a random *walk* through transitions, good for organic-sounding
 sequences. Build one in the **`@` → Markov** dialog with `→` transitions:
@@ -273,7 +274,7 @@ rule (`{weather}`) from anywhere.
 
 ---
 
-## 13. Yes/no oracle
+## Yes/no oracle
 
 For solo play and quick decisions: the **`@` → Oracle (yes/no)** door builds a weighted Yes/No
 pill at a likelihood you choose (Likely, 50/50, Unlikely, …). Click to ask again. Under the hood

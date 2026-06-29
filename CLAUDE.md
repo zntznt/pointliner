@@ -842,11 +842,18 @@ Note: internal links + backlinks and a multi-document workspace — previously "
 scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
 
 **Three more directories, not to be confused with `guidance/`:**
-- `guide/` — the **end-user** guide (4 markdown files: a README + Generating text / Computing
-  numbers / Cookbook), linked from the root `README.md`. This is the user-facing *how to use the
-  pills* doc, distinct from `guidance/` (the dev-facing build-steering docs). **When you ship a
-  user-facing feature, freshen `guide/` if the feature is something a user types or clicks** — it
-  drifts the same way the concept guide does. (Same no-em-dash rule as all user-facing copy.)
+- `guide/` — the **end-user** guide (a `README.md` hub + `features.md`, `generating-text.md`,
+  `computing-numbers.md`, `cookbook.md`, and the `solo-rpg/` subtree), linked from the root
+  `README.md`. This is the user-facing *how to use the pills* doc, distinct from `guidance/` (the
+  dev-facing build-steering docs; note the near-identical name `guidance/features.md`, which is the
+  separate **engine reference**, not this user inventory). **`guide/features.md` is the canonical
+  user-facing feature inventory** (the root README's "What's in the box" is a teaser that defers to
+  it). **When you ship a user-facing feature the user types or clicks, freshen `guide/` in the same
+  change:** add the one-line entry to `guide/features.md` (with its anchor link into the relevant
+  deep guide), and the how-to to the matching deep guide. The headings in the deep guides are
+  **unnumbered on purpose** (their slugs are the cross-link contract `guide/features.md` depends on,
+  so renaming a heading means updating every inbound anchor in the same change). It drifts the same
+  way the in-app concept guide does. (Same no-em-dash rule as all user-facing copy.)
 - `guide/solo-rpg/` — **user-facing worked examples** for using Pointliner at a solo-RPG table
   (the use it was born from). Lives **under `guide/`** alongside the other user docs. A landing
   `README.md` plus one folder per case; each case ships a walkthrough `.md` **and an importable
