@@ -55,8 +55,8 @@ you make it somewhere else. In Pointliner you can make the roll **in the line it
 | You type in a beat | What happens |
 |---|---|
 | `{2d6}` | rolls two d6 in place; click it to re-roll |
-| `{d20 + 5}` | rolls with a modifier |
-| `{yes \| no \| maybe}` | a quick three-way oracle pick |
+| `{1d20+5}` | rolls with a modifier |
+| `{Yes \| No \| Maybe}` | a quick three-way oracle pick |
 | `{= hp - 4}` | does the math, live, if `hp` is a variable you set |
 
 So a "roll" beat stops being a transcription and becomes the actual roll. And because a dice

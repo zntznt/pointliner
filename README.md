@@ -6,7 +6,7 @@ click to re-roll. `{= sum(cost)}` totals your children. `{5 to 10}` is an uncert
 estimate with a little sparkline. All of it lives in one `index.html`, runs with the wifi
 off, and needs nothing installed.
 
-**[→ Try it now](http://zntznt.com/pointliner/)** · no account, no install, runs in your browser.
+**[→ Try it now](https://zntznt.com/pointliner/)** · no account, no install, runs in your browser.
 
 ---
 
@@ -69,7 +69,7 @@ A friendly, scannable feature overview lives in [**What Pointliner can do**](gui
 
 You don't have to clone anything:
 
-1. **Use it hosted:** [zntznt.com/pointliner](http://zntznt.com/pointliner/). Install it
+1. **Use it hosted:** [zntznt.com/pointliner](https://zntznt.com/pointliner/). Install it
    from your browser ("Install app" / "Add to Home Screen") for an offline standalone app.
 2. **Or run it from a file:** download [`index.html`](index.html), open it in any modern
    browser. That's the whole app. Save it to Dropbox/iCloud/a git repo and it syncs like
