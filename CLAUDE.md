@@ -102,7 +102,7 @@ are out of scope — not deferred, out.
   bullet popup and the `✏ markdown` button are revealed on `:hover` for the mouse,
   but touch has no hover. The `@media(hover:none)` CSS block makes those always
   visible and enlarges tap targets; the bullet's hover popup is replaced by a
-  **long-press** (`attachBulletLongPress`, gated on the module-level `IS_TOUCH`,
+  **long-press** (`attachBulletTouchGestures`, gated on the module-level `IS_TOUCH`,
   which also sets `bullet.draggable=false` since HTML5 drag never fires on touch —
   reordering is done via the popup's Move up/down). `IND` (indent step) is a `let`
   recomputed from viewport width in the `resize` handler. Any new mouse-only
@@ -166,6 +166,11 @@ canonical shape:
   dice: [], markov: [], math: [], vars: [], grammar: [], est: []  // artifact sidecars (legacy `rolltable` migrates into `grammar` on load; `est` = uncertainty fields, B2)
 }
 ```
+
+The **root** node (`mkRoot()`) additionally carries the document-level config that
+rides the OPML `<head>`: `savedSearches`, `templates`, `inboxId`, `plugins`,
+`docId` (the workspace identity for cross-doc links), and `journal`
+(`{mode, targetId}` — see Journal below). These live only on root, not on every node.
 
 - **`node.text` is plain text and is the source of truth.** It holds markdown
   (`**bold**`, `- item`, `# heading`) and opaque artifact tokens
@@ -335,9 +340,9 @@ changes.
 all app-specific data rides on **underscore-prefixed custom attributes**
 (`_type`, `_dice`, `_vars`, `_id`, …). Sidecar arrays are `JSON.stringify`'d into
 an attribute. **Doc-level config rides the `<head>`** as underscore-prefixed custom
-*elements* (`<_savedSearches>`, `<_templates>`, `<_inbox>`, `<_plugins>` — JSON
-content, same serialize+parse-in-one-change rule; `headEl`/`headJSONArray` are the
-shared serialize/parse pair, the validator dropping malformed entries on load).
+*elements* (`<_savedSearches>`, `<_templates>`, `<_inbox>`, `<_plugins>`, `<_docid>`,
+`<_journal>` — JSON content, same serialize+parse-in-one-change rule; `headEl`/`headJSONArray`
+are the shared serialize/parse pair, the validator dropping malformed entries on load).
 `ex()` encodes `\n` as `&#10;` because XML attribute normalization
 would otherwise collapse literal newlines to spaces on re-parse. **OPML here is a
 storage format, not an interchange format** — the app owns the files, so inventing
@@ -752,6 +757,13 @@ stays open after each capture with a running "✓ Captured N" confirmation, Ente
 is a line break; `openCaptureDialog`/`doCapture`/`resolveInbox`. NB the capture-dest picker rebuilds
 the dialog *in place* on pick, so it defers the rebuild a frame — the trailing mouseup/click lands on
 the inert picker, not the freshly-built main view) ·
+Journal / daily notes (a toolbar button `#btn-journal` + the `journal` block command — `BLOCK_CMDS`,
+section "Organize" — open today's entry; `openJournalEntry`/`findOrCreateJournalHome` with **two
+modes**: in-doc **append** (find-or-create a top-level "Journal" home point, then today's day node
+under it — `findOrCreateChild`, fuzzy-matching a day node that carries a title suffix) and, when a
+workspace folder is connected, **file-per-day / file-per-entry** on disk; pure core
+`journalFileName(iso, perEntry, stamp)`. Config is `root.journal = {mode, targetId}`, round-tripping
+as the `<_journal>` OPML head element; concept-guide entry `{id:'journal', cat:'dates'}`) ·
 Dates (start + due) + Agenda (dates live as `start` and/or `due` properties in `node.props`, value `YYYY-MM-DD` or `today`/`today+N`/`today-N`/`tomorrow` — a point carries a start→due **range**, project-management style; zero new authoring syntax — both keys reuse the existing properties system and parse through `parseDueDate`, which round-trips the parsed epoch back to y/m/d to reject impossible calendar dates — Feb 30, day 32, month 13 — that `Date.UTC` would silently overflow-normalize, and bounds the year to a sane 1900–2200 scheduling window; date-smart chips color-coded by urgency: Today (green) / Tomorrow & this week (accent) / Later (muted) / Overdue (red); the start chip renders with a leading `▸` and never-overdue ink. **Agenda is a vertical stack inside the toolbar** (below the breadcrumb — no sidebar, so it never constrains the outline's width or obstructs a mobile screen; the toolbar's `ResizeObserver` re-pads `body` so extra bars push the outline down rather than overlapping it), toggled by the toolbar calendar button. The **top bar** (`.ag-top`) pairs a **2×2 control grid** (`.ag-controls` — `Timeline · Calendar` / `Done · Running`) on the left with the **always-present List** (`.ag-list`) on the right; **Timeline and Calendar are independent toggles** (persisted as `agendaBars = {timeline,calendar}`) that each open their **own full-width bar** (`.ag-pane`, hairline-topped) **below** the top bar — open either, both, or neither. Flags: **Done** (include completed dated points, off by default; done-ness via `todoDoneFromText`) and **Running** (show/hide the List's bottom row). The bars render the same dated points (`collectDueDates`): **List** — the **top "Due" row** (deadlines not yet started) + **bottom "Running" row** (started points, `start ≤ today`, with elapsed `▶ Nd` plus their deadline; a started point moves from Due to Running, never duplicated; a future-start point with a `due` shows on the Due row, with no `due` it waits until it starts — "show from start onward"); **Timeline** — a **Gantt chart** (`agendaGantt`): each point a horizontal bar on a shared, horizontally-scrolling day axis — a **range bar** start→due, a **1-day bar** for a deadline-only point, an **open-ended dashed "ongoing" bar** (start→today) for a started point with no deadline (rendered neutral, never "overdue", since it has no deadline; deadline bars carry their urgency tint) — with an accent **"today" line**; **Calendar** — a month grid (`agendaMonthCells` over `calendarMonthGrid`) with each point on its day, `‹ Month YYYY › Today` nav that re-`paint()`s in place (focus stays on the nav button, like `buildDatePicker`), up to 3 item-chips per cell then `+N`. Calendar opens on the current month (`agendaMonth`, session-only). The two layout models are **pure cores** (`agendaGantt`, `agendaMonthCells`), test-pinned. Click/Enter any bar/chip to zoom in (the strip stays open — only the calendar button toggles it). `/due` slash verb (labelled **"Schedule"**) + bullet menu "Set / Edit dates" open the two-field Start+Due dialog; **clicking a `due`/`start` property chip routes to the Schedule dialog** (`openPropChip` dispatches on `chip.dataset.propKey`), and date keys are **hidden from the generic Properties dialog** (`DATE_KEYS`-filtered, merged back untouched on save) — dates are a Schedule-dialog concern, not free-form key:value editing. Each Schedule date field carries a **full-width inline calendar** (`buildDatePicker`/`attachDateCalendar`) shown while the field is focused — the caret stays in the text field, `ArrowDown` moves focus into the `role=grid` calendar, arrows navigate, Enter/click picks (writing the ISO date back and returning the caret); day cells act on `mousedown`+`preventDefault` (caret invariant) so a pick never blurs the field, and the close-on-blur check is **deferred** so navigating the grid (an innerHTML rebuild that transiently blurs the focused cell) doesn't collapse it; pure grid cores `calendarMonthGrid`/`addMonths`. The calendar lives in-flow, so `#io-card` scrolls (`max-height:82vh`) to never clip a tall dialog. Search operators `due:`/`start:` `today`/`overdue`/`<date`/`>date` (one date-aware `key:value` extension per key); pure cores `parseDueDate`, `formatDueDate`, `collectDueDates` (now returns `{start, due, started, done, runningDays, …}` per item; the legacy `epochDay`/`iso`/`label`/`state` describe the primary date — due if present, else start — so due-only callers are unchanged); UXP-20 decision recorded: dates live in properties, `due:`/`start:` are date-aware extensions of `key:value`. The agenda + `/due` icons (`fa-calendar-day(s)`) and the capture `fa-inbox` were added to the embedded Font Awesome subset — `FA_GLYPHS` + the `::before` content rules + the solid woff2 re-subset from FA 6.7.2; a glyph missing from the subset paints blank in a raw `<i>` (toolbar buttons bypass the `setIcon` emoji self-heal), so any new icon MUST go through the subset rebuild) ·
 Self-contained HTML export (C1: File menu → **Self-contained HTML** — `exportSelfContainedHtml` clones the page, empties the rendered DOM, and inlines the outline as OPML in the `#pl-embedded-doc` `<script type="application/xml">` data-island via the pure core `embedOpmlIntoHtml` / `extractEmbeddedOpml`; opening the file re-runs the app and `restoreEmbeddedDoc` hydrates from the island — winning over local autosave — into **display mode** with a one-time snapshot notice; the data-island is empty in the app shell, so the live editor is untouched; see the "Export — self-contained HTML" section above).
 Details: `guidance/features.md`
@@ -815,17 +827,31 @@ The product direction is now set. Read these before proposing or building:
 Note: internal links + backlinks and a multi-document workspace — previously "out of
 scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
 
+**Two more directories, not to be confused with `guidance/`:**
+- `guide/` — the **end-user** guide (4 markdown files: a README + Generating text / Computing
+  numbers / Cookbook), linked from the root `README.md`. This is the user-facing *how to use the
+  pills* doc, distinct from `guidance/` (the dev-facing build-steering docs). **When you ship a
+  user-facing feature, freshen `guide/` if the feature is something a user types or clicks** — it
+  drifts the same way the concept guide does. (Same no-em-dash rule as all user-facing copy.)
+- `parked/` — **deliberately shelved** direction docs (currently just the parked version-control
+  pivot). Not stray, not active. Don't resurrect what's parked here without sign-off, and don't
+  delete it as cruft.
+
 ---
 
 ## Working notes
 
-- Dev branch: `claude/cool-cray-5OQcQ` on `zntznt/pointliner`.
+- Work flows through **per-task branches** (`docs/…`, `fix/…`, `feat/…`) cut off
+  `origin/main`, one focused PR each — there is no long-lived dev branch.
 - **Always branch off freshly-fetched `origin/main`.** Before starting any task, run
   `git fetch origin` and cut your branch from `origin/main` — **not** local `main`. A stale local
   clone can leave `main` pointing at an old snapshot, and you won't notice: your branch will pass
   its own outdated tests. Sanity-check you're current — the test count and recently-merged
-  files/dirs (e.g. `guidance/`, the latest UXP entries) should match the latest work. If the count
-  is lower than the last merge, **STOP**: you're on a stale base.
+  files/dirs (e.g. `guidance/`, the latest UXP entries) should match the latest work. As of the
+  last refresh of this doc `node --test tests/test.mjs` reported **629 tests, all passing**; treat a
+  *lower* count than that as a likely stale base and **STOP** to investigate. (The number only grows,
+  so it drifts upward over time — it's a floor, not an exact match. Trust the runner's reported total,
+  not a `grep -c 'test('`, which over-counts.)
 - Tests live in `tests/`. `tests/load-cores.mjs` harvests the pure functions out of
   `index.html` via a Node `vm` sandbox (no build step, no edits to `index.html`); it
   exposes deterministic-RNG helpers (`seedSequence`/`setRandom`/`resetRandom`).
