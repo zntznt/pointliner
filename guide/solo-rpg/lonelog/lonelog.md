@@ -62,7 +62,7 @@ you make it somewhere else. In Pointliner you can make the roll **in the line it
 So a "roll" beat stops being a transcription and becomes the actual roll. And because a dice
 pill **freezes** its result once rolled, the log stays an honest record: it shows what you
 got, and it only changes if you deliberately click to re-roll. (See the
-[generating-text guide](../../guide/generating-text.md) for the full dice and oracle syntax.)
+[generating-text guide](../../generating-text.md) for the full dice and oracle syntax.)
 
 You do not have to use live dice. If you rolled physical dice and just want to record the
 number, type the number. Mix and match freely.
@@ -134,4 +134,4 @@ notebook is right there, and that is genuinely fine.
   Lonelog, not a copy of the notation specification.
 - **Lonelog tooling / Obsidian plugin:** Christopher Hardiman,
   <https://github.com/ChristopherHardiman/lonelog>.
-- **Pointliner:** MIT, see [LICENSE](../../LICENSE).
+- **Pointliner:** MIT, see [LICENSE](../../../LICENSE).

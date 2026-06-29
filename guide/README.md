@@ -1,11 +1,32 @@
-# Pointliner: the generative & computational guide
+# The Pointliner guide
+
+The home for everything written to help you *use* Pointliner. Whatever you came for, start here.
+
+**The guides:**
+
+- **[What Pointliner can do](features.md)** is the scannable feature map: every capability in one
+  line, with links to where you learn it. Skim this if you just want to know "can it do X?"
+- **The generative & computational guide** (this page, below) teaches the **pills**: the live
+  widgets you drop inside a point. It splits into [Generating text](generating-text.md) (dice,
+  tables, name makers, oracles) and [Computing numbers](computing-numbers.md) (math, dates,
+  rollups, estimates).
+- **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
+- **[Solo RPG guides](solo-rpg/README.md)** are worked examples for the use Pointliner was born
+  from: playing and journaling a tabletop game in one file, each with an importable demo.
+
+The plain outliner (nested points, markdown, to-dos, dates, links, search) is self-explanatory;
+the rest of this page is the friendly introduction to the pills.
+
+---
+
+## The pills: generative & computational
 
 Pointliner isn't just an outliner. Inside any point you can drop a **pill**: a little live widget
 that rolls dice, generates names, picks from a table, does math, tracks a budget, or models an
 uncertain estimate, all offline, in the one file, with nothing to install.
 
-This guide explains **how the hell all that works** and how to use it. No coding required: if you
-can type `{` you can use everything here.
+This part of the guide explains **how the hell all that works** and how to use it. No coding
+required: if you can type `{` you can use everything here.
 
 ---
 
@@ -59,10 +80,8 @@ There are two families of pills:
 
 ---
 
-## Where to go next
+## Go deeper
 
-- **[What Pointliner can do](features.md):** a scannable map of every feature in one line each, with
-  links into the deep guides. Start here if you just want to know "can it do X?"
 - **[Generating text](generating-text.md):** alternation, weights, named rules, dice, modifiers
   (`{beast.a}` becomes "an ogre"), conditionals, decks, repeats, variables, item fields, roll
   tables, oracles, Markov chains. Build a name generator, a loot table, an NPC.
@@ -72,7 +91,7 @@ There are two families of pills:
 - **[Cookbook](cookbook.md):** copy-paste recipes such as a name generator, a dungeon stocker, a
   yes/no oracle, a budget that rolls up and lints itself, a deadline countdown, a Fermi estimate,
   a card deck.
-- **[Solo RPG guides](../solorpg-guides/README.md):** worked examples for playing and journaling a
+- **[Solo RPG guides](solo-rpg/README.md):** worked examples for playing and journaling a
   solo tabletop game in one file (dice, oracles, tables, the log all together), each with a
   walkthrough and an importable demo `.opml`. A Lonelog-style session log is the first.
 

@@ -91,7 +91,7 @@ guide:
     variables, subtree roll-ups, uncertain estimates, checks, table formulas.
   - **[Cookbook](guide/cookbook.md):** copy-paste recipes such as a name generator, a
     dungeon stocker, a yes/no oracle, a self-linting budget, a Fermi estimate, a card deck.
-- **[Solo RPG guides](solorpg-guides/README.md):** worked examples for the use Pointliner
+- **[Solo RPG guides](guide/solo-rpg/README.md):** worked examples for the use Pointliner
   was born from, playing and journaling a solo tabletop game in one file. Each case ships a
   walkthrough plus an importable demo `.opml`; first up is a Lonelog-style session log.
 - **In-app:** the **`?` panel** is the look-it-up reference; the **Concept guide** button

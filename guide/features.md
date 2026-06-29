@@ -112,7 +112,7 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   the two deep guides.
 - **[Cookbook](cookbook.md)** has copy-paste recipes: a name generator, a dungeon stocker, a
   self-linting budget, a Fermi estimate, and more.
-- **[Solo RPG guides](../solorpg-guides/README.md)** show the generators, oracle, and journal
+- **[Solo RPG guides](solo-rpg/README.md)** show the generators, oracle, and journal
   working together at the table, with importable demo files.
 
 > Inside the app, the **`?` button** (bottom-right) is the always-there cheat sheet, and the
