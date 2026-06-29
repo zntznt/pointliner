@@ -10,7 +10,7 @@ ready-to-open demo file you can poke at.
 
 No coding required. If you can type `{` you can use everything here. If you are new to
 the generator pills (`{2d6}`, `{a | b}`, `{= 5 * 8}`), skim the
-[main generative guide](../guide/README.md) first, then come back.
+[main generative guide](../README.md) first, then come back.
 
 ---
 
@@ -60,4 +60,4 @@ source and its author are credited in that example's guide, and only the functio
 is adapted, the original text and specifications are linked, not reproduced. Please
 support the creators whose work these examples point to.
 
-Pointliner itself is MIT licensed (see [LICENSE](../LICENSE)).
+Pointliner itself is MIT licensed (see [LICENSE](../../LICENSE)).
