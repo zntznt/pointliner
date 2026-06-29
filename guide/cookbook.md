@@ -35,7 +35,7 @@ loot: 10 gold | a healing potion 2 | a {gem} ring 3 | nothing 4
 gem: ruby | sapphire | opal
 ```
 
-The numbers are weights — `nothing` (4) is commonest, the gem ring (3) next. Entries call other
+The numbers are weights: `nothing` (4) is commonest, the gem ring (3) next. Entries call other
 rules (`{gem}`) and can roll dice (`{2d6} gold`).
 
 ---
@@ -58,7 +58,7 @@ quirk: never makes eye contact | talks too much | owes a debt | hums constantly 
 
 ## 4. Yes/no oracle (solo play)
 
-**`@` → Oracle (yes/no)**, pick a likelihood — or type the weighted form directly:
+**`@` → Oracle (yes/no)**, pick a likelihood, or type the weighted form directly:
 
 ```
 {Yes 2 | No}        "likely yes"
@@ -67,7 +67,7 @@ quirk: never makes eye contact | talks too much | owes a debt | hums constantly 
 ```
 
 Click to ask again. Want the odds to shift with the fiction? Use a [dynamic
-weight](generating-text.md#9-when-the-odds-depend-on-something--dynamic-odds):
+weight](generating-text.md#9-when-the-odds-depend-on-something-dynamic-odds):
 `{Yes | No {= danger}}`.
 
 ---
@@ -108,21 +108,21 @@ Each click **draws the next card**; when the deck empties it reshuffles. Use `cy
 
 ---
 
-## 7. A budget that rolls up — and lints itself
+## 7. A budget that rolls up and lints itself
 
 Make a parent point the budget, each line item a child with a `cost` property.
 
 **Parent point:**
 
 ```
-Trip budget — spent {= sum(cost)} of {budget}
+Trip budget: spent {= sum(cost)} of {budget}
 ```
 
 - Give the parent a `budget` property (bullet menu → Add property): `budget: 500`.
 - Give each child a `cost` property: `cost: 120`, `cost: 90`, …
 - `{= sum(cost)}` totals the children **live** as you add line items.
 
-**Now make it check itself** — on the parent, **`/check`**:
+**Now make it check itself.** On the parent, **`/check`**:
 
 ```
 sum(cost) <= budget
@@ -145,7 +145,7 @@ It counts down on its own each day (negative once it's overdue). Show the date i
 `{= asdate(due)}`, or the day of week with a conditional:
 
 ```
-Due {= asdate(due)} — {= daysuntil(due) <= 3 ? "⚠ soon" : "plenty of time"}
+Due {= asdate(due)} · {= daysuntil(due) <= 3 ? "⚠ soon" : "plenty of time"}
 ```
 
 ---
@@ -165,7 +165,7 @@ On the parent:
 Total effort: {sum(effort)} days
 ```
 
-The parent shows **mean ± [low, high]** with a sparkline — the whole project's uncertainty,
+The parent shows **mean ± [low, high]** with a sparkline: the whole project's uncertainty,
 composed from the parts. Click to re-sample. (Build the children's estimates with `@` → Estimate
 if you prefer the dialog.)
 
@@ -185,7 +185,7 @@ Roll six ability scores, classic 4d6-keep-highest-3, in one point:
 STR {4d6kh3} · DEX {4d6kh3} · CON {4d6kh3} · INT {4d6kh3} · WIS {4d6kh3} · CHA {4d6kh3}
 ```
 
-Each is its own pill — click any one to re-roll just that stat. Dice can add a **variable** as a
+Each is its own pill, so click any one to re-roll just that stat. Dice can add a **variable** as a
 modifier, and a variable can be a formula over another variable. Declare (in `@` → Variable):
 
 ```
@@ -199,7 +199,7 @@ then roll an attack with the bonus baked in: `Attack {1d20 + str_mod}` → rolls
 
 ## 11. Consistent character across a sentence
 
-The trick from [item fields](generating-text.md#10-items-with-fields--itemfield): freeze the pick
+The trick from [item fields](generating-text.md#10-items-with-fields-itemfield): freeze the pick
 in a variable so it stays the same everywhere.
 
 **`@` → Grammar** (define the item + fields):
@@ -221,7 +221,7 @@ Both `{w}` mentions are the **same** weapon, and `{w.dmg}` is *its* damage die.
 
 ---
 
-## 12. Weather that drifts — Markov
+## 12. Weather that drifts (Markov)
 
 **`@` → Markov**, name it `weather`:
 
@@ -238,4 +238,4 @@ run of days; click to re-walk.
 numbers](computing-numbers.md).
 
 > Remember you can **export any of these as a self-contained `.html`** (File menu → Self-contained
-> HTML) and hand it to someone — it re-rolls on their machine, no install, no account.
+> HTML) and hand it to someone; it re-rolls on their machine, no install, no account.
