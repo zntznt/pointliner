@@ -155,7 +155,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #search-wrap{position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}
 #search-wrap>*{pointer-events:auto}
 /* file menu */
-#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;min-width:252px;box-shadow:var(--sh-2);max-height:85vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;overscroll-behavior:contain}
+#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;min-width:252px;max-width:min(320px,calc(100vw - 16px));box-shadow:var(--sh-2);max-height:85vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;overscroll-behavior:contain}
 @keyframes menu-pop{from{opacity:0;transform:scale(.96) translateY(-8px)}to{opacity:1;transform:none}}
 #file-menu.on{display:block;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
 /* header */
@@ -1397,7 +1397,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" id="workspace-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect a folder…</span><span class="cmd-desc" id="workspace-desc">Auto-save every document, switch between them, reopen later</span></div></div>
   <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open, and create documents in the folder</span></div></div>
   <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-minus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Stop auto-saving. Your documents stay on disk</span></div></div>
-  <div class="cmd-item cmd-note" id="workspace-invite" role="note" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Folders</span><span class="cmd-desc">Open in Chrome or Edge to auto-save a folder of documents and switch between them</span></div><button class="io-btn xsm" id="workspace-invite-copy" type="button" aria-label="Copy this page's link to open in Chrome or Edge">Copy link</button></div>
+  <div class="cmd-item" id="workspace-invite" role="button" tabindex="-1" style="display:none" title="Copy this page's link to open in Chrome, Edge, or a similar browser" aria-label="Folders need Chrome, Edge, or a similar browser. Click to copy this page's link"><div class="cmd-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Folders need Chrome, Edge, or similar</span><span class="cmd-desc">Click to copy this page’s link</span></div></div>
 
   <div class="fm-group">Export a copy</div>
   <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot, pills frozen to text</span></div></div>
@@ -17591,12 +17591,15 @@ document.getElementById('btn-workspace').addEventListener('click', () => {
 });
 document.getElementById('btn-workspace-switch').addEventListener('click', () => { openWorkspaceSwitcher(); closeFileMenu(); });
 document.getElementById('btn-workspace-disconnect').addEventListener('click', () => { disconnectWorkspace(); closeFileMenu(); });
-document.getElementById('workspace-invite-copy').addEventListener('click', (e) => {
-  e.stopPropagation();
+// The whole invite row copies the page link (it's the only action it has), then closes
+// the menu. Replaces the former inline "Copy link" button, which forced the row , and so
+// the whole menu , wider.
+document.getElementById('workspace-invite').addEventListener('click', () => {
   const url = location.href;
-  const done = () => flashHint('Link copied. Open it in Chrome or Edge');
+  const done = () => flashHint('Link copied. Open it in Chrome, Edge, or a similar browser');
   if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done)); }
   else { fallbackCopy(url, done); }   // UX audit: actually copy (was a false-success claim with no clipboard)
+  closeFileMenu();
 });
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
@@ -18249,7 +18252,7 @@ const GUIDE = [
     ] },
   { id:'workspace-documents', cat:'files',
     title:'Working with a folder of notes',
-    body:"Keep a whole library of notes in one folder on your computer and move between them the way you would tabs: a project note, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome or Edge only) and every note saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the notes in the folder, jump to one, add a fresh + New document or delete an old one. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in Chrome or Edge instead.",
+    body:"Keep a whole library of notes in one folder on your computer and move between them the way you would tabs: a project note, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge, or a similar browser only) and every note saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the notes in the folder, jump to one, add a fresh + New document or delete an old one. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
     examples:[
       { syn:'File → Connect folder…',   desc:'link a folder of notes (Chromium only)' },
       { syn:'File → Switch document…',  desc:'list, open, create or delete notes' },
