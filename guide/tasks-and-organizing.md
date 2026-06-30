@@ -41,7 +41,7 @@ tracking.
 [%]      a percentage
 ```
 
-(See also [computing numbers](computing-numbers.md#progress-cookies) for how progress bars compose
+(See also [Computing numbers](computing-numbers.md#progress-bars) for how progress bars compose
 with the rest of the math.)
 
 ---

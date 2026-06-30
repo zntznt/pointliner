@@ -13,7 +13,7 @@ log, and run it inside Pointliner, where the dice are live and the log is an out
 link, tag, and search later. For the real notation, its full rules, and the people behind it,
 go to the source:
 
-- Lonelog by Loreseed Workshop: <https://lonelog.itch.io/lonelog>
+- Lonelog by Roberto Bisceglie / Loreseed Workshop: <https://lonelog.itch.io/lonelog>
 - Lonelog tooling (and an Obsidian plugin): <https://github.com/ChristopherHardiman/lonelog>
 
 > **Licensing.** The Lonelog notation system is by Roberto Bisceglie and is published under

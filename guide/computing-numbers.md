@@ -196,10 +196,10 @@ zero new syntax, just a boolean.)
 
 ---
 
-## Progress cookies
+## Progress bars
 
 Drop **`[/]`** or **`[%]`** in a point (or use **`@` → Progress**) for a live tally of its
-checkboxes and child to-dos:
+checkboxes and child to-dos (org-mode calls these *cookies*):
 
 ```
 Packing [/]      → Packing [2/5]
