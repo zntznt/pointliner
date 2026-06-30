@@ -17327,9 +17327,10 @@ const GUIDE = [
     ] },
   { id:'variables', cat:'compute', covers:['var'],
     title:'Variables',
-    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. Variables can be a fixed number, a formula that depends on other variables or a frozen random pick.",
+    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. Variables can be a fixed number, a formula that depends on other variables or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as {name := value}.",
     examples:[
       { syn:'@ → Variable', desc:'set a named value' },
+      { syn:'{rate := 0.2}',desc:'declare it by typing, inline' },
       { syn:'{name}',      desc:'drop the value in' },
       { syn:'{= 2 * area}',desc:'use it in a calculation' },
     ] },

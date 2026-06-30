@@ -4539,6 +4539,60 @@ test('cross-surface: GUIDE and markdown agree on dice reroll semantics (threshol
   }
 });
 
+// ── Shipped-syntax-token guard ────────────────────────────────────────────────
+// classifyBraceBody is the single, enumerable place every PROMOTABLE `{…}` syntax
+// form is detected (a user types it, it becomes a pill). Each branch carries a
+// comment with the user-facing example token. This guard derives the set of
+// distinguishing syntax SIGNATURES from those comments and asserts each appears in
+// at least one CANONICAL documentation surface (the in-app GUIDE array OR the dev
+// engine reference guidance/features.md) — so a new authoring syntax can never
+// ship completely undocumented the way `{name := expr}` once did. It checks
+// "documented somewhere canonical," NOT "documented everywhere" (advanced syntax
+// in the user guide is a content call), and it derives from code, no hardcoded list.
+test('shipped-syntax guard: every promotable {…} form is documented in a canonical surface', () => {
+  // Canonical surface = the in-app GUIDE array. It is the right anchor because it has
+  // NO reason to mention reverted/deferred syntax (unlike prose docs, where a token can
+  // appear only inside a "do not use" warning — a false-positive a substring check on
+  // the dev docs would wrongly accept). Presence in the GUIDE means genuinely documented
+  // for users.
+  const guideArr = (() => {
+    const i = _src.indexOf('const GUIDE = [');
+    return _src.slice(i, _src.indexOf('(function buildShortcutsPanel', i));
+  })();
+  const documented = (sig) => guideArr.includes(sig);
+
+  // Extract the example tokens from classifyBraceBody's branch comments.
+  const cbStart = _src.indexOf('function classifyBraceBody');
+  assert.ok(cbStart !== -1, 'classifyBraceBody not found — the promotion path was renamed');
+  const cbBlock = _src.slice(cbStart, _src.indexOf('\n}', cbStart + 2000));
+  const exampleToks = [...new Set([...cbBlock.matchAll(/\/\/\s*(\{[^}]+\})/g)].map(m => m[1]))];
+  assert.ok(exampleToks.length >= 8,
+    `parsed only ${exampleToks.length} promotable forms from classifyBraceBody; comments changed?`);
+
+  // Map each form to its distinguishing SIGNATURE (the operator/keyword a doc would
+  // show). Generic forms (a bare dice/alt/rule) are covered by other guards and are
+  // intentionally skipped here; this guard targets the syntax-y operators that are
+  // the real "did anyone document this?" risk.
+  const SIGNATURES = [
+    [':=',      ':='],       // typed declaration {name := expr}
+    ['x:',      'x:'],       // repeat {3x: template}  — the "Nx:" operator
+    [' to ',    ' to '],     // estimate {5 to 10}
+  ];
+  const missing = [];
+  for (const [needleInForm, sig] of SIGNATURES) {
+    // only assert a signature if some promotable form actually uses it (so the guard
+    // self-disables if a form is ever removed from the engine)
+    if (exampleToks.some(t => t.includes(needleInForm)) && !documented(sig)) {
+      missing.push(sig);
+    }
+  }
+  assert.deepEqual(missing, [],
+    `These shipped, user-typable syntax operators are NOT documented in the in-app GUIDE array: ` +
+    `${missing.join(', ')}\n` +
+    `A promotable {…} form must have a GUIDE entry (the user-facing concept guide). Add one. ` +
+    `(This is the guard that would have caught the {name := expr} gap.)`);
+});
+
 test('GUIDE drift guard: openGuide function is wired to the Concept guide button', () => {
   assert.ok(_src.includes('openGuide()'), 'openGuide() call missing — Concept guide button is not wired');
   assert.ok(_src.includes('function openGuide('), 'openGuide function declaration missing');
