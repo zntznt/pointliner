@@ -1,8 +1,10 @@
 # Proposal: typed inline variable declaration
 
-**Status:** approved. **Stage A (typed `:=` declaration + unfold-edit + ripple warning) is
-SHIPPED** , see §8. **Stage B (positional resolution, §9) is NOT yet built** , it remains a
-future PR. The `generation-direction.md` §5 deferral is updated accordingly.
+**Status:** approved and **SHIPPED**. Stage A (typed `:=` declaration + unfold-edit + ripple
+warning, §8) and Stage B (positional resolution, §9) are both implemented. Positional
+resolution supersedes the global "declare-once / call-anywhere" model; `generation-direction.md`
+§2 is updated to record the new model. Engines stay untouched (a per-position `varMapAt(node)`
+map feeds the unchanged resolvers); shadowing redefined to "no reference in range."
 
 **Problem (user-reported).** Every generator family has a typed path: you type `{2d6}`,
 `{= 3*7}`, `{a|b}`, and it promotes to a pill on blur. **Variables are the exception** ,

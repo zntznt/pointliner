@@ -6327,3 +6327,28 @@ test('artifactToShorthand — dialog-declared var (no typed flag) stays atomic',
 test('artifactToShorthand — display-only var ref unfolds to {name}', () => {
   assert.equal(c.artifactToShorthand('var', { key:'k', name:'foo', expr:'' }), '{foo}');
 });
+
+// ── collectVars: global resolution still works after the Stage B refactor ─────
+// Positional resolution (varMapAt) reads the module root and is verified live; here we
+// pin the GLOBAL path (collectVars over a synthetic tree) so the refactor that extracted
+// resolveVarDefs + added the event stream stays behavior-preserving: last declaration wins
+// document-wide, vars resolve through evalMath, refs don't affect the value.
+const vnode = (key, name, expr, extra = {}) => ({ text: `[[var:${key}]]`, vars: [{ key, name, expr, ...extra }], children: [] });
+const vroot = (...kids) => ({ text: '', children: kids });
+
+test('collectVars — single formula var resolves', () => {
+  const r = vroot(vnode('k1', 'gold', '50'));
+  assert.equal(host(c.collectVars(r))['gold'], 50);
+});
+test('collectVars — last declaration wins document-wide (global model intact)', () => {
+  const r = vroot(vnode('k1', 'x', '5'), vnode('k2', 'x', '9'));
+  assert.equal(host(c.collectVars(r))['x'], 9);   // global: last wins, not positional
+});
+test('collectVars — a var referencing another resolves', () => {
+  const r = vroot(vnode('k1', 'r', '4'), vnode('k2', 'area', 'r * 2'));
+  assert.equal(host(c.collectVars(r))['area'], 8);
+});
+test('collectVars — frozen random pick returns its rolled value, never re-rolled', () => {
+  const r = vroot(vnode('k1', 'beast', 'dragon|wyrm', { kind: 'pick', rolled: 'dragon' }));
+  assert.equal(host(c.collectVars(r))['beast'], 'dragon');
+});
