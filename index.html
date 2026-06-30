@@ -7339,6 +7339,27 @@ async function openJournalEntry() {
   flashHint(created ? 'Created a journal entry for ' + iso : 'Opened journal for ' + iso);
 }
 
+// Toggle where journal entries go: 'append' (a Journal home point in this document)
+// ↔ 'file' (one .opml per day in the connected workspace folder). This is the ONLY
+// front door for journal mode — it is doc-level config that fits neither / nor @ nor
+// {…} (the toolbar's journal button already OPENS today's entry), so it rides the
+// global Ctrl/Cmd+Shift+J shortcut and is listed in the ? panel. P4: always flashes
+// the new mode; file mode without a workspace flashes that openJournalEntry will fall
+// back to in-doc until a folder is connected (it does — see the `!workspaceDir` guard).
+function cycleJournalMode() {
+  const cur = root.journal?.mode || 'append';
+  const next = cur === 'append' ? 'file' : 'append';
+  root.journal = { mode: next, targetId: root.journal?.targetId ?? null };
+  markDirty();
+  if (next === 'file') {
+    flashHint(workspaceDir
+      ? 'Journal mode: a file per day (in the workspace folder).'
+      : 'Journal mode: a file per day. Connect a workspace folder to use it (in-doc until then).');
+  } else {
+    flashHint('Journal mode: in this document (a Journal point).');
+  }
+}
+
 // ─── search ───────────────────────────────────────────────────────────────────
 // The search box speaks a small operator language (UXP-20-routed: operators over
 // the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
@@ -17188,6 +17209,7 @@ const GUIDE = [
   { id:'file-save', essential:true, essSection:'File', keys:[`${MOD}+S`,`${MOD}+O`], essLabel:'Save / open' },
   { id:'file-undo', essential:true, essSection:'File', keys:[`${MOD}+Z`,`${MOD}+Y`], essLabel:'Undo / redo' },
   { id:'file-vars', essential:true, essSection:'File', keys:[`${MOD}+⇧+V`],         essLabel:'Variables panel' },
+  { id:'file-jmode', essential:true, essSection:'File', keys:[`${MOD}+⇧+J`],        essLabel:'Journal mode: in-doc / file per day' },
 
   // ── Multi-select (essentials only) ────────────────────────────────────────
   { id:'sel-range',  essential:true, essSection:'Select', keys:['⇧+Click'],            essLabel:'Select a range' },
@@ -17406,9 +17428,10 @@ const GUIDE = [
     ] },
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',
-    body:"Keep a running log of what you worked on, decisions you made or anything worth noting each day. Entries file themselves by date under a Journal point, nested year then month then day (2026 > 06 > 16), so over time you build a tidy, searchable diary inside your outline. Type /journal, or the calendar button, to open or create today's entry.",
+    body:"Keep a running log of what you worked on, decisions you made or anything worth noting each day. Type /journal, or the toolbar journal button, to open or create today's entry. Entries go one of two ways: in this document, filed by date under a Journal point (nested year then month then day, 2026 > 06 > 16), or as one file per day in a connected workspace folder. Switch between the two with Ctrl/Cmd+Shift+J.",
     examples:[
       { syn:'/journal', desc:"open or start today's entry" },
+      { syn:'Ctrl/Cmd+Shift+J', desc:'switch in-doc / file per day' },
     ] },
 
   // ── Generators (guide) ────────────────────────────────────────────────────
@@ -17809,6 +17832,7 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
+  if (ctrl && e.shiftKey && (e.key==='J' || e.key==='j')) { e.preventDefault(); cycleJournalMode(); return; }
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
   // collapse outline to first N levels (Ctrl/Cmd+1..6). Some browsers reserve
   // these for tab switching and won't deliver the event — the toolbar control is

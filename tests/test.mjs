@@ -4757,6 +4757,19 @@ test('UXP-36: toggleVarPanel shortcut handler is present', () => {
     'toggleVarPanel not found in index.html');
 });
 
+test('journal mode: Ctrl/Cmd+Shift+J handler is wired and documented (the only front door)', () => {
+  // The handler: a Ctrl/Cmd+Shift+J chord calls cycleJournalMode.
+  assert.ok(/ctrl && e\.shiftKey && \(e\.key==='J' \|\| e\.key==='j'\)/.test(_src),
+    'Ctrl/Cmd+Shift+J handler not found in index.html');
+  assert.ok(_src.includes('function cycleJournalMode'),
+    'cycleJournalMode function not found');
+  assert.ok(_src.includes('cycleJournalMode()'),
+    'cycleJournalMode is not called from a handler');
+  // Discoverable: an essential ? -panel row advertises the shortcut (no hidden hotkeys).
+  assert.ok(_src.includes("id:'file-jmode'"),
+    'the journal-mode shortcut is not listed in the essential shortcuts registry');
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
