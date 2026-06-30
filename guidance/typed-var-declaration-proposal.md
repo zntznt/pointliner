@@ -1,0 +1,169 @@
+# Proposal: typed inline variable declaration
+
+**Status:** proposal, not approved. Supersedes the "deferred" note in
+`generation-direction.md` §5 *only if accepted*. No code until then.
+
+**Problem (user-reported).** Every generator family has a typed path: you type `{2d6}`,
+`{= 3*7}`, `{a|b}`, and it promotes to a pill on blur. **Variables are the exception** ,
+the only way to *declare* one is the `@` , Variable dialog. So there is no way to declare
+a variable by typing, the way you declare everything else. (The dialog is keyboard-
+reachable via `@`, so this is a coherence gap, not a total keyboard lockout, but it is the
+one family that breaks the "just type it" model.)
+
+This closes that gap with the smallest syntax addition that survives the collision matrix.
+
+---
+
+## 1. What this is NOT (the PR #51 landmine)
+
+`generation-direction.md` §2 records a reverted attempt (PR #51) and forbids repeating it.
+That attempt built **per-expansion bound picks**: `{a := body}` wrote into an ephemeral
+`ctx.binds` scope local to one expansion, so two scattered `{a := …}` braces were two
+scopes and never agreed. **This proposal does not touch that model.**
+
+A typed declaration here is **pure sugar for the existing persistent variable system**: it
+produces the *same* `[[var:key]]` declaration record the dialog produces, frozen per
+document, resolved by `collectVars` / `globalVarMap`, re-rollable from the pill. It writes
+to `node.vars`, never to a per-expansion scope. If it cannot be expressed as "what the
+dialog already does, typed," it is out of scope.
+
+This is the distinction the doc itself draws (§2): "the resilient home is the variable
+system, not an ephemeral per-expansion scope." This proposal is declare-once / call-
+anywhere / persistent , a variable , by construction.
+
+---
+
+## 2. The operator decision: `:=`
+
+Three candidates, judged against the real parser (`classifyBraceBody`, `promoteBraceBody`,
+`parseRules` in `index.html`).
+
+| Form | Collision | Verdict |
+|---|---|---|
+| `{name = expr}` | `=` is *already* the math sigil (`{= expr}`). A bare `=` mid-body is ambiguous against a future "expression starting with a comparison" and reads as a typo of `{= …}`. High confusion surface. | **Reject** |
+| `{name : expr}` | A single `:` is exactly what `parseRules` splits on (`line.indexOf(':')`), and what `cond:`/`shuffle:`/`3x:` use. `{name: expr}` is indistinguishable from a grammar rule line. | **Reject** |
+| **`{name := expr}`** | `:=` is a **two-char operator that appears nowhere** in the current brace grammar. It is the mathematical/Pascal assignment operator (reads as "is defined as"). It does not collide *if sniffed before the `:`-splitting paths*. | **Accept** |
+
+`:=` is also the exact form the user originally typed (per `generation-direction.md` §5) and
+the form the prior revert used , so it carries no relearning cost. The revert's problem was
+the **scope model**, not the operator; `generation-direction.md` §2 says the `:` collision
+"mangling `a := dragon` into the rule `a` = `= dragon`" is retired by *dropping the per-
+expansion model*, which we have. The operator is reusable; the broken semantics are not.
+
+---
+
+## 3. Where it slots in the classifier (precedence is load-bearing)
+
+`classifyBraceBody` / `promoteBraceBody` test brace bodies in a fixed order. The `:=`
+declaration must be detected **first, immediately after the `{= }` math check**, so it can
+never be misread by a downstream branch:
+
+```
+1. body[0] === '='              -> {= expr}  math            (unchanged, first)
+2. NEW: /^[a-z_]\w* := /.test    -> {name := expr} VAR DECL   (new, second)
+3. condParts / seqParts / ...    -> grammar artifacts        (unchanged, after)
+```
+
+Detection rule (precise, to avoid false positives on prose):
+
+- Match `^([a-z_][\w]*)\s*:=\s*(.+)$` on the trimmed body. The name is the existing
+  variable-name charset (same as the `{name}` reference and the dialog's name field). The
+  RHS is non-empty.
+- The RHS is **ordinary grammar/expr content** , exactly what the dialog's value field
+  accepts today: a `{= expr}`-style formula (without the braces), or a random-pick source
+  (`a|b|c`, a `{rule}`, dice). It routes through the **same `makeVar` / value-type logic the
+  dialog uses** , no new evaluation path.
+- A body that has no `:=`, or whose name fails the charset, falls straight through to the
+  existing branches , prose like `{run := the show}`-shaped text only promotes if the name
+  is a valid identifier, otherwise stays literal (the escape-hatch rule is preserved).
+
+Because `:=` is checked before any `:`-splitting path, the `parseRules` collision the doc
+warns about **cannot occur**: a body containing `:=` is claimed as a declaration and never
+reaches `parseRules`.
+
+---
+
+## 4. Behavior (identical to a dialog-declared variable)
+
+`{r := 5}` and `{beast := dragon|wyrm}` produce the **same record** the dialog produces:
+
+- A `[[var:key]]` declaration pill in `node.text` + a `node.vars` sidecar entry
+  (`{ key, name, expr }`), the atomic-pill treatment for declarations.
+- A formula var (`r := 5`) resolves live via `evalMath`/`collectVars`. A random-pick var
+  (`beast := dragon|wyrm`) rolls **once, frozen** on the record, re-rolled only from the
+  pill (the §7.2 generative-pill interaction). This is the v1 random-variable behavior
+  `generation-direction.md` §5 already shipped , the typed form is just a second front door
+  to it.
+- `{name}` references it anywhere , the existing reference path, unchanged.
+- Edit: the declaration pill is atomic (a name is doc-wide callable config richer than the
+  text, per `CLAUDE.md`'s three-treatment rule), so it edits via pencil/dialog, NOT by
+  unfolding to `{name := …}`. (Open question O1 below: should it unfold instead?)
+
+No new resolution, render, or export code , it reuses every layer the dialog path already
+wired.
+
+---
+
+## 5. Verification gate (mandatory, the #45/#51 lesson)
+
+`generation-direction.md` §4 requires end-to-end proof before a variable feature ships.
+Typed declaration must pass the **same** gate, plus its own parse cases:
+
+1. **Pure core first.** A `parseVarDecl(body)` pure function (`{name, expr}` or `null`),
+   pinned in `tests/test.mjs` before any DOM wiring, including the negative cases: no `:=`,
+   bad name, empty RHS, `:=` inside a larger expression, a `:` rule line that must STILL
+   parse as a rule.
+2. **Real-path, in the running app:** type `{gold := 50}` , it promotes to a var pill ,
+   reference `{gold}` in **two different nodes** , both show 50 , type `{gold := 75}` on
+   the original (or edit) , both update , **OPML save + reload** preserves it , **markdown
+   export** emits the frozen value.
+3. **Random pick:** `{beast := dragon|wyrm}` , frozen to one , referenced in two nodes
+   agree , re-roll from the pill updates both , round-trips.
+4. **No regression:** a grammar **rule line** `weapon: sword | axe` still parses as a rule
+   (the `:=` sniff must not eat single-`:` lines); the `{= expr}` math path is untouched.
+
+---
+
+## 6. P5 accounting (the syntax-budget honesty)
+
+This **does** add to the closed brace inventory , `generation-direction.md` §3 is explicit
+that inline declaration is "the *only* place new syntax could enter." This proposal accepts
+that cost with eyes open:
+
+- It adds **one operator** (`:=`), reusing the existing variable name charset and the
+  existing RHS grammar. No new delimiter, no new pill type, no new evaluation path.
+- It **retires nothing** (there is no overlapping syntax to replace) , so under the P5
+  rule it must be justified as a *net add*. The justification: it removes the single
+  coherence exception in the generator family (every other generator is typeable; this
+  makes variables typeable too), and it is the form users already reach for.
+- If accepted, the `ux-discipline.md` syntax inventory **Grammar engine** row gains
+  `{name := expr}`, and `generation-direction.md` §5 moves it from *deferred* to *shipped*.
+
+---
+
+## 7. Open questions for the reviewer
+
+- **O1 , unfold-on-edit?** Declarations are atomic pills today (edited via dialog). Should a
+  *typed* declaration unfold back to `{name := …}` editable text on click, since the user
+  typed it that way? Pro: symmetry with how they authored it. Con: the name is doc-wide
+  config; unfolding risks the same "lose the name on edit" problem the three-treatment rule
+  guards against. **Lean: keep it atomic (dialog edit), like dialog-declared vars** , the
+  typed form is an input shortcut, not a new edit model.
+- **O2 , formula vs pick disambiguation.** The dialog has an explicit value-type toggle.
+  Typed, we infer: a numeric/`evalMath`-able RHS , formula; an `a|b|c` / `{rule}` / dice RHS
+  , random pick. Is inference acceptable, or must the user disambiguate (e.g.
+  `{r := = 5}` for formula vs `{r := 5}` ambiguous)? **Lean: infer, matching how `{= }` vs
+  `{a|b}` already self-classify.**
+- **O3 , re-declaration.** Typing `{gold := 75}` when `gold` already exists , update in
+  place, or a second shadowing declaration? `_varShadowedKeys` already models shadowing.
+  **Lean: it's a new declaration pill; shadowing rules already apply (last wins).**
+
+---
+
+## 8. Recommendation
+
+Accept `:=` as the typed declaration operator, scoped exactly to "the dialog's behavior,
+typed," gated by §5. It is the smallest addition that closes the reported gap, it sidesteps
+the documented `:`/`=` collisions by construction, and it explicitly does not reintroduce
+the reverted per-expansion model. If accepted, the build order is: pure `parseVarDecl` +
+tests , classifier slot , promote path , real-path verification , inventory + doc update.
