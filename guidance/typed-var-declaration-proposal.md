@@ -95,9 +95,11 @@ reaches `parseRules`.
   `generation-direction.md` §5 already shipped , the typed form is just a second front door
   to it.
 - `{name}` references it anywhere , the existing reference path, unchanged.
-- Edit: the declaration pill is atomic (a name is doc-wide callable config richer than the
-  text, per `CLAUDE.md`'s three-treatment rule), so it edits via pencil/dialog, NOT by
-  unfolding to `{name := …}`. (Open question O1 below: should it unfold instead?)
+- Edit: a *typed* `:=` declaration **unfolds back to `{name := expr}` editable text** (so
+  the whole declare/edit loop is keyboard-only, no dialog), and a value change **warns at
+  commit** when references exist. This is the resolved O1 (§7) , safe because the name lives
+  in the text, so re-promotion never loses it. (Dialog-declared vars, which have no `:=`
+  text, stay atomic as today.)
 
 No new resolution, render, or export code , it reuses every layer the dialog path already
 wired.
@@ -121,8 +123,13 @@ Typed declaration must pass the **same** gate, plus its own parse cases:
    agree , re-roll from the pill updates both , round-trips.
 4. **No regression:** a grammar **rule line** `weapon: sword | axe` still parses as a rule
    (the `:=` sniff must not eat single-`:` lines); the `{= expr}` math path is untouched.
-
----
+5. **Unfold + edit, keyboard-only:** focus the var pill , it unfolds to `{gold := 50}`
+   editable text , change to `{gold := 75}` with the keyboard , blur , it re-promotes with
+   the name intact (no dialog touched at any point).
+6. **Ripple warning fires correctly:** with `{gold}` referenced in 4 nodes, a value edit
+   surfaces the "4 references updated" notice on commit (not per keystroke), and only when
+   the value actually changed; a value edit with **zero** references is silent; a **rename**
+   `{gold := …}` , `{wealth := …}` surfaces the louder orphan warning (O1a).
 
 ## 6. P5 accounting (the syntax-budget honesty)
 
@@ -141,14 +148,50 @@ that cost with eyes open:
 
 ---
 
-## 7. Open questions for the reviewer
+## 7. Resolved decisions and open questions
 
-- **O1 , unfold-on-edit?** Declarations are atomic pills today (edited via dialog). Should a
-  *typed* declaration unfold back to `{name := …}` editable text on click, since the user
-  typed it that way? Pro: symmetry with how they authored it. Con: the name is doc-wide
-  config; unfolding risks the same "lose the name on edit" problem the three-treatment rule
-  guards against. **Lean: keep it atomic (dialog edit), like dialog-declared vars** , the
-  typed form is an input shortcut, not a new edit model.
+### O1 , unfold-on-edit, with a commit-time ripple warning (RESOLVED, owner 2026-06-29)
+
+**Decision: a typed `:=` declaration unfolds back to `{name := expr}` editable text on
+edit (no dialog), AND a value change warns at commit when it has references.** Keyboard-
+only authoring end-to-end was the whole point of the request, so the edit path must also be
+keyboard-only , routing edit through the mouse-driven dialog would reintroduce the exact gap
+this feature closes.
+
+**Why unfolding is safe here (the three-treatment exception).** The rule keeps *named*
+declarations atomic because re-promotion is anonymous and would lose the doc-wide name. But
+`{name := expr}` **carries the name in its own text** , re-promoting the unfolded text
+re-parses `name` verbatim, so nothing is lost. This is the same reason node links `[[#id|x]]`
+are plain editable text (treatment 3 in `CLAUDE.md`): the token *is* the config. A `:=`
+declaration is the first var-declaration that qualifies for treatment 3, precisely because
+it is self-describing. (Dialog-declared vars stay atomic , they have no `:=` text to unfold
+to; only typed ones unfold.)
+
+**The ripple warning (your "you're about to change N things").** Changing a declaration's
+value bumps `markDirty` , `_varsVer`, so **every `{name}` reference recomputes** (§4.2). That
+is the surprise to guard. Design:
+
+- **Fires at commit, not per keystroke.** While unfolded you type freely; the check runs on
+  refold/blur (`refoldArtifacts`/`exitEdit`), and only when the **value actually changed**
+  *and* the name has ≥1 reference elsewhere. No modal while typing.
+- **Counts references cheaply** via a `collectVars`-style token-gated walk (cached on
+  `_varsVer`) , the same machinery `renderVarPill`/backlinks already use; no new index.
+- **Reuses the existing confirm/feedback pattern**, not a bespoke dialog. For a low count, an
+  inline/`aria-live` notice ("Updated gold , 4 points that reference it now show 75") is
+  enough and is *non-blocking* (the change already happened, this is an announcement, which
+  also satisfies P4's "off-focus changes announced"). For a destructive-feeling jump, the
+  §7.2 toast-confirm pattern (`openConfirmDialog`) can gate it , **O1a below** is the one sub-
+  decision left: announce-after vs confirm-before.
+- **Renaming** (editing the `name`, not the value) is the sharper case: `{gold := …}` ,
+  `{wealth := …}` orphans every `{gold}` reference (they become undefined, the existing
+  `{name?}`/`var-undef` treatment). The warning must distinguish *value change* (references
+  update) from *name change* (references break) , the latter is the louder warning.
+
+**O1a (open):** for a value change, **announce-after** (non-blocking, the edit stands, a live
+notice states the impact) or **confirm-before** (a toast "this updates N references , OK?"
+gates the commit)? **Lean: announce-after for value changes** (it is not data loss, just a
+propagated value, and a blocking modal on every value edit fights the keyboard-fluid intent),
+but **confirm-before for a rename that orphans references** (that one silently breaks things).
 - **O2 , formula vs pick disambiguation.** The dialog has an explicit value-type toggle.
   Typed, we infer: a numeric/`evalMath`-able RHS , formula; an `a|b|c` / `{rule}` / dice RHS
   , random pick. Is inference acceptable, or must the user disambiguate (e.g.
