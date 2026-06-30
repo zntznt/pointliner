@@ -2207,6 +2207,50 @@ function setDateProp(node, key, val) {
   node.props = props;
 }
 
+// Opted-in /-verbs that take a typed ":value" (the keyboard bridge that skips the
+// dialog). Gated narrowly: a colon after any OTHER verb stays plain text (P1). `due`
+// and `start` set a date; `check`/`alias` set a reserved property; `template` stamps.
+// The arm is `/`-only: `@`-insertions are already typeable as `{…}` / markdown at the
+// caret, so an `@verb:value` colon-arg would just duplicate the brace grammar.
+const SLASH_ARG_VERBS = /^(due|start|check|alias|template)$/;
+
+// parseSlashQuery(rawQuery, trigger) — pure, Node-testable. Splits a captured slash
+// query (original case, e.g. "check:sum(cost) <= budget") into its parts and applies
+// the per-verb `:value` gate. Returns { word, query, hasArg, rawArg, matchWord }:
+//   word     — the command part, lowercased (before any colon)
+//   query    — what to strip from the text (lowercased; word only when the colon is
+//              NOT an opted-in arg, so a stray ":x" stays in the node text)
+//   hasArg   — a colon-value was typed AND this verb opts in
+//   rawArg   — the value after the colon, ORIGINAL case (empty unless hasArg)
+//   matchWord— word, but start→due (the alias) for menu matching
+// The `:value` arm is `/`-only and limited to SLASH_ARG_VERBS; anything else drops the
+// colon-tail (a colon means the same thing — nothing — after every other verb, P1).
+function parseSlashQuery(rawQuery, trigger) {
+  const query0 = String(rawQuery || '').toLowerCase();
+  const word = query0.split(':', 1)[0];
+  const optedIn = trigger === '/' && SLASH_ARG_VERBS.test(word);
+  const hasArg = query0.length > word.length && optedIn;
+  const query = optedIn ? query0 : word;              // non-arg colon stays in node text
+  const rawArg = hasArg ? String(rawQuery).slice(String(rawQuery).indexOf(':') + 1) : '';
+  const matchWord = (trigger === '/' && word === 'start') ? 'due' : word;
+  return { word, query, hasArg, rawArg, matchWord };
+}
+
+// Set (or, with an empty val, clear) the reserved `check` constraint property.
+// Shared by the Check dialog and the /check:expr slash path so there is ONE write.
+function setCheckProp(node, expr) {
+  const props = (node.props || []).filter(p => p.key.trim().toLowerCase() !== CHECK_KEY);
+  if (expr) props.push({ key: CHECK_KEY, val: expr });
+  node.props = props;
+}
+// Set (or clear) the reserved `aliases` property from a comma-separated string.
+// Shared by the Aliases dialog and the /alias:a,b slash path.
+function setAliasProp(node, csv) {
+  const list = String(csv || '').split(',').map(s => s.trim()).filter(Boolean);
+  const others = (node.props || []).filter(p => p.key.trim().toLowerCase() !== ALIAS_KEY);
+  node.props = list.length ? [...others, { key: ALIAS_KEY, val: list.join(', ') }] : others;
+}
+
 // Walk the tree and collect every point with a parseable "start" and/or "due"
 // property — a point can carry a date range (start → due, project-management
 // style). Each item carries both epoch dates plus derived running/done state;
@@ -4059,10 +4103,10 @@ const BLOCK_CMDS = [
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas.', section:'Blocks' },
-  { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Save one from a point’s bullet menu.', section:'Blocks' },
+  { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
-  { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Find violations with is:failing.', ex:'sum(cost) <= budget', section:'Organize' },
-  { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title.', ex:'wyrm, drake', section:'Organize' },
+  { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
+  { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
   { id:'journal', icon:'📓',  fa:'fa-solid fa-calendar-day',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
 ];
 
@@ -6508,11 +6552,7 @@ function openCheckDialog(nodeId, targets = null) {
     onSubmit: v => {
       pushUndo();
       const expr = (v.expr || '').trim();
-      for (const t of applyList) {
-        const props = (t.props || []).filter(p => p.key.trim().toLowerCase() !== CHECK_KEY);
-        if (expr) props.push({ key: CHECK_KEY, val: expr });
-        t.props = props;
-      }
+      for (const t of applyList) setCheckProp(t, expr);  // shared with the /check:expr path
       markDirty(); render();
     },
   });
@@ -6559,9 +6599,7 @@ function openAliasDialog(nodeId) {
 
   function save() {
     pushUndo();
-    const list = inp.value.split(',').map(s => s.trim()).filter(Boolean);
-    const others = (node.props || []).filter(p => p.key.trim().toLowerCase() !== ALIAS_KEY);
-    node.props = list.length ? [...others, { key: 'aliases', val: list.join(', ') }] : others;
+    setAliasProp(node, inp.value);  // shared with the /alias:a,b path
     markDirty(); render(); closeIo();
   }
   cancelBtn.addEventListener('click', closeIo);
@@ -9246,36 +9284,32 @@ slashMenu.addEventListener('mousedown', e => e.preventDefault());
 function checkSlash(content, nodeId) {
   const pos = getCaretOffset(content);
   const before = editableText(content).slice(0, pos);
-  // The query is the word after the trigger, plus — for the date verbs only — an
-  // optional ":value" so "/due:tomorrow" stays one slash token (date strings are
-  // space-free, so [^\s] keeps the value but stops at the next word).
-  const m = before.match(/(^|[\s])([/@])(\w*(?::[^\s]*)?)$/);
+  // The query is the word after the trigger, plus — for the arg-taking verbs — an
+  // optional ":value". The value runs to end-of-line (`.*`), so a space-bearing value
+  // (`/check:sum(cost) <= budget`, `/alias:wyrm, drake`) stays one slash token; for a
+  // non-opted-in verb the colon-tail is dropped below, so this greediness is inert
+  // there (a space-free date like `/due:tomorrow` is captured the same either way).
+  const m = before.match(/(^|[\s])([/@])(\w*(?::.*)?)$/);
   if (!m) { hideSlashMenu(); return; }
   const trigger = m[2];
   const rawQuery = m[3];                                // what the regex captured (orig case)
   // The trigger char sits right before the captured query; pin the offset to that
-  // position so it stays correct even when we trim a non-date ":value" off the query.
+  // position so it stays correct even when we trim a non-arg ":value" off the query.
   const slashOffset = pos - rawQuery.length - 1;
-  let query = rawQuery.toLowerCase();
-  const word = query.split(':', 1)[0];                 // the command part, before any ":value"
-  let hasArg = query.length > word.length;             // a ":value" suffix was typed
-  // The ":value" arm is ONLY for the /-trigger date verbs. For anything else a colon
-  // is plain text, not a slash arg: drop it from the query so the command still matches
-  // on its word and the strip leaves ":value" in the node text untouched.
-  if (hasArg && !(trigger === '/' && /^(due|start)$/.test(word))) { query = word; hasArg = false; }
+  const { word, query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
   // "start" is an alias of the single "due" (Schedule) command so /start:VALUE has a
   // menu door too; the actual key (due vs start) is read from the query at apply time.
-  const matchWord = (trigger === '/' && word === 'start') ? 'due' : word;
   const matches = pool.filter(c =>
     c.id.startsWith(matchWord) || c.label.toLowerCase().includes(matchWord)
   );
   if (!matches.length) { hideSlashMenu(); return; }
-  // When a ":value" was typed, keep the matching date verb selected (so Enter applies
-  // it) rather than whatever fuzzy-matches the label.
+  // When a ":value" was typed, keep the exact-id verb selected (so Enter applies it)
+  // rather than whatever fuzzy-matches the label. matchWord maps start→due; the others
+  // (check/alias/template) match their own id.
   let activeIdx = 0;
-  if (hasArg) { const i = matches.findIndex(c => c.id === 'due'); if (i >= 0) activeIdx = i; }
-  slashState = { nodeId, content, slashOffset, query, activeIdx, matches, trigger };
+  if (hasArg) { const i = matches.findIndex(c => c.id === matchWord); if (i >= 0) activeIdx = i; }
+  slashState = { nodeId, content, slashOffset, query, rawArg, activeIdx, matches, trigger };
   renderSlashMenu();
   positionSlashMenu(content, slashOffset);
 }
@@ -9379,7 +9413,7 @@ function slashMove(dir) {
 function slashApply() {
   if (!slashState) return;
   if (slashState.cell) { cellSlashApply(); return; }
-  const { nodeId, content, slashOffset, activeIdx, matches, trigger, query } = slashState;
+  const { nodeId, content, slashOffset, activeIdx, matches, trigger, query, rawArg } = slashState;
   const cmd = matches[activeIdx];
   hideSlashMenu();
   // strip the trigger char + exactly the query checkSlash settled on (its length
@@ -9404,7 +9438,15 @@ function slashApply() {
   }
   // /template opens the template picker (a dialog), which stamps the chosen subtree
   // as a new point here. Structural, like /base — the picker callback does the work.
+  // /template:NAME stamps that named template directly, skipping the picker; an
+  // unknown name flashes why (P4), never silently does nothing.
   if (trigger !== '@' && cmd.id === 'template') {
+    const name = (rawArg || '').trim();
+    if (name) {
+      if (findTemplate(root.templates, name)) stampTemplate(nodeId, name);
+      else flashHint('No template named “' + name + '”. Save one from a point’s menu first.');
+      return;
+    }
     openTemplatePicker(nodeId);
     return;
   }
@@ -9457,10 +9499,29 @@ function slashApply() {
     return;
   }
   if (trigger !== '@' && cmd.id === 'check') {
+    // /check:EXPR sets the constraint inline (skips the dialog); bare /check opens it.
+    const expr = (rawArg || '').trim();
+    if (expr) {
+      const cur = nodeById(nodeId); if (!cur) return;
+      pushUndo(); setCheckProp(cur, expr); markDirty(); render();
+      const verdict = evalCheck(cur, globalVarMap);
+      flashHint(verdict === 'error'
+        ? "Check set, but it can't evaluate yet: " + expr
+        : 'Check set: ' + expr);
+      return;
+    }
     openCheckDialog(nodeId);
     return;
   }
   if (trigger !== '@' && cmd.id === 'alias') {
+    // /alias:a, b sets the aliases inline (skips the dialog); bare /alias opens it.
+    const csv = (rawArg || '').trim();
+    if (csv) {
+      const cur = nodeById(nodeId); if (!cur) return;
+      pushUndo(); setAliasProp(cur, csv); markDirty(); render();
+      flashHint('Aliases set: ' + aliasesOf(cur).join(', '));
+      return;
+    }
     openAliasDialog(nodeId);
     return;
   }
@@ -17208,8 +17269,9 @@ const GUIDE = [
     ] },
   { id:'templates', cat:'todos', covers:['template'],
     title:'Templates',
-    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step with /template. Save a template from any point's menu.",
+    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /template:name to stamp a saved template directly, or /template on its own to pick from a list. Save a template from any point's menu.",
     examples:[
+      { syn:'/template:weekly review',           desc:'stamp that template inline' },
       { syn:'/template',                         desc:'pick and drop in a saved template' },
       { syn:'Menu → Save as template',           desc:'save this point as a template' },
     ] },
@@ -17224,10 +17286,10 @@ const GUIDE = [
     ] },
   { id:'aliases', cat:'todos', covers:['alias'],
     title:'Nicknames (aliases)',
-    body:"Make a point findable under different names. Useful when a concept has a short form and a long form: add 'JS' as an alias for a 'JavaScript' note, or 'NYC' for 'New York City'. The [[ link picker and the unlinked-references panel both recognize any alias, so links and mentions find the right point regardless of which name you used. Type /alias to add them, separated by commas.",
+    body:"Make a point findable under different names. Useful when a concept has a short form and a long form: add 'JS' as an alias for a 'JavaScript' note, or 'NYC' for 'New York City'. The [[ link picker and the unlinked-references panel both recognize any alias, so links and mentions find the right point regardless of which name you used. Type /alias:wyrm, drake to add them inline (comma-separated), or /alias on its own for the dialog.",
     examples:[
-      { syn:'/alias',       desc:'add extra names to this point' },
-      { syn:'wyrm, drake',  desc:'extra names, comma-separated' },
+      { syn:'/alias:wyrm, drake', desc:'add extra names inline' },
+      { syn:'/alias',       desc:'open the aliases dialog' },
     ] },
 
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
@@ -17405,9 +17467,9 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check and write the condition with a comparison like <= or >=.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=.",
     examples:[
-      { syn:'sum(cost) <= budget', desc:'stay within budget' },
+      { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
       { syn:'count(score) >= 3',   desc:'at least 3 scored children' },
       { syn:'is:failing',          desc:'find everything that fails' },

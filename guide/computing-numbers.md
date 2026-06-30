@@ -208,8 +208,9 @@ estimate. That's how you Fermi-estimate a whole project from uncertain parts (se
 
 ## Make the outline check itself (constraints)
 
-A **check** is a pass/fail rule you attach to a point with **`/check`** (or bullet menu → Add
-check). It's an `evalMath` boolean over the point and its children:
+A **check** is a pass/fail rule you attach to a point. Type **`/check:sum(cost) <= budget`** to set it
+inline, or **`/check`** on its own (or bullet menu → Add check) for the dialog. It's an `evalMath`
+boolean over the point and its children:
 
 ```
 sum(cost) <= budget        the kids' costs must fit a `budget` property

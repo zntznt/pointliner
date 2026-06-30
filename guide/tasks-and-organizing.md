@@ -63,7 +63,8 @@ Stop rebuilding the same structure from scratch every time. Save a meeting-notes
 review layout, a bug-report checklist, or any subtree you use repeatedly, then stamp a fresh copy in
 one step.
 
-Save a template from any point's menu, then stamp one with **`/template`**.
+Save a template from any point's menu, then stamp one with **`/template:name`** (inline, straight to
+that template) or **`/template`** on its own to pick from a list.
 
 ## Capture and quick inbox
 
@@ -83,8 +84,8 @@ Make a point findable under different names, useful when a concept has a short f
 add `JS` as an alias for a `JavaScript` note, or `NYC` for `New York City`.
 
 The `[[` link picker and the unlinked-references panel both recognize any alias, so links and
-mentions find the right point regardless of which name you used. Type **`/alias`** to add them,
-separated by commas.
+mentions find the right point regardless of which name you used. Type **`/alias:wyrm, drake`** to add
+them inline (comma-separated), or **`/alias`** on its own for the dialog.
 
 ---
 

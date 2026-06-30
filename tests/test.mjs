@@ -6260,6 +6260,90 @@ test('parseDateSlash — only the FIRST colon splits key from value', () => {
   assert.deepEqual(host(c.parseDateSlash('due:a:b')), { key: 'due', raw: 'a:b' });
 });
 
+// ── parseSlashQuery: the per-verb ":value" gate for the /-command bridge ─────────
+// The arm is /-only and limited to SLASH_ARG_VERBS (due/start/check/alias/template);
+// a colon after any other verb — or after any @-insert — stays plain node text (P1).
+test('parseSlashQuery — opted-in / verb captures a space-bearing value, original case', () => {
+  const r = host(c.parseSlashQuery('check:sum(Cost) <= Budget', '/'));
+  assert.equal(r.word, 'check');
+  assert.equal(r.hasArg, true);
+  assert.equal(r.rawArg, 'sum(Cost) <= Budget');          // value keeps its case + spaces
+  assert.equal(r.query, 'check:sum(cost) <= budget');     // query is lowercased (strip length only)
+});
+test('parseSlashQuery — /alias keeps the comma list verbatim', () => {
+  const r = host(c.parseSlashQuery('alias:Wyrm, Drake', '/'));
+  assert.equal(r.hasArg, true);
+  assert.equal(r.rawArg, 'Wyrm, Drake');
+});
+test('parseSlashQuery — /template name (may contain spaces)', () => {
+  const r = host(c.parseSlashQuery('template:Weekly Review', '/'));
+  assert.equal(r.hasArg, true);
+  assert.equal(r.rawArg, 'Weekly Review');
+});
+test('parseSlashQuery — start maps to the due command for matching', () => {
+  const r = host(c.parseSlashQuery('start:2026-07-01', '/'));
+  assert.equal(r.word, 'start');
+  assert.equal(r.matchWord, 'due');
+  assert.equal(r.rawArg, '2026-07-01');
+});
+test('parseSlashQuery — a NON-opted-in verb drops the colon-tail (stays node text)', () => {
+  const r = host(c.parseSlashQuery('quote:hello', '/'));
+  assert.equal(r.hasArg, false);
+  assert.equal(r.query, 'quote');                         // only the word is stripped; ":hello" stays
+  assert.equal(r.rawArg, '');
+});
+test('parseSlashQuery — @ trigger NEVER takes a colon arg (the / vs @ split)', () => {
+  // @-insertions are typeable as {…} at the caret; an @verb:value would duplicate that.
+  const r = host(c.parseSlashQuery('check:x > 1', '@'));
+  assert.equal(r.hasArg, false);
+  assert.equal(r.query, 'check');
+  assert.equal(r.rawArg, '');
+});
+test('parseSlashQuery — bare opted-in verb has no arg (falls through to dialog)', () => {
+  const r = host(c.parseSlashQuery('check', '/'));
+  assert.equal(r.hasArg, false);
+  assert.equal(r.rawArg, '');
+  assert.equal(r.query, 'check');
+});
+test('parseSlashQuery — query length matches the captured text (the text-strip invariant)', () => {
+  // slashApply strips `1 + query.length` chars from node text; lowercasing must not
+  // change the length, or it would mangle surrounding text on a mixed-case value.
+  for (const raw of ['check:SUM(Cost) <= Budget', 'alias:Wyrm, Drake', 'template:Weekly Review', 'due:Tomorrow']) {
+    assert.equal(c.parseSlashQuery(raw, '/').query.length, raw.length, raw);
+  }
+  // and for a non-arg verb the strip is just the word (colon-tail stays in text)
+  assert.equal(c.parseSlashQuery('quote:X', '/').query, 'quote');
+});
+
+// ── setCheckProp / setAliasProp: the shared writers behind both the dialog and the
+// /check:expr · /alias:a,b slash bridges (one write path, no divergence). ──────────
+test('setCheckProp — sets the reserved check property, replacing any prior', () => {
+  const n = { props: [{ key: 'cost', val: '5' }] };
+  c.setCheckProp(n, 'sum(cost) <= budget');
+  assert.deepEqual(host(n.props), [{ key: 'cost', val: '5' }, { key: 'check', val: 'sum(cost) <= budget' }]);
+  c.setCheckProp(n, 'count(score) >= 3');             // replace, not append a second check
+  assert.equal(n.props.filter(p => p.key === 'check').length, 1);
+  assert.equal(n.props.find(p => p.key === 'check').val, 'count(score) >= 3');
+});
+test('setCheckProp — empty expr clears the check', () => {
+  const n = { props: [{ key: 'check', val: 'x > 1' }, { key: 'cost', val: '5' }] };
+  c.setCheckProp(n, '');
+  assert.deepEqual(host(n.props), [{ key: 'cost', val: '5' }]);
+});
+test('setAliasProp — comma-splits, trims, dedupes empties; clears when empty', () => {
+  const n = { props: [] };
+  c.setAliasProp(n, 'wyrm, drake ,  , hydra');
+  assert.deepEqual(host(n.props), [{ key: 'aliases', val: 'wyrm, drake, hydra' }]);
+  assert.deepEqual(host(c.aliasesOf(n)), ['wyrm', 'drake', 'hydra']);
+  c.setAliasProp(n, '   ');                            // all-blank → clears
+  assert.deepEqual(host(n.props), []);
+});
+test('setAliasProp — replaces a prior aliases prop, preserves others', () => {
+  const n = { props: [{ key: 'aliases', val: 'old' }, { key: 'owner', val: 'me' }] };
+  c.setAliasProp(n, 'new1, new2');
+  assert.deepEqual(host(n.props), [{ key: 'owner', val: 'me' }, { key: 'aliases', val: 'new1, new2' }]);
+});
+
 // ── looksLikeCellFormula: signpost spreadsheet-style cell formulas (P4) ──────
 test('looksLikeCellFormula — Excel A1-style refs', () => {
   assert.equal(c.looksLikeCellFormula('=A1+B1'), true);
