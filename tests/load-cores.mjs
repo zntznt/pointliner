@@ -188,7 +188,7 @@ export function loadCores() {
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'pickerTitle','treeRows','migrateEmphasisText',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
-    'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','urgencyMark',
+    'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
     'splitForSibling', 'mergeUpText',
