@@ -156,6 +156,7 @@ export function loadCores() {
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
     'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
     'reconcileAction', 'tmpWriteName',          // sync-safety: folder-backed write reconciliation
+    'displayName', 'toFileName',                // file-name display/normalize
 
     'embedOpmlIntoHtml', 'extractEmbeddedOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',

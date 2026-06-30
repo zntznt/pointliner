@@ -162,7 +162,8 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-head{display:flex;align-items:center;gap:10px;padding:7px 9px 11px;border-bottom:1px solid var(--bdr);margin-bottom:4px}
 .fm-head .cmd-icon{background:var(--acc);color:var(--acc-fg)}
 .fm-head-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
-.fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);cursor:text;border-radius:4px;padding:0 3px;margin:0 -3px}
+.fm-title:hover,.fm-title:focus-visible{background:var(--hbg);outline:1px solid var(--bdr);outline-offset:0}
 .fm-status{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* section labels */
 .fm-group{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:8px 10px 3px}
@@ -1381,7 +1382,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="fm-head">
     <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
     <div class="fm-head-info">
-      <span class="fm-title" id="file-name">unsaved</span>
+      <span class="fm-title" id="file-name" role="button" tabindex="0" title="Click to rename" aria-label="Rename this outline">Untitled</span>
       <span class="fm-status" id="fm-status">Not saved to a file</span>
     </div>
     <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes"></span>
@@ -14931,8 +14932,27 @@ function markClean() {
   document.getElementById('toolbar-row').classList.remove('dirty');
   document.getElementById('fm-dirty-dot').style.display = 'none';
 }
+// Pure: the user-facing name for a stored filename , drop the .opml extension and
+// show the placeholder for the unsaved sentinel. The extension is an implementation
+// detail (the app owns its files); users see/edit the bare name. Node-testable.
+function displayName(name) {
+  if (!name || name === 'unsaved') return 'Untitled';
+  return name.replace(/\.opml$/i, '');
+}
+// Pure: turn a user-typed/bare name back into a storage filename (sanitize + ensure
+// .opml). Empty/whitespace falls back to 'outline'. Mirrors workspaceFileName's intent
+// for the single-file path. Node-testable.
+function toFileName(name) {
+  const stem = String(name || '').trim().replace(/\.opml$/i, '').replace(/[\/\\:*?"<>|]/g, '-').slice(0, 120).trim();
+  return (stem || 'outline') + '.opml';
+}
 function updateTitle() {
-  document.title = fileName === 'unsaved' ? 'Pointliner' : `${fileName} · Pointliner`;
+  document.title = fileName === 'unsaved' ? 'Pointliner' : `${displayName(fileName)} · Pointliner`;
+}
+// Refresh the menu-header filename display (bare name, no extension).
+function renderFileName() {
+  const el = document.getElementById('file-name');
+  if (el) el.textContent = displayName(fileName);
 }
 
 // ─── file I/O ─────────────────────────────────────────────────────────────────
@@ -14965,7 +14985,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0;
   autosaveDisabled = false; storageWarnState = null;
-  document.getElementById('file-name').textContent = fileName;
+  renderFileName();
   updateTitle();
   document.getElementById('search-box').value = '';            // normalization #1: clear stale search UI on every swap (the <input> path skipped this)
   document.getElementById('search-clear').classList.remove('on');
@@ -14986,7 +15006,49 @@ async function newFile() {
     message: 'Your current outline has unsaved changes. Starting a new file will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
-  adoptDoc(mkRoot());
+  // Prompt for a name up front, so a new outline has an identity from the start.
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-plus', fb: '+' },
+    title: 'New outline',
+    submitLabel: 'Create',
+    fields: [
+      { key: 'name', label: 'Name', placeholder: 'e.g. Project notes', value: '',
+        hint: 'You can rename it later from the menu header.' },
+    ],
+    validate: () => true,   // blank is fine → falls back to a default name
+    onSubmit: v => {
+      const fname = v.name && v.name.trim() ? toFileName(v.name) : 'unsaved';
+      adoptDoc(mkRoot(), { fileName: fname });
+    },
+  });
+}
+
+// Rename the current outline from the menu header. On a Chromium file handle the
+// disk file is actually renamed (move within its directory); otherwise it just
+// sets the in-memory name the next Save/download will use. Folder-backed docs use
+// their own rename path elsewhere, so this guards to the single-file case.
+async function renameCurrentFile() {
+  if (workspaceDir) return;   // folder docs are renamed via the folder, not here
+  openInsertDialog({
+    icon: { fa: 'fa-regular fa-file-lines', fb: '◻' },
+    title: 'Rename outline',
+    submitLabel: 'Rename',
+    fields: [
+      { key: 'name', label: 'Name', placeholder: 'e.g. Project notes', value: displayName(fileName) === 'Untitled' ? '' : displayName(fileName) },
+    ],
+    validate: v => !!(v.name && v.name.trim()),
+    onSubmit: async v => {
+      const next = toFileName(v.name);
+      if (next === fileName) return;
+      // Chromium: actually rename the file on disk if we hold a handle.
+      if (hasFSA && fileHandle && fileHandle.move) {
+        try { await fileHandle.move(next); } catch (e) { flashError('Could not rename the file: ' + (e.message || e)); return; }
+      }
+      fileName = next;
+      renderFileName(); updateTitle(); markDirty();
+      flashHint('Renamed to “' + displayName(fileName) + '”');
+    },
+  });
 }
 
 async function openFile() {
@@ -15034,7 +15096,7 @@ async function saveAsFile() {
       // referencing a folder doc that is no longer the active file.
       const wasFolderBacked = !!workspaceFile;
       if (wasFolderBacked) await teardownWorkspace();
-      document.getElementById('file-name').textContent = fileName;
+      renderFileName();
       updateTitle();
       if (await writeH(fileHandle)) {
         flashHint(wasFolderBacked
@@ -15476,7 +15538,7 @@ async function connectWorkspace() {
     await anchorWorkspaceFile();        // sync-safety: anchor to what we just wrote
     startWorkspaceWatch();              // sync-safety: watch the connected file
     await idbSet(WORKSPACE_KEY, { dir, name });
-    document.getElementById('file-name').textContent = fileName;
+    renderFileName();
     updateTitle();
     renderWorkspaceAffordance();       // also registers the current doc as a tab + renders the strip
     refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
@@ -15520,7 +15582,7 @@ async function reopenWorkspaceDoc(dir, name) {
     catch (_) { fileHandle = fh; workspaceFile = fh; fileName = name; }   // unreadable OPML → keep local, rebind
   } else {                                               // local copy is newer (post-degrade edit) — keep it, just rebind
     fileHandle = fh; workspaceFile = fh; fileName = name;
-    document.getElementById('file-name').textContent = name; updateTitle();
+    renderFileName(); updateTitle();
   }
   _wsKnownModified = file.lastModified || 0;             // sync-safety: anchor to the on-disk version
   startWorkspaceWatch();                                 // sync-safety: watch the reopened file
@@ -15647,7 +15709,7 @@ async function saveToWorkspaceDoc() {
     if (!await writeH(fh)) return;     // write failed (writeH flashed) — don't claim it landed
     startWorkspaceWatch();             // sync-safety: watch the newly folder-backed file
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
-    document.getElementById('file-name').textContent = name; updateTitle();
+    renderFileName(); updateTitle();
     renderWorkspaceAffordance();
     refreshWorkspaceIndex();           // CF-1: a previously-detached doc joined the notebook
     flashHint('Added to the folder as “' + name + '”');
@@ -17415,7 +17477,13 @@ function openFileMenu() {
   if (keyOpen) keyOpen.textContent = fmtKey('O');
   const searchKey = document.getElementById('search-key');
   if (searchKey) searchKey.textContent = fmtKey('F');
+  renderFileName();
   updateFmStatus();
+  // Firefox/Safari can't write back to a file (no File System Access API), so "Save"
+  // could only download a fresh copy — a misleading verb there. Hide it; "Save As"
+  // (which downloads a copy honestly) remains. Chromium keeps the real Save.
+  const saveRow = document.getElementById('btn-save');
+  if (saveRow) saveRow.style.display = hasFSA ? '' : 'none';
   renderWorkspaceAffordance();
   // External links surface only when online, so the offline-first identity (works
   // with the wifi off) is never undercut by a dead network link in the menu.
@@ -17470,6 +17538,14 @@ document.addEventListener('click', closeFileMenu);
 
 document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
+// Click / Enter / Space on the menu-header filename → rename (single-file mode only).
+(() => {
+  const fn = document.getElementById('file-name');
+  if (!fn) return;
+  const go = () => { if (!workspaceDir) { closeFileMenu(); renameCurrentFile(); } };
+  fn.addEventListener('click', go);
+  fn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+})();
 document.getElementById('btn-save').addEventListener('click', () => { saveFile(); closeFileMenu(); });
 document.getElementById('btn-save-as').addEventListener('click', () => { saveAsFile(); closeFileMenu(); });
 document.getElementById('btn-workspace').addEventListener('click', () => {
@@ -18530,7 +18606,7 @@ let loadedFromEmbed = false;
       focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
       if (data.fileName) {
         fileName = data.fileName;
-        document.getElementById('file-name').textContent = fileName;
+        renderFileName();
         updateTitle();
       }
       if (typeof data.showDone === 'boolean') {
