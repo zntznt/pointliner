@@ -11637,16 +11637,30 @@ function promoteInlineShorthand(node) {
 // Promote {…} shorthand across a whole loaded document. The edit-commit path
 // promotes a node on blur, but a doc arriving via OPML/HTML import (adoptDoc)
 // never passes through that path, so its typed {2d6}/{= …}/{a|b} would otherwise
-// render as raw source text. Walk the tree once on load and promote each node.
-// Returns the count promoted (handy for tests). Pure over the passed root.
+// render as raw source text.
+//
+// A bare {name} reference only promotes when `name` is ALREADY a known variable
+// (promoteBraceBody checks `name in collectVars()`). On a one-pass walk a reference
+// that precedes its declaration — or whose declaration just got promoted in this
+// same pass (collectVars is cached on _varsVer and isn't refreshed mid-walk) — would
+// stay raw text. So we run to a FIXPOINT: promote every node, reset the var cache so
+// newly-promoted declarations become visible, and repeat until a pass promotes
+// nothing new. Bounded: each non-final pass promotes ≥1 token, and the token count is
+// finite. resetDocCaches() bumps _varsVer; the final extra reset leaves a clean cache.
+// Returns the total count promoted (handy for tests).
 function promoteLoadedShorthand(rootNode) {
-  let n = 0;
-  (function walk(node) {
-    if (!node) return;
-    if (node.text && promoteInlineShorthand(node)) n++;
-    for (const c of node.children || []) walk(c);
-  })(rootNode);
-  return n;
+  let total = 0, pass;
+  do {
+    pass = 0;
+    (function walk(node) {
+      if (!node) return;
+      if (node.text && promoteInlineShorthand(node)) pass++;
+      for (const c of node.children || []) walk(c);
+    })(rootNode);
+    total += pass;
+    if (pass) resetDocCaches(); // make this pass's new declarations visible to the next
+  } while (pass);
+  return total;
 }
 
 // Inline-able artifact ⇄ grammar source. Returns the {…} text an artifact
