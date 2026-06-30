@@ -466,8 +466,13 @@ when proposing features:
   `{kind:'markov', parsed, start, steps}` and `expandRule` branches on it — an
   array rule is alternation, a `kind:'markov'` rule runs `walkMarkov` and joins
   the path. Markov keeps its own walk core (the stateful step loop) but is now
-  callable as `{chainName}` like everything else. Every custom artifact is under
-  grammar.
+  callable as `{chainName}` like everything else. A markov chain is also **typeable
+  inline** as `{markov: a→b, b→c}` (`markovParts`/`makeTypedMarkovRoll`, sniffed by
+  the reserved `markov:` keyword like `seqParts`): this builds an **anonymous, typed**
+  record that **unfolds** back to its `{markov: …}` source in edit mode; a **named**
+  chain stays a **dialog** feature and an **atomic** pill (the name is doc-wide config
+  the unfolded text can't carry — the same rule as named grammars). Every custom
+  artifact is under grammar.
 
 **Engine 2 — expression evaluator** (`evalMath`). A hand-written
 recursive-descent parser: `ternary → cmp → addSub → mulDiv → power → unary → atom`,

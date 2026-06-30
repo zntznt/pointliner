@@ -3368,6 +3368,47 @@ function walkMarkov(parsed, start, steps) {
 
 function markovKey() { return 'm' + Math.random().toString(36).slice(2, 9); }
 
+// markovParts(body) — sniff a typed inline markov chain: {markov: a→b, b→c, c→a 2}.
+// A reserved `markov` keyword before a top-level `:`, then comma-separated transitions
+// in the SAME `State -> Target weight` grammar parseMarkov already reads — one per
+// comma instead of one per line. Returns { def } (the newline-joined def parseMarkov
+// wants) or null when it isn't a markov body. Pure, Node-testable. Detection is the
+// keyword (like seqParts' modes), so it never collides with a conditional (needs a
+// comparison), a sequence (a SEQ_MODE keyword), or a plain `{name: rhs}` rule line.
+function markovParts(body) {
+  body = (body || '').trim();
+  const segs = splitTopLevel(body, ':');
+  if (segs.length < 2) return null;
+  if (segs[0].trim().toLowerCase() !== 'markov') return null;
+  const rest = body.slice(segs[0].length + 1).trim();
+  if (!rest) return null;
+  // Each comma-separated transition becomes its own line for parseMarkov. A transition
+  // may itself list weighted targets with commas (a→b, c), but at the top level the
+  // arrow disambiguates: split on commas, then re-join a fragment that has no arrow
+  // onto the previous transition's target list.
+  const frags = rest.split(',').map(s => s.trim()).filter(Boolean);
+  const lines = [];
+  for (const f of frags) {
+    if (/(?:->|→)/.test(f)) lines.push(f);          // a new "from -> to" transition
+    else if (lines.length) lines[lines.length - 1] += ', ' + f; // extra target for the prior from
+    else return null;                                // a target with no preceding from
+  }
+  const def = lines.join('\n');
+  return parseMarkov(def) ? { def } : null;          // validate via the real parser
+}
+
+// Build an ANONYMOUS, TYPED markov record from a {markov: …} body. Anonymous (no name)
+// + typed:true so it UNFOLDS back to {markov: …} text in edit mode (like a typed var or
+// an anonymous grammar); a NAMED markov stays a dialog feature and an atomic pill, since
+// the name is doc-wide config the unfolded text can't carry. Reuses makeMarkovRoll so the
+// record shape (key, def, start, steps, path) is identical to the dialog's.
+function makeTypedMarkovRoll(def) {
+  const roll = makeMarkovRoll(def, '', '', '');     // default start (first state), default steps
+  if (!roll) return null;
+  roll.typed = true;
+  return roll;
+}
+
 function makeMarkovRoll(def, startInput, stepsInput, name) {
   const parsed = parseMarkov(def);
   if (!parsed) return null;
@@ -4158,7 +4199,7 @@ const INSERT_CMDS = [
   { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and child tasks. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
-  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk.',   ex:'a→b (one per line)', section:'Random' },
+  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
@@ -7871,6 +7912,7 @@ function classifyBraceBody(body, rules, vars) {
   }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
+  if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
@@ -7913,6 +7955,7 @@ function braceTypeLabel(body, rules, vars) {
   if (body[0] === '=') return ['math', null];
   if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
   if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
+  if (markovParts(body)) return ['markov', null];                      // {markov: a→b, b→c}
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
@@ -11668,6 +11711,14 @@ function promoteBraceBody(node, body) {
     const rec = makeSeqGen(sp.mode, sp.items);
     if (rec) { (node.grammar ||= []).push(rec); return `[[grammar:${rec.key}]]`; }
   }
+  // typed markov chain: {markov: a→b, b→c} → an anonymous, typed markov pill. The
+  // `markov:` keyword is sniffed (like the sequence modes) so it never reaches the
+  // alternation / bare-name paths below. A NAMED chain stays a dialog feature.
+  const mk = markovParts(body);
+  if (mk) {
+    const roll = makeTypedMarkovRoll(mk.def);
+    if (roll) { (node.markov ||= []).push(roll); return `[[markov:${roll.key}]]`; }
+  }
   // text modifier: {beast.cap} / {var.s} → an anonymous grammar wrapped `origin:
   // {ref.mod}`, so unfold/refold/prune/export all reuse the grammar machinery (the
   // load-bearing A1 decision — both rule and var bases route through grammar, never
@@ -11781,6 +11832,15 @@ function artifactToShorthand(type, rec) {
   if (type === 'dice') return rec.expr ? `{${rec.expr}}` : null;
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
   if (type === 'est')  return rec.expr ? `{${rec.expr}}` : null;
+  if (type === 'markov') {
+    // Only a TYPED (anonymous) markov unfolds to {markov: a→b, b→c}; a NAMED / dialog
+    // chain stays atomic (its name is doc-wide config the text can't carry on unfold).
+    // The def is the newline def; comma-join each transition back to the inline form.
+    if (!rec.typed || rec.name) return null;
+    const def = (rec.def || '').trim();
+    if (!def) return null;
+    return `{markov: ${def.split('\n').map(l => l.trim()).filter(Boolean).join(', ')}}`;
+  }
   if (type === 'var') {
     if (rec.typed && rec.name && rec.expr) return `{${rec.name} := ${rec.expr}}`; // typed decl unfolds (O1)
     return (!rec.expr && rec.name) ? `{${rec.name}}` : null;                       // display-only ref
@@ -11810,7 +11870,7 @@ function artifactToShorthand(type, rec) {
 // Length `prefix` would have after unfoldArtifacts rewrites its inline-able tokens
 // to {…} source — lets caret math translate folded offsets into unfolded ones.
 function unfoldedPrefixLen(node, prefix) {
-  const RE = /\[\[(dice|math|var|grammar|est):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est|markov):([a-z0-9]+)\]\]/gi;
   let len = 0, last = 0, m;
   RE.lastIndex = 0;
   while ((m = RE.exec(prefix)) !== null) {
@@ -11830,7 +11890,7 @@ function unfoldedPrefixLen(node, prefix) {
 // a caret can sit inside editable {…} text but a splice must never land inside a
 // token. Pure; offsets are monotonic, so [start,end) ranges stay ordered.
 function foldedOffsetFor(node, offset) {
-  const RE = /\[\[(dice|math|var|grammar|est):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est|markov):([a-z0-9]+)\]\]/gi;
   const text = node.text;
   let u = 0, last = 0, m;
   while ((m = RE.exec(text)) !== null) {
@@ -11856,7 +11916,7 @@ const _unfoldData = new WeakMap(); // node → [{sh, token}]
 // so the user can edit it as text. Records are left in their sidecars untouched.
 function unfoldArtifacts(node) {
   const list = [];
-  const TOKEN_RE = /\[\[(dice|math|var|grammar|est):([a-z0-9]+)\]\]/gi;
+  const TOKEN_RE = /\[\[(dice|math|var|grammar|est|markov):([a-z0-9]+)\]\]/gi;
   node.text = node.text.replace(TOKEN_RE, (full, type, key) => {
     const arr = node[type === 'var' ? 'vars' : type];
     const sh = artifactToShorthand(type, arr?.find(r => r.key === key));
@@ -17386,10 +17446,12 @@ const GUIDE = [
     ] },
   { id:'markov', cat:'generators', covers:['markov'],
     title:'Markov chains',
-    body:"Generate made-up text that sounds like it belongs to a style you define: invented place names, character names in the style of a language, sample dialogue or procedural flavor text. You give it a set of example words or phrases, and it produces new ones that feel like they came from the same source. Type @ and choose Markov chain. Click to generate a new run.",
+    body:"Generate made-up text that sounds like it belongs to a style you define: invented place names, character names in the style of a language, sample dialogue or procedural flavor text. You give it a set of transitions (each state points to the next, with optional weights) and it walks them at random. Type {markov: a→b, b→c} to make one inline, or use the @ Markov chain dialog to name it and set a start and length. Click the pill to walk it again.",
     examples:[
-      { syn:'@ → Markov chain', desc:'add a Markov chain' },
-      { syn:'{chainName}',     desc:'use it inside a generator' },
+      { syn:'{markov: a→b, b→c}', desc:'make one by typing (→ or ->)' },
+      { syn:'{markov: sun→rain, sun→sun 2}', desc:'weight a transition' },
+      { syn:'@ → Markov chain', desc:'name it, set start and length' },
+      { syn:'{chainName}',     desc:'call a named chain in a generator' },
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',

@@ -137,7 +137,7 @@ export function loadCores() {
   const need = [
     'parseDice', 'rollParsed', 'diceExprStr',
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
-    'parseMarkov', 'walkMarkov', 'weightedPick',
+    'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'fieldParts',
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
