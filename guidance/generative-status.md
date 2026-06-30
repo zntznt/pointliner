@@ -27,6 +27,9 @@ surface. The PKM / multi-document workspace — once "the next frontier" — has
   **hierarchical items** `{item.field}` via dotted sub-rules (A6), named rules/tables/chains/vars.
 - **Yes/no oracle** (a front door over weighted-alt — original neutral odds, IP-fenced).
 - Variables: **formula** + **random pick** (frozen, re-rollable) — the locked consistency model.
+- **Typed inline declaration** `{name := expr}` (Stage A) + **positional resolution** (Stage B):
+  declare a variable by typing, and a `{name}` resolves to the nearest preceding declaration. See
+  `typed-var-declaration-proposal.md` (SHIPPED).
 - Typed `{…}`→pill promotion; the unfold/refold edit model.
 
 **Engine 2 — expression evaluator (`evalMath`):**
@@ -96,8 +99,11 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
 
 ## Won't-do (deliberate, locked out)
 
-- **Inline same-expansion binding** — `{a := …}` / `ctx.binds` (reverted, PR #51). Cross-reference
-  consistency is the **random-pick variable**, full stop (`generation-direction.md` §2). Do not rebuild.
+- **Inline same-expansion *binding*** — the per-expansion `ctx.binds` scope (reverted, PR #51). Do
+  not rebuild *that*. Note this is the **scope model**, not the `:=` operator: typed inline variable
+  **declaration** `{name := expr}` (Stage A) and positional resolution (Stage B) **have shipped** and
+  are a different thing (persistent `node.vars`, not a per-expansion scope). See
+  `typed-var-declaration-proposal.md` and the Shipped list above.
 - **`{d66}` dice mode** — collides with a literal 66-sided die.
 - **Anti-repeat reroll** — churns the seeded determinism for a marginal feel-good gain.
 - **Bane/botch pools** — niche; the success-pool primitive already covers the general case.

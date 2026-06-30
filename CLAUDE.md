@@ -556,8 +556,15 @@ grammar engine runs only at declaration and on explicit re-roll (`rollPickSource
 never on a render pass, or the value would change on every keystroke. Display any
 varMap value through `formatVarValue` (string-aware), never `formatMathResult`
 directly; in math/dice a string value fails to `null` visibly (the type-safety
-contract). Direction: `guidance/generation-direction.md` — the reverted
-per-expansion bound-picks model (`:=`/`ctx.binds`, PR #51) must not return.
+contract). Direction: `guidance/generation-direction.md`. **The reverted thing is the
+per-expansion bound-picks *scope* (`ctx.binds`, PR #51) — that must not return.** The `:=`
+*operator itself* HAS shipped, as **typed inline variable declaration** `{name := expr}`
+(`parseVarDecl`): it is sugar that promotes to a normal persistent `[[var:key]]` record in
+`node.vars` (`typed:true`), never a per-expansion scope, so it is the same variable system, not
+the reverted model. **Stage B, positional resolution** (`varMapAt(node)`/`resolveVarDefs`) further
+supersedes the old global declare-once / call-anywhere model: a `{name}` resolves to the nearest
+preceding `{name := …}` in document order, falling back to the global map when there is no anchor.
+See `guidance/typed-var-declaration-proposal.md` (Status: SHIPPED).
 
 **Declarative data packs (plugins) merge into both collectors.** `root.plugins`
 (the `<_plugins>` OPML head element) is a list of **pure-data** packs — extensibility
@@ -842,9 +849,12 @@ Note: internal links + backlinks and a multi-document workspace — previously "
 scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
 
 **Three more directories, not to be confused with `guidance/`:**
-- `guide/` — the **end-user** guide (a `README.md` hub + `features.md`, `generating-text.md`,
-  `computing-numbers.md`, `cookbook.md`, and the `solo-rpg/` subtree), linked from the root
-  `README.md`. This is the user-facing *how to use the pills* doc, distinct from `guidance/` (the
+- `guide/` — the **end-user** guide, now a complete set: a `README.md` hub + `features.md`, the two
+  pill deep-guides (`generating-text.md`, `computing-numbers.md`), six plain-outliner category pages
+  (`writing-and-formatting.md`, `getting-around.md`, `tasks-and-organizing.md`, `dates-and-planning.md`,
+  `links-and-references.md`, `files-and-export.md`), `cookbook.md`, and the `solo-rpg/` subtree. There
+  is a markdown page for every category in the in-app concept guide (the GUIDE array). Linked from the
+  root `README.md`. This is the user-facing *how to use the pills* doc, distinct from `guidance/` (the
   dev-facing build-steering docs; note the near-identical name `guidance/features.md`, which is the
   separate **engine reference**, not this user inventory). **`guide/features.md` is the canonical
   user-facing feature inventory** (the root README's "What's in the box" is a teaser that defers to
@@ -877,7 +887,7 @@ scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
   clone can leave `main` pointing at an old snapshot, and you won't notice: your branch will pass
   its own outdated tests. Sanity-check you're current — the test count and recently-merged
   files/dirs (e.g. `guidance/`, the latest UXP entries) should match the latest work. As of the
-  last refresh of this doc `node --test tests/test.mjs` reported **629 tests, all passing**; treat a
+  last refresh of this doc `node --test tests/test.mjs` reported **659 tests, all passing**; treat a
   *lower* count than that as a likely stale base and **STOP** to investigate. (The number only grows,
   so it drifts upward over time — it's a floor, not an exact match. Trust the runner's reported total,
   not a `grep -c 'test('`, which over-counts.)

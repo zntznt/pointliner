@@ -57,6 +57,12 @@ retried:
 generation*. That is exactly the variable model the user asked for, and it makes consistency
 automatic — one stored value, many references.
 
+> **Superseded by Stage B (see §5):** the global "one value, call anywhere" model above is now the
+> *fallback*. Positional resolution (`varMapAt`) makes a `{name}` reference resolve to the nearest
+> preceding `{name := …}` declaration in document order, so the same name can hold different values
+> in different parts of a document. The global map applies only where a name has no positional
+> anchor. Read §1/§2 as the original design; §5 records what shipped.
+
 **A6 (hierarchical / property items, 2026-06-14) rides this, not the reverted bind.** When an item
 carries fields (`sword.damage: 1d8`, read as `{weapon.damage}`), the question "are `{item.name}` and
 `{item.damage}` the *same* item?" is the **same** consistency problem — and it has the **same locked
@@ -79,9 +85,10 @@ This is the cleanest possible P5 outcome: **the MVP introduces no new authoring 
   delimiter, no parser collision surface.
 - The pick's source is itself ordinary grammar (`{…}`-resolvable) content — also nothing new.
 
-The inline declaration shorthand the user originally typed (`{a := dragon}`) is **deferred** (§5),
-not part of v1 — it is the *only* place new syntax could enter, and it carries the `:=` / `:` / `=`
-collision matrix, so it waits.
+The inline declaration shorthand the user originally typed (`{a := dragon}`) **has since shipped**
+(see the §5 status update): `{name := expr}` is the one place new syntax entered, gated through the
+`:=` / `:` / `=` collision matrix in `parseVarDecl`. It writes to the persistent variable system,
+not the reverted per-expansion scope, so it is consistent with everything above.
 
 ---
 

@@ -143,8 +143,9 @@ re-rolled from the declaration pill (all references update together).
 - **Fit — landed cleanly on the variable system** (`collectVars` + `[[var:key]]` + `{name}`),
   zero new syntax. The pick rolls once through the grammar engine and freezes on the record.
 - **Supersedes** the reverted per-expansion bound-picks attempt (PR #51). Direction locked in
-  `guidance/generation-direction.md`; deferred there: inline `{a := …}` shorthand, modifiers
-  (`a/an`/plural/capitalize), picks in math, per-reference re-roll.
+  `guidance/generation-direction.md`. Since shipped: inline `{name := expr}` declaration + positional
+  resolution (`typed-var-declaration-proposal.md`), and text modifiers (`a/an`/plural/capitalize,
+  `modParts`/`applyMods`). Still deferred: picks in math, per-reference re-roll.
 
 ### ✓ Rich TODO states + priorities — shipped (as sequences)
 Custom task states with priorities landed as `#KEYWORD [#A] body` (the `#` reuses the hashtag
