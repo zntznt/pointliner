@@ -206,6 +206,58 @@ test('parseMarkov — an empty RHS declares a terminal, not a dead chain (B4)', 
   assert.equal(c.parseMarkov('-> b'), null);
 });
 
+// ── typed inline markov: {markov: a→b, b→c} ─────────────────────────────────
+test('markovParts — sniffs a typed markov body, comma transitions → newline def', () => {
+  assert.deepEqual(host(c.markovParts('markov: a→b, b→c')), { def: 'a→b\nb→c' });
+  assert.deepEqual(host(c.markovParts('markov: a->b, b->a')), { def: 'a->b\nb->a' }); // ascii arrow too
+  // weighted targets survive
+  assert.deepEqual(host(c.markovParts('markov: sun→rain, sun→sun 2')), { def: 'sun→rain\nsun→sun 2' });
+});
+test('markovParts — a comma fragment with no arrow joins the previous transition', () => {
+  // `a→b, c` = from a, two targets b and c (the second fragment has no arrow)
+  assert.deepEqual(host(c.markovParts('markov: a→b, c, b→a')), { def: 'a→b, c\nb→a' });
+});
+test('markovParts — NOT a markov body (no false positives)', () => {
+  assert.equal(c.markovParts('a | b'), null);            // alternation
+  assert.equal(c.markovParts('x > 1: a | b'), null);     // conditional
+  assert.equal(c.markovParts('shuffle: a | b'), null);   // sequence
+  assert.equal(c.markovParts('weapon: sword | axe'), null); // a rule line
+  assert.equal(c.markovParts('markov:'), null);          // empty body
+  assert.equal(c.markovParts('markov: not an arrow'), null); // no valid transition
+});
+test('classifyBraceBody / braceTypeLabel — a typed markov is a valid markov artifact', () => {
+  assert.equal(c.classifyBraceBody('markov: a→b, b→c', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('markov: a→b, b→c', {}, {})), ['markov', null]);
+});
+test('promoteBraceBody — {markov: …} builds an anonymous, typed markov record', () => {
+  const node = { text: '', markov: [] };
+  const tok = c.promoteBraceBody(node, 'markov: a→b, b→c');
+  assert.match(tok, /^\[\[markov:[a-z0-9]+\]\]$/);
+  const rec = node.markov[0];
+  assert.equal(rec.typed, true);
+  assert.equal(rec.name, undefined);            // anonymous — named markov stays a dialog feature
+  assert.equal(rec.def, 'a→b\nb→c');
+  assert.deepEqual(host(rec.path), ['a', 'b', 'c']); // deterministic walk from the first state
+});
+test('artifactToShorthand — a typed markov unfolds; a NAMED one stays atomic', () => {
+  const typed = { key: 'k', typed: true, def: 'a→b\nb→c', start: 'a', steps: 5, path: ['a', 'b', 'c'] };
+  assert.equal(c.artifactToShorthand('markov', typed), '{markov: a→b, b→c}');
+  // a named (dialog) chain must NOT unfold — the name is doc-wide config the text can't carry
+  assert.equal(c.artifactToShorthand('markov', { ...typed, name: 'weather' }), null);
+  // a non-typed (legacy dialog) chain doesn't unfold either
+  assert.equal(c.artifactToShorthand('markov', { ...typed, typed: false }), null);
+});
+test('typed markov — full edit-mode unfold/refold cycle preserves the token', () => {
+  const node = { text: '', markov: [] };
+  const tok = c.promoteBraceBody(node, 'markov: a→b, b→c');
+  node.text = 'pre ' + tok;
+  c.unfoldArtifacts(node);                          // enter edit: token → {markov: …} source
+  assert.equal(node.text, 'pre {markov: a→b, b→c}');
+  c.refoldArtifacts(node);                          // exit unchanged: source → the SAME token
+  assert.equal(node.text, 'pre ' + tok);            // frozen walk + key preserved
+  assert.equal(node.markov.length, 1);
+});
+
 // ── grammar engine ─────────────────────────────────────────────────────────
 test('runGrammar — deterministic single-alternative expansion', () => {
   assert.equal(c.runGrammar('origin: hello', 'origin', {}, {}), 'hello');

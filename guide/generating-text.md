@@ -266,14 +266,18 @@ table" is just a familiar name for it.
 ## Markov chains
 
 A **Markov chain** generates a random *walk* through transitions, good for organic-sounding
-sequences. Build one in the **`@` → Markov** dialog with `→` transitions:
+sequences. Type one inline as `{markov: from→to, …}` (use `→` or `->`):
 
 ```
-sunny → cloudy → rainy → sunny
+{markov: sunny→cloudy, cloudy→rainy, cloudy→sunny, rainy→sunny}
 ```
 
-The pill walks the chain and shows the path. Click to re-walk. A *named* chain is callable like a
-rule (`{weather}`) from anywhere.
+A transition can carry a weight as a trailing number, so `sunny→sunny 2` makes sun twice as likely
+to persist as to cloud over. The pill walks the chain and shows the path; click to re-walk.
+
+For a chain you want to **name** and reuse, build it in the **`@` → Markov** dialog (it also lets you
+set the start state and how many steps to walk). A named chain is callable like a rule (`{weather}`)
+from anywhere.
 
 ---
 
