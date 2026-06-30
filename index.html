@@ -1337,7 +1337,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
     <button id="btn-capture" title="Capture to inbox" aria-label="Capture to inbox"><i class="fa-solid fa-inbox"></i></button>
-    <button id="btn-journal" title="New journal entry" aria-label="New journal entry"><i class="fa-solid fa-calendar-day"></i></button>
+    <button id="btn-journal" title="New journal entry" aria-label="New journal entry"><i class="fa-solid fa-book"></i></button>
     <button id="btn-agenda" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-done" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
     <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
@@ -4107,7 +4107,7 @@ const BLOCK_CMDS = [
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
-  { id:'journal', icon:'📓',  fa:'fa-solid fa-calendar-day',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
+  { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
