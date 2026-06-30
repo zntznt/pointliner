@@ -740,6 +740,12 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .prop-chip.prop-check-error .prop-check-glyph,.prop-chip.prop-check-error .prop-val{color:var(--warn)}
 .node-props-row>.collapse-btn,.node-props-row>.ol-num{visibility:hidden}
 .node-props-row>.bullet{cursor:default}
+/* Property chips are METADATA of the point above, not a peer/child row. The tag icon
+   sat in the bullet slot, so the row read as its own list entry. Hide that marker and
+   pull the chips snug under the point's text, so they read as an attached caption. */
+.node-props-row>.bullet .note-mark{visibility:hidden}
+.node-props-row{padding-top:0;margin-top:-2px}
+.node-props-row>.props-area{padding-top:0}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
    each widget kind is identifiable without turning the line into candy */
 .dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}
