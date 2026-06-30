@@ -154,7 +154,7 @@ export function loadCores() {
     'validPluginPack', 'mergePackRules', 'packVarDefs',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
-    'uniqueWorkspaceName', 'workspaceDocList',
+    'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
     'embedOpmlIntoHtml', 'extractEmbeddedOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',

@@ -696,7 +696,11 @@ Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc **and cross-document** `[[docId#nodeId|label]]`, incl. live-title "mirror",
 the `[[` picker, backlinks, link-and-create / "+ New note", aliases, unlinked refs) ·
 Multi-document workspace (a folder of `.opml` notes on real disk — FSA + IndexedDB, Chromium-gated;
-durable continuous auto-write, document switcher, reopen-across-reloads, non-Chromium invite) ·
+durable continuous auto-write, document switcher, **document tabs** — a `#doc-tabs` `role=tablist`
+strip over the switcher: `openTabs` filenames persisted in IndexedDB, `tabAdd`/`tabClose`/`tabCycle`
+pure cores, `Ctrl/⌘+Shift+]`/`[`; a pure UI layer over `switchWorkspaceDoc`, still **one `root` in
+memory** (no N-resident, no same-file-twice — see roadmap decision) — reopen-across-reloads,
+non-Chromium invite) ·
 Whole-folder search (one search box over every note in the folder) ·
 Click-anywhere-to-edit ·
 Per-point notes (`node.note` + `_note` OPML attr: a muted plain-text block under the

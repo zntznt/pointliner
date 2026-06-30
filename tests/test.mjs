@@ -3903,6 +3903,48 @@ test('workspaceDocList: keeps only .opml, de-dupes, sorts case-insensitive', () 
   assert.deepEqual(host(c.workspaceDocList(undefined)), []);
 });
 
+// ── document tabs: the pure list state machine (add / close / cycle) ──────────
+test('tabAdd: appends a new file, dedupes an already-open one', () => {
+  assert.deepEqual(host(c.tabAdd([], 'a.opml')), ['a.opml']);
+  assert.deepEqual(host(c.tabAdd(['a.opml'], 'b.opml')), ['a.opml', 'b.opml']);
+  assert.deepEqual(host(c.tabAdd(['a.opml', 'b.opml'], 'a.opml')), ['a.opml', 'b.opml']); // already open → no dup
+  assert.deepEqual(host(c.tabAdd(['a.opml'], '')), ['a.opml']);     // empty name is a no-op
+});
+test('tabClose: closing a BACKGROUND tab removes it, no switch', () => {
+  const r = c.tabClose(['a.opml', 'b.opml', 'c.opml'], 'b.opml', 'a.opml');
+  assert.deepEqual(host(r.tabs), ['a.opml', 'c.opml']);
+  assert.equal(r.nextActive, null);   // active tab untouched → no switch
+});
+test('tabClose: closing the ACTIVE tab switches to the neighbor at that slot', () => {
+  // close the active middle tab → the tab that slides into its index becomes active
+  const r = c.tabClose(['a.opml', 'b.opml', 'c.opml'], 'b.opml', 'b.opml');
+  assert.deepEqual(host(r.tabs), ['a.opml', 'c.opml']);
+  assert.equal(r.nextActive, 'c.opml');
+  // close the active LAST tab → falls back to the new last tab
+  const r2 = c.tabClose(['a.opml', 'b.opml'], 'b.opml', 'b.opml');
+  assert.deepEqual(host(r2.tabs), ['a.opml']);
+  assert.equal(r2.nextActive, 'a.opml');
+});
+test('tabClose: closing the only tab leaves an empty strip, no switch target', () => {
+  const r = c.tabClose(['a.opml'], 'a.opml', 'a.opml');
+  assert.deepEqual(host(r.tabs), []);
+  assert.equal(r.nextActive, null);
+});
+test('tabClose: closing a file that is not open is a no-op', () => {
+  const r = c.tabClose(['a.opml'], 'z.opml', 'a.opml');
+  assert.deepEqual(host(r.tabs), ['a.opml']);
+  assert.equal(r.nextActive, null);
+});
+test('tabCycle: next/prev wrap; <2 tabs → null', () => {
+  const t = ['a.opml', 'b.opml', 'c.opml'];
+  assert.equal(c.tabCycle(t, 'a.opml', 1), 'b.opml');
+  assert.equal(c.tabCycle(t, 'c.opml', 1), 'a.opml');   // wrap forward
+  assert.equal(c.tabCycle(t, 'a.opml', -1), 'c.opml');  // wrap back
+  assert.equal(c.tabCycle(['only.opml'], 'only.opml', 1), null);  // nothing to cycle to
+  assert.equal(c.tabCycle([], 'x', 1), null);
+  assert.equal(c.tabCycle(t, 'gone.opml', 1), 'a.opml'); // active not in list → first
+});
+
 test('firstLineTitle: first point\'s display text, first line, markdown-stripped', () => {
   const root = c.mkRoot();
   root.children.push(c.mkNode('**Project** Plan\nsecond line ignored'));
@@ -4768,6 +4810,27 @@ test('journal mode: Ctrl/Cmd+Shift+J handler is wired and documented (the only f
   // Discoverable: an essential ? -panel row advertises the shortcut (no hidden hotkeys).
   assert.ok(_src.includes("id:'file-jmode'"),
     'the journal-mode shortcut is not listed in the essential shortcuts registry');
+});
+
+test('document tabs: strip is gated on workspaceDir, keyboard-cycle wired + documented', () => {
+  // The strip hides without a connected workspace (the cheap-version gate).
+  assert.ok(/if \(!workspaceDir \|\| !openTabs\.length\)/.test(_src),
+    'renderDocTabs is not gated on workspaceDir + a non-empty tab list');
+  // Next/prev-tab chords call cycleDocTab, alongside the existing global chords.
+  assert.ok(/ctrl && e\.shiftKey && e\.key===']'/.test(_src) && /ctrl && e\.shiftKey && e\.key==='\['/.test(_src),
+    'Ctrl/Cmd+Shift+] / [ tab-cycle handlers not found');
+  assert.ok(_src.includes('function cycleDocTab'), 'cycleDocTab not found');
+  // ARIA tablist semantics (P3) and keyboard activation alongside pointer (caret invariant).
+  assert.ok(_src.includes('role="tablist"') && _src.includes("setAttribute('role', 'tab')"),
+    'doc-tabs is not an ARIA tablist with role=tab tabs');
+  assert.ok(/tab\.addEventListener\('keydown'/.test(_src),
+    'tabs lack a keyboard handler (added alongside the mousedown path)');
+  // Discoverable: an essential ?-panel row advertises the shortcut.
+  assert.ok(_src.includes("id:'file-tabs'"),
+    'the tab-cycle shortcut is not listed in the essential shortcuts registry');
+  // Every successful switch registers a tab, and the list is persisted.
+  assert.ok(_src.includes('openTabs = tabAdd(openTabs, name)') && _src.includes('persistOpenTabs'),
+    'switchWorkspaceDoc does not register + persist the tab');
 });
 
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
