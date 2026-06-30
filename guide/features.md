@@ -18,16 +18,19 @@ Nothing below needs code. If you can type `{`, you can use it.
 The everyday outliner. This is the part you use without thinking about it.
 
 - **Nested points.** Type, press `Enter` for a new point, `Tab` / `Shift+Tab` to indent or outdent.
+  ([point types](writing-and-formatting.md#point-types))
 - **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line.
+  ([styling text](writing-and-formatting.md#styling-text))
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
-  with `[#A]` priorities.
+  with `[#A]` priorities. ([to-dos](tasks-and-organizing.md#to-dos-and-tasks))
 - **Collapse and zoom.** Fold any branch; click a bullet to zoom in and work on just that subtree.
   ([zoom](getting-around.md#zoom-into-a-point))
 - **Reorder by dragging** (mouse or touch), or move points with the keyboard.
   ([moving and nesting](getting-around.md#moving-and-nesting-points))
 - **Per-point notes.** Attach a longer note under any point; hide them all with one toggle.
+  ([per-point notes](writing-and-formatting.md#per-point-notes))
 - **Properties.** Give a point `key: value` data (like `cost: 12` or `owner: me`) you can total
-  and search.
+  and search. ([properties](tasks-and-organizing.md#properties))
 - **Click anywhere to edit.** Click any empty part of a point and you are typing there.
 
 ## Generating text
@@ -67,7 +70,7 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 - **Self-checking outlines.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. ([constraints](computing-numbers.md#make-the-outline-check-itself-constraints))
 - **Progress cookies.** Drop `[/]` or `[%]` for a live tally of checkboxes and child to-dos.
-  ([progress](computing-numbers.md#progress-cookies))
+  ([progress](computing-numbers.md#progress-bars))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
   ([variables](computing-numbers.md#variables-in-math))
 
@@ -76,34 +79,41 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 Turn the outline into a lightweight planner.
 
 - **Start and due dates.** Schedule any point with a start, a deadline, or both; color-coded chips
-  show what is due, soon, or overdue.
+  show what is due, soon, or overdue. ([scheduling](dates-and-planning.md#scheduling-dates))
 - **Agenda.** A built-in calendar, timeline (Gantt), and due-list view of your dated points.
+  ([agenda](dates-and-planning.md#agenda-and-calendar))
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
-- **Search and filter.** Search across the outline with operators: `#tag`, `is:todo`, `is:done`,
-  `is:note`, `is:failing`, `state:waiting`, `due:overdue`, `has:key`, `key:value`, exact
-  `"phrases"`, and `-` to exclude. Star a search to save it.
-  ([searching](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
+  ([journal](dates-and-planning.md#daily-journal))
+- **Search and filter.** Filter with `#tag`, the `is:todo` / `is:done` / `is:note` / `is:failing`
+  flags, date and property operators (`due:overdue`, `has:key`, `key:value`), exact `"phrases"`, and
+  `-` to exclude. Star a search to save it.
+  ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 
 ## Linking and connecting notes
 
 Build a connected notebook (Zettelkasten style), not just a single document.
 
 - **Internal links.** `[[#point]]` links to any other point, with live titles and backlinks.
+  ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
 - **Multi-document workspace.** Connect a folder of notes on disk; switch between documents, link
   across them, and search the whole folder at once.
+  ([links across notes](links-and-references.md#links-across-notes) · [folder of notes](files-and-export.md#working-with-a-folder-of-notes))
 - **Capture inbox.** A quick-capture box that drops a note into your inbox from anywhere, without
-  navigating away.
+  navigating away. ([capture](tasks-and-organizing.md#capture-and-quick-inbox))
 - **Templates and refile.** Save a subtree as a reusable template; move any point's subtree
   elsewhere with a searchable picker.
+  ([templates](tasks-and-organizing.md#templates) · [refile](getting-around.md#refile-a-point))
 
 ## Files, sharing, and offline
 
 - **One file, fully offline.** The whole app is a single `index.html`. No account, no network, no
   install. Your filesystem is the storage; your choice of sync (Dropbox, iCloud, git, or none) is
-  the sync.
+  the sync. ([saving](files-and-export.md#saving-your-work))
 - **Open formats.** OPML is the native save format; export to Markdown or plain text for sharing.
+  ([exporting](files-and-export.md#exporting-and-sharing))
 - **Self-contained HTML.** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
+  ([exporting](files-and-export.md#exporting-and-sharing))
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.
 
 ---
