@@ -19,7 +19,7 @@ Keep a whole library of notes in one folder on your computer and move between th
 tabs: a project note, a daily log, a person page, each its own file but searchable and
 [linkable](links-and-references.md#links-across-notes) together.
 
-Connect a folder once (**Chrome or Edge only**) and every note saves to disk as you type and reopens
+Connect a folder once (**Chrome, Edge, or a similar browser only**) and every note saves to disk as you type and reopens
 right where you left it after a reload. A **tab strip** appears under the toolbar with the documents
 you have open: click a tab to switch, the `×` to close it, or the `+` to open another. `Ctrl/Cmd+Shift+]`
 and `[` step to the next and previous tab. Tabs are the notes you have opened (not the whole folder),
@@ -32,7 +32,7 @@ and they reappear after a reload. From the **File** menu:
 One file opens in one tab: you cannot open two tabs of the same note (they would share an identity and
 fight over the same file on disk).
 
-On other browsers the menu shows a copy-link invite to reopen in Chrome or Edge instead. (The deeper
+On other browsers the menu shows a copy-link invite to reopen in Chrome, Edge, or a similar browser instead. (The deeper
 mechanics of folders are in the [feature
 overview](features.md#linking-and-connecting-notes).)
 
