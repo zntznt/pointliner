@@ -39,6 +39,8 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
 
 - **[What Pointliner can do](features.md)** is the scannable feature map: every capability in one
   line, with links to where you learn it. Skim this if you just want to know "can it do X?"
+- **[Getting around](getting-around.md)** is the everyday outliner: navigating, searching, nesting,
+  zoom, hashtags. The plain outliner moves, no pills involved.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides for the pill families above.
 - **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
