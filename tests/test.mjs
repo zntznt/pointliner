@@ -3118,6 +3118,10 @@ test('classifyBraceBody: valid artifact bodies classify artifact', () => {
   assert.equal(c.classifyBraceBody('a|b 2|c', {}, {}), 'artifact');       // alternation
   assert.equal(c.classifyBraceBody('color', { color: ['red'] }, {}), 'artifact'); // known rule
   assert.equal(c.classifyBraceBody('str', {}, { str: 3 }), 'artifact');   // known var
+  // a typed decl whose formula references a not-yet-defined var is a valid artifact
+  // (a live formula, not a frozen pick) — the {y := x} regression, edit-mode side
+  assert.equal(c.classifyBraceBody('y := x', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('total := x + z', {}, {}), 'artifact');
 });
 
 test('classifyBraceBody: attempted-but-broken bodies classify invalid (no more silent failure)', () => {
@@ -6380,6 +6384,43 @@ test('parseVarDecl — empty RHS rejected', () => {
 test('parseVarDecl — := only claims a LEADING name:= , not := mid-expression', () => {
   // a body that is just an expression containing := elsewhere shouldn't parse as a decl
   assert.equal(c.parseVarDecl(':= 5'), null);
+});
+
+// ── varDeclIsPick: formula-vs-pick classification of a typed decl's RHS ─────────
+// The regression this fixes: {y := x} must be a live FORMULA (resolves to x's value,
+// self-heals when x is (re)defined), NOT a frozen pick of the literal "{x?}". The
+// classification must not depend on whether referenced vars are resolvable yet.
+test('varDeclIsPick — a variable reference is a FORMULA even when the var is undefined', () => {
+  assert.equal(c.varDeclIsPick('x'), false);          // the bug: was frozen as a pick → {x?}
+  assert.equal(c.varDeclIsPick('x + y'), false);      // compound ref, still a formula
+  assert.equal(c.varDeclIsPick('str_mod'), false);    // a single undefined identifier
+  assert.equal(c.varDeclIsPick('pi * r^2'), false);
+  assert.equal(c.varDeclIsPick('today + 3'), false);
+  assert.equal(c.varDeclIsPick('sqrt(area)'), false);
+  assert.equal(c.varDeclIsPick('50'), false);         // a plain number
+});
+test('varDeclIsPick — the generative/text forms are PICKS', () => {
+  assert.equal(c.varDeclIsPick('Yes | No'), true);    // alternation
+  assert.equal(c.varDeclIsPick('warm | cool'), true);
+  assert.equal(c.varDeclIsPick('2d6'), true);         // dice
+  assert.equal(c.varDeclIsPick('"hello"'), true);     // quoted literal
+  assert.equal(c.varDeclIsPick("'hi'"), true);
+  assert.equal(c.varDeclIsPick('Acme Corp'), true);   // multi-word bare string
+});
+test('{y := x} promotes to a live formula that resolves to x (end-to-end regression)', () => {
+  let i = 0;
+  const mk = (text, vars = []) => ({ id: 'n' + (i++), text, note: '', type: 'ul',
+    children: [], vars, dice: [], markov: [], math: [], grammar: [], est: [], footnotes: [], props: [] });
+  const A = mk('[[var:kx]]', [{ key: 'kx', name: 'x', expr: '2', typed: true }]);
+  const B = mk('', []);
+  B.text = c.promoteBraceBody(B, 'y := x');   // exitEdit splices the returned token into the text
+  // promoted as a FORMULA (not a frozen pick of "{x?}")
+  assert.equal(B.vars[0].kind, undefined, 'y must be a formula, not a frozen pick');
+  assert.equal(B.vars[0].rolled, undefined);
+  // and {y} resolves to x's value, not "{x?}"
+  const root = mk('', []); root.type = 'base'; root.children = [A, B];
+  const vm = c.collectVars(root);
+  assert.equal(vm.y, 2, '{y} must resolve to x = 2');
 });
 
 // ── typed var declaration: unfold behavior (artifactToShorthand) ──────────────
