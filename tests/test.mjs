@@ -2632,6 +2632,59 @@ test('sequenceLint: flags a whitespace-split state, quiet for single-word states
   assert.ok(c.sequenceLint('TODO NEXT WAITING | DONE'));
 });
 
+// ── typed sequence declaration: {seq Flow: BACKLOG DOING | SHIPPED} ──────────
+test('seqDeclParts: a named sequence declaration → { name, states, doneFrom }', () => {
+  assert.deepEqual(host(c.seqDeclParts('seq Flow: BACKLOG DOING | SHIPPED')),
+    { name: 'Flow', states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2 });
+  assert.deepEqual(host(c.seqDeclParts('seq Review: DRAFT | DONE')),
+    { name: 'Review', states: ['DRAFT', 'DONE'], doneFrom: 1 });
+  assert.match(c.seqDeclParts('seq Flow: a | b').name, /Flow/); // name preserves case
+});
+test('seqDeclParts: NOT a sequence declaration (no false positives)', () => {
+  assert.equal(c.seqDeclParts('shuffle: a | b'), null);       // a deck/sequence-mode
+  assert.equal(c.seqDeclParts('markov: a→b'), null);          // a typed markov
+  assert.equal(c.seqDeclParts('x > 1: a | b'), null);         // a conditional
+  assert.equal(c.seqDeclParts('weapon: sword | axe'), null);  // a grammar rule line (no `seq `)
+  assert.equal(c.seqDeclParts('seq : A | B'), null);          // no name
+  assert.equal(c.seqDeclParts('seq A B: X | Y'), null);       // multi-word name rejected
+  assert.equal(c.seqDeclParts('seq Flow: TODO DONE'), null);  // no pipe → not a valid states def
+  assert.equal(c.seqDeclParts('seq Flow:'), null);            // empty states
+});
+test('classifyBraceBody / braceTypeLabel — a typed seq decl is a valid seq artifact', () => {
+  assert.equal(c.classifyBraceBody('seq Flow: BACKLOG DOING | SHIPPED', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('seq Flow: BACKLOG DOING | SHIPPED', {}, {})), ['seq', null]);
+});
+test('promoteBraceBody — {seq Name: …} builds a named [[seq:KEY]] record, registered doc-wide', () => {
+  const node = { id: 'n1', text: '', seq: [], children: [] };
+  const tok = c.promoteBraceBody(node, 'seq Flow: BACKLOG DOING | SHIPPED');
+  assert.match(tok, /^\[\[seq:[a-z0-9]+\]\]$/);
+  const rec = node.seq[0];
+  assert.equal(rec.name, 'Flow');
+  assert.deepEqual(host(rec.states), ['BACKLOG', 'DOING', 'SHIPPED']);
+  assert.equal(rec.doneFrom, 2);
+  // collectSequences picks it up (token in text + named), so its states drive the / menu
+  node.text = 'process ' + tok;
+  const root = { id: 'r', text: '', seq: [], children: [node] };
+  const seqs = c.collectSequences(root);
+  assert.equal(seqs.length, 1);
+  assert.equal(seqs[0].name, 'Flow');
+  // done-ness: right of the | is done, left is not
+  const all = [{ key: 'default', name: 'To-do', states: ['TODO', 'DONE'], doneFrom: 1 }, ...seqs];
+  assert.equal(c.keywordIsDone('SHIPPED', all), true);
+  assert.equal(c.keywordIsDone('BACKLOG', all), false);
+});
+test('artifactToShorthand — a seq pill is ATOMIC (named config never unfolds)', () => {
+  // a sequence is named doc-wide config the unfolded text can't carry → stays a pill
+  assert.equal(c.artifactToShorthand('seq', { key: 'k', name: 'Flow', states: ['A', 'B'], doneFrom: 1 }), null);
+});
+test('typed seq — the token stays atomic in edit mode (does not unfold)', () => {
+  const node = { id: 'n', text: '', seq: [], dice: [], math: [], vars: [], grammar: [], est: [], markov: [], children: [] };
+  const tok = c.promoteBraceBody(node, 'seq Flow: BACKLOG DOING | SHIPPED');
+  node.text = 'process ' + tok;
+  c.unfoldArtifacts(node);                          // enter edit
+  assert.equal(node.text, 'process ' + tok);        // unchanged — seq is NOT in the unfold set
+});
+
 test('sequenceForKeyword: first-match across default + declared; default wins collisions', () => {
   const seqs = [DEFAULT_SEQ, FLOW, { key: 'q2', name: 'Clash', states: ['DONE', 'DOING2'], doneFrom: 1 }];
   assert.equal(c.sequenceForKeyword('DOING', seqs).name, 'Flow');
