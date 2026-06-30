@@ -1591,7 +1591,7 @@ function linkText(str, depth = 0) {
 // without it a colon-form artifact token (which linkText's #-only regex doesn't touch)
 // leaks raw into the crumb's text/title/aria (the CLAUDE.md "never user-visible" invariant).
 function displayTitle(node) {
-  return linkText(flattenArtifacts(textForDisplay(node), node, globalVarMap));
+  return linkText(flattenArtifacts(textForDisplay(node), node, varMapAt(node))); // positional vars
 }
 
 // A point's text as it READS on screen — markdown, pill, and {…} syntax resolved
@@ -1610,7 +1610,7 @@ function displayTitle(node) {
 // same reads the render already does.
 function displayText(node, { forMatch = false, varMap } = {}) {
   let t = textForDisplay(node) || '';
-  t = flattenArtifacts(t, node, varMap || globalVarMap);  // dice/grammar/math/etc → shown value
+  t = flattenArtifacts(t, node, varMap || varMapAt(node));  // dice/grammar/math/etc → shown value (positional)
   t = forMatch
     ? t.replace(/\[\[[^\]]*\]\]/g, ' ').replace(/\[\^[^\]]*\]/g, ' ')  // drop link + footnote tokens
     : linkText(t);                                                     // resolve links to legible text
@@ -2378,6 +2378,11 @@ function renderContentHTML(node) {
   seqRenderList     = node.seq     || null;
   cookieNode        = node;
   globalVarMap      = collectVars();
+  // Positional resolution (Stage B): this node's pills resolve {name} against the variables
+  // visible AT this node (declarations above it), not the document-wide last-wins map. The
+  // render-path readers (renderVarPill, the math-pill eval below) use renderVarMap; search /
+  // check eval keep using the document-wide globalVarMap.
+  renderVarMap      = varMapAt(node);
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
   // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
   // Whole-node code blocks get their own fence-aware renderer.
@@ -2505,13 +2510,18 @@ function collectVars(rootNode) {
   const order = [];        // names in first-seen order, for deterministic resolution
   const lastKeyForName = Object.create(null); // name -> key of last declaration seen
   const allKeysForName = Object.create(null); // name -> [all keys seen]
+  // Ordered event stream for positional shadowing: each declaration and each reference,
+  // in document order, as { name, key, isDecl }. A declaration is "shadowed" (dead) only if
+  // NO reference falls in its range — between it and the next same-name declaration (Stage B).
+  const events = [];
   function gather(node) {
     const re = /\[\[var:([a-z0-9]+)\]\]/gi;
     let m;
     while ((m = re.exec(node.text)) !== null) {
       const v = node.vars?.find(v => v.key === m[1]);
-      if (v?.name && v.expr) {   // skip display-only records (empty expr)
-        const nm = v.name.toLowerCase();
+      if (!v?.name) continue;
+      const nm = v.name.toLowerCase();
+      if (v.expr) {              // declaration
         if (!(nm in defs)) order.push(nm);
         defs[nm] = v.expr;
         // A random pick's value is its frozen `rolled` string, never an evaluation
@@ -2521,6 +2531,9 @@ function collectVars(rootNode) {
         else delete pickVals[nm];
         lastKeyForName[nm] = v.key;
         (allKeysForName[nm] ||= []).push(v.key);
+        events.push({ name: nm, key: v.key, isDecl: true });
+      } else {                  // display-only reference
+        events.push({ name: nm, key: v.key, isDecl: false });
       }
     }
     for (const c of node.children) gather(c);
@@ -2535,19 +2548,97 @@ function collectVars(rootNode) {
     delete pickVals[nm];
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
-  // Identify shadowed keys (all declarations of a name except the last one)
+  // Identify shadowed keys POSITIONALLY (Stage B): a declaration is dead only if NO reference
+  // falls in its range — after it, before the next declaration of the same name. (Under the old
+  // global model this was "every declaration except the last"; now an earlier declaration that
+  // governs some references above a later redeclaration is live, not shadowed.)
   const shadowedKeys = new Set();
-  for (const nm of Object.keys(allKeysForName)) {
-    const last = lastKeyForName[nm];
-    for (const k of allKeysForName[nm]) { if (k !== last) shadowedKeys.add(k); }
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (!e.isDecl) continue;
+    // scan forward to the next same-name declaration; any reference before it = in range = live
+    let live = false;
+    for (let j = i + 1; j < events.length; j++) {
+      if (events[j].name !== e.name) continue;
+      if (events[j].isDecl) break;     // next declaration of this name ends the range
+      live = true; break;              // a reference falls in range
+    }
+    if (!live) shadowedKeys.add(e.key);
   }
   _varShadowedKeys = shadowedKeys;
   _varActiveExprs  = defs;
 
-  // Pass 2: resolve lazily. A Proxy lets evalMath's `name in vars` / `vars[name]`
-  // drive on-demand resolution of dependencies; `stack` tracks the active chain so
-  // a re-entered name is recognised as a cycle (and every member of that cycle is
-  // flagged) rather than recursing forever.
+  const { resolved, cycles } = resolveVarDefs(defs, pickVals, order);
+  _varCycles = cycles;
+  if (useCache) { _varsCacheVer = _varsVer; _varsCached = resolved; }
+  return resolved;
+}
+
+// Positional variable resolution (Stage B): the map of variables visible AT a given node,
+// i.e. resolved from only the declarations that PRECEDE targetNode in document (depth-first)
+// order, nearest-preceding winning. A {name} reference reads the last declaration of `name`
+// above it, not one global value — so the same name can hold different values at different
+// points in the document (the deliberate model change recorded in
+// guidance/typed-var-declaration-proposal.md §9 / generation-direction.md §2).
+//
+// Built per call (cheap: one short-circuited tree walk + the shared resolver) and cached by
+// node id on _varsVer, so repeated render reads of the same node don't re-walk. Pack vars
+// (plugin formula vars) are global and always precede document declarations, as before.
+let _varMapAtCacheVer = -1, _varMapAtCache = new Map(); // doc-cache: varMapAt, keyed by node id
+function varMapAt(targetNode) {
+  if (!targetNode) return collectVars();                 // no anchor → global map (back-compat)
+  if (_varMapAtCacheVer !== _varsVer) { _varMapAtCache = new Map(); _varMapAtCacheVer = _varsVer; }
+  const id = targetNode.id;
+  if (id != null && _varMapAtCache.has(id)) return _varMapAtCache.get(id);
+
+  const defs = Object.create(null), pickVals = Object.create(null), order = [];
+  const add = (nm, expr, pick) => {
+    if (!(nm in defs)) order.push(nm);
+    defs[nm] = expr;
+    if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
+  };
+  // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
+  for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, undefined);
+
+  // Depth-first walk; collect declarations until we REACH targetNode, then stop. A reference
+  // sees declarations in nodes before it, plus declarations earlier in its own node's text.
+  let done = false;
+  (function walk(node) {
+    if (done || !node) return;
+    if (node === targetNode) {
+      // include declarations that appear in targetNode's own text BEFORE this point is moot
+      // for a whole-node read; include the node's own typed declarations so {a:=5}{a} in one
+      // node resolves, then stop (nothing after the target is visible).
+      collectNodeDecls(node, add);
+      done = true; return;
+    }
+    collectNodeDecls(node, add);
+    for (const c of node.children || []) { walk(c); if (done) return; }
+  })(root);
+
+  const { resolved } = resolveVarDefs(defs, pickVals, order);
+  if (id != null) _varMapAtCache.set(id, resolved);
+  return resolved;
+}
+
+// Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
+// accumulator via `add(name, expr, pickVal|undefined)`, in the token order they appear in
+// the text. Mirrors collectVars' gather for one node. Display-only refs (empty expr) skipped.
+function collectNodeDecls(node, add) {
+  const re = /\[\[var:([a-z0-9]+)\]\]/gi;
+  let m;
+  while ((m = re.exec(node.text || '')) !== null) {
+    const v = node.vars?.find(v => v.key === m[1]);
+    if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined);
+  }
+}
+
+// Resolve a name→expr `defs` map (+ frozen `pickVals` + first-seen `order`) into a
+// name→value map, shared by collectVars (global) and varMapAt (positional). A Proxy lets
+// evalMath's `name in vars` / `vars[name]` drive on-demand resolution of dependencies;
+// `stack` tracks the active chain so a re-entered name is recognised as a cycle (and every
+// member of that cycle is flagged) rather than recursing forever. Pure: no globals, no DOM.
+function resolveVarDefs(defs, pickVals, order) {
   const resolved = Object.create(null);   // name -> number (successful only; the returned map)
   const memo = Object.create(null);       // name -> number | undefined (incl. failures) — null-proto, or `'constructor' in memo` short-circuits to the Object function
   const stack = [];
@@ -2578,10 +2669,7 @@ function collectVars(rootNode) {
     return memo[name];
   }
   for (const nm of order) resolve(nm);
-
-  _varCycles = cycles;
-  if (useCache) { _varsCacheVer = _varsVer; _varsCached = resolved; }
-  return resolved;
+  return { resolved, cycles };
 }
 
 // Add block prefix to nodes that have a type but no prefix in text (migration)
@@ -2917,6 +3005,11 @@ let cookieNode = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
+// Positional (per-node) variable map for the node currently rendering — the variables
+// VISIBLE AT that node (declarations above it), set by renderContentHTML via varMapAt(node).
+// The render-path pill readers use this; search / check eval use globalVarMap (document-wide).
+// Defaults to globalVarMap so any reader outside a node render still resolves globally.
+let renderVarMap = {};
 let _varsCacheVer = -1, _varsVer = 0, _varsCached = {}; // doc-cache 1: collectVars; _varsVer is the shared generation counter (see resetDocCaches registry)
 let _varCycles        = new Set(); // names that participate in a reference cycle
 let _varShadowedKeys  = new Set(); // sidecar keys whose name is overridden by a later declaration
@@ -12455,13 +12548,13 @@ function renderMathPill(key, m) {
   // sum/avg/count(prop) against the point being rendered so subtree aggregation
   // stays live as children change (cookieNode = the current render node).
   const expr = expandAggExpr(m.expr, cookieNode);
-  const fresh = evalMath(expr, globalVarMap);
+  const fresh = evalMath(expr, renderVarMap);   // positional: vars visible at this node
   if (fresh === null) {
     // The live recompute failed — a referenced variable became unresolvable (deleted,
     // cyclic, or redeclared non-numeric). Surface the failure with its reason rather
     // than the stale last-good m.result (UXP-34); the pill stays clickable so the user
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
-    const reason = mathErrorReason(expr, globalVarMap, _varCycles);
+    const reason = mathErrorReason(expr, renderVarMap, _varCycles);
     const label = reason ? `#ERR (${reason})` : '#ERR';
     const phrase = mathReasonPhrase(reason);
     const tip = phrase ? `This uses ${phrase}. Click to edit.` : 'This can\'t be computed. Click to edit.';
@@ -12510,9 +12603,10 @@ function renderVarPill(key, v) {
       + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit random variable" title="Edit random variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
-  // Display-only mode: empty expr — read value from globalVarMap without declaring
+  // Display-only mode: empty expr — read value from the positional map (vars visible AT this
+  // node), so {name} reads the nearest declaration above it (Stage B), not the global last-win.
   if (!v.expr) {
-    const val = globalVarMap[(v.name || '').toLowerCase()];
+    const val = renderVarMap[(v.name || '').toLowerCase()];
     const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
     const title = val === undefined ? 'Variable not found. Click to edit' : `$${v.name} = ${display}. Click to edit`;
@@ -12527,7 +12621,7 @@ function renderVarPill(key, v) {
   }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
   const shadowed = _varShadowedKeys.has(key);
-  const fresh    = cyclic ? null : evalMath(v.expr, globalVarMap);
+  const fresh    = cyclic ? null : evalMath(v.expr, renderVarMap);
   const display  = fresh !== null ? formatMathResult(fresh) : (cyclic ? '↻' : '?');
   let cls = 'var-pill';
   if (cyclic)   cls += ' var-cycle';

@@ -132,9 +132,19 @@ enumerates each; the requirements are:
   the `:`-splitting paths, so the `parseRules` collision §2 warned about does not occur. It does NOT
   reintroduce the per-expansion `ctx.binds` model — it writes to the persistent variable system. See
   `guidance/typed-var-declaration-proposal.md`.
-- **Positional/lexical resolution `{name}` = nearest declaration above — Stage B, NOT yet built.**
-  Approved in the proposal but deferred to its own PR (it changes the variable model and reshapes the
-  shared `collectVars` bus). Stage A keeps today's global last-wins resolution.
+- **Positional/lexical resolution `{name}` = nearest declaration above — SHIPPED (Stage B).**
+  A `{name}` reference resolves to the value of the last declaration of `name` that PRECEDES it in
+  document (depth-first) order, not one global value. This **supersedes the "declare-once /
+  call-anywhere / persistent across the document" model in §2 above** (and "one stored value, many
+  references"): the same name can now hold different values at different points. `collectVars` still
+  builds the global map (for search / check eval); `varMapAt(node)` builds the per-position map that
+  the render path uses (`renderVarMap`, set per node in `renderContentHTML`), and `resolveVarDefs` is
+  the shared resolver. The shadowing UI was redefined to match: a declaration is `.var-shadowed`
+  (dead) only when NO reference falls in its range (between it and the next same-name declaration).
+  Engines (`evalMath`/`parseDice`/`computeTable`) are unchanged — they still receive a flat map, just
+  the position-correct one. *Trade accepted (proposal §9):* moving a point can change its `{x}`.
+  The `ctx.binds` per-expansion model from PR #51 is still NOT used — declarations remain persistent
+  records in `node.vars`; only resolution became position-aware.
 
 **Still DEFERRED (do not build on spec):**
 - **Modifiers** (`a/an`, plural, capitalize) on a reference — a separable follow-up.
