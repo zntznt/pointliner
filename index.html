@@ -164,6 +164,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-head-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
 .fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);cursor:text;border-radius:4px;padding:0 3px;margin:0 -3px}
 .fm-title:hover,.fm-title:focus-visible{background:var(--hbg);outline:1px solid var(--bdr);outline-offset:0}
+.fm-title.editing{overflow:visible;text-overflow:clip;background:var(--bg);outline:2px solid var(--acc);cursor:text}
 .fm-status{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* section labels */
 .fm-group{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:8px 10px 3px}
@@ -1382,7 +1383,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="fm-head">
     <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
     <div class="fm-head-info">
-      <span class="fm-title" id="file-name" role="button" tabindex="0" title="Click to rename" aria-label="Rename this outline">Untitled</span>
+      <span class="fm-title" id="file-name" tabindex="0" role="textbox" spellcheck="false" title="Click to rename" aria-label="Outline name, click to rename">Untitled</span>
       <span class="fm-status" id="fm-status">Not saved to a file</span>
     </div>
     <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes"></span>
@@ -15027,28 +15028,23 @@ async function newFile() {
 // disk file is actually renamed (move within its directory); otherwise it just
 // sets the in-memory name the next Save/download will use. Folder-backed docs use
 // their own rename path elsewhere, so this guards to the single-file case.
-async function renameCurrentFile() {
-  if (workspaceDir) return;   // folder docs are renamed via the folder, not here
-  openInsertDialog({
-    icon: { fa: 'fa-regular fa-file-lines', fb: '◻' },
-    title: 'Rename outline',
-    submitLabel: 'Rename',
-    fields: [
-      { key: 'name', label: 'Name', placeholder: 'e.g. Project notes', value: displayName(fileName) === 'Untitled' ? '' : displayName(fileName) },
-    ],
-    validate: v => !!(v.name && v.name.trim()),
-    onSubmit: async v => {
-      const next = toFileName(v.name);
-      if (next === fileName) return;
-      // Chromium: actually rename the file on disk if we hold a handle.
-      if (hasFSA && fileHandle && fileHandle.move) {
-        try { await fileHandle.move(next); } catch (e) { flashError('Could not rename the file: ' + (e.message || e)); return; }
-      }
-      fileName = next;
-      renderFileName(); updateTitle(); markDirty();
-      flashHint('Renamed to “' + displayName(fileName) + '”');
-    },
-  });
+// Commit a new display name (the bare, extension-less name the user typed inline in
+// the menu header). Normalizes to a storage filename, renames the on-disk file when we
+// hold a Chromium handle, and refreshes the header/title. No-op on an unchanged name or
+// in folder mode (folder docs are renamed via the folder, not here). Returns nothing;
+// errors flash and leave the name unchanged.
+async function commitFileName(rawDisplay) {
+  if (workspaceDir) return;
+  const trimmed = (rawDisplay || '').trim();
+  if (!trimmed) return;                       // empty → keep the current name
+  const next = toFileName(trimmed);
+  if (next === fileName) return;              // unchanged
+  if (hasFSA && fileHandle && fileHandle.move) {
+    try { await fileHandle.move(next); } catch (e) { flashError('Could not rename the file: ' + (e.message || e)); return; }
+  }
+  fileName = next;
+  renderFileName(); updateTitle(); markDirty();
+  flashHint('Renamed to “' + displayName(fileName) + '”');
 }
 
 async function openFile() {
@@ -17538,13 +17534,51 @@ document.addEventListener('click', closeFileMenu);
 
 document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
-// Click / Enter / Space on the menu-header filename → rename (single-file mode only).
+// Inline rename: the menu-header filename edits IN PLACE (no dialog). Click or Enter
+// turns it into an editable field; Enter or blur commits, Escape cancels. Single-file
+// mode only (folder docs rename via the folder). Keydowns are stopped so they don't
+// reach the file-menu's own Enter/Escape/Space handlers while editing.
 (() => {
   const fn = document.getElementById('file-name');
   if (!fn) return;
-  const go = () => { if (!workspaceDir) { closeFileMenu(); renameCurrentFile(); } };
-  fn.addEventListener('click', go);
-  fn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  let editing = false, prevText = '';
+
+  const selectAll = () => {
+    const r = document.createRange(); r.selectNodeContents(fn);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  };
+  const begin = () => {
+    if (editing || workspaceDir) return;       // not renameable in folder mode
+    editing = true;
+    prevText = displayName(fileName) === 'Untitled' ? '' : displayName(fileName);
+    fn.textContent = prevText;
+    fn.classList.add('editing');
+    fn.contentEditable = 'true';
+    fn.focus();
+    selectAll();
+  };
+  const end = (commit) => {
+    if (!editing) return;
+    editing = false;
+    fn.contentEditable = 'false';
+    fn.classList.remove('editing');
+    const typed = fn.textContent;
+    if (commit) commitFileName(typed);
+    renderFileName();                          // repaint canonical display name either way
+  };
+
+  fn.addEventListener('click', () => { if (!editing) begin(); });
+  fn.addEventListener('keydown', e => {
+    if (!editing) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); begin(); }
+      return;
+    }
+    // while editing, keep keys away from the file-menu handlers
+    if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); fn.blur(); }       // commit via blur
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); } // cancel
+    else { e.stopPropagation(); }
+  });
+  fn.addEventListener('blur', () => end(true));
 })();
 document.getElementById('btn-save').addEventListener('click', () => { saveFile(); closeFileMenu(); });
 document.getElementById('btn-save-as').addEventListener('click', () => { saveAsFile(); closeFileMenu(); });
