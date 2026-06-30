@@ -109,7 +109,12 @@ wired.
 ## 5. Verification gate (mandatory, the #45/#51 lesson)
 
 `generation-direction.md` §4 requires end-to-end proof before a variable feature ships.
-Typed declaration must pass the **same** gate, plus its own parse cases:
+**This gate is for Stage A** (typed declaration under today's global last-wins model , the
+"both references show the same value" cases below assume that model). Stage B (positional
+resolution, §9) adds its own gate: two declarations of one name with references between and
+after them, each reference reading its nearest-preceding declaration, surviving save+reload.
+
+Stage A must pass the **same** gate as the dialog var, plus its own parse cases:
 
 1. **Pure core first.** A `parseVarDecl(body)` pure function (`{name, expr}` or `null`),
    pinned in `tests/test.mjs` before any DOM wiring, including the negative cases: no `:=`,
@@ -187,26 +192,109 @@ is the surprise to guard. Design:
   `{name?}`/`var-undef` treatment). The warning must distinguish *value change* (references
   update) from *name change* (references break) , the latter is the louder warning.
 
-**O1a (open):** for a value change, **announce-after** (non-blocking, the edit stands, a live
-notice states the impact) or **confirm-before** (a toast "this updates N references , OK?"
-gates the commit)? **Lean: announce-after for value changes** (it is not data loss, just a
-propagated value, and a blocking modal on every value edit fights the keyboard-fluid intent),
-but **confirm-before for a rename that orphans references** (that one silently breaks things).
-- **O2 , formula vs pick disambiguation.** The dialog has an explicit value-type toggle.
-  Typed, we infer: a numeric/`evalMath`-able RHS , formula; an `a|b|c` / `{rule}` / dice RHS
-  , random pick. Is inference acceptable, or must the user disambiguate (e.g.
-  `{r := = 5}` for formula vs `{r := 5}` ambiguous)? **Lean: infer, matching how `{= }` vs
-  `{a|b}` already self-classify.**
-- **O3 , re-declaration.** Typing `{gold := 75}` when `gold` already exists , update in
-  place, or a second shadowing declaration? `_varShadowedKeys` already models shadowing.
-  **Lean: it's a new declaration pill; shadowing rules already apply (last wins).**
+**O1a , RESOLVED (owner 2026-06-29): value change announces after; rename confirms before.**
+- **Value change** (`gold := 50` , `gold := 75`): **announce-after**, non-blocking. The edit
+  stands; a live `aria-live` notice states the impact ("Updated gold , 4 references now show
+  75"). It is a propagated value, not data loss, and a modal on every value edit would fight
+  the keyboard-fluid intent.
+- **Rename** (`gold := …` , `wealth := …`): **confirm-before**, because it silently orphans
+  every `{gold}` reference (they go undefined). The confirm **must be keyboard-solvable**:
+  `openConfirmDialog` already traps focus, defaults a button, and resolves on Enter/Escape
+  (the same dialog the rest of the app uses) , so confirming/cancelling a rename never needs
+  the mouse. Message names the cost: "Rename gold , wealth? 4 references to gold will become
+  undefined."
+
+### O2 , formula vs pick inferred from the RHS (RESOLVED, owner 2026-06-29)
+
+No explicit type toggle in the typed form. Infer, matching how `{= }` vs `{a|b}` already
+self-classify: an `evalMath`-able / numeric RHS , **formula** var; an `a|b|c` / `{rule}` /
+dice RHS , **random pick** (rolled once, frozen). The dialog keeps its explicit toggle; the
+typed form trusts the same classifier the rest of the brace grammar uses. An RHS that is
+neither resolvable as math nor as a pick source fails visibly (the `var-undef` / invalid
+treatment), never silently.
+
+### O3 , positional (lexical) resolution: a {name} call reads the nearest declaration above it (RESOLVED, owner 2026-06-29)
+
+**Decision , this CHANGES the variable model, accepted with eyes open.** A `{name}`
+reference resolves to the value of the **last declaration of `name` that precedes it in
+document (depth-first) order**, not a single document-wide value. Redeclaring later does not
+retroactively change earlier calls; calls after the new declaration get the newer value.
+
+```
+{x := 5}   {x}->5   {x := 9}   {x}->9
+           ^ reads the decl above it (5)      ^ reads the decl above it (9)
+```
+
+This supersedes the current model (`collectVars` builds ONE global map, **last declaration
+wins document-wide**, earlier ones shown `.var-shadowed` / struck-through). Under O3 there is
+no single winner , each *reference* binds to its nearest-preceding declaration, and a name
+can legitimately hold different values at different points in the document.
+
+**This is the largest change in the proposal. Its cost and requirements are §9.**
+
+## 8. Recommendation , ship in two stages
+
+The accepted decisions split cleanly into two efforts of very different size and risk. **Do
+them as two PRs, in order**, not one.
+
+**Stage A , typed `:=` declaration + unfold-edit + ripple warning (small, low risk).**
+The `:=` operator, the classifier slot, promote + unfold-on-edit, the announce/confirm
+warning. This is "the dialog's behavior, typed, plus a keyboard edit loop." It does **not**
+touch resolution semantics , it still uses today's global last-wins map. Build order: pure
+`parseVarDecl` + tests , classifier slot , promote/unfold path , warning , real-path
+verification , inventory + doc update. **This alone closes the reported keyboard gap** and is
+shippable on its own.
+
+**Stage B , positional resolution (large, redefines the model).** O3 changes what a variable
+*is* in Pointliner, and reshapes the shared `collectVars`/`globalVarMap` "bus" that math,
+dice modifiers, grammar weights, and table formulas all read. It is worth doing because you
+asked for it, but it must not be smuggled in under Stage A. Its cost, the affected layers,
+and the new invariants are §9. Gate it behind its own design sign-off after Stage A ships and
+you have lived with typed declaration.
+
+Stage A is recommended for immediate implementation. Stage B is recommended as the *next*
+design pass, with §9 as its starting brief.
 
 ---
 
-## 8. Recommendation
+## 9. Stage B , what positional resolution costs (the honest blast radius)
 
-Accept `:=` as the typed declaration operator, scoped exactly to "the dialog's behavior,
-typed," gated by §5. It is the smallest addition that closes the reported gap, it sidesteps
-the documented `:`/`=` collisions by construction, and it explicitly does not reintroduce
-the reverted per-expansion model. If accepted, the build order is: pure `parseVarDecl` +
-tests , classifier slot , promote path , real-path verification , inventory + doc update.
+Today, `{name}` resolves through **one** document-wide value: `collectVars` returns a flat
+map, `globalVarMap[name]`, read at render by `renderVarPill`, and by `evalMath`/`parseDice`/
+grammar-weights/`#+TBLFM` via the same `vars` map. The brief calls this shared map the
+"universal bus , the real moat." **Positional resolution reshapes that bus.** Concretely:
+
+1. **Resolution becomes position-aware.** A reference can no longer be resolved by name
+   alone; it needs "which declarations precede *this* reference in document order." `gather`
+   already walks depth-first, so the *order* exists , but the output can no longer be a single
+   `{name: value}` map. It becomes either: (a) an ordered list of `(position, name, value)`
+   declarations + a resolver that, given a reference's position, finds the nearest-preceding;
+   or (b) a per-reference resolved value computed during the tree walk. (a) is likely cleaner
+   and keeps caching on `_varsVer`.
+2. **Every consumer of `vars` must pass position.** `renderVarPill`, `renderMathPill`,
+   `parseDice` modifiers, grammar `{= }` weights, and `#+TBLFM` all currently take the flat
+   `vars`. Each call site that resolves a `{name}` now needs the reference's document
+   position. This is the wide part of the change , the bus signature changes.
+3. **"Declare-once / call-anywhere" (generation-direction.md §2) is explicitly revised.**
+   That invariant , the stated point of the variable system , is replaced by lexical scope.
+   The doc must be updated to record the new model and *why* (you chose position-dependence
+   deliberately). This is a P5-adjacent semantic decision, not just code.
+4. **The shadowing UI changes meaning.** `.var-shadowed` (dimmed/struck) currently marks
+   "a later declaration overrides this everywhere." Under O3 an earlier declaration is **not**
+   dead , it governs the references between it and the next declaration. So `.var-shadowed`
+   either retires or is redefined to "no references fall in this declaration's range."
+5. **Moving a point can change its `{x}`.** Reordering/indenting a point changes document
+   order, so a reference can bind to a different declaration after a move. This is inherent to
+   positional scope and must be *intended and documented*, not a surprise. (It is the trade
+   you accepted for lexical power.)
+6. **Re-roll ripple narrows.** Re-rolling a random pick declaration updates only the
+   references **in its range** (between it and the next declaration of the name), not every
+   reference document-wide. The warning (O1a) counts in-range references, not all.
+7. **OPML round-trip is unaffected by O3 itself** (declarations already serialize in document
+   order via the tree), but the verification gate must add: two declarations of the same name
+   with references between/after them , save , reload , each reference still reads its
+   nearest-preceding declaration.
+
+None of this is a blocker; it is a *scope honesty* note. Stage B is a real feature with a
+real cost, and it changes a load-bearing invariant , which is exactly why it is its own PR
+with its own sign-off, not a rider on the typing-shortcut.
