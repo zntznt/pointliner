@@ -101,8 +101,8 @@ r = 5
 ```
 
 Variables can reference other variables (`area = pi*r^2`). Change `r` and every dependent pill
-updates live. A variable that holds *text* (a random pick) can't be used as a number; it fails
-visibly rather than guessing.
+updates live. A variable that holds *text* (a quoted string or a random pick, both below) can't be
+used as a number; it fails visibly rather than guessing.
 
 **Declare one by typing.** Besides the `@` → Variable dialog, you can write a declaration inline
 with `:=`, the same way you type any other pill:
@@ -114,6 +114,10 @@ with `:=`, the same way you type any other pill:
 
 A `{name}` reference resolves to the nearest `{name := …}` declared above it, so the same name can
 mean different things in different parts of a long document.
+
+The right side can name another variable, not just a literal: `{total := base}` makes `total` track
+`base`, and `{markup := cost * 1.2}` is a live formula. It keeps working even if you declare it before
+the variable it points at, the value fills in (and updates) as soon as that variable exists.
 
 **A variable can hold text, not just a number.** Put it in quotes and the value is that exact string,
 useful for a name you reuse, a label, a status word:

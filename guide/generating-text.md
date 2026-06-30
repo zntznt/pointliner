@@ -190,13 +190,14 @@ The count is 1 to 99; results are joined by spaces. (For draw-*without*-repeat, 
 
 ## Store a value and reuse it (variables)
 
-A **variable** is a named value you declare once and reference with `{name}`. Declare one in the
-**`@` → Variable** dialog. Two kinds:
+A **variable** is a named value you reference with `{name}`. Declare one in the **`@` → Variable**
+dialog, or just type it inline as `{name := value}`. Two kinds:
 
-- **Formula:** `r = 5` or `area = pi*r^2`. It's a number; reference it in math or dice.
-  (See [Computing numbers](computing-numbers.md).)
-- **Random pick:** `beast = dragon | wyrm | hydra`. The dialog rolls it **once** and **freezes**
-  the result, so `{beast}` reads the *same* value everywhere until you re-roll the declaration.
+- **Formula:** `{r := 5}` or `{area := pi*r^2}`. It's a number; reference it in math or dice.
+  (See [Computing numbers](computing-numbers.md) for the full model, including text values and how a
+  `{name}` resolves to the nearest declaration above it.)
+- **Random pick:** `{beast := dragon | wyrm | hydra}`. It rolls **once** and **freezes** the result,
+  so `{beast}` reads the *same* value everywhere until you re-roll the declaration.
 
 That freeze is the point: a random-pick variable gives you **consistency**. If three sentences all
 say `{beast}`, they all say *"hydra"*, not three different monsters.
