@@ -27,8 +27,10 @@ Define a workflow that matches the way you actually work: move articles through
 `DRAFT → REVIEW → PUBLISHED`, support requests through `OPEN → IN PROGRESS → RESOLVED`, or any
 process with distinct stages.
 
-Type `@` and choose **Sequence** to define one. States to the right of the `|` count as **done**, so
-they feed the progress bar and the `is:done` filter automatically.
+Give the workflow a name and its states. Type `{seq Flow: BACKLOG DOING | SHIPPED}` to declare one
+inline, or use the `@` → **Sequence** dialog. States to the right of the `|` count as **done**, so they
+feed the progress bar and the `is:done` filter automatically. Once declared, apply any state with `/`
+(for example `/BACKLOG`), the same way you set `#TODO`.
 
 ## Progress bars
 

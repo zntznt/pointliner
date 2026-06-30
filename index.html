@@ -1690,6 +1690,25 @@ function parseSequence(def) {
   return { states, doneFrom: left.length };
 }
 
+// seqDeclParts(body) — sniff a typed sequence DECLARATION: {seq Flow: BACKLOG DOING | SHIPPED}.
+// A reserved `seq` keyword, then a name, then a top-level `:`, then the dialog's exact
+// `active | done` states format (parsed by parseSequence). Returns { name, states, doneFrom }
+// or null. Pure, Node-testable. A sequence is ALWAYS named (the name is how its states get
+// applied document-wide), so unlike markov there is no anonymous form — the typed pill is
+// atomic and edited via the dialog, like a named markov/grammar. Detection is the `seq `
+// keyword + a parseable states tail, so it never collides with a conditional (a comparison
+// before the `:`), a sequence-mode deck (`shuffle:`…), a markov (`markov:`), or a rule line.
+const SEQ_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
+function seqDeclParts(body) {
+  body = (body || '').trim();
+  const m = /^seq\s+([^:]+?)\s*:(.*)$/i.exec(body);   // "seq <name>: <states>"
+  if (!m) return null;
+  const name = m[1].trim();
+  if (!SEQ_NAME_RE.test(name)) return null;            // a single identifier-shaped name
+  const p = parseSequence(m[2]);                       // the states tail (active | done)
+  return p ? { name, states: p.states, doneFrom: p.doneFrom } : null;
+}
+
 // Pure P4 advisory for the @sequence dialog (C5). parseSequence tokenizes states on
 // whitespace, so a multi-word phrase like "IN PROGRESS" SILENTLY becomes two states
 // (IN, PROGRESS). We can't read intent, so we surface the split: when a side carries
@@ -4209,7 +4228,7 @@ const INSERT_CMDS = [
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
   { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
   // Organize — document-wide state sets
-  { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Apply states via /.', ex:'Flow: BACKLOG DOING | SHIPPED', section:'Organize' },
+  { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -7913,6 +7932,7 @@ function classifyBraceBody(body, rules, vars) {
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
+  if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
@@ -7956,6 +7976,7 @@ function braceTypeLabel(body, rules, vars) {
   if (condParts(body)) return ['grammar', null];                       // {cond: a|b}
   if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
   if (markovParts(body)) return ['markov', null];                      // {markov: a→b, b→c}
+  if (seqDeclParts(body)) return ['seq', null];                        // {seq Flow: A B | C}
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
@@ -11718,6 +11739,17 @@ function promoteBraceBody(node, body) {
   if (mk) {
     const roll = makeTypedMarkovRoll(mk.def);
     if (roll) { (node.markov ||= []).push(roll); return `[[markov:${roll.key}]]`; }
+  }
+  // typed sequence declaration: {seq Flow: BACKLOG DOING | SHIPPED} → a named [[seq:KEY]]
+  // pill (node.seq sidecar), the typed twin of the @ Sequence dialog. The `seq ` keyword
+  // is sniffed before the alternation path (the states carry a top-level `|`). A sequence
+  // is named doc-wide config, so the pill is ATOMIC (does not unfold) — edited via dialog,
+  // like a named markov/grammar.
+  const sd = seqDeclParts(body);
+  if (sd) {
+    const rec = { key: seqKey(), name: sd.name, states: sd.states, doneFrom: sd.doneFrom };
+    (node.seq ||= []).push(rec);
+    return `[[seq:${rec.key}]]`;
   }
   // text modifier: {beast.cap} / {var.s} → an anonymous grammar wrapped `origin:
   // {ref.mod}`, so unfold/refold/prune/export all reuse the grammar machinery (the
@@ -17306,10 +17338,11 @@ const GUIDE = [
     ] },
   { id:'sequences', cat:'todos', covers:['sequence'],
     title:'Custom workflows',
-    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Type @ and choose Sequence to define one; states to the right of | count as done.",
+    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Give it a name and its states: type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, or use the @ Sequence dialog. States to the right of | count as done, then apply any state with / (like /BACKLOG).",
     examples:[
+      { syn:'{seq Flow: BACKLOG DOING | SHIPPED}', desc:'declare a workflow by typing' },
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },
-      { syn:'DRAFT REVIEW | PUBLISHED', desc:'a workflow you define' },
+      { syn:'@ → Sequence', desc:'declare one with a form' },
     ] },
   { id:'properties', cat:'todos',
     title:'Properties',

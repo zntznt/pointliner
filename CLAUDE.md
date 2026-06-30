@@ -710,8 +710,9 @@ Status states + priorities (`#TODO [#A] body` — the `#` prefix reuses the hash
 bare `TODO` without `#` is plain text; to-do-ness fully derives from the text — task marker
 or `#keyword` — see the node model above) ·
 Sequences (user-definable state sets: the built-in `TODO NEXT WAITING | DONE` is the default;
-`@sequence` declares a `[[seq:key]]` pill + `node.seq` sidecar; `/` applies any state as
-`#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) ·
+`@sequence` OR a typed **`{seq Name: active | done}`** (`seqDeclParts`, the Tier-3 typeable form)
+declares a `[[seq:key]]` pill + `node.seq` sidecar — named/atomic, does NOT unfold; `/` applies any
+state as `#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) ·
 Search query operators (the UXP-20-routed decision: implicit AND, `-` NOT, `"a b"` phrases,
 `#tag` word-anchored (and hierarchical: `#thread` matches `#thread/torn-letter`),
 `is:done/todo/note/failing`; malformed tokens stay literal text — the `{…}`
