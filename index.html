@@ -343,7 +343,11 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .bullet-base:hover .bullet-base-ic>i{background:var(--bullet-h)}
 
 /* node content */
-.node-content{flex:1;min-width:0;outline:none;word-break:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
+/* overflow-wrap (not word-break:break-word): break between words, and only inside a
+   word as a last resort for a genuinely unbreakable string (long URL/token). word-break
+   was eagerly chopping normal words when a non-breakable inline pill starved the line,
+   e.g. "{2d6} rooms" splitting "rooms" → "roo/ms" at narrow widths. */
+.node-content{flex:1;min-width:0;outline:none;overflow-wrap:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
 .node-content:focus{box-shadow:0 0 0 2px var(--ring)}
 .node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
 /* ── per-point note: a second mirrored flex row (invisible gutter clones keep the
@@ -355,7 +359,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    text's left edge matches the content exactly; the glyph centers over it. */
 .node-note-row>.bullet{cursor:default}
 .note-mark{width:6px;display:flex;justify-content:center;color:var(--muted);font-size:12px;line-height:0;flex-shrink:0}
-.node-note{flex:1;min-width:0;outline:none;word-break:break-word;white-space:pre-wrap;
+.node-note{flex:1;min-width:0;outline:none;overflow-wrap:break-word;white-space:pre-wrap;
   font-size:.88em;line-height:1.5;color:var(--muted);padding:1px 3px 2px;border-radius:3px;cursor:text}
 .node-note[data-editing]{color:var(--fg);box-shadow:0 0 0 2px var(--ring)}
 .node-note:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
