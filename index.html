@@ -232,6 +232,23 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
 #search-clear.on{display:block}
 /* breadcrumb */
+/* document tabs strip — mirrors the breadcrumb-row chrome (border-top + --hbg) */
+#doc-tabs{display:none;align-items:center;gap:4px;padding:4px 12px;border-top:1px solid var(--bdr);background:var(--hbg);overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+.doc-tab{display:inline-flex;align-items:center;gap:6px;height:28px;box-sizing:border-box;padding:0 6px 0 10px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
+.doc-tab:hover{background:color-mix(in srgb,var(--acc) 6%,transparent);color:var(--fg)}
+.doc-tab.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.doc-tab:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.doc-tab-name{max-width:160px;overflow:hidden;text-overflow:ellipsis}
+/* unsaved dot on the ACTIVE tab — CSS-driven off the existing #toolbar-row.dirty flag,
+   so it costs nothing per keystroke (markDirty/markClean already toggle that class) */
+.doc-tab-dot{width:6px;height:6px;border-radius:999px;background:currentColor;flex:0 0 auto;display:none}
+#toolbar-row.dirty .doc-tab.active .doc-tab-dot{display:inline-block}
+.doc-tab-close{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:none;background:none;color:inherit;cursor:pointer;border-radius:var(--r-xs);opacity:.6;font-size:12px;line-height:1;padding:0}
+.doc-tab-close:hover{opacity:1;background:color-mix(in srgb,var(--bad) 16%,transparent)}
+.doc-tab-close:focus-visible{outline:2px solid var(--acc);outline-offset:1px;opacity:1}
+.doc-tab-add{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;box-sizing:border-box;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);cursor:pointer;flex:0 0 auto;font-size:14px;line-height:1}
+.doc-tab-add:hover{background:color-mix(in srgb,var(--acc) 6%,transparent);color:var(--fg)}
+.doc-tab-add:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 #breadcrumb-row{display:none;padding:5px 16px;border-top:1px solid var(--bdr);font-size:12px;flex-wrap:wrap;align-items:center;gap:4px;background:var(--hbg)}
 #breadcrumb-row.visible{display:flex}
 .crumb{color:var(--muted);cursor:pointer;border-radius:3px;padding:1px 4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
@@ -1244,6 +1261,10 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      logo buttons are 28px tall on desktop; give them a 44px touch height (keep the visual
      compact — padding/min-height grows the hit area, the glyph stays put). */
   #btn-done,#btn-notes,#btn-capture,#btn-journal,#btn-agenda{min-height:44px;min-width:44px}
+  /* document tabs: meet the ~44px tap floor — taller tabs, larger close target, +button */
+  .doc-tab{height:40px}
+  .doc-tab-close{width:32px;height:32px;font-size:16px}
+  .doc-tab-add{width:40px;height:40px}
   #level-ctl{height:auto}
   /* touch sizing for the segmented control on both the toolbar (tablet) and the menu (phone) */
   #level-ctl .lvl-btn,#fm-levels .lvl-btn{min-height:40px;padding:5px 11px;display:flex;align-items:center;justify-content:center}
@@ -1342,6 +1363,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <button id="btn-done" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
     <button id="btn-notes" class="active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
+  <div id="doc-tabs" role="tablist" aria-label="Open documents" style="display:none"></div>
   <div id="breadcrumb-row"></div>
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
@@ -15026,6 +15048,48 @@ let workspaceIndex = null; // CF-1: the in-memory cross-doc link/backlink index 
 let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
 let _wsWarned = false;     // one lost-access warning per event — never re-nag per tick (reset on reconnect/disconnect/swap)
 const WORKSPACE_KEY = 'workspaceDir';
+const OPEN_TABS_KEY = 'openTabs';   // IndexedDB: the persisted list of open document tabs
+
+// ─── document tabs (over the workspace switcher) ───────────────────────────────
+// A tab strip that surfaces the existing workspace switcher: tabs are the documents
+// you've OPENED this session (editor-style, not the whole folder), one doc in memory,
+// switching reuses switchWorkspaceDoc → adoptDoc (the proven swap). Chromium-workspace
+// only (gated on workspaceDir, like the switcher). State is a plain list of filenames;
+// the active tab is the live `fileName`. The list ops below are PURE + Node-testable;
+// the DOM strip (renderDocTabs) and persistence wrap them. Same-file-twice and
+// N-docs-in-memory are deliberately out of scope (identity/persistence break — see the
+// tabs analysis); a tab is a distinct workspace file.
+let openTabs = [];   // [filename, …] in tab order
+
+// Add `name` to the tab list if absent (no duplicates — a file is one tab). Returns a
+// NEW list (pure); callers assign + persist. Order: append (newly opened goes last).
+function tabAdd(tabs, name) {
+  if (!name) return tabs.slice();
+  return tabs.includes(name) ? tabs.slice() : [...tabs, name];
+}
+
+// Close `name`. Returns { tabs, nextActive } where nextActive is the filename to switch
+// to IF the closed tab was the active one (else null — no switch needed). Picks the
+// neighbor at the same index (the tab that slid into its place), falling back to the new
+// last tab, or null when the strip is now empty. Pure.
+function tabClose(tabs, name, active) {
+  const i = tabs.indexOf(name);
+  if (i < 0) return { tabs: tabs.slice(), nextActive: null };
+  const next = tabs.filter(t => t !== name);
+  if (name !== active) return { tabs: next, nextActive: null };   // closed a background tab
+  if (!next.length) return { tabs: next, nextActive: null };      // closed the last tab
+  const pick = next[Math.min(i, next.length - 1)];                // the tab now at that slot
+  return { tabs: next, nextActive: pick };
+}
+
+// The filename `dir` steps away from `active` in the tab order, wrapping. dir = +1 next,
+// -1 previous. Returns null when there are fewer than 2 tabs (nothing to cycle to). Pure.
+function tabCycle(tabs, active, dir) {
+  if (tabs.length < 2) return null;
+  const i = tabs.indexOf(active);
+  if (i < 0) return tabs[0];
+  return tabs[(i + dir + tabs.length) % tabs.length];
+}
 
 // Pure: the File-menu affordance state machine. Precedence — the capability gate wins
 // first, then a live connection (split by whether the current doc is folder-backed:
@@ -15133,6 +15197,18 @@ function renderWorkspaceAffordance() {
   const switchBtn = document.getElementById('btn-workspace-switch');
   const invite = document.getElementById('workspace-invite');
   if (!connect || !disconnect || !switchBtn) return;
+  // The single chokepoint for the doc-tab strip: whenever workspace state is reflected,
+  // ensure the current doc is a tab and (re)render the strip. Covers every path that
+  // establishes a connected doc — connect, switch, save-to-workspace — so none can forget
+  // to surface the strip. (Gated on workspaceDir, like the strip itself; a real filename,
+  // backed or not, so a detached current doc still seeds a tab. tabAdd dedupes. The async
+  // reconnect/startup paths additionally call restoreOpenTabs to rehydrate the saved list.)
+  if (workspaceDir && fileName && fileName !== 'unsaved') {
+    const before = openTabs.length;
+    openTabs = tabAdd(openTabs, fileName);
+    if (openTabs.length !== before) persistOpenTabs();
+  }
+  renderDocTabs();
   const state = workspaceAffordance({ hasWorkspace, connected: !!workspaceDir, pending: !!pendingDir, backed: !!workspaceFile });
   const name = workspaceDir?.name || 'folder';
   const label = document.getElementById('workspace-label');
@@ -15179,6 +15255,108 @@ function renderWorkspaceAffordance() {
   }
 }
 
+// Persist the open-tab list so it survives a reload (alongside WORKSPACE_KEY). Best-effort.
+async function persistOpenTabs() { try { await idbSet(OPEN_TABS_KEY, openTabs.slice()); } catch (_) {} }
+
+// Restore openTabs from IndexedDB after a workspace (re)connects: drop any file that no
+// longer exists in the folder (P4 — never a 404 tab), and ensure the current doc is in.
+// Async (reads IDB + lists the folder), so it can't live in the sync renderWorkspaceAffordance;
+// every path that (re)establishes the workspace calls this, then renders. Idempotent.
+async function restoreOpenTabs(dir) {
+  try {
+    const saved = await idbGet(OPEN_TABS_KEY);
+    const present = new Set(await listWorkspaceNames(dir));
+    const base = Array.isArray(saved) ? saved.filter(n => present.has(n)) : [];
+    openTabs = (fileName && fileName !== 'unsaved') ? tabAdd(base, fileName) : base;
+    persistOpenTabs();
+  } catch (_) { /* keep whatever we have */ }
+  renderDocTabs();
+}
+
+// Render the document-tabs strip. Shown ONLY with a connected workspace (gated on
+// workspaceDir, like the switcher); hidden otherwise. Editor-style: tabs are the files
+// you've opened (openTabs), not the whole folder — a trailing `+` reaches the rest via
+// the existing switcher. The active tab is the live `fileName`. ARIA tablist; each tab,
+// its close `×`, and the `+` are keyboard-operable (added alongside pointer handlers,
+// never converting to click — the caret invariant; these live outside any contenteditable).
+function renderDocTabs() {
+  const strip = document.getElementById('doc-tabs');
+  if (!strip) return;
+  if (!workspaceDir || !openTabs.length) { strip.style.display = 'none'; strip.innerHTML = ''; return; }
+  strip.style.display = 'flex';   // explicit — the CSS default is display:none, so '' would re-hide it
+  strip.innerHTML = '';
+  openTabs.forEach(name => {
+    const isCur = name === fileName;
+    const tab = document.createElement('div');
+    tab.className = 'doc-tab' + (isCur ? ' active' : '');
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', isCur ? 'true' : 'false');
+    tab.tabIndex = isCur ? 0 : -1;                       // roving tabindex (tablist pattern)
+    tab.setAttribute('aria-label', 'Document ' + name + (isCur ? ' (current)' : ''));
+    // dot is always present; CSS shows it only on the active tab when #toolbar-row.dirty
+    const dot = document.createElement('span'); dot.className = 'doc-tab-dot';
+    dot.setAttribute('aria-hidden', 'true'); dot.title = 'Unsaved changes';
+    tab.appendChild(dot);
+    const nm = document.createElement('span'); nm.className = 'doc-tab-name'; nm.textContent = name;
+    tab.appendChild(nm);
+    const close = document.createElement('button');
+    close.className = 'doc-tab-close'; close.type = 'button';
+    close.textContent = '×';
+    close.setAttribute('aria-label', 'Close ' + name);
+    close.title = 'Close';
+    tab.appendChild(close);
+    // activation (mousedown, so toolbar focus doesn't fight a contenteditable; keyboard alongside)
+    tab.addEventListener('mousedown', e => { if (e.target === close) return; e.preventDefault(); openDocTab(name); });
+    tab.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDocTab(name); }
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const tabs = [...strip.querySelectorAll('.doc-tab')];
+        const i = tabs.indexOf(tab); const n = tabs.length;
+        tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + n) % n]?.focus();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); closeDocTab(name); }
+    });
+    close.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    close.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closeDocTab(name); });
+    strip.appendChild(tab);
+  });
+  // trailing "+" — open another document via the existing switcher (lists the folder + New)
+  const add = document.createElement('button');
+  add.className = 'doc-tab-add'; add.type = 'button'; add.textContent = '+';
+  add.setAttribute('aria-label', 'Open another document'); add.title = 'Open another document';
+  add.addEventListener('mousedown', e => { e.preventDefault(); openWorkspaceSwitcher(); });
+  add.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openWorkspaceSwitcher(); } });
+  strip.appendChild(add);
+}
+
+// Open a document into a tab. switchWorkspaceDoc does the swap AND registers the tab +
+// re-renders the strip on success; a cancelled dirty-guard leaves tabs untouched.
+async function openDocTab(name) {
+  if (name === fileName) return;
+  await switchWorkspaceDoc(name);
+}
+
+// Close a tab from the strip. If it's the active doc, switch to the neighbor first
+// (dirty-guarded by switchWorkspaceDoc); a declined guard aborts the close (P4 — no
+// silent drop). Closing a background tab just removes it. Closing the last tab empties
+// the strip (the doc stays on disk; nothing is deleted).
+async function closeDocTab(name) {
+  const { tabs, nextActive } = tabClose(openTabs, name, fileName);
+  if (nextActive) {
+    const ok = await switchWorkspaceDoc(nextActive);
+    if (!ok) return;                     // user kept the dirty doc → don't close it
+  }
+  openTabs = tabs;
+  persistOpenTabs();
+  renderDocTabs();
+}
+
+// Cycle to the next/prev open tab (Ctrl/Cmd+Shift+] / [). No-op with <2 tabs.
+async function cycleDocTab(dir) {
+  const target = tabCycle(openTabs, fileName, dir);
+  if (target) await openDocTab(target);
+}
+
 // Connect (user gesture): pick a folder, write the doc into it once via the existing OPML
 // writer, make that file THE backing handle, and remember the folder in IndexedDB.
 async function connectWorkspace() {
@@ -15194,7 +15372,7 @@ async function connectWorkspace() {
     await idbSet(WORKSPACE_KEY, { dir, name });
     document.getElementById('file-name').textContent = fileName;
     updateTitle();
-    renderWorkspaceAffordance();
+    renderWorkspaceAffordance();       // also registers the current doc as a tab + renders the strip
     refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
     flashHint('Folder connected. Saved “' + name + '”');
   } catch (e) {
@@ -15215,7 +15393,7 @@ async function reconnectWorkspace() {
       const stored = await idbGet(WORKSPACE_KEY);
       const ok = stored && await reopenWorkspaceDoc(workspaceDir, stored.name);
       if (!ok) { workspaceDir = null; flashHint('That folder is no longer available. Connect another.'); }
-      else      { flashHint('Folder reconnected: “' + (workspaceDir?.name || 'folder') + '”'); }
+      else      { flashHint('Folder reconnected: “' + (workspaceDir?.name || 'folder') + '”'); await restoreOpenTabs(workspaceDir); }
       renderWorkspaceAffordance();
       refreshWorkspaceIndex();           // CF-1: rebuild after a successful reconnect
     }
@@ -15303,7 +15481,7 @@ async function switchWorkspaceDoc(name) {
     const fh = await workspaceDir.getFileHandle(name);
     adoptDoc(fromOpml(await (await fh.getFile()).text()), { fileName: name, fileHandle: fh, workspaceFile: fh });
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
-    _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;
+    _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;  // affordance registers the tab + renders the strip
   } catch (e) { flashError('Could not open “' + name + '”: ' + (e.message || e)); return false; }
 }
 
@@ -15387,7 +15565,8 @@ async function disconnectWorkspace() {
   workspaceDir = null; pendingDir = null;
   workspaceFile = null; _wsWarned = false;  // stop auto-writing; fileHandle stays so Save still works
   workspaceIndex = null;                    // CF-1: no workspace -> no cross-doc index
-  renderWorkspaceAffordance();
+  openTabs = []; try { await idbDel(OPEN_TABS_KEY); } catch (_) {}  // no workspace -> no tabs
+  renderWorkspaceAffordance(); renderDocTabs();
   flashHint('Workspace disconnected. Auto-save is off; use Save to keep a copy.');
 }
 
@@ -17232,6 +17411,7 @@ const GUIDE = [
   { id:'file-undo', essential:true, essSection:'File', keys:[`${MOD}+Z`,`${MOD}+Y`], essLabel:'Undo / redo' },
   { id:'file-vars', essential:true, essSection:'File', keys:[`${MOD}+⇧+V`],         essLabel:'Variables panel' },
   { id:'file-jmode', essential:true, essSection:'File', keys:[`${MOD}+⇧+J`],        essLabel:'Journal mode: in-doc / file per day' },
+  { id:'file-tabs', essential:true, essSection:'File', keys:[`${MOD}+⇧+]`,`${MOD}+⇧+[`], essLabel:'Next / previous document tab' },
 
   // ── Multi-select (essentials only) ────────────────────────────────────────
   { id:'sel-range',  essential:true, essSection:'Select', keys:['⇧+Click'],            essLabel:'Select a range' },
@@ -17855,6 +18035,8 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
   if (ctrl && e.shiftKey && (e.key==='J' || e.key==='j')) { e.preventDefault(); cycleJournalMode(); return; }
+  if (ctrl && e.shiftKey && e.key===']') { e.preventDefault(); cycleDocTab(1); return; }
+  if (ctrl && e.shiftKey && e.key==='[') { e.preventDefault(); cycleDocTab(-1); return; }
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
   // collapse outline to first N levels (Ctrl/Cmd+1..6). Some browsers reserve
   // these for tab switching and won't deliver the event — the toolbar control is
@@ -18104,11 +18286,15 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
     if (!stored || !stored.dir) return;         // no stored workspace (or pre-#5a format → re-connect)
     const { dir, name } = stored;
     const perm = await dir.queryPermission({ mode: 'readwrite' });   // no gesture needed
-    if (perm === 'granted') { workspaceDir = dir; await reopenWorkspaceDoc(dir, name); }
+    if (perm === 'granted') {
+      workspaceDir = dir; await reopenWorkspaceDoc(dir, name);
+      await restoreOpenTabs(dir);    // rehydrate the saved tab list (drops vanished files, P4)
+    }
     else { pendingDir = dir; }                   // needs a gesture → 'Reconnect' affordance
   } catch (_) { try { await idbDel(WORKSPACE_KEY); } catch (_) {} workspaceDir = null; }
   renderWorkspaceAffordance();
   refreshWorkspaceIndex();           // CF-1: build the index from the reopened folder (no-op when none)
+  renderDocTabs();
 })();
 
 // PWA: register the service worker so the HOSTED copy is installable + offline-cached.

@@ -131,6 +131,21 @@ assumptions into a workspace + current-document model.
    *(Plus the `adoptDoc` runtime document-swap chokepoint, `#101`, and the `Ctrl+S` double-fire
    fix, `#102`.)*
 
+> **Decision (2026-06-30) — Document tabs surface the switcher; the single-`root` model is UNCHANGED.**
+> A tab strip (`#doc-tabs`, `role="tablist"`) under the toolbar lists the documents you've opened and
+> switches between them — but it is a **pure UI layer over the existing `switchWorkspaceDoc → adoptDoc`
+> swap**, NOT a move to N-docs-in-memory. **One document stays in memory**; a tab click re-parses from
+> disk exactly as the switcher always did. This deliberately keeps the locked "workspace + current-
+> document" model: the single global `root`/`nodeMap`/`_varsVer`-caches/autosave-slot are untouched.
+> Scope fence (from the tabs feasibility analysis): **N-docs-resident and same-file-twice are OUT** —
+> two tabs of one file would collide on node ids, `docId` (→ corrupt cross-doc links), and the shared
+> backing file + autosave slot. A tab is one distinct workspace file. Tabs are **Chromium-workspace-
+> only** (gated on `workspaceDir`, like the switcher); the non-Chromium one-file-at-a-time tier is
+> unchanged. State is `openTabs` (filenames) persisted in IndexedDB (`OPEN_TABS_KEY`); pure cores
+> `tabAdd`/`tabClose`/`tabCycle`. Keyboard: `Ctrl/⌘+Shift+]`/`[` (§3). This was not in the original
+> roadmap — it is a recorded net-new decision that leverages existing capability, permitted by the
+> no-backend / single-`.html` fences.
+
 ### Phase 2 — Linking core — ✅ DELIVERED (same-doc **and** cross-file)
 **Steps 1–4 are ungated** — they work in every browser on a single document (no folder backing,
 no Phase 1 dependency). **Only step 5 (cross-file) requires the gated workspace.** Same-document

@@ -20,11 +20,17 @@ tabs: a project note, a daily log, a person page, each its own file but searchab
 [linkable](links-and-references.md#links-across-notes) together.
 
 Connect a folder once (**Chrome or Edge only**) and every note saves to disk as you type and reopens
-right where you left it after a reload. From the **File** menu:
+right where you left it after a reload. A **tab strip** appears under the toolbar with the documents
+you have open: click a tab to switch, the `×` to close it, or the `+` to open another. `Ctrl/Cmd+Shift+]`
+and `[` step to the next and previous tab. Tabs are the notes you have opened (not the whole folder),
+and they reappear after a reload. From the **File** menu:
 
 - **Switch document** to see all the notes in the folder, jump to one, add a fresh **+ New
   document**, or delete an old one.
 - **Disconnect folder** steps back out to single-file mode.
+
+One file opens in one tab: you cannot open two tabs of the same note (they would share an identity and
+fight over the same file on disk).
 
 On other browsers the menu shows a copy-link invite to reopen in Chrome or Edge instead. (The deeper
 mechanics of the workspace are in the [feature
