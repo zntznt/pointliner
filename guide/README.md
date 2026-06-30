@@ -43,6 +43,8 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
   zoom, hashtags. The plain outliner moves, no pills involved.
 - **[Tasks and organizing](tasks-and-organizing.md)** is to-dos, custom workflows, properties,
   progress bars, templates, quick capture, and aliases.
+- **[Dates and planning](dates-and-planning.md)** is scheduling points, the agenda and calendar,
+  and the daily journal.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides for the pill families above.
 - **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
