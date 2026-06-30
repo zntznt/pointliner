@@ -115,6 +115,20 @@ with `:=`, the same way you type any other pill:
 A `{name}` reference resolves to the nearest `{name := …}` declared above it, so the same name can
 mean different things in different parts of a long document.
 
+**A variable can hold text, not just a number.** Put it in quotes and the value is that exact string,
+useful for a name you reuse, a label, a status word:
+
+```
+{client := "Acme Corp"}    a fixed text value
+{client}                   drops in "Acme Corp" everywhere
+```
+
+Without quotes a bare word is read as a generator rule, not text, so quote anything you mean
+literally. Options split on the bar make a **random pick** instead (`{tone := warm | cool}`, re-rolls
+on click). A text variable is for writing and generators; it can't be used inside `{= …}` math (math
+is numbers only, and a text value there fails visibly rather than guessing). You can also build any of
+these from the **`@` → Variable** dialog if you prefer a form to typing.
+
 ---
 
 ## Roll a number up your outline (aggregation)

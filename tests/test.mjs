@@ -2802,6 +2802,22 @@ test('rollPickSource: bare name resolves a rule, then a variable, else marker', 
   c.resetRandom();
 });
 
+test('rollPickSource: a quoted bare word is a literal string, not a rule lookup', () => {
+  const rules = { hello: [{ template: 'ROLLED', weight: 1 }] };
+  c.seedSequence([0]);
+  // unquoted bare word still does a rule lookup (predictable, unchanged)
+  assert.equal(c.rollPickSource('hello', rules, {}), 'ROLLED');
+  // quotes force the literal — the escape hatch for {label := "hello"}
+  assert.equal(c.rollPickSource('"hello"', rules, {}), 'hello');
+  assert.equal(c.rollPickSource("'hello'", rules, {}), 'hello');
+  // a word with no matching rule: bare → marker, quoted → the literal text
+  assert.equal(c.rollPickSource('nosuch', {}, {}), '{nosuch?}');
+  assert.equal(c.rollPickSource('"nosuch"', {}, {}), 'nosuch');
+  // nested {…} still expands inside a quoted literal (a text frame, not a dead end)
+  assert.equal(c.rollPickSource('"say {hello}"', rules, {}), 'say ROLLED');
+  c.resetRandom();
+});
+
 test('rollPickSource: empty source → null (callers branch on null)', () => {
   assert.equal(c.rollPickSource('', {}, {}), null);
   assert.equal(c.rollPickSource('   ', {}, {}), null);
