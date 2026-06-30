@@ -22,7 +22,9 @@ The everyday outliner. This is the part you use without thinking about it.
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
   with `[#A]` priorities.
 - **Collapse and zoom.** Fold any branch; click a bullet to zoom in and work on just that subtree.
+  ([zoom](getting-around.md#zoom-into-a-point))
 - **Reorder by dragging** (mouse or touch), or move points with the keyboard.
+  ([moving and nesting](getting-around.md#moving-and-nesting-points))
 - **Per-point notes.** Attach a longer note under any point; hide them all with one toggle.
 - **Properties.** Give a point `key: value` data (like `cost: 12` or `owner: me`) you can total
   and search.
@@ -80,6 +82,7 @@ Turn the outline into a lightweight planner.
 - **Search and filter.** Search across the outline with operators: `#tag`, `is:todo`, `is:done`,
   `is:note`, `is:failing`, `state:waiting`, `due:overdue`, `has:key`, `key:value`, exact
   `"phrases"`, and `-` to exclude. Star a search to save it.
+  ([searching](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 
 ## Linking and connecting notes
 
