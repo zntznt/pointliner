@@ -10360,7 +10360,15 @@ function closeIo() {
 }
 ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) (ioCancel || closeIo)(); });
 // Focus trap: Tab cycles within the dialog, never escaping to background content.
+// Escape: universal cancel for ANY open io-card dialog (P1-3 outward-resolve order).
+// Routed through ioCancel so every current and future dialog gets Esc-to-close for free,
+// instead of each dialog having to remember to wire it (the switcher had forgotten to).
+// closeIo nulls ioCancel, so a dialog that ALSO registers its own Escape stays idempotent.
 ioBack.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (ioBack.classList.contains('on') && ioCancel) { e.preventDefault(); ioCancel(); }
+    return;
+  }
   if (e.key !== 'Tab') return;
   const focusable = [...ioCard.querySelectorAll('input,textarea,button:not(:disabled)')];
   if (!focusable.length) return;
@@ -15005,14 +15013,26 @@ async function saveFile() {
 async function saveAsFile() {
   if (hasFSA) {
     try {
-      fileHandle = await window.showSaveFilePicker({
+      const newHandle = await window.showSaveFilePicker({
         suggestedName: (fileName==='unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml',
         types:[OPML_TYPE],
       });
-      fileName = fileHandle.name;
+      fileHandle = newHandle;
+      fileName = newHandle.name;
+      // Save As makes a standalone file, so it DETACHES from any connected folder.
+      // Without this, workspaceFile kept pointing at the old folder file and autosave
+      // silently kept writing there while the user thought they'd moved to a copy.
+      // Full teardown (same as disconnect) so we never leave a half-state: a tab/index
+      // referencing a folder doc that is no longer the active file.
+      const wasFolderBacked = !!workspaceFile;
+      if (wasFolderBacked) await teardownWorkspace();
       document.getElementById('file-name').textContent = fileName;
       updateTitle();
-      if (await writeH(fileHandle)) flashHint('Saved “' + fileName + '”');
+      if (await writeH(fileHandle)) {
+        flashHint(wasFolderBacked
+          ? 'Saved “' + fileName + '” as a standalone file (no longer in the folder)'
+          : 'Saved “' + fileName + '”');
+      }
     } catch(e) { if (e.name!=='AbortError') flashError('Could not save: '+e.message); }
   } else dlOpml();
 }
@@ -15407,7 +15427,7 @@ async function connectWorkspace() {
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
     const name = workspaceFileName(root, fileName);
     const fh = await dir.getFileHandle(name, { create: true });
-    await writeH(fh);                  // reuse the OPML writer (also markClean()s)
+    if (!await writeH(fh)) return;     // first write failed (writeH already flashed) — don't claim "connected" to an unwritten file
     fileHandle = fh; fileName = name;  // the folder file is now the backing file
     workspaceFile = fh;                // …and folder-backed: every edit auto-writes here (brief #4)
     _wsWarned = false;
@@ -15539,15 +15559,17 @@ async function switchWorkspaceDoc(name) {
 // connected, so a fresh outline lands in the notebook and auto-writes from the first edit.
 async function newWorkspaceDoc() {
   if (dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
-  const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), 'outline.opml');
-  const fh = await workspaceDir.getFileHandle(name, { create: true });
-  adoptDoc(mkRoot(), { fileName: name, fileHandle: fh, workspaceFile: fh });
-  await writeH(fh);                                   // materialize the empty doc on disk (anchors via the atomic path)
-  startWorkspaceWatch();                              // sync-safety: watch the new file
-  await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
-  renderWorkspaceAffordance();
-  refreshWorkspaceIndex();           // CF-1: a new doc joined the notebook
-  flashHint('New document “' + name + '” in the workspace');
+  try {
+    const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), 'outline.opml');
+    const fh = await workspaceDir.getFileHandle(name, { create: true });
+    adoptDoc(mkRoot(), { fileName: name, fileHandle: fh, workspaceFile: fh });
+    await writeH(fh);                                   // materialize the empty doc on disk (anchors via the atomic path)
+    startWorkspaceWatch();                              // sync-safety: watch the new file
+    await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
+    renderWorkspaceAffordance();
+    refreshWorkspaceIndex();           // CF-1: a new doc joined the notebook
+    flashHint('New document “' + name + '” in the workspace');
+  } catch (e) { degradeWorkspace('Could not create the document. The folder may be unavailable. Reconnect, or use Save As to keep your work.'); }
 }
 
 // CF-5: create a new note (.opml) in the folder titled `title`, WITHOUT switching to it —
@@ -15576,16 +15598,19 @@ async function createWorkspaceNote(title) {
 // the live root rather than starting blank.
 async function saveToWorkspaceDoc() {
   if (!workspaceDir) return;
-  const base = workspaceFileName(root, fileName);
-  const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), base);
-  const fh = await workspaceDir.getFileHandle(name, { create: true });
-  fileHandle = fh; fileName = name; workspaceFile = fh; _wsWarned = false;
-  await writeH(fh);
-  await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
-  document.getElementById('file-name').textContent = name; updateTitle();
-  renderWorkspaceAffordance();
-  refreshWorkspaceIndex();           // CF-1: a previously-detached doc joined the notebook
-  flashHint('Saved to workspace as “' + name + '”');
+  try {
+    const base = workspaceFileName(root, fileName);
+    const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), base);
+    const fh = await workspaceDir.getFileHandle(name, { create: true });
+    fileHandle = fh; fileName = name; workspaceFile = fh; _wsWarned = false;
+    if (!await writeH(fh)) return;     // write failed (writeH flashed) — don't claim it landed
+    startWorkspaceWatch();             // sync-safety: watch the newly folder-backed file
+    await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
+    document.getElementById('file-name').textContent = name; updateTitle();
+    renderWorkspaceAffordance();
+    refreshWorkspaceIndex();           // CF-1: a previously-detached doc joined the notebook
+    flashHint('Saved to workspace as “' + name + '”');
+  } catch (e) { degradeWorkspace('Could not save to the folder. It may be unavailable. Reconnect, or use Save As to keep your work.'); }
 }
 
 // Delete a doc from the folder (confirmed). If it was the current doc, fall through to the
@@ -15609,15 +15634,23 @@ async function deleteWorkspaceDoc(name) {
   return true;
 }
 
-// Disconnect: forget the connection and stop auto-writing. Does not delete the file or folder.
-async function disconnectWorkspace() {
+// Tear down all workspace state and stop auto-writing. Does NOT delete any file or
+// folder, and keeps fileHandle so manual Save still works. Shared by disconnect and
+// by Save As (which detaches the current doc into a standalone file). Callers flash
+// their own message.
+async function teardownWorkspace() {
   try { await idbDel(WORKSPACE_KEY); } catch (_) {}
   workspaceDir = null; pendingDir = null;
-  workspaceFile = null; _wsWarned = false;  // stop auto-writing; fileHandle stays so Save still works
+  workspaceFile = null; _wsWarned = false;
   stopWorkspaceWatch();                     // sync-safety: stop watching, drop the anchor
   workspaceIndex = null;                    // CF-1: no workspace -> no cross-doc index
   openTabs = []; try { await idbDel(OPEN_TABS_KEY); } catch (_) {}  // no workspace -> no tabs
   renderWorkspaceAffordance(); renderDocTabs();
+}
+
+// Disconnect: forget the connection and stop auto-writing. Does not delete the file or folder.
+async function disconnectWorkspace() {
+  await teardownWorkspace();
   flashHint('Workspace disconnected. Auto-save is off; use Save to keep a copy.');
 }
 
@@ -16000,9 +16033,12 @@ function downloadText(content, ext, mime) {
   a.href = url;
   a.download = (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i, '')) + ext;
   a.click(); URL.revokeObjectURL(url);
+  return a.download;
 }
-function exportMarkdown() { downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); }
-function exportPlainText() { downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); }
+// P4: every export reports success, like the self-contained HTML export already does.
+// "Exported a copy" (not "Saved") because these are one-way snapshots, not the live file.
+function exportMarkdown() { const n = downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); flashHint('Exported a copy: “' + n + '”'); }
+function exportPlainText() { const n = downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); flashHint('Exported a copy: “' + n + '”'); }
 
 // ─── self-contained HTML export (C1) ─────────────────────────────────────────
 // One file that IS the document AND the app: a copy of this whole page with the
