@@ -104,6 +104,17 @@ Variables can reference other variables (`area = pi*r^2`). Change `r` and every 
 updates live. A variable that holds *text* (a random pick) can't be used as a number; it fails
 visibly rather than guessing.
 
+**Declare one by typing.** Besides the `@` → Variable dialog, you can write a declaration inline
+with `:=`, the same way you type any other pill:
+
+```
+{rate := 0.2}      declares `rate` = 0.2, right where you type it
+{= cost * rate}    then use it anywhere below
+```
+
+A `{name}` reference resolves to the nearest `{name := …}` declared above it, so the same name can
+mean different things in different parts of a long document.
+
 ---
 
 ## Roll a number up your outline (aggregation)
