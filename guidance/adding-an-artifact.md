@@ -94,10 +94,36 @@ Every artifact follows the same path. To add one (say `@weather`):
 ## Font Awesome (subsetted, inlined)
 
 Only the glyphs the app uses are embedded as base64 woff2 in the `#fa-embed`
-`<style>`. To add an icon:
+`<style>`, gated by the `FA_GLYPHS` JS allow-list. **An icon NOT in the subset
+silently paints its unicode/emoji fallback instead of the real glyph** (see
+`paintIcon` + the `data-fb` fallback char). So before using `fa:'fa-solid
+fa-NAME'` anywhere, confirm `fa-NAME` is in `FA_GLYPHS`; if not, add it.
 
-1. Put FA Free files in `/tmp/faemb/` (`all.min.css`, `fa-solid-900.woff2`, …).
-2. Add the icon name to the `USED` dict in `/tmp/faemb/build.py`.
-3. `cd /tmp/faemb && python3 build.py`.
-4. Replace the `@font-face` block and the icon-rule block in `index.html` with
-   the regenerated `faface.css` / `faicons.css` contents.
+The build is self-contained , `tools/build-fa-subset.py` downloads pinned FA
+Free source, subsets it, and prints the new embed. No pre-staged files.
+
+1. **Install once:** `pip3 install fonttools brotli` (brotli is needed for
+   woff2). Network access to github.com is required (FA version is pinned in
+   the script).
+2. **Add the icon name** (without the `fa-` prefix) to the `ICONS` list in
+   `tools/build-fa-subset.py`. If the app uses it in the *regular* weight
+   (`fa-regular fa-NAME`), also add it to `FORCE_REGULAR`. Brands (e.g. github)
+   are auto-detected.
+3. **Dry-run:** `python3 tools/build-fa-subset.py --check` , confirms every
+   `ICONS` entry resolves in FA Free (prints any that don't).
+4. **Build:** `python3 tools/build-fa-subset.py` , prints the full
+   `<style id="fa-embed">…</style>` block followed by the `const FA_GLYPHS =
+   new Set([...]);` line.
+5. **Splice into `index.html`:** replace the existing `<style id="fa-embed">…
+   </style>` block with the printed one, and replace the `FA_GLYPHS` line with
+   the printed one.
+6. **Verify in-app (do NOT skip):** serve `index.html` and confirm the new icon
+   *paints a real glyph*, not the fallback , an `<i class="fa-solid fa-NAME">`
+   should have a non-zero rendered width. A subset that doesn't paint is worse
+   than the fallback. (`await document.fonts.ready` first; measure
+   `getBoundingClientRect().width`.)
+
+The `ICONS` list in the script is the source of truth for what's embedded; keep
+it a superset of every `fa-` name the app references (grep `index.html` for
+`fa-` to audit). To find a missing-from-subset icon, grep the app's `fa-` usages
+and diff against `FA_GLYPHS`.
