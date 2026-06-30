@@ -4828,9 +4828,14 @@ test('document tabs: strip is gated on workspaceDir, keyboard-cycle wired + docu
   // Discoverable: an essential ?-panel row advertises the shortcut.
   assert.ok(_src.includes("id:'file-tabs'"),
     'the tab-cycle shortcut is not listed in the essential shortcuts registry');
-  // Every successful switch registers a tab, and the list is persisted.
-  assert.ok(_src.includes('openTabs = tabAdd(openTabs, name)') && _src.includes('persistOpenTabs'),
-    'switchWorkspaceDoc does not register + persist the tab');
+  // The current folder-backed doc is registered as a tab from the single chokepoint
+  // (renderWorkspaceAffordance), so every connect/switch/reconnect path surfaces the strip.
+  assert.ok(_src.includes('openTabs = tabAdd(openTabs, fileName)') && _src.includes('persistOpenTabs'),
+    'the current doc is not registered as a tab from renderWorkspaceAffordance');
+  // Shows the strip with an EXPLICIT display (the CSS default is display:none, so '' re-hides
+  // it — the build-but-stay-hidden bug). Must set 'flex', not ''.
+  assert.ok(/strip\.style\.display = 'flex'/.test(_src),
+    'renderDocTabs must set display:flex explicitly (not "", which the CSS default re-hides)');
 });
 
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {

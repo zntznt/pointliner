@@ -15197,6 +15197,18 @@ function renderWorkspaceAffordance() {
   const switchBtn = document.getElementById('btn-workspace-switch');
   const invite = document.getElementById('workspace-invite');
   if (!connect || !disconnect || !switchBtn) return;
+  // The single chokepoint for the doc-tab strip: whenever workspace state is reflected,
+  // ensure the current doc is a tab and (re)render the strip. Covers every path that
+  // establishes a connected doc — connect, switch, save-to-workspace — so none can forget
+  // to surface the strip. (Gated on workspaceDir, like the strip itself; a real filename,
+  // backed or not, so a detached current doc still seeds a tab. tabAdd dedupes. The async
+  // reconnect/startup paths additionally call restoreOpenTabs to rehydrate the saved list.)
+  if (workspaceDir && fileName && fileName !== 'unsaved') {
+    const before = openTabs.length;
+    openTabs = tabAdd(openTabs, fileName);
+    if (openTabs.length !== before) persistOpenTabs();
+  }
+  renderDocTabs();
   const state = workspaceAffordance({ hasWorkspace, connected: !!workspaceDir, pending: !!pendingDir, backed: !!workspaceFile });
   const name = workspaceDir?.name || 'folder';
   const label = document.getElementById('workspace-label');
@@ -15246,6 +15258,21 @@ function renderWorkspaceAffordance() {
 // Persist the open-tab list so it survives a reload (alongside WORKSPACE_KEY). Best-effort.
 async function persistOpenTabs() { try { await idbSet(OPEN_TABS_KEY, openTabs.slice()); } catch (_) {} }
 
+// Restore openTabs from IndexedDB after a workspace (re)connects: drop any file that no
+// longer exists in the folder (P4 — never a 404 tab), and ensure the current doc is in.
+// Async (reads IDB + lists the folder), so it can't live in the sync renderWorkspaceAffordance;
+// every path that (re)establishes the workspace calls this, then renders. Idempotent.
+async function restoreOpenTabs(dir) {
+  try {
+    const saved = await idbGet(OPEN_TABS_KEY);
+    const present = new Set(await listWorkspaceNames(dir));
+    const base = Array.isArray(saved) ? saved.filter(n => present.has(n)) : [];
+    openTabs = (fileName && fileName !== 'unsaved') ? tabAdd(base, fileName) : base;
+    persistOpenTabs();
+  } catch (_) { /* keep whatever we have */ }
+  renderDocTabs();
+}
+
 // Render the document-tabs strip. Shown ONLY with a connected workspace (gated on
 // workspaceDir, like the switcher); hidden otherwise. Editor-style: tabs are the files
 // you've opened (openTabs), not the whole folder — a trailing `+` reaches the rest via
@@ -15256,7 +15283,7 @@ function renderDocTabs() {
   const strip = document.getElementById('doc-tabs');
   if (!strip) return;
   if (!workspaceDir || !openTabs.length) { strip.style.display = 'none'; strip.innerHTML = ''; return; }
-  strip.style.display = '';
+  strip.style.display = 'flex';   // explicit — the CSS default is display:none, so '' would re-hide it
   strip.innerHTML = '';
   openTabs.forEach(name => {
     const isCur = name === fileName;
@@ -15345,7 +15372,7 @@ async function connectWorkspace() {
     await idbSet(WORKSPACE_KEY, { dir, name });
     document.getElementById('file-name').textContent = fileName;
     updateTitle();
-    renderWorkspaceAffordance();
+    renderWorkspaceAffordance();       // also registers the current doc as a tab + renders the strip
     refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
     flashHint('Folder connected. Saved “' + name + '”');
   } catch (e) {
@@ -15366,7 +15393,7 @@ async function reconnectWorkspace() {
       const stored = await idbGet(WORKSPACE_KEY);
       const ok = stored && await reopenWorkspaceDoc(workspaceDir, stored.name);
       if (!ok) { workspaceDir = null; flashHint('That folder is no longer available. Connect another.'); }
-      else      { flashHint('Folder reconnected: “' + (workspaceDir?.name || 'folder') + '”'); }
+      else      { flashHint('Folder reconnected: “' + (workspaceDir?.name || 'folder') + '”'); await restoreOpenTabs(workspaceDir); }
       renderWorkspaceAffordance();
       refreshWorkspaceIndex();           // CF-1: rebuild after a successful reconnect
     }
@@ -15454,8 +15481,7 @@ async function switchWorkspaceDoc(name) {
     const fh = await workspaceDir.getFileHandle(name);
     adoptDoc(fromOpml(await (await fh.getFile()).text()), { fileName: name, fileHandle: fh, workspaceFile: fh });
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
-    openTabs = tabAdd(openTabs, name); persistOpenTabs();       // every successful switch registers a tab
-    _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); renderDocTabs(); return true;
+    _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;  // affordance registers the tab + renders the strip
   } catch (e) { flashError('Could not open “' + name + '”: ' + (e.message || e)); return false; }
 }
 
@@ -18262,18 +18288,7 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
     const perm = await dir.queryPermission({ mode: 'readwrite' });   // no gesture needed
     if (perm === 'granted') {
       workspaceDir = dir; await reopenWorkspaceDoc(dir, name);
-      // Restore the open-tab strip, dropping any file that no longer exists (P4 — never
-      // a tab that 404s) and ensuring the reopened doc is present.
-      try {
-        const saved = await idbGet(OPEN_TABS_KEY);
-        if (Array.isArray(saved)) {
-          const present = new Set(await listWorkspaceNames(dir));
-          openTabs = tabAdd(saved.filter(n => present.has(n)), fileName);
-          persistOpenTabs();
-        } else if (fileName && fileName !== 'unsaved') {
-          openTabs = tabAdd([], fileName);   // first run: seed with the reopened doc
-        }
-      } catch (_) {}
+      await restoreOpenTabs(dir);    // rehydrate the saved tab list (drops vanished files, P4)
     }
     else { pendingDir = dir; }                   // needs a gesture → 'Reconnect' affordance
   } catch (_) { try { await idbDel(WORKSPACE_KEY); } catch (_) {} workspaceDir = null; }
