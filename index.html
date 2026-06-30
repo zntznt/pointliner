@@ -7823,9 +7823,11 @@ function classifyBraceBody(body, rules, vars) {
   }
   const decl = parseVarDecl(body);                                     // {name := expr}
   if (decl) {
-    // valid if the RHS is an evaluable formula OR a usable pick source (a rule, an
-    // alternation, dice). Mirrors promoteBraceBody's formula-vs-pick inference.
-    if (evalMath(decl.expr, vars) !== null) return 'artifact';
+    // valid if the RHS is a formula OR a usable pick source. Mirrors promoteBraceBody's
+    // formula-vs-pick inference via the shared varDeclIsPick(): a formula (incl. a
+    // reference to a not-yet-defined var, {y := x}) is always a valid artifact; a pick
+    // source is valid when it actually resolves (a rule / alternation / dice / literal).
+    if (!varDeclIsPick(decl.expr)) return 'artifact';                  // formula (live, self-heals)
     const c = classifyBraceBody(decl.expr, rules, vars);
     return (c === 'artifact' || splitTopLevel(decl.expr, '|').length > 1) ? 'artifact' : 'invalid';
   }
@@ -11519,6 +11521,31 @@ function parseVarDecl(body) {
   return { name, expr };
 }
 
+// Classify a typed declaration's RHS: a PICK (frozen text value) or a FORMULA (live math).
+// A formula is the DEFAULT — `:=` means "assign", so a reference like {y := x} is a live
+// formula that resolves to x's value and self-heals when x is (re)defined, NOT a frozen
+// pick of the literal "{x?}". The classification must NOT depend on whether the referenced
+// vars are resolvable *right now* (the old `evalMath(expr, collectVars()) !== null` rule
+// mis-froze {y := x} as a pick whenever x wasn't yet visible at promote time). Pick is the
+// deliberate special case: only the unambiguous generative forms — a top-level alternation
+// ({a | b}), dice ({2d6}), a quoted string literal ({"text"}), or a multi-word bare string
+// (Acme Corp) — and only when the RHS is not otherwise a structurally-valid math expression
+// (probed with every identifier resolving to a number, so undefined vars don't disqualify it).
+function varDeclIsPick(expr) {
+  expr = (expr || '').trim();
+  if (!expr) return false;
+  if (splitTopLevel(expr, '|').length > 1) return true;          // alternation → pick
+  if (DICE_SNIFF.test(expr.replace(/\s/g, ''))) return true;     // dice → pick
+  const q = expr[0];                                             // quoted literal → pick
+  if ((q === '"' || q === "'") && expr[expr.length - 1] === q && expr.length >= 2) return true;
+  if (/[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_]/.test(expr)) return true; // adjacent bare words (Acme Corp) → pick
+  // Otherwise it's a formula iff it parses as math when its free identifiers are numbers.
+  // _VAR_PROBE resolves any name to a number, so an undefined-but-valid ref ({y := x}) is
+  // still a formula. If even that fails to parse, it's a non-math source → a pick.
+  return evalMath(expr, _VAR_PROBE) === null;
+}
+const _VAR_PROBE = new Proxy({}, { has: () => true, get: () => 1 });
+
 function promoteBraceBody(node, body) {
   body = body.trim();
   if (!body) return null;
@@ -11539,8 +11566,7 @@ function promoteBraceBody(node, body) {
     // typed declarations unfold back to editable `{name := expr}` text — safe because the
     // name lives in the text, so re-promotion never loses it. Dialog-declared vars have no
     // flag and stay atomic (artifactToShorthand). See the proposal's §4 / O1.
-    const isFormula = evalMath(decl.expr, collectVars()) !== null;
-    if (isFormula) {
+    if (!varDeclIsPick(decl.expr)) {
       const rec = { key: varKey(), name: decl.name, expr: decl.expr, kind: undefined, rolled: undefined, typed: true };
       (node.vars ||= []).push(rec);
       return `[[var:${rec.key}]]`;
