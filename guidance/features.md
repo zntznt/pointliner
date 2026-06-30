@@ -270,8 +270,16 @@ Implemented:
     `#ERR`), never silently. `collectVars` returns the stored value unchanged on
     every pass — the engine runs only at declaration and explicit re-roll
     (`rollPickSource` is the pure core). Direction: `guidance/generation-direction.md`
-    (v1; inline `{a := …}` shorthand, modifiers, and per-reference re-roll are
-    explicitly deferred).
+    (per-reference re-roll is still deferred; the inline `{name := expr}` declaration and text
+    modifiers have since shipped, see below).
+  - **Typed inline declaration** `{name := expr}` (Stage A) — declare a variable by typing,
+    the same promote-on-blur path as every other `{…}`. `parseVarDecl` sniffs the body before the
+    `:`/`=` arms (the `:=` / `:` / `=` collision matrix), produces a normal persistent `[[var:key]]`
+    record (`typed:true`) in `node.vars` (NOT a per-expansion `ctx.binds` scope, that stays reverted),
+    and unfolds back to `{name := expr}` for editing with a ripple warning. **Positional resolution**
+    (Stage B): a `{name}` resolves to the nearest preceding `{name := …}` in document order via
+    `varMapAt(node)`/`resolveVarDefs`, falling back to the global map where a name has no anchor.
+    Full design: `guidance/typed-var-declaration-proposal.md` (SHIPPED).
 ### Editing & pill interaction
 
 - **Typed shorthand** — write `{2d6}`, `{= 2*r}`, `{a|b|c}`, `{knownRule}` and it

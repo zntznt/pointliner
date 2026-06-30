@@ -103,7 +103,7 @@ the reviewer catches the lie. Both failure modes (lazy skip + false claim) are c
 | `accessibility.md`                          | A11y *sequencing* (phased tickets, now **complete** — the standard points down to it for order)                                                     |
 | `roadmap.md` · `backlog.md` · `features.md` | Direction, gaps, and current feature status                                                                                                          |
 | `generative-status.md`                      | Completion ledger for the generative + computational lane (shipped / deferred / out-of-scope)                                                       |
-| `bases-direction.md` · `generation-direction.md` · `plugins-direction.md` · `plugins-data-packs-prerequisites.md` | Locked direction for tables/bases, the generation model, and declarative-data-pack plugins |
+| `bases-direction.md` · `generation-direction.md` · `typed-var-declaration-proposal.md` · `plugins-direction.md` · `plugins-data-packs-prerequisites.md` | Locked direction for tables/bases, the generation/variable model (incl. the shipped `{name := expr}` typed declaration), and declarative-data-pack plugins |
 | `enhancement-research.md` · `outliner-frontier-report.md` | Inspiration catalogue + competitive-landscape snapshot (candidate material, not commitments)                          |
 | `performance.md`                            | Measured performance baseline + an embedded re-run harness                                                                                          |
 

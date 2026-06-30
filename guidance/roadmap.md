@@ -221,8 +221,10 @@ between the heavy PKM phases.
 unit conversion, and **random variables** — a variable whose value is a frozen,
 re-rollable grammar pick, the Perchance-style generation model — are **done**; see
 `guidance/features.md` and `guidance/generation-direction.md`. The earlier per-expansion
-*bound picks* attempt (`{a := …}`, PR #51) was **reverted** and is superseded by random
-variables — do not reintroduce it.)
+*bound picks* **scope** (`ctx.binds`, PR #51) was **reverted** — do not reintroduce that.
+The `:=` *operator* itself later shipped as **typed inline variable declaration**
+`{name := expr}` + **positional resolution** (`typed-var-declaration-proposal.md`, SHIPPED):
+sugar onto the persistent variable system, not the reverted scope.)
 - **Oracle (tunable yes/no) — ✅ shipped** (the `@` "Oracle (yes/no)" door; `openOracleDialog`/
   `ORACLE_BANDS`, a likelihood picker over **original** odds bands building an anonymous
   `Yes N | No M` weighted-alt pill). The earlier version that copied a published oracle's tables
