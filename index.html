@@ -3233,7 +3233,7 @@ function diceTotalStr(d) {
 }
 
 function renderDicePill(key, d) {
-  if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}" aria-label="Dice roll (missing data)">🎲 ?</span>`;
+  if (!d) return `<span class="dice-roll dice-bad" data-key="${escQ(key)}" aria-label="Dice roll (missing data)"><span class="dice-ico"><i class="fa-solid fa-dice-d20" aria-hidden="true"></i></span> ?</span>`;
   const totalStr = diceTotalStr(d);
   return `<span class="dice-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to re-roll"`
     + ` aria-label="Dice roll ${escQ(d.expr)} = ${escQ(totalStr)}. Click to re-roll">`
@@ -3324,7 +3324,7 @@ function makeMarkovRoll(def, startInput, stepsInput, name) {
 }
 
 function renderMarkovPill(key, mk) {
-  if (!mk) return `<span class="mk-roll mk-bad" data-key="${escQ(key)}" aria-label="Markov chain (missing data)">⛓ ?</span>`;
+  if (!mk) return `<span class="mk-roll mk-bad" data-key="${escQ(key)}" aria-label="Markov chain (missing data)"><span class="mk-ico"><i class="fa-solid fa-circle-nodes" aria-hidden="true"></i></span> ?</span>`;
   const stoppedEarly = mk.path.length - 1 < mk.steps;
   const path = mk.path
     .map(s => `<span class="mk-state">${escHtml(s)}</span>`)
@@ -6485,7 +6485,7 @@ function openCheckDialog(nodeId, targets = null) {
           const verdict = evalCheck(previewNode(v), globalVarMap);
           const expanded = escHtml(expandAggExpr(v, node));
           if (verdict === 'pass') return `<span style="color:var(--ok)">✓ passes</span> <span style="color:var(--muted)">· ${expanded}</span>`;
-          if (verdict === 'fail') return `<span style="color:var(--bad)">⚠ fails</span> <span style="color:var(--muted)">· ${expanded}</span>`;
+          if (verdict === 'fail') return `<span style="color:var(--bad)">✗ fails</span> <span style="color:var(--muted)">· ${expanded}</span>`;
           const scope = Object.assign(Object.create(null), globalVarMap, nodePropVars(node));
           const why = mathErrorReason(expandAggExpr(v, node), scope);
           const reason = mathReasonPhrase(why) || 'a syntax error';
@@ -10182,7 +10182,7 @@ function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'O
     const head = document.createElement('div'); head.className = 'io-head';
     const ic = document.createElement('div'); ic.className = 'cmd-icon';
     ic.style.cssText = 'background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)';
-    setIcon(ic, { fa:'fa-solid fa-triangle-exclamation', fb:'⚠' });
+    setIcon(ic, { fa:'fa-solid fa-circle-question', fb:'?' }); // fa-triangle-exclamation isn't in the embedded subset; circle-question IS, so it renders full-size like other dialogs
     const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = title;
     head.append(ic, ttl); ioCard.appendChild(head);
 
@@ -11273,7 +11273,7 @@ function renderSeqGenPill(key, g) {
 }
 
 function renderGrammarPill(key, g) {
-  if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)">❖ ?</span>`;
+  if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)"><span class="gr-ico"><i class="fa-solid fa-shuffle" aria-hidden="true"></i></span> ?</span>`;
   if (g.mode) return renderSeqGenPill(key, g);   // a stateful sequence rides on the grammar record
   // a non-anon record's origin is a user-declared, doc-wide callable name —
   // show it (the named-table affordance: tells you what {name} calls)
@@ -12557,7 +12557,7 @@ function pruneEst(node) {
 }
 
 function renderMathPill(key, m) {
-  if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}" aria-label="Math (missing data)">🖩 ?</span>`;
+  if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}" aria-label="Math (missing data)"><span class="math-ico"><i class="fa-solid fa-calculator" aria-hidden="true"></i></span> ?</span>`;
   // Recompute with current vars so math stays live when variables change; expand
   // sum/avg/count(prop) against the point being rendered so subtree aggregation
   // stays live as children change (cookieNode = the current render node).
@@ -12675,7 +12675,7 @@ function seqDefString(sq) {
 }
 
 function renderSeqPill(key, sq) {
-  if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}" aria-label="Sequence (missing data)">⇶ ?</span>`;
+  if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}" aria-label="Sequence (missing data)"><span class="seq-ico"><i class="fa-solid fa-list-check" aria-hidden="true"></i></span> ?</span>`;
   const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
     + '<span class="seq-pipe">|</span>'
     + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
