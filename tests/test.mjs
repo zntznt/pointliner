@@ -6755,3 +6755,33 @@ test('collectVars — frozen random pick returns its rolled value, never re-roll
   const r = vroot(vnode('k1', 'beast', 'dragon|wyrm', { kind: 'pick', rolled: 'dragon' }));
   assert.equal(host(c.collectVars(r))['beast'], 'dragon');
 });
+
+// ── sync-safety: reconcileAction (folder-backed write reconciliation) ─────────
+// The full safety contract as a truth table. disk<=known → safe to write; disk
+// newer → reload if clean, prompt if dirty (genuine divergence).
+test('reconcileAction — disk unchanged since last seen → write (safe)', () => {
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, dirty: true }), 'write');
+  assert.equal(c.reconcileAction({ diskModified: 90,  knownModified: 100, dirty: true }), 'write'); // older disk (clock skew) still safe
+});
+test('reconcileAction — disk newer + no unsaved edits → reload (lossless)', () => {
+  assert.equal(c.reconcileAction({ diskModified: 200, knownModified: 100, dirty: false }), 'reload');
+});
+test('reconcileAction — disk newer + unsaved edits → prompt (divergence)', () => {
+  assert.equal(c.reconcileAction({ diskModified: 200, knownModified: 100, dirty: true }), 'prompt');
+});
+test('reconcileAction — never anchored (known 0/null) → write, nothing to clobber', () => {
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 0,    dirty: true }), 'prompt'); // 100>0 with edits → divergence, conservatively prompt
+  assert.equal(c.reconcileAction({ diskModified: 0,   knownModified: 0,    dirty: true }), 'write');  // brand-new file, both 0
+  assert.equal(c.reconcileAction({ diskModified: 0,   knownModified: null, dirty: false }), 'write');
+});
+
+// ── sync-safety: tmpWriteName (atomic-write temp filename) ────────────────────
+test('tmpWriteName — produces a hidden .pltmp sibling, not a .opml', () => {
+  assert.equal(c.tmpWriteName('notes.opml'), '.notes.pltmp');
+  assert.equal(c.tmpWriteName('Daily Log.opml'), '.Daily Log.pltmp');
+});
+test('tmpWriteName — the temp name is NOT listed as a document', () => {
+  // critical: a stray/interrupted temp must never appear in the workspace doc list
+  const listed = host(c.workspaceDocList(['notes.opml', c.tmpWriteName('notes.opml')]));
+  assert.deepEqual(listed, ['notes.opml']);
+});

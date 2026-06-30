@@ -155,6 +155,8 @@ export function loadCores() {
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
     'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
+    'reconcileAction', 'tmpWriteName',          // sync-safety: folder-backed write reconciliation
+
     'embedOpmlIntoHtml', 'extractEmbeddedOpml',
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
