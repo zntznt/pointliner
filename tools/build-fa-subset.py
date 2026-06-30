@@ -54,6 +54,8 @@ ICONS = [
     "circle-check", "check", "square-check", "circle", "circle-question", "square",
     # added 2026-06-30: were referenced but missing from the subset (rendered emoji)
     "book", "triangle-exclamation", "xmark", "arrow-right-arrow-left",
+    # file-ops UX (2026-06-30): distinct icons for connect / disconnect / save-as
+    "folder-plus", "folder-minus", "copy",
 ]
 
 # Some icons are used in BOTH solid and regular in the app. The font subset must

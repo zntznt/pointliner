@@ -95,7 +95,7 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 
 - **Internal links.** `[[#point]]` links to any other point, with live titles and backlinks.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
-- **Multi-document workspace.** Connect a folder of notes on disk; switch between documents, link
+- **Multi-document folders.** Connect a folder of documents on disk; switch between them, link
   across them, and search the whole folder at once.
   ([links across notes](links-and-references.md#links-across-notes) · [folder of notes](files-and-export.md#working-with-a-folder-of-notes))
 - **Capture inbox.** A quick-capture box that drops a note into your inbox from anywhere, without
@@ -109,9 +109,9 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **One file, fully offline.** The whole app is a single `index.html`. No account, no network, no
   install. Your filesystem is the storage; your choice of sync (Dropbox, iCloud, git, or none) is
   the sync. ([saving](files-and-export.md#saving-your-work))
-- **Open formats.** OPML is the native save format; export to Markdown or plain text for sharing.
+- **Open formats.** The native save format is a plain outline file; export to Markdown or plain text for sharing.
   ([exporting](files-and-export.md#exporting-and-sharing))
-- **Self-contained HTML.** Export a single `.html` that *is* the app plus your document. Hand it to
+- **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.

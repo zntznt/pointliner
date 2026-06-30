@@ -33,7 +33,7 @@ One file opens in one tab: you cannot open two tabs of the same note (they would
 fight over the same file on disk).
 
 On other browsers the menu shows a copy-link invite to reopen in Chrome or Edge instead. (The deeper
-mechanics of the workspace are in the [feature
+mechanics of folders are in the [feature
 overview](features.md#linking-and-connecting-notes).)
 
 ## Appearance and display
@@ -53,7 +53,7 @@ Share your outline with someone who does not have the app, post it as Markdown o
 README, or create a portable archive. From the **File** menu:
 
 - **Markdown** or **plain text** for posting and sharing.
-- **Self-contained HTML** packs the entire app and your document into one file. It works offline,
+- **Web page (HTML)** packs the entire app and your document into one file. It works offline,
   opens in any browser, and keeps all the interactive features (dice, generators, and calculations)
   live, so the person you hand it to can re-roll and recompute on their own machine.
 

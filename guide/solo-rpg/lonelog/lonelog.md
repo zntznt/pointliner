@@ -1,6 +1,6 @@
 # A Lonelog-style session log in Pointliner
 
-**Demo file:** [lonelog-demo.opml](lonelog-demo.opml) (open it in Pointliner via File, Import OPML)
+**Demo file:** [lonelog-demo.opml](lonelog-demo.opml) (open it in Pointliner via File, Open)
 
 Lonelog is a notation for solo-RPG session logging created by **Roberto Bisceglie**. Its aim
 is to capture the rhythm of solo play, the back-and-forth of *I do a thing, I ask the oracle,

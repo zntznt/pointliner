@@ -19,7 +19,7 @@ the generator pills (`{2d6}`, `{a | b}`, `{= 5 * 8}`), skim the
 Every case study is its own folder with two things:
 
 - **A guide** (`*.md`) that walks through the idea and how to set it up in Pointliner.
-- **A demo** (`*.opml`) you can **open in Pointliner** (File menu, Import OPML) to get the
+- **A demo** (`*.opml`) you can **open in Pointliner** (File menu, Open) to get the
   finished example in front of you. Click the pills, re-roll, take it apart.
 
 The demo files use plain `{…}` source text, so when you open one the dice roll fresh on
