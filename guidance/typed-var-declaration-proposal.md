@@ -1,7 +1,8 @@
 # Proposal: typed inline variable declaration
 
-**Status:** proposal, not approved. Supersedes the "deferred" note in
-`generation-direction.md` §5 *only if accepted*. No code until then.
+**Status:** approved. **Stage A (typed `:=` declaration + unfold-edit + ripple warning) is
+SHIPPED** , see §8. **Stage B (positional resolution, §9) is NOT yet built** , it remains a
+future PR. The `generation-direction.md` §5 deferral is updated accordingly.
 
 **Problem (user-reported).** Every generator family has a typed path: you type `{2d6}`,
 `{= 3*7}`, `{a|b}`, and it promotes to a pill on blur. **Variables are the exception** ,

@@ -6264,3 +6264,66 @@ test('termMatchesNode — parent tag does NOT bleed into a longer word', () => {
   const q = host(c.parseSearchQuery('#thread'))[0];
   assert.equal(c.termMatchesNode(q, node, []), false, '#thread must not match #threads');
 });
+
+// ── parseVarDecl: typed {name := expr} variable declaration ───────────────────
+// Sniffs `:=` before any `:`-splitting path, so it must claim real declarations and
+// NOT eat grammar rule lines (single `:`) or the {= } math form. See
+// guidance/typed-var-declaration-proposal.md.
+test('parseVarDecl — formula declaration', () => {
+  assert.deepEqual(host(c.parseVarDecl('gold := 50')), { name: 'gold', expr: '50' });
+});
+test('parseVarDecl — expression RHS', () => {
+  assert.deepEqual(host(c.parseVarDecl('area := pi * r^2')), { name: 'area', expr: 'pi * r^2' });
+});
+test('parseVarDecl — random-pick RHS kept verbatim', () => {
+  assert.deepEqual(host(c.parseVarDecl('beast := dragon|wyrm')), { name: 'beast', expr: 'dragon|wyrm' });
+});
+test('parseVarDecl — whitespace around := is optional', () => {
+  assert.deepEqual(host(c.parseVarDecl('x:=5')), { name: 'x', expr: '5' });
+  assert.deepEqual(host(c.parseVarDecl('  x  :=  5  ')), { name: 'x', expr: '5' });
+});
+test('parseVarDecl — underscore/leading-underscore names', () => {
+  assert.deepEqual(host(c.parseVarDecl('_hp := 10')), { name: '_hp', expr: '10' });
+  assert.deepEqual(host(c.parseVarDecl('max_hp := 10')), { name: 'max_hp', expr: '10' });
+});
+test('parseVarDecl — NOT a declaration: no := returns null', () => {
+  assert.equal(c.parseVarDecl('gold = 50'), null);   // single = is the math sigil, not :=
+  assert.equal(c.parseVarDecl('2d6'), null);
+  assert.equal(c.parseVarDecl('a | b'), null);
+});
+test('parseVarDecl — does NOT eat a grammar rule line (single colon)', () => {
+  assert.equal(c.parseVarDecl('weapon: sword | axe'), null); // `:` not `:=`
+  assert.equal(c.parseVarDecl('sword.damage: 1d8'), null);
+});
+test('parseVarDecl — does NOT eat the {= } math form', () => {
+  assert.equal(c.parseVarDecl('= 3 * 7'), null);
+});
+test('parseVarDecl — bad name rejected', () => {
+  assert.equal(c.parseVarDecl('2x := 5'), null);     // name can't start with a digit
+  assert.equal(c.parseVarDecl('a.b := 5'), null);    // dotted name is not a var name
+  assert.equal(c.parseVarDecl('a-b := 5'), null);
+});
+test('parseVarDecl — empty RHS rejected', () => {
+  assert.equal(c.parseVarDecl('gold :='), null);
+  assert.equal(c.parseVarDecl('gold :=   '), null);
+});
+test('parseVarDecl — := only claims a LEADING name:= , not := mid-expression', () => {
+  // a body that is just an expression containing := elsewhere shouldn't parse as a decl
+  assert.equal(c.parseVarDecl(':= 5'), null);
+});
+
+// ── typed var declaration: unfold behavior (artifactToShorthand) ──────────────
+// A typed {name := expr} declaration unfolds back to editable text (O1); a
+// dialog-declared var (no `typed` flag) stays atomic (returns null).
+test('artifactToShorthand — typed formula var unfolds to {name := expr}', () => {
+  assert.equal(c.artifactToShorthand('var', { key:'k', name:'gold', expr:'50', typed:true }), '{gold := 50}');
+});
+test('artifactToShorthand — typed pick var unfolds to its source', () => {
+  assert.equal(c.artifactToShorthand('var', { key:'k', name:'beast', kind:'pick', expr:'dragon|wyrm', rolled:'wyrm', typed:true }), '{beast := dragon|wyrm}');
+});
+test('artifactToShorthand — dialog-declared var (no typed flag) stays atomic', () => {
+  assert.equal(c.artifactToShorthand('var', { key:'k', name:'foo', expr:'5' }), null);
+});
+test('artifactToShorthand — display-only var ref unfolds to {name}', () => {
+  assert.equal(c.artifactToShorthand('var', { key:'k', name:'foo', expr:'' }), '{foo}');
+});
