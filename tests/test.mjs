@@ -6780,6 +6780,21 @@ test('tmpWriteName — produces a hidden .pltmp sibling, not a .opml', () => {
   assert.equal(c.tmpWriteName('notes.opml'), '.notes.pltmp');
   assert.equal(c.tmpWriteName('Daily Log.opml'), '.Daily Log.pltmp');
 });
+// ── file-name display / normalize ────────────────────────────────────────────
+test('displayName — strips .opml and maps the unsaved sentinel', () => {
+  assert.equal(c.displayName('notes.opml'), 'notes');
+  assert.equal(c.displayName('Notes.OPML'), 'Notes');
+  assert.equal(c.displayName('unsaved'), 'Untitled');
+  assert.equal(c.displayName(''), 'Untitled');
+  assert.equal(c.displayName('no-extension'), 'no-extension');
+});
+test('toFileName — sanitizes and ensures a single .opml', () => {
+  assert.equal(c.toFileName('Project notes'), 'Project notes.opml');
+  assert.equal(c.toFileName('already.opml'), 'already.opml');
+  assert.equal(c.toFileName('  spaced  '), 'spaced.opml');
+  assert.equal(c.toFileName(''), 'outline.opml');
+  assert.equal(c.toFileName('a/b:c*?'), 'a-b-c--.opml');   // illegal path chars -> dashes
+});
 test('tmpWriteName — the temp name is NOT listed as a document', () => {
   // critical: a stray/interrupted temp must never appear in the workspace doc list
   const listed = host(c.workspaceDocList(['notes.opml', c.tmpWriteName('notes.opml')]));
