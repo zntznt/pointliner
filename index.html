@@ -18500,6 +18500,55 @@ if (window.visualViewport) {
 const AUTOSAVE_KEY = 'pointliner_autosave';
 let autosaveTimer = null;
 let autosaveDisabled = false; // set once an outline proves too large for localStorage
+
+// ── OPFS durable autosave (the working-copy store on non-folder-backed browsers) ──
+// The localStorage crash-buffer caps near 5MB and silently disables past it. OPFS
+// (Origin Private File System — Baseline since 2023, works in Chrome/Edge/Firefox/
+// Safari, desktop + mobile) is real durable browser-managed storage with a multi-GB
+// quota, so it replaces localStorage as the primary working-copy store wherever it
+// exists. localStorage stays as a synchronous fast-boot read + a fallback for the rare
+// browser without OPFS. Folder-backed mode is unaffected (it writes to the user's disk).
+// OPFS is async, so it can't feed the synchronous boot restore directly; instead boot
+// restores from localStorage instantly, then reconcileOpfsOnBoot() swaps in a newer OPFS
+// copy a beat later via adoptDoc. The async main-thread API (createWritable/getFile) is
+// used — no Web Worker needed since autosave is debounced, not per-keystroke-sync.
+const hasOPFS = !!(navigator.storage && navigator.storage.getDirectory);
+const OPFS_AUTOSAVE_NAME = 'autosave.json';
+let _opfsWriting = false, _opfsPending = null;   // coalesce: one write in flight, keep only the latest pending payload
+// Gate: until the boot reconcile has read OPFS, autosave is held entirely, or the
+// fresh-boot empty doc would clobber a durable OPFS copy before we can restore it (the
+// reload race). Set true once reconcileOpfsOnBoot finishes (or when there's no OPFS).
+let _opfsReconciled = !hasOPFS;
+
+async function opfsHandle(create) {
+  const dir = await navigator.storage.getDirectory();
+  return dir.getFileHandle(OPFS_AUTOSAVE_NAME, { create: !!create });
+}
+// Coalesced async write of the autosave payload to OPFS. Never throws to callers.
+async function writeOpfsAutosave(payload) {
+  if (!hasOPFS) return false;
+  if (_opfsWriting) { _opfsPending = payload; return true; }   // newest write wins
+  _opfsWriting = true;
+  try {
+    const fh = await opfsHandle(true);
+    const w = await fh.createWritable();
+    await w.write(payload); await w.close();
+    return true;
+  } catch (_) { return false; }
+  finally {
+    _opfsWriting = false;
+    if (_opfsPending != null) { const p = _opfsPending; _opfsPending = null; writeOpfsAutosave(p); }
+  }
+}
+// Read the OPFS autosave: returns { text, lastModified } or null. Never throws.
+async function readOpfsAutosave() {
+  if (!hasOPFS) return null;
+  try {
+    const fh = await opfsHandle(false);
+    const f = await fh.getFile();
+    return { text: await f.text(), lastModified: f.lastModified || 0 };
+  } catch (_) { return null; }   // missing file → null
+}
 // Most browsers cap localStorage near 5MB. Warn before we hit the wall so the
 // user can save to a real file rather than discovering a silent autosave loss.
 const STORAGE_SOFT_LIMIT = 4_200_000; // chars — proactive warning threshold
@@ -18539,31 +18588,42 @@ function showWorkspaceWarn(msg) {
 }
 
 function scheduleAutosave() {
-  // Once an outline is too large for localStorage, stop re-serializing the whole tree
-  // every 800ms only to fail — the OPML file is the store for big outlines. But a
-  // folder-backed doc (brief #4) still needs its continuous folder write, which is NOT
-  // size-limited and IS the durable store, so don't bail entirely when we have one.
-  if (autosaveDisabled && !workspaceFile) return;
+  // The durable working-copy store is OPFS (no size cap) where available, else the
+  // localStorage crash-buffer. Folder-backed docs (brief #4) ALSO write to the user's
+  // disk. Only bail when there is NO durable store at all: localStorage disabled AND no
+  // OPFS AND no folder. With OPFS present, a too-large tree still autosaves to OPFS.
+  if (autosaveDisabled && !hasOPFS && !workspaceFile) return;
+  // Boot race guard: until the OPFS boot reconcile has run, do NOT autosave at all — a
+  // fresh-boot empty doc would clobber the durable OPFS copy before we can restore it.
+  // A real user keypress in that tiny window sets _userEdited, so we don't lose it: the
+  // pending flag re-fires the autosave the moment reconcile completes.
+  if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    if (!autosaveDisabled) writeLocalAutosave();         // localStorage crash buffer (logic unchanged)
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
+    if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
+    if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
     if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
   }, 800);
 }
-// The localStorage crash-buffer write, factored out of scheduleAutosave so the folder
-// write can run alongside it (and still run when this is disabled by a too-large tree).
-function writeLocalAutosave() {
-  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
+let _autosaveDeferred = false;   // an autosave was requested before reconcile finished
+// The localStorage crash-buffer write. With OPFS as the durable store, hitting the
+// localStorage cap is no longer data-loss — OPFS still holds the work — so the warning
+// is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
+// avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
+function writeLocalAutosave(payload) {
+  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
-    if (payload.length > STORAGE_SOFT_LIMIT) {
+    if (!hasOPFS && payload.length > STORAGE_SOFT_LIMIT) {
       showStorageWarn('soft', 'This outline is getting large; auto-backup may stop soon. Save it to a file to be safe.');
     } else if (storageWarnState) {
-      storageWarnState = null; hideStorageWarn(); // back under the limit
+      storageWarnState = null; hideStorageWarn(); // back under the limit (or OPFS covers it)
     }
   } catch(e) {
-    autosaveDisabled = true; // don't thrash on every keystroke for a tree that can't fit
-    showStorageWarn('hard', 'This outline is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
+    autosaveDisabled = true; // localStorage is full; stop thrashing it every keystroke
+    // Only a real loss risk when there's no OPFS durable store to fall back on.
+    if (!hasOPFS) showStorageWarn('hard', 'This outline is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
   }
 }
 
@@ -18593,48 +18653,48 @@ let loadedFromEmbed = false;
   } catch(_) {}
 })();
 
+// Apply a parsed autosave payload (root + view prefs) to the live app. Shared by the
+// synchronous localStorage boot restore and the async OPFS boot reconcile.
+function applyAutosaveData(data) {
+  if (!data || !data.root) return false;
+  root = data.root;
+  migrateNodePrefixes(root);
+  buildIndex(root, null); resetDocCaches();
+  focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
+  if (data.fileName) {
+    fileName = data.fileName;
+    renderFileName();
+    updateTitle();
+  }
+  if (typeof data.showDone === 'boolean') {
+    showDone = data.showDone;
+    const btn = document.getElementById('btn-done');
+    btn.classList.toggle('active', showDone);
+    btn.title = showDone ? 'Hide done points' : 'Show done points';
+    btn.setAttribute('aria-pressed', String(showDone));
+  }
+  if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
+  if (data.agendaBars && typeof data.agendaBars === 'object') {
+    for (const k of ['timeline', 'calendar']) if (typeof data.agendaBars[k] === 'boolean') agendaBars[k] = data.agendaBars[k];
+  }
+  if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
+  if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
+  if (typeof data.ganttNamesW === 'number' && data.ganttNamesW > 0) ganttNamesW = clampGanttNamesW(data.ganttNamesW);
+  if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) accentId = data.accentId;
+  if (data.forcedTheme !== undefined) forcedTheme = data.forcedTheme;
+  applyTheme();
+  if (typeof data.fullWidth === 'boolean') { fullWidth = data.fullWidth; applyWidth(); }
+  dirty = false; // restored state is "clean" relative to disk
+  if (!root.docId) { ensureDocId(root); scheduleAutosave(); } // backfill legacy autosave
+  return true;
+}
+
 (function restoreAutosave() {
   if (loadedFromEmbed) return; // a shared snapshot is authoritative over local autosave
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (!raw) return;
-    const data = JSON.parse(raw);
-    if (data.root) {
-      root = data.root;
-      migrateNodePrefixes(root);
-      buildIndex(root, null); resetDocCaches();
-      focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
-      if (data.fileName) {
-        fileName = data.fileName;
-        renderFileName();
-        updateTitle();
-      }
-      if (typeof data.showDone === 'boolean') {
-        showDone = data.showDone;
-        const btn = document.getElementById('btn-done');
-        btn.classList.toggle('active', showDone);
-        btn.title = showDone ? 'Hide done points' : 'Show done points';
-        btn.setAttribute('aria-pressed', String(showDone));
-      }
-      if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
-      if (data.agendaBars && typeof data.agendaBars === 'object') {
-        for (const k of ['timeline', 'calendar']) if (typeof data.agendaBars[k] === 'boolean') agendaBars[k] = data.agendaBars[k];
-      }
-      if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
-      if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
-      if (typeof data.ganttNamesW === 'number' && data.ganttNamesW > 0) ganttNamesW = clampGanttNamesW(data.ganttNamesW);
-      if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) {
-        accentId = data.accentId;
-      }
-      if (data.forcedTheme !== undefined) forcedTheme = data.forcedTheme;
-      applyTheme();
-      if (typeof data.fullWidth === 'boolean') {
-        fullWidth = data.fullWidth;
-        applyWidth();
-      }
-      dirty = false; // restored state is "clean" relative to disk
-      if (!root.docId) { ensureDocId(root); scheduleAutosave(); } // backfill legacy autosave
-    }
+    applyAutosaveData(JSON.parse(raw));
   } catch(_) {}
 })();
 
@@ -18644,6 +18704,45 @@ ensureDocId(root);
 render();
 updateTitle();
 refreshIcons();
+
+// OPFS boot reconcile: localStorage gave us an instant first paint above. OPFS is the
+// durable store, so a beat later read it and, if it holds a STRICTLY NEWER copy than
+// what localStorage restored, swap that in (the durable copy wins). Also migrate the
+// existing localStorage autosave into OPFS the first time (so nobody's current work is
+// stranded in localStorage). Skipped for folder-backed / embedded docs (own source of
+// truth), and guarded on !dirty so it never clobbers edits made before it resolves.
+(async function reconcileOpfsOnBoot() {
+  if (!hasOPFS || loadedFromEmbed || workspaceFile) { _opfsReconciled = true; return; }
+  // Capture the doc as restored from localStorage (or empty). If the user somehow typed
+  // in the few ms before this async read resolves, root will differ and we won't clobber
+  // their edit with the OPFS copy. Autosave is held (scheduleAutosave gate) until below.
+  const beforeReconcile = JSON.stringify(root.children || []);
+  try {
+    const opfs = await readOpfsAutosave();
+    const localSavedAt = lastAutosaveSavedAt();   // ms, from the localStorage copy (0 if none)
+    if (opfs && opfs.text) {
+      let data; try { data = JSON.parse(opfs.text); } catch (_) { data = null; }
+      const opfsSavedAt = (data && typeof data.savedAt === 'number') ? data.savedAt : 0;
+      const userTypedSinceBoot = JSON.stringify(root.children || []) !== beforeReconcile;
+      // OPFS (the durable store) wins when it is at least as new as the localStorage copy
+      // (>= so a wiped localStorage at 0 still loses to a real OPFS copy) and the user
+      // hasn't already typed something new since boot.
+      if (data && data.root && opfsSavedAt >= localSavedAt && opfsSavedAt > 0 && !userTypedSinceBoot) {
+        applyAutosaveData(data);
+        render(); refreshIcons();
+      }
+    } else if (localSavedAt > 0) {
+      // No OPFS copy yet but localStorage has work → seed OPFS (first-run migration).
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (raw) await writeOpfsAutosave(raw);
+    }
+  } catch (_) { /* OPFS hiccup → localStorage copy stands; no loss */ }
+  finally {
+    _opfsReconciled = true;                 // autosave may now run
+    if (_autosaveDeferred) { _autosaveDeferred = false; scheduleAutosave(); }
+  }
+})();
+
 requestAnimationFrame(() => {
   // A shared snapshot (C1) opens in DISPLAY mode: the recipient should see the rendered,
   // re-rollable doc — not get dropped into edit-mode-on-point-1 (which unfolds pills to
