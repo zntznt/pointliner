@@ -2397,6 +2397,23 @@ function urgencyMark(state) {
   return state === 'overdue' ? '! ' : '';
 }
 
+// Pure: the urgency state the AGENDA should render for an item, given done-ness.
+// A done item (checked `- [x]` or a DONE/sequence-done keyword) is no longer urgent:
+// a past deadline that's already met is NOT overdue, so collapse 'overdue' (and any
+// other live-urgency state) to 'done'. The `.done` class still dims/strikes it; this
+// just stops the red. A non-done item keeps its date-derived state. Node-testable.
+function agendaState(it) {
+  return it && it.done ? 'done' : (it ? it.state : 'none');
+}
+
+// Pure: the agenda badge label for an item. A done item's "Nd overdue" is wrong (the
+// deadline was met), so a done + overdue item reads "done" instead; otherwise the
+// date-derived label (e.g. "3d overdue", "Tomorrow") stands. Node-testable.
+function agendaLabel(it) {
+  if (it && it.done && it.state === 'overdue') return 'done';
+  return it ? it.label : '';
+}
+
 
 // start with so the format continues (a new to-do gets its `- [ ]`, a new quote
 // its `> `). Keyword form continues with the same #keyword; #DONE restarts as
@@ -16419,9 +16436,9 @@ function agMini(text) {
 // title — due/starts <relative>[, running Nd][, done][· breadcrumb].
 function agItemAria(it) {
   const pathStr = it.path.length ? ' · ' + it.path.join(' › ') : '';
-  let s = it.title + ', ' + (it.due !== null ? 'due ' : it.start !== null ? 'starts ' : '') + it.label;
+  let s = it.title + ', ' + (it.due !== null ? 'due ' : it.start !== null ? 'starts ' : '') + agendaLabel(it);
   if (it.started && it.runningDays != null) s += it.runningDays === 0 ? ', started today' : ', running ' + it.runningDays + 'd';
-  if (it.done) s += ', done';
+  if (it.done && it.state !== 'overdue') s += ', done';  // agendaLabel already says "done" for a done+overdue item
   return s + pathStr;
 }
 
@@ -16443,24 +16460,26 @@ function mkAgChip(it, kind) {
   const pathStr = it.path.length ? ' · ' + it.path.join(' › ') : '';
   let aria;
   if (kind === 'run') {
-    // started point: running duration + deadline (if any), deadline drives color
-    chip.className = 'ag-chip ' + (it.due !== null ? it.state : 'none') + (it.done ? ' done' : '');
+    // started point: running duration + deadline (if any), deadline drives color.
+    // agendaState collapses a done item's urgency to 'done', so it's never overdue-red.
+    chip.className = 'ag-chip ' + (it.due !== null || it.done ? agendaState(it) : 'none');
     const elapsed = it.runningDays === 0 ? 'today' : it.runningDays + 'd';
     const run = document.createElement('span'); run.className = 'ag-run'; run.textContent = '▶ ' + elapsed;
     chip.appendChild(run);
     let deadlineTxt = '';
     if (it.due !== null) {
-      const dl = document.createElement('span'); dl.className = 'ag-badge deadline'; dl.textContent = 'due ' + it.label;
-      chip.appendChild(dl); deadlineTxt = ', due ' + it.label;
+      const dlLabel = agendaLabel(it);
+      const dl = document.createElement('span'); dl.className = 'ag-badge deadline'; dl.textContent = 'due ' + dlLabel;
+      chip.appendChild(dl); deadlineTxt = ', due ' + dlLabel;
     }
     const runTxt = it.runningDays === 0 ? 'started today' : 'running ' + it.runningDays + 'd';
     aria = it.title + ', ' + runTxt + deadlineTxt + pathStr;
   } else {
-    // upcoming deadline
-    chip.className = 'ag-chip ' + it.state + (it.done ? ' done' : '');
-    const badge = document.createElement('span'); badge.className = 'ag-badge deadline'; badge.textContent = it.label;
+    // upcoming deadline (a done item collapses to 'done', never overdue-red)
+    chip.className = 'ag-chip ' + agendaState(it);
+    const badge = document.createElement('span'); badge.className = 'ag-badge deadline'; badge.textContent = agendaLabel(it);
     chip.appendChild(badge);
-    aria = it.title + ', due ' + it.label + pathStr;
+    aria = it.title + ', due ' + agendaLabel(it) + pathStr;
   }
   const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
   chip.appendChild(titleEl);
@@ -16638,8 +16657,9 @@ function renderAgendaGantt(host, visible, totalDated) {
     // bar row (chart panel) — no inline label; name is in the left column
     const row = document.createElement('div'); row.className = 'agg-row';
     const bar = document.createElement('div');
-    // ongoing (no deadline) reads neutral; bars with a deadline carry its urgency tint
-    bar.className = 'agg-bar ' + r.kind + ' ' + (r.kind === 'ongoing' ? 'none' : r.state) + (r.done ? ' done' : '');
+    // ongoing (no deadline) reads neutral; bars with a deadline carry its urgency tint.
+    // agendaState collapses a done bar's urgency to 'done', so it's never overdue-red.
+    bar.className = 'agg-bar ' + r.kind + ' ' + (r.kind === 'ongoing' && !r.done ? 'none' : agendaState(r)) + (r.done ? ' done' : '');
     bar.style.left = (r.offsetDays * px) + 'px';
     bar.style.width = Math.max(6, r.spanDays * px) + 'px';
     wireAgNav(bar, r, agItemAria(r));
@@ -16820,8 +16840,10 @@ function renderAgendaCalendar(host, visible, totalDated) {
 
       for (const it of cell.items.slice(0, MAX_PER_CELL)) {
         const ich = document.createElement('div');
-        const itState = it.due !== null ? it.state : 'none';     // matches the chip's urgency class
-        ich.className = 'agc-item ' + itState + (it.done ? ' done' : '');
+        // matches the chip's urgency class; agendaState collapses a done item to
+        // 'done', so a met past deadline is neither overdue-red nor `!`-marked.
+        const itState = (it.due !== null || it.done) ? agendaState(it) : 'none';
+        ich.className = 'agc-item ' + itState;
         ich.textContent = urgencyMark(itState) + it.title;
         wireAgNav(ich, it, agItemAria(it));
         c.appendChild(ich);

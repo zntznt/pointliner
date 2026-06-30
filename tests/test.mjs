@@ -5899,6 +5899,28 @@ test('urgencyMark — only overdue earns a marker; others return empty', () => {
   assert.equal(c.urgencyMark(''), '');
 });
 
+// ── agendaState / agendaLabel — a DONE dated item is not overdue in the agenda ──
+test('agendaState — a done item collapses any urgency to "done"; live items keep their state', () => {
+  assert.equal(c.agendaState({ done: true,  state: 'overdue' }), 'done');   // the bug: was overdue-red
+  assert.equal(c.agendaState({ done: true,  state: 'today' }),   'done');
+  assert.equal(c.agendaState({ done: false, state: 'overdue' }), 'overdue'); // not done → still urgent
+  assert.equal(c.agendaState({ done: false, state: 'today' }),   'today');
+  assert.equal(c.agendaState({ done: false, state: 'soon' }),    'soon');
+  assert.equal(c.agendaState(null), 'none');
+});
+test('agendaLabel — a done+overdue item reads "done", not "Nd overdue"', () => {
+  assert.equal(c.agendaLabel({ done: true,  state: 'overdue', label: '3d overdue' }), 'done');
+  // a done item that is NOT overdue keeps its date label (e.g. finished early)
+  assert.equal(c.agendaLabel({ done: true,  state: 'soon',    label: 'Tomorrow' }),   'Tomorrow');
+  // a live overdue item keeps the urgent label
+  assert.equal(c.agendaLabel({ done: false, state: 'overdue', label: '3d overdue' }), '3d overdue');
+});
+test('agendaState — the urgencyMark and overdue class both vanish for a done item (the reported bug)', () => {
+  const doneOverdue = { done: true, state: 'overdue', label: '5d overdue', due: 100 };
+  assert.equal(c.agendaState(doneOverdue), 'done');           // class is not 'overdue' → no red
+  assert.equal(c.urgencyMark(c.agendaState(doneOverdue)), ''); // no '!' marker either
+});
+
 test('parseSearchQuery — due:today, due:overdue, due:<date', () => {
   const today = c.dueDateToday();
   const q1 = host(c.parseSearchQuery('due:today'));
