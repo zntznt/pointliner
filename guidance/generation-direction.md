@@ -124,9 +124,19 @@ enumerates each; the requirements are:
   generative-pill interaction).
 - Full round-trip + the §4 verification gate.
 
-**Named but DEFERRED (do not build on spec):**
-- **Inline declaration shorthand** (`{a := …}` or similar) — the only path that adds syntax; deferred
-  with its own collision matrix.
+**Status update (2026-06-29):**
+- **Inline declaration shorthand `{name := expr}` — SHIPPED (Stage A).** The typed twin of the
+  variable dialog: `{name := expr}` promotes to the same `[[var:key]]` declaration record, formula
+  or random-pick inferred from the RHS, unfolds back to editable `{name := expr}` on edit
+  (keyboard-only), with a ripple warning on value change / orphaning rename. `:=` is sniffed before
+  the `:`-splitting paths, so the `parseRules` collision §2 warned about does not occur. It does NOT
+  reintroduce the per-expansion `ctx.binds` model — it writes to the persistent variable system. See
+  `guidance/typed-var-declaration-proposal.md`.
+- **Positional/lexical resolution `{name}` = nearest declaration above — Stage B, NOT yet built.**
+  Approved in the proposal but deferred to its own PR (it changes the variable model and reshapes the
+  shared `collectVars` bus). Stage A keeps today's global last-wins resolution.
+
+**Still DEFERRED (do not build on spec):**
 - **Modifiers** (`a/an`, plural, capitalize) on a reference — a separable follow-up.
 - **Using a pick value in math** — out; pick values are text.
 - **Per-reference (non-global) re-roll** — out; the model is one value, all references update together.

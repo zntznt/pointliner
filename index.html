@@ -2418,6 +2418,75 @@ function renderContentHTML(node) {
   return html;
 }
 
+// Count display-only `{name}` references to a variable across the document (the
+// declaration nodes themselves are excluded — a reference has an empty expr). Used by the
+// typed-declaration ripple warning to say "N references". Pure walk over the live tree.
+function countVarRefs(name) {
+  const target = (name || '').toLowerCase();
+  let n = 0;
+  (function walk(node) {
+    if (!node) return;
+    for (const v of node.vars || []) {
+      if (!v.expr && (v.name || '').toLowerCase() === target) n++;
+    }
+    for (const c of node.children || []) walk(c);
+  })(root);
+  return n;
+}
+
+// Snapshot a node's TYPED variable declarations as name→displayValue, for before/after
+// comparison on edit-commit (the ripple warning). Value = the frozen pick `rolled` or the
+// formula `expr`. Only typed declarations participate (dialog vars edit via the dialog).
+function typedVarDeclSnapshot(node) {
+  const m = Object.create(null);
+  for (const v of node.vars || []) {
+    if (v.typed && v.name && v.expr) m[v.name.toLowerCase()] = v.kind === 'pick' ? String(v.rolled ?? '') : v.expr;
+  }
+  return m;
+}
+
+// Ripple warning for a typed `{name := expr}` declaration edited in this node (O1a):
+//  - VALUE change (same name, new value), references exist  → announce-after (non-blocking).
+//  - RENAME (old name gone, references to it now orphaned)  → announce + confirm-after with
+//    one-click Undo (the edit already committed; Undo reverts via the recorded text edit).
+// `before` is the name→value map captured pre-edit; `node` is post-promote; `prevText` is the
+// pre-edit text for the revert. Reference counts use the just-rebuilt tree (post-markDirty the
+// caller bumps _varsVer; we count against `root` which already includes this node's new text).
+function warnVarDeclRipple(node, before, prevText) {
+  const after = typedVarDeclSnapshot(node);
+  // VALUE changes: a name present before and after with a different value.
+  for (const nm of Object.keys(after)) {
+    if (nm in before && before[nm] !== after[nm]) {
+      const refs = countVarRefs(nm);
+      if (refs > 0) announce(`Updated ${nm}. ${refs} reference${refs === 1 ? '' : 's'} now show ${after[nm]}.`);
+    }
+  }
+  // RENAMES: a name present before but gone after, whose references are now orphaned. Only
+  // warn when it looks like a rename (the declaration didn't simply get deleted — a new typed
+  // decl with the OLD value appeared), and only when references actually existed.
+  for (const nm of Object.keys(before)) {
+    if (nm in after) continue;                       // still declared → not a rename-away
+    const refs = countVarRefs(nm);                   // references to the OLD name, now undefined
+    if (refs === 0) continue;                        // nothing orphaned → silent
+    const newName = Object.keys(after).find(k => !(k in before) && after[k] === before[nm]);
+    const what = newName ? `Renamed ${nm} to ${newName}.` : `Removed ${nm}.`;
+    announce(`${what} ${refs} reference${refs === 1 ? '' : 's'} ${refs === 1 ? 'is' : 'are'} now undefined.`);
+    // Confirm-after with revert. The edit already stands; offer a keyboard-solvable undo.
+    openConfirmDialog({
+      title: newName ? 'Rename variable?' : 'Remove variable?',
+      message: `${what} ${refs} point${refs === 1 ? '' : 's'} that reference ${nm} now show an undefined variable. Keep this change, or undo it?`,
+      confirmLabel: 'Keep', cancelLabel: 'Undo',
+    }).then(keep => {
+      if (keep) return;
+      // Undo: restore the pre-edit text for this node and re-render.
+      node.text = prevText;
+      resetDocCaches(); buildIndex(root, null); markDirty(); render();
+      announce(`Reverted. ${nm} restored.`);
+    });
+    break; // one rename warning per commit is enough
+  }
+}
+
 // Walk the entire tree in document order, evaluating each [[var:KEY]] token's
 // expression to build a name→number map available in math and dice formulas.
 // Variables may reference OTHER variables (e.g. area = pi*r^2 where r is a var);
@@ -7648,6 +7717,14 @@ function classifyBraceBody(body, rules, vars) {
     const expr = body.slice(1).trim();
     return expr && evalMath(expandAggExpr(expr, null), vars) !== null ? 'artifact' : 'invalid';
   }
+  const decl = parseVarDecl(body);                                     // {name := expr}
+  if (decl) {
+    // valid if the RHS is an evaluable formula OR a usable pick source (a rule, an
+    // alternation, dice). Mirrors promoteBraceBody's formula-vs-pick inference.
+    if (evalMath(decl.expr, vars) !== null) return 'artifact';
+    const c = classifyBraceBody(decl.expr, rules, vars);
+    return (c === 'artifact' || splitTopLevel(decl.expr, '|').length > 1) ? 'artifact' : 'invalid';
+  }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
@@ -7888,8 +7965,10 @@ function exitEdit(content, node) {
     return;
   }
 
+  const declsBefore = typedVarDeclSnapshot(node); // for the ripple warning (O1a)
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
+  warnVarDeclRipple(node, declsBefore, prevText); // announce value changes / confirm orphaning renames
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
@@ -11309,6 +11388,22 @@ function pruneGrammar(node) {
 // case the braces are left as plain text — the natural "escape": invalid stays
 // literal). Mutates the node's sidecar array on success.
 
+// Typed variable declaration: {name := expr} → { name, expr } (or null). The `:=`
+// operator is sniffed BEFORE any `:`-splitting path so it never collides with grammar
+// rule lines (`weapon: a | b`) or the `{= }` math sigil — see
+// guidance/typed-var-declaration-proposal.md. `name` reuses VAR_NAME_RE (same charset as
+// the `{name}` reference and the dialog); `expr` is the non-empty RHS, classified into
+// formula vs random-pick at promote time (the same rule classifyBraceBody uses). A body
+// with no `:=`, a bad name, or an empty RHS returns null (falls through to other branches
+// / stays literal). Pure: no DOM, no side effects.
+function parseVarDecl(body) {
+  const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*(.+)$/.exec((body || '').trim());
+  if (!m) return null;
+  const name = m[1], expr = m[2].trim();
+  if (!VAR_NAME_RE.test(name) || !expr) return null;
+  return { name, expr };
+}
+
 function promoteBraceBody(node, body) {
   body = body.trim();
   if (!body) return null;
@@ -11318,6 +11413,30 @@ function promoteBraceBody(node, body) {
     if (!roll) return null;
     (node.math ||= []).push(roll);
     return `[[math:${roll.key}]]`;
+  }
+  // variable declaration: {name := expr} — a formula or a random pick, frozen like the
+  // dialog's. Sniffed here (second, right after {= }) so `:=` can never reach the grammar
+  // rule parser. Formula vs pick inferred from the RHS: an evalMath-able expr is a formula;
+  // anything else is a random-pick grammar source (rolled once, frozen).
+  const decl = parseVarDecl(body);
+  if (decl) {
+    // `typed: true` marks a declaration authored via {name := expr} (vs the dialog). Only
+    // typed declarations unfold back to editable `{name := expr}` text — safe because the
+    // name lives in the text, so re-promotion never loses it. Dialog-declared vars have no
+    // flag and stay atomic (artifactToShorthand). See the proposal's §4 / O1.
+    const isFormula = evalMath(decl.expr, collectVars()) !== null;
+    if (isFormula) {
+      const rec = { key: varKey(), name: decl.name, expr: decl.expr, kind: undefined, rolled: undefined, typed: true };
+      (node.vars ||= []).push(rec);
+      return `[[var:${rec.key}]]`;
+    }
+    const rolled = rollPickSource(decl.expr);
+    if (rolled !== null) {
+      const rec = { key: varKey(), name: decl.name, kind: 'pick', expr: decl.expr, rolled, typed: true };
+      (node.vars ||= []).push(rec);
+      return `[[var:${rec.key}]]`;
+    }
+    return null; // RHS resolves as neither math nor a pick source → stays literal (escape hatch)
   }
   // dice: {2d6}, {4d6kh3}, {2d6!}, {4dF}
   if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {
@@ -11446,7 +11565,10 @@ function artifactToShorthand(type, rec) {
   if (type === 'dice') return rec.expr ? `{${rec.expr}}` : null;
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
   if (type === 'est')  return rec.expr ? `{${rec.expr}}` : null;
-  if (type === 'var')  return (!rec.expr && rec.name) ? `{${rec.name}}` : null; // display-only only
+  if (type === 'var') {
+    if (rec.typed && rec.name && rec.expr) return `{${rec.name} := ${rec.expr}}`; // typed decl unfolds (O1)
+    return (!rec.expr && rec.name) ? `{${rec.name}}` : null;                       // display-only ref
+  }
   if (type === 'grammar') {
     // A stateful sequence's config (mode + items) IS its text, so it unfolds to
     // {mode: a | b | c}. The transient draw state (pos/bag) isn't in the text and

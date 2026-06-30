@@ -169,7 +169,7 @@ export function loadCores() {
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates',
-    'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates',
+    'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates','parseVarDecl',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason','mathReasonPhrase',
