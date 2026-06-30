@@ -1199,6 +1199,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   #bpop{min-width:0;width:min(248px,calc(100vw - 16px))}
   #file-menu{min-width:0;width:min(290px,calc(100vw - 16px))}
   #io-card{margin-top:8vh}
+  /* Agenda on phones: the desktop side-by-side (controls | rows) leaves the Due/Running
+     rows only ~250px, so dated chips overflow into a hidden horizontal scroll. Stack the
+     controls ABOVE the rows so the chips get the full width; the divider becomes a bottom
+     border, and the controls sit in a wrapping row instead of eating side space. */
+  .ag-top{flex-direction:column;align-items:stretch}
+  .ag-controls{grid-template-columns:repeat(4,auto);justify-content:start;padding-right:0;padding-bottom:6px;margin-bottom:6px;border-right:0;border-bottom:1px solid var(--bdr)}
+  .ag-list{padding-left:0}
 }
 
 /* ── node links ── */
