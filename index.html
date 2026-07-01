@@ -18864,12 +18864,36 @@ let storageWarnState = null;          // null | 'soft' | 'hard' — avoid re-nag
 
 const storageWarn     = document.getElementById('storage-warn');
 const storageWarnMsg  = document.getElementById('storage-warn-msg');
-document.getElementById('storage-warn-save').addEventListener('click', () => { hideStorageWarn(); saveFile(); });
+const storageWarnBtn  = document.getElementById('storage-warn-save');
+// The action button is mode-aware: normally "Save to file", but the reconnect banner
+// (folder needs a fresh permission gesture after a relaunch) repurposes it to "Reconnect".
+let _warnAction = 'save';
+storageWarnBtn.addEventListener('click', () => {
+  hideStorageWarn();
+  if (_warnAction === 'reconnect') reconnectWorkspace(); else saveFile();
+});
 document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
+
+// A folder was connected in a previous session and its handle is still stored, but the
+// browser dropped the permission on relaunch (File System Access re-gates persisted
+// handles to 'prompt' across sessions — the folder was NOT moved or renamed). This is
+// recoverable with one click, so surface a soft, non-alarming banner with a Reconnect
+// button rather than leaving the app looking silently disconnected. pendingDir is already
+// set by the boot reopen path; reconnectWorkspace() re-requests permission on the click.
+function showReconnectBanner() {
+  if (!pendingDir) return;
+  _warnAction = 'reconnect';
+  storageWarnBtn.textContent = 'Reconnect';
+  storageWarnMsg.textContent = 'Reconnect “' + (pendingDir.name || 'your folder') + '” to keep auto-saving to it. It was not moved, the browser just needs permission again.';
+  storageWarn.classList.add('soft');
+  storageWarn.classList.add('on');
+  storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
 
 function showStorageWarn(kind, msg) {
   if (storageWarnState === kind) return; // already showing this level
   storageWarnState = kind;
+  _warnAction = 'save'; storageWarnBtn.textContent = 'Save to file';   // not the reconnect banner
   storageWarnMsg.textContent = msg;
   storageWarn.classList.toggle('soft', kind === 'soft');
   storageWarn.classList.add('on');
@@ -18889,6 +18913,7 @@ function hideStorageWarn() {
 function showWorkspaceWarn(msg) {
   if (_wsWarned) return;
   _wsWarned = true;
+  _warnAction = 'save'; storageWarnBtn.textContent = 'Save to file';   // error-tier: offer the Save-As fallback
   storageWarnMsg.textContent = msg;
   storageWarn.classList.remove('soft');
   storageWarn.classList.add('on');
@@ -19086,7 +19111,7 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
       workspaceDir = dir; await reopenWorkspaceDoc(dir, name);
       await restoreOpenTabs(dir);    // rehydrate the saved tab list (drops vanished files, P4)
     }
-    else { pendingDir = dir; }                   // needs a gesture → 'Reconnect' affordance
+    else { pendingDir = dir; showReconnectBanner(); }   // needs a gesture: surface a one-click Reconnect banner (P4 — not silent)
   } catch (_) { try { await idbDel(WORKSPACE_KEY); } catch (_) {} workspaceDir = null; }
   renderWorkspaceAffordance();
   refreshWorkspaceIndex();           // CF-1: build the index from the reopened folder (no-op when none)
