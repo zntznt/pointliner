@@ -1482,13 +1482,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
   /* Edit pencils on pills are hover-revealed on desktop — always show on touch. */
-  .dice-edit,.mk-edit,.gr-edit,.var-edit,.est-edit{
+  .dice-edit,.mk-edit,.gr-edit,.var-edit,.est-edit,.math-edit,.seq-edit{
     opacity:.7;width:26px;height:26px;font-size:.9em;background:var(--bg);border:1px solid var(--bdr);position:relative}
   /* Grow the TAP TARGET to ~44px without growing the visible 26px chip or the pill's line
      height: an invisible ::before overlay extends the hit area outward, biased to the right
      (away from the re-roll body, which is the icon+result to the pencil's left), so a near-
      miss opens edit instead of re-rolling (D6). Layout-neutral — the overlay is positioned. */
-  .dice-edit::before,.mk-edit::before,.gr-edit::before,.var-edit::before,.est-edit::before{
+  .dice-edit::before,.mk-edit::before,.gr-edit::before,.var-edit::before,.est-edit::before,.math-edit::before,.seq-edit::before{
     content:'';position:absolute;top:50%;left:0;transform:translateY(-50%);
     width:44px;height:44px}
   /* table row handle: wider tap target on touch, always show the grip cue */
@@ -2231,7 +2231,7 @@ function formatProgressCookie(kind, done, total) {
 // Pure: explicit node. (min/max over children ARE supported — the single-arg overload
 // is additive since evalMath's numeric min/max need ≥2 args; see aggregateChildren.)
 function childPropNumber(child, prop) {
-  const p = (child?.props || []).find(x => x.key === prop);
+  const p = (child?.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).trim().toLowerCase());
   if (!p) return null;
   const raw = String(p.val).trim();
   const n = Number(raw);
@@ -3221,10 +3221,14 @@ function safeUrl(u, allowDataImage) {
   return t;
 }
 // url/alt/title arrive already &<>-escaped from the caller; only quotes remain
-const escQ = s => (s || '').replace(/"/g,'&quot;');
 // Escape raw data for HTML text content / attributes (state names, etc.)
 const escHtml = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const escAttr = s => escHtml(s).replace(/"/g,'&quot;');
+// escQ is used ONLY inside attribute values. It must be a full attribute escaper, not
+// quotes-only: a hostile sidecar field (d.expr, v.name, mk.name from a malicious OPML)
+// containing "&<> would otherwise break out of the attribute. Alias to escAttr so every
+// aria-label/title/data-* site is safe; a correct attribute escape is never wrong here.
+const escQ = escAttr;
 
 // Common emoji shortcodes (:name:). Unknown codes are left as typed.
 const EMOJI = {
@@ -3277,20 +3281,23 @@ function renderNodeInline(node) {
   const saved = { dice: diceRenderList, markov: markovRenderList,
                   math: mathRenderList, est: estRenderList,
                   vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList,
-                  cookie: cookieNode };
+                  cookie: cookieNode, varMap: renderVarMap };
   _inlineDepth++;
   diceRenderList = node.dice || null; markovRenderList = node.markov || null;
   mathRenderList = node.math || null; estRenderList = node.est || null;
   varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
   seqRenderList = node.seq || null;
   cookieNode = node;
-  // globalVarMap is document-wide — leave it.
+  // globalVarMap is document-wide — leave it. renderVarMap is POSITIONAL scope, so it must
+  // follow the mirrored target or its var/math pills resolve against the source's scope.
+  renderVarMap = varMapAt(node);
   const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   diceRenderList = saved.dice; markovRenderList = saved.markov;
   mathRenderList = saved.math; estRenderList = saved.est;
   varRenderList = saved.vars; grammarRenderList = saved.grammar;
   seqRenderList = saved.seq;
   cookieNode = saved.cookie;
+  renderVarMap = saved.varMap;
   _inlineDepth--;
   return html;
 }
@@ -3337,7 +3344,9 @@ function renderCrossLinkPill(docId, target, label) {
 }
 
 function mdInline(s) {
-  s = (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Strip NUL first: \x00 is our stash sentinel (\x00N\x00), so a literal NUL in user
+  // text could otherwise collide with a placeholder and inject a stashed fragment.
+  s = (s || '').replace(/\x00/g, '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   // Stash code/image/link/footnote as opaque tokens so later passes (emoji,
   // hashtags, autolink) can't reach inside their URLs or attributes.
   const tok = [];
@@ -3635,7 +3644,7 @@ function diceBreakdownHTML(d) {
       }).join('');
       return `${ops}<span class="dice-grp">${label}<span class="dice-rolls">${rollsHtml}</span></span>`;
     }
-    return `${ops}<span class="dice-mod">${p.value}</span>`;
+    return `${ops}<span class="dice-mod">${escHtml(String(p.value))}</span>`;
   }).join('');
 }
 
@@ -3656,7 +3665,7 @@ function renderDicePill(key, d) {
     + `<span class="dice-ico"><i class="fa-solid fa-dice-d20"></i></span>`
     + `<span class="dice-formula">${diceBreakdownHTML(d)}</span>`
     + `<span class="dice-eq">=</span>`
-    + `<span class="dice-total">${totalStr}</span>`
+    + `<span class="dice-total">${escHtml(totalStr)}</span>`
     + `<span class="dice-edit" role="button" tabindex="-1" aria-label="Edit dice" title="Edit dice"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
@@ -5255,6 +5264,7 @@ function mtInline(node, raw) {
   seqRenderList     = node.seq     || null;
   cookieNode        = node;
   globalVarMap      = collectVars();
+  renderVarMap      = varMapAt(node);   // positional scope for this cell's var/math pills
   const html = mdInline(raw || '');
   diceRenderList = markovRenderList = mathRenderList = estRenderList = varRenderList = grammarRenderList = seqRenderList = null;
   cookieNode = null;
@@ -8266,7 +8276,7 @@ function attachContentEvents(content, node) {
       e.preventDefault(); e.stopPropagation();
       if (content.dataset.editing) {
         if (e.target.closest('.dice-edit')) { exitEdit(content, node); editDice(node, pill.dataset.key); }
-        else { const off = getCaretOffset(content); rerollDice(node, pill.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+        else { const off = getCaretOffset(content); rerollDice(node, pill.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
         // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.dice-edit')) editDice(node, pill.dataset.key);
@@ -8280,7 +8290,7 @@ function attachContentEvents(content, node) {
       e.preventDefault(); e.stopPropagation();
       if (content.dataset.editing) {
         if (e.target.closest('.est-edit')) { exitEdit(content, node); editEst(node, est.dataset.key); }
-        else { const off = getCaretOffset(content); rerollEst(node, est.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+        else { const off = getCaretOffset(content); rerollEst(node, est.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
         // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.est-edit')) editEst(node, est.dataset.key);
@@ -8294,7 +8304,7 @@ function attachContentEvents(content, node) {
       e.preventDefault(); e.stopPropagation();
       if (content.dataset.editing) {
         if (e.target.closest('.mk-edit')) { exitEdit(content, node); editMarkov(node, mk.dataset.key); }
-        else { const off = getCaretOffset(content); rerollMarkov(node, mk.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+        else { const off = getCaretOffset(content); rerollMarkov(node, mk.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
         // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.mk-edit')) editMarkov(node, mk.dataset.key);
@@ -8308,7 +8318,7 @@ function attachContentEvents(content, node) {
       e.preventDefault(); e.stopPropagation();
       if (content.dataset.editing) {
         if (e.target.closest('.gr-edit')) { exitEdit(content, node); editGrammar(node, gr.dataset.key); }
-        else { const off = getCaretOffset(content); rerollGrammar(node, gr.dataset.key); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
+        else { const off = getCaretOffset(content); rerollGrammar(node, gr.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
       } else {
         // display mode: the pill is a live widget — act in place, stay rendered
         if (e.target.closest('.gr-edit')) editGrammar(node, gr.dataset.key);
@@ -8334,7 +8344,7 @@ function attachContentEvents(content, node) {
       if (vRec?.kind === 'pick' && !e.target.closest('.var-edit')) {
         if (content.dataset.editing) {
           // mirror the dice edit-mode reroll: swap the buffer in place, keep the caret
-          const off = getCaretOffset(content); rerollPickVar(node, vp2.dataset.key, { repaintAll: false }); globalVarMap = collectVars(); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {}
+          const off = getCaretOffset(content); rerollPickVar(node, vp2.dataset.key, { repaintAll: false }); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {}
         } else {
           rerollPickVar(node, vp2.dataset.key); // re-renders: every {name} reference updates
         }
@@ -9804,7 +9814,7 @@ function collectPillActions(node) {
   if (!node) return [];
   const rows = [];
   const has = (type, key) => node.text.includes(`[[${type}:${key}]]`);
-  const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
+  const tag = s => { s = String(s ?? '').trim(); return s ? ` (${escHtml(s.length > 24 ? s.slice(0, 23) + '…' : s)})` : ''; };
   const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
   for (const d of node.dice || []) if (has('dice', d.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'🎲' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
@@ -12776,13 +12786,20 @@ function unfoldArtifacts(node) {
 }
 
 // Restore each untouched unfolded {sh} in `text` back to its token (pure helper).
+// `pairs` is in document order (unfoldArtifacts pushes left-to-right), so we refold
+// left-to-right from a monotonic cursor: two identical shorthands map first→first,
+// never re-attaching a frozen roll to a user-typed duplicate that happens to sit
+// earlier in the text (the indexOf-from-0 bug). A pair whose sh is not found at or
+// after the cursor was edited/removed → left for promoteInlineShorthand.
 function applyRefold(text, pairs) {
+  let out = '', cursor = 0;
   for (const u of pairs) {
-    const idx = text.indexOf(u.sh);
-    if (idx < 0) continue; // edited or removed → left for promoteInlineShorthand
-    text = text.slice(0, idx) + u.token + text.slice(idx + u.sh.length);
+    const idx = text.indexOf(u.sh, cursor);
+    if (idx < 0) continue;
+    out += text.slice(cursor, idx) + u.token;
+    cursor = idx + u.sh.length;
   }
-  return text;
+  return out + text.slice(cursor);
 }
 
 // Leaving edit mode: fold untouched {…} back to their original tokens (frozen state
@@ -13013,11 +13030,11 @@ function evalMath(input, vars = {}) {
     // When followed by '(' treat as a function call — don't let a document variable
     // named 'year'/'month'/'day'/etc. shadow a built-in function.
     if (peek() !== '(') {
-      // Document variable (no parens). `in` is required here — collectVars hands in a
-      // Proxy whose `has` trap drives lazy resolution, and hasOwnProperty would bypass
-      // it. The typeof guard rejects what `in` can't: an inherited Object.prototype
-      // member when a caller passes a plain map, and a failed lazy resolution
-      // (undefined) — both fail to null instead of going NaN downstream.
+      // Document variable (no parens). `vars` is the resolved plain null-proto map
+      // ({name: number|string}) from collectVars/varMapAt — resolution already happened,
+      // so there is no Proxy here. The `typeof v === 'number'` guard below is the real
+      // type safety: a string-valued pick var and a missing name both fail to null
+      // instead of going NaN downstream.
       if (name in vars) {
         const v = vars[name];
         if (typeof v === 'number') return v;
@@ -13640,7 +13657,7 @@ function renderVarPill(key, v) {
     const val = renderVarMap[(v.name || '').toLowerCase()];
     const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
-    const title = val === undefined ? 'Variable not found. Click to edit' : `$${v.name} = ${display}. Click to edit`;
+    const title = val === undefined ? 'Variable not found. Click to edit' : escAttr(`$${v.name} = ${display}. Click to edit`);
     const refLabel = val === undefined ? `Variable ${escQ(v.name)} not found. Click to edit`
       : `Variable ${escQ(v.name)} = ${escQ(display)}. Click to edit`;
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}" aria-label="${refLabel}">`
@@ -15588,7 +15605,7 @@ function performMultiDrop(ids, targetId, position) {
 // else touches the eight per-generation caches.
 //
 // THE CANONICAL REGISTRY — every whole-tree cache keyed on _varsVer (grep
-// `doc-cache` to list all eight declarations; a ninth MUST join this list AND
+// `doc-cache` to list all nine declarations; a tenth MUST join this list AND
 // be wired to _varsVer, or it will silently serve stale data):
 //   1. collectVars      (_varsCacheVer)
 //   2. collectRules     (_rulesCacheVer)
@@ -15598,6 +15615,7 @@ function performMultiDrop(ids, targetId, position) {
 //   6. collectSequences (_seqsCacheVer)
 //   7. knownStates      (_statesCacheVer)
 //   8. stateCmds        (_stateCmdsCacheVer)   ← no rootNode override; reads live state via allSequences()
+//   9. varMapAt         (_varMapAtCacheVer)    ← per-node positional scope; a Map keyed on node id, reset on generation bump
 //
 // markDirty does this on every edit, but a fresh document load (newFile/openFile/
 // restore) replaces `root` without an edit — so the previous document's caches

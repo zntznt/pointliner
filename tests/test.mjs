@@ -6129,7 +6129,7 @@ test('due dates: front-door wiring (src pins)', () => {
     new URL('../index.html', import.meta.url),
     'utf8'
   );
-  assert.ok(_src.includes("id:'due'") || _src.includes("id:’due’"), '/due slash entry missing');
+  assert.ok(_src.includes("id:'due'"), '/due slash entry missing');
   assert.ok(_src.includes('openDueDateDialog'), 'openDueDateDialog missing');
   assert.ok(_src.includes('parseDueDate'), 'parseDueDate missing');
   assert.ok(_src.includes('collectDueDates'), 'collectDueDates missing');
@@ -6794,6 +6794,66 @@ test('{y := x} promotes to a live formula that resolves to x (end-to-end regress
   const root = mk('', []); root.type = 'base'; root.children = [A, B];
   const vm = c.collectVars(root);
   assert.equal(vm.y, 2, '{y} must resolve to x = 2');
+});
+
+// ── applyRefold: position-anchored, not first-indexOf ────────────────────────
+// Bug: a bare text.indexOf(sh) re-attached a frozen token to a user-typed duplicate
+// shorthand sitting EARLIER in the text, re-rolling the original. Refold must map the
+// first-unfolded sh to the first occurrence, in order, left-to-right.
+test('applyRefold — duplicate shorthand keeps the frozen token at its own position', () => {
+  // One unfolded pair ({2d6} → its frozen token) but the user typed another {2d6} first.
+  const pairs = [{ sh: '{2d6}', token: '[[dice:frozenkey]]' }];
+  const out = c.applyRefold('{2d6} also {2d6}', pairs);
+  // The FIRST {2d6} is the user's fresh copy — it must stay {2d6} (promoted later);
+  // only the original (second) occurrence... but with one pair, first-match wins by order.
+  // The contract: exactly ONE {2d6} becomes the token, and the leftmost stays for promotion
+  // is NOT what we want — we want the SAME occurrence that was unfolded. With a single pair
+  // recorded left-to-right, the first textual {2d6} is the one that was unfolded originally,
+  // so it refolds; the user's typed one is the trailing text. Assert exactly one token, one raw.
+  assert.equal((out.match(/\[\[dice:frozenkey\]\]/g) || []).length, 1, 'exactly one frozen token restored');
+  assert.equal((out.match(/\{2d6\}/g) || []).length, 1, 'the other copy stays raw for promotion');
+});
+test('applyRefold — two pairs map first→first, second→second in order', () => {
+  const pairs = [{ sh: '{2d6}', token: '[[dice:k1]]' }, { sh: '{2d6}', token: '[[dice:k2]]' }];
+  const out = c.applyRefold('{2d6} and {2d6}', pairs);
+  assert.equal(out, '[[dice:k1]] and [[dice:k2]]', 'ordered occurrences map to ordered tokens');
+});
+test('applyRefold — an edited/removed sh is skipped, later untouched ones still refold', () => {
+  const pairs = [{ sh: '{2d6}', token: '[[dice:k1]]' }, { sh: '{1d20}', token: '[[dice:k2]]' }];
+  // user deleted the first artifact's text entirely; only {1d20} remains
+  const out = c.applyRefold('gone {1d20}', pairs);
+  assert.equal(out, 'gone [[dice:k2]]', 'missing sh skipped without consuming the cursor wrongly');
+});
+
+// ── childPropNumber: case-insensitive key match (parity with the est twin) ────
+test('childPropNumber — property key match is case-insensitive', () => {
+  const child = { props: [{ key: 'Cost', val: '5' }] };
+  assert.equal(c.childPropNumber(child, 'cost'), 5, 'lowercase ref finds Cost');
+  assert.equal(c.childPropNumber(child, 'COST'), 5, 'uppercase ref finds Cost');
+});
+test('aggregateChildren — sum(Cost) rolls up regardless of ref casing', () => {
+  const node = { children: [
+    { props: [{ key: 'cost', val: '3' }] },
+    { props: [{ key: 'cost', val: '4' }] },
+  ] };
+  // fn is a string; prop "Cost" must match the "cost" keys case-insensitively
+  assert.equal(c.aggregateChildren(node, 'sum', 'Cost'), 7);
+});
+
+// ── renderDicePill: hostile sidecar fields are escaped in body AND aria-label ──
+// A malicious OPML can put markup in _dice fields; every sink must escape it. The
+// aria-label previously used escQ (quotes-only) — a raw <img>/breakout survived.
+test('renderDicePill — a hostile total string is escaped everywhere it appears', () => {
+  const d = { key: 'r1', expr: '2d6', total: '<img src=x onerror=alert(1)>', parts: [] };
+  const html = c.renderDicePill('r1', d);
+  assert.ok(!html.includes('<img src=x'), 'raw markup must not survive in any sink (body or aria-label)');
+  assert.ok(html.includes('&lt;img'), 'the total is escaped');
+});
+test('renderDicePill — a quote-breakout in expr cannot escape the aria-label attribute', () => {
+  const d = { key: 'r1', expr: '" onmouseover="alert(1)', total: 0, parts: [] };
+  const html = c.renderDicePill('r1', d);
+  assert.ok(!html.includes('onmouseover="alert(1)"'), 'the raw handler must not become a live attribute');
+  assert.ok(html.includes('&quot;'), 'the injected quote is entity-escaped');
 });
 
 // ── typed var declaration: unfold behavior (artifactToShorthand) ──────────────
