@@ -19012,6 +19012,10 @@ ensureDocId(root);
 render();
 updateTitle();
 refreshIcons();
+// Platform-correct the search box's shortcut chip on load. The HTML hardcodes ⌘F;
+// on Windows/Linux it must read Ctrl+F. (openFileMenu also fixes it, but the search
+// chip is visible immediately, before the File menu is ever opened.)
+{ const sk = document.getElementById('search-key'); if (sk) sk.textContent = fmtKey('F'); }
 
 // OPFS boot reconcile: localStorage gave us an instant first paint above. OPFS is the
 // durable store, so a beat later read it and, if it holds a STRICTLY NEWER copy than
