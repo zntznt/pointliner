@@ -9510,12 +9510,15 @@ function collectPillActions(node) {
   const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
   const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
   for (const d of node.dice || []) if (has('dice', d.key)) {
-    rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'⚄' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
+    rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'🎲' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
     rows.push({ icon:PEN, label:'Edit dice' + tag(d.expr), fn:() => editDice(node, d.key) });
   }
   for (const g of node.grammar || []) if (has('grammar', g.key)) {
     const verb = g.mode ? (g.mode === 'shuffle' ? 'Draw next' : 'Advance deck') : 'Re-generate';
-    rows.push({ icon:{ fa:'fa-solid fa-shuffle', fb:'❖' }, label:verb + tag(g.mode ? g.mode : (g.origin || g.result)), fn:() => rerollGrammar(node, g.key) });
+    // Match the pill's icon: a deck/sequence record renders as fa-clone (its @-door and pill
+    // both use it), a plain grammar as fa-shuffle. The keyboard pill-action row must agree.
+    const genIcon = g.mode ? { fa:'fa-solid fa-clone', fb:'🃏' } : { fa:'fa-solid fa-shuffle', fb:'❖' };
+    rows.push({ icon:genIcon, label:verb + tag(g.mode ? g.mode : (g.origin || g.result)), fn:() => rerollGrammar(node, g.key) });
     rows.push({ icon:PEN, label:(g.mode ? 'Edit deck' : 'Edit grammar') + tag(g.mode ? g.mode : g.origin), fn:() => editGrammar(node, g.key) });
   }
   for (const m of node.math || []) if (has('math', m.key)) {
@@ -9591,7 +9594,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openAliasDialog(nodeId); } },
     { sec:'Annotate', icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
-    { sec:'Organize', icon:{ fa:'fa-solid fa-left-right', fb:'⇄' }, label:'Refile…',
+    { sec:'Organize', icon:{ fa:'fa-solid fa-arrow-right-arrow-left', fb:'⇄' }, label:'Refile…',
       fn: () => { hideBpop(); openRefileDialog(nodeId); } },
     { sec:'Organize', prim:true, icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
     { sec:'Organize', prim:true, icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
@@ -9606,7 +9609,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
         if (root.inboxId === nodeId) { root.inboxId = null; markDirty(); flashHint('Inbox cleared'); }
         else { root.inboxId = nodeId; markDirty(); flashHint('Inbox set to ' + crumbLabel(node)); }
       } },
-    { sec:'More', icon:{ fa:'fa-solid fa-calendar-day', fb:'📓' },
+    { sec:'More', icon:{ fa:'fa-solid fa-book', fb:'📓' },
       label: root.journal?.targetId === nodeId ? 'Unset as journal home' : 'Set as journal home',
       fn: () => {
         hideBpop();
@@ -9660,7 +9663,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // todo can become NEXT etc. — the badge target only exists once a keyword is set).
   if (node.type === 'todo') {
     actions.push({
-      sec:'Annotate', icon: { fa:'fa-solid fa-circle-check', fb:'◔' },
+      sec:'Annotate', icon: { fa:'fa-solid fa-square-check', fb:'◔' },
       label: 'Set state / priority…',
       fn: () => { showTodoPicker(nodeId, bulletEl); },
     });

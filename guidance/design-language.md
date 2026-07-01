@@ -53,6 +53,19 @@ subset — **a referenced icon class with no embedded glyph must degrade, never 
 blank box** (P4). Adding an icon = the subset-rebuild workflow in
 `adding-an-artifact.md`, which regenerates `FA_GLYPHS` alongside the font.
 
+**Corollary — one icon per concept, and no look-alikes in one list.** A concept wears the
+*same* glyph everywhere it is referenced (the `@`/`/` door, the rendered pill, the
+`collectPillActions` keyboard row, any dialog header): dice is always `fa-dice-d20`, a deck
+always `fa-clone`, journal always `fa-book`, and so on — the door, the pill, and the
+keyboard action must not disagree (e.g. a deck's pill-action once showed `fa-shuffle` while
+its pill showed `fa-clone`). Conversely, one glyph must not carry two unrelated meanings
+(`fa-left-right` was width **and** estimate **and** refile; refile moved to
+`fa-arrow-right-arrow-left`, leaving `fa-left-right` for the horizontal-span concept only),
+and visually near-identical glyphs (the `fa-circle-*` family, `fa-clone`/`fa-copy`, the
+check family) must not cluster in the *same* menu where a user picks between them. When
+these conflict, favor the concept's identity glyph and give the newcomer its own — a
+subset rebuild if the right glyph isn't in `FA_GLYPHS` yet.
+
 ## 2. Type system
 
 **Decision: opsz tracks rendered size — never inverted.** Fraunces' optical axis runs
