@@ -9492,7 +9492,9 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     more.className += ' bpop-more';
     more.setAttribute('role', 'menuitem');
     more.setAttribute('tabindex', '-1');
-    more.setAttribute('aria-expanded', 'false');
+    // No aria-expanded: this isn't a disclosure toggle for a child region — activating it
+    // re-renders the whole menu full and the row itself is gone, so it's a plain action
+    // that reveals more items, like any other menuitem.
     bpop.appendChild(more);
   }
 
