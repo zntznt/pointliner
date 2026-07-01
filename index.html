@@ -4572,16 +4572,36 @@ function flashHint(msg) {
   if (!el) {
     el = document.createElement('div');
     el.id = 'flash-hint';
-    el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;'
-      + 'background:var(--fg);color:var(--bg);font-size:12.5px;padding:7px 14px;border-radius:8px;'
-      + 'box-shadow:0 6px 24px rgba(0,0,0,.22);opacity:0;transition:opacity .15s;pointer-events:none';
     document.body.appendChild(el);
   }
+  // Re-apply neutral styling every call so a prior flashError (which reddened the shared
+  // element) doesn't leave later hints red.
+  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;'
+    + 'background:var(--fg);color:var(--bg);font-size:12.5px;padding:7px 14px;border-radius:8px;'
+    + 'box-shadow:0 6px 24px rgba(0,0,0,.22);opacity:0;transition:opacity .15s;pointer-events:none';
   el.textContent = msg;
   announce(msg); // every toast also reaches assistive tech via the #a11y-live region
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   clearTimeout(_hintTimer);
   _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
+}
+
+// Error toast: same #flash-hint element as flashHint, but red-tinted and longer-lived so a
+// failure (couldn't open a doc, invalid file, save failed) is actually noticed. Previously
+// ~10 catch blocks called an undefined `flashError`, so an error path threw a ReferenceError
+// instead of surfacing the message — this defines it. Restores neutral styling next time
+// flashHint fires (both write the same element's cssText).
+function flashError(msg) {
+  let el = document.getElementById('flash-hint');
+  if (!el) { flashHint(''); el = document.getElementById('flash-hint'); }
+  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;'
+    + 'background:var(--bad);color:var(--acc-fg);font-size:12.5px;padding:7px 14px;border-radius:8px;'
+    + 'box-shadow:0 6px 24px rgba(0,0,0,.22);opacity:0;transition:opacity .15s;pointer-events:none;max-width:calc(100vw - 32px)';
+  el.textContent = msg;
+  announce(msg);
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
+  clearTimeout(_hintTimer);
+  _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 4000);
 }
 
 // One-time touch onboarding (D4): on touch there's no hover, so the bullet's press-hold
@@ -15607,6 +15627,12 @@ const OPML_TYPE = { description:'Outline file', accept:{'text/x-opml':['.opml']}
 // forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
 // agendaShowDone.
 function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null } = {}) {
+  // Cancel any pending debounced autosave from the OUTGOING doc. The timer closure reads
+  // the module-level root/fileName/workspaceFile at fire time, so if it fired AFTER this
+  // swap it would write the NEW doc's content — or, worse, be orphaned so the outgoing
+  // doc's last edits never reached disk. Callers that need the outgoing doc persisted must
+  // flush BEFORE calling adoptDoc (switchWorkspaceDoc does). This just prevents a misfire.
+  clearTimeout(autosaveTimer);
   root = newRoot;
   fileHandle = fh;
   fileName = fname;
@@ -16280,7 +16306,26 @@ const DISCARD_CONFIRM = {
 // Switch to a different doc already in the folder. Dirty-guarded like Open.
 async function switchWorkspaceDoc(name) {
   if (name === fileName) return true;
-  if (dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return false;
+  // Persist the OUTGOING doc before we replace `root`. A folder-backed doc auto-saves on a
+  // debounce, so at switch time its most recent edits may not have hit disk yet — and the
+  // pending write reads the module-level root at fire time, so once we swap it's orphaned.
+  // This is the tab-switch data-loss bug (edits vanished on return). Snapshot the outgoing
+  // doc NOW and write it directly to ITS OWN handle before adopting, awaited so it lands.
+  if (workspaceFile && dirty) {
+    clearTimeout(autosaveTimer);          // stop the debounce firing against the new doc
+    const outHandle = workspaceFile, outName = fileName;
+    const outOpml = withFoldedActive(() => toOpml(root));
+    try {
+      await safeWriteOpml(workspaceDir, outName, outOpml);   // atomic write to the outgoing file
+      markClean();
+    } catch (e) {
+      // Don't silently swap away from unsaved work if we couldn't save it.
+      if (!await openConfirmDialog({ title: 'Could not save this document', message: 'Saving “' + outName + '” to the folder failed, so switching would lose your recent edits. Switch anyway (and lose them), or stay to try again?', confirmLabel: 'Switch and lose edits', cancelLabel: 'Stay' })) return false;
+    }
+  } else if (!workspaceFile && dirty && !await openConfirmDialog(DISCARD_CONFIRM)) {
+    // Single-file (detached) doc with unsaved edits: no auto-save target, so still confirm.
+    return false;
+  }
   try {
     const fh = await workspaceDir.getFileHandle(name);
     const file = await fh.getFile();
@@ -16295,7 +16340,14 @@ async function switchWorkspaceDoc(name) {
 // New document inside the folder (collision-safe). Reroutes File → New when a folder is
 // connected, so a fresh outline lands in the notebook and auto-writes from the first edit.
 async function newWorkspaceDoc() {
-  if (dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
+  // Same data-safety rule as switchWorkspaceDoc: the current doc is folder-backed and
+  // auto-saves, so flush its pending edits before we replace root with the new doc — never
+  // silently discard them (the old DISCARD prompt was wrong for an auto-saving doc).
+  if (workspaceFile && dirty) {
+    clearTimeout(autosaveTimer);
+    try { await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root))); markClean(); }
+    catch (_) { if (!await openConfirmDialog({ title: 'Could not save this document', message: 'Saving the current document failed, so creating a new one would lose your recent edits. Continue anyway, or stay?', confirmLabel: 'Continue and lose edits', cancelLabel: 'Stay' })) return; }
+  } else if (!workspaceFile && dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
   try {
     const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), 'outline.opml');
     const fh = await workspaceDir.getFileHandle(name, { create: true });
