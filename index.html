@@ -4628,7 +4628,11 @@ function mkCmdItem(icon, label, desc, onClick, active = false) {
   setIcon(ic, icon);
   const info = document.createElement('div');
   info.className = 'cmd-info';
-  info.innerHTML = `<span class="cmd-label">${label}</span>${desc ? `<span class="cmd-desc">${desc}</span>` : ''}`;
+  // Escape at the sink: label/desc reach some callers unescaped from attacker-controlled
+  // sidecar data (stateCmds' sq.name/sq.states, collectPillActions' d.expr/mk.name/… from a
+  // malicious _seq/_dice). Every caller passes a plain string (icons use the `icon` param, not
+  // HTML), so escaping here is idempotent and the single correct escape point for this sink.
+  info.innerHTML = `<span class="cmd-label">${escHtml(label)}</span>${desc ? `<span class="cmd-desc">${escHtml(desc)}</span>` : ''}`;
   div.append(ic, info);
   div.addEventListener('mousedown', e => { e.preventDefault(); onClick(); });
   return div;
@@ -9814,7 +9818,7 @@ function collectPillActions(node) {
   if (!node) return [];
   const rows = [];
   const has = (type, key) => node.text.includes(`[[${type}:${key}]]`);
-  const tag = s => { s = String(s ?? '').trim(); return s ? ` (${escHtml(s.length > 24 ? s.slice(0, 23) + '…' : s)})` : ''; };
+  const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
   const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
   for (const d of node.dice || []) if (has('dice', d.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'🎲' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
