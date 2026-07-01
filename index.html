@@ -313,6 +313,16 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .node{position:relative}
 .node-row{display:flex;align-items:flex-start;padding:1px 0;border-radius:4px;transition:background .08s}
 .node-row:hover{background:rgba(0,0,0,.028)}
+/* Touch swipe-to-indent: while swiping a row horizontally the content slides and a
+   direction chip (→ indent / ← outdent) is revealed from the trailing edge. The chip
+   goes solid accent once the swipe passes the commit threshold (.swipe-armed). */
+.node-content.swiping{transition:none;position:relative;z-index:1}
+.node-content.swipe-settle{transition:transform .18s cubic-bezier(.2,.8,.3,1)}
+.swipe-cue{position:absolute;top:50%;transform:translateY(-50%);display:none;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--acc) 14%,var(--hbg));color:var(--acc);font-size:14px;font-weight:700;pointer-events:none;z-index:0;opacity:.5;transition:opacity .1s,background .1s}
+.node-row.swipe-active .swipe-cue{display:flex}
+.swipe-cue.swipe-in{right:6px}    /* indent: chip on the right, content slides right */
+.swipe-cue.swipe-out{left:6px}    /* outdent: chip on the left, content slides left */
+.node-row.swipe-armed .swipe-cue{opacity:1;background:var(--acc);color:var(--acc-fg)}
 @media(prefers-color-scheme:dark){.node-row:hover{background:rgba(255,255,255,.04)}}
 .search-ctx .node-row:hover{background:transparent}
 /* Hover-reveal dwell: point affordances appear only after the cursor RESTS ~160ms,
@@ -4539,7 +4549,7 @@ function maybeShowTouchHint() {
   try { localStorage.setItem(TOUCH_HINT_KEY, '1'); } catch (_) {}
   let el = document.getElementById('flash-hint');
   if (!el) { flashHint(''); el = document.getElementById('flash-hint'); }       // ensure the toast exists
-  el.textContent = 'Tip: press and hold a bullet for actions; drag it sideways to indent.';
+  el.textContent = 'Tip: swipe a point right to indent, left to outdent. Press and hold a bullet for more actions.';
   announce(el.textContent);
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   clearTimeout(_hintTimer);
@@ -8120,6 +8130,94 @@ function attachContentEvents(content, node) {
   content.addEventListener('mouseleave', () => {
     if (content.dataset.editing) hiFnItem(null);
   });
+
+  // Touch: swipe the row horizontally to indent (right) / outdent (left). This is the
+  // reliable alternative to dragging the bullet, which is fiddly on a phone (the finger
+  // occludes the drop target and one gesture has to disambiguate tap/hold/drag/scroll).
+  if (IS_TOUCH && node.type !== 'divider') attachSwipeIndent(content, node);
+}
+
+// Swipe-to-indent for touch (single point). Bound on the row content; active only in
+// display mode (while editing, a horizontal drag is text selection). Reuses the same
+// indentNode/outdentNode the Tab keys use, so the structural result and undo are
+// identical. Guards against scroll: a gesture only becomes a swipe once it is clearly
+// horizontal (dx dominates dy and passes a start threshold); a vertical-first move is
+// left to the page as a normal scroll. A live cue chip + a resisted slide make the
+// otherwise-invisible gesture self-teaching (P2), and it commits only past a threshold.
+function attachSwipeIndent(content, node) {
+  const START = 12;      // px of horizontal travel before we claim the gesture as a swipe
+  const COMMIT = 56;     // px past which release performs the move
+  const MAX = 96;        // slide is resisted beyond this so it never runs off-screen
+  const row = () => content.closest('.node-row');
+  let sx = 0, sy = 0, swiping = false, decided = false, cue = null, dir = 0;
+
+  const ensureCue = (right) => {
+    // One reusable cue chip per row, created lazily on the first swipe.
+    const r = row(); if (!r) return null;
+    let c = r.querySelector('.swipe-cue');
+    if (!c) { c = document.createElement('div'); c.className = 'swipe-cue'; r.appendChild(c); }
+    c.className = 'swipe-cue ' + (right ? 'swipe-in' : 'swipe-out');
+    c.textContent = right ? '→' : '←';
+    return c;
+  };
+  const reset = (animate) => {
+    const r = row();
+    content.classList.toggle('swipe-settle', !!animate);
+    content.classList.remove('swiping');
+    content.style.transform = '';
+    if (r) r.classList.remove('swipe-active', 'swipe-armed');
+    swiping = false; decided = false; dir = 0;
+    if (animate) setTimeout(() => content.classList.remove('swipe-settle'), 200);
+  };
+
+  content.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || content.dataset.editing) return;
+    if (e.target.closest('.bullet, .md-task-check, .todo-state, .todo-prio, a, .node-link, .hashtag, .fn-ref, [data-token], .dice-roll, .mk-roll, .gr-roll, .math-roll, .var-pill')) return;
+    sx = e.clientX; sy = e.clientY; swiping = false; decided = false;
+  }, { passive: true });
+
+  content.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse' || content.dataset.editing) return;
+    if (!sx && !sy) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!decided) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { decided = true; swiping = false; return; } // vertical → scroll
+      if (Math.abs(dx) < START) return;
+      decided = true; swiping = true;                    // claim it as a horizontal swipe
+      content.classList.add('swiping');
+      row()?.classList.add('swipe-active');
+      try { content.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+    if (!swiping) return;
+    e.preventDefault();
+    dir = dx > 0 ? 1 : -1;
+    // right = indent, but indent is a no-op on a first child; left = outdent, a no-op at
+    // top level. Show the cue only in the direction that can actually move (P4: no cue
+    // for a gesture that would do nothing).
+    const canIndent  = (parentOf(node.id)?.children?.[0]?.id !== node.id);
+    const canOutdent = (() => { const p = parentOf(node.id); return p && p !== root && !(focusedId && p.id === focusedId) && parentOf(p.id); })();
+    const allowed = dir > 0 ? canIndent : canOutdent;
+    cue = ensureCue(dir > 0);
+    // Past MAX the slide is heavily resisted (rubber-band) so it never runs off-screen.
+    const slide = dir * (Math.abs(dx) > MAX ? MAX + (Math.abs(dx) - MAX) * 0.15 : Math.abs(dx));
+    content.style.transform = `translateX(${allowed ? slide : dir * Math.min(Math.abs(dx), 14)}px)`;  // dead-end direction: tiny rubber-band only
+    row()?.classList.toggle('swipe-armed', allowed && Math.abs(dx) >= COMMIT);
+  });
+
+  const finish = e => {
+    if (!swiping) { sx = sy = 0; return; }
+    const dx = (e.clientX ?? sx) - sx;
+    const commit = Math.abs(dx) >= COMMIT;
+    const goIndent = dx > 0;
+    reset(true);
+    sx = sy = 0;
+    if (commit) {
+      if (goIndent) indentNode(node.id); else outdentNode(node.id);
+      if (navigator.vibrate) try { navigator.vibrate(6); } catch (_) {}
+    }
+  };
+  content.addEventListener('pointerup', finish);
+  content.addEventListener('pointercancel', () => { if (swiping) reset(true); sx = sy = 0; });
 }
 
 // Classify a {body} the way promoteBraceBody will treat it on exitEdit. Pure —
@@ -18193,7 +18291,7 @@ const GUIDE = [
     ] },
   { id:'move-nest', cat:'getting-around',
     title:'Moving and nesting points',
-    body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point (it becomes a child of the point above) and Shift+Tab outdents it (it pops out to its parent's level); Alt+up/down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it. On a phone or tablet there is no Tab key, so drag the bullet sideways instead: press it and slide right to nest deeper, left to pop out, or up and down to reorder. Holding the bullet still opens its menu, and dragging straight up or down scrolls the page as usual.",
+    body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point (it becomes a child of the point above) and Shift+Tab outdents it (it pops out to its parent's level); Alt+up/down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it. On a phone or tablet there is no Tab key, so swipe a point sideways instead: swipe right to indent, left to outdent (a chip shows the direction). To reorder on touch, press and hold the bullet and drag up or down, or use Move up / Move down in its menu. Swiping straight up or down just scrolls the page as usual.",
     examples:[
       { syn:'Tab / Shift+Tab',  desc:'indent / outdent (keyboard)' },
       { syn:'Alt+↑ / Alt+↓',    desc:'move a point among its siblings' },

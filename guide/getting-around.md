@@ -18,9 +18,11 @@ Reshape the outline as your thinking changes: reorder points and change how deep
   it (it pops out to its parent's level). `Alt+Up` / `Alt+Down` moves a point among its siblings.
 - **Mouse:** drag a point's bullet. Drop between rows to reorder, or drop to the right of a point to
   nest under it.
-- **Touch (phone or tablet):** there is no `Tab` key, so drag the bullet sideways instead. Press it
-  and slide right to nest deeper, left to pop out, or up and down to reorder. Holding the bullet
-  still opens its menu, and dragging straight up or down scrolls the page as usual.
+- **Touch (phone or tablet):** there is no `Tab` key, so **swipe a point sideways** instead: swipe
+  right to indent (nest it under the point above), left to outdent (pop it out to its parent's
+  level). A small direction chip appears as you swipe, and the move commits when you release past it.
+  To reorder, press and hold the bullet and drag up or down, or use **Move up** / **Move down** in
+  the bullet's menu. Swiping straight up or down just scrolls the page as usual.
 
 ## Zoom into a point
 
