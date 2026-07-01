@@ -1215,7 +1215,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .logo{padding:4px 3px}
   .logo-mark{width:20px;height:20px}
   #toolbar-row{gap:6px;padding:0 8px}
-  #toolbar-row .spacer{display:none}
+  /* Keep both flex spacers (don't hide them like the base declutter did): with the
+     level control moved into the menu, the two spacers now center the search magnifier
+     and push the 5 icon toggles to the right, matching the wide-mode layout. */
   /* Phone toolbar can't hold logo + search + 4 level buttons + 5 icon toggles at 390px
      (search collapsed to 0, last icon clipped). Declutter: the level control moves into
      the logo/file menu (#fm-levels), and search collapses to a tappable magnifier that
