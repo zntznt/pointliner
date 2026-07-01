@@ -97,7 +97,7 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
 - **Multi-document folders.** Connect a folder of documents on disk; switch between them, link
   across them, and search the whole folder at once.
-  ([links across notes](links-and-references.md#links-across-notes) · [folder of notes](files-and-export.md#working-with-a-folder-of-notes))
+  ([links across notes](links-and-references.md#links-across-notes) · [folder of documents](files-and-export.md#working-with-a-folder-of-documents))
 - **Capture inbox.** A quick-capture box that drops a note into your inbox from anywhere, without
   navigating away. ([capture](tasks-and-organizing.md#capture-and-quick-inbox))
 - **Templates and refile.** Save a subtree as a reusable template; move any point's subtree

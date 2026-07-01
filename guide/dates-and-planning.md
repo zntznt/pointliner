@@ -45,7 +45,7 @@ Entries file themselves by date under a **Journal** point, nested year then mont
 (`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your outline. Type
 **`/journal`**, or click the calendar button, to open or create today's entry.
 
-(When a folder of notes is connected (a [folder](features.md#linking-and-connecting-notes)), the
+(When a folder of documents is connected (a [folder](features.md#linking-and-connecting-notes)), the
 journal can instead write one file per day on disk.)
 
 ---

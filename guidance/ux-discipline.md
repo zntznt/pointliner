@@ -52,6 +52,8 @@ A unified UX requires unified words. These terms are binding for **UI copy, the 
 
 | Concept | Internal term (code/data — unchanged) | User-facing term (copy/labels — canonical) | Never say |
 |---|---|---|---|
+| The single thing the user edits (one `.opml`) | `root` / `fileName` / `fileHandle` | **document** | outline, note, file* |
+| A collection of documents on disk | `workspaceDir` / `workspace…` | **folder** | workspace, notebook, library |
 | A line in the outline | `node` (`node.text`, `nodeById`) | **point** | item, row, bullet, entry |
 | The glyph left of a point | bullet | **bullet** (the glyph only) | dot, marker |
 | Parent/child relations | children/parent | **child / parent / nested** | sub-item |
@@ -74,6 +76,8 @@ A unified UX requires unified words. These terms are binding for **UI copy, the 
 | One-click column aggregates | `mtApplyAggregate` | **Calculate** | summary |
 
 > **Rule V-1 (MUST):** New user-facing strings use the user-facing term. **Rule V-2 (MUST NOT):** Rename the internal `node`/`artifact` identifiers — that is churn against load-bearing code; the split above is the entire point.
+>
+> **The containing hierarchy is folder > document > point.** \* "file" is not banned: a saved/downloaded `.opml` (or a self-contained `.html`) genuinely *is* a file, so "save to a file", "saved to a file", "Save to this file" are correct — **file = the on-disk storage, document = the thing you edit.** What is banned is calling the document itself an "outline" / "note" (use **document**). Note the two other legitimate senses of "outline" that stay: **"outliner"** (the app's nature) and **"the outline"** meaning the navigable tree/view you're looking at (not the file). And **per-point notes** (`node.note`, the text under a point), footnotes, and `is:note` keep "note" — that is a different concept from the document.
 
 The canonical split — **"node" in code, "point" in copy** — also resolves the terminology drift the existing docs already show (they use node / bullet / item / artifact / pill / widget interchangeably).
 

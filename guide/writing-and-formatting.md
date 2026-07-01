@@ -50,7 +50,7 @@ Footnotes are useful for research notes and annotated reading: the mark stays sm
 stays out of the way.
 
 Type **`@`** and choose **Footnote**, **Link**, or **Image**. (For links *between points* in your
-own outline, see [Links and references](links-and-references.md#linking-points) instead.)
+own document, see [Links and references](links-and-references.md#linking-points) instead.)
 
 ## Per-point notes
 
