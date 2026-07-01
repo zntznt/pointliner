@@ -1162,11 +1162,15 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agg-bar:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── Week pane — the planner spread: 7 day columns (+ optional Earlier) ── */
 .ag-week{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px}
-.agw-grid{display:flex;gap:5px;align-items:stretch;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
-.agw-col{flex:1 1 0;min-width:104px;display:flex;flex-direction:column;gap:3px;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px;background:color-mix(in srgb,var(--fg) 2%,transparent)}
+/* Week grid: 7 (+ optional Earlier) equal-width columns, all the SAME fixed height (sized
+   to the window, not the task count). Columns clip; the +N-more expander reveals overflow. */
+.agw-grid{position:relative;display:flex;gap:5px;align-items:flex-start;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px;height:min(46vh,320px)}
+.agw-col{flex:1 1 0;min-width:104px;height:100%;display:flex;flex-direction:column;gap:3px;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px;background:color-mix(in srgb,var(--fg) 2%,transparent);overflow:hidden}
 .agw-col.today{border-color:color-mix(in srgb,var(--acc) 45%,transparent);background:color-mix(in srgb,var(--acc) 7%,transparent)}
+/* an expanded week column overlays downward within the view (sticks, no floating popover) */
+.agw-col.agd-expanded{height:auto;max-height:min(46vh,320px);overflow-y:auto;z-index:6;box-shadow:var(--sh-2);border-color:var(--acc);background:var(--hbg)}
 .agw-col.past{opacity:.72}
-.agw-earlier{flex:0 0 auto;min-width:120px;max-width:180px;background:color-mix(in srgb,var(--bad) 5%,transparent);border-color:color-mix(in srgb,var(--bad) 22%,transparent)}
+.agw-earlier{flex:0 0 auto;min-width:120px;max-width:180px;overflow-y:auto;background:color-mix(in srgb,var(--bad) 5%,transparent);border-color:color-mix(in srgb,var(--bad) 22%,transparent)}
 .agw-colhead{font-size:11px;font-weight:600;color:var(--muted);display:flex;align-items:baseline;gap:5px;padding:1px 2px 3px}
 .agw-col.today .agw-colhead{color:var(--acc)}
 .agw-dow{text-transform:uppercase;letter-spacing:.04em}
@@ -1193,13 +1197,21 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agc-today:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .agc-dow span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center;padding:2px 0}
-.agc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
+/* The month grid sizes to the WINDOW, not to the number of tasks: a fixed height split into
+   6 equal rows × 7 equal columns, so every day box is the same size. Cells clip their content
+   (the +N-more expander reveals overflow); the grid itself never grows past this box. */
+.agc-grid{position:relative;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(6,1fr);gap:2px;height:min(52vh,360px)}
 .agc-week{display:contents}
-.agc-cell{min-height:56px;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default}
+.agc-cell{min-height:0;min-width:0;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default;overflow:hidden}
 .agc-cell:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
 .agc-cell.oom{opacity:.35}
 .agc-cell.today{background:color-mix(in srgb,var(--acc) 9%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
 .agc-cell.has-items{background:color-mix(in srgb,var(--fg) 6%,transparent)}
+/* An expanded day (clicked its +N) extends DOWN over the grid, overlaying the cells below
+   (sticks to the view, not a floating popover). The grid's rows are fixed 1fr tracks, so
+   growing this cell with align-self:start + z-index overlays siblings WITHOUT pushing them;
+   it scrolls internally so it never clips. */
+.agc-cell.agd-expanded{align-self:start;z-index:6;height:auto;max-height:min(52vh,360px);overflow-y:auto;box-shadow:var(--sh-2);border:1px solid var(--acc);background:var(--hbg)}
 .agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding:0 1px;flex-shrink:0}
 .agc-cell.today .agc-dom{color:var(--acc);font-weight:800;background:color-mix(in srgb,var(--acc) 18%,transparent);border-radius:3px;padding:0 4px}
 .agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg);flex-shrink:0}
@@ -1210,7 +1222,18 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agc-item.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
 .agc-item.future,.agc-item.none{background:color-mix(in srgb,var(--fg) 5%,transparent);border-color:color-mix(in srgb,var(--fg) 14%,transparent)}
 .agc-item.done{opacity:.5;text-decoration:line-through}
-.agc-more{font-size:10px;font-weight:600;color:var(--muted);padding-left:2px;line-height:1.3;flex-shrink:0}
+/* per-day summary + expander, shared by Week columns and Month cells */
+/* item list fills the remaining cell height and clips; when the day is expanded the parent
+   (.agd-expanded) grows and this scrolls with it */
+.agd-list{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.agd-expanded .agd-list{overflow:visible;flex:0 0 auto}
+.agd-count{font-size:10px;font-weight:600;color:var(--muted);line-height:1.2;flex-shrink:0;display:flex;align-items:baseline;gap:3px;white-space:nowrap}
+.agd-todo{color:var(--acc)}
+.agd-done{color:var(--muted)}
+.agd-dot{opacity:.5}
+.agd-more{font-size:10px;font-weight:600;color:var(--acc);background:transparent;border:none;padding:1px 2px;cursor:pointer;line-height:1.3;flex-shrink:0;text-align:left;border-radius:3px}
+.agd-more:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.agd-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 @media(hover:none){
   .agc-nav{width:36px;height:36px;font-size:18px}
   .agc-today{padding:5px 12px}
@@ -2564,7 +2587,10 @@ function agendaGantt(items, today = dueDateToday()) {
   lo = Math.min(lo, today); hi = Math.max(hi, today);
   const rangeStart = lo - 1, rangeEnd = hi + 1;     // one day of padding each side
   const rangeDays = rangeEnd - rangeStart + 1;
-  rows.sort((a, b) => a._s - b._s || a._e - b._e);
+  // Coherent Gantt order: active bars first (done sinks to the bottom), then earliest bar
+  // start (its left edge), then earliest end — so bars cascade top-to-bottom by where they
+  // begin, with completed work grouped below.
+  rows.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || a._s - b._s || a._e - b._e);
   for (const r of rows) { r.offsetDays = r._s - rangeStart; r.spanDays = r._e - r._s + 1; delete r._s; delete r._e; }
   return { rangeStart, rangeEnd, rangeDays, rows };
 }
@@ -2627,6 +2653,19 @@ function agendaWeekCells(items, weekEpoch, today = dueDateToday()) {
     days.push({ epochDay: ep, dom: d.getUTCDate(), dow: d.getUTCDay(), isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
   }
   return { start, days, earlier };
+}
+
+// Pure: for a day's items, split into active-first order (done sinks) and a {todo, done}
+// count. `todo` = items to do that day (not done); `done` = items marked complete. Used by
+// the Week/Month cells to show a "x to do · y done" summary and to prioritise active items
+// when a cell overflows. Node-testable.
+function agendaDayStats(items) {
+  const list = items || [];
+  let done = 0;
+  for (const it of list) if (it.done) done++;
+  // active first, then done; both keep incoming (chronological) order via a stable sort
+  const ordered = list.slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0));
+  return { ordered, todo: list.length - done, done };
 }
 // Pure: shift a week by `delta` weeks (7-day steps). Node-testable.
 function addWeeks(epochDay, delta) { return (epochDay == null ? dueDateToday() : epochDay) + delta * 7; }
@@ -17741,6 +17780,14 @@ function mkAgToggle(label, on, onToggle) {
   return b;
 }
 
+// A calendar/week nav arrow button (‹ › ‹‹ ››). onFire is wired by the caller (mousedown
+// keeps the caret invariant; keydown is the keyboard path).
+function mkAgNavBtn(glyph, aria) {
+  const el = document.createElement('span'); el.className = 'agc-nav'; el.textContent = glyph;
+  el.setAttribute('role', 'button'); el.setAttribute('tabindex', '0'); el.setAttribute('aria-label', aria);
+  return el;
+}
+
 function mkAgRow(label) {
   const row = document.createElement('div');
   row.className = 'ag-row'; row.setAttribute('role', 'group'); row.setAttribute('aria-label', label);
@@ -17868,10 +17915,13 @@ function renderAgendaList(host, visible, totalDated) {
   if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
   const body = document.createElement('div'); body.className = 'ag-rows';
   host.appendChild(body);
-  // Top row: deadlines not yet started. Bottom row: started points.
-  const dueItems = visible.filter(it => it.due !== null && !it.started).sort((a, b) => a.due - b.due);
+  // Top row: deadlines not yet started. Bottom row: started points. Within each row, DONE
+  // items sink to the end (they're no longer actionable); live items keep their urgency
+  // order (soonest/most-overdue first).
+  const dueItems = visible.filter(it => it.due !== null && !it.started)
+    .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || a.due - b.due);
   const runItems = visible.filter(it => it.started)
-    .sort((a, b) => (a.due ?? Infinity) - (b.due ?? Infinity) || a.start - b.start);
+    .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || (a.due ?? Infinity) - (b.due ?? Infinity) || a.start - b.start);
   if (!dueItems.length && !runItems.length) { body.appendChild(agMini('Nothing to show. Adjust the toggles.')); return; }
 
   const dueRow = mkAgRow('Due');
@@ -18074,6 +18124,69 @@ function ganttInitGlobal() {
   });
 }
 
+// Which day is currently expanded (epoch-day) in the Week/Month view — clicking an
+// overflowing day pins it to show every item; a re-render (nav, edit) resets it. Scoped to
+// the active view instance; null = none expanded.
+let _agExpandedDay = null;
+
+// Shared cell filler for Week columns and Month cells. Fills `box` with a "x · y" count
+// summary and the day's items — active first (done sinks). When there are more items than
+// `limit` and this day isn't the expanded one, it shows `limit` items + a clickable "+N"
+// that expands THIS day (extends the box in place to show all, no floating popover). The
+// expanded box stays within the view. `repaint` re-renders the whole view.
+// The day box has a FIXED height (sized to the window). We render the count badge, then ALL
+// items active-first into a flex region that CLIPS overflow (CSS), then let layout tell us
+// whether anything got cut: if it did, we swap in a "+N more" expander. No magic per-cell
+// limit — whatever fits, fits, at any cell size. Expanding removes the clip (agd-expanded).
+function fillAgendaDay(box, epochDay, items, mkItem, { repaint }) {
+  const { ordered, todo, done } = agendaDayStats(items);
+  const expanded = _agExpandedDay === epochDay;
+  if (todo || done) {
+    const count = document.createElement('div'); count.className = 'agd-count'; count.setAttribute('aria-hidden', 'true');
+    const parts = [];
+    if (todo) parts.push(`<span class="agd-todo">${todo} to do</span>`);
+    if (done) parts.push(`<span class="agd-done">${done} done</span>`);
+    count.innerHTML = parts.join('<span class="agd-dot">·</span>');
+    box.appendChild(count);
+  }
+  const list = document.createElement('div'); list.className = 'agd-list';
+  for (const it of ordered) list.appendChild(mkItem(it));
+  box.appendChild(list);
+  if (expanded) {
+    box.classList.add('agd-expanded');
+    if (ordered.length) {
+      const less = document.createElement('button');
+      less.type = 'button'; less.className = 'agd-more agd-less';
+      less.textContent = 'Show less'; less.setAttribute('aria-label', 'Collapse this day');
+      less.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = null; repaint(); });
+      box.appendChild(less);
+    }
+    return;
+  }
+  // After this frame, measure: did the clipped list cut anything off? If so, hide the
+  // overflowing tail and show how many were hidden, with a click to expand.
+  requestAnimationFrame(() => {
+    if (!list.isConnected) return;
+    const kids = [...list.children];
+    if (list.scrollHeight <= list.clientHeight + 1) return;   // everything fits
+    // walk from the top, keeping items whose bottom is within the visible area
+    const top = list.getBoundingClientRect().top;
+    const limit = list.clientHeight;
+    let fit = 0;
+    for (const k of kids) { if (k.getBoundingClientRect().bottom - top <= limit) fit++; else break; }
+    fit = Math.max(0, fit - 1);                                // leave a row for the "+N more"
+    const hidden = kids.length - fit;
+    if (hidden <= 0) return;
+    for (let i = fit; i < kids.length; i++) kids[i].style.display = 'none';
+    const more = document.createElement('button');
+    more.type = 'button'; more.className = 'agd-more';
+    more.textContent = '+' + hidden + ' more';
+    more.setAttribute('aria-label', 'Show ' + hidden + ' more item' + (hidden !== 1 ? 's' : '') + ' for this day');
+    more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });
+    box.appendChild(more);
+  });
+}
+
 // Week view — the planner spread: 7 day columns (Sun→Sat) for the shown week, plus a
 // leading "Earlier" column holding still-relevant overdue/running items dated before it.
 // ‹ week › Today nav. Each item is a chip that zooms on click. Pure layout via agendaWeekCells.
@@ -18081,14 +18194,15 @@ function renderAgendaWeek(host, visible, totalDated) {
   const wrap = document.createElement('div'); wrap.className = 'ag-week';
 
   const head = document.createElement('div'); head.className = 'agc-head';
-  const prev = document.createElement('span'); prev.className = 'agc-nav'; prev.textContent = '‹';
-  prev.setAttribute('role', 'button'); prev.setAttribute('tabindex', '0'); prev.setAttribute('aria-label', 'Previous week');
+  // ‹‹ prev-month · ‹ prev-week · [title] · › next-week · >> next-month
+  const jumpPrev = mkAgNavBtn('‹‹', 'Jump back one month');
+  const prev = mkAgNavBtn('‹', 'Previous week');
   const title = document.createElement('div'); title.className = 'agc-title'; title.setAttribute('aria-live', 'polite');
-  const next = document.createElement('span'); next.className = 'agc-nav'; next.textContent = '›';
-  next.setAttribute('role', 'button'); next.setAttribute('tabindex', '0'); next.setAttribute('aria-label', 'Next week');
+  const next = mkAgNavBtn('›', 'Next week');
+  const jumpNext = mkAgNavBtn('››', 'Jump forward one month');
   const todayBtn = document.createElement('span'); todayBtn.className = 'agc-today'; todayBtn.textContent = 'This week';
   todayBtn.setAttribute('role', 'button'); todayBtn.setAttribute('tabindex', '0'); todayBtn.setAttribute('aria-label', 'Jump to the current week');
-  const nav = document.createElement('div'); nav.className = 'agc-monthnav'; nav.append(prev, title, next);
+  const nav = document.createElement('div'); nav.className = 'agc-monthnav'; nav.append(jumpPrev, prev, title, next, jumpNext);
   head.append(nav, todayBtn); wrap.appendChild(head);
 
   const grid = document.createElement('div'); grid.className = 'agw-grid'; grid.setAttribute('role', 'group');
@@ -18124,24 +18238,29 @@ function renderAgendaWeek(host, visible, totalDated) {
       grid.appendChild(col);
     }
     for (const cell of days) {
+      const st = agendaDayStats(cell.items);
       const col = document.createElement('div'); col.className = 'agw-col' + (cell.isToday ? ' today' : '') + (cell.isPast ? ' past' : '');
       col.setAttribute('role','group');
-      const dt = new Date(cell.epochDay * 86400000);
-      const label = CAL_DOW_FULL[cell.dow] + ' ' + cell.dom + (cell.isToday ? ' (today)' : '') + ', ' + cell.items.length + ' item' + (cell.items.length!==1?'s':'');
+      const summary = (st.todo ? st.todo + ' to do' : '') + (st.todo && st.done ? ', ' : '') + (st.done ? st.done + ' done' : '');
+      const label = CAL_DOW_FULL[cell.dow] + ' ' + cell.dom + (cell.isToday ? ' (today)' : '') + (summary ? ', ' + summary : ', nothing');
       col.setAttribute('aria-label', label);
       const h = document.createElement('div'); h.className = 'agw-colhead'; h.setAttribute('aria-hidden','true');
       h.innerHTML = `<span class="agw-dow">${CAL_DOW[cell.dow]}</span> <span class="agw-dom">${cell.dom}</span>`;
       col.appendChild(h);
-      for (const it of cell.items) col.appendChild(mkItem(it));
+      fillAgendaDay(col, cell.epochDay, cell.items, mkItem, { repaint: paint });
       grid.appendChild(col);
     }
   }
-  const navWeek = (delta) => { agendaWeek = addWeeks(agendaWeek != null ? agendaWeek : dueDateToday(), delta); paint(); };
-  const goThisWeek = () => { agendaWeek = dueDateToday(); paint(); };
+  const cur = () => agendaWeek != null ? agendaWeek : dueDateToday();
+  const navWeek = (delta) => { _agExpandedDay = null; agendaWeek = addWeeks(cur(), delta); paint(); };
+  const jumpMonth = (delta) => { _agExpandedDay = null; agendaWeek = addMonths(cur(), delta); paint(); };   // ‹‹/›› = one month on the Week view
+  const goThisWeek = () => { _agExpandedDay = null; agendaWeek = dueDateToday(); paint(); };
   prev.addEventListener('mousedown', e => { e.preventDefault(); navWeek(-1); });
   next.addEventListener('mousedown', e => { e.preventDefault(); navWeek(1); });
+  jumpPrev.addEventListener('mousedown', e => { e.preventDefault(); jumpMonth(-1); });
+  jumpNext.addEventListener('mousedown', e => { e.preventDefault(); jumpMonth(1); });
   todayBtn.addEventListener('mousedown', e => { e.preventDefault(); goThisWeek(); });
-  for (const [el, fn] of [[prev, () => navWeek(-1)], [next, () => navWeek(1)], [todayBtn, goThisWeek]]) {
+  for (const [el, fn] of [[jumpPrev, () => jumpMonth(-1)], [prev, () => navWeek(-1)], [next, () => navWeek(1)], [jumpNext, () => jumpMonth(1)], [todayBtn, goThisWeek]]) {
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
   }
   paint();
@@ -18150,19 +18269,19 @@ function renderAgendaWeek(host, visible, totalDated) {
 function renderAgendaCalendar(host, visible, totalDated) {
   const wrap = document.createElement('div'); wrap.className = 'ag-calendar';
 
-  // month-nav header: ‹ Month YYYY › [Today]
+  // month-nav header: ‹‹ ‹ Month YYYY › ›› [Today]   (‹‹/›› jump a whole year)
   const head = document.createElement('div'); head.className = 'agc-head';
-  const prev = document.createElement('span'); prev.className = 'agc-nav'; prev.textContent = '‹';
-  prev.setAttribute('role', 'button'); prev.setAttribute('tabindex', '0'); prev.setAttribute('aria-label', 'Previous month');
+  const jumpPrev = mkAgNavBtn('‹‹', 'Jump back one year');
+  const prev = mkAgNavBtn('‹', 'Previous month');
   const title = document.createElement('div'); title.className = 'agc-title'; title.setAttribute('aria-live', 'polite');
-  const next = document.createElement('span'); next.className = 'agc-nav'; next.textContent = '›';
-  next.setAttribute('role', 'button'); next.setAttribute('tabindex', '0'); next.setAttribute('aria-label', 'Next month');
+  const next = mkAgNavBtn('›', 'Next month');
+  const jumpNext = mkAgNavBtn('››', 'Jump forward one year');
   const todayBtn = document.createElement('span'); todayBtn.className = 'agc-today'; todayBtn.textContent = 'Today';
   todayBtn.setAttribute('role', 'button'); todayBtn.setAttribute('tabindex', '0');
   todayBtn.setAttribute('aria-label', 'Jump to current month');
-  // centered month nav (‹ Month YYYY ›) with Today anchored to the right
+  // centered month nav with Today anchored to the right
   const monthNav = document.createElement('div'); monthNav.className = 'agc-monthnav';
-  monthNav.append(prev, title, next);
+  monthNav.append(jumpPrev, prev, title, next, jumpNext);
   head.append(monthNav, todayBtn);
   wrap.appendChild(head);
 
@@ -18215,9 +18334,17 @@ function renderAgendaCalendar(host, visible, totalDated) {
     }
   });
 
+  // one item chip (shared shape with the Week view's mkItem)
+  const mkItem = (it) => {
+    const ich = document.createElement('div');
+    const itState = (it.due !== null || it.done) ? agendaState(it) : 'none';
+    ich.className = 'agc-item ' + itState;
+    ich.textContent = urgencyMark(itState) + it.title;
+    wireAgNav(ich, it, agItemAria(it));
+    return ich;
+  };
   // paint() fills title + grid from agendaMonth — month nav re-paints WITHOUT
   // rebuilding the strip so focus stays on the nav button (like buildDatePicker).
-  const MAX_PER_CELL = 3;
   function paint() {
     const anchor = agendaMonth != null ? agendaMonth : dueDateToday();
     const vd = new Date(anchor * 86400000);
@@ -18227,15 +18354,16 @@ function renderAgendaCalendar(host, visible, totalDated) {
     let firstInMonth = null, week = null;
     agendaMonthCells(visible, anchor).forEach((cell, ci) => {
       if (ci % 7 === 0) { week = document.createElement('div'); week.className = 'agc-week'; week.setAttribute('role', 'row'); grid.appendChild(week); }
+      const st = agendaDayStats(cell.items);
       const c = document.createElement('div');
       c.className = 'agc-cell' + (cell.inMonth ? '' : ' oom') + (cell.isToday ? ' today' : '') + (cell.items.length ? ' has-items' : '');
       c.setAttribute('role', 'gridcell');
       c.setAttribute('tabindex', cell.isToday ? '0' : '-1');
-      // full date label so screen readers announce the day without looking inside
+      // full date label so screen readers announce the day + its to-do/done split
       const dt = new Date(cell.epochDay * 86400000);
+      const summary = (st.todo ? st.todo + ' to do' : '') + (st.todo && st.done ? ', ' : '') + (st.done ? st.done + ' done' : '');
       const cellLabel = CAL_DOW_FULL[dt.getUTCDay()] + ', ' + CAL_MONTHS[dt.getUTCMonth()] + ' ' + cell.dom
-        + (cell.isToday ? ' (today)' : '')
-        + (cell.items.length ? ', ' + cell.items.length + ' item' + (cell.items.length !== 1 ? 's' : '') : '');
+        + (cell.isToday ? ' (today)' : '') + (summary ? ', ' + summary : '');
       c.setAttribute('aria-label', cellLabel);
       if (cell.inMonth && !firstInMonth) firstInMonth = c;
 
@@ -18243,22 +18371,7 @@ function renderAgendaCalendar(host, visible, totalDated) {
       dom.setAttribute('aria-hidden', 'true');
       c.appendChild(dom);
 
-      for (const it of cell.items.slice(0, MAX_PER_CELL)) {
-        const ich = document.createElement('div');
-        // matches the chip's urgency class; agendaState collapses a done item to
-        // 'done', so a met past deadline is neither overdue-red nor `!`-marked.
-        const itState = (it.due !== null || it.done) ? agendaState(it) : 'none';
-        ich.className = 'agc-item ' + itState;
-        ich.textContent = urgencyMark(itState) + it.title;
-        wireAgNav(ich, it, agItemAria(it));
-        c.appendChild(ich);
-      }
-      if (cell.items.length > MAX_PER_CELL) {
-        const more = document.createElement('div'); more.className = 'agc-more';
-        more.textContent = '+' + (cell.items.length - MAX_PER_CELL);
-        more.title = (cell.items.length - MAX_PER_CELL) + ' more. Open List or Timeline to see all';
-        c.appendChild(more);
-      }
+      fillAgendaDay(c, cell.epochDay, cell.items, mkItem, { repaint: paint });
       week.appendChild(c);
     });
     // if today is not in this month, give tabindex=0 to the first in-month cell
@@ -18267,14 +18380,18 @@ function renderAgendaCalendar(host, visible, totalDated) {
     }
   }
 
-  const navMonth = (delta) => { agendaMonth = addMonths(agendaMonth != null ? agendaMonth : dueDateToday(), delta); paint(); };
-  const goToday  = () => { agendaMonth = dueDateToday(); paint(); };
+  const curM = () => agendaMonth != null ? agendaMonth : dueDateToday();
+  const navMonth = (delta) => { _agExpandedDay = null; agendaMonth = addMonths(curM(), delta); paint(); };
+  const jumpYear = (delta) => { _agExpandedDay = null; agendaMonth = addMonths(curM(), delta * 12); paint(); };   // ‹‹/›› = one year
+  const goToday  = () => { _agExpandedDay = null; agendaMonth = dueDateToday(); paint(); };
   prev.addEventListener('mousedown', e => { e.preventDefault(); navMonth(-1); });
   next.addEventListener('mousedown', e => { e.preventDefault(); navMonth(1); });
+  jumpPrev.addEventListener('mousedown', e => { e.preventDefault(); jumpYear(-1); });
+  jumpNext.addEventListener('mousedown', e => { e.preventDefault(); jumpYear(1); });
   todayBtn.addEventListener('mousedown', e => { e.preventDefault(); goToday(); });
-  prev.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navMonth(-1); } });
-  next.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navMonth(1); } });
-  todayBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToday(); } });
+  for (const [el, fn] of [[jumpPrev, () => jumpYear(-1)], [prev, () => navMonth(-1)], [next, () => navMonth(1)], [jumpNext, () => jumpYear(1)], [todayBtn, goToday]]) {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+  }
 
   paint();
 }
@@ -18912,7 +19029,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. Turn on Done to include completed points; toggle Running to show or hide started work. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many items it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work. Click any item to jump straight to it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
