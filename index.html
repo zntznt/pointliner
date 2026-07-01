@@ -1227,9 +1227,10 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .logo{padding:4px 3px}
   .logo-mark{width:20px;height:20px}
   #toolbar-row{gap:6px;padding:0 8px}
-  /* Keep both flex spacers (don't hide them like the base declutter did): with the
-     level control moved into the menu, the two spacers now center the search magnifier
-     and push the 5 icon toggles to the right, matching the wide-mode layout. */
+  /* Phone: put the search magnifier immediately after the logo (hide the first spacer,
+     the one between the dirty-dot and the search wrap), and keep the second spacer so it
+     pushes the 5 icon toggles to the right. */
+  #dirty-dot + .spacer{display:none}
   /* Phone toolbar can't hold logo + search + 4 level buttons + 5 icon toggles at 390px
      (search collapsed to 0, last icon clipped). Declutter: the level control moves into
      the logo/file menu (#fm-levels), and search collapses to a tappable magnifier that
@@ -1353,7 +1354,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* toolbar controls: meet the coarse-pointer tap-target floor (~44px). The icon/level/
      logo buttons are 28px tall on desktop; give them a 44px touch height (keep the visual
      compact — padding/min-height grows the hit area, the glyph stays put). */
-  #btn-done,#btn-notes,#btn-capture,#btn-journal,#btn-agenda{min-height:44px;min-width:44px}
+  /* Keep a ~44px TAP target (min-width, and the 44px row gives vertical slop) but cap the
+     visible box at 38px so a toggle's fill/border sits INSIDE the toolbar with breathing
+     room instead of bleeding into the toolbar's bottom border. */
+  #btn-done,#btn-notes,#btn-capture,#btn-journal,#btn-agenda{height:38px;min-height:0;min-width:44px}
+  /* Also drop the faint resting border on OFF toggles (a mouse-hover affordance); the ON
+     state still reads via its accent fill + icon color + aria-pressed. */
+  .tbtn-toggle{border-color:transparent}
   /* document tabs: meet the ~44px tap floor — taller tabs, larger close target, +button */
   .doc-tab{height:40px}
   .doc-tab-close{width:32px;height:32px;font-size:16px}
