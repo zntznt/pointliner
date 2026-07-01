@@ -6840,6 +6840,21 @@ test('aggregateChildren — sum(Cost) rolls up regardless of ref casing', () => 
   assert.equal(c.aggregateChildren(node, 'sum', 'Cost'), 7);
 });
 
+// ── mkCmdItem escapes label/desc at the sink (stored-XSS via a malicious _seq) ──
+// stateCmds builds label:sq.state / desc:`Set the ${sq.name} state.` from attacker-
+// controlled sidecar data, and mkCmdItem writes them to info.innerHTML. The escape
+// must live at the sink (mkCmdItem touches the DOM, so it can't run in this harness —
+// a source pin ties the escape to the specific innerHTML line). If someone re-adds a
+// raw ${label}/${desc} into that sink, this fails.
+test('mkCmdItem — cmd-label and cmd-desc are escaped at the innerHTML sink', () => {
+  const _src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const sink = _src.split('\n').find(l => l.includes('info.innerHTML') && l.includes('cmd-label'));
+  assert.ok(sink, 'the cmd-label/cmd-desc innerHTML sink still exists');
+  assert.ok(/\$\{escHtml\(label\)\}/.test(sink), 'label must be escHtml-wrapped at the sink');
+  assert.ok(/\$\{escHtml\(desc\)\}/.test(sink), 'desc must be escHtml-wrapped at the sink');
+  assert.ok(!/\$\{label\}/.test(sink) && !/\$\{desc\}/.test(sink), 'no raw label/desc interpolation survives');
+});
+
 // ── renderDicePill: hostile sidecar fields are escaped in body AND aria-label ──
 // A malicious OPML can put markup in _dice fields; every sink must escape it. The
 // aria-label previously used escQ (quotes-only) — a raw <img>/breakout survived.
