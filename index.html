@@ -1383,8 +1383,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button id="search-clear" title="Clear search">✕</button>
       <div id="search-hint" role="group" aria-label="Search filters">
         <div id="sh-workspace" hidden>
-          <div class="sh-saved-title" id="sh-workspace-title">Found in other notes</div>
-          <div id="sh-workspace-list" role="listbox" aria-label="Matches in other notes"></div>
+          <div class="sh-saved-title" id="sh-workspace-title">Found in other documents</div>
+          <div id="sh-workspace-list" role="listbox" aria-label="Matches in other documents"></div>
         </div>
         <div id="sh-saved" hidden>
           <div class="sh-saved-title">Saved</div>
@@ -1422,7 +1422,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="fm-head">
     <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
     <div class="fm-head-info">
-      <span class="fm-title" id="file-name" tabindex="0" role="textbox" spellcheck="false" title="Click to rename" aria-label="Outline name, click to rename">Untitled</span>
+      <span class="fm-title" id="file-name" tabindex="0" role="textbox" spellcheck="false" title="Click to rename" aria-label="Document name, click to rename">Untitled</span>
       <span class="fm-status" id="fm-status">Not saved to a file</span>
     </div>
     <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes"></span>
@@ -3078,9 +3078,9 @@ function renderCrossLinkPill(docId, target, label) {
   const capText = label || title || 'link';
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
-    return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another note)')}">${cap}</span>`;
+    return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another document)')}">${cap}</span>`;
   }
-  const docName = workspaceIndex.nameByDocId?.get(docId) || 'another note';
+  const docName = workspaceIndex.nameByDocId?.get(docId) || 'another document';
   return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docName)}" aria-label="${escQ(capText + ', link to a point in ' + docName)}">${cap}</span>`;
 }
 
@@ -4397,11 +4397,11 @@ function zoomTo(id)   { focusedId = id; render(); }
 function followLinkTarget(did, tid) {
   if (did && did !== (root.docId || '')) {                    // cross-doc → switch doc, then zoom (CF-2)
     const name = workspaceIndex?.nameByDocId?.get(did);
-    if (!name) { flashHint("That note isn't in this workspace anymore."); return; }
+    if (!name) { flashHint("That document isn't in this folder anymore."); return; }
     switchWorkspaceDoc(name).then(ok => {
       if (!ok) return;                                         // switch failed (already flashed its own error)
       if (nodeById(tid)) zoomInto(tid);
-      else flashHint("That link's point no longer exists in the note.");
+      else flashHint("That link's point no longer exists in the document.");
     });
   } else if (tid && nodeById(tid)) zoomInto(tid);             // same-doc, target present
   else flashHint("That link's target point no longer exists.");
@@ -13474,9 +13474,9 @@ function renderLinkMenu() {
     if (nd.docId) {
       const hint = document.createElement('span');
       hint.className = 'lp-doc-hint';
-      hint.textContent = ` · ${nd.docName || 'another note'}`;
+      hint.textContent = ` · ${nd.docName || 'another document'}`;
       item.appendChild(hint);
-      item.setAttribute('aria-label', `${nd.title}, in ${nd.docName || 'another note'}`);
+      item.setAttribute('aria-label', `${nd.title}, in ${nd.docName || 'another document'}`);
     } else if (nd.alias) {
       // alias hint: when an alias (not the title) caused this match, say so (P4 — no
       // silent "why did that appear?"). Additive markup; the title stays the label.
@@ -15046,13 +15046,13 @@ async function newFile() {
   if (workspaceDir) { await newWorkspaceDoc(); return; }   // folder connected → the new doc lands in the notebook (brief #5b)
   if (dirty && !await openConfirmDialog({
     title: 'Discard unsaved changes?',
-    message: 'Your current outline has unsaved changes. Starting a new file will discard them permanently.',
+    message: 'Your current document has unsaved changes. Starting a new one will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
   // Prompt for a name up front, so a new outline has an identity from the start.
   openInsertDialog({
     icon: { fa: 'fa-solid fa-plus', fb: '+' },
-    title: 'New outline',
+    title: 'New document',
     submitLabel: 'Create',
     fields: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Project notes', value: '',
@@ -15092,7 +15092,7 @@ async function commitFileName(rawDisplay) {
 async function openFile() {
   if (dirty && !await openConfirmDialog({
     title: 'Discard unsaved changes?',
-    message: 'Your current outline has unsaved changes. Opening a different file will discard them permanently.',
+    message: 'Your current document has unsaved changes. Opening a different one will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
   if (hasFSA) {
@@ -15382,7 +15382,7 @@ function applyFileModeLabels(folderBacked) {
     if (saveRow) saveRow.classList.add('is-status');   // dim, reads as status not action (⌘S still flushes)
   } else {
     if (newLabel) newLabel.textContent = 'New';
-    if (newDesc) newDesc.textContent = 'Start a fresh outline';
+    if (newDesc) newDesc.textContent = 'Start a fresh document';
     if (saveLabel) saveLabel.textContent = 'Save';
     if (saveDesc) saveDesc.textContent = 'Save to this file';
     if (saveIcon) setIcon(saveIcon, { fa: 'fa-solid fa-floppy-disk', fb: '↓' });
@@ -15429,8 +15429,8 @@ function renderWorkspaceAffordance() {
     connect.style.display = '';
     disconnect.style.display = '';
     label.textContent = 'Add to folder';
-    desc.textContent = 'This outline isn’t in the folder yet. Add it to auto-save here';
-    connect.setAttribute('aria-label', 'Add this outline to the folder ' + name);
+    desc.textContent = 'This document isn’t in the folder yet. Add it to auto-save here';
+    connect.setAttribute('aria-label', 'Add this document to the folder ' + name);
     connect.dataset.wsAction = 'save-to-workspace';
     if (workspaceIcon) setIcon(workspaceIcon, { fa: 'fa-solid fa-folder-plus', fb: '▣' });
     document.getElementById('workspace-dc-desc').textContent = 'Stop auto-saving. Your documents stay on disk';
@@ -15939,7 +15939,7 @@ function openReconcileDialog(name) {
     const ic = document.createElement('div'); ic.className = 'cmd-icon';
     ic.style.cssText = 'background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)';
     setIcon(ic, { fa:'fa-solid fa-arrow-right-arrow-left', fb:'⚠' });
-    const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'This note changed on disk';
+    const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'This document changed on disk';
     head.append(ic, ttl); ioCard.appendChild(head);
 
     const msg = document.createElement('p');
@@ -15972,7 +15972,7 @@ function openReconcileDialog(name) {
     ioBack.addEventListener('keydown', onKey);
 
     ioReturnFocus = document.activeElement;
-    ioCard.setAttribute('aria-label', 'This note changed on disk');
+    ioCard.setAttribute('aria-label', 'This document changed on disk');
     ioBack.classList.add('on');
     theirsBtn.focus();   // a sensible neutral default; Enter here takes the disk version
   });
@@ -16208,7 +16208,7 @@ function exportSelfContainedHtml() {
   const island = clone.querySelector('#pl-embedded-doc'); if (island) island.textContent = '';
   const shell = '<!DOCTYPE html>\n' + clone.outerHTML;
   downloadText(embedOpmlIntoHtml(shell, opml), '.html', 'text/html');
-  flashHint('Saved a self-contained copy. It opens as this app with your outline inside.');
+  flashHint('Saved a self-contained copy. It opens as this app with your document inside.');
 }
 
 // ─── search wiring ────────────────────────────────────────────────────────────
@@ -16308,7 +16308,7 @@ function forgetSavedSearch(q) {
 
 // WS-2: cross-doc search results in the focus-shown search panel. The in-doc filter (render()
 // dims the current doc to its matches) is unchanged; this surfaces matches in OTHER workspace
-// docs as a "Found in other notes · N" list, each row jumping to its point. Shown only when a
+// docs as a "Found in other documents · N" list, each row jumping to its point. Shown only when a
 // folder is connected, the query is non-empty, and there are other-doc hits.
 function renderWorkspaceSearchResults(query) {
   const sec  = document.getElementById('sh-workspace');
@@ -16317,16 +16317,16 @@ function renderWorkspaceSearchResults(query) {
   const results = (workspaceDir && workspaceIndex && query)
     ? searchWorkspace(query, workspaceIndex, root.docId) : [];
   if (!results.length) { sec.hidden = true; list.innerHTML = ''; return; }
-  document.getElementById('sh-workspace-title').textContent = `Found in other notes · ${results.length}`;
+  document.getElementById('sh-workspace-title').textContent = `Found in other documents · ${results.length}`;
   list.innerHTML = '';
   results.forEach(({ docId, nodeId, title, docName, snippet }) => {
     const row = document.createElement('div');
     row.className = 'sh-ws-item';
     row.setAttribute('role', 'option');
     row.setAttribute('tabindex', '0');
-    row.setAttribute('aria-label', `${title}, in ${docName || 'another note'}`);
+    row.setAttribute('aria-label', `${title}, in ${docName || 'another document'}`);
     const t = document.createElement('span'); t.className = 'sh-ws-title'; t.textContent = title;
-    const d = document.createElement('span'); d.className = 'sh-ws-doc';   d.textContent = ` · ${docName || 'another note'}`;
+    const d = document.createElement('span'); d.className = 'sh-ws-doc';   d.textContent = ` · ${docName || 'another document'}`;
     row.append(t, d);
     if (snippet && snippet !== title) {
       const s = document.createElement('div'); s.className = 'sh-ws-snip'; s.textContent = snippet; row.appendChild(s);
@@ -16647,12 +16647,12 @@ function renderBlPanel(sources, unlinked, cross) {
     item.textContent = t;
     const hint = document.createElement('span');
     hint.className = 'bl-doc-hint';
-    hint.textContent = ` · ${docName || 'another note'}`;
+    hint.textContent = ` · ${docName || 'another document'}`;
     item.appendChild(hint);
     item.title = 'Open this note';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable cross-doc backlink rows
     item.setAttribute('tabindex', '0');
-    item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another note'}. Open`);
+    item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another document'}. Open`);
     const go = () => {
       hideBlPanel();
       followLinkTarget(docId, nodeId);                          // open source note, or flash if it's gone (P4)
@@ -17913,7 +17913,7 @@ const GUIDE = [
     ] },
   { id:'workspace-search', cat:'getting-around',
     title:'Searching all your notes',
-    body:"When several notes are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your notes but can't remember which file. Matches from other notes appear in a 'Found in other notes' list; click one to jump straight there.",
+    body:"When several documents are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your documents but can't remember which one. Matches from other documents appear in a 'Found in other documents' list; click one to jump straight there.",
     examples:[] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
@@ -18279,7 +18279,7 @@ const GUIDE = [
     title:'Links across notes',
     body:"Weave together a network of notes: link a project note to a person note, connect a meeting note to an action item in another file or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your notes, not just the one you're in.",
     examples:[
-      { syn:'[[…]]',                desc:'pick a point in another note' },
+      { syn:'[[…]]',                desc:'pick a point in another document' },
       { syn:'+ New note',           desc:'make a new note and link to it at once' },
     ] },
 
@@ -18695,14 +18695,14 @@ function writeLocalAutosave(payload) {
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (!hasOPFS && payload.length > STORAGE_SOFT_LIMIT) {
-      showStorageWarn('soft', 'This outline is getting large; auto-backup may stop soon. Save it to a file to be safe.');
+      showStorageWarn('soft', 'This document is getting large; auto-backup may stop soon. Save it to a file to be safe.');
     } else if (storageWarnState) {
       storageWarnState = null; hideStorageWarn(); // back under the limit (or OPFS covers it)
     }
   } catch(e) {
     autosaveDisabled = true; // localStorage is full; stop thrashing it every keystroke
     // Only a real loss risk when there's no OPFS durable store to fall back on.
-    if (!hasOPFS) showStorageWarn('hard', 'This outline is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
+    if (!hasOPFS) showStorageWarn('hard', 'This document is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
   }
 }
 

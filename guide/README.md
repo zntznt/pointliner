@@ -48,8 +48,8 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
 - **[Dates and planning](dates-and-planning.md)** is scheduling points, the agenda and calendar,
   and the daily journal.
 - **[Links and references](links-and-references.md)** is `[[` links with live titles, backlinks,
-  unlinked mentions, and links across a folder of notes.
-- **[Files and export](files-and-export.md)** is saving, a folder of notes, appearance, and sharing
+  unlinked mentions, and links across a folder of documents.
+- **[Files and export](files-and-export.md)** is saving, a folder of documents, appearance, and sharing
   or exporting (Markdown, plain text, self-contained HTML).
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides for the pill families above.

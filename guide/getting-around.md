@@ -89,7 +89,7 @@ forget the one you are currently looking at.
 
 ## Searching all your notes
 
-When several notes are in the same folder (a [connected folder](features.md#linking-and-connecting-notes)),
+When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-notes)),
 search covers all of them at once, not just the one you are reading. Useful when you know something is
 in your notes but cannot remember which file. Matches from other notes appear in a **Found in other
 notes** list; click one to jump straight there.

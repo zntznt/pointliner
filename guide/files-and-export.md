@@ -13,23 +13,23 @@ type.
 To keep a file on disk that you own and can back up, press **`Ctrl/Cmd+S`**. Or connect a folder
 (see below) and the file updates on disk every time you make a change, with no manual step.
 
-## Working with a folder of notes
+## Working with a folder of documents
 
-Keep a whole library of notes in one folder on your computer and move between them the way you would
+Keep a whole library of documents in one folder on your computer and move between them the way you would
 tabs: a project note, a daily log, a person page, each its own file but searchable and
 [linkable](links-and-references.md#links-across-notes) together.
 
-Connect a folder once (**Chrome, Edge, or a similar browser only**) and every note saves to disk as you type and reopens
+Connect a folder once (**Chrome, Edge, or a similar browser only**) and every document saves to disk as you type and reopens
 right where you left it after a reload. A **tab strip** appears under the toolbar with the documents
 you have open: click a tab to switch, the `×` to close it, or the `+` to open another. `Ctrl/Cmd+Shift+]`
-and `[` step to the next and previous tab. Tabs are the notes you have opened (not the whole folder),
+and `[` step to the next and previous tab. Tabs are the documents you have opened (not the whole folder),
 and they reappear after a reload. From the **File** menu:
 
-- **Switch document** to see all the notes in the folder, jump to one, add a fresh **+ New
+- **Switch document** to see all the documents in the folder, jump to one, add a fresh **+ New
   document**, or delete an old one.
 - **Disconnect folder** steps back out to single-file mode.
 
-One file opens in one tab: you cannot open two tabs of the same note (they would share an identity and
+One file opens in one tab: you cannot open two tabs of the same document (they would share an identity and
 fight over the same file on disk).
 
 On other browsers the menu shows a copy-link invite to reopen in Chrome, Edge, or a similar browser instead. (The deeper
