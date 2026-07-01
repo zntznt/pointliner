@@ -5347,15 +5347,23 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('inboxes: []'), 'mkRoot default missing');
   assert.ok(_src.includes('const MAX_INBOXES = 10'), 'inbox cap missing');
   assert.ok(_src.includes('function inboxAt') && _src.includes('function setInboxSlot') && _src.includes('function removeInboxSlot'), 'slot helpers missing');
-  assert.ok(_src.includes('openCaptureDialog'), 'capture dialog missing');
   assert.ok(_src.includes('function doCapture'), 'capture action missing');
   assert.ok(_src.includes('id="btn-capture"'), 'toolbar button missing');
   assert.ok(_src.includes("getElementById('btn-capture').addEventListener"), 'button not wired');
+  // capture is a TOOLBAR STRIP (not a modal): a #capture-strip region toggled open/closed,
+  // rendered by renderCaptureStrip, focusing its input; ⌘⇧I toggles it.
+  assert.ok(_src.includes('id="capture-strip"'), 'capture strip region missing');
+  assert.ok(_src.includes('function renderCaptureStrip'), 'strip renderer missing');
+  assert.ok(_src.includes('function closeCapture') && _src.includes('function toggleCapture'), 'strip open/close missing');
+  assert.ok(_src.includes("getElementById('cap-input')"), 'strip input focus missing');
+  assert.ok(_src.includes('toggleCapture()'), '⌘⇧I toggle wiring missing');
   // slot shortcuts: ⌘⇧<N> capture-to-slot (adopt current point if empty), ⌘⌥<N> set-as-inbox
   assert.ok(_src.includes('openCaptureDialog(d === 0 ? 10 : d)'), 'slot capture shortcut missing');
   assert.ok(_src.includes('function captureCurrentPointId'), 'current-point adopt path missing');
-  // no destination yet → the capture action routes to the manager, never silently no-ops (P4)
-  assert.ok(_src.includes('if (!inbox) { renderCaptureDest(); return; }'), 'unset-inbox path missing');
+  // in-strip ⌘⇧<N> switches the target slot without reopening (captureTargetSlot)
+  assert.ok(_src.includes('function capInputKeydown') && _src.includes('captureTargetSlot(d === 0 ? 10 : d)'), 'in-strip slot switch missing');
+  // no destination yet → the capture action opens the manager, never silently no-ops (P4)
+  assert.ok(_src.includes('if (!inbox) { captureManage = true; renderCaptureStrip(); return; }'), 'unset-inbox path missing');
   // captured text is markdown-aware (a typed - [ ] becomes a to-do)
   assert.ok(_src.includes('deriveTypeFromText(text)') && _src.includes('todoDoneFromText(text)'), 'capture not markdown-aware');
 });

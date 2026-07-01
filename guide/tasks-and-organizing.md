@@ -77,14 +77,16 @@ Set up to **10 inboxes** (numbered 1 to 10) and capture into any of them from an
 lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed `- [ ]`
 becomes a to-do.
 
-Press `Ctrl/Cmd+Shift+I` (or the toolbar **inbox button**) to open the Capture dialog, or
-`Ctrl/Cmd+Shift+1` through `0` to capture **straight to inbox 1 through 10**. If a numbered slot has no
-inbox yet and a point is selected, that point **becomes** that inbox. While the dialog is open the same
-keys switch the destination (they move the selector, they do not reopen it), and you can click a slot
-chip too. `Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1 through 10; a point's menu adds
-or removes an inbox slot, and **Manage** in the dialog lists them all. The dialog stays open after each
-capture with a running count, so you can empty your head in one sitting. `Enter` captures;
-`Shift+Enter` adds a line break.
+Capture is a **toolbar strip**, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (or the toolbar
+**inbox button**) to toggle it open below the toolbar with the cursor already in its input, while the
+outline stays fully visible and usable underneath, so you insert without interrupting your work.
+`Ctrl/Cmd+Shift+1` through `0` open it targeting **inbox 1 through 10**. If a numbered slot has no
+inbox yet and a point is selected, that point **becomes** that inbox. While the strip is open the same
+keys switch the destination (they move the selector, they do not reopen it); open the destination
+chooser (the **▾** chip) to click a slot, or add and remove inboxes inline. `Ctrl/Cmd+Alt+1` through
+`0` sets the current point as inbox 1 through 10; a point's menu adds or removes an inbox slot too. The
+strip stays open after each capture with a running count, so you can empty your head in one sitting.
+`Enter` captures; `Shift+Enter` adds a line break; `Esc` closes.
 
 ## Nicknames (aliases)
 

@@ -963,28 +963,43 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .tp-row.tp-top .tp-title{font-weight:600}
 .tp-title.tp-anc{color:var(--muted)}
 .rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
-/* capture / quick inbox dialog */
-.cap-dest{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
-.cap-dest-name{color:var(--fg);font-weight:500;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cap-dest-name.unset{color:var(--warn)}
-.cap-change{font-size:12px;color:var(--acc);background:none;border:none;cursor:pointer;padding:2px 5px;border-radius:4px}
-.cap-change:hover,.cap-change:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);outline:none}
-.cap-textarea{width:100%;min-height:74px;resize:vertical;font-family:var(--font);font-size:14px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:9px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
-.cap-textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
-.cap-hint{font-size:11px;color:var(--muted);margin:6px 2px 0}
-.cap-confirm{font-size:12px;color:var(--ok);margin-top:6px;min-height:1.1em;font-weight:500}
-/* multi-inbox: destination chips (one per configured inbox), and the manage list */
-.cap-slots{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
-.cap-slot{display:inline-flex;align-items:center;gap:6px;max-width:220px;font:inherit;font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:4px 9px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .1s,border-color .1s}
-.cap-slot:hover{border-color:var(--muted)}
-.cap-slot.cur{background:color-mix(in srgb,var(--acc) 14%,transparent);border-color:color-mix(in srgb,var(--acc) 40%,transparent);color:var(--acc)}
+/* ── capture strip (toolbar dock, like the agenda — not a modal) ── */
+#capture-strip{display:none;flex-direction:column;gap:5px;padding:6px 12px 7px;border-top:1px solid var(--bdr);background:var(--hbg)}
+#capture-strip.on{display:flex}
+#btn-capture.active{color:var(--acc)}
+.cap-row{display:flex;align-items:flex-start;gap:7px;min-width:0}
+/* destination selector: [▾ N · name] — click to open the in-strip manager */
+.cap-dest-btn{flex:0 0 auto;max-width:230px;display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;min-height:34px}
+.cap-dest-btn:hover{border-color:var(--muted)}
+.cap-dest-btn.open{border-color:color-mix(in srgb,var(--acc) 50%,transparent);background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.cap-dest-btn.unset{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-caret{font-size:10px;color:var(--muted);transition:transform .12s}
+.cap-dest-btn.open .cap-caret{transform:rotate(180deg)}
 .cap-slot-n{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--muted) 22%,transparent);color:var(--fg);font-family:var(--mono);font-size:10px;font-weight:700;flex-shrink:0}
-.cap-slot.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
-.cap-manage{display:flex;flex-direction:column;gap:6px;margin:4px 0 12px}
-.cap-manage-row{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--fg)}
-.cap-manage-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cap-manage-rm{font-size:11.5px;color:var(--bad);background:none;border:1px solid var(--bdr);border-radius:var(--r-xs);padding:2px 8px;cursor:pointer;flex-shrink:0}
-.cap-manage-rm:hover,.cap-manage-rm:focus-visible{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:var(--bad);outline:none}
+/* the input grows with content; single-row default */
+.cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:14px;line-height:1.4;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:7px 11px;outline:none;min-height:34px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto}
+.cap-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.cap-go{flex:0 0 auto;font:inherit;font-size:12.5px;font-weight:600;color:var(--acc-fg);background:var(--acc);border:1px solid var(--acc);border-radius:var(--r-md);padding:0 14px;min-height:34px;cursor:pointer}
+.cap-go:hover{filter:brightness(1.06)}
+.cap-go:disabled{opacity:.45;cursor:default}
+.cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.cap-close{flex:0 0 auto;width:30px;min-height:34px;font-size:17px;line-height:1;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-md);cursor:pointer}
+.cap-close:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}
+.cap-meta{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 2px}
+.cap-hint{font-size:11px;color:var(--muted)}
+.cap-confirm{font-size:11.5px;color:var(--ok);font-weight:600;white-space:nowrap}
+/* row 2 — in-strip destination manager: chips (pick + remove) and Add */
+.cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 2px 1px;border-top:1px dashed var(--bdr)}
+.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;border:1px solid var(--bdr);border-radius:var(--r-md);overflow:hidden;background:var(--bg)}
+.cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 45%,transparent);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.cap-chip-pick{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:var(--fg);background:none;border:none;padding:4px 4px 4px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cap-chip.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
+.cap-chip-rm{font-size:14px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr);padding:0 7px;cursor:pointer}
+.cap-chip-rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
+.cap-add{font:inherit;font-size:12px;color:var(--acc);background:none;border:1px dashed color-mix(in srgb,var(--acc) 45%,transparent);border-radius:var(--r-md);padding:4px 10px;cursor:pointer}
+.cap-add:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-btn:focus-visible,.cap-close:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
 .cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:100%;box-sizing:border-box}
 .cal-open>.cal,.cal-open .cal{display:block}
@@ -1345,6 +1360,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   #search-wrap:focus-within #search-box{width:min(592px,calc(100vw - 16px))}
 }
 @media(max-width:560px){
+  /* capture strip on narrow screens: give the input the full width by wrapping the dest chip
+     + Capture onto their own line, so the placeholder doesn't cram into ~130px */
+  .cap-row{flex-wrap:wrap}
+  .cap-input{order:-1;flex:1 0 100%;min-height:38px}
+  .cap-dest-btn,.cap-go{min-height:38px}
+  .cap-go{flex:1 1 auto}
   .logo .logo-text{display:none}
   .logo{padding:4px 3px}
   .logo-mark{width:20px;height:20px}
@@ -1581,7 +1602,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
-    <button id="btn-capture" title="Capture to inbox" aria-label="Capture to inbox"><i class="fa-solid fa-inbox"></i></button>
+    <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" title="New journal entry" aria-label="New journal entry"><i class="fa-solid fa-book"></i></button>
     <span class="tbtn-sep" aria-hidden="true"></span>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
@@ -1590,6 +1611,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   </div>
   <div id="doc-tabs" role="tablist" aria-label="Open documents" style="display:none"></div>
   <div id="breadcrumb-row"></div>
+  <div id="capture-strip" role="region" aria-label="Capture"></div>
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
 <div id="file-menu" role="dialog" aria-label="Pointliner menu">
@@ -7541,19 +7563,37 @@ function removeInboxSlot(slot) {
   markDirty();
 }
 
-// Open the capture dialog targeting `slot` (default: the first non-empty slot, else 1). If a
-// slot is passed and it's empty but a point is selected/focused, that point BECOMES that
-// slot's inbox (the "capture to a slot that isn't set yet → adopt the current point" rule).
-function openCaptureDialog(slot) {
-  captureDraft = '';
-  captureCount = 0;
+// Capture lives in a TOOLBAR STRIP (like the agenda), not a modal — you can insert without
+// interrupting the main view (it stays live and undimmed below). Toggled by btn-capture and
+// the ⌘⇧I / ⌘⇧1-0 shortcuts. `captureOpen` mirrors the strip's .on class.
+let captureOpen = false;
+let captureManage = false;   // is the destination picker (second line) expanded?
+
+// Open (or re-target) the strip for `slot` (default: first non-empty slot, else 1). If a slot
+// is passed and it's empty but a point is selected/focused, that point BECOMES that slot's
+// inbox (the "capture to a slot that isn't set yet → adopt the current point" rule). Focuses
+// the input so you can type immediately; the outline stays live below.
+function openCaptureDialog(slot) {   // name kept: still the single entry point for all callers
+  const wasOpen = captureOpen;
+  if (!wasOpen) { captureDraft = ''; captureCount = 0; captureReturnFocus = document.activeElement; captureManage = false; }
   captureSlot = normalizeCaptureSlot(slot);
-  ioReturnFocus = document.activeElement;
-  ioCancel = closeIo;
-  renderCaptureMain();
-  ioCard.setAttribute('aria-label', 'Capture to inbox');
-  ioBack.classList.add('on');
+  captureOpen = true;
+  document.getElementById('capture-strip').classList.add('on');
+  const btn = document.getElementById('btn-capture');
+  btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+  renderCaptureStrip();
+  requestAnimationFrame(() => document.getElementById('cap-input')?.focus());
 }
+let captureReturnFocus = null;
+function closeCapture() {
+  captureOpen = false; captureManage = false;
+  document.getElementById('capture-strip').classList.remove('on');
+  const btn = document.getElementById('btn-capture');
+  btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
+  const rf = captureReturnFocus; captureReturnFocus = null;
+  if (rf && rf.isConnected) rf.focus(); else document.getElementById('btn-capture').focus();
+}
+function toggleCapture() { if (captureOpen) closeCapture(); else openCaptureDialog(); }
 // Resolve which slot to target: an explicit slot if given; if that slot is empty, try to
 // adopt the current point (edit target or row cursor) as that slot's inbox; else fall back
 // to the first non-empty slot, else slot 1.
@@ -7580,148 +7620,136 @@ function captureCurrentPointId() {
 function captureTargetSlot(slot) {
   if (slot < 1 || slot > MAX_INBOXES) return;
   captureSlot = slot;
-  renderCaptureMain();
+  renderCaptureStrip({ keepFocus: true });
 }
 
-function renderCaptureMain() {
-  ioCard.innerHTML = '';
+// Build the strip: one compact row [▾ dest] [input] [Capture]. The destination ▾ toggles a
+// second line (slot chips + add/remove) — the manager, in-strip, no modal. `keepFocus` avoids
+// stealing focus back to the input on a re-render triggered from within the strip (e.g. a chip
+// click), so keyboard flow isn't disrupted.
+function renderCaptureStrip({ keepFocus = false } = {}) {
+  const strip = document.getElementById('capture-strip');
+  if (!strip) return;
+  const hadFocus = keepFocus && strip.contains(document.activeElement) && document.activeElement.id !== 'cap-input';
+  strip.innerHTML = '';
   const slots = root.inboxes || [];
   const inbox = inboxAt(captureSlot);
+  const nSet = slots.filter(Boolean).length;
 
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
-  setIcon(ic, { fa: 'fa-solid fa-inbox', fb: '⤓' });
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Capture';
-  head.append(ic, ttl); ioCard.appendChild(head);
+  // ── row 1: destination · input · capture ──
+  const row = document.createElement('div'); row.className = 'cap-row';
 
-  // Slot chips: one per configured inbox (1..N), plus the current target highlighted. Click a
-  // chip to target that slot; the same ⌘⇧<N> shortcut does it from the keyboard. Shown only
-  // when there are 2+ inboxes (a single inbox needs no chooser).
-  if (slots.filter(Boolean).length >= 2) {
-    const chips = document.createElement('div'); chips.className = 'cap-slots'; chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', 'Capture destination');
-    slots.forEach((id, i) => {
-      if (!id) return;
-      const n = nodeById(id); if (!n) return;
-      const slot = i + 1;
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'cap-slot' + (slot === captureSlot ? ' cur' : '');
-      chip.innerHTML = `<span class="cap-slot-n">${slot === 10 ? '0' : slot}</span> ${escHtml(crumbLabel(n))}`;
-      chip.setAttribute('aria-pressed', String(slot === captureSlot));
-      chip.setAttribute('aria-label', `Inbox ${slot}: ${crumbLabel(n)}`);
-      chip.addEventListener('click', () => captureTargetSlot(slot));
-      chips.appendChild(chip);
-    });
-    ioCard.appendChild(chips);
+  const dest = document.createElement('button'); dest.type = 'button'; dest.className = 'cap-dest-btn' + (captureManage ? ' open' : '') + (inbox ? '' : ' unset');
+  dest.setAttribute('aria-expanded', String(captureManage));
+  dest.setAttribute('aria-label', 'Capture destination: ' + (inbox ? `inbox ${captureSlot === 10 ? '0' : captureSlot}, ${crumbLabel(inbox)}` : 'not set') + '. Click to change.');
+  dest.innerHTML = `<span class="cap-caret" aria-hidden="true">▾</span><span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${inbox ? escHtml(crumbLabel(inbox)) : 'set an inbox…'}</span>`;
+  dest.addEventListener('click', () => { captureManage = !captureManage; renderCaptureStrip(); });
+  row.appendChild(dest);
+
+  const input = document.createElement('textarea');
+  input.id = 'cap-input'; input.className = 'cap-input'; input.rows = 1; input.value = captureDraft;
+  input.placeholder = inbox ? 'Type a point to capture…' : 'Set an inbox first…';
+  input.setAttribute('aria-label', 'Text to capture');
+  input.spellcheck = true;
+  input.addEventListener('input', () => { captureDraft = input.value; autoGrowCapInput(input); });
+  input.addEventListener('keydown', capInputKeydown);
+  row.appendChild(input);
+
+  const capBtn = document.createElement('button'); capBtn.type = 'button'; capBtn.className = 'cap-go'; capBtn.textContent = 'Capture';
+  capBtn.disabled = !inbox; capBtn.addEventListener('click', () => doCapture());
+  row.appendChild(capBtn);
+
+  const closeBtn = document.createElement('button'); closeBtn.type = 'button'; closeBtn.className = 'cap-close'; closeBtn.setAttribute('aria-label', 'Close capture'); closeBtn.innerHTML = '&times;';
+  closeBtn.addEventListener('click', closeCapture);
+  row.appendChild(closeBtn);
+  strip.appendChild(row);
+
+  // ── inline confirm / hint (small, single line) ──
+  const meta = document.createElement('div'); meta.className = 'cap-meta';
+  const hint = document.createElement('span'); hint.className = 'cap-hint';
+  hint.textContent = 'Enter to capture · Shift+Enter for a line break' + (nSet >= 2 ? ` · ${MOD}+Shift+1–0 to switch inbox` : '');
+  const conf = document.createElement('span'); conf.className = 'cap-confirm'; conf.setAttribute('aria-live', 'polite');
+  if (captureCount > 0) conf.textContent = `✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'}`;
+  meta.append(hint, conf); strip.appendChild(meta);
+
+  // ── row 2 (manager): slot chips + add/remove — shown only when the ▾ is open ──
+  if (captureManage) strip.appendChild(buildCaptureManager());
+
+  if (!hadFocus) requestAnimationFrame(() => { const i = document.getElementById('cap-input'); if (i) { i.focus(); autoGrowCapInput(i); } });
+}
+
+function autoGrowCapInput(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
+
+function capInputKeydown(e) {
+  // ⌘/Ctrl+Shift+<N> switches the target slot in place (no reopen). e.code so macOS
+  // Option-glyphs don't apply; stopPropagation so the global handler doesn't also fire.
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && /^Digit[0-9]$/.test(e.code)) {
+    e.preventDefault(); e.stopPropagation();
+    const d = +e.code.slice(5); captureTargetSlot(d === 0 ? 10 : d); return;
   }
-
-  // destination line
-  const dest = document.createElement('div'); dest.className = 'cap-dest';
-  const to = document.createElement('span'); to.textContent = 'To:';
-  const name = document.createElement('span');
-  name.className = 'cap-dest-name' + (inbox ? '' : ' unset');
-  name.textContent = inbox ? `${captureSlot === 10 ? '0' : captureSlot} · ${crumbLabel(inbox)}` : `inbox ${captureSlot === 10 ? '0' : captureSlot} not set`;
-  const change = document.createElement('button');
-  change.className = 'cap-change'; change.type = 'button';
-  change.textContent = slots.filter(Boolean).length ? 'Manage…' : 'Choose…';
-  change.setAttribute('aria-label', 'Manage capture destinations');
-  change.addEventListener('click', () => renderCaptureDest());
-  dest.append(to, name, change); ioCard.appendChild(dest);
-
-  // text
-  const ta = document.createElement('textarea');
-  ta.className = 'cap-textarea'; ta.value = captureDraft;
-  ta.placeholder = 'Type a point to capture…';
-  ta.setAttribute('aria-label', 'Text to capture');
-  ta.spellcheck = true;
-  ta.addEventListener('input', () => { captureDraft = ta.value; });
-  ioCard.appendChild(ta);
-
-  const hint = document.createElement('div'); hint.className = 'cap-hint';
-  hint.textContent = 'Enter to capture · Shift+Enter for a line break' + (slots.filter(Boolean).length >= 2 ? ` · ${MOD}+Shift+1–0 to switch inbox` : '');
-  ioCard.appendChild(hint);
-
-  const confirm = document.createElement('div'); confirm.className = 'cap-confirm';
-  confirm.setAttribute('aria-live', 'polite');
-  if (captureCount > 0) confirm.textContent = `✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'}`;
-  ioCard.appendChild(confirm);
-
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const capBtn = document.createElement('button');
-  capBtn.className = 'io-btn primary'; capBtn.textContent = 'Capture'; capBtn.type = 'button';
-  capBtn.disabled = !inbox;
-  capBtn.addEventListener('click', () => doCapture());
-  const doneBtn = document.createElement('button');
-  doneBtn.className = 'io-btn'; doneBtn.textContent = 'Done'; doneBtn.type = 'button';
-  doneBtn.addEventListener('click', closeIo);
-  foot.append(doneBtn, capBtn); ioCard.appendChild(foot);
-
-  ta.addEventListener('keydown', e => {
-    // In-dialog ⌘/Ctrl+Shift+<N> MOVES the target selector (no reopen). Digit via e.code so
-    // macOS Option-glyphs don't apply (Shift+digit here is unambiguous, but keep it robust).
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && /^Digit[0-9]$/.test(e.code)) {
-      e.preventDefault();
-      e.stopPropagation();   // don't let the global ⌘⇧<N> handler ALSO fire (it would reopen)
-      const d = +e.code.slice(5);
-      captureTargetSlot(d === 0 ? 10 : d);
-      return;
-    }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCapture(); }
-    else if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
-  });
-
-  requestAnimationFrame(() => ta.focus());
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCapture(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeCapture(); }
+  else if (e.key !== 'Tab') e.stopPropagation();   // don't leak edits to global shortcuts
 }
 
-// "Manage destinations" view — the inbox list with per-slot remove, plus an "Add an inbox"
-// tree picker. Up to MAX_INBOXES. Returns to the capture view (draft preserved).
-function renderCaptureDest() {
-  const slots = (root.inboxes || []).map((id, i) => ({ slot: i + 1, node: id ? nodeById(id) : null })).filter(s => s.node);
-  // If empty, jump straight to the add-picker (nothing to manage yet).
-  if (!slots.length) return renderCaptureAdd();
-  ioCard.innerHTML = '';
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, { fa: 'fa-solid fa-inbox', fb: '⤓' });
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Inboxes'; head.append(ic, ttl); ioCard.appendChild(head);
-  const list = document.createElement('div'); list.className = 'cap-manage';
-  slots.forEach(({ slot, node }) => {
-    const row = document.createElement('div'); row.className = 'cap-manage-row';
-    row.innerHTML = `<span class="cap-slot-n">${slot === 10 ? '0' : slot}</span><span class="cap-manage-name">${escHtml(crumbLabel(node))}</span>`;
-    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'cap-manage-rm'; rm.textContent = 'Remove';
-    rm.setAttribute('aria-label', `Remove inbox ${slot}: ${crumbLabel(node)}`);
-    rm.addEventListener('click', () => { removeInboxSlot(slot); if (captureSlot > (root.inboxes || []).length) captureSlot = Math.max(1, (root.inboxes || []).findIndex(Boolean) + 1); renderCaptureDest(); });
-    row.appendChild(rm); list.appendChild(row);
+// The in-strip destination manager (second line): a chip per configured inbox to target it,
+// each with a remove ✕, plus an "Add inbox" that opens the tree picker for the point.
+function buildCaptureManager() {
+  const mgr = document.createElement('div'); mgr.className = 'cap-mgr'; mgr.setAttribute('role', 'group'); mgr.setAttribute('aria-label', 'Inboxes');
+  const slots = root.inboxes || [];
+  slots.forEach((id, i) => {
+    if (!id) return;
+    const n = nodeById(id); if (!n) return;
+    const slot = i + 1;
+    const chip = document.createElement('div'); chip.className = 'cap-chip' + (slot === captureSlot ? ' cur' : '');
+    const pick = document.createElement('button'); pick.type = 'button'; pick.className = 'cap-chip-pick';
+    pick.innerHTML = `<span class="cap-slot-n">${slot === 10 ? '0' : slot}</span> ${escHtml(crumbLabel(n))}`;
+    pick.setAttribute('aria-pressed', String(slot === captureSlot));
+    pick.setAttribute('aria-label', `Capture to inbox ${slot}: ${crumbLabel(n)}`);
+    pick.addEventListener('click', () => { captureSlot = slot; captureManage = false; renderCaptureStrip(); });
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'cap-chip-rm'; rm.innerHTML = '&times;';
+    rm.setAttribute('aria-label', `Remove inbox ${slot}: ${crumbLabel(n)}`);
+    rm.addEventListener('click', () => {
+      removeInboxSlot(slot);
+      if (captureSlot > (root.inboxes || []).length) captureSlot = Math.max(1, (root.inboxes || []).findIndex(Boolean) + 1);
+      renderCaptureStrip();
+    });
+    chip.append(pick, rm); mgr.appendChild(chip);
   });
-  ioCard.appendChild(list);
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const back = document.createElement('button'); back.className = 'io-btn'; back.type = 'button'; back.textContent = 'Back'; back.addEventListener('click', () => renderCaptureMain());
-  const add = document.createElement('button'); add.className = 'io-btn primary'; add.type = 'button'; add.textContent = 'Add an inbox…';
-  add.disabled = slots.length >= MAX_INBOXES;
-  add.addEventListener('click', () => renderCaptureAdd());
-  foot.append(back, add); ioCard.appendChild(foot);
+  if (slots.filter(Boolean).length < MAX_INBOXES) {
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'cap-add';
+    add.innerHTML = '<span aria-hidden="true">+</span> Add inbox';
+    add.setAttribute('aria-label', 'Add an inbox');
+    add.addEventListener('click', () => captureAddInbox());
+    mgr.appendChild(add);
+  }
+  return mgr;
 }
 
-// Add-an-inbox picker: choose a point from the outline; it lands in the next free slot.
-function renderCaptureAdd() {
+// Add-an-inbox: the tree picker (a modal is fine for this rare, one-off pick of WHICH point
+// becomes an inbox — the capture flow itself never leaves the strip). Lands in the next slot.
+function captureAddInbox() {
   buildTreePicker({
     icon: { fa: 'fa-solid fa-inbox', fb: '⤓' },
     title: 'Add an inbox',
     searchAria: 'Search for an inbox point',
     listAria: 'Inbox candidates',
     onPick: it => {
-      const slot = (root.inboxes || []).length + 1;  // append to the next slot
+      const slot = (root.inboxes || []).length + 1;
       if (slot <= MAX_INBOXES) { setInboxSlot(slot, it.id); captureSlot = slot; }
-      requestAnimationFrame(renderCaptureDest);
+      closeIo();
+      captureManage = true;
+      requestAnimationFrame(() => { if (captureOpen) renderCaptureStrip(); });
     },
-    footLabel: 'Back',
-    onFoot: () => renderCaptureDest(),
+    footLabel: 'Cancel',
+    onFoot: () => { closeIo(); requestAnimationFrame(() => { if (captureOpen) renderCaptureStrip(); }); },
   });
 }
 
 function doCapture() {
   const inbox = inboxAt(captureSlot) || resolveInbox();
   const text = (captureDraft || '').replace(/\s+$/, ''); // drop trailing blank lines/space
-  if (!inbox) { renderCaptureDest(); return; }            // no destination → make them pick
+  if (!inbox) { captureManage = true; renderCaptureStrip(); return; }  // no destination → open the picker
   if (!text.trim()) return;
   pushUndo();
   const n = mkNode(text);
@@ -7735,7 +7763,7 @@ function doCapture() {
   captureCount++;
   captureDraft = '';
   flashHint(`Captured to ${crumbLabel(inbox)}`);
-  renderCaptureMain(); // clear + keep open for the next capture (brain-dump flow)
+  renderCaptureStrip(); // clear + keep the strip open for the next capture (brain-dump flow)
 }
 
 // ─── journal / daily-notes ────────────────────────────────────────────────────
@@ -18853,7 +18881,10 @@ document.getElementById('btn-notes').addEventListener('click', () => {
   scheduleAutosave();
   render();
 });
-document.getElementById('btn-capture').addEventListener('click', () => openCaptureDialog());
+document.getElementById('btn-capture').addEventListener('click', () => toggleCapture());
+document.getElementById('capture-strip').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeCapture(); }
+});
 document.getElementById('btn-journal').addEventListener('click', () => openJournalEntry());
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. The modifier
@@ -19092,9 +19123,9 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed - [ ] becomes a to-do. Press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to open the Capture dialog, or Ctrl/Cmd+Shift+1 through 0 to capture straight to inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the dialog is open the same keys switch the destination (they move the selector, they do not reopen it), and you can click a slot chip too. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot; Manage in the dialog lists them all. The dialog stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (the ▾ chip) to click a slot, add or remove inboxes inline. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
     examples:[
-      { syn:'⌘⇧I / toolbar button', desc:'open the Capture dialog from anywhere' },
+      { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
       { syn:'⌘⌥1 … ⌘⌥0',           desc:'set the current point as inbox 1 to 10' },
       { syn:'Menu → Set as inbox N', desc:'add this point as the next inbox slot' },
@@ -19593,7 +19624,7 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
-  if (ctrl && e.shiftKey && (e.key==='I' || e.key==='i')) { e.preventDefault(); openCaptureDialog(); return; }   // I = Inbox (default slot)
+  if (ctrl && e.shiftKey && (e.key==='I' || e.key==='i')) { e.preventDefault(); toggleCapture(); return; }   // I = Inbox: toggle the capture strip (default slot)
   // ⌘/Ctrl+Shift+1..0 → capture to inbox N (0 = inbox 10). Opens the dialog targeting that
   // slot; if the slot is empty and a point is current (editing or row-cursor), that point
   // becomes inbox N. e.code (Digit) is layout-safe. Not gated on a workspace — inboxes are
