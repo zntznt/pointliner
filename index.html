@@ -311,6 +311,15 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    confirms instantly — no dwell on the inner :hover */
 .dice-edit:hover,.mk-edit:hover,.gr-edit:hover,.math-edit:hover,.est-edit:hover,
 .var-edit:hover,.mt-promote:hover{transition-delay:0s}
+/* V6: pill edit-pencils are a verbose-tier affordance. Hidden AT REST (opacity 0 in
+   each `*-edit` rule below) so pill-dense lines stay calm; revealed on pill-hover
+   (the `*-roll:hover .*-edit` rules). Touch has no hover, so this block keeps them
+   visible there — the app's standard hover-with-touch-fallback rule. Placed AFTER the
+   per-pill rules via higher specificity so it wins the cascade on touch. */
+@media(hover:none){
+  .dice-roll .dice-edit,.mk-roll .mk-edit,.gr-roll .gr-edit,
+  .math-roll .math-edit,.est-pill .est-edit,.var-pill .var-edit,.seq-pill .seq-edit{opacity:.55}
+}
 @media(prefers-reduced-motion:reduce){
   .node-row:hover,.bullet:hover .bullet-dot,.bullet-base:hover .bullet-base-ic,
   .nt-divider>.node-row>.bullet:hover .bullet-dot,.nt-ol>.node-row>.bullet:hover .bullet-dot,
@@ -520,7 +529,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .dice-mod{font-family:var(--mono);color:var(--fg);opacity:.75}
 .dice-eq{color:var(--muted);opacity:.6;padding:0 1px}
 .dice-total{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
-.dice-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.dice-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .dice-roll:hover .dice-edit{opacity:.6}
 .dice-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .dice-roll.dice-bad{color:var(--del);border-style:dashed;cursor:default}
@@ -537,7 +546,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mk-state{font-weight:600;color:var(--fg)}
 .mk-arrow{color:var(--muted);opacity:.55;font-size:.9em}
 .mk-name{font-family:var(--mono);font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px;margin-right:1px}
-.mk-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.mk-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .mk-roll:hover .mk-edit{opacity:.6}
 .mk-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .mk-roll.mk-bad{color:var(--del);border-style:dashed;cursor:default}
@@ -554,7 +563,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-name{font-family:var(--mono);font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px}
 .gr-result{font-weight:600;color:var(--fg)}
 .gr-seq-end .gr-result{color:var(--muted);font-weight:400}
-.gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .gr-roll:hover .gr-edit{opacity:.6}
 .gr-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .gr-roll.gr-bad{color:var(--del);border-style:dashed;cursor:default}
@@ -577,7 +586,12 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-expr{color:var(--muted);font-family:var(--mono);font-size:.9em}
 .math-eq{color:var(--muted);opacity:.55;padding:0 3px}
 .math-result{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
-/* (no .math-edit pencil — math is a single-gesture pill, body-click edits; E3) */
+/* math + sequence edit pencils: added for visual consistency with the other pills.
+   Same treatment as .dice-edit — hidden at rest, revealed on pill-hover, accent on
+   direct hover. Body-click already edits, so the pencil routes to the same editor. */
+.math-edit,.seq-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.math-roll:hover .math-edit,.seq-pill:hover .seq-edit{opacity:.6}
+.math-edit:hover,.seq-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .math-roll.math-bad{color:var(--del);border-style:dashed;cursor:default}
 .math-roll.math-bad:hover{box-shadow:none;border-color:var(--bdr)}
 .math-roll.math-err{border-color:var(--bad);border-style:dashed}
@@ -593,7 +607,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .est-pill .est-eq{color:var(--muted);opacity:.55;padding:0 1px}
 .est-pill .est-summary{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
 .est-pill .est-spark{font-family:var(--mono);letter-spacing:-.5px;color:color-mix(in srgb,var(--pill) 62%,var(--fg))}
-.est-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.est-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .est-pill:hover .est-edit{opacity:.6}
 .est-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .est-pill.est-bad{color:var(--del);border-style:dashed;cursor:default}
@@ -610,7 +624,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .var-name{color:var(--fg);font-family:var(--mono);font-style:italic;font-size:.9em}
 .var-eq{color:var(--muted);opacity:.55;padding:0 2px}
 .var-val{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
-.var-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:.55;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.var-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .var-pill:hover .var-edit{opacity:.6}
 .var-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .var-pill.var-bad{color:var(--del);border-style:dashed;cursor:default}
@@ -8486,7 +8500,7 @@ function onKeyDown(e, id, content) {
   // dispatches a mousedown that the content's existing pill-handler block already handles —
   // same action as a click, no duplicate logic.
   if (e.key === 'Enter' || e.key === ' ') {
-    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit,.est-edit');
+    const pencil = e.target.closest?.('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit,.est-edit,.seq-edit');
     if (pencil) {
       e.preventDefault();
       pencil.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
@@ -12886,16 +12900,16 @@ function renderMathPill(key, m) {
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
-  // No edit pencil: math has ONE gesture — the whole body click edits (title/aria say so),
-  // so a pencil would be a redundant no-op duplicate (E3). Matches renderSeqPill, which
-  // likewise omits a pencil for a single-gesture pill. Generative pills (dice/grammar/etc.)
-  // keep their pencil because there the body does something else (re-roll).
+  // Edit pencil for visual consistency with every other pill. Math is single-gesture
+  // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
+  // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
   return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
     + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}. Click to edit">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
+    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
@@ -12989,6 +13003,7 @@ function renderSeqPill(key, sq) {
     + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
     + `<span class="seq-name">${escHtml(sq.name)}</span>`
     + `<span class="seq-states">${states}</span>`
+    + `<span class="seq-edit" role="button" tabindex="-1" aria-label="Edit sequence" title="Edit sequence"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
