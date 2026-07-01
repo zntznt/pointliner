@@ -971,7 +971,7 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 /* destination selector: [▾ N · name] — click to open the in-strip manager */
 .cap-dest-btn{flex:0 0 auto;max-width:230px;display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;min-height:34px}
 .cap-dest-btn:hover{border-color:var(--muted)}
-.cap-dest-btn.open{border-color:color-mix(in srgb,var(--acc) 50%,transparent);background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.cap-dest-btn.open{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-dest-btn.unset{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
 .cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cap-caret{font-size:10px;color:var(--muted);transition:transform .12s}
@@ -986,13 +986,13 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cap-close{flex:0 0 auto;width:30px;min-height:34px;font-size:17px;line-height:1;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-md);cursor:pointer}
 .cap-close:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}
-.cap-meta{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 2px}
-.cap-hint{font-size:11px;color:var(--muted)}
-.cap-confirm{font-size:11.5px;color:var(--ok);font-weight:600;white-space:nowrap}
+.cap-confirm{font-size:11.5px;color:var(--ok);font-weight:600;white-space:nowrap;min-height:1.1em;padding:0 2px}
+.cap-confirm:empty{display:none}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
 .cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 2px 1px;border-top:1px dashed var(--bdr)}
 .cap-chip{display:inline-flex;align-items:stretch;max-width:230px;border:1px solid var(--bdr);border-radius:var(--r-md);overflow:hidden;background:var(--bg)}
-.cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 45%,transparent);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.cap-chip.cur .cap-chip-pick{color:var(--acc)}
 .cap-chip-pick{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:var(--fg);background:none;border:none;padding:4px 4px 4px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .cap-chip.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
 .cap-chip-rm{font-size:14px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr);padding:0 7px;cursor:pointer}
@@ -7634,7 +7634,6 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   strip.innerHTML = '';
   const slots = root.inboxes || [];
   const inbox = inboxAt(captureSlot);
-  const nSet = slots.filter(Boolean).length;
 
   // ── row 1: destination · input · capture ──
   const row = document.createElement('div'); row.className = 'cap-row';
@@ -7664,13 +7663,11 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   row.appendChild(closeBtn);
   strip.appendChild(row);
 
-  // ── inline confirm / hint (small, single line) ──
-  const meta = document.createElement('div'); meta.className = 'cap-meta';
-  const hint = document.createElement('span'); hint.className = 'cap-hint';
-  hint.textContent = 'Enter to capture · Shift+Enter for a line break' + (nSet >= 2 ? ` · ${MOD}+Shift+1–0 to switch inbox` : '');
-  const conf = document.createElement('span'); conf.className = 'cap-confirm'; conf.setAttribute('aria-live', 'polite');
+  // ── transient capture confirmation (a running count; NOT a static how-to — the shortcut
+  //    hints live in the ? panel, the concept guide, and the docs) ──
+  const conf = document.createElement('div'); conf.className = 'cap-confirm'; conf.setAttribute('aria-live', 'polite');
   if (captureCount > 0) conf.textContent = `✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'}`;
-  meta.append(hint, conf); strip.appendChild(meta);
+  strip.appendChild(conf);
 
   // ── row 2 (manager): slot chips + add/remove — shown only when the ▾ is open ──
   if (captureManage) strip.appendChild(buildCaptureManager());
@@ -7729,6 +7726,12 @@ function buildCaptureManager() {
 // Add-an-inbox: the tree picker (a modal is fine for this rare, one-off pick of WHICH point
 // becomes an inbox — the capture flow itself never leaves the strip). Lands in the next slot.
 function captureAddInbox() {
+  // buildTreePicker only fills ioCard — the caller must OPEN the modal overlay (ioBack.on)
+  // and set the io plumbing, exactly like openRefileDialog. (Missing this is what left the
+  // Add-inbox button dead once capture stopped being a modal itself.)
+  ioReturnFocus = document.activeElement;
+  ioCancel = closeIo;
+  const back = () => { closeIo(); captureManage = true; requestAnimationFrame(() => { if (captureOpen) renderCaptureStrip(); }); };
   buildTreePicker({
     icon: { fa: 'fa-solid fa-inbox', fb: '⤓' },
     title: 'Add an inbox',
@@ -7737,13 +7740,13 @@ function captureAddInbox() {
     onPick: it => {
       const slot = (root.inboxes || []).length + 1;
       if (slot <= MAX_INBOXES) { setInboxSlot(slot, it.id); captureSlot = slot; }
-      closeIo();
-      captureManage = true;
-      requestAnimationFrame(() => { if (captureOpen) renderCaptureStrip(); });
+      back();
     },
     footLabel: 'Cancel',
-    onFoot: () => { closeIo(); requestAnimationFrame(() => { if (captureOpen) renderCaptureStrip(); }); },
+    onFoot: back,
   });
+  ioCard.setAttribute('aria-label', 'Add an inbox');
+  ioBack.classList.add('on');
 }
 
 function doCapture() {
