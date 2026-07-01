@@ -15,16 +15,15 @@
 // Every *argument-driven* pure core: parseDice, rollParsed, evalMath, parseMarkov,
 // walkMarkov, parseRules, runGrammar (pass docRules/vars explicitly), expandTemplate,
 // resolveBrace, toOpml(root), mdToHtml, mdInline, stripMd, parseTable/serializeTable.
+// collectVars(root)/collectRules(root) take an explicit root now, so they're testable
+// too (pass a tree; no-arg reads the live module `root`). Both `function` declarations
+// AND top-level `const`/`let` arrows (escHtml, escAttr, escQ, …) are reachable — see
+// the two-pass lookup in loadCores().
 //
-// WHAT YOU CAN'T (yet)
-// Functions that read the *module-level* `root` with no parameter — collectVars()
-// and collectRules() — can't be driven from outside, because `let root` is a
-// lexical binding, not a global property. The clean fix is a one-line, behavior-
-// preserving signature tweak in index.html:
-//     function collectVars(rootNode = root) { ... walk rootNode.children ... }
-//     function collectRules(rootNode = root) { ... }
-// After that they're unit-testable like the rest. (fromOpml needs DOMParser, also
-// absent in Node — defer or polyfill later.)
+// WHAT YOU CAN'T
+// fromOpml needs a real DOMParser, absent in Node — its re-parse is covered by the
+// browser verification, not here. DOM-touching functions (render, mkCmdItem, the
+// pill DOM builders) can't run either; source-pin their wiring instead.
 // ---------------------------------------------------------------------------
 
 import { readFileSync } from 'node:fs';
@@ -60,10 +59,24 @@ function makeStub() {
 export function loadCores() {
   const html = readFileSync(HTML_PATH, 'utf8');
 
-  // Grab the largest <script>…</script> block (the app code; FA is in <style>).
-  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+  // Select the app block by CONTENT, not byte length: a future analytics snippet or
+  // embedded data island could out-size the app and be silently picked. The app block
+  // is the one that opens with 'use strict' and defines the model factory `mkNode`.
+  // Match <script> with or without attributes so a later `type=...` can't hide it.
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   if (!scripts.length) throw new Error('No <script> block found in ' + HTML_PATH);
-  const code = scripts.sort((a, b) => b.length - a.length)[0];
+  const isAppBlock = s => /['"]use strict['"]/.test(s) && /function\s+mkNode\b/.test(s);
+  const appBlocks = scripts.filter(isAppBlock);
+  if (appBlocks.length === 0) {
+    throw new Error(
+      'Could not identify the app <script> block (looked for `use strict` + `function mkNode`). ' +
+      'Did the block markers change? Update isAppBlock in load-cores.mjs.'
+    );
+  }
+  if (appBlocks.length > 1) {
+    throw new Error(`Ambiguous: ${appBlocks.length} <script> blocks match the app signature; expected exactly one.`);
+  }
+  const code = appBlocks[0];
 
   const stub = makeStub();
   const localStorageStub = {
@@ -126,12 +139,19 @@ export function loadCores() {
     'var __pl_rng = null;\n';
 
   // Function declarations are hoisted before any statement runs, so even if the
-  // bottom-of-file init (render(), etc.) throws against the stubs, every pure
-  // function is already installed on the context global. Swallow that throw.
+  // bottom-of-file init (render(), etc.) throws against the DOM stubs — which it
+  // normally does — every pure function is already installed. The `need[]` check
+  // below is the real gate: a throw only matters if it prevented a needed core from
+  // registering, and that check catches exactly that. So DON'T cry wolf on every run
+  // (the expected throw would train people to ignore it). Capture it silently and
+  // surface it ONLY when a core is missing (see the initError hint below), or on
+  // demand via POINTLINER_DEBUG for anyone chasing a load problem.
+  let initError = null;
   try {
     vm.runInContext(prologue + code, context, { filename: 'pointliner-index.html', timeout: 5000 });
   } catch (e) {
-    if (process.env.POINTLINER_DEBUG) console.error('[load] init threw (expected):', e.message);
+    initError = e;
+    if (process.env.POINTLINER_DEBUG) console.error('[load-cores] init threw:', e.stack || e.message);
   }
 
   const need = [
@@ -175,6 +195,8 @@ export function loadCores() {
     'collectCallables','filterBraceCandidates',
     'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
+    'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
+    'escHtml','escAttr','escQ',                // const-arrow escapers (reached via the const pass)
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','mathErrorReason','mathReasonPhrase',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
@@ -190,7 +212,7 @@ export function loadCores() {
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
-    'pickerTitle','treeRows','migrateEmphasisText',
+    'pickerTitle','treeRows',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
@@ -198,19 +220,32 @@ export function loadCores() {
     'splitForSibling', 'mergeUpText',
     'flatRowStep',
   ];
+  // Two-pass lookup. `function foo(){}` declarations land on the context global, so
+  // pass 1 reads them directly. Top-level `const`/`let` arrows (escHtml, escAttr, …) are
+  // lexical bindings that DON'T attach to the global — but they ARE in scope for code
+  // evaluated in the same context, so pass 2 evaluates the bare name inside the vm.
   const cores = {};
   const missing = [];
   for (const name of need) {
-    const v = context[name];
+    let v = context[name];
+    if (typeof v !== 'function') {
+      // Pass 2: reach a lexical const/let binding. Guard the eval with typeof so an
+      // undeclared name is a clean null, not a ReferenceError.
+      try {
+        v = vm.runInContext(`typeof ${name} === 'function' ? ${name} : null`, context);
+      } catch { v = null; }
+    }
     if (typeof v === 'function') cores[name] = v;
     else missing.push(name);
   }
   if (missing.length) {
+    const hint = initError
+      ? `\nNOTE: top-level init threw ("${initError.message}") — that can drop declarations below the throw.`
+      : '';
     throw new Error(
-      'These cores were not exposed as global function declarations: ' +
+      'These cores were not found as function declarations OR const/let arrows: ' +
       missing.join(', ') +
-      '\n(They may be `const`/`let` arrow functions — only `function foo(){}` ' +
-      'declarations land on the context global. Adjust the list or the source.)'
+      '\n(Check the name is spelled right and actually defined in index.html.)' + hint
     );
   }
 
