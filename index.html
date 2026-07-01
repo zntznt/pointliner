@@ -849,18 +849,9 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 /* bullet popup */
 #bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;box-shadow:var(--sh-1);min-width:210px;max-height:85vh;overflow-y:auto;scrollbar-width:thin}
 #bpop.on{display:block}
-/* Section headings in the point menu: sticky so the current category stays labelled
-   while you scroll, and clickable to jump back to that section's top. The header sits
-   at the scroll-container edge (top:-5px cancels #bpop's 5px padding so it butts the
-   rounded corner) with an opaque backdrop so rows scroll cleanly under it. Consecutive
-   sticky siblings would otherwise pile up (each pins at the same top); the scroll
-   handler adds .stuck to only the current one and hides the earlier ones (.past). */
-.bpop-head{position:sticky;top:0;z-index:2;background:var(--hbg);font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:7px 10px 4px;margin:0 -5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
-.bpop-head.past{visibility:hidden}
-.bpop-head:hover,.bpop-head:focus,.bpop-head:focus-visible{color:var(--fg);outline:none}
-.bpop-head:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
-.bpop-head::after{content:'↑';margin-left:auto;opacity:0;font-size:11px;transition:opacity .12s}
-.bpop-head:hover::after,.bpop-head:focus-visible::after{opacity:.6}
+/* Section headings in the point menu: a plain uppercase label per category (same
+   visual language as the File menu's .fm-group). Static, non-interactive. */
+.bpop-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:7px 10px 4px;user-select:none}
 /* the lean-hover "More actions" expander: a muted meta-row, set off by a hairline above */
 .bpop-more{color:var(--muted);border-top:1px solid var(--bdr);border-radius:0;margin-top:3px;padding-top:8px}
 .bpop-more .cmd-icon,.bpop-more .cmd-label{color:var(--muted)}
@@ -9228,19 +9219,6 @@ let bpopExpanded = false;
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
-// Only one section heading pins at a time: consecutive position:sticky siblings would
-// otherwise stack at the top edge. On scroll, hide every heading whose whole section has
-// scrolled past (its successor has reached the top), leaving just the current one stuck.
-function updateStuckHeads() {
-  const heads = [...bpop.querySelectorAll('.bpop-head')];
-  const top = bpop.getBoundingClientRect().top + 1;   // container's top edge (+1 for rounding)
-  for (let i = 0; i < heads.length; i++) {
-    const next = heads[i + 1];
-    // "past" once the next heading has climbed to (or above) the container top.
-    heads[i].classList.toggle('past', !!next && next.getBoundingClientRect().top <= top + 0.5);
-  }
-}
-bpop.addEventListener('scroll', updateStuckHeads);
 // Keyboard nav (UXP-14): same §7 menu pattern as the Column panel. Items are the
 // type-switcher buttons + the action rows; Enter/Space fire their mousedown handler.
 bpop.addEventListener('keydown', e => {
@@ -9473,10 +9451,9 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   const full = opts.keyboard || IS_TOUCH || bpopExpanded;
   const shown = full ? actions : actions.filter(a => a.prim);
 
-  // Render section by section, each under a sticky, clickable heading. The heading
-  // scrolls its own section's top back into view (P2 — a way back up a long menu).
-  // Fixed section order; a section with no rows is skipped. Base copy ops ('Table')
-  // lead; 'Danger' (Delete) sits last, alone, so it's not adjacent to Move down.
+  // Render section by section, each under a static uppercase heading. Fixed section
+  // order; a section with no rows is skipped. Base copy ops ('Table') lead; 'Danger'
+  // (Delete) sits last, alone, so it's not adjacent to Move down.
   const SECTION_ORDER = ['Table','Navigate','Annotate','Pills','Organize','More','Danger'];
   const bySec = new Map();
   for (const a of shown) { if (!bySec.has(a.sec)) bySec.set(a.sec, []); bySec.get(a.sec).push(a); }
@@ -9486,18 +9463,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     const head = document.createElement('div');
     head.className = 'bpop-head';
     head.textContent = sec;
-    head.setAttribute('tabindex', '-1');
     head.setAttribute('aria-hidden', 'true');   // decorative label; rows carry the semantics
-    head.title = 'Jump to ' + sec;
-    // Jump the section's heading flush to the top of the scroll area. Set scrollTop to
-    // the header's offsetTop (minus its own sticky height so it lands flush, not one row
-    // down) rather than scrollIntoView(), which overshoots by the sticky inset. mousedown
-    // (not click) keeps focus off any active contenteditable.
-    head.addEventListener('mousedown', e => {
-      e.preventDefault();
-      bpop.scrollTop = head.offsetTop;
-      updateStuckHeads();
-    });
     bpop.appendChild(head);
     for (const { icon, label, fn, danger } of rows) {
       const item = mkCmdItem(icon, label, '', fn);   // each fn owns its own dismissal
@@ -9532,7 +9498,6 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     const pr = bpop.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
     if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (window.innerHeight - pr.height - 8) + 'px';
-    updateStuckHeads();   // set the initial single-pinned-heading state
     // Keyboard open: move focus into the menu (first item). Hover open never steals focus.
     if (opts.keyboard) bpop.querySelector('.bpop-type, .cmd-item')?.focus();
   });
