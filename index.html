@@ -201,11 +201,12 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .acc-swatch.on{outline:2px solid var(--fg);outline-offset:2px}
 #search-box{width:clamp(150px,40vw,220px);height:28px;padding:5px 44px 5px 30px;border:1px solid var(--bdr-ui);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:13px;outline:none;transition:width .16s cubic-bezier(.2,.8,.3,1),border-color .15s,box-shadow .15s}
 #search-box:focus{border-color:var(--acc);background:var(--hbg);box-shadow:0 0 0 2px var(--ring)}
-/* Wide screens (above the tablet reflow at 820px, where search already becomes a full-
-   width flex item): on focus the field grows to the width of the help popup below it (both
-   ~592px) so the two read as one unit, overlaying the toolbar (the wrap is centered and
-   grows symmetrically; z-index lifts it over the icons). Capped to the viewport. */
-@media(min-width:821px){
+/* Wide screens (above the reflow at 950px, where search is centered/absolute rather than a
+   full-width flex item): on focus the field grows to the width of the help popup below it
+   (both ~592px) so the two read as one unit, overlaying the toolbar (the wrap is centered and
+   grows symmetrically; z-index lifts it over the icons). Capped to the viewport. Kept in
+   lockstep with the 950px reflow gate so the two layouts never overlap. */
+@media(min-width:951px){
   #search-box:focus{width:min(592px,calc(100vw - 32px))}
   #search-wrap:focus-within{z-index:70}
 }
@@ -1201,10 +1202,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── narrow screens: reflow toolbar so search can't overlap the level control ── */
 /* The absolutely-centered search wrap overlaps and steals taps from the level buttons
    on a narrow toolbar (reproduced at 768px tablet: buttons "1"/"2" sit inside the search
-   rect). Reflow it to an in-flow flex item below the width where the centered layout no
-   longer has room — 820px covers tablet portrait, not just phones (the prior 560px gate
-   was too low, so tablets stayed broken). The phone-only shrinking stays at 560px. */
-@media(max-width:820px){
+   rect). Reflow it to an in-flow flex item below the width where the centered (absolute)
+   search collides with the right-side level control / icons — measured up to ~950px, so
+   the gate is 950px (was 820px, which still let the 1/2/3/All control bleed into the
+   search box around 821-900px). The phone-only shrinking stays at 560px. */
+@media(max-width:950px){
   #search-wrap{position:relative;left:auto;transform:none;flex:1 1 auto;min-width:0}
   #search-box{width:100%}
 }
@@ -1226,11 +1228,16 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   #search-box::placeholder{color:transparent}
   #search-wrap::before{left:50%;transform:translate(-50%,-50%);font-size:15px;color:var(--muted)}
   #search-key{display:none}
+  /* Collapsed (magnifier) state: hide the save-star and clear-✕ even when a query set
+     their .on class — otherwise they float next to the tiny icon. They belong to the
+     expanded field only, so reveal them on focus. */
+  #search-wrap:not(:focus-within) #search-save,#search-wrap:not(:focus-within) #search-clear{display:none}
   /* expand on focus: overlay the whole toolbar with a full-width field */
   #search-wrap:focus-within{position:absolute;left:8px;right:8px;width:auto;z-index:70;background:var(--bg)}
   #search-wrap:focus-within #search-box{width:100%;padding:5px 44px 5px 32px;border-color:var(--acc);background:var(--hbg);color:var(--fg);cursor:text}
   #search-wrap:focus-within #search-box::placeholder{color:var(--muted)}
   #search-wrap:focus-within::before{left:12px;transform:translateY(-50%)}
+  #search-wrap:focus-within #search-save.on{display:block}
   #search-wrap:focus-within #search-clear{display:flex}
   #level-ctl .lvl-btn{padding:5px 9px}
   :root{--ind:16px}
