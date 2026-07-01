@@ -861,6 +861,10 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .bpop-head:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
 .bpop-head::after{content:'↑';margin-left:auto;opacity:0;font-size:11px;transition:opacity .12s}
 .bpop-head:hover::after,.bpop-head:focus-visible::after{opacity:.6}
+/* the lean-hover "More actions" expander: a muted meta-row, set off by a hairline above */
+.bpop-more{color:var(--muted);border-top:1px solid var(--bdr);border-radius:0;margin-top:3px;padding-top:8px}
+.bpop-more .cmd-icon,.bpop-more .cmd-label{color:var(--muted)}
+.bpop-more:hover .cmd-label,.bpop-more.hi .cmd-label{color:var(--fg)}
 .bpop-types{display:flex;gap:3px;padding:4px 4px 7px;flex-wrap:wrap;border-bottom:1px solid var(--bdr);margin-bottom:3px}
 .bpop-type{width:26px;height:26px;border-radius:var(--r-sm);background:var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);font-family:var(--mono);transition:background .1s,color .1s;flex-shrink:0}
 .bpop-type:hover{background:var(--acc);color:var(--acc-fg)}
@@ -9216,6 +9220,11 @@ function applyInlineFormat(fmt) {
 const bpop = document.getElementById('bpop');
 let bpopTimer = null;
 let bpopShowTimer = null;   // dwell-before-show timer for the bullet hover
+// A hover-opened menu shows only the primary actions until the user clicks "More
+// actions" once; then it stays fully expanded for the rest of the session (power users
+// shouldn't re-expand every open). Keyboard/touch/Shift+F10 opens ignore this and are
+// always full.
+let bpopExpanded = false;
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
@@ -9348,12 +9357,18 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // belongs to); rows are bucketed and rendered under a sticky, clickable heading
   // (grouping keeps the long list scannable — the felt density was structure, not
   // length). Section order is fixed so the menu reads the same on every point.
+  //
+  // `prim` marks the everyday actions. A HOVER open shows only the primary rows plus a
+  // "More actions" expander (the desktop density fix); a keyboard / touch / Shift+F10
+  // open — where this menu is the user's whole toolbar — always shows everything. The
+  // pill rows are also always shown on a full open, since they're the only keyboard/AT
+  // path to re-roll a pill.
   const actions = [
-    { sec:'Navigate', icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
-    { sec:'Navigate', icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
-    { sec:'Annotate', icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
+    { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
+    { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
+    { sec:'Annotate', prim:true, icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
-    { sec:'Annotate', icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
+    { sec:'Annotate', prim:true, icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
       fn: () => { hideBpop(); openDueDateDialog(nodeId); } },
     { sec:'Annotate', icon: CHECK_ICON, label: (node.props || []).some(p => p.key.trim().toLowerCase() === CHECK_KEY) ? 'Edit check' : 'Add check',
       fn: () => { hideBpop(); openCheckDialog(nodeId); } },
@@ -9363,8 +9378,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
     { sec:'Organize', icon:{ fa:'fa-solid fa-left-right', fb:'⇄' }, label:'Refile…',
       fn: () => { hideBpop(); openRefileDialog(nodeId); } },
-    { sec:'Organize', icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
-    { sec:'Organize', icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
+    { sec:'Organize', prim:true, icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
+    { sec:'Organize', prim:true, icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { sec:'More', icon: TEMPLATE_ICON, label:'Save as template',
       fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
@@ -9388,7 +9403,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
           markDirty(); flashHint('Journal home set to ' + crumbLabel(node));
         }
       } },
-    { sec:'Danger', icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
+    { sec:'Danger', prim:true, icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
       fn: isBase
         ? async () => {
             hideBpop();
@@ -9450,7 +9465,13 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // fns don't self-dismiss, so wrap them to close the menu (every other action's fn
   // already calls hideBpop itself — and "Set state…" deliberately re-opens #bpop as a
   // picker, so it must NOT be auto-hidden).
-  for (const r of collectPillActions(node)) actions.push({ sec:'Pills', ...r, fn: () => { r.fn(); hideBpop(); } });
+  for (const r of collectPillActions(node)) actions.push({ sec:'Pills', prim:true, ...r, fn: () => { r.fn(); hideBpop(); } });
+
+  // Full menu vs lean-hover: keyboard/touch/Shift+F10 opens (where this menu is the
+  // user's whole toolbar) always show everything; a plain hover shows only the primary
+  // rows until "More actions" is clicked (sticky for the session via bpopExpanded).
+  const full = opts.keyboard || IS_TOUCH || bpopExpanded;
+  const shown = full ? actions : actions.filter(a => a.prim);
 
   // Render section by section, each under a sticky, clickable heading. The heading
   // scrolls its own section's top back into view (P2 — a way back up a long menu).
@@ -9458,7 +9479,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // lead; 'Danger' (Delete) sits last, alone, so it's not adjacent to Move down.
   const SECTION_ORDER = ['Table','Navigate','Annotate','Pills','Organize','More','Danger'];
   const bySec = new Map();
-  for (const a of actions) { if (!bySec.has(a.sec)) bySec.set(a.sec, []); bySec.get(a.sec).push(a); }
+  for (const a of shown) { if (!bySec.has(a.sec)) bySec.set(a.sec, []); bySec.get(a.sec).push(a); }
   for (const sec of SECTION_ORDER) {
     const rows = bySec.get(sec);
     if (!rows || !rows.length) continue;
@@ -9485,6 +9506,21 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       if (danger) item.classList.add('danger');
       bpop.appendChild(item);
     }
+  }
+  // On a lean hover, a trailing "More actions" row reveals the rest in place — and keeps
+  // it revealed for the session, so power users don't re-expand each open.
+  if (!full && shown.length < actions.length) {
+    // '⋯' isn't in the FA subset; use the unicode glyph directly (the conventional
+    // "more" mark) rather than rebuild the font for one decorative icon.
+    const more = mkCmdItem({ fa:'', fb:'⋯' }, 'More actions', '', () => {
+      bpopExpanded = true;
+      showBulletPopup(nodeId, bulletEl, opts);   // re-render the same menu, now full
+    });
+    more.className += ' bpop-more';
+    more.setAttribute('role', 'menuitem');
+    more.setAttribute('tabindex', '-1');
+    more.setAttribute('aria-expanded', 'false');
+    bpop.appendChild(more);
   }
 
   const rect = bulletEl.getBoundingClientRect();
