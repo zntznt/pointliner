@@ -6819,3 +6819,26 @@ test('toMarkdown({children:[a,b]}) — exports a selection of points in order', 
   const md = c.toMarkdown({ children: [a, b] });
   assert.ok(md.indexOf('First') < md.indexOf('Second'), 'points not emitted in order');
 });
+
+// ── bulk checkbox toggle: first-task read/set cores ──────────────────────────
+test('firstTaskChecked — reads the opening task box state; null for non-task', () => {
+  assert.equal(c.firstTaskChecked({ text: '- [ ] Buy milk' }), false);
+  assert.equal(c.firstTaskChecked({ text: '- [x] Done' }), true);
+  assert.equal(c.firstTaskChecked({ text: '- [X] Done caps' }), true);
+  assert.equal(c.firstTaskChecked({ text: 'Just a point' }), null);
+  assert.equal(c.firstTaskChecked({ text: '# A heading' }), null);
+});
+test('setFirstTaskChecked — sets to a specific state, idempotent', () => {
+  const a = { text: '- [ ] Buy milk' };
+  assert.equal(c.setFirstTaskChecked(a, true), true);      // changed
+  assert.equal(a.text, '- [x] Buy milk');
+  assert.equal(c.firstTaskChecked(a), true);
+  assert.equal(c.setFirstTaskChecked(a, true), false);     // already checked → no-op
+  assert.equal(c.setFirstTaskChecked(a, false), true);     // uncheck
+  assert.equal(a.text, '- [ ] Buy milk');
+});
+test('setFirstTaskChecked — only touches the first line, not later task lines', () => {
+  const n = { text: '- [ ] first\n- [ ] second' };
+  c.setFirstTaskChecked(n, true);
+  assert.equal(n.text, '- [x] first\n- [ ] second');       // second untouched
+});

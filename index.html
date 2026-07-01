@@ -7819,7 +7819,14 @@ function attachContentEvents(content, node) {
     // task-list checkbox: toggle the source line without entering raw-edit mode
     if (!content.dataset.editing && e.target.classList && e.target.classList.contains('md-task-check')) {
       e.preventDefault(); e.stopPropagation();
+      // Bulk: if this OPENING checkbox is on a point that's in a multi-point selection,
+      // the toggle propagates to every other task-first selected point (check one → check
+      // the rest; a mixed selection resolves to all matching the clicked box). Snapshot
+      // undo BEFORE toggling so one undo reverts the whole bulk change as a unit.
+      const bulk = +e.target.dataset.task === 0 && selectedIds.size >= 2 && selectedIds.has(node.id) && isTaskFirst(node.text);
+      if (bulk) pushUndo();
       toggleTaskInNode(node, +e.target.dataset.task);
+      if (bulk && propagateCheckboxToSelection(node.id)) { markDirty(); render(); }
       return;
     }
     // todo state badge: click opens the state/priority picker (display mode only)
@@ -14139,6 +14146,45 @@ function toggleTaskInNode(node, taskIndex) {
     const pel = document.querySelector(`.node-content[data-id="${par.id}"]`);
     if (pel && !pel.dataset.editing) pel.innerHTML = renderContentHTML(par);
   }
+}
+
+// Pure: is the point's FIRST task box checked? null if it doesn't open with a task box.
+function firstTaskChecked(node) {
+  const first = (node?.text || '').split('\n')[0];
+  if (!isTaskFirst(node?.text)) return null;
+  const m = first.match(TASK_LINE_RE);
+  return m ? m[2].toLowerCase() === 'x' : null;
+}
+// Set the point's first task box to `checked` (idempotent — a no-op if already there).
+// Returns true if it changed the text. DOM/render is the caller's job.
+function setFirstTaskChecked(node, checked) {
+  if (firstTaskChecked(node) === checked) return false;   // already in the wanted state, or not a task point
+  const lines = node.text.split('\n');
+  const m = lines[0].match(TASK_LINE_RE);
+  if (!m) return false;
+  lines[0] = `${m[1]}[${checked ? 'x' : ' '}]${m[3] || ''}`;
+  node.text = lines.join('\n');
+  node.checked = todoDoneFromText(node.text);
+  return true;
+}
+
+// Bulk checkbox toggle across a selection: when the clicked checkbox belongs to a point
+// that's part of a multi-point selection, propagate its RESULTING state to every other
+// selected point that also OPENS with a task box. So checking one checks the rest; a mixed
+// selection resolves to all-checked when you click an unchecked box (and all-unchecked when
+// you click a checked one). `clickedId` has already been toggled by the caller.
+function propagateCheckboxToSelection(clickedId) {
+  if (selectedIds.size < 2 || !selectedIds.has(clickedId)) return false;
+  const clicked = nodeById(clickedId);
+  const target = firstTaskChecked(clicked);
+  if (target == null) return false;   // clicked point isn't a task-first point
+  let changed = false;
+  for (const id of selectedIds) {
+    if (id === clickedId) continue;
+    const n = nodeById(id);
+    if (n && isTaskFirst(n.text) && setFirstTaskChecked(n, target)) changed = true;
+  }
+  return changed;
 }
 
 // Re-roll a dice token in place (click handler), keeping its formula.

@@ -170,6 +170,7 @@ export function loadCores() {
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
+    'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates',
     'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody',
