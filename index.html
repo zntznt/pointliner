@@ -18323,10 +18323,10 @@ const GUIDE = [
   { id:'edit-indent',  essential:true, essSection:'Edit', keys:['Tab','⇧+Tab'],           essLabel:'Indent / outdent' },
   { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','↓'],         essLabel:'Move point up / down' },
   { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
-  // Touch gestures (shown only on touch — the keyboard chords above don't apply there).
-  { id:'touch-menu',   essential:true, touchOnly:true, essSection:'Touch', keys:['Hold bullet'],  essLabel:'Point menu (move, delete, notes…)' },
-  { id:'touch-nest',   essential:true, touchOnly:true, essSection:'Touch', keys:['Drag bullet'],   essLabel:'Drag sideways to indent / outdent, or up / down to reorder' },
-  { id:'edit-capture', essential:true, essSection:'Edit', keys:['⬓ Capture'],            essLabel:'Add to inbox from anywhere' },
+  // Touch GESTURES are intentionally NOT here: this panel is keys + syntax only. Gestures
+  // (hold/drag/swipe the bullet, the edit-bar) live in the concept guide's "Moving and
+  // nesting points" entry, reached via the panel's "Concept guide ›" footer.
+  { id:'edit-capture', essential:true, essSection:'Edit', keys:[`${MOD}+⇧+I`],           essLabel:'Capture to inbox from anywhere' },
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Toggle task on current line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state' },
   { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority' },
@@ -18529,7 +18529,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Pick any point as your inbox, then capture into it from anywhere and each entry lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed - [ ] becomes a to-do. Click the inbox button in the toolbar to open the Capture dialog, or set the destination from a point's menu with Set as inbox. The dialog stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Pick any point as your inbox, then capture into it from anywhere and each entry lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed - [ ] becomes a to-do. Click the inbox button in the toolbar (or press Ctrl/Cmd+Shift+I) to open the Capture dialog, or set the destination from a point's menu with Set as inbox. The dialog stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break.",
     examples:[
       { syn:'Toolbar inbox button', desc:'open the Capture dialog from anywhere' },
       { syn:'Menu → Set as inbox',  desc:'make this point the capture destination' },
@@ -19028,6 +19028,7 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
+  if (ctrl && e.shiftKey && (e.key==='I' || e.key==='i')) { e.preventDefault(); openCaptureDialog(); return; }   // I = Inbox
   if (ctrl && e.shiftKey && (e.key==='J' || e.key==='j')) { e.preventDefault(); cycleJournalMode(); return; }
   if (ctrl && e.shiftKey && e.key===']') { e.preventDefault(); cycleDocTab(1); return; }
   if (ctrl && e.shiftKey && e.key==='[') { e.preventDefault(); cycleDocTab(-1); return; }

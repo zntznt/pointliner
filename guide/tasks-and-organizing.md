@@ -76,8 +76,8 @@ hunting for the right spot.
 Pick any point as your **inbox**, then capture into it from anywhere; each entry lands as a new point
 at the bottom of that inbox. What you type is markdown-aware, so a typed `- [ ]` becomes a to-do.
 
-Click the **inbox button** in the toolbar to open the Capture dialog, or set the destination from a
-point's menu with **Set as inbox**. The dialog stays open after each capture with a running count, so
+Click the **inbox button** in the toolbar (or press `Ctrl/Cmd+Shift+I`) to open the Capture dialog,
+or set the destination from a point's menu with **Set as inbox**. The dialog stays open after each capture with a running count, so
 you can empty your head in one sitting. `Enter` captures; `Shift+Enter` adds a line break.
 
 ## Nicknames (aliases)
