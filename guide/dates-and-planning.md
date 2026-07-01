@@ -26,16 +26,19 @@ Dates can be exact (`2026-07-01`) or relative (`today`, `tomorrow`, `today+7`).
 ## Agenda and calendar
 
 See all your upcoming work without scrolling the outline. Click the **calendar button** in the
-toolbar to open the agenda below the breadcrumb (click it again to close). It shows three things:
+toolbar to open the agenda below the breadcrumb (click it again to close).
 
-- A **list** of what is due soon.
-- A **Gantt-style timeline** of overlapping tasks.
-- A **month calendar**.
+A compact **List** is always shown, ordered by urgency (most overdue and soonest-due first) so
+nothing gets lost. Beside it, a single **view switcher** opens one deeper view at a time below the
+List (click the active one again to return to just the List):
 
-Timeline and Calendar are independent toggles, so open either, both, or neither. Turn on **Done** to
-include completed points; toggle **Running** to show or hide started work. Useful for weekly
-planning, spotting overdue items at a glance, or checking whether a date is already full. Click any
-item to jump straight to it.
+- **Week** , a 7-day planner spread; overdue items are gathered in a leading **Earlier** column.
+- **Month** , a full month calendar.
+- **Timeline** , a Gantt-style view of overlapping tasks.
+
+Turn on **Done** to include completed points; toggle **Running** to show or hide started work. Useful
+for weekly planning, spotting overdue items at a glance, or checking whether a date is already full.
+Click any item to jump straight to it.
 
 ## Daily journal
 
