@@ -191,7 +191,9 @@ same `--depth-w` mechanism.
 
 **Micro-layer (all required, all cheap to lose in a refactor):** `::selection` accent
 tint · thin themed scrollbars · warm highlighter (`.md-hl`, not screen-yellow) · hashtags
-at `color-mix` ink (no opacity-faded text dragging its underline down).
+as small accent-tinted **label chips** (the §4 badge recipe: `color-mix(--acc 12%)` tint +
+accent ink + `--r-xs` radius, at inline text size) — a bounded chip, NOT the stadium
+artifact pill, and NOT plain text.
 
 ## 5. Deliberately rejected (binding anti-decisions)
 

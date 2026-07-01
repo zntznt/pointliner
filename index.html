@@ -509,9 +509,13 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:6px;margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
-.hashtag{color:color-mix(in srgb,var(--acc) 80%,var(--fg));text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
-.hashtag:hover{color:var(--acc);text-decoration-style:solid}
-.hashtag:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
+/* Hashtags read as bounded label chips (the design-language badge recipe: color-mix 14%
+   tint + accent ink + a small radius), NOT the stadium artifact pill (§4: two shapes, two
+   meanings). Kept at inline text size so they flow inside a sentence; the box replaces the
+   old dotted underline as the affordance. */
+.hashtag{color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:var(--r-xs);padding:0 5px;cursor:pointer;white-space:nowrap;transition:background .12s}
+.hashtag:hover{background:color-mix(in srgb,var(--acc) 20%,transparent)}
+.hashtag:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 /* dice roll pill */
 .dice-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .dice-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
