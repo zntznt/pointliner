@@ -9918,7 +9918,7 @@ function insertInlineArtifact(id, nodeId, content) {
   } else if (id === 'est') {
     openEstimateDialog({
       title: 'Estimate (uncertain value)',
-      submitLabel: 'Add',
+      submitLabel: 'Roll',
       expr: selected,
       node: nodeById(nodeId),
       onResult: rec => {
@@ -9952,7 +9952,7 @@ function insertInlineArtifact(id, nodeId, content) {
   } else if (id === 'grammar') {
     openGrammarDialog({
       title: 'New grammar',
-      submitLabel: 'Generate',
+      submitLabel: 'Roll',
       onResult: roll => {
         const n = nodeById(nodeId); if (!n) return;
         (n.grammar ||= []).push(roll);
@@ -10117,7 +10117,7 @@ function insertCellArtifact(id, node, r, c, offset) {
   } else if (id === 'grammar') {
     openGrammarDialog({
       title: 'New grammar',
-      submitLabel: 'Generate',
+      submitLabel: 'Roll',
       onResult: roll => { (node.grammar ||= []).push(roll); splice(`[[grammar:${roll.key}]]`); },
     });
   } else if (id === 'math') {
@@ -11725,7 +11725,7 @@ function editGrammar(node, key) {
   }
   openGrammarDialog({
     title: 'Edit grammar',
-    submitLabel: 'Save & generate',
+    submitLabel: 'Save',
     def: g.def, origin: g.origin, existing: key,
     onResult: roll => {
       Object.assign(g, { def: roll.def, origin: roll.origin, result: roll.result });
@@ -13261,7 +13261,9 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
       ? 'Options split on | (weights: dragon 2), dice (2d6), a rule/table name, or a template like {color} {beast}. Rolled once; every {name} reference shows the same value until you re-roll the pill.'
       : 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
     chipsRow.style.display = pick ? 'none' : '';
-    okBtn.textContent = pick ? (existing ? 'Save & roll' : 'Roll & insert') : (submitLabel || 'Insert');
+    // D2 two-verb rule: a random-pick var is generative → create=Roll, edit=Save;
+    // a formula var is static → its submitLabel (Insert / Save).
+    okBtn.textContent = pick ? (existing ? 'Save' : 'Roll') : (submitLabel || 'Insert');
     updatePrev(); validate();
   }
 
@@ -14109,7 +14111,7 @@ function editDice(node, key) {
   if (!d) return;
   openDiceDialog({
     title: 'Edit dice',
-    submitLabel: 'Save & roll',
+    submitLabel: 'Save',
     expr: d.expr, existing: key,
     onResult: roll => {
       Object.assign(d, { expr: roll.expr, total: roll.total, parts: roll.parts });
@@ -14152,7 +14154,7 @@ function editMarkov(node, key) {
   if (!mk) return;
   openMarkovDialog({
     title: 'Edit Markov chain',
-    submitLabel: 'Save & roll',
+    submitLabel: 'Save',
     def: mk.def, start: mk.start, steps: mk.steps, name: mk.name || '', existing: key,
     onResult: roll => {
       Object.assign(mk, { def: roll.def, start: roll.start, steps: roll.steps, name: roll.name, path: roll.path });
