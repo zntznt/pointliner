@@ -1011,10 +1011,18 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .sc-panel::-webkit-scrollbar{width:5px}
 .sc-panel::-webkit-scrollbar-thumb{background:var(--cb);border-radius:4px}
 .sc-head{font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--fg);margin-bottom:10px}
-.sc-sec{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:13px 0 5px;position:sticky;top:-14px;background:var(--hbg);padding:5px 0 4px;z-index:1}
+/* Filter box: a sticky header block (head + this input) stays pinned so you can keep typing
+   while the list scrolls. Section headers stick just below it. */
+#sc-filter{position:sticky;top:-14px;z-index:2;box-sizing:border-box;width:100%;margin:0 0 4px;padding:6px 10px;font:inherit;font-size:12.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-sm)}
+#sc-filter:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px var(--ring)}
+#sc-filter::placeholder{color:var(--muted)}
+.sc-sec{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:13px 0 5px;position:sticky;top:22px;background:var(--hbg);padding:5px 0 4px;z-index:1}
 .sc-row{display:grid;grid-template-columns:minmax(96px,124px) 1fr;gap:10px;align-items:baseline;padding:2.5px 0}
-.sc-keys{display:flex;gap:3px;flex-wrap:wrap}
+.sc-row[hidden],.sc-sec[hidden]{display:none}
+.sc-keys{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
+.sc-or{color:var(--muted);font-size:10px;opacity:.7;margin:0 1px}
 .sc-desc{color:var(--muted);line-height:1.45}
+.sc-empty{color:var(--muted);font-size:12px;padding:10px 0 4px}
 #sc-toggle{position:fixed;bottom:16px;right:16px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--bdr);background:var(--hbg);border-radius:50%;z-index:99;box-shadow:var(--sh-1);transition:color .12s,border-color .12s,background .12s}
 #sc-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #sc-toggle:hover{color:var(--fg);border-color:var(--acc)}
@@ -18303,6 +18311,7 @@ const GUIDE = [
   { id:'nav-search',  essential:true, essSection:'Navigate', keys:[`${MOD}+F`],      essLabel:'Search' },
   { id:'nav-jump',    essential:true, essSection:'Navigate', keys:['↓ from search'],   essLabel:'Jump to first match' },
   { id:'nav-link',    essential:true, essSection:'Navigate', keys:[`${MOD}+⇧+Enter`],  essLabel:'Follow link under caret' },
+  { id:'nav-help',    essential:true, essSection:'Navigate', keys:[`${MOD}+/`,'?'],     essLabel:'Open this shortcuts panel' },
 
   // ── Edit structure (essentials only) ──────────────────────────────────────
   { id:'edit-enter',   essential:true, essSection:'Edit', keys:['Enter'],               essLabel:'New point' },
@@ -18789,16 +18798,61 @@ const GUIDE = [
     if (!secMap[e.essSection]) { secMap[e.essSection] = []; sections.push(e.essSection); }
     secMap[e.essSection].push(e);
   }
-  let html = '<div class="sc-head">Shortcuts &amp; syntax</div>';
+  // Head + a filter box: at ~38 rows the list is a scroll-and-scan, so typing narrows it.
+  let html = '<div class="sc-head">Shortcuts &amp; syntax</div>'
+    + '<input id="sc-filter" type="text" placeholder="Filter shortcuts…" aria-label="Filter shortcuts" autocomplete="off" spellcheck="false">'
+    + '<div id="sc-list" role="list">';
   for (const sec of sections) {
-    html += `<div class="sc-sec">${escHtml(sec)}</div>`;
+    // Sections and rows carry data-sc (lowercased keys + label + section) so the filter can
+    // hide non-matching rows, and a section header hides when all its rows are filtered out.
+    html += `<div class="sc-sec" data-sec="${escHtml(sec)}">${escHtml(sec)}</div>`;
     for (const e of secMap[sec]) {
-      const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('');
-      html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
+      // Multiple keys on one row are ALTERNATIVES (e.g. ⌘+. / ⌘+,); join with a "/" so the
+      // row doesn't read as a single chord. A shared-modifier shorthand (Alt+↑ then a bare ↓)
+      // still reads as "or" this way.
+      const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('<span class="sc-or">/</span>');
+      const hay = escHtml((e.keys.join(' ') + ' ' + e.essLabel + ' ' + sec).toLowerCase());
+      html += `<div class="sc-row" role="listitem" data-sc="${hay}"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
     }
   }
-  html += '<div class="sc-footer"><button class="sc-guide-btn" id="sc-guide-open">Concept guide ›</button></div>';
+  html += '</div><div id="sc-empty" class="sc-empty" hidden>No shortcuts match.</div>'
+    + '<div class="sc-footer"><button class="sc-guide-btn" id="sc-guide-open">Concept guide ›</button></div>';
   panel.innerHTML = html;
+
+  // Live filter: hide rows whose haystack doesn't contain every typed word (AND, like the
+  // outline search), then hide any section header left with no visible rows.
+  const filterEl = document.getElementById('sc-filter');
+  const listEl = document.getElementById('sc-list');
+  const emptyEl = document.getElementById('sc-empty');
+  function applyScFilter() {
+    const q = filterEl.value.trim().toLowerCase();
+    const words = q ? q.split(/\s+/) : [];
+    let anyVisible = false;
+    for (const row of listEl.querySelectorAll('.sc-row')) {
+      const hay = row.dataset.sc || '';
+      const show = words.every(w => hay.includes(w));
+      row.hidden = !show;
+      if (show) anyVisible = true;
+    }
+    // A section header shows only if a following row (before the next header) is visible.
+    let sec = null, secHasVisible = false;
+    const flush = () => { if (sec) sec.hidden = !secHasVisible; };
+    for (const el of listEl.children) {
+      if (el.classList.contains('sc-sec')) { flush(); sec = el; secHasVisible = false; }
+      else if (el.classList.contains('sc-row') && !el.hidden) secHasVisible = true;
+    }
+    flush();
+    emptyEl.hidden = anyVisible;
+  }
+  filterEl.addEventListener('input', applyScFilter);
+  // Esc in the field clears the filter first; a second Esc (empty field) closes the panel
+  // via the global handler.
+  filterEl.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && filterEl.value) { e.preventDefault(); e.stopPropagation(); filterEl.value = ''; applyScFilter(); }
+  });
+  // Expose a reset so opening the panel starts unfiltered + focuses the field.
+  panel._resetFilter = () => { filterEl.value = ''; applyScFilter(); };
+  panel._focusFilter = () => filterEl.focus({ preventScroll: true });
 })();
 const scToggle = document.getElementById('sc-toggle');
 const scPanel  = document.getElementById('sc-panel');
@@ -18808,7 +18862,12 @@ function toggleShortcuts(force) {
   scPanel.classList.toggle('on', on);
   scToggle.classList.toggle('on', on);
   scToggle.setAttribute('aria-expanded', String(on));
-  if (on) scPanel.focus({ preventScroll: true }); // PgUp/PgDn/arrows scroll the reference
+  if (on) {
+    scPanel._resetFilter?.();          // start unfiltered each open
+    // Focus the filter field so you can type-to-find immediately; the field is at the top,
+    // and arrows/PgDn still scroll the panel from there.
+    scPanel._focusFilter ? scPanel._focusFilter() : scPanel.focus({ preventScroll: true });
+  }
 }
 scToggle.addEventListener('click', e => { e.stopPropagation(); toggleShortcuts(); });
 scToggle.addEventListener('keydown', e => {
@@ -18954,6 +19013,15 @@ document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); closeFileMenu(); restoreChromeReturn(); return; }
   if (e.key==='Escape' && scPanel.classList.contains('on')) { e.preventDefault(); toggleShortcuts(false); restoreChromeReturn(); return; }
+  // Open the shortcuts panel from the keyboard (it's the keyboard reference; it should have a
+  // key). ⌘/Ctrl+/ works anywhere, including mid-edit. A bare ? (the universal help key) also
+  // toggles it, but only when NOT typing into a point/field, so it never eats a literal "?".
+  if (ctrl && e.key==='/') { e.preventDefault(); toggleShortcuts(); return; }
+  if (e.key==='?' && !ctrl && !e.altKey) {
+    const t = e.target;
+    const typing = activeContentId != null || (t && (t.isContentEditable || t.tagName==='INPUT' || t.tagName==='TEXTAREA'));
+    if (!typing) { e.preventDefault(); toggleShortcuts(); return; }
+  }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
