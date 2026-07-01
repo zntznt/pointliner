@@ -1188,7 +1188,10 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 @media(prefers-color-scheme:dark){.node-selected>.node-row{background:color-mix(in srgb,var(--acc) 12%,transparent)}}
 .node-cursor>.node-row{background:color-mix(in srgb,var(--acc) 4%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 20%,transparent);outline-offset:-1px;border-radius:4px}
 @keyframes bar-up{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-#node-sel-bar{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px 10px;display:none;align-items:center;gap:6px;box-shadow:var(--sh-1);font-size:13px;white-space:nowrap}
+/* Cap to the viewport and wrap onto multiple centered rows, so the 13 controls never
+   clip off the sides on a narrow screen (they were nowrap + fixed-width, overflowing
+   both edges below ~840px). */
+#node-sel-bar{position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px 10px;display:none;align-items:center;justify-content:center;gap:6px 4px;box-shadow:var(--sh-1);font-size:13px;width:max-content;max-width:calc(100vw - 16px);flex-wrap:wrap}
 #node-sel-bar.on{display:flex;animation:bar-up .16s ease}
 .nsb-count{color:var(--muted);font-size:12px;padding-right:4px}
 .nsb-sep{width:1px;height:18px;background:var(--bdr);flex-shrink:0;margin:0 1px}
