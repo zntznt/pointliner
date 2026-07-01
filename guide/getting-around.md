@@ -42,8 +42,9 @@ Work on many points at once instead of one at a time: copy or move a batch, inde
 group, set a state, date, check, or property across all of them, turn them all into another type, or
 delete the lot.
 
-Start a selection by `Shift`-clicking a point or pressing `Shift+Up` / `Shift+Down` from the
-keyboard. A selection bar appears at the bottom showing how many points are selected, with a button
+Start a selection by `Shift`-clicking a point (a contiguous range), `Ctrl`/`Cmd`-clicking points to
+pick them out of order, or pressing `Shift+Up` / `Shift+Down` from the keyboard. A selection bar
+appears at the bottom showing how many points are selected, with a button
 for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into, and Delete.
 From the keyboard, `Ctrl/Cmd+C` copies, `Ctrl/Cmd+X` cuts, and `Ctrl/Cmd+V` pastes the points;
 `Tab` / `Shift+Tab` indent or outdent the selection; `Delete` removes it and `Esc` clears it.
