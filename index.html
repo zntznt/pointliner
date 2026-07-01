@@ -6683,7 +6683,7 @@ function openCheckDialog(nodeId, targets = null) {
           { label: '<=',       insert: ' <= ' },
           { label: '==',       insert: ' == ' },
         ],
-        hint: 'A true/false test over this point and its direct children. It MUST contain a comparison (> >= < <= == !=); a bare value like sum(cost) is not a test and reports an error, not a pass. sum/avg/count/min/max(prop) roll up a child property, either numeric or a date (start/due) as epoch-days; a bare name is this point’s own number. e.g. sum(cost) <= budget · count(score) >= 3 · max(cost) <= cap · max(due) <= today+30 · hours <= 8',
+        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). e.g. sum(cost) <= budget · count(score) >= 3',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -11581,7 +11581,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'Each line is a named rule. Use {rule} to call another rule, {2d6} for dice, {= expr} for math, {hp > 0: alive | dead} for conditional text (the comparison reads a document variable, so declare it via @ → Variable), {3x: {rule}} to repeat a template a literal N (1 to 99) times. N is a fixed number, not a roll. Define sub-rules key.field: … (sword.damage: 1d8) and read them with {item.field}; for the SAME item across fields, declare a pick variable through @ → Variable → Random pick (w = {weapon}, NOT a rule line here) then use {w.name}/{w.damage}. A {name.cap}/{name.s} suffix applies a text modifier (a, cap, title, upper, lower, s, ed, ord). | separates weighted alternatives, each weighted by a trailing number or {= expr}; any other trailing token (e.g. 1d6) is read as entry text, not a weight.',
+          : 'One named rule per line. {rule} calls a rule · | picks an alternative (a trailing number weights it: sword | shield 2) · {2d6} dice · {= expr} math · {name.cap} text modifier. See the concept guide for conditionals, repeats, and item fields.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -12815,7 +12815,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
     submitLabel: submitLabel || 'Add',
     fields: [
       { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,
-        hint:'A 90% range lo to hi (lognormal, or normal if a bound ≤ 0), normal(mean, sd), uniform(lo, hi). Combine with + − × ÷. Each estimate is sampled INDEPENDENTLY (variances add); reuse one uncertain value by giving children a property and rolling it up with sum(prop)/avg(prop). The sparkline is a density histogram across the full sampled range; the ± shows mean and the inner 90% [p5,p95]. Estimates are their own engine, so they don’t work inside a {= …} math pill. The lo/hi order doesn’t matter (5 to 10 ≡ 10 to 5). Click to re-sample.',
+        hint:'An uncertain value: a 90% range lo to hi, or normal(mean, sd), or uniform(lo, hi). Combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
         preview: v => {
           const ex = (v.expr || '').trim();
           if (!ex) return '';
@@ -13081,7 +13081,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, abs, sin/cos/tan, log (base-10, or ln for natural; log2/log10 too), min/max, … · π/e/today. Units (c2f, km2mi follow the from2to pattern; also f2c, mi2km). Dates: a fixed date is date(2026,12,31); date math returns a NUMBER, so wrap it in asdate(…) to show a calendar (asdate(today+90)); daysuntil(due), clamp(x,0,10). Roll up a child points’ property with sum/avg/count/min/max(prop), e.g. sum(cost). This aggregates a property over child points; it is NOT SUM(1,2,3), so add literals with 1+2+3. min/max over no matching child → ∞ / −∞ (the empty-set identity). words(subtree) counts every word beneath the point (also words(self) / words(children)), a live writing target; reading time = words(subtree)/200.',
+        hint: 'Functions: sqrt, sin, log, min, max, … · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop) · words(subtree). Full reference in the concept guide.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
