@@ -15988,6 +15988,13 @@ async function cycleDocTab(dir) {
   if (target) await openDocTab(target);
 }
 
+// Jump straight to the Nth open tab, 1-based (Alt/Option+1..9). No-op if there is no such
+// tab or it's already active (openDocTab guards the latter). Dirty-guarded via switchWorkspaceDoc.
+async function gotoDocTab(n) {
+  const name = openTabs[n - 1];
+  if (name) await openDocTab(name);
+}
+
 // Connect (user gesture): pick a folder, write the doc into it once via the existing OPML
 // writer, make that file THE backing handle, and remember the folder in IndexedDB.
 async function connectWorkspace() {
@@ -18325,6 +18332,7 @@ const GUIDE = [
   { id:'file-vars', essential:true, essSection:'File', keys:[`${MOD}+⇧+V`],         essLabel:'Variables panel' },
   { id:'file-jmode', essential:true, essSection:'File', keys:[`${MOD}+⇧+J`],        essLabel:'Journal mode: in-doc / file per day' },
   { id:'file-tabs', essential:true, essSection:'File', keys:[`${MOD}+⇧+]`,`${MOD}+⇧+[`], essLabel:'Next / previous document tab' },
+  { id:'file-tab-n', essential:true, essSection:'File', keys:['Alt+1–9'],               essLabel:'Jump to document tab 1–9' },
 
   // ── Multi-select (essentials only) ────────────────────────────────────────
   { id:'sel-range',  essential:true, essSection:'Select', keys:['⇧+Click'],            essLabel:'Select a range' },
@@ -18952,6 +18960,13 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.shiftKey && (e.key==='J' || e.key==='j')) { e.preventDefault(); cycleJournalMode(); return; }
   if (ctrl && e.shiftKey && e.key===']') { e.preventDefault(); cycleDocTab(1); return; }
   if (ctrl && e.shiftKey && e.key==='[') { e.preventDefault(); cycleDocTab(-1); return; }
+  // Alt/Option+1..9 jumps to the Nth open document tab. Use e.code (layout-independent):
+  // on macOS Option+digit yields a special glyph in e.key (Option+1 → "¡"), so key-based
+  // matching would miss. Gated to when a workspace folder is connected and has tabs; the
+  // browser doesn't reserve Alt+digit, so it's a reliable accelerator (unlike Ctrl+digit).
+  if (e.altKey && !ctrl && !e.shiftKey && /^Digit[1-9]$/.test(e.code) && workspaceDir && openTabs.length) {
+    e.preventDefault(); gotoDocTab(+e.code.slice(5)); return;
+  }
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
   // collapse outline to first N levels (Ctrl/Cmd+1..6). Some browsers reserve
   // these for tab switching and won't deliver the event — the toolbar control is
