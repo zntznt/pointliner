@@ -1203,9 +1203,13 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agw-item.done{opacity:.55;text-decoration:line-through}
 /* ── Calendar pane — month grid ── */
 .ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px}
-.agc-head{display:flex;align-items:center;gap:6px;padding:2px 0 6px}
-/* month nav fills the bar and centers ‹ title › ; Today is pushed to the right edge */
-.agc-monthnav{flex:1;display:flex;align-items:center;justify-content:center;gap:10px}
+/* 3-column grid: an empty 1fr on the left balances the Today button's 1fr on the right, so
+   the centred nav column lands on the PANE's true centre — which is where the month grid /
+   week strip below is centred too. (A plain flex row let Today steal width from one side and
+   shifted the ‹ title › left of the grid it labels.) */
+.agc-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;padding:2px 0 6px}
+.agc-monthnav{grid-column:2;display:flex;align-items:center;justify-content:center;gap:10px}
+.agc-today{grid-column:3;justify-self:end}
 .agc-title{font-size:15px;font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums;text-align:center;min-width:11ch}
 .agc-nav{flex:0 0 auto;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--bdr-ui);background:transparent;color:var(--fg);cursor:pointer;border-radius:var(--r-sm);font-size:16px;line-height:1;user-select:none}
 .agc-nav:hover{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 60%,transparent);background:color-mix(in srgb,var(--acc) 10%,transparent)}
@@ -1216,7 +1220,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 /* Three month blocks side by side (prev · current · next). The scroller centres the current
    one; when the pane is wider than one month the sides peek in from the edges, otherwise
    they're clipped. Every block is the SAME width, so their cells match the centred month. */
-.agc-months{display:flex;gap:16px;overflow-x:hidden;scroll-behavior:smooth}
+.agc-months{display:flex;gap:16px;overflow-x:hidden}
 /* Each month is a fixed ideal width, capped at 100% of the pane. So when the pane is narrow
    the current month fills it and the sides are pushed fully out of view; only once the pane
    is WIDER than one month does the leftover space reveal the flanking months. */
@@ -18456,8 +18460,13 @@ function renderAgendaCalendar(host, visible, totalDated) {
 
   // Centre the current month within the scroller (so the side months peek symmetrically).
   function centreCurrent() {
+    // Centre the current month within the scroller so the header's centred nav (which sits
+    // on the pane centre) lines up with it. scrollLeft math accumulated a ~gap/2 offset;
+    // measuring the two rects directly and correcting is exact.
     const c = curBlk.block;
-    months.scrollLeft = c.offsetLeft - (months.clientWidth - c.clientWidth) / 2;
+    const mRect = months.getBoundingClientRect(), cRect = c.getBoundingClientRect();
+    const delta = (cRect.left + cRect.right) / 2 - (mRect.left + mRect.right) / 2;
+    months.scrollLeft += delta;
   }
 
   // paint() fills all three month blocks from agendaMonth. Month nav re-paints WITHOUT
