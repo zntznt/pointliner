@@ -1209,6 +1209,17 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .nsb-sep{width:1px;height:18px;background:var(--bdr);flex-shrink:0;margin:0 1px}
 .nsb-btn{cursor:pointer;padding:3px 9px;border-radius:5px;border:1px solid var(--bdr);background:transparent;color:var(--fg);font:inherit;font-size:12px;white-space:nowrap;transition:background .1s}
 .nsb-btn:hover{background:var(--bdr)}
+/* touch edit bar: a full-width strip of structural controls pinned to the bottom (JS
+   lifts it above the on-screen keyboard via visualViewport). Shown only while editing a
+   single point on touch. */
+#edit-bar{position:fixed;left:0;right:0;bottom:0;z-index:650;display:none;align-items:center;gap:4px;padding:6px 10px calc(6px + env(safe-area-inset-bottom));background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:0 -2px 10px rgba(0,0,0,.06)}
+#edit-bar.on{display:flex}
+.eb-btn{flex:0 0 auto;min-width:44px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:17px;line-height:1;transition:background .1s}
+.eb-btn:active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.eb-btn:disabled{opacity:.35;pointer-events:none}
+#eb-done{font-size:14px;padding:0 14px;color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.eb-sep{width:1px;height:22px;background:var(--bdr);flex-shrink:0;margin:0 3px}
+.eb-spacer{flex:1 1 auto}
 .nsb-btn.danger:hover{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:var(--bad);color:var(--bad)}
 
 /* ============================ mobile & touch ============================ */
@@ -1574,6 +1585,18 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <span class="nsb-sep"></span>
   <button class="nsb-btn danger" id="nsb-delete">Delete</button>
   <button class="nsb-btn" id="nsb-clear">✕</button>
+</div>
+<!-- touch edit bar: while a single point is being edited on touch, a strip of structural
+     controls (outdent / indent / move up / move down) pinned above the on-screen keyboard,
+     so reordering and nesting never need the fiddly bullet drag. Touch-only; hidden otherwise. -->
+<div id="edit-bar" role="toolbar" aria-label="Move point" aria-hidden="true">
+  <button class="eb-btn" id="eb-outdent" title="Outdent" aria-label="Outdent point">⇤</button>
+  <button class="eb-btn" id="eb-indent"  title="Indent"  aria-label="Indent point">⇥</button>
+  <span class="eb-sep"></span>
+  <button class="eb-btn" id="eb-up"   title="Move up"   aria-label="Move point up">↑</button>
+  <button class="eb-btn" id="eb-down" title="Move down" aria-label="Move point down">↓</button>
+  <span class="eb-spacer"></span>
+  <button class="eb-btn" id="eb-done" title="Done editing" aria-label="Done editing">Done</button>
 </div>
 <!-- footnote panel -->
 <div id="fn-panel">
@@ -9163,6 +9186,89 @@ document.getElementById('nsb-indent').addEventListener('click', indentSelected);
 document.getElementById('nsb-outdent').addEventListener('click', outdentSelected);
 document.getElementById('nsb-delete').addEventListener('click', deleteSelected);
 document.getElementById('nsb-clear').addEventListener('click', clearSelection);
+
+// ── touch edit bar ────────────────────────────────────────────────────────────
+// While a single point is being edited on a touch device, show a strip of structural
+// controls (outdent / indent / move up / move down) pinned above the on-screen keyboard.
+// This is the reliable, discoverable way to reorder and nest on touch, where dragging the
+// bullet is fiddly (the finger occludes the target; one gesture must disambiguate
+// tap/hold/drag/scroll). Each arrow reuses the same single-point core the Tab/Alt keys
+// use, so the structural result and undo are identical; render()'s self-protect commits
+// the in-progress text edit and re-enters the point, so tapping an arrow keeps you editing.
+const editBar = document.getElementById('edit-bar');
+// The point the bar currently acts on. `activeContentId` is the live edit target; we cache
+// it because a tap on a bar button (mousedown/pointer) fires before any blur re-check.
+function editBarTargetId() { return activeContentId; }
+
+function updateEditBar() {
+  // Show only on touch, only while a normal point (not a base/table) is being edited.
+  const id = editBarTargetId();
+  const node = id != null ? nodeById(id) : null;
+  const show = IS_TOUCH && node && node.type !== 'base';
+  editBar.classList.toggle('on', !!show);
+  editBar.setAttribute('aria-hidden', show ? 'false' : 'true');
+  if (!show) return;
+  positionEditBar();
+  // Disable dead-end directions (P4: a control that would do nothing is disabled, not silently inert).
+  const parent = parentOf(id), idx = parent ? parent.children.findIndex(c => c.id === id) : -1;
+  const canIndent  = !!parent && idx > 0;
+  const canOutdent = !!parent && parent !== root && !(focusedId && parent.id === focusedId) && !!parentOf(parent.id);
+  const canUp   = !!parent && idx > 0;
+  const canDown = !!parent && idx >= 0 && idx < parent.children.length - 1;
+  document.getElementById('eb-indent').disabled  = !canIndent;
+  document.getElementById('eb-outdent').disabled = !canOutdent;
+  document.getElementById('eb-up').disabled   = !canUp;
+  document.getElementById('eb-down').disabled = !canDown;
+}
+// Lift the bar to sit just above the on-screen keyboard. visualViewport shrinks when the
+// keyboard is up; its offsetTop+height is the visible bottom. Fall back to bottom:0.
+function positionEditBar() {
+  const vv = window.visualViewport;
+  if (vv) {
+    const bottomGap = (window.innerHeight - (vv.height + vv.offsetTop));
+    editBar.style.bottom = Math.max(0, bottomGap) + 'px';
+  } else {
+    editBar.style.bottom = '0px';
+  }
+}
+// A structural button: run the move, keep the point focused, refresh the bar's state.
+function editBarMove(fn) {
+  const id = editBarTargetId();
+  if (id == null) return;
+  fn(id);
+  // render()+focusNode re-enter the point; refresh disabled states next frame.
+  requestAnimationFrame(updateEditBar);
+}
+// mousedown/touchstart + preventDefault: act WITHOUT blurring the contenteditable (the caret
+// invariant — a click would blur first, exit edit, and hide the bar before the move ran).
+function ebBtn(elId, fn) {
+  const el = document.getElementById(elId);
+  el.addEventListener('mousedown', e => { e.preventDefault(); });
+  el.addEventListener('pointerdown', e => { e.preventDefault(); fn(); });
+}
+ebBtn('eb-outdent', () => editBarMove(outdentNode));
+ebBtn('eb-indent',  () => editBarMove(indentNode));
+ebBtn('eb-up',   () => editBarMove(id => moveNode(id, -1)));
+ebBtn('eb-down', () => editBarMove(id => moveNode(id,  1)));
+document.getElementById('eb-done').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const id = editBarTargetId();
+  document.querySelector(`.node-content[data-id="${id}"][data-editing]`)?.blur();
+  updateEditBar();
+});
+// Track edit focus at the document level so every enter/exit path drives the bar from one
+// place. focusin when a point's contenteditable gains focus; focusout when it leaves.
+document.addEventListener('focusin', e => {
+  if (e.target?.classList?.contains('node-content')) requestAnimationFrame(updateEditBar);
+});
+document.addEventListener('focusout', e => {
+  if (e.target?.classList?.contains('node-content')) {
+    // Defer: focus may be moving to a bar button (which we preventDefault, so focus stays)
+    // or to another point. Re-check after the dust settles.
+    setTimeout(updateEditBar, 60);
+  }
+});
+if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (editBar.classList.contains('on')) positionEditBar(); });
 
 // Bulk edit a multi-selection the same way the bullet popup edits one point: the
 // per-point dialogs/pickers take an optional targets[] list and apply to all of them.
@@ -18291,7 +18397,7 @@ const GUIDE = [
     ] },
   { id:'move-nest', cat:'getting-around',
     title:'Moving and nesting points',
-    body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point (it becomes a child of the point above) and Shift+Tab outdents it (it pops out to its parent's level); Alt+up/down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it. On a phone or tablet there is no Tab key, so swipe a point sideways instead: swipe right to indent, left to outdent (a chip shows the direction). To reorder on touch, press and hold the bullet and drag up or down, or use Move up / Move down in its menu. Swiping straight up or down just scrolls the page as usual.",
+    body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point (it becomes a child of the point above) and Shift+Tab outdents it (it pops out to its parent's level); Alt+up/down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it. On a phone or tablet there is no Tab key, so swipe a point sideways instead: swipe right to indent, left to outdent (a chip shows the direction). And while you are editing a point, a bar above the keyboard gives one-tap outdent, indent, move up, and move down. To reorder by dragging, press and hold the bullet and drag up or down. Swiping straight up or down just scrolls the page as usual.",
     examples:[
       { syn:'Tab / Shift+Tab',  desc:'indent / outdent (keyboard)' },
       { syn:'Alt+↑ / Alt+↓',    desc:'move a point among its siblings' },

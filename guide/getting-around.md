@@ -21,8 +21,10 @@ Reshape the outline as your thinking changes: reorder points and change how deep
 - **Touch (phone or tablet):** there is no `Tab` key, so **swipe a point sideways** instead: swipe
   right to indent (nest it under the point above), left to outdent (pop it out to its parent's
   level). A small direction chip appears as you swipe, and the move commits when you release past it.
-  To reorder, press and hold the bullet and drag up or down, or use **Move up** / **Move down** in
-  the bullet's menu. Swiping straight up or down just scrolls the page as usual.
+  While you are editing a point, a **bar above the keyboard** gives one-tap **outdent, indent, move
+  up, and move down**, the easiest way to reshape on a phone. To reorder by dragging, press and hold
+  the bullet and drag up or down, or use **Move up** / **Move down** in the bullet's menu. Swiping
+  straight up or down just scrolls the page as usual.
 
 ## Zoom into a point
 
