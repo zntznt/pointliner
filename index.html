@@ -849,6 +849,18 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 /* bullet popup */
 #bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;box-shadow:var(--sh-1);min-width:210px;max-height:85vh;overflow-y:auto;scrollbar-width:thin}
 #bpop.on{display:block}
+/* Section headings in the point menu: sticky so the current category stays labelled
+   while you scroll, and clickable to jump back to that section's top. The header sits
+   at the scroll-container edge (top:-5px cancels #bpop's 5px padding so it butts the
+   rounded corner) with an opaque backdrop so rows scroll cleanly under it. Consecutive
+   sticky siblings would otherwise pile up (each pins at the same top); the scroll
+   handler adds .stuck to only the current one and hides the earlier ones (.past). */
+.bpop-head{position:sticky;top:0;z-index:2;background:var(--hbg);font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:7px 10px 4px;margin:0 -5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+.bpop-head.past{visibility:hidden}
+.bpop-head:hover,.bpop-head:focus,.bpop-head:focus-visible{color:var(--fg);outline:none}
+.bpop-head:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
+.bpop-head::after{content:'↑';margin-left:auto;opacity:0;font-size:11px;transition:opacity .12s}
+.bpop-head:hover::after,.bpop-head:focus-visible::after{opacity:.6}
 .bpop-types{display:flex;gap:3px;padding:4px 4px 7px;flex-wrap:wrap;border-bottom:1px solid var(--bdr);margin-bottom:3px}
 .bpop-type{width:26px;height:26px;border-radius:var(--r-sm);background:var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);font-family:var(--mono);transition:background .1s,color .1s;flex-shrink:0}
 .bpop-type:hover{background:var(--acc);color:var(--acc-fg)}
@@ -9207,6 +9219,19 @@ let bpopShowTimer = null;   // dwell-before-show timer for the bullet hover
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
 bpop.addEventListener('mousedown', e => e.preventDefault());
+// Only one section heading pins at a time: consecutive position:sticky siblings would
+// otherwise stack at the top edge. On scroll, hide every heading whose whole section has
+// scrolled past (its successor has reached the top), leaving just the current one stuck.
+function updateStuckHeads() {
+  const heads = [...bpop.querySelectorAll('.bpop-head')];
+  const top = bpop.getBoundingClientRect().top + 1;   // container's top edge (+1 for rounding)
+  for (let i = 0; i < heads.length; i++) {
+    const next = heads[i + 1];
+    // "past" once the next heading has climbed to (or above) the container top.
+    heads[i].classList.toggle('past', !!next && next.getBoundingClientRect().top <= top + 0.5);
+  }
+}
+bpop.addEventListener('scroll', updateStuckHeads);
 // Keyboard nav (UXP-14): same §7 menu pattern as the Column panel. Items are the
 // type-switcher buttons + the action rows; Enter/Space fire their mousedown handler.
 bpop.addEventListener('keydown', e => {
@@ -9319,34 +9344,39 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     bpop.appendChild(typeRow);
   }
 
-  // actions
+  // Actions, grouped into labelled sections. Each row carries a `sec` (the section it
+  // belongs to); rows are bucketed and rendered under a sticky, clickable heading
+  // (grouping keeps the long list scannable — the felt density was structure, not
+  // length). Section order is fixed so the menu reads the same on every point.
   const actions = [
-    { icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
-    { icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
+    { sec:'Navigate', icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
+    { sec:'Navigate', icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
+    { sec:'Annotate', icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
-    { icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
+    { sec:'Annotate', icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
       fn: () => { hideBpop(); openDueDateDialog(nodeId); } },
-    { icon: CHECK_ICON, label: (node.props || []).some(p => p.key.trim().toLowerCase() === CHECK_KEY) ? 'Edit check' : 'Add check',
+    { sec:'Annotate', icon: CHECK_ICON, label: (node.props || []).some(p => p.key.trim().toLowerCase() === CHECK_KEY) ? 'Edit check' : 'Add check',
       fn: () => { hideBpop(); openCheckDialog(nodeId); } },
-    { icon: { fa:'fa-solid fa-tag', fb:'🏷' }, label: aliasesOf(node).length ? 'Edit aliases' : 'Add alias',
+    { sec:'Annotate', icon: { fa:'fa-solid fa-tag', fb:'🏷' }, label: aliasesOf(node).length ? 'Edit aliases' : 'Add alias',
       fn: () => { hideBpop(); openAliasDialog(nodeId); } },
-    { icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
+    { sec:'Annotate', icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
-    { icon: TEMPLATE_ICON, label:'Save as template',
-      fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
-    { icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
-      fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
-    { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
-    { icon:{ fa:'fa-solid fa-left-right', fb:'⇄' }, label:'Refile…',
+    { sec:'Organize', icon:{ fa:'fa-solid fa-left-right', fb:'⇄' }, label:'Refile…',
       fn: () => { hideBpop(); openRefileDialog(nodeId); } },
-    { icon:{ fa:'fa-solid fa-inbox', fb:'⤓' },
+    { sec:'Organize', icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
+    { sec:'Organize', icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
+    { sec:'More', icon: TEMPLATE_ICON, label:'Save as template',
+      fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
+    { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
+      fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
+    { sec:'More', icon:{ fa:'fa-solid fa-inbox', fb:'⤓' },
       label: root.inboxId === nodeId ? 'Unset as inbox' : 'Set as inbox',
       fn: () => {
         hideBpop();
         if (root.inboxId === nodeId) { root.inboxId = null; markDirty(); flashHint('Inbox cleared'); }
         else { root.inboxId = nodeId; markDirty(); flashHint('Inbox set to ' + crumbLabel(node)); }
       } },
-    { icon:{ fa:'fa-solid fa-calendar-day', fb:'📓' },
+    { sec:'More', icon:{ fa:'fa-solid fa-calendar-day', fb:'📓' },
       label: root.journal?.targetId === nodeId ? 'Unset as journal home' : 'Set as journal home',
       fn: () => {
         hideBpop();
@@ -9358,9 +9388,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
           markDirty(); flashHint('Journal home set to ' + crumbLabel(node));
         }
       } },
-    { icon:{ fa:'fa-solid fa-arrow-up',   fb:'↑' }, label:'Move up',   fn: () => { moveNode(nodeId,-1); hideBpop(); } },
-    { icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
-    { icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
+    { sec:'Danger', icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
       fn: isBase
         ? async () => {
             hideBpop();
@@ -9374,16 +9402,17 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       danger:true },
   ];
   if (isBase) {
+    // Base copy ops lead the menu (mirroring the header ⋯ menu), before the shared actions.
     actions.unshift(
-      { icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as markdown',
+      { sec:'Table', icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as markdown',
         fn: () => {
           hideBpop();
           const content = document.querySelector(`.node-content[data-id="${nodeId}"]`);
           if (content) { enterEdit(content, node); content.focus(); }
         } },
-      { icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as markdown',
+      { sec:'Table', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as markdown',
         fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as markdown'); hideBpop(); } },
-      { icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with TBLFM',
+      { sec:'Table', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with TBLFM',
         fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
     );
   }
@@ -9392,23 +9421,23 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // is discoverable and rides the bullet popup's keyboard plan (UXP-14).
   if (!isBase) {
     const tr = findFirstTableRange(node.text);
-    if (tr) actions.unshift({
-      icon: { fa:'fa-solid fa-table-cells', fb:'▦' }, label: 'Convert table to base',
+    if (tr) actions.push({
+      sec:'Organize', icon: { fa:'fa-solid fa-table-cells', fb:'▦' }, label: 'Convert table to base',
       fn: () => { hideBpop(); promoteStaticTable(node, tr.l0, tr.l1); },
     });
   }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
   // todo can become NEXT etc. — the badge target only exists once a keyword is set).
   if (node.type === 'todo') {
-    actions.unshift({
-      icon: { fa:'fa-solid fa-circle-check', fb:'◔' },
+    actions.push({
+      sec:'Annotate', icon: { fa:'fa-solid fa-circle-check', fb:'◔' },
       label: 'Set state / priority…',
       fn: () => { showTodoPicker(nodeId, bulletEl); },
     });
   }
   if (node.children.length >= 2) {
-    actions.splice(actions.length - 1, 0, {
-      icon: { fa:'fa-solid fa-arrow-down-wide-short', fb:'⇅' },
+    actions.push({
+      sec:'Organize', icon: { fa:'fa-solid fa-arrow-down-wide-short', fb:'⇅' },
       label: 'Sort children by state/priority',
       fn: () => { pushUndo(); node.children.sort((a,b) => compareTodo(a.text, b.text)); markDirty(); render(); hideBpop(); },
     });
@@ -9417,35 +9446,57 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // landing focus on a tabindex=-1 pill, which a sighted keyboard-only user can't do. So
   // surface each pill's action (re-roll/advance/re-sample + edit) here, in the keyboard
   // hub that opens on Shift+F10. Generators get a primary re-roll row; everything gets an
-  // edit row. A short label suffix (the expr/result) disambiguates multiple pills.
-  const pillRows = collectPillActions(node);
-  if (pillRows.length) {
-    const sep = document.createElement('div'); sep.className = 'cmd-sep'; bpop.appendChild(sep);
-    pillRows.forEach(({ icon, label, fn }) => {
-      const item = mkCmdItem(icon, label, '', () => { fn(); hideBpop(); });
+  // edit row. A short label suffix (the expr/result) disambiguates multiple pills. Pill
+  // fns don't self-dismiss, so wrap them to close the menu (every other action's fn
+  // already calls hideBpop itself — and "Set state…" deliberately re-opens #bpop as a
+  // picker, so it must NOT be auto-hidden).
+  for (const r of collectPillActions(node)) actions.push({ sec:'Pills', ...r, fn: () => { r.fn(); hideBpop(); } });
+
+  // Render section by section, each under a sticky, clickable heading. The heading
+  // scrolls its own section's top back into view (P2 — a way back up a long menu).
+  // Fixed section order; a section with no rows is skipped. Base copy ops ('Table')
+  // lead; 'Danger' (Delete) sits last, alone, so it's not adjacent to Move down.
+  const SECTION_ORDER = ['Table','Navigate','Annotate','Pills','Organize','More','Danger'];
+  const bySec = new Map();
+  for (const a of actions) { if (!bySec.has(a.sec)) bySec.set(a.sec, []); bySec.get(a.sec).push(a); }
+  for (const sec of SECTION_ORDER) {
+    const rows = bySec.get(sec);
+    if (!rows || !rows.length) continue;
+    const head = document.createElement('div');
+    head.className = 'bpop-head';
+    head.textContent = sec;
+    head.setAttribute('tabindex', '-1');
+    head.setAttribute('aria-hidden', 'true');   // decorative label; rows carry the semantics
+    head.title = 'Jump to ' + sec;
+    // Jump the section's heading flush to the top of the scroll area. Set scrollTop to
+    // the header's offsetTop (minus its own sticky height so it lands flush, not one row
+    // down) rather than scrollIntoView(), which overshoots by the sticky inset. mousedown
+    // (not click) keeps focus off any active contenteditable.
+    head.addEventListener('mousedown', e => {
+      e.preventDefault();
+      bpop.scrollTop = head.offsetTop;
+      updateStuckHeads();
+    });
+    bpop.appendChild(head);
+    for (const { icon, label, fn, danger } of rows) {
+      const item = mkCmdItem(icon, label, '', fn);   // each fn owns its own dismissal
       item.setAttribute('role', 'menuitem');
       item.setAttribute('tabindex', '-1');
+      if (danger) item.classList.add('danger');
       bpop.appendChild(item);
-    });
-    const sep2 = document.createElement('div'); sep2.className = 'cmd-sep'; bpop.appendChild(sep2);
+    }
   }
-
-  actions.forEach(({ icon, label, fn, danger }) => {
-    const item = mkCmdItem(icon, label, '', fn);
-    item.setAttribute('role', 'menuitem');
-    item.setAttribute('tabindex', '-1');
-    if (danger) item.classList.add('danger');
-    bpop.appendChild(item);
-  });
 
   const rect = bulletEl.getBoundingClientRect();
   bpop.style.left = (rect.right + 4) + 'px';
   bpop.style.top  = rect.top + 'px';
+  bpop.scrollTop = 0;   // reused element: start each open at the top
   bpop.classList.add('on');
   requestAnimationFrame(() => {
     const pr = bpop.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
     if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (window.innerHeight - pr.height - 8) + 'px';
+    updateStuckHeads();   // set the initial single-pinned-heading state
     // Keyboard open: move focus into the menu (first item). Hover open never steals focus.
     if (opts.keyboard) bpop.querySelector('.bpop-type, .cmd-item')?.focus();
   });
