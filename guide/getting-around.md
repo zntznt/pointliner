@@ -16,6 +16,9 @@ Reshape the outline as your thinking changes: reorder points and change how deep
 
 - **Keyboard:** `Tab` indents a point (it becomes a child of the point above); `Shift+Tab` outdents
   it (it pops out to its parent's level). `Alt+Up` / `Alt+Down` moves a point among its siblings.
+  `Ctrl/Cmd+D` duplicates a point and its subtree; `Ctrl/Cmd+Shift+Backspace` deletes it.
+  `Ctrl/Cmd+.` and `Ctrl/Cmd+,` collapse and expand a point (while editing it, or while navigating
+  rows with the arrow keys).
 - **Mouse:** drag a point's bullet. Drop between rows to reorder, or drop to the right of a point to
   nest under it.
 - **Touch (phone or tablet):** there is no `Tab` key, so **swipe a point sideways** instead: swipe
