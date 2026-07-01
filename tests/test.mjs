@@ -7027,3 +7027,101 @@ test('setFirstTaskChecked — only touches the first line, not later task lines'
   c.setFirstTaskChecked(n, true);
   assert.equal(n.text, '- [x] first\n- [ ] second');       // second untouched
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Coverage the load-cores hardening unlocked (const-arrow escapers now callable)
+// and high-value invariants the prior suite left unpinned (grammar depth guard,
+// the embed round-trip's </script> safety, evalMath's √). These protect the
+// security + correctness work from PRs #277/#278.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── escapers: the foundation of every XSS fix ────────────────────────────────
+test('escHtml — escapes & < > (text content)', () => {
+  assert.equal(c.escHtml('<img src=x>&'), '&lt;img src=x&gt;&amp;');
+  assert.equal(c.escHtml('"'), '"', 'quotes are NOT escaped by escHtml (text-content escaper)');
+  assert.equal(c.escHtml(''), '', 'falsy input → empty string, never throws');
+});
+test('escAttr / escQ — full attribute escape incl. quotes', () => {
+  // escQ was upgraded from quotes-only to === escAttr; both must escape "&<>
+  assert.equal(c.escAttr('" onmouseover="x'), '&quot; onmouseover=&quot;x');
+  assert.equal(c.escQ('<b>"&'), '&lt;b&gt;&quot;&amp;', 'escQ must be the full attribute escaper');
+  assert.equal(c.escQ, c.escAttr, 'escQ is aliased to escAttr');
+});
+
+// ── diceBreakdownHTML / renderDicePill: hostile sidecar fields are escaped ────
+test('diceBreakdownHTML — flat modifier value is HTML-escaped', () => {
+  const html = c.diceBreakdownHTML({ total: 0, parts: [{ kind: 'mod', sign: 1, value: '<img onerror=alert(1)>' }] });
+  assert.ok(!html.includes('<img'), 'raw <img must not survive');
+  assert.ok(html.includes('&lt;img'), 'the value is escaped');
+});
+test('renderDicePill — a quote-breakout in expr cannot escape the aria-label', () => {
+  const html = c.renderDicePill('r1', { key: 'r1', expr: '" onmouseover="alert(1)', total: 0, parts: [] });
+  assert.ok(!html.includes('onmouseover="alert(1)"'), 'the raw handler must not become a live attribute');
+  assert.ok(html.includes('&quot;'), 'the injected quote is entity-escaped');
+});
+
+// ── mdInline: NUL can't forge a stash placeholder; line-level escape holds ────
+test('mdInline — literal NUL does not inject a stashed fragment', () => {
+  const html = c.mdInline('`x` then \x000\x00 end');
+  assert.ok(html.includes('<code>x</code>'), 'the real code span still renders');
+  assert.ok(!/\x00/.test(html), 'no NUL survives to the output');
+  assert.ok(html.includes('0 end'), 'user text preserved, not replaced by the stashed code span');
+});
+test('mdInline — angle brackets in plain text are escaped at entry', () => {
+  const html = c.mdInline('a <script>b</script> c');
+  assert.ok(!html.includes('<script>'), 'raw <script> must not survive');
+  assert.ok(html.includes('&lt;script&gt;'), 'escaped at the line-level pass');
+});
+
+// ── grammar: BOTH guards (cycle ↻ AND runaway depth …) ───────────────────────
+// runGrammar(rulesText, startRule, docRules) — pass {} for docRules to isolate
+// from the live document. The cycle guard fires on a self/mutual reference; the
+// depth guard needs a NON-cyclic chain longer than the 200 limit (distinct names).
+test('runGrammar — a self-referencing rule hits the cycle guard (↻)', () => {
+  assert.equal(c.runGrammar('a: {a}', 'a', {}), '↻');
+});
+test('runGrammar — mutual recursion hits the cycle guard (↻)', () => {
+  assert.equal(c.runGrammar('a: {b}\nb: {a}', 'a', {}), '↻');
+});
+test('runGrammar — a non-cyclic chain past depth 200 hits the depth guard (…)', () => {
+  const lines = [];
+  for (let i = 0; i < 260; i++) lines.push(`r${i}: {r${i + 1}}`);
+  lines.push('r260: end');
+  assert.equal(c.runGrammar(lines.join('\n'), 'r0', {}), '…', 'deep-but-finite → depth marker, not a stack overflow');
+});
+test('runGrammar — the guards do not fire on ordinary shallow rules', () => {
+  assert.equal(c.runGrammar('color: red|red', 'color', {}), 'red');
+});
+
+// ── self-contained HTML export: OPML round-trips inside a <script> island even
+//    when node text contains a literal </script> (the C1 safety invariant) ────
+test('embedOpmlIntoHtml/extractEmbeddedOpml — </script> in node text round-trips', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode();
+  n.text = 'danger </script><img src=x onerror=alert(1)>';
+  root.children.push(n);
+  const opml = c.toOpml(root);
+  assert.ok(!opml.includes('</script>'), 'toOpml must not emit a literal </script> (< > become entities)');
+  const shell = '<html><body><script type="application/xml" id="pl-embedded-doc"></script></body></html>';
+  const back = c.extractEmbeddedOpml(c.embedOpmlIntoHtml(shell, opml));
+  assert.equal(back, opml, 'the embedded OPML round-trips byte-for-byte');
+});
+
+// ── evalMath: the √ unary operator (documented, previously unpinned) ─────────
+test('evalMath — √ unary operator', () => {
+  assert.equal(c.evalMath('√9'), 3);
+  assert.equal(c.evalMath('√(4+5)'), 3, '√ binds tighter than nothing inside parens');
+  assert.equal(c.evalMath('2*√9'), 6, '√ composes with arithmetic');
+});
+
+// ── collectRules explicit-root bypasses the per-generation cache (parity with
+//    the existing collectVars pin) ────────────────────────────────────────────
+test('collectRules — an explicit root walks that tree, bypassing the live cache', () => {
+  const root = c.mkRoot();
+  const n = c.mkNode();
+  n.text = '[[grammar:g1]]';
+  n.grammar = [{ key: 'g1', def: 'color: blue', origin: '', result: 'blue' }];
+  root.children.push(n);
+  const rules = c.collectRules(root);
+  assert.ok(rules && rules.color, 'the explicit root\'s rule is collected from the passed tree');
+});
