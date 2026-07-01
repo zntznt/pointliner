@@ -199,8 +199,16 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .acc-swatch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .acc-swatch:hover{transform:scale(1.22)}
 .acc-swatch.on{outline:2px solid var(--fg);outline-offset:2px}
-#search-box{width:clamp(150px,40vw,220px);height:28px;padding:5px 44px 5px 30px;border:1px solid var(--bdr-ui);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
+#search-box{width:clamp(150px,40vw,220px);height:28px;padding:5px 44px 5px 30px;border:1px solid var(--bdr-ui);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:13px;outline:none;transition:width .16s cubic-bezier(.2,.8,.3,1),border-color .15s,box-shadow .15s}
 #search-box:focus{border-color:var(--acc);background:var(--hbg);box-shadow:0 0 0 2px var(--ring)}
+/* Wide screens (above the tablet reflow at 820px, where search already becomes a full-
+   width flex item): on focus the field grows to the width of the help popup below it (both
+   ~592px) so the two read as one unit, overlaying the toolbar (the wrap is centered and
+   grows symmetrically; z-index lifts it over the icons). Capped to the viewport. */
+@media(min-width:821px){
+  #search-box:focus{width:min(592px,calc(100vw - 32px))}
+  #search-wrap:focus-within{z-index:70}
+}
 #search-box:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 #search-box::placeholder{color:var(--muted)}
 #search-wrap::before{content:'\f002';font-family:'Font Awesome 6 Free';font-weight:900;position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px;pointer-events:none}
