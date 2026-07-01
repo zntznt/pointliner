@@ -5321,33 +5321,40 @@ test('refile: UI wiring + ancestor guard present (src pins)', () => {
 
 // ─── capture / quick inbox ─────────────────────────────────────────────────────
 
-test('capture: mkRoot initialises inboxId as null', () => {
-  assert.strictEqual(c.mkRoot().inboxId, null);
+test('capture: mkRoot initialises inboxes as an empty list', () => {
+  const ib = c.mkRoot().inboxes;
+  assert.ok(Array.isArray(ib) && ib.length === 0, 'inboxes should be an empty array');
 });
 
-test('capture: inboxId round-trips through the OPML head', () => {
+test('capture: inboxes round-trip through the OPML head (up to 10 slots)', () => {
   const root = c.mkRoot();
-  const inbox = c.mkNode('Inbox');
-  root.children.push(inbox);
-  // unset → no element emitted
-  assert.ok(!c.toOpml(root).includes('_inbox'), 'must not emit when unset');
-  root.inboxId = inbox.id;
+  const a = c.mkNode('Inbox A'), b = c.mkNode('Inbox B');
+  root.children.push(a, b);
+  // empty → no element emitted
+  assert.ok(!c.toOpml(root).includes('_inboxes'), 'must not emit when empty');
+  root.inboxes = [a.id, b.id];
   const xml = c.toOpml(root);
-  assert.ok(xml.includes('<_inbox>' + inbox.id + '</_inbox>'), 'head element / id not serialized');
-  // the inbox point's own id must serialize too (so the pointer stays valid after a
-  // reload — node ids round-trip via _id). fromOpml needs DOMParser (no vm sandbox),
-  // so the parse side is pinned in the wiring test below, mirroring saved searches.
-  assert.ok(xml.includes('_id="' + inbox.id + '"'), 'inbox point _id must round-trip');
+  // serialized as a JSON array in the <_inboxes> head element (headEl array form)
+  assert.ok(xml.includes('<_inboxes>') && xml.includes(a.id) && xml.includes(b.id), 'inbox list not serialized');
+  // each inbox point's own id round-trips (so the pointers stay valid after reload)
+  assert.ok(xml.includes('_id="' + a.id + '"') && xml.includes('_id="' + b.id + '"'), 'inbox point _id must round-trip');
 });
 
 test('capture: UI wiring + front doors present (src pins)', () => {
-  assert.ok(_src.includes("querySelector('head > _inbox')"), 'fromOpml parse missing');
-  assert.ok(_src.includes('inboxId: null'), 'mkRoot default missing');
+  // new array head element + legacy single-inbox migration on load
+  assert.ok(_src.includes("headJSONArray(doc, '_inboxes'"), 'fromOpml parse of _inboxes missing');
+  assert.ok(_src.includes("doc.querySelector('head > _inbox')"), 'legacy _inbox migration missing');
+  assert.ok(_src.includes('inboxes: []'), 'mkRoot default missing');
+  assert.ok(_src.includes('const MAX_INBOXES = 10'), 'inbox cap missing');
+  assert.ok(_src.includes('function inboxAt') && _src.includes('function setInboxSlot') && _src.includes('function removeInboxSlot'), 'slot helpers missing');
   assert.ok(_src.includes('openCaptureDialog'), 'capture dialog missing');
   assert.ok(_src.includes('function doCapture'), 'capture action missing');
   assert.ok(_src.includes('id="btn-capture"'), 'toolbar button missing');
   assert.ok(_src.includes("getElementById('btn-capture').addEventListener"), 'button not wired');
-  // no destination yet → the capture action routes to the picker, never silently no-ops (P4)
+  // slot shortcuts: ⌘⇧<N> capture-to-slot (adopt current point if empty), ⌘⌥<N> set-as-inbox
+  assert.ok(_src.includes('openCaptureDialog(d === 0 ? 10 : d)'), 'slot capture shortcut missing');
+  assert.ok(_src.includes('function captureCurrentPointId'), 'current-point adopt path missing');
+  // no destination yet → the capture action routes to the manager, never silently no-ops (P4)
   assert.ok(_src.includes('if (!inbox) { renderCaptureDest(); return; }'), 'unset-inbox path missing');
   // captured text is markdown-aware (a typed - [ ] becomes a to-do)
   assert.ok(_src.includes('deriveTypeFromText(text)') && _src.includes('todoDoneFromText(text)'), 'capture not markdown-aware');

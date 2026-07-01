@@ -73,12 +73,18 @@ that template) or **`/template`** on its own to pick from a list.
 Jot down a task, an idea, or a quick note the moment it strikes, without leaving what you are doing or
 hunting for the right spot.
 
-Pick any point as your **inbox**, then capture into it from anywhere; each entry lands as a new point
-at the bottom of that inbox. What you type is markdown-aware, so a typed `- [ ]` becomes a to-do.
+Set up to **10 inboxes** (numbered 1 to 10) and capture into any of them from anywhere; each entry
+lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed `- [ ]`
+becomes a to-do.
 
-Click the **inbox button** in the toolbar (or press `Ctrl/Cmd+Shift+I`) to open the Capture dialog,
-or set the destination from a point's menu with **Set as inbox**. The dialog stays open after each capture with a running count, so
-you can empty your head in one sitting. `Enter` captures; `Shift+Enter` adds a line break.
+Press `Ctrl/Cmd+Shift+I` (or the toolbar **inbox button**) to open the Capture dialog, or
+`Ctrl/Cmd+Shift+1` through `0` to capture **straight to inbox 1 through 10**. If a numbered slot has no
+inbox yet and a point is selected, that point **becomes** that inbox. While the dialog is open the same
+keys switch the destination (they move the selector, they do not reopen it), and you can click a slot
+chip too. `Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1 through 10; a point's menu adds
+or removes an inbox slot, and **Manage** in the dialog lists them all. The dialog stays open after each
+capture with a running count, so you can empty your head in one sitting. `Enter` captures;
+`Shift+Enter` adds a line break.
 
 ## Nicknames (aliases)
 
