@@ -6782,6 +6782,35 @@ test('reconcileAction — never anchored (known 0/null) → write, nothing to cl
   assert.equal(c.reconcileAction({ diskModified: 0,   knownModified: null, dirty: false }), 'write');
 });
 
+// ── data-safety: switching/creating a folder doc must PERSIST the outgoing one first ──
+// (the tab-switch data-loss regression: the debounced folder write was orphaned by the
+// swap, so recent edits to the doc you left never reached disk). Src pins — the FS path
+// isn't reachable from the vm sandbox.
+test('tab switch persists the outgoing folder-backed doc before adopting the new one (src pins)', () => {
+  // switchWorkspaceDoc: for a folder-backed dirty doc, cancel the debounce and write it,
+  // awaited, before adopting — NOT a discard prompt.
+  assert.ok(_src.includes('if (workspaceFile && dirty)'), 'switch must branch on folder-backed + dirty');
+  const sw = _src.slice(_src.indexOf('async function switchWorkspaceDoc'), _src.indexOf('async function switchWorkspaceDoc') + 2200);
+  assert.ok(sw.includes('clearTimeout(autosaveTimer)'), 'switch must cancel the pending debounce');
+  assert.ok(sw.includes('safeWriteOpml(workspaceDir, outName, outOpml)'), 'switch must write the outgoing file directly, awaited');
+  assert.ok(sw.includes('adoptDoc('), 'switch still adopts after the flush');
+  // adoptDoc cancels any pending timer so an orphaned one can't misfire against the new root.
+  const ad = _src.slice(_src.indexOf('function adoptDoc'), _src.indexOf('function adoptDoc') + 800);
+  assert.ok(ad.includes('clearTimeout(autosaveTimer)'), 'adoptDoc must cancel the pending autosave');
+  // newWorkspaceDoc gets the same flush-not-discard treatment for a folder-backed doc.
+  const nw = _src.slice(_src.indexOf('async function newWorkspaceDoc'), _src.indexOf('async function newWorkspaceDoc') + 700);
+  assert.ok(nw.includes('safeWriteOpml(workspaceDir, fileName'), 'newWorkspaceDoc must flush the outgoing folder doc');
+});
+
+// flashError was referenced by ~10 catch blocks but never defined — an error path threw a
+// ReferenceError instead of surfacing the message. Pin that it's now a real function.
+test('flashError is defined (error toasts no longer throw)', () => {
+  assert.ok(_src.includes('function flashError('), 'flashError must be defined');
+  // flashHint re-applies neutral styling each call so a prior error toast does not leak red.
+  const fh = _src.slice(_src.indexOf('function flashHint('), _src.indexOf('function flashHint(') + 700);
+  assert.ok(fh.includes('el.style.cssText') && fh.indexOf('el.style.cssText') > fh.indexOf('document.body.appendChild'), 'flashHint must reset styling on every call');
+});
+
 // ── sync-safety: tmpWriteName (atomic-write temp filename) ────────────────────
 test('tmpWriteName — produces a hidden .pltmp sibling, not a .opml', () => {
   assert.equal(c.tmpWriteName('notes.opml'), '.notes.pltmp');
