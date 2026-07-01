@@ -213,7 +213,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   min-width:max-content;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted);pointer-events:none}
 #search-wrap:focus-within #search-hint{display:block}
-.sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:nowrap}
+.sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap}
 .sh-row kbd{font-size:10px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:0 4px;line-height:1.6}
 .sh-row code{font-family:var(--mono);font-size:10px}
 /* saved searches: the one interactive island in the otherwise inert hint panel */
@@ -244,7 +244,10 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #search-save:hover,#search-save[aria-pressed="true"]{color:var(--acc)}
 #search-save:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:3px}
 #search-wrap:has(#search-clear.on) #search-box{padding-right:60px}
-@media(max-width:560px){#search-hint{left:0;right:0;transform:none;min-width:0}.sh-row{white-space:normal}}
+/* Pin the search hint to the viewport edges whenever the window is too narrow to hold
+   the centered popup (its content is ~590px, so center-anchoring overflows below ~720px).
+   Above that there's room to center it. Rows wrap (base .sh-row), so it stays readable. */
+@media(max-width:720px){#search-hint{left:8px;right:8px;transform:none;min-width:0;max-width:none}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
 #search-clear.on{display:block}
