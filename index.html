@@ -817,10 +817,10 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
    It reads as a button, not a faint bullet (the old dot looked like a half-loaded point),
    and it's hidden on an empty doc where the auto-created first point already invites you
    to "Start writing…". The + sits at the bullet column, the label at the text column. */
-.ghost-row{display:inline-flex;align-items:center;gap:6px;margin:6px 0 4px;padding:4px 8px 4px 4px;border-radius:var(--r-md);cursor:pointer;user-select:none;color:var(--muted);transition:background .12s,color .12s}
+.ghost-row{display:inline-flex;align-items:center;gap:4px;margin:6px 0 4px;padding:4px 8px 4px 8px;border-radius:var(--r-md);cursor:pointer;user-select:none;color:var(--muted);transition:background .12s,color .12s}
 .ghost-row:hover,.ghost-row:focus-visible{background:color-mix(in srgb,var(--acc) 8%,transparent);color:var(--fg);outline:none}
 .ghost-row:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
-.ghost-plus{width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:var(--r-sm);border:1px solid var(--bdr);font-size:13px;line-height:1;font-family:var(--mono);transition:background .12s,border-color .12s,color .12s}
+.ghost-plus{width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:var(--r-sm);border:1px solid var(--bdr);font-size:12px;line-height:1;font-family:var(--mono);transition:background .12s,border-color .12s,color .12s}
 .ghost-row:hover .ghost-plus,.ghost-row:focus-visible .ghost-plus{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
 .ghost-label{font-size:.95em;letter-spacing:.01em}
 
