@@ -287,7 +287,10 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 #vlist{position:relative}
 .vspacer{flex:none;width:100%}
 #vlist>.node{position:relative}
-.zoom-title{font-size:30px;font-weight:640;font-family:var(--display-font);font-variation-settings:'opsz' 60;letter-spacing:-.025em;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;white-space:nowrap;overflow-x:auto;cursor:text}
+/* The title wraps and is capped at --zoom-title-max height. fitZoomTitle() shrinks the
+   font (from --zoom-title-size down to the body-text floor) until the text fits; if it
+   still overflows at the floor, the title scrolls vertically within the cap. */
+.zoom-title{--zoom-title-size:30px;--zoom-title-max:40vh;font-size:var(--zoom-title-size);font-weight:640;font-family:var(--display-font);font-variation-settings:'opsz' 60;letter-spacing:-.025em;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;white-space:normal;overflow-wrap:break-word;max-height:var(--zoom-title-max);overflow-y:auto;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
 .zoom-title:focus-visible{outline:2px solid color-mix(in srgb,var(--acc) 70%,transparent);outline-offset:1px}
@@ -1221,7 +1224,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   :root{--ind:16px}
   #outline{padding:20px 14px 140px}
   .crumb{max-width:120px}
-  .zoom-title{font-size:22px}
+  .zoom-title{--zoom-title-size:22px}
   /* keep floating menus inside the viewport */
   #slash-menu{width:min(204px,calc(100vw - 16px))}
   #bpop{min-width:0;width:min(248px,calc(100vw - 16px))}
@@ -4395,6 +4398,27 @@ function commitActiveEdit() {
 function zoomInto(id) { focusedId = id; render(); } // render() commits any active edit
 function zoomTo(id)   { focusedId = id; render(); }
 
+// Fit the zoomed point's title inside its max height (--zoom-title-max). Shrink the font
+// from the CSS start size (--zoom-title-size, 30px desktop / 22px mobile) down to the
+// body-text floor; if it still overflows at the floor, the CSS max-height + overflow-y
+// let it scroll. Runs on zoom, on title edit, and on resize (width changes the wrap).
+const ZOOM_TITLE_MIN = 17;   // px floor = body text size; never smaller
+function fitZoomTitle(el) {
+  if (!el || !el.isConnected || el.classList.contains('zoom-title-base')) return;
+  // Start from the size the CSS wants (reads the custom property, so the mobile 22px and
+  // desktop 30px both work), then step down until it fits or hits the floor.
+  const start = parseFloat(getComputedStyle(el).getPropertyValue('--zoom-title-size')) || 30;
+  el.style.fontSize = start + 'px';
+  // If it already fits at the start size, done.
+  if (el.scrollHeight <= el.clientHeight) return;
+  let size = start;
+  while (size > ZOOM_TITLE_MIN && el.scrollHeight > el.clientHeight) {
+    size = Math.max(ZOOM_TITLE_MIN, size - 1);
+    el.style.fontSize = size + 'px';
+  }
+  // At the floor it may still overflow — CSS overflow-y:auto scrolls it within the cap.
+}
+
 // Follow a node link to (did, tid): zoom same-doc, switch+zoom cross-doc. The single
 // home for both behaviors AND the P4 broken-link feedback — activating a link whose
 // target is missing must SAY so (flashHint also reaches AT via #a11y-live), never
@@ -4615,6 +4639,7 @@ function render() {
       if (!te.dataset.editing) return;
       vp.text = editableText(te); markDirty(); renderBreadcrumb();
       updateFnPanel(vp);
+      fitZoomTitle(te);   // re-fit as the title text changes
     });
     te.addEventListener('keydown', e => {
       // display mode: Enter/Space on a focused node-link follows it (the keyboard twin
@@ -4634,6 +4659,7 @@ function render() {
       if (te.dataset.editing) hiFnItem(null);
     });
     container.appendChild(te);
+    requestAnimationFrame(() => fitZoomTitle(te));   // shrink-to-fit once laid out
     // the zoomed point's note renders under its title (same editor contract as
     // the outline rows; an empty editor appears when just opened via the menu).
     // With notes toggled off, the same .note-ind mark appears inside the title.
@@ -4868,6 +4894,8 @@ window.addEventListener('resize', () => {
   measureTops();
   winStart = 0; winEnd = -1;
   renderWindow(true);
+  const zt = document.querySelector('.zoom-title');   // width change re-wraps the title
+  if (zt) fitZoomTitle(zt);
 });
 
 function appendGhostRow(parent, container) {
