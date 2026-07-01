@@ -6078,7 +6078,7 @@ function renderRow(r) {
   content.contentEditable = (opts.searchCtx || isTable) ? 'false' : 'true';
   content.spellcheck = !isTable;
   content.dataset.id = node.id;
-  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block. Enter = line break · ⇧+Enter = new point' : (depth === 0 && !focusedId ? 'Start writing…' : '');
+  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block. Enter = line break · ⇧+Enter = new point' : (depth === 0 ? 'Start writing…' : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
     // not as a separate button under the grid.
