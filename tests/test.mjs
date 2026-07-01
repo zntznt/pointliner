@@ -5998,6 +5998,23 @@ test('addWeeks — steps by 7-day weeks', () => {
   assert.equal(c.addWeeks(w, -2), w - 14);
 });
 
+test('agendaDayStats — counts to-do vs done and orders active-first (done sinks)', () => {
+  const items = [
+    { id: 'a', done: false },
+    { id: 'b', done: true },
+    { id: 'c', done: false },
+    { id: 'd', done: true },
+  ];
+  const { ordered, todo, done } = c.agendaDayStats(items);
+  assert.equal(todo, 2);
+  assert.equal(done, 2);
+  // active items keep their incoming order and come first; done items sink, order preserved
+  assert.deepEqual(ordered.map(x => x.id), ['a', 'c', 'b', 'd']);
+  // empty day
+  const e = c.agendaDayStats([]);
+  assert.deepEqual([e.todo, e.done, e.ordered.length], [0, 0, 0]);
+});
+
 // ── urgencyMark (UXP-66) — non-colour cue for overdue agenda items ───────────
 test('urgencyMark — only overdue earns a marker; others return empty', () => {
   assert.equal(c.urgencyMark('overdue'), '! ');

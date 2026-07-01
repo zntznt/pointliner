@@ -28,17 +28,21 @@ Dates can be exact (`2026-07-01`) or relative (`today`, `tomorrow`, `today+7`).
 See all your upcoming work without scrolling the outline. Click the **calendar button** in the
 toolbar to open the agenda below the breadcrumb (click it again to close).
 
-A compact **List** is always shown, ordered by urgency (most overdue and soonest-due first) so
-nothing gets lost. Beside it, a single **view switcher** opens one deeper view at a time below the
-List (click the active one again to return to just the List):
+A compact **List** is always shown, ordered by urgency (most overdue and soonest-due first, with
+done items sunk to the end) so nothing gets lost. Beside it, a single **view switcher** opens one
+deeper view at a time below the List (click the active one again to return to just the List):
 
 - **Week** , a 7-day planner spread; overdue items are gathered in a leading **Earlier** column.
 - **Month** , a full month calendar.
 - **Timeline** , a Gantt-style view of overlapping tasks.
 
-Turn on **Done** to include completed points; toggle **Running** to show or hide started work. Useful
-for weekly planning, spotting overdue items at a glance, or checking whether a date is already full.
-Click any item to jump straight to it.
+In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
+do, y done**) and lists the active ones first; when a day has more than fit, click its **more** to
+expand that day in place and see them all. The **‹‹** and **››** buttons jump a whole month (Week) or
+year (Month).
+
+Turn on **Done** to include completed points; toggle **Running** to show or hide started work. Click
+any item to jump straight to it.
 
 ## Daily journal
 
