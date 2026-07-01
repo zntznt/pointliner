@@ -1094,6 +1094,9 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .ag-toggle{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}
 .ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
 .ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+/* Overdue is a FOCUS filter, not an inclusion toggle — when active it wears the overdue-red
+   so it reads as "narrowing to late items", distinct from the accent Done/Running use. */
+.ag-toggle.ag-focus.on{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent);border-color:color-mix(in srgb,var(--bad) 38%,transparent)}
 .ag-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .ag-rows{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;justify-content:center}
 .ag-row{display:flex;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;min-height:22px}
@@ -17776,6 +17779,7 @@ let agendaView = '';
 let agendaBars = { timeline: false, calendar: false };  // legacy (persisted) — migrated to agendaView on load
 let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
+let agendaOverdueOnly = false;  // focus filter: when on, every view shows only overdue items
 let agendaMonth = null;         // Month/Week view: any epoch-day in the shown period (session-only)
 let agendaWeek = null;          // Week view: any epoch-day in the shown week (session-only)
 let ganttNamesW = null;         // Timeline: pinned width (px) of the titles column, null = CSS clamp default
@@ -17879,7 +17883,11 @@ function renderAgenda() {
   strip.innerHTML = '';
 
   const all = collectDueDates(root);
-  const visible = all.filter(it => agendaShowDone || !it.done);
+  // Done is an inclusion toggle; Overdue-only is a FOCUS filter (agendaState collapses a
+  // met-but-past deadline to 'done', so this never shows a completed item as overdue).
+  const visible = all.filter(it =>
+    (agendaShowDone || !it.done) &&
+    (!agendaOverdueOnly || agendaState(it) === 'overdue'));
 
   // top bar: the controls (a single view switcher + Done/Running filters) beside the List.
   const top = document.createElement('div'); top.className = 'ag-top';
@@ -17907,7 +17915,11 @@ function renderAgenda() {
   runT.title = 'Show the running row (started points)';
   const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); scheduleAutosave(); });
   doneT.title = 'Include completed points';
-  filters.append(doneT, runT);
+  // Focus filter (distinct from the inclusion toggles): narrow every view to overdue items.
+  const overdueT = mkAgToggle('Overdue', agendaOverdueOnly, () => { agendaOverdueOnly = !agendaOverdueOnly; renderAgenda(); scheduleAutosave(); });
+  overdueT.classList.add('ag-focus');
+  overdueT.title = 'Focus on overdue items only';
+  filters.append(doneT, runT, overdueT);
   controls.append(sw, filters);
 
   const listHost = document.createElement('div'); listHost.className = 'ag-list';
@@ -19099,7 +19111,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many items it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work. Click any item to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many items it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late items. Click any item to jump straight to it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
@@ -19841,7 +19853,7 @@ function scheduleAutosave() {
   if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, ganttNamesW, savedAt: Date.now() }));
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
     if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
@@ -19853,7 +19865,7 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 // is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
 // avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
 function writeLocalAutosave(payload) {
-  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
+  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, ganttNamesW, savedAt: Date.now() }));
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (!hasOPFS && payload.length > STORAGE_SOFT_LIMIT) {
@@ -19924,6 +19936,7 @@ function applyAutosaveData(data) {
   }
   if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
   if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
+  if (typeof data.agendaOverdueOnly === 'boolean') agendaOverdueOnly = data.agendaOverdueOnly;
   if (typeof data.ganttNamesW === 'number' && data.ganttNamesW > 0) ganttNamesW = clampGanttNamesW(data.ganttNamesW);
   if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) accentId = data.accentId;
   if (data.forcedTheme !== undefined) forcedTheme = data.forcedTheme;
