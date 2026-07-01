@@ -1078,12 +1078,18 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .guide-no-results{color:var(--muted);font-size:12.5px;padding:16px 12px;text-align:center}
 @media(max-width:540px){.guide-nav{width:150px}.guide-pane{padding:12px 14px}}
 /* ── agenda strip (sits inside the toolbar) ──
-   A vertical stack: the TOP bar holds the 2×2 control grid + the List, and the
-   Timeline (Gantt) and Calendar each open as their own full-width bar below. */
+   A vertical stack: the TOP bar holds the controls (a single Week/Month/Timeline view
+   switcher + Done/Running filters) beside the always-present List, and the one active
+   view (if any) opens as a full-width bar below. */
 #agenda-strip{display:none;flex-direction:column;gap:0;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
 #agenda-strip.on{display:flex}
 .ag-top{display:flex;align-items:stretch;min-width:0}
-.ag-controls{flex:0 0 auto;display:grid;grid-template-columns:repeat(2,minmax(64px,auto));gap:3px;align-content:center;padding-right:10px;border-right:1px solid var(--bdr)}
+/* Controls column: a single view switcher (Week/Month/Timeline, one at a time) above the
+   Done/Running filters. Both are rows of the same .ag-toggle chip. */
+.ag-controls{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-content:center;justify-content:center;padding-right:10px;border-right:1px solid var(--bdr)}
+.ag-switcher{display:flex;gap:3px}
+.ag-filters{display:flex;gap:3px}
+.ag-view{min-width:0}   /* switcher buttons size to their label, not the 64px filter min */
 .ag-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;padding-left:10px}
 .ag-toggle{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}
 .ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
@@ -1154,6 +1160,25 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agg-bar.done{opacity:.5}
 .agg-bar:hover{filter:brightness(1.08)}
 .agg-bar:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* ── Week pane — the planner spread: 7 day columns (+ optional Earlier) ── */
+.ag-week{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px}
+.agw-grid{display:flex;gap:5px;align-items:stretch;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
+.agw-col{flex:1 1 0;min-width:104px;display:flex;flex-direction:column;gap:3px;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px;background:color-mix(in srgb,var(--fg) 2%,transparent)}
+.agw-col.today{border-color:color-mix(in srgb,var(--acc) 45%,transparent);background:color-mix(in srgb,var(--acc) 7%,transparent)}
+.agw-col.past{opacity:.72}
+.agw-earlier{flex:0 0 auto;min-width:120px;max-width:180px;background:color-mix(in srgb,var(--bad) 5%,transparent);border-color:color-mix(in srgb,var(--bad) 22%,transparent)}
+.agw-colhead{font-size:11px;font-weight:600;color:var(--muted);display:flex;align-items:baseline;gap:5px;padding:1px 2px 3px}
+.agw-col.today .agw-colhead{color:var(--acc)}
+.agw-dow{text-transform:uppercase;letter-spacing:.04em}
+.agw-dom{font-size:13px;font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums}
+.agw-col.today .agw-dom{color:var(--acc)}
+.agw-item{font-size:12px;line-height:1.3;color:var(--fg);background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-xs);padding:3px 6px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word}
+.agw-item:hover{border-color:var(--muted)}
+.agw-item:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.agw-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 32%,transparent)}
+.agw-item.today{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 32%,transparent)}
+.agw-item.soon{background:color-mix(in srgb,var(--acc) 9%,transparent);border-color:color-mix(in srgb,var(--acc) 28%,transparent)}
+.agw-item.done{opacity:.55;text-decoration:line-through}
 /* ── Calendar pane — month grid ── */
 .ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px}
 .agc-head{display:flex;align-items:center;gap:6px;padding:2px 0 6px}
@@ -1321,7 +1346,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      controls ABOVE the rows so the chips get the full width; the divider becomes a bottom
      border, and the controls sit in a wrapping row instead of eating side space. */
   .ag-top{flex-direction:column;align-items:stretch}
-  .ag-controls{grid-template-columns:repeat(4,auto);justify-content:start;padding-right:0;padding-bottom:6px;margin-bottom:6px;border-right:0;border-bottom:1px solid var(--bdr)}
+  .ag-controls{flex-direction:row;flex-wrap:wrap;gap:4px 8px;justify-content:start;padding-right:0;padding-bottom:6px;margin-bottom:6px;border-right:0;border-bottom:1px solid var(--bdr)}
+  /* on phones the 7-day week columns get too thin — let them scroll at a readable min width */
+  .agw-col{min-width:118px}
   .ag-list{padding-left:0}
 }
 
@@ -2576,6 +2603,33 @@ function agendaMonthCells(items, monthEpoch, today = dueDateToday()) {
     };
   });
 }
+
+// Pure: build the Week view — 7 day cells (Sun→Sat) for the week containing weekEpoch,
+// plus an `earlier` bucket for still-relevant items dated BEFORE this week (overdue
+// deadlines and started-but-not-done ranges) so nothing hides off the left edge. Each
+// item is placed by its primary date (it.epochDay). Node-testable.
+function agendaWeekCells(items, weekEpoch, today = dueDateToday()) {
+  const base = (weekEpoch == null ? today : weekEpoch);
+  const start = base - new Date(base * 86400000).getUTCDay();   // back up to Sunday
+  const byDay = new Map();
+  const earlier = [];
+  for (const it of (items || [])) {
+    if (it.epochDay == null) continue;
+    if (it.epochDay < start) { if (!it.done) earlier.push(it); continue; }   // spilled off the left
+    if (it.epochDay >= start + 7) continue;                                  // next week or later
+    if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
+    byDay.get(it.epochDay).push(it);
+  }
+  earlier.sort((a, b) => a.epochDay - b.epochDay);   // most-overdue first
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const ep = start + i, d = new Date(ep * 86400000);
+    days.push({ epochDay: ep, dom: d.getUTCDate(), dow: d.getUTCDay(), isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
+  }
+  return { start, days, earlier };
+}
+// Pure: shift a week by `delta` weeks (7-day steps). Node-testable.
+function addWeeks(epochDay, delta) { return (epochDay == null ? dueDateToday() : epochDay) + delta * 7; }
 
 // Pure: a non-colour urgency cue prefixed onto agenda labels (the visual twin of
 // the aria-label, which already states urgency). Only the critical 'overdue'
@@ -17643,24 +17697,33 @@ varPanelEl.addEventListener('mousedown', e => e.stopPropagation());
 // ─── agenda strip ──────────────────────────────────────────────────────────────
 // A vertical stack inside the toolbar (no sidebar — stays mobile-friendly; the
 // toolbar's ResizeObserver re-pads the body so the strip never overlaps the
-// outline). The TOP bar is a 2×2 control grid (Timeline · Calendar / Done ·
-// Running) beside the always-present LIST. Timeline and Calendar are independent
-// toggles that each open their own FULL-WIDTH bar below the top one. All bars
-// read the same dated points (collectDueDates):
-//   • List     — status rows: "Due" (deadlines not yet started) + "Running"
-//                (started points, with elapsed time + deadline).
+// outline). The TOP bar holds the CONTROLS (a single Week/Month/Timeline view
+// switcher + Done/Running filters) beside the always-present LIST. The switcher
+// shows ONE deeper view at a time as a full-width bar below (clicking the active
+// one again returns to List-only). All views read the same dated points
+// (collectDueDates):
+//   • List     — the permanent companion: status rows "Due" (deadlines not yet
+//                started, most-overdue/soonest first) + "Running" (started points,
+//                elapsed time + deadline). The urgency-ordered source of truth.
+//   • Week     — a 7-day planner spread (Sun→Sat) with a leading "Earlier" column
+//                for overdue/running items dated before the shown week.
+//   • Month    — a month grid; each point sits on its day, with month nav.
 //   • Timeline — a Gantt chart: each point a bar on a shared day axis (range bar
 //                start→due, 1-day bar for a deadline, open-ended bar for a started
 //                undeadlined point), horizontally scrollable with a "today" line.
-//   • Calendar — a month grid; each point sits on its day, with month nav.
 // Re-renders on edit while open. The layout models (agendaGantt, agendaMonthCells)
 // are pure cores.
 
 let agendaOpen = false;
-let agendaBars = { timeline: false, calendar: false };  // which extra bars are open (List is always shown)
+// The extra view shown as a full-width bar below the always-present List. One at a time
+// (a single switcher, not additive stacked bars): '' = List only, or 'week'|'month'|
+// 'timeline'. Clicking the active view again returns to List-only.
+let agendaView = '';
+let agendaBars = { timeline: false, calendar: false };  // legacy (persisted) — migrated to agendaView on load
 let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
-let agendaMonth = null;         // Calendar bar: any epoch-day in the shown month (session-only)
+let agendaMonth = null;         // Month/Week view: any epoch-day in the shown period (session-only)
+let agendaWeek = null;          // Week view: any epoch-day in the shown week (session-only)
 let ganttNamesW = null;         // Timeline: pinned width (px) of the titles column, null = CSS clamp default
 let ganttResize = null;         // in-flight names-column resize gesture { startX, startW }
 
@@ -17747,11 +17810,6 @@ function mkAgChip(it, kind) {
 
 // One toggle chip per extra view; flipping it opens/closes that bar. scheduleAutosave
 // (not markDirty) persists the prefs to localStorage without dirtying the document.
-function mkAgViewToggle(view, label, tip) {
-  const t = mkAgToggle(label, agendaBars[view], () => { agendaBars[view] = !agendaBars[view]; renderAgenda(); scheduleAutosave(); });
-  t.title = tip;
-  return t;
-}
 
 function renderAgenda() {
   const strip = document.getElementById('agenda-strip');
@@ -17761,29 +17819,45 @@ function renderAgenda() {
   const all = collectDueDates(root);
   const visible = all.filter(it => agendaShowDone || !it.done);
 
-  // top bar: the 2×2 control grid (Timeline · Calendar / Done · Running) + the List
+  // top bar: the controls (a single view switcher + Done/Running filters) beside the List.
   const top = document.createElement('div'); top.className = 'ag-top';
   const controls = document.createElement('div'); controls.className = 'ag-controls';
   controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Agenda controls');
+
+  // View switcher: Week / Month / Timeline, one at a time (clicking the active one returns
+  // to List-only). List is NOT in the switcher — it's the permanent companion at the right.
+  const sw = document.createElement('div'); sw.className = 'ag-switcher'; sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Agenda view');
+  const mkView = (id, label, title) => {
+    const active = agendaView === id;
+    const btn = mkAgToggle(label, active, () => { agendaView = active ? '' : id; renderAgenda(); scheduleAutosave(); });
+    btn.classList.add('ag-view'); btn.title = title;
+    btn.setAttribute('aria-label', (active ? 'Hide ' : 'Show ') + label + ' view');
+    return btn;
+  };
+  sw.append(
+    mkView('week', 'Week', 'Show the week planner (7 day columns) on its own bar below'),
+    mkView('month', 'Month', 'Show the month calendar on its own bar below'),
+    mkView('timeline', 'Timeline', 'Show the Gantt timeline (start → due bars) on its own bar below'),
+  );
+
+  const filters = document.createElement('div'); filters.className = 'ag-filters'; filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', 'Agenda filters');
   const runT = mkAgToggle('Running', agendaShowRunning, () => { agendaShowRunning = !agendaShowRunning; renderAgenda(); scheduleAutosave(); });
   runT.title = 'Show the running row (started points)';
   const doneT = mkAgToggle('Done', agendaShowDone, () => { agendaShowDone = !agendaShowDone; renderAgenda(); scheduleAutosave(); });
   doneT.title = 'Include completed points';
-  // grid order (row-major): Timeline, Calendar, Done, Running
-  controls.append(
-    mkAgViewToggle('timeline', 'Timeline', 'Show the Gantt timeline (start → due bars) on its own bar below'),
-    mkAgViewToggle('calendar', 'Calendar', 'Show the month calendar on its own bar below'),
-    doneT, runT,
-  );
+  filters.append(doneT, runT);
+  controls.append(sw, filters);
+
   const listHost = document.createElement('div'); listHost.className = 'ag-list';
   renderAgendaList(listHost, visible, all.length);
   top.append(controls, listHost);
   strip.appendChild(top);
 
-  // Timeline / Calendar each open as a full-width bar below the top one.
+  // The active view opens as one full-width bar below the top one (one at a time).
   const bar = () => { const p = document.createElement('div'); p.className = 'ag-pane'; strip.appendChild(p); return p; };
-  if (agendaBars.timeline) renderAgendaGantt(bar(), visible, all.length);
-  if (agendaBars.calendar) renderAgendaCalendar(bar(), visible, all.length);
+  if (agendaView === 'week')     renderAgendaWeek(bar(), visible, all.length);
+  else if (agendaView === 'month')    renderAgendaCalendar(bar(), visible, all.length);
+  else if (agendaView === 'timeline') renderAgendaGantt(bar(), visible, all.length);
   // keyboard resize re-renders the whole strip; restore focus to the new handle so a
   // keyboard user can keep adjusting (parity with the calendar nav's focus-stable repaint).
   if (_refocusGanttResize) { _refocusGanttResize = false; strip.querySelector('.agg-names-resize')?.focus(); }
@@ -17998,6 +18072,79 @@ function ganttInitGlobal() {
     document.body.classList.remove('agg-resizing');
     if (moved) { ganttNamesW = clampGanttNamesW(startW + (e.clientX - startX)); renderAgenda(); scheduleAutosave(); }
   });
+}
+
+// Week view — the planner spread: 7 day columns (Sun→Sat) for the shown week, plus a
+// leading "Earlier" column holding still-relevant overdue/running items dated before it.
+// ‹ week › Today nav. Each item is a chip that zooms on click. Pure layout via agendaWeekCells.
+function renderAgendaWeek(host, visible, totalDated) {
+  const wrap = document.createElement('div'); wrap.className = 'ag-week';
+
+  const head = document.createElement('div'); head.className = 'agc-head';
+  const prev = document.createElement('span'); prev.className = 'agc-nav'; prev.textContent = '‹';
+  prev.setAttribute('role', 'button'); prev.setAttribute('tabindex', '0'); prev.setAttribute('aria-label', 'Previous week');
+  const title = document.createElement('div'); title.className = 'agc-title'; title.setAttribute('aria-live', 'polite');
+  const next = document.createElement('span'); next.className = 'agc-nav'; next.textContent = '›';
+  next.setAttribute('role', 'button'); next.setAttribute('tabindex', '0'); next.setAttribute('aria-label', 'Next week');
+  const todayBtn = document.createElement('span'); todayBtn.className = 'agc-today'; todayBtn.textContent = 'This week';
+  todayBtn.setAttribute('role', 'button'); todayBtn.setAttribute('tabindex', '0'); todayBtn.setAttribute('aria-label', 'Jump to the current week');
+  const nav = document.createElement('div'); nav.className = 'agc-monthnav'; nav.append(prev, title, next);
+  head.append(nav, todayBtn); wrap.appendChild(head);
+
+  const grid = document.createElement('div'); grid.className = 'agw-grid'; grid.setAttribute('role', 'group');
+  wrap.appendChild(grid); host.appendChild(wrap);
+
+  const mkItem = (it) => {
+    const ich = document.createElement('div');
+    const itState = (it.due !== null || it.done) ? agendaState(it) : 'none';
+    ich.className = 'agw-item ' + itState;
+    // a started range in this week shows its ▶ elapsed like the List's running chips
+    const badge = it.started && it.runningDays != null ? (it.runningDays === 0 ? '▶ today ' : '▶ ' + it.runningDays + 'd ') : '';
+    ich.textContent = urgencyMark(itState) + badge + it.title;
+    wireAgNav(ich, it, agItemAria(it));
+    return ich;
+  };
+
+  function paint() {
+    const anchor = agendaWeek != null ? agendaWeek : dueDateToday();
+    const { start, days, earlier } = agendaWeekCells(visible, anchor);
+    const endEp = start + 6;
+    const sd = new Date(start * 86400000), ed = new Date(endEp * 86400000);
+    const span = CAL_MONTHS[sd.getUTCMonth()].slice(0,3) + ' ' + sd.getUTCDate()
+      + ' – ' + (sd.getUTCMonth() === ed.getUTCMonth() ? '' : CAL_MONTHS[ed.getUTCMonth()].slice(0,3) + ' ') + ed.getUTCDate();
+    title.textContent = span;
+    grid.setAttribute('aria-label', 'Week of ' + span);
+    grid.innerHTML = '';
+    // Earlier column (only when there's something overdue/running before the week)
+    if (earlier.length) {
+      const col = document.createElement('div'); col.className = 'agw-col agw-earlier';
+      const h = document.createElement('div'); h.className = 'agw-colhead'; h.textContent = 'Earlier'; h.setAttribute('aria-hidden','true'); col.appendChild(h);
+      col.setAttribute('role','group'); col.setAttribute('aria-label', 'Earlier, ' + earlier.length + ' item' + (earlier.length!==1?'s':''));
+      for (const it of earlier) col.appendChild(mkItem(it));
+      grid.appendChild(col);
+    }
+    for (const cell of days) {
+      const col = document.createElement('div'); col.className = 'agw-col' + (cell.isToday ? ' today' : '') + (cell.isPast ? ' past' : '');
+      col.setAttribute('role','group');
+      const dt = new Date(cell.epochDay * 86400000);
+      const label = CAL_DOW_FULL[cell.dow] + ' ' + cell.dom + (cell.isToday ? ' (today)' : '') + ', ' + cell.items.length + ' item' + (cell.items.length!==1?'s':'');
+      col.setAttribute('aria-label', label);
+      const h = document.createElement('div'); h.className = 'agw-colhead'; h.setAttribute('aria-hidden','true');
+      h.innerHTML = `<span class="agw-dow">${CAL_DOW[cell.dow]}</span> <span class="agw-dom">${cell.dom}</span>`;
+      col.appendChild(h);
+      for (const it of cell.items) col.appendChild(mkItem(it));
+      grid.appendChild(col);
+    }
+  }
+  const navWeek = (delta) => { agendaWeek = addWeeks(agendaWeek != null ? agendaWeek : dueDateToday(), delta); paint(); };
+  const goThisWeek = () => { agendaWeek = dueDateToday(); paint(); };
+  prev.addEventListener('mousedown', e => { e.preventDefault(); navWeek(-1); });
+  next.addEventListener('mousedown', e => { e.preventDefault(); navWeek(1); });
+  todayBtn.addEventListener('mousedown', e => { e.preventDefault(); goThisWeek(); });
+  for (const [el, fn] of [[prev, () => navWeek(-1)], [next, () => navWeek(1)], [todayBtn, goThisWeek]]) {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
+  }
+  paint();
 }
 
 function renderAgendaCalendar(host, visible, totalDated) {
@@ -18765,12 +18912,13 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). It shows a list of what's due soon, a Gantt-style timeline of overlapping tasks and a month calendar. Timeline and Calendar are independent toggles, so open either, both or neither. Turn on Done to include completed points; toggle Running to show or hide started work. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. Turn on Done to include completed points; toggle Running to show or hide started work. Useful for weekly planning, spotting overdue items at a glance, or checking whether a date is already full. Click any item to jump straight to it.",
     examples:[
-      { syn:'Due',        desc:'deadlines not started yet' },
-      { syn:'Running',    desc:'things in progress' },
+      { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
+      { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
+      { syn:'Month',      desc:'a month grid' },
       { syn:'Timeline',   desc:'bars across a scrolling day axis' },
-      { syn:'Calendar',   desc:'a month grid' },
+      { syn:'Done / Running', desc:'filters: include done, show/hide started work' },
     ] },
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',
@@ -19506,7 +19654,7 @@ function scheduleAutosave() {
   if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
     if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
@@ -19518,7 +19666,7 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 // is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
 // avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
 function writeLocalAutosave(payload) {
-  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaBars, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
+  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, ganttNamesW, savedAt: Date.now() }));
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (!hasOPFS && payload.length > STORAGE_SOFT_LIMIT) {
@@ -19580,8 +19728,12 @@ function applyAutosaveData(data) {
     btn.setAttribute('aria-pressed', String(showDone));
   }
   if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
-  if (data.agendaBars && typeof data.agendaBars === 'object') {
-    for (const k of ['timeline', 'calendar']) if (typeof data.agendaBars[k] === 'boolean') agendaBars[k] = data.agendaBars[k];
+  // New: a single active view. Migrate the legacy additive agendaBars (timeline/calendar
+  // could both be open) into the one-at-a-time model: timeline wins, else calendar→month.
+  if (data.agendaView === 'week' || data.agendaView === 'month' || data.agendaView === 'timeline' || data.agendaView === '') {
+    agendaView = data.agendaView;
+  } else if (data.agendaBars && typeof data.agendaBars === 'object') {
+    agendaView = data.agendaBars.timeline ? 'timeline' : data.agendaBars.calendar ? 'month' : '';
   }
   if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
   if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;

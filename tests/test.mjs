@@ -5963,6 +5963,41 @@ test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today fl
   assert.ok(cells.every(x => Array.isArray(x.items)));
 });
 
+test('agendaWeekCells — 7 Sunday-aligned days + an Earlier bucket for overdue/running', () => {
+  const today  = c.parseDueDate('2026-06-17');     // a Wednesday
+  const inWeek = c.parseDueDate('2026-06-18');     // Thu, same week
+  const before = c.parseDueDate('2026-06-05');     // overdue, before the week
+  const beforeDone = c.parseDueDate('2026-06-06'); // before the week but DONE → not carried
+  const nextWeek = c.parseDueDate('2026-06-25');   // beyond the week → excluded
+  const items = [
+    { id: 'now', epochDay: today },
+    { id: 'thu', epochDay: inWeek },
+    { id: 'old', epochDay: before, done: false },
+    { id: 'olddone', epochDay: beforeDone, done: true },
+    { id: 'nxt', epochDay: nextWeek },
+  ];
+  const wk = host(c.agendaWeekCells(items, today, today));
+  assert.equal(wk.days.length, 7, 'seven day cells');
+  assert.equal(new Date(wk.start * 86400000).getUTCDay(), 0, 'week starts on Sunday');
+  // today's cell carries the item and the isToday flag
+  const td = wk.days.find(d => d.epochDay === today);
+  assert.deepEqual(td.items.map(i => i.id), ['now']);
+  assert.equal(td.isToday, true);
+  // Thursday holds its item
+  assert.deepEqual(wk.days.find(d => d.epochDay === inWeek).items.map(i => i.id), ['thu']);
+  // the overdue-before-the-week item spills to Earlier; the DONE one does NOT; next week excluded
+  assert.deepEqual(wk.earlier.map(i => i.id), ['old']);
+  assert.ok(!wk.days.some(d => d.items.some(i => i.id === 'nxt')), 'next-week item excluded');
+  // empty days carry an empty array
+  assert.ok(wk.days.every(d => Array.isArray(d.items)));
+});
+
+test('addWeeks — steps by 7-day weeks', () => {
+  const w = c.parseDueDate('2026-06-17');
+  assert.equal(c.addWeeks(w, 1), w + 7);
+  assert.equal(c.addWeeks(w, -2), w - 14);
+});
+
 // ── urgencyMark (UXP-66) — non-colour cue for overdue agenda items ───────────
 test('urgencyMark — only overdue earns a marker; others return empty', () => {
   assert.equal(c.urgencyMark('overdue'), '! ');
