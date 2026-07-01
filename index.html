@@ -14817,6 +14817,24 @@ function deleteNode(id) {
   if (ft) focusNode(ft);
 }
 
+// Duplicate a point and its whole subtree, inserting the copy as the next sibling. Fresh
+// ids on every node (deepCloneNodeNewIds), same insert+reindex pattern as a template stamp.
+function duplicateNode(id) {
+  const parent = parentOf(id);
+  const cur = nodeById(id);
+  if (!parent || !cur) return;
+  const idx = parent.children.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  pushUndo();
+  const clone = deepCloneNodeNewIds(cur);
+  parent.children.splice(idx + 1, 0, clone);
+  buildIndex(root, null);   // re-index the cloned subtree
+  markDirty();
+  render();
+  focusNode(clone.id);
+  flashHint(`Duplicated ${ptsLabel(countPoints(clone))}. ${MOD}+Z to undo`);
+}
+
 function lastVis(node) {
   if (node.collapsed || !node.children.some(isVisible)) return node;
   const v = node.children.filter(isVisible);
@@ -18308,7 +18326,7 @@ const GUIDE = [
   // ── Navigate (essentials only) ────────────────────────────────────────────
   { id:'nav-move',    essential:true, essSection:'Navigate', keys:['↑','↓'],      essLabel:'Move between points' },
   { id:'nav-col',     essential:true, essSection:'Navigate', keys:[`${MOD}+.`,','],  essLabel:'Collapse / expand' },
-  { id:'nav-levels',  essential:true, essSection:'Navigate', keys:[`${MOD}+1–6`],     essLabel:'Collapse to N levels' },
+  { id:'nav-levels',  essential:true, essSection:'Navigate', keys:[`${MOD}+1–6`],     essLabel:'Collapse to N levels (browser may reserve; use 1/2/3/All)' },
   { id:'nav-zoom',    essential:true, essSection:'Navigate', keys:[`${MOD}+Enter`],  essLabel:'Zoom into point' },
   { id:'nav-esc',     essential:true, essSection:'Navigate', keys:['Esc'],           essLabel:'Zoom out / close panel' },
   { id:'nav-search',  essential:true, essSection:'Navigate', keys:[`${MOD}+F`],      essLabel:'Search' },
@@ -18330,6 +18348,8 @@ const GUIDE = [
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Toggle task on current line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state' },
   { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority' },
+  { id:'edit-dup',     essential:true, essSection:'Edit', keys:[`${MOD}+D`],             essLabel:'Duplicate point' },
+  { id:'edit-delpt',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+⌫`],           essLabel:'Delete point' },
 
   // ── Insert triggers (essentials only) ─────────────────────────────────────
   { id:'insert-slash',  essential:true, essSection:'Insert', keys:['/'],           essLabel:'Block type / template' },
@@ -18351,6 +18371,7 @@ const GUIDE = [
   { id:'sel-toggle', essential:true, essSection:'Select', keys:[`${MOD}+Click`],        essLabel:'Add / remove one point (out of order)' },
   { id:'sel-arrows', essential:true, essSection:'Select', keys:['⇧+↑','⇧+↓'],          essLabel:'Extend selection up / down' },
   { id:'sel-copy',   essential:true, essSection:'Select', keys:[`${MOD}+C`,`${MOD}+X`], essLabel:'Copy / cut selection' },
+  { id:'sel-paste',  essential:true, essSection:'Select', keys:[`${MOD}+V`],            essLabel:'Paste points' },
   { id:'sel-indent', essential:true, essSection:'Select', keys:['Tab','⇧+Tab'],         essLabel:'Indent / outdent selection' },
   { id:'sel-del',    essential:true, essSection:'Select', keys:['Delete'],         essLabel:'Delete selection' },
 
@@ -19040,10 +19061,44 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); gotoDocTab(+e.code.slice(5)); return;
   }
   if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
-  // collapse outline to first N levels (Ctrl/Cmd+1..6). Some browsers reserve
-  // these for tab switching and won't deliver the event — the toolbar control is
-  // the reliable path; this is a best-effort accelerator.
-  if (ctrl && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '6') { e.preventDefault(); collapseToLevel(+e.key); return; }
+
+  // Point-level accelerators that also work from the ROW-CURSOR state (arrow-navigating
+  // without editing), not just while a point's text is focused. The target point is the
+  // edit target if editing, else the row cursor (selFocusId/selAnchorId). Without this,
+  // the panel's collapse / task-toggle rows silently no-op when you're navigating rows.
+  // Skip entirely when a plain text input (search box, dialog field) has focus, so a stale
+  // row cursor can't be acted on from an unrelated field.
+  const inTextInput = (() => { const a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'); })();
+  const kbdTargetId = () => activeContentId ?? selFocusId ?? selAnchorId;
+  if (!inTextInput) {
+    // ⌘/Ctrl+. collapse · ⌘/Ctrl+, expand — from the cursor state (the edit-context handler
+    // covers the while-editing case).
+    if (ctrl && (e.key==='.' || e.key===',') && activeContentId == null) {
+      const id = kbdTargetId();
+      if (id) { e.preventDefault(); setCollapsed(id, e.key==='.'); return; }
+    }
+    // ⌘/Ctrl+⇧+X toggle the point's opening checkbox — from the cursor state.
+    if (ctrl && e.shiftKey && (e.key==='X'||e.key==='x') && activeContentId == null) {
+      const n = nodeById(kbdTargetId());
+      if (n && isTaskFirst(n.text)) { e.preventDefault(); pushUndo(); setFirstTaskChecked(n, !firstTaskChecked(n)); markDirty(); render(); return; }
+    }
+    // ⌘/Ctrl+D duplicate the current point (subtree). Works editing or from the cursor.
+    if (ctrl && !e.shiftKey && (e.key==='d'||e.key==='D')) {
+      const id = kbdTargetId();
+      if (id) { e.preventDefault(); duplicateNode(id); return; }
+    }
+    // ⌘/Ctrl+⇧+Backspace delete the current point (subtree). The plain Backspace edit-flow
+    // (merge-up / delete-empty) is untouched; this is the explicit "remove this whole point".
+    if (ctrl && e.shiftKey && e.key==='Backspace') {
+      const id = kbdTargetId();
+      if (id) { e.preventDefault(); const el = document.querySelector(`.node-content[data-id="${id}"][data-editing]`); if (el) el.blur(); deleteNode(id); return; }
+    }
+  }
+
+  // collapse outline to first N levels (Ctrl/Cmd+1..6). e.code (Digit1..6) is layout-safe.
+  // Some browsers reserve these for tab switching and won't deliver the event — the toolbar
+  // control (and the menu) is the reliable path; this is a best-effort accelerator.
+  if (ctrl && !e.shiftKey && !e.altKey && /^Digit[1-6]$/.test(e.code)) { e.preventDefault(); collapseToLevel(+e.code.slice(5)); return; }
   if (ctrl && !e.shiftKey && e.key==='z') { e.preventDefault(); undo(); }
   if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) { e.preventDefault(); redo(); }
   // multi-select shortcuts
