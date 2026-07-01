@@ -22,7 +22,8 @@ tabs: a project note, a daily log, a person page, each its own file but searchab
 Connect a folder once (**Chrome, Edge, or a similar browser only**) and every document saves to disk as you type and reopens
 right where you left it after a reload. A **tab strip** appears under the toolbar with the documents
 you have open: click a tab to switch, the `×` to close it, or the `+` to open another. `Ctrl/Cmd+Shift+]`
-and `[` step to the next and previous tab. Tabs are the documents you have opened (not the whole folder),
+and `[` step to the next and previous tab, and `Alt+1` through `Alt+9` jump straight to that numbered
+tab. Tabs are the documents you have opened (not the whole folder),
 and they reappear after a reload. From the **File** menu:
 
 - **Switch document** to see all the documents in the folder, jump to one, add a fresh **+ New
