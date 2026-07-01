@@ -7965,6 +7965,18 @@ function attachContentEvents(content, node) {
       editSeq(node, sq2.dataset.key);
       return;
     }
+    // Cmd/Ctrl-click: toggle THIS point in/out of the selection (out-of-order, non-
+    // contiguous) — the file-manager gesture, alongside Shift-click for a contiguous range.
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !content.dataset.editing) {
+      e.preventDefault();
+      e.stopPropagation(); // prevent doc mousedown from clearing the selection
+      if (activeContentId) {
+        const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
+        if (el) el.blur();
+      }
+      toggleSelect(node.id);
+      return;
+    }
     if (e.shiftKey && selAnchorId && !content.dataset.editing) {
       e.preventDefault();
       e.stopPropagation(); // prevent doc mousedown from immediately clearing the selection
@@ -8765,6 +8777,22 @@ function updateNodeSelBar() {
   if (selectedIds.size === 0) { bar.classList.remove('on'); return; }
   bar.classList.add('on');
   document.getElementById('nsb-count').textContent = `${selectedIds.size} selected`;
+}
+
+// Cmd/Ctrl-click: add or remove ONE point from the selection (out-of-order, non-
+// contiguous), the file-manager toggle. Sets the toggled point as the new anchor so a
+// following Shift-click ranges from here. Removing the last point clears the selection.
+function toggleSelect(id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    if (selAnchorId === id) selAnchorId = selectedIds.size ? [...selectedIds][selectedIds.size - 1] : null;
+    if (selectedIds.size === 0) { clearSelection(); return; }
+  } else {
+    selectedIds.add(id);
+    selAnchorId = id;
+  }
+  updateSelVisuals();
+  updateNodeSelBar();
 }
 
 function rangeSelectTo(id) {
@@ -18000,6 +18028,7 @@ const GUIDE = [
 
   // ── Multi-select (essentials only) ────────────────────────────────────────
   { id:'sel-range',  essential:true, essSection:'Select', keys:['⇧+Click'],            essLabel:'Select a range' },
+  { id:'sel-toggle', essential:true, essSection:'Select', keys:[`${MOD}+Click`],        essLabel:'Add / remove one point (out of order)' },
   { id:'sel-arrows', essential:true, essSection:'Select', keys:['⇧+↑','⇧+↓'],          essLabel:'Extend selection up / down' },
   { id:'sel-copy',   essential:true, essSection:'Select', keys:[`${MOD}+C`,`${MOD}+X`], essLabel:'Copy / cut selection' },
   { id:'sel-indent', essential:true, essSection:'Select', keys:['Tab','⇧+Tab'],         essLabel:'Indent / outdent selection' },
@@ -18056,9 +18085,10 @@ const GUIDE = [
     ] },
   { id:'multi-select', cat:'getting-around',
     title:'Selecting many points',
-    body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete the lot. Start a selection by Shift+clicking a point or pressing Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.",
+    body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete the lot. Start a selection by Shift+clicking a point (a contiguous range) or Ctrl/Cmd+clicking points to pick them out of order, or press Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.",
     examples:[
       { syn:'Shift+Click',            desc:'select a range of points' },
+      { syn:'Ctrl/Cmd+Click',         desc:'add or remove one point (out of order)' },
       { syn:'Shift+↑ / Shift+↓',      desc:'extend the selection up or down' },
       { syn:'State / Dates / Turn into', desc:'selection-bar buttons that edit every selected point' },
       { syn:'Ctrl/Cmd+C',             desc:'copy the selection (Ctrl/Cmd+X cuts, Ctrl/Cmd+V pastes)' },
