@@ -42,8 +42,8 @@ expand that day in place and see them all. On a wide screen the **Month** view a
 previous and next months peeking in at the sides (the same size as the centred one); click either to
 jump to it. The **‹‹** and **››** buttons jump a whole month (Week) or year (Month).
 
-Turn on **Done** to include completed points; toggle **Running** to show or hide started work. Click
-any item to jump straight to it.
+Turn on **Done** to include completed points; toggle **Running** to show or hide started work; turn
+on **Overdue** to focus every view on just the late items. Click any item to jump straight to it.
 
 ## Daily journal
 

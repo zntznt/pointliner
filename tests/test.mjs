@@ -6035,6 +6035,13 @@ test('agendaState — a done item collapses any urgency to "done"; live items ke
   assert.equal(c.agendaState({ done: false, state: 'soon' }),    'soon');
   assert.equal(c.agendaState(null), 'none');
 });
+test('agenda Overdue-only filter is wired and reuses agendaState (excludes done) (src pins)', () => {
+  // the focus filter narrows `visible` to overdue items via agendaState (so a done+past
+  // item is NOT counted overdue — same rule as the chip colour and urgencyMark)
+  assert.ok(_src.includes("!agendaOverdueOnly || agendaState(it) === 'overdue'"), 'visible must filter by agendaState overdue when the focus filter is on');
+  assert.ok(_src.includes("mkAgToggle('Overdue', agendaOverdueOnly"), 'Overdue chip must be a filter toggle bound to agendaOverdueOnly');
+  assert.ok(_src.includes('data.agendaOverdueOnly'), 'agendaOverdueOnly must round-trip through autosave');
+});
 test('agendaLabel — a done+overdue item reads "done", not "Nd overdue"', () => {
   assert.equal(c.agendaLabel({ done: true,  state: 'overdue', label: '3d overdue' }), 'done');
   // a done item that is NOT overdue keeps its date label (e.g. finished early)
