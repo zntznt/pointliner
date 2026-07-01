@@ -813,14 +813,16 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .search-ctx{opacity:.5}
 .search-ctx .node-content{pointer-events:none}
 
-/* ghost row */
-.ghost-row{display:flex;align-items:center;padding:14px 0;cursor:pointer;user-select:none}
-.ghost-row:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-xs)}
-.ghost-row:hover .ghost-label{color:var(--fg)}
-.ghost-spacer{width:16px;flex-shrink:0}
-.ghost-dot{width:5px;height:5px;border-radius:50%;background:var(--bullet);opacity:.5;flex-shrink:0;margin:0 7px;transition:background .12s,transform .12s}
-.ghost-row:hover .ghost-dot{background:var(--bullet-h);transform:scale(1.3)}
-.ghost-label{font-size:1em;color:var(--muted);letter-spacing:.01em;transition:color .12s}
+/* "add a point" affordance: a muted "+ New point" control at the bottom of the outline.
+   It reads as a button, not a faint bullet (the old dot looked like a half-loaded point),
+   and it's hidden on an empty doc where the auto-created first point already invites you
+   to "Start writing…". The + sits at the bullet column, the label at the text column. */
+.ghost-row{display:inline-flex;align-items:center;gap:6px;margin:6px 0 4px;padding:4px 8px 4px 4px;border-radius:var(--r-md);cursor:pointer;user-select:none;color:var(--muted);transition:background .12s,color .12s}
+.ghost-row:hover,.ghost-row:focus-visible{background:color-mix(in srgb,var(--acc) 8%,transparent);color:var(--fg);outline:none}
+.ghost-row:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
+.ghost-plus{width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:var(--r-sm);border:1px solid var(--bdr);font-size:13px;line-height:1;font-family:var(--mono);transition:background .12s,border-color .12s,color .12s}
+.ghost-row:hover .ghost-plus,.ghost-row:focus-visible .ghost-plus{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
+.ghost-label{font-size:.95em;letter-spacing:.01em}
 
 /* unified command item */
 .cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:var(--r-md);cursor:pointer}
@@ -4748,7 +4750,10 @@ function render() {
   vBot.setAttribute('role', 'presentation');
   vlist.append(vTop, vBot);
   container.appendChild(vlist);
-  appendGhostRow(vp, container);
+  // Hide the "+ New point" affordance when the viewport is empty: the auto-created first
+  // point already shows "Start writing…", so the ghost would just stack a second, nearly
+  // identical invitation right under it. (firstChildId is set only in that empty case.)
+  if (!firstChildId) appendGhostRow(vp, container);
 
   // UXP-59: empty-state banner when a search yields no matches
   const seEl = document.createElement('div');
@@ -4932,14 +4937,13 @@ window.addEventListener('resize', () => {
 function appendGhostRow(parent, container) {
   const ghost = document.createElement('div');
   ghost.className = 'ghost-row';
-  const spacer = document.createElement('span');
-  spacer.className = 'ghost-spacer';
-  const dot = document.createElement('span');
-  dot.className = 'ghost-dot';
+  const plus = document.createElement('span');
+  plus.className = 'ghost-plus';
+  plus.textContent = '+';
   const label = document.createElement('span');
   label.className = 'ghost-label';
-  label.textContent = 'New point…';
-  ghost.append(spacer, dot, label);
+  label.textContent = 'New point';
+  ghost.append(plus, label);
   ghost.setAttribute('role', 'button');
   ghost.setAttribute('tabindex', '0');
   ghost.setAttribute('aria-label', 'New point');
