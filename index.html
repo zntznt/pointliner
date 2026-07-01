@@ -1494,6 +1494,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <span class="nsb-count" id="nsb-count">0 selected</span>
   <span class="nsb-sep"></span>
   <button class="nsb-btn" id="nsb-copy">Copy</button>
+  <button class="nsb-btn" id="nsb-export-md">Export .md</button>
   <button class="nsb-btn" id="nsb-indent">Indent →</button>
   <button class="nsb-btn" id="nsb-outdent">← Outdent</button>
   <span class="nsb-sep"></span>
@@ -8796,6 +8797,16 @@ function copySelection() {
   flashHint(`Copied ${ptsLabel(tops.reduce((n, t) => n + countPoints(t), 0))}`);
 }
 
+// Export the selected points (top-level only, so a selected child isn't duplicated under
+// its selected parent) to a .md file. Same freeze-pills snapshot as the full-document export.
+function exportSelectionToMarkdown() {
+  if (selectedIds.size === 0) return;
+  const tops = getTopLevelSelected();
+  if (!tops.length) return;
+  exportNodesToMarkdown(tops);
+  clearSelection();
+}
+
 function deleteSelected(verb = 'Deleted') {  // verb: 'Cut' on the Ctrl+X path (UXP-12)
   if (selectedIds.size === 0) return;
   pushUndo();
@@ -8929,6 +8940,7 @@ function buildSelTb() {
 buildSelTb();
 
 document.getElementById('nsb-copy').addEventListener('click', copySelection);
+document.getElementById('nsb-export-md').addEventListener('click', exportSelectionToMarkdown);
 document.getElementById('nsb-indent').addEventListener('click', indentSelected);
 document.getElementById('nsb-outdent').addEventListener('click', outdentSelected);
 document.getElementById('nsb-delete').addEventListener('click', deleteSelected);
@@ -9234,6 +9246,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
     { icon: TEMPLATE_ICON, label:'Save as template',
       fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
+    { icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
+      fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
     { icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { icon:{ fa:'fa-solid fa-left-right', fb:'⇄' }, label:'Refile…',
       fn: () => { hideBpop(); openRefileDialog(nodeId); } },
@@ -16170,12 +16184,16 @@ function toPlainText(rootNode) {
   return out.join('\n') + '\n';
 }
 
-function downloadText(content, ext, mime) {
+// `nameOverride` (without extension) lets a partial export (a point / selection) name
+// the file after the content rather than the whole document. The full-document exports
+// pass nothing and keep naming after the document (unchanged behavior).
+function downloadText(content, ext, mime, nameOverride) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i, '')) + ext;
+  const base = nameOverride || (fileName === 'unsaved' ? 'outline' : fileName.replace(/\.opml$/i, ''));
+  a.download = base + ext;
   a.click(); URL.revokeObjectURL(url);
   return a.download;
 }
@@ -16183,6 +16201,24 @@ function downloadText(content, ext, mime) {
 // "Exported a copy" (not "Saved") because these are one-way snapshots, not the live file.
 function exportMarkdown() { const n = downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); flashHint('Exported a copy: “' + n + '”'); }
 function exportPlainText() { const n = downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); flashHint('Exported a copy: “' + n + '”'); }
+
+// Export a point (or a set of selected points) to Markdown. Reuses toMarkdown by wrapping
+// the nodes in a throwaway root, so a point exports as itself + its subtree, and pills
+// freeze to their current values exactly like the full-document .md export. The file is
+// named after the first point's text (a bare, sanitized name), so a single point exports
+// as e.g. "session-prep.md".
+function exportNodesToMarkdown(nodes) {
+  if (!nodes || !nodes.length) return;
+  const md = withFoldedActive(() => toMarkdown({ children: nodes }));
+  // Name the file after the first point's first line, with any leading markdown block
+  // marker stripped (a heading's `#`, a to-do's `- [ ]`, a quote's `>`, an ordinal), so a
+  // heading point exports as "session-prep.md", not "# Session Prep.md".
+  const first = (textForDisplay(nodes[0]) || '').split('\n')[0]
+    .replace(/^\s*(#{1,6}\s+|>\s+|-\s+\[[ xX]\]\s+|[-*]\s+|\d+\.\s+)/, '').trim();
+  const base = first ? toFileName(first).replace(/\.opml$/i, '') : 'points';
+  const n = downloadText(md, '.md', 'text/markdown', base);
+  flashHint('Exported a copy: “' + n + '”');
+}
 
 // ─── self-contained HTML export (C1) ─────────────────────────────────────────
 // One file that IS the document AND the app: a copy of this whole page with the

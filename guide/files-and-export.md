@@ -57,6 +57,11 @@ README, or create a portable archive. From the **File** menu:
   opens in any browser, and keeps all the interactive features (dice, generators, and calculations)
   live, so the person you hand it to can re-roll and recompute on their own machine.
 
+You do not have to export the whole document. To export just a part: open a point's **bullet menu**
+and choose **Export to Markdown** (that point and everything under it), or **select several points**
+and use **Export .md** on the selection bar. The file is named after the first point, and pills are
+frozen to their current values (the same one-way snapshot as the full Markdown export).
+
 ---
 
 **Next:** [Getting around](getting-around.md), [Tasks and organizing](tasks-and-organizing.md), or

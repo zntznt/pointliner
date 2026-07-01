@@ -6800,3 +6800,22 @@ test('tmpWriteName — the temp name is NOT listed as a document', () => {
   const listed = host(c.workspaceDocList(['notes.opml', c.tmpWriteName('notes.opml')]));
   assert.deepEqual(listed, ['notes.opml']);
 });
+
+// ── point/selection export (toMarkdown on a synthetic {children:[…]} root) ────
+// Export-a-point wraps the selected node(s) in a throwaway root so toMarkdown emits
+// the node ITSELF (at depth 0) plus its subtree — the point is included, not just its
+// children — and multiple selected points export in order.
+test('toMarkdown({children:[point]}) — exports the point itself + its subtree', () => {
+  const point = { id:'p1', text:'Session Prep', type:'h2', footnotes:[], props:[], children:[
+    { id:'p2', text:'- [ ] Stock the dungeon', type:'todo', footnotes:[], props:[], children:[] },
+  ] };
+  const md = c.toMarkdown({ children: [point] });
+  assert.ok(md.includes('## Session Prep'), 'point itself missing');
+  assert.ok(md.includes('- [ ] Stock the dungeon'), 'child subtree missing');
+});
+test('toMarkdown({children:[a,b]}) — exports a selection of points in order', () => {
+  const a = { id:'a', text:'First', type:'ul', footnotes:[], props:[], children:[] };
+  const b = { id:'b', text:'Second', type:'ul', footnotes:[], props:[], children:[] };
+  const md = c.toMarkdown({ children: [a, b] });
+  assert.ok(md.indexOf('First') < md.indexOf('Second'), 'points not emitted in order');
+});
