@@ -1195,6 +1195,18 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agc-today{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:3px 10px;cursor:pointer;line-height:1.4;font-family:inherit}
 .agc-today:hover{color:var(--fg);border-color:var(--fg)}
 .agc-today:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* Three month blocks side by side (prev · current · next). The scroller centres the current
+   one; when the pane is wider than one month the sides peek in from the edges, otherwise
+   they're clipped. Every block is the SAME width, so their cells match the centred month. */
+.agc-months{display:flex;gap:16px;overflow-x:hidden;scroll-behavior:smooth}
+/* Each month is a fixed ideal width, capped at 100% of the pane. So when the pane is narrow
+   the current month fills it and the sides are pushed fully out of view; only once the pane
+   is WIDER than one month does the leftover space reveal the flanking months. */
+.agc-month{flex:0 0 min(100%,520px);min-width:0;display:flex;flex-direction:column;gap:6px}
+.agc-month-prev,.agc-month-next{opacity:.5;cursor:pointer;transition:opacity .12s}
+.agc-month-prev:hover,.agc-month-next:hover,.agc-month-prev:focus-visible,.agc-month-next:focus-visible{opacity:.8}
+.agc-month-prev:focus-visible,.agc-month-next:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-sm)}
+.agc-month-prev *,.agc-month-next *{cursor:pointer}
 .agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .agc-dow span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center;padding:2px 0}
 /* The month grid sizes to the WINDOW, not to the number of tasks: a fixed height split into
@@ -1237,7 +1249,10 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 @media(hover:none){
   .agc-nav{width:36px;height:36px;font-size:18px}
   .agc-today{padding:5px 12px}
-  .agc-cell{min-height:62px}
+  /* on phones there's no room for peeking side months — show only the current, full width */
+  .agc-months{gap:0}
+  .agc-month{flex:0 0 100%}
+  .agc-month-prev,.agc-month-next{display:none}
   .agc-item{font-size:11.5px;padding:1px 5px}
   .agg-name-row{height:30px}
   .agg-row{height:30px}
@@ -18138,9 +18153,9 @@ let _agExpandedDay = null;
 // items active-first into a flex region that CLIPS overflow (CSS), then let layout tell us
 // whether anything got cut: if it did, we swap in a "+N more" expander. No magic per-cell
 // limit — whatever fits, fits, at any cell size. Expanding removes the clip (agd-expanded).
-function fillAgendaDay(box, epochDay, items, mkItem, { repaint }) {
+function fillAgendaDay(box, epochDay, items, mkItem, { repaint, expandable = true }) {
   const { ordered, todo, done } = agendaDayStats(items);
-  const expanded = _agExpandedDay === epochDay;
+  const expanded = expandable && _agExpandedDay === epochDay;
   if (todo || done) {
     const count = document.createElement('div'); count.className = 'agd-count'; count.setAttribute('aria-hidden', 'true');
     const parts = [];
@@ -18178,11 +18193,16 @@ function fillAgendaDay(box, epochDay, items, mkItem, { repaint }) {
     const hidden = kids.length - fit;
     if (hidden <= 0) return;
     for (let i = fit; i < kids.length; i++) kids[i].style.display = 'none';
-    const more = document.createElement('button');
-    more.type = 'button'; more.className = 'agd-more';
+    // On non-expandable days (side months) the "+N" is just an inert marker — clicks fall
+    // through to the month-switch. Elsewhere it's a button that expands the day in place.
+    const more = document.createElement(expandable ? 'button' : 'div');
+    more.className = 'agd-more';
     more.textContent = '+' + hidden + ' more';
-    more.setAttribute('aria-label', 'Show ' + hidden + ' more item' + (hidden !== 1 ? 's' : '') + ' for this day');
-    more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });
+    if (expandable) {
+      more.type = 'button';
+      more.setAttribute('aria-label', 'Show ' + hidden + ' more item' + (hidden !== 1 ? 's' : '') + ' for this day');
+      more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });
+    } else { more.setAttribute('aria-hidden', 'true'); more.style.pointerEvents = 'none'; }
     box.appendChild(more);
   });
 }
@@ -18290,15 +18310,29 @@ function renderAgendaCalendar(host, visible, totalDated) {
   // line just adds dead space below the month nav. The /due hint lives in the List/
   // Timeline empty states, the / menu, and the ? panel.
 
-  // day-of-week header (aria-hidden — each cell carries its full date label)
-  const dow = document.createElement('div'); dow.className = 'agc-dow'; dow.setAttribute('aria-hidden', 'true');
-  for (const d of CAL_DOW) { const s = document.createElement('span'); s.textContent = d; dow.appendChild(s); }
-  wrap.appendChild(dow);
-
-  const grid = document.createElement('div'); grid.className = 'agc-grid';
-  grid.setAttribute('role', 'grid');
-  wrap.appendChild(grid);
+  // Three side-by-side month blocks (prev · current · next). Each block is the SAME width
+  // (a fixed flex-basis), so their cells match the centred month exactly. When the pane is
+  // wide the sides peek in from the edges; when narrow they're clipped away by overflow, and
+  // the centred month always fills the view (scrolled to centre after each paint). Clicking a
+  // SIDE month switches to it. Only the CURRENT block is a keyboard grid.
+  const months = document.createElement('div'); months.className = 'agc-months';
+  wrap.appendChild(months);
   host.appendChild(wrap);
+
+  const mkMonthBlock = (role) => {
+    const block = document.createElement('div'); block.className = 'agc-month agc-month-' + role;
+    const dow = document.createElement('div'); dow.className = 'agc-dow'; dow.setAttribute('aria-hidden', 'true');
+    for (const d of CAL_DOW) { const s = document.createElement('span'); s.textContent = d; dow.appendChild(s); }
+    const grid = document.createElement('div'); grid.className = 'agc-grid';
+    if (role === 'cur') grid.setAttribute('role', 'grid');
+    block.append(dow, grid);
+    months.appendChild(block);
+    return { block, grid };
+  };
+  const prevBlk = mkMonthBlock('prev');
+  const curBlk  = mkMonthBlock('cur');
+  const nextBlk = mkMonthBlock('next');
+  const grid = curBlk.grid;   // the keyboard/roving grid is the centred month
 
   // arrow-key roving-tabindex navigation within the grid (attached once, survives paint() redraws)
   grid.addEventListener('keydown', e => {
@@ -18334,32 +18368,32 @@ function renderAgendaCalendar(host, visible, totalDated) {
     }
   });
 
-  // one item chip (shared shape with the Week view's mkItem)
-  const mkItem = (it) => {
+  // one item chip. The centred month's chips zoom to their point on click (wireAgNav);
+  // side-month chips are inert (nav: true) so a click bubbles up to the month-switch instead.
+  const mkChip = (it, { nav }) => {
     const ich = document.createElement('div');
     const itState = (it.due !== null || it.done) ? agendaState(it) : 'none';
     ich.className = 'agc-item ' + itState;
     ich.textContent = urgencyMark(itState) + it.title;
-    wireAgNav(ich, it, agItemAria(it));
+    if (nav) wireAgNav(ich, it, agItemAria(it));
+    else { ich.setAttribute('aria-hidden', 'true'); ich.style.pointerEvents = 'none'; }
     return ich;
   };
-  // paint() fills title + grid from agendaMonth — month nav re-paints WITHOUT
-  // rebuilding the strip so focus stays on the nav button (like buildDatePicker).
-  function paint() {
-    const anchor = agendaMonth != null ? agendaMonth : dueDateToday();
-    const vd = new Date(anchor * 86400000);
-    title.textContent = CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear();
-    grid.setAttribute('aria-label', 'Calendar for ' + title.textContent);
-    grid.innerHTML = '';
+  const mkItem = (it) => mkChip(it, { nav: true });
+  // Fill ONE month grid from `anchor`. `side` (prev/next) months are display-only: their
+  // cells aren't focusable and a whole-month click switches to that month.
+  function paintMonth(gridEl, anchor, side) {
+    const monthLabel = (() => { const vd = new Date(anchor * 86400000); return CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear(); })();
+    gridEl.setAttribute('aria-label', (side ? side + ' month, ' : 'Calendar for ') + monthLabel);
+    gridEl.innerHTML = '';
     let firstInMonth = null, week = null;
     agendaMonthCells(visible, anchor).forEach((cell, ci) => {
-      if (ci % 7 === 0) { week = document.createElement('div'); week.className = 'agc-week'; week.setAttribute('role', 'row'); grid.appendChild(week); }
+      if (ci % 7 === 0) { week = document.createElement('div'); week.className = 'agc-week'; week.setAttribute('role', 'row'); gridEl.appendChild(week); }
       const st = agendaDayStats(cell.items);
       const c = document.createElement('div');
       c.className = 'agc-cell' + (cell.inMonth ? '' : ' oom') + (cell.isToday ? ' today' : '') + (cell.items.length ? ' has-items' : '');
       c.setAttribute('role', 'gridcell');
-      c.setAttribute('tabindex', cell.isToday ? '0' : '-1');
-      // full date label so screen readers announce the day + its to-do/done split
+      if (!side) c.setAttribute('tabindex', cell.isToday ? '0' : '-1');
       const dt = new Date(cell.epochDay * 86400000);
       const summary = (st.todo ? st.todo + ' to do' : '') + (st.todo && st.done ? ', ' : '') + (st.done ? st.done + ' done' : '');
       const cellLabel = CAL_DOW_FULL[dt.getUTCDay()] + ', ' + CAL_MONTHS[dt.getUTCMonth()] + ' ' + cell.dom
@@ -18371,19 +18405,55 @@ function renderAgendaCalendar(host, visible, totalDated) {
       dom.setAttribute('aria-hidden', 'true');
       c.appendChild(dom);
 
-      fillAgendaDay(c, cell.epochDay, cell.items, mkItem, { repaint: paint });
+      // Side months: items still render but are inert, so clicking anywhere on the month
+      // (cell or chip) switches to that month rather than zooming an item or expanding a day.
+      fillAgendaDay(c, cell.epochDay, cell.items, it => mkChip(it, { nav: !side }), { repaint: paint, expandable: !side });
       week.appendChild(c);
     });
-    // if today is not in this month, give tabindex=0 to the first in-month cell
-    if (!grid.querySelector('.agc-cell.today') && firstInMonth) {
-      firstInMonth.setAttribute('tabindex', '0');
-    }
+    if (!side && !gridEl.querySelector('.agc-cell.today') && firstInMonth) firstInMonth.setAttribute('tabindex', '0');
+    return monthLabel;
+  }
+
+  // Centre the current month within the scroller (so the side months peek symmetrically).
+  function centreCurrent() {
+    const c = curBlk.block;
+    months.scrollLeft = c.offsetLeft - (months.clientWidth - c.clientWidth) / 2;
+  }
+
+  // paint() fills all three month blocks from agendaMonth. Month nav re-paints WITHOUT
+  // rebuilding the strip so focus stays on the nav button (like buildDatePicker).
+  function paint() {
+    const anchor = agendaMonth != null ? agendaMonth : dueDateToday();
+    title.textContent = paintMonth(grid, anchor, null);
+    paintMonth(prevBlk.grid, addMonths(anchor, -1), 'previous');
+    paintMonth(nextBlk.grid, addMonths(anchor, 1), 'next');
+    requestAnimationFrame(centreCurrent);   // after layout, so offsets are real
   }
 
   const curM = () => agendaMonth != null ? agendaMonth : dueDateToday();
-  const navMonth = (delta) => { _agExpandedDay = null; agendaMonth = addMonths(curM(), delta); paint(); };
-  const jumpYear = (delta) => { _agExpandedDay = null; agendaMonth = addMonths(curM(), delta * 12); paint(); };   // ‹‹/›› = one year
-  const goToday  = () => { _agExpandedDay = null; agendaMonth = dueDateToday(); paint(); };
+  // Switch guard: a side-month click (or nav) is ignored until the previous switch's cells
+  // have settled (two frames: paint + fillAgendaDay's overflow-measure rAF), so rapid clicks
+  // don't stack half-rendered repaints. `label` announces the arrival for AT.
+  let _switching = false;
+  function switchTo(nextAnchor) {
+    if (_switching) return;
+    _switching = true;
+    _agExpandedDay = null;
+    agendaMonth = nextAnchor;
+    paint();
+    // wait out the paint + the per-cell overflow-measure rAF before accepting the next switch
+    requestAnimationFrame(() => requestAnimationFrame(() => { _switching = false; centreCurrent(); }));
+  }
+  const navMonth = (delta) => switchTo(addMonths(curM(), delta));
+  const jumpYear = (delta) => switchTo(addMonths(curM(), delta * 12));   // ‹‹/›› = one year
+  const goToday  = () => switchTo(dueDateToday());
+  // clicking a side month switches to it (guarded so it can't race a pending switch)
+  prevBlk.block.addEventListener('mousedown', e => { e.preventDefault(); switchTo(addMonths(curM(), -1)); });
+  nextBlk.block.addEventListener('mousedown', e => { e.preventDefault(); switchTo(addMonths(curM(), 1)); });
+  prevBlk.block.setAttribute('role', 'button'); prevBlk.block.setAttribute('tabindex', '0'); prevBlk.block.setAttribute('aria-label', 'Go to the previous month');
+  nextBlk.block.setAttribute('role', 'button'); nextBlk.block.setAttribute('tabindex', '0'); nextBlk.block.setAttribute('aria-label', 'Go to the next month');
+  prevBlk.block.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTo(addMonths(curM(), -1)); } });
+  nextBlk.block.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTo(addMonths(curM(), 1)); } });
   prev.addEventListener('mousedown', e => { e.preventDefault(); navMonth(-1); });
   next.addEventListener('mousedown', e => { e.preventDefault(); navMonth(1); });
   jumpPrev.addEventListener('mousedown', e => { e.preventDefault(); jumpYear(-1); });
@@ -19029,7 +19099,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many items it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work. Click any item to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many items it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work. Click any item to jump straight to it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
