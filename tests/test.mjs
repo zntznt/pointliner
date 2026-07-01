@@ -5364,6 +5364,13 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('function capInputKeydown') && _src.includes('captureTargetSlot(d === 0 ? 10 : d)'), 'in-strip slot switch missing');
   // no destination yet → the capture action opens the manager, never silently no-ops (P4)
   assert.ok(_src.includes('if (!inbox) { captureManage = true; renderCaptureStrip(); return; }'), 'unset-inbox path missing');
+  // Add-inbox must OPEN the modal overlay itself (the strip is no longer a modal, so the
+  // tree picker needs its own ioBack.on — the "dead Add button" regression).
+  {
+    const add = _src.slice(_src.indexOf('function captureAddInbox'), _src.indexOf('function captureAddInbox') + 1100);
+    assert.ok(add.includes("ioBack.classList.add('on')"), 'Add-inbox must open the modal overlay');
+    assert.ok(add.includes('buildTreePicker'), 'Add-inbox must use the tree picker');
+  }
   // captured text is markdown-aware (a typed - [ ] becomes a to-do)
   assert.ok(_src.includes('deriveTypeFromText(text)') && _src.includes('todoDoneFromText(text)'), 'capture not markdown-aware');
 });
