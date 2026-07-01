@@ -38,8 +38,9 @@ deeper view at a time below the List (click the active one again to return to ju
 
 In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
 do, y done**) and lists the active ones first; when a day has more than fit, click its **more** to
-expand that day in place and see them all. The **‹‹** and **››** buttons jump a whole month (Week) or
-year (Month).
+expand that day in place and see them all. On a wide screen the **Month** view also shows the
+previous and next months peeking in at the sides (the same size as the centred one); click either to
+jump to it. The **‹‹** and **››** buttons jump a whole month (Week) or year (Month).
 
 Turn on **Done** to include completed points; toggle **Running** to show or hide started work. Click
 any item to jump straight to it.
