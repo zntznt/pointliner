@@ -500,7 +500,7 @@ Implemented:
     Works in any doc, no workspace required.
   - *File mode* (workspace-gated): opens/creates a `YYYY-MM-DD.opml` per day in the connected
     folder; if no folder is connected, falls back to append mode with a hint.
-  **Pure cores**: `todayISO()`, `journalFileName(iso, perEntry, stamp)`,
+  **Pure cores**: `todayISO()`, `journalFileName(iso)`,
   `findOrCreateDatedEntry(home, iso, mk)` — all Node-testable, pinned in `tests/test.mjs`.
   `findOrCreateJournalHome()` + `openJournalEntry()` are the DOM-side helpers. No new syntax.
 - **Dates (start + due) + Agenda** — a point carries a **start→due range** as two reserved
@@ -622,7 +622,7 @@ Implemented:
   - **Keyboard-first creation:** "Copy link to this node" (bullet menu + `Cmd/Ctrl+Shift+L`)
     puts `[[#id|]]` on the clipboard; paste it and the caret lands right after the `|`,
     ready for a label. Typing `[[#id]]` by hand works too. The **`[[`-triggered node picker**
-    is live (`LINK_PICKER_ENABLED`, a kill switch defaulting **on** — UXP-4 resolved; candidates
+    is live (always on since UXP-4, rollout kill switch retired 2026-07-02 resolved; candidates
     via the pure `linkCandidates`).
   - **Link-and-create (same-document, Phase 3):** typing `[[a title that doesn't exist yet`
     no longer dead-ends. The picker always offers a **"+ New point: ‹title›"** row — the last

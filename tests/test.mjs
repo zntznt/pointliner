@@ -6158,18 +6158,9 @@ test('todayISO returns YYYY-MM-DD shape', () => {
   assert.match(iso, /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test('journalFileName per-day (default)', () => {
-  assert.equal(c.journalFileName('2026-06-16', false, null), '2026-06-16.opml');
-  assert.equal(c.journalFileName('2026-06-16', false, '143022'), '2026-06-16.opml');
-});
-
-test('journalFileName per-entry with stamp', () => {
-  assert.equal(c.journalFileName('2026-06-16', true, '143022'), '2026-06-16-143022.opml');
-});
-
-test('journalFileName per-entry without stamp falls back to per-day', () => {
-  assert.equal(c.journalFileName('2026-06-16', true, null), '2026-06-16.opml');
-  assert.equal(c.journalFileName('2026-06-16', true, ''), '2026-06-16.opml');
+test('journalFileName: one file per day', () => {
+  // the per-entry arm was cut 2026-07-02 (never wired: no mode produced it, no reader listed it)
+  assert.equal(c.journalFileName('2026-06-16'), '2026-06-16.opml');
 });
 
 test('findOrCreateDatedEntry creates when absent (leaf is the day, nested)', () => {
