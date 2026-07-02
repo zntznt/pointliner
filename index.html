@@ -774,7 +774,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .seq-pill .seq-states{color:var(--muted);font-size:.92em}
 .seq-pill .seq-pipe{color:var(--acc);font-weight:700;padding:0 1px}
 .seq-pill.seq-bad{color:var(--del);border-style:dashed;cursor:default}
-.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 5px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none}
+.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 5px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback so out-of-range letters ([#D]+, org A-E importers) still read as a priority chip; the a/b/c variants override with their bad/warn/info hues */
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .todo-prio-c{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
@@ -1647,8 +1647,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
-    <button id="btn-done" class="tbtn-toggle" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
-    <button id="btn-notes" class="tbtn-toggle active" title="Hide notes" aria-label="Hide notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
+    <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
+    <button id="btn-notes" class="tbtn-toggle active" title="Notes" aria-label="Notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
   <div id="doc-tabs" role="tablist" aria-label="Open documents" style="display:none"></div>
   <div id="breadcrumb-row"></div>
@@ -11082,12 +11082,18 @@ function findFirstTableRange(text) {
 // phrasing per type. The visible `-rolled` pop can't persist on an inline insert (applyInlineReplace
 // re-enters edit mode, which unfolds the pill back to its {…} source), so the announce is the debut
 // reward that survives; the pop still fires on every subsequent click via the reroll path.
-function announceDebut(type, rec) {
+function announceDebut(type, rec, node) {
   if (!rec) return;
   let msg;
   switch (type) {
     case 'dice':    msg = `Rolled ${rec.expr}: ${diceTotalStr(rec)}`; break;
-    case 'est':     msg = `Estimate ${rec.expr}`; break;
+    case 'est': {
+      // UXP-149: carry the sampled summary the way dice carries its total, so the est debut is as
+      // informative as a re-roll (same one-liner rerollEst runs). node is needed for subtree refs.
+      const sm = (() => { const s = sampleUncertain(rec.expr, EST_N, rec.seed, node); return s && distSummary(s); })();
+      msg = sm ? `Estimate ${rec.expr}: ${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : `Estimate ${rec.expr}`;
+      break;
+    }
     case 'markov':  msg = `Markov: ${rec.result || ''}`; break;
     case 'grammar': msg = `Generated: ${rec.result || ''}`; break;
     case 'math':    msg = `Result: ${rec.result != null ? rec.result : ''}`; break;
@@ -11147,7 +11153,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.est ||= []).push(rec);
         applyInlineInsertion(nodeId, offset, `[[est:${rec.key}]]`);
-        announceDebut('est', rec);   // UXP-110
+        announceDebut('est', rec, n);   // UXP-110/149: pass the node so the debut announces the sampled summary
       },
     });
   } else if (id === 'markov') {
@@ -12755,9 +12761,10 @@ function repeatParts(body) {
 }
 
 // A stateful-sequence pill (deck / cycle / once / stopping). Reuses the grammar
-// pill chrome but: a deck icon, NO pencil (it unfolds to {mode: …} text for
-// editing, like an anonymous grammar / dice pill), and body-click ADVANCES the
-// sequence rather than re-rolling (wired in rerollGrammar via the `mode` field).
+// pill chrome: a deck icon, a `.gr-edit` pencil (→ editGrammar → openDeckDialog,
+// which resets pos/bag — the reset door a spent deck's title points at, UXP-150),
+// and body-click ADVANCES the sequence rather than re-rolling (wired in
+// rerollGrammar via the `mode` field).
 // User-facing umbrella term is "Deck" with the mode as the qualifier — kept
 // distinct from the reserved word "sequence" (the to-do state-set feature).
 function renderSeqGenPill(key, g) {
@@ -12768,9 +12775,10 @@ function renderSeqGenPill(key, g) {
   const shown = ended ? '—' : g.result;
   const ariaVal = ended ? '(spent)' : g.result;
   // UXP-138: a spent deck no longer invites a click (the click is a dead event, guarded in
-  // rerollGrammar), so its title reads "spent", not "Click to advance".
+  // rerollGrammar). UXP-150: its title/aria point at the reset door (the .gr-edit pencil), so the
+  // terminal state teaches recovery the way the delete/cut toasts teach undo.
   const verb = ended ? '' : (g.mode === 'shuffle' ? 'draw the next' : 'advance');
-  const cta = ended ? 'spent' : ('Click to ' + verb);
+  const cta = ended ? 'Spent. Edit to reset' : ('Click to ' + verb);
   return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}). ${cta}"`
     + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
@@ -12981,7 +12989,7 @@ function rerollGrammar(node, key) {
     // celebratory pop on a non-event. Short-circuit: no state change, no pop, just say it's spent.
     // Only `once` can be truly exhausted (shuffle recycles, cycle loops, stopping stays), so the
     // guard is scoped to it, keyed on pos past the last item.
-    if (g.mode === 'once' && (g.pos || 0) >= (g.items?.length || 0)) { flashHint('Deck spent'); return; }
+    if (g.mode === 'once' && (g.pos || 0) >= (g.items?.length || 0)) { flashHint('Deck spent. Edit it to reshuffle'); return; }   // UXP-150: point at the reset door (the .gr-edit pencil)
     if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
     // UXP-120: a shuffle deck reshuffles silently when its bag empties. Detect the wrap BEFORE
     // the draw (empty bag + we've drawn before, so not the first-ever draw) and flash a courtesy
@@ -19371,7 +19379,9 @@ function updateFmStatus() {
   const namedButUnbound = hasFSA && fileName !== 'unsaved' && !fileHandle && !workspaceFile;
   if (fileName === 'unsaved')      status.textContent = 'Autosaved in this browser, not saved to a file';
   else if (namedButUnbound)        status.textContent = 'Autosaved in this browser. Reopen “' + displayName(fileName) + '” to save back to it';
-  else if (dirty)                  status.textContent = 'Unsaved changes. ' + fmtKey('S') + ' saves to file';
+  // UXP-152: on the non-FSA tier Ctrl+S downloads a fresh copy (dlOpml), it does not save back to an
+  // opened file, so the status must not claim "saves to file". FSA tiers do save back in place.
+  else if (dirty)                  status.textContent = hasFSA ? ('Unsaved changes. ' + fmtKey('S') + ' saves to file') : ('Unsaved changes. ' + fmtKey('S') + ' downloads a copy');
   else                             status.textContent = 'All changes saved';
 }
 
@@ -19698,15 +19708,15 @@ document.getElementById('btn-width').addEventListener('click', () => {
 document.getElementById('btn-done').addEventListener('click', () => {
   showDone = !showDone;
   const btn = document.getElementById('btn-done');
-  btn.title = showDone ? 'Hide done points' : 'Show done points';
+  // UXP-153: keep the name stable ("Done points"); aria-pressed + .active carry the shown/hidden state
+  // so AT reads "Done points, pressed" not "Hide done points, pressed" (which fought itself).
   btn.setAttribute('aria-pressed', String(showDone));
   btn.classList.toggle('active', showDone);
   render();
 });
 function syncNotesBtn() {
   const btn = document.getElementById('btn-notes');
-  btn.title = showNotes ? 'Hide notes' : 'Show notes';
-  btn.setAttribute('aria-label', btn.title);
+  // UXP-153: stable name ("Notes"); aria-pressed alone signals shown/hidden, matching the sibling toggles.
   btn.setAttribute('aria-pressed', String(showNotes));
   btn.classList.toggle('active', showNotes);
 }
@@ -20910,8 +20920,7 @@ function applyAutosaveData(data) {
     showDone = data.showDone;
     const btn = document.getElementById('btn-done');
     btn.classList.toggle('active', showDone);
-    btn.title = showDone ? 'Hide done points' : 'Show done points';
-    btn.setAttribute('aria-pressed', String(showDone));
+    btn.setAttribute('aria-pressed', String(showDone));   // UXP-153: stable name; aria-pressed carries state
   }
   if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
   // New: a single active view. Migrate the legacy additive agendaBars (timeline/calendar
