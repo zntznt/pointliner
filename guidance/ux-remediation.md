@@ -733,22 +733,22 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Rule:** DL §3, "the palette lives in two homes; change both or neither".
 - **Target (small):** promote each pair to dual-homed tokens (`--row-hover`, `--hl`, the selection/edit tints) declared in `:root`, the dark media query, AND both `applyTheme` strings; the six rules reference only tokens. Verify with the §6 forced-theme screenshot (OS-light + in-app dark).
 
-### UXP-72 ☐ `#edit-bar` keeps a hardcoded cold-black upward shadow (DL §3/§4) 🟡
+### UXP-72 ✓ `#edit-bar` keeps a hardcoded cold-black upward shadow (DL §3/§4) 🟡 (RESOLVED: batch V2)
 - **Problem:** `#edit-bar` ships `box-shadow:0 -2px 10px rgba(0,0,0,.06)`: not warm in light, invisible on the dark `--bg`, never swaps per theme, and a fourth ad-hoc shadow outside the token set. The exact defect class UXP-61 fixed on `#fn-panel`/`#bl-panel`/`#var-panel`.
 - **Rule:** DL §4 shadow tokens; §3 theme-paired shadows.
 - **Target (trivial):** `box-shadow:var(--sh-up)` (already dual-homed).
 
-### UXP-73 ☐ Active toggles painted solid accent (DL §4 reserve rule) 🟡
+### UXP-73 ✓ Active toggles painted solid accent (DL §4 reserve rule) 🟡 (RESOLVED: batch V2)
 - **Problem:** `.bpop-type.cur`, `.tp-chip.cur`, and `.mt-align-bar button.on` use solid `var(--acc)` fill, while the toolbar's own `button.active` correctly wears the 16%-tint recipe.
 - **Rule:** DL §4, "solid accent fill is reserved for the focus outline, primary dialog actions, and the brand mark".
 - **Target (trivial):** restyle all three to the tint recipe (16% accent mix background, accent ink, 35% border).
 
-### UXP-74 ☐ Informational text below the 11px floor, one opacity-faded (DL §4/§3) 🟡
+### UXP-74 ✓ Informational text below the 11px floor, one opacity-faded (DL §4/§3) 🟡 (RESOLVED: batch V2)
 - **Problem:** the Gantt date readouts `.agg-today-lbl` and `.agg-hover-lbl` render at 8px; `.collapse-count` (the hidden-children count) renders at 9px AND is faded with `opacity:.6` against the role-not-failing-ink rule.
 - **Rule:** DL §4, "no informational text below 11px effective (caps+tracking earns 10px for labels only)"; §4 eyebrows "never opacity-faded".
 - **Target (small):** raise the Gantt labels to 10px caps+tracking or 11px plain; raise `.collapse-count` to 10-11px and replace the opacity fade with `color:var(--muted)`.
 
-### UXP-75 ☐ Off-token border radii: 5px, 7px, 9px one-offs (DL §4) 🟢
+### UXP-75 ✓ Off-token border radii: 5px, 7px, 9px one-offs (DL §4) 🟢 (RESOLVED: batch V2)
 - **Problem:** `.gr-src` 5px, `.fn-key` 7px, `.var-pick-card` 9px (plus a one-off 1.5px border width), `.nsb-btn` 5px; the locked set is 3/6/8/12/999.
 - **Target (trivial):** map to the nearest token (`--r-sm` for `.gr-src`/`.nsb-btn`/`.fn-key`, `--r-md` for `.var-pick-card`); normalize the 1.5px border to 1px.
 
@@ -756,11 +756,11 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** `.est-pill{--pill:#5a4a8a}` exists in code but not in DL §4's family-hue list; the doc still lists the table hue `#5b3a6e`, which has zero code occurrences since the rolltable-into-grammar collapse.
 - **Target (trivial):** update the §4 hue list: add `est #5a4a8a`, mark `table #5b3a6e` retired.
 
-### UXP-77 ☐ Calendar day-of-week header off the one eyebrow recipe (DL §4) 🟢
+### UXP-77 ✓ Calendar day-of-week header off the one eyebrow recipe (DL §4) 🟢 (RESOLVED: batch V2)
 - **Problem:** `.agc-dow span` is 10px/700/.05em; the recipe is 10px/600/.07em (conformant siblings: `.ag-rowlabel`, `.acc-row-lbl`).
 - **Target (trivial):** `font-weight:600;letter-spacing:.07em`.
 
-### UXP-78 ☐ Keycaps print two sizes: `.sh-row kbd` at 10px (DL §4) 🟢
+### UXP-78 ✓ Keycaps print two sizes: `.sh-row kbd` at 10px (DL §4) 🟢 (RESOLVED: batch V2)
 - **Problem:** `.sh-row kbd` duplicates the keycap recipe at 10px against the canonical 11px rule (`.cmd-key`, `#search-key`). UXP-67's keycap item closed the fill/ledge axis; the size axis still diverges.
 - **Target (trivial):** fold `.sh-row kbd` into the canonical 11px declaration.
 
@@ -859,7 +859,7 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** base `.cmd-item` 6px 10px, `#slash-menu` 5px 8px, `#file-menu` 7px 9px; the touch block diverges the same way. DL §4 unifies the hover language but nothing governs row metrics.
 - **Target (trivial):** collapse to the base padding and delete the overrides, or record the per-menu density as a decision. Guideline sentence: see below.
 
-### UXP-100 ☐ Concept-guide nav tints are off-recipe (DL §4) 🟢
+### UXP-100 ✓ Concept-guide nav tints are off-recipe (DL §4) 🟢 (RESOLVED: batch V2)
 - **Problem:** `.guide-nav-btn.active` uses a 12% mix with no 35% border (vs the canonical 16%+35% worn by `button.active` and `.doc-tab.active`), and its hover uses 6% vs the 10% menu-hover language.
 - **Target (trivial):** adopt the canonical recipes, or record the quieter nav variant as a DL decision.
 
