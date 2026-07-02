@@ -1575,7 +1575,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <input id="search-box" type="text" placeholder="Search…" aria-label="Search points" aria-describedby="search-hint" autocomplete="off" spellcheck="false">
       <kbd id="search-key">⌘F</kbd>
       <button id="search-save" title="Save this search" aria-label="Save this search" aria-pressed="false"></button>
-      <button id="search-clear" title="Clear search">✕</button>
+      <button id="search-clear" title="Clear search" aria-label="Clear search">✕</button>
       <div id="search-hint" role="group" aria-label="Search filters">
         <div id="sh-workspace" hidden>
           <div class="sh-saved-title" id="sh-workspace-title">Found in other documents</div>
@@ -1621,7 +1621,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <span class="fm-title" id="file-name" tabindex="0" role="textbox" spellcheck="false" title="Click to rename" aria-label="Document name, click to rename">Untitled</span>
       <span class="fm-status" id="fm-status">Not saved to a file</span>
     </div>
-    <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes"></span>
+    <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
   </div>
 
   <div class="fm-group">File</div>
@@ -1698,7 +1698,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <button class="nsb-btn" id="nsb-type">Turn into</button>
   <span class="nsb-sep"></span>
   <button class="nsb-btn danger" id="nsb-delete">Delete</button>
-  <button class="nsb-btn" id="nsb-clear">✕</button>
+  <button class="nsb-btn" id="nsb-clear" title="Clear selection" aria-label="Clear selection">✕</button>
 </div>
 <!-- touch edit bar: while a single point is being edited on touch, a strip of structural
      controls (outdent / indent / move up / move down) pinned above the on-screen keyboard,
@@ -7166,7 +7166,7 @@ function openTemplatePicker(nodeId) {
   foot.append(closeBtn); ioCard.appendChild(foot);
   ioCancel = closeIo;
 
-  ioReturnFocus = document.activeElement;
+  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the original return target (UXP-81)
   ioCard.setAttribute('aria-label', 'Stamp a template');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
@@ -7241,7 +7241,7 @@ async function openWorkspaceSwitcher() {
   foot.append(newBtn, closeBtn); ioCard.appendChild(foot);
   ioCancel = closeIo;
 
-  ioReturnFocus = document.activeElement;
+  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the original return target (UXP-81)
   ioCard.setAttribute('aria-label', 'Folder documents');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick[aria-current]') || ioCard.querySelector('.tpl-pick') || newBtn).focus(); });
@@ -7573,6 +7573,7 @@ function setInboxSlot(slot, nodeId) {
 }
 function removeInboxSlot(slot) {
   if (!root.inboxes || slot < 1 || slot > root.inboxes.length) return;
+  pushUndo(); // doc-level config rides the root snapshot, same as template forget (UXP-82)
   root.inboxes.splice(slot - 1, 1);
   markDirty();
 }
@@ -7664,12 +7665,12 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   input.placeholder = inbox ? 'Type a point to capture…' : 'Set an inbox first…';
   input.setAttribute('aria-label', 'Text to capture');
   input.spellcheck = true;
-  input.addEventListener('input', () => { captureDraft = input.value; autoGrowCapInput(input); });
+  input.addEventListener('input', () => { captureDraft = input.value; capBtn.disabled = !inbox || !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', capInputKeydown);
   row.appendChild(input);
 
   const capBtn = document.createElement('button'); capBtn.type = 'button'; capBtn.className = 'cap-go'; capBtn.textContent = 'Capture';
-  capBtn.disabled = !inbox; capBtn.addEventListener('click', () => doCapture());
+  capBtn.disabled = !inbox || !(captureDraft || '').trim(); capBtn.addEventListener('click', () => doCapture());
   row.appendChild(capBtn);
 
   const closeBtn = document.createElement('button'); closeBtn.type = 'button'; closeBtn.className = 'cap-close'; closeBtn.setAttribute('aria-label', 'Close capture'); closeBtn.innerHTML = '&times;';
@@ -7722,6 +7723,7 @@ function buildCaptureManager() {
     rm.setAttribute('aria-label', `Remove inbox ${slot}: ${crumbLabel(n)}`);
     rm.addEventListener('click', () => {
       removeInboxSlot(slot);
+      flashHint(`Removed inbox ${slot === 10 ? '0' : slot}`); // P4 confirm, matching the bullet-menu path (UXP-82)
       if (captureSlot > (root.inboxes || []).length) captureSlot = Math.max(1, (root.inboxes || []).findIndex(Boolean) + 1);
       renderCaptureStrip();
     });
@@ -7767,7 +7769,7 @@ function doCapture() {
   const inbox = inboxAt(captureSlot) || resolveInbox();
   const text = (captureDraft || '').replace(/\s+$/, ''); // drop trailing blank lines/space
   if (!inbox) { captureManage = true; renderCaptureStrip(); return; }  // no destination → open the picker
-  if (!text.trim()) return;
+  if (!text.trim()) { const c = document.querySelector('.cap-confirm'); if (c) c.textContent = 'Type something to capture'; return; } // P4: never silent (UXP-83)
   pushUndo();
   const n = mkNode(text);
   n.type = deriveTypeFromText(text) || 'ul';
@@ -17065,6 +17067,13 @@ function applySearch(q) {
   syncSearchSave();
   render();
   renderWorkspaceSearchResults(searchQuery);   // WS-2: refresh cross-doc results (covers typing, clear, programmatic)
+  if (searchQueryLC && searchTerms.length) {       // P3: a filter that repaints without moving focus announces (UXP-88)
+    const vp = focusedId ? nodeById(focusedId) : root;
+    let n = 0;
+    const cnt = node => { if (nodeMatchesSearch(node)) n++; (node.children || []).forEach(cnt); };
+    (vp.children || []).forEach(cnt);
+    announce(n === 1 ? '1 matching point' : n + ' matching points');
+  }
 }
 
 document.getElementById('search-box').addEventListener('input', function() {
@@ -17137,8 +17146,10 @@ function applySavedChip(q) {
 }
 
 function forgetSavedSearch(q) {
+  pushUndo(); // doc-level config rides the root snapshot (UXP-82)
   root.savedSearches = toggleSavedSearch(root.savedSearches, q); // present → removed
   markDirty();
+  flashHint(`Forgot saved search “${q}”`);
   renderSavedSearches();
   syncSearchSave();
   document.getElementById('search-box').focus();

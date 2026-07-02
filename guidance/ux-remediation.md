@@ -774,16 +774,16 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 
 **Lens: interaction (`ux-discipline.md`, `ux.md`)**
 
-### UXP-81 ☐ In-place dialog re-render clobbers `ioReturnFocus` (P3) 🟡
+### UXP-81 ✓ In-place dialog re-render clobbers `ioReturnFocus` (P3) 🟡 (RESOLVED: batch I1)
 - **Problem:** `openTemplatePicker` and `openWorkspaceSwitcher` re-invoke themselves after an in-dialog action (forget a template, delete a doc) and unconditionally recapture `ioReturnFocus = document.activeElement`, which by then is a disconnected node or body; `closeIo` then restores focus to body instead of the pre-dialog element.
 - **Rule:** §9 matrix "dialogs focus-trap + restore" (UXP-16); P3 keyboard operability.
 - **Target (small):** capture `ioReturnFocus` only when the dialog is not already open (guard on `ioBack.classList.contains('on')`), the `wasOpen` precedent `openCaptureDialog` already uses; ideally centralize in one `openIo()` helper.
 
-### UXP-82 ☐ Inbox-slot removal and saved-search forget: no toast, no undo (P4-3/P4-4, P1) 🟡
+### UXP-82 ✓ Inbox-slot removal and saved-search forget: no toast, no undo (P4-3/P4-4, P1) 🟡 (RESOLVED: batch I1)
 - **Problem:** `removeInboxSlot` and `forgetSavedSearch` remove doc-level config with only `markDirty()`, no `flashHint` and no `pushUndo`, while the sibling action (template Forget) does both. Same conceptual action, three behaviors.
 - **Target (trivial):** add the `flashHint` confirmation to both, and `pushUndo` where the config is not trivially re-creatable, matching the template-forget pattern.
 
-### UXP-83 ☐ Capture with empty text is a silent no-op (P4-1) 🟢
+### UXP-83 ✓ Capture with empty text is a silent no-op (P4-1) 🟢 (RESOLVED: batch I1)
 - **Problem:** `doCapture` returns early on empty text while the Capture button is enabled (it is only disabled when no inbox is set), so Enter or a click with an empty draft does nothing, silently.
 - **Target (trivial):** disable the button while the draft is empty, or flash a brief hint through the existing cap-confirm aria-live line.
 
@@ -797,15 +797,15 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 
 **Lens: accessibility (`accessibility.md`, P3)**
 
-### UXP-86 ☐ `#nsb-clear` has no accessible name (P3-1) 🟡
+### UXP-86 ✓ `#nsb-clear` has no accessible name (P3-1) 🟡 (RESOLVED: batch I1)
 - **Problem:** the multi-select bar's clear button is a bare `✕` with no `aria-label` and no `title`; every sibling nsb button is text-labeled. AT hears "multiplication sign, button".
 - **Target (trivial):** `aria-label="Clear selection"` (plus a matching `title`).
 
-### UXP-87 ☐ `#search-clear` is missing its mandated aria-label (a11y Phase 0, unexecuted) 🟡
+### UXP-87 ✓ `#search-clear` is missing its mandated aria-label (a11y Phase 0, unexecuted) 🟡 (RESOLVED: batch I1)
 - **Problem:** `accessibility.md` Phase 0 explicitly instructs `aria-label="Clear search"` on `#search-clear`; the button still carries only a `title`. UXP-13's resolved list omits this control, so the doc's instruction was never executed.
 - **Target (trivial):** add the label exactly as the a11y doc specifies.
 
-### UXP-88 ☐ GAP: search filtering gives AT no result announcement 🟡
+### UXP-88 ✓ GAP: search filtering gives AT no result announcement 🟡 (RESOLVED: batch I1 + the D1 guideline sentence)
 - **Problem:** `applySearch()` re-renders the outline with no `announce()` call, so a query matching 0 or 500 points is visually obvious but silent to a screen-reader user whose focus stays in `#search-box`. No guideline mandates filter-result announcements (P3-5 comes close).
 - **Target (small):** after `render()`, announce a match count to `#a11y-live` (debounced by the existing search timer). Guideline sentence: see below.
 
@@ -813,7 +813,7 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** the `@media(hover:none)` block enlarges pencils, toolbar buttons, tab closes, and nsb buttons, but never `#search-clear`, leaving a ~14px target beside a focused text field. The ~44px floor exists only as a CSS comment, in no guideline.
 - **Target (small):** enlarge `#search-clear` in the `@media(hover:none)` block (padding or min-width/height 44px). Guideline sentence: see below.
 
-### UXP-90 ☐ `#fm-dirty-dot` lacks the aria-label UXP-13 records as shipped (P3-1) 🟢
+### UXP-90 ✓ `#fm-dirty-dot` lacks the aria-label UXP-13 records as shipped (P3-1) 🟢 (RESOLVED: batch I1)
 - **Problem:** UXP-13 claims "both dirty dots" resolved; only the toolbar `#dirty-dot` has `aria-label="Unsaved changes"`. The file-menu `#fm-dirty-dot` has `title` only: a 6px decorative span invisible to AT inside the file dialog.
 - **Target (trivial):** add the aria-label, or fold the unsaved state into the adjacent `#fm-status` text AT already reads.
 
