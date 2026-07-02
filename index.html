@@ -972,16 +972,16 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 #btn-capture.active,#btn-journal.active{color:var(--acc)}
 .cap-row{display:flex;align-items:center;gap:5px;min-width:0}
 /* destination selector: [▾ N · name] — click to open the in-strip manager */
-.cap-dest-btn{flex:0 0 auto;max-width:230px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;min-width:94px;cursor:pointer;white-space:nowrap;overflow:hidden} /* min-width matches the journal date chip so the stacked chip column aligns */
+.cap-dest-btn{flex:0 0 auto;max-width:230px;height:22px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;min-width:94px;cursor:pointer;white-space:nowrap;overflow:hidden} /* min-width matches the journal date chip so the stacked chip column aligns */
 .cap-dest-btn:hover{color:var(--fg);border-color:var(--muted)}
 .cap-dest-btn.open{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-dest-btn.unset{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 38%,transparent)}  /* the semantic tint recipe, warn-routed (same mix as .ag-toggle.ag-focus.on) */
 .cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cap-slot-n{display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--muted) 22%,transparent);color:var(--fg);font-family:var(--mono);font-size:10px;font-weight:700;flex-shrink:0} /* 14px fits inside the 11px/1.4 chip content box, so badge chips and the Add chip share one height */
 /* the input grows with content; single-row default */
-.cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:13px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 9px;outline:none;min-height:24px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto}
+.cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:12px;line-height:18px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:1px 9px;outline:none;min-height:22px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto} /* one 22px strip-row height, same as the chips; grows only with content */
 .cap-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
-.cap-go{flex:0 0 auto;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc-fg);background:var(--acc);border:1px solid var(--acc);border-radius:var(--r-sm);padding:2px 12px;min-width:72px;text-align:center;cursor:pointer} /* shared min-width: stacked strips (capture, journal) keep their commit column aligned */
+.cap-go{flex:0 0 auto;height:22px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc-fg);background:var(--acc);border:1px solid var(--acc);border-radius:var(--r-sm);padding:2px 12px;min-width:72px;text-align:center;cursor:pointer} /* shared min-width: stacked strips (capture, journal) keep their commit column aligned */
 /* solid-accent primary states mirror .io-btn.primary: one hover value app-wide, and disabled resets the filter (source order after :hover) so a dead control never hover-reacts.
    Both rules re-pin background: the generic button:hover{background:var(--bdr)} wash (0,1,1) outranks the single-class .cap-go (0,1,0) and was painting --acc-fg text on a --bdr fill. */
 .cap-go:hover{background:var(--acc);filter:brightness(1.07)}
@@ -989,7 +989,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
 .cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:6px 0 1px;/* chips centered in the band BELOW the hairline: 6px under it, 1px + the strip 5px bottom padding beneath */border-top:1px solid var(--bdr)} /* solid hairline: the .ag-pane secondary-bar language; dashed is the broken-pill voice */
-.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
+.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;height:22px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
 /* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
 .cap-chip:hover{border-color:var(--muted)}
 .cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
@@ -1001,7 +1001,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-chip>.cap-chip-pick+.cap-chip-pick{border-left:1px solid var(--bdr-ui)} /* multi-segment chips (the journal date) divide internally like pick|remove */
 .cap-chip-rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
 /* plain .ag-toggle chip (DL §4 docked-strip grammar); dashed borders are the broken-pill language, not an affordance */
-.cap-add{font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
+.cap-add{height:22px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 .cap-add:hover{color:var(--fg);border-color:var(--muted)}
 .cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-btn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
