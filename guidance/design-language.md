@@ -86,8 +86,12 @@ soft-text-grade (low) to high-contrast display (high). Larger element ⇒ higher
 - **h5/h6 are caps eyebrows** (Geist, `.8em`, 600, uppercase, `.07em`), not ever-smaller
   serif headings — the scale stops shrinking below body size, and the eyebrow voice matches
   the app's existing section labels.
-- **The zoomed title outranks an inline h1** (30px > 2×17px = 34px… measured: it must never
-  render *smaller* than its children's headings, the original inversion).
+- **The zoomed title outranks an inline h1.** A bare `.zoom-title` is 30px (opsz 60) but a
+  descendant markdown `# heading` is `2em` ≈ 34px (opsz 84), so a `# child` would out-size and
+  out-grade the masthead of the page it lives on (and `fitZoomTitle` can shrink a long title
+  further). The rule is enforced by **stepping descendant headings down inside a zoomed page**
+  (`body.zoomed .node-content h1.md-h`→1.5em/opsz 60, h2→1.25em/opsz 34; UXP-108), not by raising
+  the title. The title must never render *smaller* or *lower-grade* than its children's headings.
 - **Display ceiling: ~2em for h1.** This is a click-anywhere-to-edit editor; dramatic
   display/edit reflow makes the caret feel broken. Do not push past it.
 
@@ -125,7 +129,16 @@ text ink; this recipe passed AA at badge size in both themes — keep the percen
 **Decision: contrast floors are merge criteria, not aspirations.**
 - `--muted` ≥ 4.5:1 on `--bg` in both themes (it styles *content* — placeholders,
   formulas, eyebrows). Light `#6b665c`, dark `#a39a8d`. Never push it back toward `#999`
-  for tone; de-emphasize with *role* (size, caps, spacing), not failing ink.
+  for tone; de-emphasize with *role* (size, caps, spacing), not failing ink. **Placeholders
+  are content and clear the floor** — de-emphasize an empty field by role (weight, and the
+  fact that filled text is full `--fg`), never by an opacity fade on `--muted` (UXP-74, UXP-107).
+- **Incidental connective glyphs inside a pill are decoration, not content, and are exempt
+  from the floor.** A pill's *information* (the dice total, the markov state, the resolved
+  value) is full-contrast; the one-character connectors between them — `+`, `=`, `→`, a
+  terminal `…` — may sit below 4.5:1 (a light opacity on `--muted` is fine) because they carry
+  no information a reader must resolve, only rhythm. This is the same "content glyphs" spirit as
+  the sanctioned `—` marks: the floor governs text you read, not the punctuation between it
+  (UXP-118). Do not extend this to anything a user must actually read.
 - Text on the accent uses **`--acc-fg`, never a hardcoded `#fff`** — `applyAccentCSS`
   computes the higher-contrast ink (white vs `#16130f`) per accent, because dark-mode
   accents are pastels (white-on-`#a5b4fc` was 1.99:1). Any new `background:var(--acc)`
