@@ -7789,3 +7789,48 @@ test('queryParts — sniffs {query: expr}, rejects the empty and keywordless for
   // classifyBraceBody routes it to an artifact so exit-promotion fires
   assert.equal(c.classifyBraceBody('query: is:todo', [], {}), 'artifact');
 });
+
+// ── QX-6: link/tag presence filters (has:link/tag pure; has:backlink/is:broken threaded) ──
+test('QX-6 has:link and has:tag are pure node reads with the props fall-through intact', () => {
+  const hasM = (val, node) => c.termMatchesNode({ kind: 'has', value: val }, node, SEQS);
+  // links: same-doc plain, labeled, mirror, and cross-doc forms all count
+  assert.equal(hasM('link', { text: 'see [[#abc12]]' }), true);
+  assert.equal(hasM('link', { text: 'see [[#abc12|the intro]]' }), true);
+  assert.equal(hasM('link', { text: 'mirror [[#abc12|]]' }), true);
+  assert.equal(hasM('link', { text: 'cross [[docaa#abc12|x]]' }), true);
+  assert.equal(hasM('link', { text: 'a footnote [^k] is not a link' }), false);
+  assert.equal(hasM('link', { text: 'plain text' }), false);
+  // tags: any sigil counts, including hashtag-shaped state keywords; link targets never read as tags
+  assert.equal(hasM('tag', { text: 'an #idea here' }), true);
+  assert.equal(hasM('tag', { text: '#TODO write it' }), true);
+  assert.equal(hasM('tag', { text: 'only a link [[#abc12]]' }), false);
+  assert.equal(hasM('tag', { text: 'code#notatag' }), false);   // word-anchored, mirrors the #tag matcher
+  assert.equal(hasM('tag', { text: 'plain' }), false);
+  // the has:<propkey> contract: a real property keyed link/tag still matches
+  assert.equal(hasM('link', { text: 'plain', props: [{ key: 'link', val: 'y' }] }), true);
+  assert.equal(hasM('tag', { text: 'plain', props: [{ key: 'tag', val: 'y' }] }), true);
+});
+
+test('QX-6 has:backlink and is:broken read the threaded collectLinks index', () => {
+  // A links to B (live) and to a dead id; B is linked-to; C stands alone.
+  const root = { children: [
+    { id: 'aaa11', text: 'see [[#bbb22]] and [[#dead9]]', children: [] },
+    { id: 'bbb22', text: 'the target', children: [] },
+    { id: 'ccc33', text: 'unrelated', children: [] },
+  ] };
+  const links = host(c.collectLinks(root));
+  const A = root.children[0], B = root.children[1], C = root.children[2];
+  const m = (term, node) => c.termMatchesNode(term, node, SEQS, undefined, links);
+  assert.equal(m({ kind: 'has', value: 'backlink' }, B), true);    // B is linked to
+  assert.equal(m({ kind: 'has', value: 'backlink' }, A), false);
+  assert.equal(m({ kind: 'has', value: 'backlink' }, C), false);
+  assert.equal(m({ kind: 'is', value: 'broken' }, A), true);       // A contains the dead link
+  assert.equal(m({ kind: 'is', value: 'broken' }, B), false);
+  assert.equal(m({ kind: 'is', value: 'broken' }, C), false);
+  // parses as an is: term, and composes with OR across the QX family
+  assert.equal(host(c.parseSearchQuery('is:broken'))[0].kind, 'is');
+  const q = host(c.parseSearchQuery('is:broken | has:backlink'));
+  assert.equal(c.queryMatchesNode(q, A, SEQS, undefined, links), true);
+  assert.equal(c.queryMatchesNode(q, B, SEQS, undefined, links), true);
+  assert.equal(c.queryMatchesNode(q, C, SEQS, undefined, links), false);
+});
