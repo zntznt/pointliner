@@ -2022,23 +2022,36 @@ const PRIO_CYCLE = [null, ...TODO_PRIOS];                // cycle incl. no-prior
 // authoring syntax: declare via @, apply via /, and the `#KEYWORD` sits at the
 // start of node.text (reuses the `#` sigil, e.g. `#TODO body`).
 
-const DEFAULT_SEQUENCE = { key: 'default', name: 'To-do', states: TODO_STATES, doneFrom: TODO_STATES.indexOf('DONE') };
+// UXP-158: WAITING is now a structural HELD state (heldFrom..doneFrom), not a hardcoded string in
+// collectActions. The built-in reads active(TODO,NEXT) | held(WAITING) | done(DONE) — behavior-
+// identical to before, but now a custom sequence can declare its own held band the same way.
+const DEFAULT_SEQUENCE = { key: 'default', name: 'To-do', states: TODO_STATES, heldFrom: TODO_STATES.indexOf('WAITING'), doneFrom: TODO_STATES.indexOf('DONE') };
 
 const SEQ_STATE_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
-// "TODO NEXT | DONE CANCELLED" → { states: [...uppercased], doneFrom } or null.
-// Exactly one |, at least one state on each side, identifier-shaped tokens, no
-// duplicates. Pure; callers branch on null (the dialog validates with this too).
+// "TODO NEXT | DONE" → { states, doneFrom, heldFrom } or null. UXP-158: an OPTIONAL middle band
+// declares HELD (blocked) states — "TODO DOING | BLOCKED | SHIPPED" gives active | held | done, so
+// a held point (e.g. WAITING) is structurally distinct from an active one instead of a hardcoded
+// string. One pipe (the classic form) has no held band, so heldFrom === doneFrom. At least one state
+// per band, identifier-shaped tokens, no duplicates. Pure; callers branch on null.
 function parseSequence(def) {
   const s = def == null ? '' : String(def);
   const parts = s.split('|');
-  if (parts.length !== 2) return null;
+  if (parts.length !== 2 && parts.length !== 3) return null;   // active|done or active|held|done
   const lex = (p) => p.trim().split(/\s+/).filter(Boolean);
-  const left = lex(parts[0]), right = lex(parts[1]);
-  if (!left.length || !right.length) return null;
-  if ([...left, ...right].some(w => !SEQ_STATE_RE.test(w))) return null;
-  const states = [...left, ...right].map(w => w.toUpperCase());
+  const bands = parts.map(lex);
+  if (bands.some(b => !b.length)) return null;                 // every band needs ≥1 state
+  const flat = bands.flat();
+  if (flat.some(w => !SEQ_STATE_RE.test(w))) return null;
+  const states = flat.map(w => w.toUpperCase());
   if (new Set(states).size !== states.length) return null;
-  return { states, doneFrom: left.length };
+  if (parts.length === 2) {
+    const doneFrom = bands[0].length;
+    return { states, doneFrom, heldFrom: doneFrom };           // no held band → heldFrom === doneFrom
+  }
+  // active | held | done: held spans [heldFrom, doneFrom); done spans [doneFrom, end)
+  const heldFrom = bands[0].length;
+  const doneFrom = bands[0].length + bands[1].length;
+  return { states, doneFrom, heldFrom };
 }
 
 // seqDeclParts(body) — sniff a typed sequence DECLARATION: {seq Flow: BACKLOG DOING | SHIPPED}.
@@ -2056,8 +2069,8 @@ function seqDeclParts(body) {
   if (!m) return null;
   const name = m[1].trim();
   if (!SEQ_NAME_RE.test(name)) return null;            // a single identifier-shaped name
-  const p = parseSequence(m[2]);                       // the states tail (active | done)
-  return p ? { name, states: p.states, doneFrom: p.doneFrom } : null;
+  const p = parseSequence(m[2]);                       // the states tail (active | held? | done)
+  return p ? { name, states: p.states, doneFrom: p.doneFrom, heldFrom: p.heldFrom } : null;   // UXP-158: carry the held band
 }
 
 // queryParts(body) — sniff a typed query pill: {query: is:todo | due:week}. The reserved
@@ -2123,10 +2136,20 @@ function sequenceForKeyword(keyword, seqs = allSequences()) {
   return null;
 }
 
-// Done-ness, generalized: the keyword sits at-or-right-of its sequence's | split.
+// Done-ness, generalized: the keyword sits at-or-right-of its sequence's done split.
 function keywordIsDone(keyword, seqs = allSequences()) {
   const sq = sequenceForKeyword(keyword, seqs);
   return !!sq && sq.states.indexOf(keyword) >= sq.doneFrom;
+}
+
+// UXP-158: held-ness (blocked), generalized: the keyword sits in the [heldFrom, doneFrom) band. A
+// one-pipe sequence has heldFrom === doneFrom, so this is empty (no held states) — exactly the
+// pre-UXP-158 behavior for any custom `active | done` sequence. The built-in default puts WAITING here.
+function keywordIsHeld(keyword, seqs = allSequences()) {
+  const sq = sequenceForKeyword(keyword, seqs);
+  if (!sq || sq.heldFrom == null) return false;
+  const i = sq.states.indexOf(keyword);
+  return i >= sq.heldFrom && i < sq.doneFrom;
 }
 
 // Every recognized state keyword (default + declared), uppercase. Cached on
@@ -2284,9 +2307,12 @@ function tallyMarkers(text) {
   for (const m of ms) if (TASK_DONE_BOX.test(m)) done++;
   return { done, total: ms.length };
 }
-function progressCount(node, seqs = allSequences()) {
+function progressCount(node, seqs = allSequences(), depth = 1) {
+  // UXP-159: `depth` selects how deep the tally reaches — 1 = direct children (the default,
+  // unchanged), N = N levels, Infinity = the whole subtree. Own-text markers always count; each
+  // descendant within depth contributes either its checkbox markers or (marker-less) one sequenced item.
   let { done, total } = tallyMarkers(node?.text || '');
-  for (const c of (node?.children || [])) {
+  for (const c of collectScoped(node || {}, depth)) {
     const t = tallyMarkers(c.text || '');
     if (t.total > 0) { done += t.done; total += t.total; continue; }
     // no checkbox markers → a keyword/sequenced task counts as one item
@@ -2298,6 +2324,40 @@ function progressCount(node, seqs = allSequences()) {
 function formatProgressCookie(kind, done, total) {
   if (kind === 'pct') return '[' + (total ? Math.round(100 * done / total) : 0) + '%]';
   return '[' + done + '/' + total + ']';
+}
+
+// ── depth scope: the shared "how deep" vocabulary (UXP-159) ───────────────────
+// One closed set of scope tokens, honored by every child-scoped rollup (property
+// aggregation, progress cookies, words()). A token is EITHER a keyword — self /
+// children / subtree — OR a positive integer depth (1 = direct children, 2 = plus
+// grandchildren, …). resolveScopeDepth maps any token to a max-depth integer;
+// collectScoped gathers the descendants within that depth. This generalizes the
+// original words(subtree|self|children) keyword set: `children` === depth 1,
+// `subtree` === unbounded depth, and a number picks an exact depth in between.
+//   self → 0 (node only; no descendants) · children → 1 · subtree → Infinity · N → N
+// An unrecognized token → null, so the caller leaves the expr literal and evalMath /
+// the cookie renderer surfaces the error (P4: never a silent miscount). Pure.
+const SCOPE_TOKEN_RE = /^(self|children|subtree|\d+)$/;
+function resolveScopeDepth(token) {
+  const t = String(token == null ? '' : token).trim().toLowerCase();
+  if (t === 'self') return 0;
+  if (t === 'children') return 1;
+  if (t === 'subtree') return Infinity;
+  if (/^\d+$/.test(t)) { const n = parseInt(t, 10); return n >= 1 ? n : null; }  // 0 would mean self; write `self`
+  return null;
+}
+// Gather descendants of `node` down to `depth` levels (depth 1 = direct children,
+// Infinity = whole subtree). Never includes `node` itself — a rollup over prose/props
+// is over DESCENDANTS; self-inclusion (the `self`/`subtree`-includes-self nuance) is
+// each caller's business (words() adds own text explicitly). Pure; depth 0 → []. */
+function collectScoped(node, depth) {
+  const out = [];
+  const walk = (n, d) => {
+    if (d <= 0) return;
+    for (const c of (n.children || [])) { out.push(c); walk(c, d - 1); }
+  };
+  walk(node, depth);
+  return out;
 }
 
 // ── subtree aggregation: sum / avg / count over a child PROPERTY ──────────────
@@ -2320,9 +2380,12 @@ function childPropNumber(child, prop) {
   if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
   return parseDueDate(raw);                          // else a date-shaped value aggregates as its epoch-day (strict; non-dates → null)
 }
-function aggregateChildren(node, fn, prop) {
+function aggregateChildren(node, fn, prop, depth = 1) {
+  // UXP-159: `depth` selects how deep the rollup reaches — 1 = direct children (the default,
+  // unchanged), 2 = plus grandchildren, Infinity = the whole subtree. The nodes are gathered by the
+  // shared collectScoped so every rollup shares one "how deep" definition.
   const vals = [];
-  for (const c of (node?.children || [])) {
+  for (const c of collectScoped(node || {}, depth)) {
     const v = childPropNumber(c, prop);
     if (v !== null) vals.push(v);
   }
@@ -2350,8 +2413,16 @@ function expandAggExpr(expr, node) {
   if (!expr) return expr;
   let e = String(expr);
   if (/\b(?:sum|avg|count|min|max)\s*\(/.test(e)) {
-    e = e.replace(/\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*\)/g,
-      (_, fn, prop) => '(' + aggregateChildren(node, fn, prop) + ')');
+    // UXP-159: an optional 2nd arg is the depth scope — sum(cost) = direct children (unchanged),
+    // sum(cost, subtree) = whole subtree, sum(cost, 2) = two levels. An UNRECOGNIZED scope leaves
+    // the call literal so evalMath surfaces #ERR (never a silent wrong depth). The numeric min/max
+    // variadic still needs ≥2 numbers, so `min(prop)` / `min(prop, subtree)` never clash with it.
+    e = e.replace(/\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g,
+      (m, fn, prop, scope) => {
+        const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
+        if (depth === null) return m;   // bad scope → literal → #ERR downstream
+        return '(' + aggregateChildren(node, fn, prop, depth) + ')';
+      });
   }
   // words(scope) — a prose word count over a SCOPE of the render node, substituted to a
   // number before evalMath (the same translation model as the property rollups above).
@@ -2360,7 +2431,9 @@ function expandAggExpr(expr, node) {
   // composition — {= words(subtree) / 200} — so there is no separate readtime function.
   // An unknown scope is left literal → evalMath surfaces #ERR (P4), never a silent miscount.
   if (/\bwords\s*\(/.test(e)) {
-    e = e.replace(/\bwords\s*\(\s*(subtree|self|children)\s*\)/g,
+    // UXP-159: words() now shares the depth vocabulary — words(subtree|self|children) plus words(2)
+    // for an exact depth. A bad scope stays literal so evalMath surfaces #ERR (P4).
+    e = e.replace(/\bwords\s*\(\s*(self|children|subtree|\d+)\s*\)/g,
       (_, scope) => '(' + subtreeWords(node, scope) + ')');
   }
   return e;
@@ -2381,17 +2454,23 @@ function countWords(text) {
   return m ? m.length : 0;
 }
 
-// Pure: word count over a SCOPE of `node`. subtree = node's own text+note plus every
-// descendant's; self = node only; children = direct children only (not self — parallel
-// to aggregateChildren). A per-point note is prose too, so it counts. Node-testable.
+// Pure: word count over a SCOPE of `node`. The scope is the shared depth vocabulary (UXP-159):
+//   self     → node's own text+note only
+//   children → direct children only, NOT self (the legacy count-the-parts keyword)
+//   subtree  → node's own words PLUS every descendant's (self-inclusive)
+//   N (a depth) → node's own words plus descendants down to N levels (self-inclusive)
+// The keyword `children` keeps its historical NO-self meaning; a numeric depth is self-inclusive (a
+// number reads as "me plus N levels down"), so words(children) and words(1) intentionally differ.
+// A per-point note is prose too, so it counts. `scope` may be a keyword or a number. Node-testable.
 function subtreeWords(node, scope) {
   if (!node) return 0;
   const own = n => countWords(n.text) + countWords(n.note);
-  if (scope === 'self') return own(node);
-  if (scope === 'children') return (node.children || []).reduce((a, c) => a + own(c), 0);
-  let total = own(node);                                  // subtree (default)
-  for (const c of (node.children || [])) total += subtreeWords(c, 'subtree');
-  return total;
+  const t = String(scope == null ? '' : scope).trim().toLowerCase();
+  if (t === 'self') return own(node);
+  if (t === 'children') return (node.children || []).reduce((a, c) => a + own(c), 0);  // legacy: no self
+  const depth = resolveScopeDepth(t);
+  if (depth === null) return 0;                          // unknown → 0
+  return collectScoped(node, depth).reduce((a, c) => a + own(c), own(node));  // subtree / N: self-inclusive
 }
 
 // ─── outline constraints / lint (F2) ─────────────────────────────────────────
@@ -2697,7 +2776,10 @@ function collectActions(rootNode = root, seqs = allSequences()) {
         done: todoDoneFromText(n.text, seqs),
         priority: parseTodo(n.text, new Set(seqs.flatMap(s => s.states))).priority,
         keyword,                          // UXP-129: the leading state keyword ('' for a bare task)
-        waiting: keyword === 'WAITING',   // the built-in blocked state — read as blocked, not actionable
+        // UXP-158: held/blocked is now STRUCTURAL (the sequence's held band), not the hardcoded
+        // string 'WAITING'. The built-in default puts WAITING in that band, so behavior is
+        // identical; a custom sequence's own held state (e.g. BLOCKED) now reads as blocked too.
+        waiting: !!keyword && keywordIsHeld(keyword, seqs),
       });
     }
     const childPath = path.concat(textForDisplay(n) || '(untitled)');
@@ -3541,9 +3623,13 @@ function mdInline(s) {
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
     (_, pre, url) => pre + stash(`<a href="${escQ(url)}" target="_blank" rel="noopener">${url}</a>`));
   // progress cookies — [/] (fraction) and [%] (percent) tally the point's tasks.
-  // Computed against the node being rendered (cookieNode); literal text otherwise.
-  if (cookieNode) s = s.replace(/\[(\/|%)\]/g, (_, k) => {
-    const { done, total } = progressCount(cookieNode);
+  // Computed against the node being rendered (cookieNode); literal text otherwise. UXP-159: an
+  // optional depth scope — [/subtree], [%2] — reaches deeper; bare [/] stays direct children. A bad
+  // scope leaves the token literal (the regex won't match it), so nothing miscounts silently.
+  if (cookieNode) s = s.replace(/\[(\/|%)(self|children|subtree|\d+)?\]/g, (m, k, scope) => {
+    const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
+    if (depth === null) return m;   // e.g. [/0] — leave literal
+    const { done, total } = progressCount(cookieNode, allSequences(), depth);
     const txt = formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
     const full = total > 0 && done === total ? ' cookie-full' : '';
     return stash(`<span class="cookie${full}" aria-label="${done} of ${total} done">${txt}</span>`);
@@ -4735,7 +4821,7 @@ const INSERT_CMDS = [
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
   { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
   // Organize — document-wide state sets
-  { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
+  { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
   { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
 ];
 
@@ -14067,8 +14153,15 @@ function parseUncertain(expr) {
         if (name === 'sum' || name === 'avg') {
           if (!at('word')) return null;
           const prop = toks[pos++].v;
+          let depth = 1;                                    // UXP-159: default = direct children
+          if (at(',')) {                                    // optional depth scope: sum(cost, subtree) / sum(cost, 2)
+            pos++;
+            if (!at('word')) return null;
+            depth = resolveScopeDepth(toks[pos++].v);
+            if (depth === null) return null;                // bad scope → whole expr fails to parse (→ #ERR path)
+          }
           if (!at(')')) return null; pos++;
-          return { k: 'agg', fn: name, prop };
+          return { k: 'agg', fn: name, prop, depth };
         }
         return null;                                        // unknown function
       }
@@ -14125,7 +14218,9 @@ function sampleUncAst(ast, n, rng, node) {
       return out;
     }
     case 'agg': {
-      const kids = (node && node.children) || [];
+      // UXP-159: gather to the requested depth (default 1 = direct children) via the shared scope,
+      // so the uncertain rollup reaches as deep as its plain-number sibling.
+      const kids = collectScoped(node || {}, ast.depth == null ? 1 : ast.depth);
       const cols = [];
       for (const c of kids) {
         const raw = estChildPropExpr(c, ast.prop);
@@ -14446,16 +14541,27 @@ function pruneQueries(node) {
 // Re-serialize a sequence record's states back to the "A B | C" definition form
 // (the dialog's editable representation; doneFrom is the pipe position).
 function seqDefString(sq) {
-  return sq.states.slice(0, sq.doneFrom).join(' ') + ' | ' + sq.states.slice(sq.doneFrom).join(' ');
+  // UXP-158: render the held band as a middle pipe when the sequence has one (heldFrom < doneFrom).
+  const active = sq.states.slice(0, sq.heldFrom ?? sq.doneFrom).join(' ');
+  const done = sq.states.slice(sq.doneFrom).join(' ');
+  if (sq.heldFrom != null && sq.heldFrom < sq.doneFrom) {
+    const held = sq.states.slice(sq.heldFrom, sq.doneFrom).join(' ');
+    return active + ' | ' + held + ' | ' + done;
+  }
+  return active + ' | ' + done;
 }
 
 function renderSeqPill(key, sq) {
   if (!sq) return `<span class="seq-pill seq-bad" data-key="${escQ(key)}" aria-label="Sequence (missing data)"><span class="seq-ico"><i class="fa-solid fa-list-check" aria-hidden="true"></i></span> ?</span>`;
-  const states = sq.states.slice(0, sq.doneFrom).map(escHtml).join(' ')
-    + '<span class="seq-pipe">|</span>'
-    + sq.states.slice(sq.doneFrom).map(escHtml).join(' ');
+  // UXP-158: render the held band with its own pipe when present (active | held | done).
+  const hf = sq.heldFrom != null && sq.heldFrom < sq.doneFrom ? sq.heldFrom : sq.doneFrom;
+  const pipe = '<span class="seq-pipe">|</span>';
+  const seg = (a, b) => sq.states.slice(a, b).map(escHtml).join(' ');
+  const heldSeg = hf < sq.doneFrom ? seg(hf, sq.doneFrom) + pipe : '';
+  const states = seg(0, hf) + pipe + heldSeg + seg(sq.doneFrom);
+  const heldAria = hf < sq.doneFrom ? `held: ${escQ(sq.states.slice(hf, sq.doneFrom).join(' '))}; ` : '';
   return `<span class="seq-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Sequence ${escQ(sq.name)}. Click to edit"`
-    + ` aria-label="Sequence ${escQ(sq.name)}. Active: ${escQ(sq.states.slice(0, sq.doneFrom).join(' '))}; done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))}. Click to edit">`
+    + ` aria-label="Sequence ${escQ(sq.name)}. Active: ${escQ(sq.states.slice(0, hf).join(' '))}; ${heldAria}done: ${escQ(sq.states.slice(sq.doneFrom).join(' '))}. Click to edit">`
     + `<span class="seq-ico"><i class="fa-solid fa-list-check"></i></span>`
     + `<span class="seq-name">${escHtml(sq.name)}</span>`
     + `<span class="seq-states">${states}</span>`
@@ -14500,16 +14606,19 @@ function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
     fields: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Flow, Pipeline, Review', value: name, required: true,
         hint: 'Shown in the / menu as this sequence\'s section.' },
-      { key: 'def', label: 'States (active | done)', placeholder: 'BACKLOG DOING | SHIPPED', value: def, required: true,
+      { key: 'def', label: 'States (active | done, or active | held | done)', placeholder: 'BACKLOG DOING | SHIPPED', value: def, required: true,
         preview: (v) => {
           const p = parseSequence(v);
-          if (!p) return '<span class="io-preview-bad">Need states on both sides of one “|” (e.g. BACKLOG DOING | SHIPPED)</span>';
-          const chips = p.states.map((st, i) =>
-            `<span class="todo-state${i >= p.doneFrom ? ' todo-state-isdone' : ''}">${escHtml(st)}</span>`).join(' ');
+          if (!p) return '<span class="io-preview-bad">Need states in each band of one or two “|” (e.g. BACKLOG DOING | SHIPPED, or DOING | BLOCKED | SHIPPED)</span>';
+          const hf = p.heldFrom != null && p.heldFrom < p.doneFrom ? p.heldFrom : p.doneFrom;
+          const chips = p.states.map((st, i) => {   // UXP-158: held states read muted, done struck
+            const cls = i >= p.doneFrom ? ' todo-state-isdone' : (i >= hf ? ' ag-waiting' : '');
+            return `<span class="todo-state${cls}">${escHtml(st)}</span>`;
+          }).join(' ');
           const note = sequenceLint(v);   // C5: surface the whitespace state-split (P4 — never silent)
           return chips + (note ? `<div class="io-preview-note">${escHtml(note)}</div>` : '');
         },
-        hint: 'Each space-separated word is its own state; states left of the | are active, right of it count as done (strikethrough / hide-done). For a multi-word state, join the words (IN_PROGRESS).' },
+        hint: 'Each space-separated word is its own state; left of the | is active, right of it counts as done. Add a second | for a held (blocked) band that reads as “waiting, not actionable”, like DOING | BLOCKED | SHIPPED. For a multi-word state, join the words (IN_PROGRESS).' },
     ],
     validate: (v) => !!v.name && !!parseSequence(v.def),
     onSubmit: (v) => {
@@ -15674,12 +15783,23 @@ function toggleTaskInNode(node, taskIndex) {
   // done-ness unchanged → targeted repaint of this node (skips a full render)…
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
-  // …plus the parent if it carries a progress cookie counting this child, so the
-  // tally stays live when a multi-marker child only partly completes (P4).
-  const par = parentOf(node.id);
-  if (par && /\[(?:\/|%)\]/.test(par.text || '')) {
-    const pel = document.querySelector(`.node-content[data-id="${par.id}"]`);
-    if (pel && !pel.dataset.editing) pel.innerHTML = renderContentHTML(par);
+  // …plus any ANCESTOR carrying a progress cookie that counts this child, so the tally stays live
+  // when a multi-marker child only partly completes (P4). UXP-159: a bare [/] only counts direct
+  // children (so just the parent matters), but a scoped [/subtree] / [/N] can count a deep
+  // descendant, so walk up and refresh every cookie-bearing ancestor within reach.
+  const COOKIE_ANY = /\[(?:\/|%)(?:self|children|subtree|\d+)?\]/;
+  const COOKIE_DEEP = /\[(?:\/|%)(?:subtree|\d+)\]/;   // a scope that can reach past direct children
+  let anc = parentOf(node.id), depthUp = 1;
+  while (anc) {
+    const text = anc.text || '';
+    // the direct parent always matters for a bare cookie; deeper ancestors only if they carry a
+    // deep-scoped cookie whose reach includes this node (bounded loosely by "has a deep cookie").
+    if ((depthUp === 1 && COOKIE_ANY.test(text)) || (depthUp > 1 && COOKIE_DEEP.test(text))) {
+      const ael = document.querySelector(`.node-content[data-id="${anc.id}"]`);
+      if (ael && !ael.dataset.editing) ael.innerHTML = renderContentHTML(anc);
+    }
+    anc = parentOf(anc.id); depthUp++;
+    if (depthUp > 64) break;   // guard against a pathological cycle
   }
 }
 
@@ -17810,9 +17930,11 @@ function frozenTokenText(type, key, node, varMap) {
 function flattenArtifacts(text, node, varMap) {
   const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est):([a-z0-9]+)\]\]/gi,
     (_, type, key) => frozenTokenText(type, key, node, varMap));
-  // progress cookies freeze to their computed tally in a one-way snapshot
-  return flat.replace(/\[(\/|%)\]/g, (_, k) => {
-    const { done, total } = progressCount(node);
+  // progress cookies freeze to their computed tally in a one-way snapshot (UXP-159: honor the depth scope)
+  return flat.replace(/\[(\/|%)(self|children|subtree|\d+)?\]/g, (m, k, scope) => {
+    const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
+    if (depth === null) return m;
+    const { done, total } = progressCount(node, allSequences(), depth);
     return formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
   });
 }
@@ -20151,7 +20273,7 @@ const GUIDE = [
     ] },
   { id:'sequences', cat:'todos', covers:['sequence'],
     title:'Custom workflows',
-    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Give it a name and its states: type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, or use the @ Sequence dialog. States to the right of | count as done, then apply any state with / (like /BACKLOG).",
+    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Give it a name and its states: type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, or use the @ Sequence dialog. States to the right of | count as done, then apply any state with / (like /BACKLOG). Need a blocked stage? Add a second | for a held band, like DOING | BLOCKED | SHIPPED; points in that middle band read as waiting (not a live next-action), the same way the built-in WAITING does.",
     examples:[
       { syn:'{seq Flow: BACKLOG DOING | SHIPPED}', desc:'declare a workflow by typing' },
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },

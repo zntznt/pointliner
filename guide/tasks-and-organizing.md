@@ -32,6 +32,10 @@ inline, or use the `@` → **Sequence** dialog. States to the right of the `|` c
 feed the progress bar and the `is:done` filter automatically. Once declared, apply any state with `/`
 (for example `/BACKLOG`), the same way you set `#TODO`.
 
+Need a **blocked** stage? Add a second `|` for a held band, like `{seq Flow: DOING | BLOCKED | SHIPPED}`.
+Points in that middle band read as waiting, not a live next-action, so they sort out of the agenda's
+Actions row with a muted "Waiting" badge, the same way the built-in `WAITING` state does.
+
 ## Progress bars
 
 Put a live progress bar on a project, a checklist, or any parent point and see how much is done at a
