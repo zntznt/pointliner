@@ -111,6 +111,10 @@ proportional; alignment must be opted into.
 - Neutral-gray palettes (`#fafaf8/#1c1c1e/#333`-era) are retired. New surface colors stay
   in the warm family.
 
+**Decision: one scrim.** Modal backdrops use the one `--scrim` token (warm-dark in light, a
+deeper black in dark, dual-homed like every theme token); no other full-screen darkening
+value may be introduced.
+
 **Decision: semantic tokens, one color per meaning.** `--ok` / `--warn` / `--bad` /
 `--info`, theme-paired (deep inks in light, lifted tints in dark). **One red**: every
 danger/error surface (priority A, danger buttons, fate-minus, selection-bar danger, cycle
@@ -154,14 +158,17 @@ theme, and `accent-color:var(--acc)` keeps them on brand.
   elevation. The 30–50px-blur floating card is retired; don't reintroduce it.
 - **Spacing/UI sizes:** prefer the existing steps; no informational text below 11px
   effective (caps+tracking earns 10px for labels only).
+- **Weights:** UI text weights come from the set 400/500/600/700; nothing renders text
+  heavier than 700 (icon-font weight classes exempt). Display weights follow the §2 scale.
 
 **Decision: pill grammar.** The stadium pill is the *artifact* signature (dice, markov,
 table, grammar, math, var, seq); status badges/chips stay small rectangles (`--r-xs`+1) —
 two shapes, two meanings, shared vertical metrics (`.72em/600/.06em`, `padding:1px 6px`).
 - Each pill family carries a fixed hue via `--pill`, mixed at **7% into the background and
   22% into the border** — identity at whisper level, never candy. Family hues: dice
-  `#9a3b2e`, markov/seq `#3d6280`, table `#5b3a6e`, grammar `#4a7a4d`, math `#8a5300`,
-  var `#2a7f74`. A new artifact family picks a distinct hue here in the same PR.
+  `#9a3b2e`, markov/seq `#3d6280`, grammar `#4a7a4d` (roll tables render as grammar pills
+  since the rolltable collapse; the old table hue `#5b3a6e` is retired), math `#8a5300`,
+  var `#2a7f74`, est `#5a4a8a`. A new artifact family picks a distinct hue here in the same PR.
 - **One box per pill** — no bordered/filled boxes nested inside (the dice breakdown is
   flat muted text). Typography differentiates internals.
 - **The `--ring` glow means focus, not hover.** Pill hover = accent border + 6% tint;
@@ -192,6 +199,11 @@ editable content and `text-transform` would lie about it.
   row hover) — the filled icon tile is retired except the file-menu header's identity
   chip. The slash-menu footer (description + mono syntax example + cross-teaching tip)
   is the canonical teaching pattern; new menus adopt it rather than inventing another.
+  `.cmd-item` rows also share **one padding** in every menu; a menu adopts the shared row
+  metrics rather than restyling them.
+- **Dismiss/close buttons share one recipe and one glyph** (`fa-xmark` through `setIcon`,
+  `✕` fallback per the icon policy) everywhere: muted ink, `--fg` on hover, an `--r-sm` box.
+  A panel may not mint its own close styling.
 - **Eyebrow labels are one recipe:** 10px / 600 / `.07em` caps in `--muted`, **never
   opacity-faded** (§3's role-not-failing-ink rule applies to labels too).
 - **Toolbar controls share one 28px height.**

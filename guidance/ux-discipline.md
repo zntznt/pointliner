@@ -291,6 +291,8 @@ One pattern, four channels. Reuse — do not invent.
 
 **Tone:** plain language, names the thing, offers the next step. The storage warning ("…save it to a file to be safe") is the template for all of it.
 
+**Drafts:** a transient input surface (the capture strip, the search box) MUST NOT discard a non-empty draft on dismiss; the draft is kept for the next open, or its loss is confirmed (P4).
+
 ---
 
 ## 7. Pattern catalog (canonical implementations)
@@ -324,6 +326,9 @@ Per §4 — the three doors, built in order.
 ### 7.5 Column menu (consolidated table-column ops)
 A base column's operations live in **one** menu — the Column menu — off the **name-pill header cell** (Bases PR 2c). The column name is an editable **name pill**; **clicking the header cell around the pill** opens the Column menu, **dragging it** reorders, and a **right-border grip** resizes (double-click = auto-fit). There is no separate `▾` opener and no hidden gestures (the old double-click-cycles-alignment is gone). The menu follows the §7.1 pattern (`role="menu"`/`menuitem`, `↑↓`/`Home`/`End`/`Enter`/`Esc`, reduced-motion respected) and grows by **section**, not by sprouting header controls: today **Calculate · Alignment · Width · Insert column · Move column · Delete column**; later formatting etc. slot in as further sections. The rule: a new per-column capability is a new menu section, **never** a new hidden header gesture. **Keyboard door:** `Shift+F10` / the Menu key on a focused base cell opens the **cell's context menu** — the Column sections plus, on a data row, the Row sections (Insert above/below · Move up/down · Delete row) — covering both of the cell's axes with no extra chord (replacing the dropped `⌘+M`, which collided with macOS minimize — see §3). The row handle's click menu (`showRowPanel`) stays the pointer path. Direct-manipulation paths (drag-reorder, drag-resize) each ship a **visible cue** and a keyboard-reachable twin in the menu (Move left/right, Width presets), so nothing is drag- or double-click-only (P1/P2/P3).
 
+### 7.6 Dialog footers
+Dialog footers order buttons **dismiss/neutral first, the committing action last**; a danger action always occupies the final slot, never the first. The shared `confirmDialog` is the reference implementation; a dialog may not invert this order for emphasis.
+
 ---
 
 ## 8. Microcopy & terminology
@@ -332,6 +337,7 @@ A base column's operations live in **one** menu — the Column menu — off the 
 - Describe **outcomes, not mechanics**: "Collapse point", not "toggle node folding".
 - Plain language; the storage-warning copy is the reference register.
 - One concept = one word across UI, `?` panel, and docs.
+- Menu, button, and dialog labels use **sentence case** (capitalize only the first word and proper nouns); "Markdown" is a proper noun and is always capitalized in user-facing copy.
 - Every icon-only control: `aria-label` (accessible name) **plus** a `title` (hover) — and `aria-hidden="true"` on the decorative glyph inside so the name isn't doubled (matches `accessibility.md` Phase 0).
 
 ---
