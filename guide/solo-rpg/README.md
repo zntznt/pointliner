@@ -32,9 +32,9 @@ The demo files use plain `{…}` source text, so when you open one the dice roll
 | Case | What it shows | Guide | Demo |
 |---|---|---|---|
 | **Lonelog notation** | A compact, system-agnostic session-log style, adapted to Pointliner's outline + live dice | [lonelog/lonelog.md](lonelog/lonelog.md) | [lonelog/lonelog-demo.opml](lonelog/lonelog-demo.opml) |
+| **Oracle-driven scene play** | The engine under the journal: a swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck | [oracle-play/oracle-play.md](oracle-play/oracle-play.md) | [oracle-play/oracle-play-demo.opml](oracle-play/oracle-play-demo.opml) |
 
-More to come: oracle-driven scene play, an NPC and faction tracker, a hex-crawl log,
-a Mythic-style fate/chaos setup. Each will land here as a guide plus a demo.
+More to come: an NPC and faction tracker, a hex-crawl log. Each will land here as a guide plus a demo.
 
 ---
 
