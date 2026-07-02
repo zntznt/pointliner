@@ -241,6 +241,30 @@ Attach a URL/citation to a note so revisiting the source surfaces it (literature
 ### ☐ Board / Kanban view
 Render a level as columns. **Fit — hard** (an alternate view layer over the same tree).
 
+### ☐ Recurring tasks (repeat + roll-forward-on-complete)
+From the 2026-07-02 design review (Planner Junkie). `every day`/`weekly`/etc. with the due/start
+range advancing when the task is completed. **NOT a backend limit** — recurrence is pure
+client-side date math (`addMonths`, `today`, `daysuntil` all exist), so it is in-scope-yet-missing,
+unlike reminders (which need a server and stay out). **Fit — medium.** Proposed shape: a reserved
+`repeat` property (same reserved-property model as `due`/`start`/`check`) holding a small phrase
+parsed by a pure `null`-on-miss core (`parseRepeat`, pinned in `tests/test.mjs` like `parseDueDate`);
+on `todoDoneFromText` flipping to done, advance `due`/`start` by the interval and re-open. Prefer
+expressing intervals through evalMath where possible. **Needs an explicit P5 syntax-inventory
+decision** in `ux-discipline.md` (the value vocabulary is new authoring surface, signed off the way
+`due:`/`check` were), and the roll-forward MUST be a **visible, announced** action (flash
+"Rescheduled to <date>", route through `#a11y-live`), never a silent render-time flip (P1/P4).
+
+### ☐ "Random point from a subtree" generator
+From the 2026-07-02 design review (Solo RPG Player, thread-tracking use). Today decks/grammar draw
+only from **literal typed text** in a rule/deck body; there is no `{thread}`-style generator that
+picks a random *point under a parent* (e.g. "advance a random open thread", "roll a random NPC from
+this list of points"). The solo-RPG thread loop leans on this. **Fit — medium/hard, needs owner
+sign-off:** it is a genuine new capability (a grammar reference that resolves to live tree content),
+not expressible with the current engine, and it must not become a new sigil — the natural home is a
+`resolveBrace` branch or a reserved reference form inside the existing `{…}` syntax. Interim: the
+review's guide recipe shows a hand-authored `shuffle:` deck of current threads as the buildable-today
+substitute.
+
 ### ⊘ Mirrors / cloned items — *shelved (but a useful slice now exists)*
 The same node in multiple places with synced edits. Hardest item; conflicts with the strict
 one-parent tree model. **Decision: full version shelved.** But the link **mirror** (`[[#id|]]`)
