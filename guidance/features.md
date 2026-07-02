@@ -379,8 +379,11 @@ Implemented:
   reserved before the property fall-through so `has:<propkey>` still works via a
   real property). Anything malformed (unknown `is:` value,
   lone `-`, a bare `#`) stays a **literal text term** — the `{…}` invalid-body
-  escape-hatch rule, so a query never silently matches everything. `OR` is
-  deliberately absent (no precedence rule until real queries demand one). Pure
+  escape-hatch rule, so a query never silently matches everything. **QX-5 added
+  `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
+  marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
+  ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
+  grouping until real queries demand it). Pure
   cores: `parseSearchQuery` (string → terms), `termMatchesNode` /
   `queryMatchesNode` (terms × node → bool, seqs injectable),
   `searchHighlightNeedles` (what `<mark>` highlights — positive text + tag terms;

@@ -724,7 +724,7 @@ state as `#KEYWORD`; done-ness = the keyword sits right of its sequence's `|`) �
 Search query operators (the UXP-20-routed decision: implicit AND, `-` NOT, `"a b"` phrases,
 `#tag` word-anchored (and hierarchical: `#thread` matches `#thread/torn-letter`),
 `is:done/todo/note/failing`; malformed tokens stay literal text — the `{…}`
-escape-hatch rule; OR deferred. `#KEYWORD` states are hashtag-shaped so `#waiting` filters by
+escape-hatch rule; OR is a standalone spaced `|` between clauses (QX-5: AND binds tighter, empty clauses dropped, glued/quoted pipes stay literal). `#KEYWORD` states are hashtag-shaped so `#waiting` filters by
 state for free, AND there is a seq-aware **`state:value`** operator (`state:waiting`/`state:done`,
 matched only against recognized states; `status:` stays the generic property lookup, not a
 synonym); pure cores `parseSearchQuery`/`queryMatchesNode`;

@@ -7648,3 +7648,52 @@ test('QX-4 termMatchesNode — numeric compare, with non-numeric and date values
   assert.equal(c.queryMatchesNode(host(neg), { props: [{ key: 'cost', val: '50' }] }, SEQS), true);
   assert.equal(c.queryMatchesNode(host(neg), { props: [{ key: 'cost', val: '150' }] }, SEQS), false);
 });
+
+// ── QX-5: OR disjunction (standalone `|` splits AND-clauses) ─────────────────
+test('QX-5 parseSearchQuery — a standalone | is an or marker; glued/negated/quoted stay literal', () => {
+  const kinds = q => host(c.parseSearchQuery(q)).map(t => t.kind);
+  assert.deepEqual(kinds('a | b'), ['text', 'or', 'text']);
+  assert.deepEqual(kinds('a |b'), ['text', 'text']);       // glued: '|b' is literal text
+  assert.deepEqual(kinds('a| b'), ['text', 'text']);       // glued the other way
+  assert.deepEqual(kinds('-| a'), ['text', 'text']);       // negated pipe is literal
+  assert.deepEqual(kinds('"|"'), ['text']);                 // quoted pipe is the literal escape
+});
+
+test('QX-5 queryMatchesNode — OR of clauses, AND binds tighter, negation inside a clause', () => {
+  const seqs = SEQS;
+  const q = s => host(c.parseSearchQuery(s));
+  const todo = { text: '#TODO write intro' };
+  const done = { text: '#DONE ship draft' };
+  const plain = { text: 'grocery list' };
+  // simple OR
+  assert.equal(c.queryMatchesNode(q('is:todo | is:done'), todo, seqs), true);
+  assert.equal(c.queryMatchesNode(q('is:todo | is:done'), done, seqs), true);
+  assert.equal(c.queryMatchesNode(q('is:todo | is:done'), plain, seqs), false);
+  // AND binds tighter: (write AND is:todo) OR ship
+  assert.equal(c.queryMatchesNode(q('write is:todo | ship'), todo, seqs), true);   // left clause
+  assert.equal(c.queryMatchesNode(q('write is:todo | ship'), done, seqs), true);   // right clause
+  assert.equal(c.queryMatchesNode(q('write is:todo | ship'), plain, seqs), false);
+  // the left clause requires BOTH its terms
+  assert.equal(c.queryMatchesNode(q('write is:done | ship'), todo, seqs), false);
+  // negation stays clause-local: (-is:done AND intro) OR grocery
+  assert.equal(c.queryMatchesNode(q('-is:done intro | grocery'), todo, seqs), true);
+  assert.equal(c.queryMatchesNode(q('-is:done intro | grocery'), plain, seqs), true);
+  assert.equal(c.queryMatchesNode(q('-is:done intro | grocery'), done, seqs), false);
+});
+
+test('QX-5 empty clauses are dropped, never auto-true (a stray pipe cannot match everything)', () => {
+  const seqs = SEQS;
+  const q = s => host(c.parseSearchQuery(s));
+  const node = { text: 'anything at all' };
+  assert.equal(c.queryMatchesNode(q('|'), node, seqs), false);          // only a pipe: no live clause
+  assert.equal(c.queryMatchesNode(q('| |'), node, seqs), false);
+  assert.equal(c.queryMatchesNode(q('zzz |'), node, seqs), false);      // trailing pipe: empty clause dropped
+  assert.equal(c.queryMatchesNode(q('| zzz'), node, seqs), false);      // leading pipe likewise
+  assert.equal(c.queryMatchesNode(q('anything |'), node, seqs), true);  // the live clause still matches
+  assert.equal(c.queryMatchesNode(q('zzz | | anything'), node, seqs), true); // doubled pipe: middle empty dropped
+});
+
+test('QX-5 searchHighlightNeedles ignores or markers and collects across clauses', () => {
+  const needles = host(c.searchHighlightNeedles(host(c.parseSearchQuery('alpha | #beta -gamma'))));
+  assert.deepEqual(needles, ['alpha', '#beta']);
+});
