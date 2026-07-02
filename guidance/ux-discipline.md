@@ -229,6 +229,9 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Ctrl/⌘ + S / O / F` | Save / open / find | — |
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
+| `Ctrl/⌘ + Shift + I` | Toggle the Capture strip | Global; opening focuses the strip input, the same chord closes it |
+| `Ctrl/⌘ + Shift + 1–0` | Capture to inbox N (0 = inbox 10) | Opens the strip targeting slot N; while open the same keys switch the destination in place; an empty slot adopts the selected point |
+| `Ctrl/⌘ + Alt + 1–0` | Set the current point as inbox N | The inverse door; the bullet menu's "Set as inbox" mirrors it |
 | `Ctrl/⌘ + Shift + Enter` | Follow link under caret (edit mode) | Caret inside a `[[#id\|label]]` or `[[docId#id\|label]]` token → navigate to the linked point. No-op when the caret is not inside a link token. Pure core: `tokenUnderCaret(text, offset)`. |
 | `Ctrl/⌘ + Shift + X` | Toggle task checkbox on the current line (edit mode) | Flips `- [ ]` ↔ `- [x]` on the line where the caret sits. No-op on non-task lines. |
 | `Ctrl/⌘ + Shift + S` | Cycle to-do state forward (edit mode) | Advances `#TODO → #NEXT → #WAITING → #DONE → (cleared) → #TODO …`. No-op on a point with no state keyword. Announces the new state via `#a11y-live`. |
