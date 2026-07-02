@@ -9,7 +9,7 @@ the *engine* underneath it, the loop most solo-RPG systems share:
 4. Keep a short list of open threads and pull one to feature next.
 
 Everything here is built from pills you already have. Nothing is a new syntax; a couple of the
-pieces reuse the same [dynamic-odds trick](../../generating-text.md#dynamic-odds) the generative
+pieces reuse the same [dynamic-odds trick](../../generating-text.md#when-the-odds-depend-on-something-dynamic-odds) the generative
 guide already teaches, so this walkthrough points at that rather than repeating it.
 
 Open [oracle-play-demo.opml](oracle-play-demo.opml) (File menu, Open) to get all of this in front
@@ -45,13 +45,13 @@ chaos = 3                        (a variable, 1 = calm … 5 = chaos)
 
 The `{= chaos}` weight is read at roll time, so raising `chaos` to 5 makes "interrupted" more
 likely without editing the roll. That weight-is-an-expression move is the
-[dynamic-odds](../../generating-text.md#dynamic-odds) pattern; see there for the full rules. Nudge
+[dynamic-odds](../../generating-text.md#when-the-odds-depend-on-something-dynamic-odds) pattern; see there for the full rules. Nudge
 `chaos` up when a scene ends badly and down when you get a firm grip on the situation.
 
 ## Meaning tables (two words for a spark)
 
 When the oracle says "yes, and" but you do not yet know *what*, pull two words. A meaning table is
-just the [name-generator two-rule pattern](../../generating-text.md#name-generators) wearing the
+just the [name-generator two-rule pattern](../../generating-text.md#name-things-youll-reuse-rules) wearing the
 name you know it by:
 
 ```
