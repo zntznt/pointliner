@@ -977,8 +977,6 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-dest-btn.open{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-dest-btn.unset{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 38%,transparent)}  /* the semantic tint recipe, warn-routed (same mix as .ag-toggle.ag-focus.on) */
 .cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cap-caret{font-size:10px;color:var(--muted);transition:transform .12s}
-.cap-dest-btn.open .cap-caret{transform:rotate(180deg)}
 .cap-slot-n{display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--muted) 22%,transparent);color:var(--fg);font-family:var(--mono);font-size:10px;font-weight:700;flex-shrink:0} /* 14px fits inside the 11px/1.4 chip content box, so badge chips and the Add chip share one height */
 /* the input grows with content; single-row default */
 .cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:13px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 9px;outline:none;min-height:24px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto}
@@ -990,7 +988,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-go:disabled{background:var(--acc);opacity:.4;cursor:not-allowed;filter:none}
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
-.cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:3px 0 1px;border-top:1px solid var(--bdr)} /* solid hairline: the .ag-pane secondary-bar language; dashed is the broken-pill voice */
+.cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:6px 0 1px;/* chips centered in the band BELOW the hairline: 6px under it, 1px + the strip 5px bottom padding beneath */border-top:1px solid var(--bdr)} /* solid hairline: the .ag-pane secondary-bar language; dashed is the broken-pill voice */
 .cap-chip{display:inline-flex;align-items:stretch;max-width:230px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
 /* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
 .cap-chip:hover{border-color:var(--muted)}
@@ -7671,7 +7669,7 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   const dest = document.createElement('button'); dest.type = 'button'; dest.className = 'cap-dest-btn' + (captureManage ? ' open' : '') + (inbox ? '' : ' unset');
   dest.setAttribute('aria-expanded', String(captureManage));
   dest.setAttribute('aria-label', 'Capture destination: ' + (inbox ? `inbox ${captureSlot === 10 ? '0' : captureSlot}, ${crumbLabel(inbox)}` : 'not set') + '. Click to change.');
-  dest.innerHTML = `<span class="cap-caret" aria-hidden="true">▾</span><span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${inbox ? escHtml(crumbLabel(inbox)) : 'set an inbox…'}</span>`;
+  dest.innerHTML = `<span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${inbox ? escHtml(crumbLabel(inbox)) : 'set an inbox…'}</span>`;
   dest.addEventListener('click', () => { captureManage = !captureManage; renderCaptureStrip(); });
 
   const input = document.createElement('textarea');
@@ -19177,7 +19175,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (the ▾ chip) to click a slot, add or remove inboxes inline. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (click the destination chip) to pick a slot, add or remove inboxes inline. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
