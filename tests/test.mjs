@@ -7125,3 +7125,118 @@ test('collectRules — an explicit root walks that tree, bypassing the live cach
   const rules = c.collectRules(root);
   assert.ok(rules && rules.color, 'the explicit root\'s rule is collected from the passed tree');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Design-language drift guards (July 2026 audit hardening).
+// These pin the mechanically checkable rules from guidance/design-language.md,
+// ux-discipline.md and accessibility.md so the defect classes closed as
+// UXP-71…100 cannot silently return. They read index.html as TEXT (no vm
+// sandbox). A failure almost always points at the change just made, not at the
+// guard; relax a pin only when the guideline itself is amended in the same
+// commit.
+// (readFileSync is already imported at the top of this file.)
+
+const RAW_HTML = readFileSync(
+  process.env.POINTLINER_HTML || new URL('../index.html', import.meta.url), 'utf8');
+// comment-stripped view: HTML comments, /*…*/ blocks, and //-to-EOL (the (?<!:)
+// guard spares https:// URLs). Comments are exempt from the copy rules.
+const NC = RAW_HTML
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(?<!:)\/\/[^\n]*/g, '');
+const CSS_TEXT = [...RAW_HTML.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
+  .map(m => m[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+
+const propNames = s => new Set([...s.matchAll(/--[\w-]+(?=\s*:)/g)].map(m => m[0]));
+const setDiff = (a, b) => [...a].filter(x => !b.has(x)).sort();
+
+test('drift guard: dual-home token parity (design-language §3)', () => {
+  // The palette lives in two homes: every token themed in the CSS dark block
+  // must also live in BOTH applyTheme forced-theme strings, and vice versa.
+  // (The applyTheme strings open ":root{color-scheme:…" with no whitespace, so
+  // the regex cannot match the multi-line CSS blocks.)
+  const cssDark = CSS_TEXT.match(/@media\(prefers-color-scheme:dark\)\{:root\{([\s\S]*?)\}\}/)[1];
+  const cssLight = CSS_TEXT.match(/:root\{([\s\S]*?)\}/)[1];
+  const jsDark = RAW_HTML.match(/:root\{color-scheme:dark;([^}]*)\}/)[1];
+  const jsLight = RAW_HTML.match(/:root\{color-scheme:light;([^}]*)\}/)[1];
+  // applyAccentCSS owns the accent-derived tokens; they are exempt from the
+  // applyTheme strings by design.
+  const ACCENT = new Set(['--acc', '--acc-fg', '--ring', '--bullet-h', '--qbdr']);
+  const cssDarkProps = new Set([...propNames(cssDark)].filter(p => !ACCENT.has(p)));
+  const jsDarkProps = propNames(jsDark), jsLightProps = propNames(jsLight);
+  assert.deepEqual(setDiff(cssDarkProps, jsDarkProps), [],
+    'themed in the CSS dark block but missing from the applyTheme dark string');
+  assert.deepEqual(setDiff(jsDarkProps, cssDarkProps), [],
+    'in the applyTheme dark string but missing from the CSS dark block');
+  assert.deepEqual(setDiff(jsDarkProps, jsLightProps), [], 'applyTheme dark/light strings disagree');
+  assert.deepEqual(setDiff(jsLightProps, jsDarkProps), [], 'applyTheme light/dark strings disagree');
+  assert.deepEqual(setDiff(jsLightProps, propNames(cssLight)), [],
+    'in the applyTheme strings but missing from the :root light home');
+});
+
+test('drift guard: border radii come from the token set (design-language §4)', () => {
+  // Sanctioned literals: 2px inline marks (.md-hl/mark), 4px keycaps + badges
+  // (the documented --r-xs+1) and scrollbar thumbs, 50% the accent-swatch disc,
+  // 999px the pill silhouette, and 0.
+  // 1px: sub-perceptual icon geometry (the .bullet-base-ic bars).
+  const SANCTIONED = new Set(['1px', '2px', '4px', '50%', '999px', '0']);
+  const bad = [];
+  for (const m of NC.matchAll(/border-radius:([^;}'"]+)/g)) {
+    const v = m[1].trim();
+    if (v.includes('var(--r-') || SANCTIONED.has(v)) continue;
+    bad.push(v);
+  }
+  assert.deepEqual(bad, [], 'off-token border-radius literals');
+});
+
+// rule-aware CSS view: [{sel, body}] with @font-face bodies dropped, so the
+// weight/size guards can exempt by selector. JS-set styles (cssText strings)
+// are scanned separately below.
+const CSS_RULES = [...CSS_TEXT.replace(/@font-face\s*\{[^}]*\}/g, '')
+  .matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => ({ sel: m[1].trim(), body: m[2] }));
+const JS_TEXT = NC.replace(/<style[^>]*>[\s\S]*?<\/style>/g, '');
+
+test('drift guard: no text weight above 700 (design-language §4 weight set)', () => {
+  // Icon-font weight SELECTION is exempt: @font-face descriptors (stripped)
+  // and rules that pick a Font Awesome face (.fa-solid, glyph ::before).
+  const bad = [];
+  for (const r of CSS_RULES) {
+    if (r.body.includes('Font Awesome')) continue;
+    for (const m of r.body.matchAll(/font-weight:\s*(\d+)/g))
+      if (+m[1] > 700) bad.push(`${r.sel} ${m[0]}`);
+  }
+  for (const m of JS_TEXT.matchAll(/font-weight:\s*(\d+)/g))
+    if (+m[1] > 700) bad.push(`js ${m[0]}`);
+  assert.deepEqual(bad, [], 'text font-weight above the 700 ceiling');
+});
+
+test('drift guard: no informational text below the 10px floor (design-language §4)', () => {
+  // The standard floor is 11px, with caps+tracking earning 10px for labels;
+  // nothing may render TEXT below 10px. Glyph-only affordances (pictographic
+  // arrows, no words) are exempt by selector; extending this list is a
+  // deliberate decision, not a default.
+  const GLYPH_ONLY = ['.collapse-btn', '.tp-twist'];
+  const bad = [];
+  for (const r of CSS_RULES) {
+    if (GLYPH_ONLY.some(g => r.sel.includes(g))) continue;
+    for (const m of r.body.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g))
+      if (+m[1] < 10) bad.push(`${r.sel} ${m[0]}`);
+  }
+  for (const m of JS_TEXT.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g))
+    if (+m[1] < 10) bad.push(`js ${m[0]}`);
+  assert.deepEqual(bad, [], 'font-size below the 10px floor');
+});
+
+test('drift guard: no em dashes in user-facing copy (CLAUDE.md ban)', () => {
+  // The only sanctioned occurrences are content glyphs written as the
+  // standalone quoted string '—' (divider icon, empty-value placeholders, the
+  // spent-deck marker, the undefined-variable display). Prose em dashes inside
+  // longer strings fail this shape.
+  // Occurrence-based: erase the sanctioned standalone-glyph form first, then
+  // ANY surviving em dash is an offense (a prose dash sharing a line with a
+  // sanctioned glyph still trips).
+  const offenders = NC.replaceAll("'—'", "''").split('\n')
+    .map((l, i) => [i + 1, l.trim().slice(0, 80)])
+    .filter(([, l]) => l.includes('—'));
+  assert.deepEqual(offenders, [], 'em dash outside a sanctioned quoted content glyph');
+});

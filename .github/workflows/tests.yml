@@ -1,0 +1,27 @@
+# Repo path: .github/workflows/tests.yml
+#
+# Runs the pure-core pins AND the design-language drift guards
+# (tests/test.mjs) on every PR and push to main, so the mechanically
+# checkable guidance rules (dual-home token parity, radius/weight/size
+# floors, the em-dash ban) bind in CI, not only by local convention.
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Node 22 resolves a bare directory as a module; pass the explicit path.
+      - run: node --test tests/test.mjs
