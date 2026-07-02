@@ -9,7 +9,8 @@
      a downloaded index.html opened from file:// just ignores them and runs as a plain
      self-contained page (the service worker registration below is guarded). -->
 <link rel="manifest" href="./manifest.webmanifest">
-<meta name="theme-color" content="#f5f1e8">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfaf5">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#252220">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Pointliner">
@@ -18987,8 +18988,20 @@ function buildAccentSwatches(dark) {
   }
 }
 
+// PWA title bar: the media-scoped theme-color metas are the palette's third home
+// (the --hbg pair). System mode: the browser picks by media (self-updating on an OS
+// flip). Forced mode: applyTheme collapses both metas to the forced theme's value,
+// reading it from the matching meta so no color literal lives in JS.
+let themeColorMetas = [];
+try { // the test-harness vm stubs `document`; a throw here would abort the whole script eval
+  themeColorMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+  themeColorMetas.forEach(m => { m.dataset.sys = m.content; });
+} catch (e) { themeColorMetas = []; }
+
 function applyTheme() {
   const dark = forcedTheme === 'dark' || (forcedTheme === null && window.matchMedia('(prefers-color-scheme:dark)').matches);
+  const forcedMeta = forcedTheme && themeColorMetas.find(m => (m.media || '').includes('dark') === (forcedTheme === 'dark'));
+  themeColorMetas.forEach(m => { m.content = forcedMeta ? forcedMeta.dataset.sys : m.dataset.sys; });
   themeStyle.textContent = forcedTheme ? (forcedTheme === 'dark'
     ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);--sh-up:0 -6px 28px rgba(0,0,0,.5);--row-hover:rgba(255,255,255,.04);--edit-row:color-mix(in srgb,var(--acc) 8%,transparent);--sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);--hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f}'
     : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10);--row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);--sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);--hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff}'

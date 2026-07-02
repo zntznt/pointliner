@@ -143,7 +143,11 @@ must keep all four semantic lanes (`ok/warn/bad/info`) visually distinct from th
 theme-varying token exists in (a) the CSS `:root` + dark media query and (b) the
 **`applyTheme` forced-theme strings**; accent-derived tokens (`--acc`, `--acc-fg`,
 `--ring`, `--bullet-h`, `--qbdr`) live in **`applyAccentCSS`**. A CSS-only edit silently
-regresses the moment the user touches the in-app theme toggle or accent picker. Likewise
+regresses the moment the user touches the in-app theme toggle or accent picker. The PWA title bar is a third home: the two
+media-scoped `theme-color` metas carry the `--hbg` pair (System mode picks by media and
+self-updates on an OS flip; `applyTheme` collapses both to the forced theme's value, read
+from the matching meta), and the manifest's static `theme_color` holds the neutral midpoint
+of the pair for pre-boot surfaces. Likewise
 `color-scheme` is set in CSS *and* mirrored to `documentElement.style.colorScheme` by
 `applyTheme` — native controls (checkboxes, scrollbars) must always follow the active
 theme, and `accent-color:var(--acc)` keeps them on brand.
