@@ -233,7 +233,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .sh-row code{font-family:var(--mono);font-size:10px}
 /* saved searches: the one interactive island in the otherwise inert hint panel */
 #sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
-.sh-saved-title{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
+.sh-saved-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px}/* UXP-135: the one eyebrow recipe (DL §4): 10px/600/.07em, was missing font-weight */
 #sh-saved-list{display:flex;flex-wrap:wrap;gap:4px;max-width:340px}
 .sh-chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;color:var(--fg);
   background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:2px 7px;cursor:pointer;
@@ -1039,7 +1039,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .io-seg-btn.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .io-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
 .io-chip{font-family:var(--mono);font-size:11.5px;line-height:1;padding:4px 9px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
-.io-chip:hover{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
+.io-chip:hover{background:color-mix(in srgb,var(--acc) 6%,var(--cbg));border-color:var(--acc)}/* UXP-136: the tint hover recipe (DL §4); solid accent fill is reserved for the primary commit button */
 .io-preview{margin-top:8px;min-height:22px;line-height:1.5}
 .io-preview-bad{font-size:12px;color:var(--del)}
 .io-preview-note{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
@@ -7632,7 +7632,7 @@ function openRefileDialog(moveId) {
   ioReturnFocus = document.activeElement;
   ioCancel = closeIo;
   buildTreePicker({
-    icon: { fa: 'fa-solid fa-left-right', fb: '⇄' },
+    icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },   // UXP-134: refile's own glyph (was fa-left-right, the width glyph)
     title: 'Refile to…',
     searchAria: 'Search for a destination point',
     listAria: 'Destination points',
@@ -12645,13 +12645,25 @@ const ORACLE_BANDS = [
   { label: 'Unlikely',   body: 'Yes 1 | No 3'  },
   { label: 'Impossible', body: 'Yes 1 | No 19' },
 ];
-// UXP-111: the "with complication" (swing) oracle. A six-way answer so the most common solo ask —
-// yes/no plus a twist (Yes-and, No-but) — is produced by the pill, not hand-typed. The plain
-// Yes/No keep the band's dominant weight (5); each side's twist arms are a rarer 1|1 split, so
-// "and"/"but" surface occasionally. **These ratios are ORIGINAL and user-tunable** (the odds field
-// stays editable): they are not lifted from any published solo-RPG oracle table.
+// UXP-111/124: the "with complication" (swing) oracle. A six-way answer so the most common solo
+// ask — yes/no plus a twist (Yes-and, No-but) — is produced by the pill, not hand-typed. Each
+// side's three arms (plain / and / but) are FRACTIONS of that side's band weight (plain ~70%,
+// each twist ~15%, min 1), so the Yes:No family split tracks the plain oracle at every band —
+// "Certain + swing" stays overwhelmingly Yes-family, not a diluted ~87% (the UXP-124 fix; the old
+// flat weight-1 twists ignored the band). **These ratios are ORIGINAL and user-tunable** (the odds
+// field stays editable): they are not lifted from any published solo-RPG oracle table.
+function oracleSwingSide(w) {
+  // Scale the band weight up first so the ~70/15/15 split survives integer rounding at small
+  // bands (a Likely 3 would otherwise collapse to 1|1|1 and lose its lean). twist = 15% each,
+  // plain = the rest, both floored at 1 so a side always keeps a nonzero twist AND a plain arm.
+  const W = w * 4;
+  const twist = Math.max(1, Math.round(W * 0.15));   // "and"/"but" each
+  const plain = Math.max(1, W - 2 * twist);          // the rest, so the side totals ~W ∝ w
+  return { plain, twist };
+}
 function oracleSwingBody(yesW, noW) {
-  return `Yes, and 1 | Yes ${yesW} | Yes, but 1 | No, but 1 | No ${noW} | No, and 1`;
+  const y = oracleSwingSide(yesW), n = oracleSwingSide(noW);
+  return `Yes, and ${y.twist} | Yes ${y.plain} | Yes, but ${y.twist} | No, but ${n.twist} | No ${n.plain} | No, and ${n.twist}`;
 }
 const ORACLE_SWING_BANDS = ORACLE_BANDS.map(b => {
   const m = b.body.match(/Yes (\d+) \| No (\d+)/);
