@@ -1671,6 +1671,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Open an outline file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
   <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
+  <div class="cmd-item" id="btn-restore" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-clock-rotate-left" data-fb="↺">↺</div><div class="cmd-info"><span class="cmd-label">Restore earlier version</span><span class="cmd-desc">Roll back to the last auto-saved snapshot</span></div></div>
   <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" id="workspace-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect a folder…</span><span class="cmd-desc" id="workspace-desc">Auto-save every document, switch between them, reopen later</span></div></div>
   <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open, and create documents in the folder</span></div></div>
   <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-minus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Stop auto-saving. Your documents stay on disk</span></div></div>
@@ -1703,6 +1704,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-sep"></div>
   <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, Markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
+  <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Examples</span><span class="cmd-desc">Open the sample document to explore what pills can do</span></div></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -19392,6 +19394,8 @@ function openFileMenu() {
   // (which downloads a copy honestly) remains. Chromium keeps the real Save.
   const saveRow = document.getElementById('btn-save');
   if (saveRow) saveRow.style.display = hasFSA ? '' : 'none';
+  const restoreRow = document.getElementById('btn-restore');   // UXP-147: only when a snapshot exists
+  if (restoreRow) restoreRow.style.display = hasEarlierVersion() ? '' : 'none';
   renderWorkspaceAffordance();
   // External links surface only when online, so the offline-first identity (works
   // with the wifi off) is never undercut by a dead network link in the menu.
@@ -19446,6 +19450,8 @@ document.addEventListener('click', closeFileMenu);
 
 document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
+document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
+document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
 // Inline rename: the menu-header filename edits IN PLACE (no dialog). Click or Enter
 // turns it into an editable field; Enter or blur commits, Escape cancels. Single-file
 // mode only (folder docs rename via the folder). Keydowns are stopped so they don't
@@ -20617,6 +20623,13 @@ if (window.visualViewport) {
 // ─── autosave ─────────────────────────────────────────────────────────────────
 
 const AUTOSAVE_KEY = 'pointliner_autosave';
+// UXP-147: ONE rolling pre-overwrite snapshot, so the in-session "Ctrl+Z to undo" promise survives a
+// reload/crash for default-tier users (no file, no folder). Before an autosave overwrites the live
+// slot, and at most once per SNAPSHOT_EVERY_MS, the OUTGOING value is copied here — so the snapshot
+// always trails the current state by at least that interval (the "a mistake I made a while ago" window).
+const AUTOSAVE_PREV_KEY = 'pointliner_autosave_prev';
+const SNAPSHOT_EVERY_MS = 5 * 60 * 1000;   // 5 min: old enough to predate an unnoticed edit, fresh enough to matter
+let _lastSnapshotAt = 0;
 let autosaveTimer = null;
 let autosaveDisabled = false; // set once an outline proves too large for localStorage
 
@@ -20830,6 +20843,17 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 function writeLocalAutosave(payload) {
   if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
   try {
+    // UXP-147: roll the OUTGOING value into the prev-snapshot slot before overwriting it, throttled
+    // so the snapshot trails by ~SNAPSHOT_EVERY_MS. Skipped past the soft limit (two big copies would
+    // hasten the localStorage ceiling; the folder tier covers those users), and only when there IS a
+    // prior value to preserve. Best-effort: a failure here must never block the live autosave.
+    if (payload.length <= STORAGE_SOFT_LIMIT) {
+      const now = Date.now();
+      if (now - _lastSnapshotAt >= SNAPSHOT_EVERY_MS) {
+        const prev = localStorage.getItem(AUTOSAVE_KEY);
+        if (prev && prev !== payload) { try { localStorage.setItem(AUTOSAVE_PREV_KEY, prev); _lastSnapshotAt = now; } catch (_) {} }
+      }
+    }
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (!hasOPFS && payload.length > STORAGE_SOFT_LIMIT) {
       showStorageWarn('soft', 'This document is getting large; auto-backup may stop soon. Save it to a file to be safe.');
@@ -20911,6 +20935,37 @@ function applyAutosaveData(data) {
   return true;
 }
 
+// UXP-147: is there a rolling pre-overwrite snapshot to restore? (a valid prev slot, distinct doc)
+function hasEarlierVersion() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_PREV_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    return !!(d && d.root);
+  } catch (_) { return false; }
+}
+
+// UXP-147: swap the live doc for the pre-overwrite snapshot, behind the same confirm New/Open use so
+// it never silently discards work. The current state stays in AUTOSAVE_KEY, so a restore is itself
+// undoable by restoring again (the snapshot write on the next autosave keeps them distinct). Returns
+// true if a version was restored.
+async function restoreEarlierVersion() {
+  if (!hasEarlierVersion()) { flashHint('No earlier version to restore'); return false; }
+  if (unsavedToDisk() && !await openConfirmDialog({
+    title: 'Restore earlier version?',
+    message: 'This replaces the current document with the last auto-saved snapshot. Changes not saved to a file will be replaced.',
+    confirmLabel: 'Restore', cancelLabel: 'Keep current',
+  })) return false;
+  try {
+    const data = JSON.parse(localStorage.getItem(AUTOSAVE_PREV_KEY));
+    if (!applyAutosaveData(data)) { flashHint('Could not read the earlier version'); return false; }
+    markDirty();                 // the restored state differs from disk; let it re-autosave (and re-snapshot)
+    render();
+    flashHint('Restored the earlier version');
+    return true;
+  } catch (_) { flashHint('Could not read the earlier version'); return false; }
+}
+
 let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from localStorage?
 (function restoreAutosave() {
   if (loadedFromEmbed) return; // a shared snapshot is authoritative over local autosave
@@ -20967,6 +21022,27 @@ function maybeShowFirstRun() {
     adoptDoc(parsed, { fileName: 'unsaved' });   // promotes the {…} to live pills; markClean inside
     _adoptingExamples = false;
   } catch (_) { _adoptingExamples = false; _showingExamples = false; }
+}
+
+// UXP-148: re-open the live Examples document from the File menu — the door maybeShowFirstRun's
+// comment always promised ("Reachable again afterward from the File menu") but was never built. The
+// first-run doc is destroyed on the first keystroke (markDirty clears _showingExamples), so this is
+// the only way back to the clickable {2d6}/oracle/deck surface without hand-typing it. Same
+// confirm as New/Open so it never silently discards work, same adopt path as maybeShowFirstRun.
+async function openExamples() {
+  if (unsavedToDisk() && !await openConfirmDialog({
+    title: 'Discard unsaved changes?',
+    message: 'Your current document has changes not saved to its file. Opening the examples will discard them permanently.',
+    confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+  })) return;
+  const parsed = fromOpml(FIRST_RUN_EXAMPLES);
+  if (!parsed) return;
+  _adoptingExamples = true;
+  _showingExamples = true;                        // set BEFORE adoptDoc so its scheduleAutosave is suppressed (pristine)
+  adoptDoc(parsed, { fileName: 'unsaved' });
+  _adoptingExamples = false;
+  showExamplesBanner();                           // surface the Start-blank door beside them (UXP-126)
+  closeFileMenu();
 }
 maybeShowFirstRun();
 
