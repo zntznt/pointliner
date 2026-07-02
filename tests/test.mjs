@@ -7231,3 +7231,37 @@ test('drift guard: no em dashes in user-facing copy (CLAUDE.md ban)', () => {
     .filter(([, l]) => l.includes('—'));
   assert.deepEqual(offenders, [], 'em dash outside a sanctioned quoted content glyph');
 });
+
+// ── emoji picker filter (UXP-106) ────────────────────────────────────────────
+const EMOJI_FIXTURE = { fire:'🔥', heart:'❤️', heart_eyes:'😍', thumbsup:'👍', '+1':'👍' };
+
+test('filterEmojiCandidates — prefix match, name-and-glyph shape', () => {
+  const out = host(c.filterEmojiCandidates('hea', EMOJI_FIXTURE));
+  assert.deepEqual(out, [{ name: 'heart', glyph: '❤️' }, { name: 'heart_eyes', glyph: '😍' }]);
+});
+
+test('filterEmojiCandidates — empty prefix returns the whole (deduped) set', () => {
+  const names = host(c.filterEmojiCandidates('', EMOJI_FIXTURE)).map(e => e.name);
+  // +1 shares 👍 with thumbsup, so the later alias is dropped: first-alias-wins.
+  assert.deepEqual(names, ['fire', 'heart', 'heart_eyes', 'thumbsup']);
+});
+
+test('filterEmojiCandidates — glyph aliases dedupe to the first name', () => {
+  const out = host(c.filterEmojiCandidates('thumb', EMOJI_FIXTURE));
+  assert.equal(out.length, 1);
+  assert.equal(out[0].name, 'thumbsup');   // +1 (same 👍) suppressed
+});
+
+test('filterEmojiCandidates — an exact complete self-match suppresses the menu', () => {
+  // typing the finished `:fire` must not hang a one-item menu over itself
+  assert.deepEqual(host(c.filterEmojiCandidates('fire', EMOJI_FIXTURE)), []);
+});
+
+test('filterEmojiCandidates — case-insensitive prefix', () => {
+  assert.deepEqual(host(c.filterEmojiCandidates('HEART', EMOJI_FIXTURE)).map(e => e.name),
+    ['heart', 'heart_eyes']);
+});
+
+test('filterEmojiCandidates — no match is an empty list', () => {
+  assert.deepEqual(host(c.filterEmojiCandidates('zzz', EMOJI_FIXTURE)), []);
+});

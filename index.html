@@ -1457,8 +1457,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .lp-alias-hint,.lp-doc-hint{color:var(--muted);font-size:11px}
 .lp-item.hi .lp-alias-hint,.lp-item:hover .lp-alias-hint,.lp-item.hi .lp-doc-hint,.lp-item:hover .lp-doc-hint{color:var(--acc)}
 /* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
-#brace-menu,#tag-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
-#brace-menu.on,#tag-menu.on{display:block}
+#brace-menu,#tag-menu,#emoji-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
+#brace-menu.on,#tag-menu.on,#emoji-menu.on{display:block}
 .bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
 .bm-item{display:flex;align-items:baseline;gap:8px;padding:5px 8px;border-radius:var(--r-sm);cursor:pointer;font-size:13px}
 .bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
@@ -1691,6 +1691,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="lp-menu" role="listbox" aria-label="Points to link"></div>
 <div id="brace-menu" role="listbox" aria-label="Callable names"></div>
 <div id="tag-menu" role="listbox" aria-label="Tags"></div>
+<div id="emoji-menu" role="listbox" aria-label="Emoji"></div>
 <div id="brace-preview" aria-hidden="true"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card" role="dialog" aria-modal="true"></div></div>
@@ -1717,7 +1718,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <!-- touch edit bar: while a single point is being edited on touch, a strip of structural
      controls (outdent / indent / move up / move down) pinned above the on-screen keyboard,
      so reordering and nesting never need the fiddly bullet drag. Touch-only; hidden otherwise. -->
-<div id="edit-bar" role="toolbar" aria-label="Move point" aria-hidden="true">
+<div id="edit-bar" role="toolbar" aria-label="Edit point" aria-hidden="true">
+  <button class="eb-btn" id="eb-insert" title="Insert a pill" aria-label="Insert a pill">@</button>
+  <span class="eb-sep"></span>
   <button class="eb-btn" id="eb-outdent" title="Outdent" aria-label="Outdent point">⇤</button>
   <button class="eb-btn" id="eb-indent"  title="Indent"  aria-label="Indent point">⇥</button>
   <span class="eb-sep"></span>
@@ -3261,6 +3264,25 @@ const EMOJI = {
   hand:'✋', raised_hands:'🙌', handshake:'🤝', skull:'💀', ghost:'👻', alien:'👽',
   robot:'🤖', poop:'💩', smiley:'😃', slightly_smiling_face:'🙂', upside_down_face:'🙃',
 };
+
+// UXP-106: the emoji picker's candidate filter. Pure + Node-testable, mirroring
+// filterTagCandidates: prefix-match the shortcode names in EMOJI, dedupe glyph aliases
+// (heart/heart, +1/thumbsup) keeping the first name for each glyph so the list reads clean,
+// and suppress the list on an exact single self-match (the just-typed complete code) so a
+// finished `:fire:` doesn't hang a one-item menu over itself. Returns [{name, glyph}].
+function filterEmojiCandidates(prefix, map = EMOJI) {
+  const lo = (prefix || '').toLowerCase();
+  const seen = new Set();
+  const out = [];
+  for (const name in map) {
+    if (lo && !name.toLowerCase().startsWith(lo)) continue;
+    const glyph = map[name];
+    if (seen.has(glyph)) continue;   // first alias wins, later synonyms hidden
+    seen.add(glyph);
+    out.push({ name, glyph });
+  }
+  return (out.length === 1 && out[0].name.toLowerCase() === lo) ? [] : out;
+}
 
 // Emphasis / highlight / sub / sup — runs on already-escaped text. Shared by the
 // main inline pass and by link text so emphasis works inside links.
@@ -8563,16 +8585,17 @@ function attachContentEvents(content, node) {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
-    if (checkInlineHighlight(content, node)) { hideBraceMenu(); hideTagMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
+    if (checkInlineHighlight(content, node)) { hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
     // Re-bind any .gr-src span the browser merged typed text into (UXP-28) —
     // skipped mid-IME-composition (re-render would drop the composed text;
     // the compositionend listener below catches up on commit).
-    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideBracePreview(); return; }
+    if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); return; }
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id);
     checkLinkTrigger(content, node.id);
     checkBraceTrigger(content, node.id);
     checkTagTrigger(content, node.id);
+    checkEmojiTrigger(content, node.id);
     updateSelToolbar();
     updateFnPanel(node);
   });
@@ -8581,7 +8604,7 @@ function attachContentEvents(content, node) {
   content.addEventListener('compositionend', () => {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
-    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideBracePreview(); }
+    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); }
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
   content.addEventListener('paste', e => handlePaste(e, node, content));
@@ -8992,7 +9015,7 @@ function exitEdit(content, node) {
   if (activeContentId === node.id) activeContentId = null;
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
-  hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
+  hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
 }
 
 function caretFromPoint(x, y) {
@@ -9254,6 +9277,12 @@ function onKeyDown(e, id, content) {
     if (e.key==='ArrowUp')   { e.preventDefault(); tagMove(-1); return; }
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); tagApply(); return; }
     if (e.key==='Escape')    { e.preventDefault(); hideTagMenu(); return; }
+  }
+  if (emojiState && isEmojiMenuOpen()) {
+    if (e.key==='ArrowDown') { e.preventDefault(); emojiMove(1); return; }
+    if (e.key==='ArrowUp')   { e.preventDefault(); emojiMove(-1); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); emojiApply(); return; }
+    if (e.key==='Escape')    { e.preventDefault(); hideEmojiMenu(); return; }
   }
   // Inline keyboard chords (keyboard-a11y, P3): edit-mode shortcuts for link navigation,
   // task toggling, and to-do state/priority cycling — added alongside mousedown handlers,
@@ -9688,6 +9717,19 @@ function ebBtn(elId, fn) {
   el.addEventListener('mousedown', e => { e.preventDefault(); });
   el.addEventListener('pointerdown', e => { e.preventDefault(); fn(); });
 }
+// UXP-105: the touch insert door. Inline pills (dice/grammar/var/math/link) were reachable on
+// touch only by typing '@' on the soft keyboard. This button types a real '@' at the caret via
+// execCommand('insertText'), which fires the normal input handler → checkSlash → the '@' insert
+// menu, positioned at the caret. No fake sigil, no synthetic event, no duplicated menu logic:
+// it IS the typed path, so slashApply's trigger-strip removes the '@' on pick, exactly as usual.
+ebBtn('eb-insert', () => {
+  const id = editBarTargetId();
+  if (id == null) return;
+  const content = document.querySelector(`.node-content[data-id="${id}"][data-editing]`);
+  if (!content) return;
+  content.focus();                              // pointerdown+preventDefault kept the caret; ensure focus for execCommand
+  document.execCommand('insertText', false, '@');
+});
 ebBtn('eb-outdent', () => editBarMove(outdentNode));
 ebBtn('eb-indent',  () => editBarMove(indentNode));
 ebBtn('eb-up',   () => editBarMove(id => moveNode(id, -1)));
@@ -14624,6 +14666,15 @@ const tagMenu = document.getElementById('tag-menu');
 let tagState = null;
 function isTagMenuOpen() { return tagMenu.classList.contains('on'); }
 function hideTagMenu() { tagState?.content?.removeAttribute('aria-activedescendant'); tagState?.content?.removeAttribute('aria-controls'); tagMenu.classList.remove('on'); tagState = null; }
+
+// UXP-106: the emoji picker — the fifth caret-anchored §7.1 picker, mirroring the tag picker
+// function-for-function so `:` behaves like every other authoring sigil (a sigil-then-prefix
+// opens a filtering menu). It writes the existing :shortcode: form, so no new syntax.
+const emojiMenu = document.getElementById('emoji-menu');
+let emojiState = null;
+function isEmojiMenuOpen() { return emojiMenu.classList.contains('on'); }
+function hideEmojiMenu() { emojiState?.content?.removeAttribute('aria-activedescendant'); emojiState?.content?.removeAttribute('aria-controls'); emojiMenu.classList.remove('on'); emojiState = null; }
+emojiMenu.addEventListener('mousedown', e => e.preventDefault());
 tagMenu.addEventListener('mousedown', e => e.preventDefault());
 
 function checkTagTrigger(content, nodeId) {
@@ -14691,6 +14742,74 @@ function tagApply() {
   node.text = newText;
   content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(content, hashAt + inserted.length); } catch(_) {}
+  markDirty();
+}
+
+// ── emoji picker (UXP-106) — mirrors the tag picker above ────────────────────
+function checkEmojiTrigger(content, nodeId) {
+  const pos = getCaretOffset(content);
+  const before = editableText(content).slice(0, pos);
+  // `:` + word chars, boundary-guarded so a colon following a letter/digit (a time like
+  // 12:30, a ratio, a ::before) never fires — same guard shape as checkTagTrigger's `#`.
+  const m = before.match(/(?<![a-zA-Z0-9]):([a-z0-9_+-]*)$/i);
+  if (!m) { hideEmojiMenu(); return; }
+  const colonAt = pos - m[1].length - 1;
+  const matches = filterEmojiCandidates(m[1]);
+  if (!matches.length) { hideEmojiMenu(); return; }
+  emojiState = { nodeId, content, colonAt, prefix: m[1], activeIdx: 0, matches: matches.slice(0, 60) };
+  renderEmojiMenu();
+  positionCaretMenu(emojiMenu, content, colonAt); // anchor at the `:`, which always exists
+}
+
+function renderEmojiMenu() {
+  if (!emojiState) return;
+  emojiMenu.innerHTML = '';
+  emojiState.matches.forEach((item, i) => {
+    const el = document.createElement('div');
+    el.className = 'bm-item' + (i === emojiState.activeIdx ? ' hi' : '');
+    el.setAttribute('role', 'option');
+    el.id = 'em-opt-' + i;
+    el.setAttribute('aria-selected', String(i === emojiState.activeIdx));
+    const glyphEl = document.createElement('span');
+    glyphEl.className = 'bm-name';   // reuses the picker's leading-cell slot
+    glyphEl.textContent = item.glyph;
+    el.appendChild(glyphEl);
+    const nameEl = document.createElement('span');
+    nameEl.className = 'bm-val';
+    nameEl.textContent = ':' + item.name + ':';
+    el.appendChild(nameEl);
+    el.addEventListener('mouseenter', () => { emojiState.activeIdx = i; renderEmojiMenu(); });
+    el.addEventListener('mousedown', e => { e.preventDefault(); emojiState.activeIdx = i; emojiApply(); });
+    emojiMenu.appendChild(el);
+  });
+  emojiState.content?.setAttribute('aria-activedescendant', 'em-opt-' + emojiState.activeIdx);
+  emojiState.content?.setAttribute('aria-controls', 'emoji-menu');
+  emojiMenu.classList.add('on');
+  emojiMenu.querySelector('.hi')?.scrollIntoView({ block: 'nearest' });
+}
+
+function emojiMove(dir) {
+  if (!emojiState) return;
+  const n = emojiState.matches.length;
+  emojiState.activeIdx = (emojiState.activeIdx + dir + n) % n;
+  renderEmojiMenu();
+}
+
+function emojiApply() {
+  if (!emojiState) return;
+  const { nodeId, content, colonAt, prefix, activeIdx, matches } = emojiState;
+  const chosen = matches[activeIdx];
+  hideEmojiMenu();
+  const fullText = editableText(content);
+  // Write the canonical :shortcode: (not the raw glyph): it stays plain text in node.text,
+  // renders to the glyph via mdInline's existing colon pass — the same source-vs-render model
+  // as every other token, and it round-trips through OPML unchanged.
+  const inserted = `:${chosen.name}:`;
+  const newText = fullText.slice(0, colonAt) + inserted + fullText.slice(colonAt + 1 + prefix.length);
+  const node = nodeById(nodeId); if (!node) return;
+  node.text = newText;
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, colonAt + inserted.length); } catch(_) {}
   markDirty();
 }
 
@@ -19255,7 +19374,7 @@ const GUIDE = [
       { syn:'==highlight==',            desc:'highlight' },
       { syn:'[text](url)',              desc:'link' },
       { syn:'![alt](url)',             desc:'image' },
-      { syn:':emoji:',                  desc:'emoji' },
+      { syn:':emoji:',                  desc:'emoji (type : to pick from a list)' },
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
