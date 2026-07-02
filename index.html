@@ -1537,6 +1537,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .cmd-item{padding:10px}
   #search-save{right:44px;padding:10px;font-size:16px}
   #search-clear{right:0;padding:10px 12px;font-size:16px}
+  /* capture strip: the phone-first surface meets the ~44px floor; 16px input also stops iOS focus-zoom */
+  .cap-dest-btn,.cap-input,.cap-go{min-height:44px}
+  .cap-input{font-size:16px}
+  .cap-close{width:44px;min-height:44px;font-size:19px}
+  .cap-chip-pick{padding:10px 6px 10px 10px}
+  .cap-chip-rm{padding:0 14px;font-size:16px}
+  .cap-add{padding:10px 14px}
   .fn-key{padding:6px 11px}
   #sc-toggle{width:36px;height:36px;font-size:15px}
   /* suppress the iOS long-press text/callout on tappable widgets */
@@ -7717,7 +7724,7 @@ function buildCaptureManager() {
     pick.setAttribute('aria-pressed', String(slot === captureSlot));
     pick.setAttribute('aria-label', `Capture to inbox ${slot}: ${crumbLabel(n)}`);
     pick.addEventListener('click', () => { captureSlot = slot; captureManage = false; renderCaptureStrip(); });
-    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'cap-chip-rm'; rm.innerHTML = '&times;';
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'cap-chip-rm'; rm.textContent = '✕';  // one glyph per concept: chip removes match .sh-chip-x
     rm.setAttribute('aria-label', `Remove inbox ${slot}: ${crumbLabel(n)}`);
     rm.addEventListener('click', () => {
       removeInboxSlot(slot);

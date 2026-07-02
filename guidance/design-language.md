@@ -187,7 +187,8 @@ editable content and `text-transform` would lie about it.
 **Decision: chrome control grammar.**
 - **Active toggles wear the tint recipe** (16% accent mix + accent ink + 35% border),
   same as badges — **solid accent fill is reserved** for the focus outline, primary
-  dialog actions, and the brand mark. A filter toggle must never be the loudest object
+  commit actions (a dialog's primary button, the capture strip's Capture), and the
+  brand mark. A filter toggle must never be the loudest object
   on screen.
 - **Keycap chips are one rule** (`kbd`, `.cmd-key`, `#search-key`): `--mono` 11px, `--hbg`
   fill, 1px `--bdr` border with a 2px bottom ledge, radius 4px, `--fg` ink. Keys never
@@ -203,7 +204,9 @@ editable content and `text-transform` would lie about it.
   metrics rather than restyling them.
 - **Dismiss/close buttons share one recipe and one glyph** (`fa-xmark` through `setIcon`,
   `✕` fallback per the icon policy) everywhere: muted ink, `--fg` on hover, an `--r-sm` box.
-  A panel may not mint its own close styling.
+  A panel may not mint its own close styling. A **destructive** remove
+  (deleting config or content, e.g. an inbox chip's ✕) may hover with the `--bad` tint;
+  a non-destructive dismiss hovers neutral.
 - **Eyebrow labels are one recipe:** 10px / 600 / `.07em` caps in `--muted`, **never
   opacity-faded** (§3's role-not-failing-ink rule applies to labels too).
 - **Toolbar controls share one 28px height.**
