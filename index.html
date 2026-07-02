@@ -102,7 +102,7 @@ button,[contenteditable],input{touch-action:manipulation}
   --font:'Geist',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --display-font:'Fraunces',ui-serif,Georgia,serif;
   --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
-  --hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--acc:#4338ca;--acc-fg:#fff;--ring:rgba(67,56,202,.2);
+  --hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--acc:#4338ca;--acc-fg:#fff;--ring:rgba(67,56,202,.25);
   --cbg:#eee9dd;--del:#6b665c;--qbdr:color-mix(in srgb,var(--acc) 55%,transparent);
   --ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;
   --r-xs:3px;--r-sm:6px;--r-md:8px;--r-lg:12px;
@@ -116,7 +116,7 @@ button,[contenteditable],input{touch-action:manipulation}
 @media(prefers-color-scheme:dark){:root{
   color-scheme:dark;
   --bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--bullet-h:#a5b4fc;
-  --cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--acc:#a5b4fc;--acc-fg:#16130f;--ring:rgba(165,180,252,.2);
+  --cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--acc:#a5b4fc;--acc-fg:#16130f;--ring:rgba(165,180,252,.25);/* UXP-157: .25 matches applyAccentCSS's live value (the appended <style> always wins), so the static fallback shows the same effect */
   --cbg:#272320;--del:#a39a8d;--qbdr:color-mix(in srgb,var(--acc) 50%,transparent);
   --ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;
   --sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);
@@ -175,7 +175,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-head{display:flex;align-items:center;gap:10px;padding:7px 9px 11px;border-bottom:1px solid var(--bdr);margin-bottom:4px}
 .fm-head .cmd-icon{background:var(--acc);color:var(--acc-fg)}
 .fm-head-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
-.fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);cursor:text;border-radius:4px;padding:0 3px;margin:0 -3px}
+.fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);cursor:text;border-radius:var(--r-sm);padding:0 3px;margin:0 -3px}/* UXP-156: row-level surface → the radius ladder, off the bare 4px (DL §4) */
 .fm-title:hover,.fm-title:focus-visible{background:var(--hbg);outline:1px solid var(--bdr);outline-offset:0}
 .fm-title.editing{overflow:visible;text-overflow:clip;background:var(--bg);outline:2px solid var(--acc);cursor:text}
 .fm-status{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -316,7 +316,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 
 /* node base */
 .node{position:relative}
-.node-row{display:flex;align-items:flex-start;padding:1px 0;border-radius:4px;transition:background .08s}
+.node-row{display:flex;align-items:flex-start;padding:1px 0;border-radius:var(--r-sm);transition:background .08s}/* UXP-156: row radius → the ladder */
 .node-row:hover{background:var(--row-hover)}
 /* Touch swipe-to-indent: while swiping a row horizontally the content slides and a
    direction chip (→ indent / ← outdent) is revealed from the trailing edge. The chip
@@ -370,7 +370,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .collapse-btn:hover{color:var(--acc)}
 .col-chevron{display:inline-block;transition:transform .18s ease;line-height:1}
 .has-children:not(.collapsed)>.node-row>.collapse-btn .col-chevron{transform:rotate(90deg)}
-.collapse-count{font-size:10px;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.05em;line-height:1;margin-top:1px;color:var(--muted)}
+.collapse-count{font-size:10px;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.05em;line-height:1;margin-top:1px;color:var(--muted)}/* UXP-154: intentionally .05em — a tabular-num count badge, not caps text, so it's its own micro-context (not the eyebrow recipe) */
 
 /* bullet area — dot + optional checkbox */
 .bullet{display:flex;align-items:center;gap:4px;height:26px;padding:0 2px;cursor:pointer;flex-shrink:0;position:relative;z-index:2}
@@ -644,7 +644,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .est-pill .est-expr{color:var(--muted);font-family:var(--mono);font-size:.9em}
 .est-pill .est-eq{color:var(--muted);opacity:.55;padding:0 1px}
 .est-pill .est-summary{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
-.est-pill .est-spark{font-family:var(--mono);letter-spacing:-.5px;color:color-mix(in srgb,var(--pill) 62%,var(--fg))}
+.est-pill .est-spark{font-family:var(--mono);letter-spacing:-.03em;color:color-mix(in srgb,var(--pill) 62%,var(--fg))}/* UXP-155: em so the tightening scales when the pill sits in a heading (DL §2) */
 .est-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .est-pill:hover .est-edit{opacity:.6}
 .est-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
@@ -653,7 +653,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .est-pill.est-err{border-color:var(--bad);border-style:dashed}
 .est-pill.est-err .est-summary{color:var(--bad);font-weight:600}
 .est-pill.est-rolled .est-spark{display:inline-block;animation:dice-pop .28s cubic-bezier(.2,.8,.3,1)}
-.est-preview-spark{font-family:var(--mono);letter-spacing:-.5px;color:var(--acc)}
+.est-preview-spark{font-family:var(--mono);letter-spacing:-.03em;color:var(--acc)}/* UXP-155: em, matches .est-spark */
 /* variable pill */
 .var-pill{display:inline-flex;align-items:center;gap:4px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .var-pill:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -948,7 +948,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .io-head .cmd-icon{width:30px;height:30px;font-size:14px}
 .io-title{font-size:14.5px;font-weight:600}
 .io-field{margin-bottom:11px}
-.io-field label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.io-field label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}/* UXP-154: the one eyebrow recipe (DL §4) */
 .io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
 .io-field input::placeholder{color:var(--muted)}/* UXP-107: no opacity; filled text is --fg, so --muted already reads lighter than typed input */
 .io-field input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
@@ -1042,7 +1042,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cal-nav:hover{color:var(--fg);background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .cal-nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px}
-.cal-dow span{text-align:center;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:2px 0}
+.cal-dow span{text-align:center;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:2px 0}/* UXP-154: eyebrow recipe (a caps day-of-week label) */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .cal-week{display:contents}
 .cal-day{min-width:0;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:var(--r-sm);font-size:12.5px;color:var(--fg);cursor:pointer;font-variant-numeric:tabular-nums;user-select:none}
@@ -1105,7 +1105,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .guide-close{flex-shrink:0;width:26px;height:26px;font-size:14px}
 .guide-body{display:flex;flex:1;overflow:hidden;min-height:0}
 .guide-nav{width:194px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--bdr);padding:6px 0}
-.guide-nav-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:11px 12px 3px;user-select:none}
+.guide-nav-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:11px 12px 3px;user-select:none}/* UXP-154: eyebrow recipe */
 .guide-nav-group:first-child{padding-top:3px}
 .guide-nav-btn{display:block;width:100%;text-align:left;padding:4px 12px 4px 18px;font-size:11.5px;line-height:1.3;color:var(--fg);border:none;background:none;cursor:pointer;transition:background .09s}
 .guide-nav-btn:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
@@ -1196,10 +1196,10 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agg-axis{position:relative;height:15px;margin-bottom:2px}
 .agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:3px}
 .agg-today{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 65%,transparent);z-index:2}
-.agg-today-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--acc);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}
+.agg-today-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--acc);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}/* UXP-154: eyebrow recipe */
 /* hover slice — muted twin of the today line, follows the cursor's day (display:none until placed) */
 .agg-hover{position:absolute;top:0;bottom:0;width:1px;background:color-mix(in srgb,var(--muted) 55%,transparent);z-index:1;display:none;pointer-events:none}
-.agg-hover-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}
+.agg-hover-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}/* UXP-154: eyebrow recipe */
 .agg-row{position:relative;height:23px}
 .agg-bar{position:absolute;top:50%;transform:translateY(-50%);height:15px;border-radius:var(--r-sm);border:1px solid;box-sizing:border-box;cursor:pointer;min-width:6px;z-index:3}
 .agg-bar.overdue{background:color-mix(in srgb,var(--bad) 18%,transparent);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
@@ -1326,15 +1326,15 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 
 /* drag and drop */
 .dragging{opacity:.3}
-.drop-child-hi>.node-row>.node-content{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+.drop-child-hi>.node-row>.node-content{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-sm)}/* UXP-156 */
 #drop-line{position:fixed;height:2px;background:var(--acc);border-radius:2px;pointer-events:none;z-index:800;display:none}
 #drop-line::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--acc)}
 .bullet[draggable=true]{cursor:grab}
 .bullet[draggable=true]:active{cursor:grabbing}
 
 /* multi-select */
-.node-selected>.node-row{background:var(--sel);border-radius:4px}
-.node-cursor>.node-row{background:color-mix(in srgb,var(--acc) 4%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 20%,transparent);outline-offset:-1px;border-radius:4px}
+.node-selected>.node-row{background:var(--sel);border-radius:var(--r-sm)}/* UXP-156 */
+.node-cursor>.node-row{background:color-mix(in srgb,var(--acc) 4%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 20%,transparent);outline-offset:-1px;border-radius:var(--r-sm)}/* UXP-156 */
 @keyframes bar-up{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 /* Cap to the viewport and wrap onto multiple centered rows, so the 13 controls never
    clip off the sides on a narrow screen (they were nowrap + fixed-width, overflowing

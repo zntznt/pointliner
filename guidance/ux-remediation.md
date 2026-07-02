@@ -1305,25 +1305,25 @@ dead-end states** that confirm a non-event without teaching the next step.
 - **Rule:** P3 (a coherent toggle-button a11y model).
 - **Resolved:** `#btn-notes` and `#btn-done` now have stable state-neutral names ("Notes", "Done points") in the HTML; `syncNotesBtn()`, the `#btn-done` click handler, and the `applyAutosaveData` restore all stopped rewriting the name and let `aria-pressed` + `.active` carry state, matching the three conforming siblings. Additive ARIA only, no activation change. Verified in-browser: toggling keeps the name stable and only flips `aria-pressed`.
 
-### UXP-154 ☐ Four eyebrow labels drift off the locked .07em tracking (design-language §4) 🟢  [Batch 4]
-- **Problem:** §4 locks ONE eyebrow recipe (10px / 600 / `.07em` caps / `--muted`). ~20 selectors honor it; four drift to `.06em`: `.io-field label` (the label on every dialog field — the loudest), `.guide-nav-group`, `.agg-today-lbl`, `.agg-hover-lbl`. Sub-pixel at 10px, but the "one recipe" decision exists so the caps voice reads as one system (the repo already tracks this drift class — UXP-135).
+### UXP-154 ◐ Four eyebrow labels drift off the locked .07em tracking (design-language §4) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** four caps eyebrows drifted to `.06em` off the one `.07em` recipe.
 - **Rule:** design-language §4 (one eyebrow recipe).
-- **Target:** normalize exactly those four selectors to `letter-spacing:.07em`. Leave `.todo-state`/`.todo-prio` (a different `.72em` component) alone. `.cal-dow`/`.collapse-count` at `.05em` are arguable micro-contexts — if intentional, a one-word comment is the honest resolution, else converge. Pure convergence, zero new decisions.
+- **Resolved:** converged `.io-field label`, `.guide-nav-group`, `.agg-today-lbl`, `.agg-hover-lbl` to `.07em`; also converged `.cal-dow span` (a caps day-of-week label at `.05em`, the same recipe drifted further). Left `.todo-state`/`.todo-prio` (a `.72em` chip, different component) alone, and documented `.collapse-count`'s `.05em` as an intentional numeric-badge micro-context (a tabular-num count, not caps text). Verified in-browser: `.io-field label` computes to 0.7px. 25 selectors now honor `.07em`.
 
-### UXP-155 ☐ est sparkline uses px letter-spacing inside an em type system (P5/design-language §2) 🟢  [Batch 4]
-- **Problem:** `.est-pill .est-spark` / `.est-preview-spark` tighten glyphs with an absolute `letter-spacing:-.5px` in a type system that is otherwise rigorously relative. Pills render inside markdown headings, so a spark on an `h1.md-h` (2em) or `.zoom-title` scales its glyphs but not the tightening. The one place a hardcoded px tracking slips into the em system.
-- **Rule:** P5 / design-language §2 (relative type units). Minimal harm — the spark is `aria-hidden` decorative rhythm and merely under-tightens at scale (graceful).
-- **Target:** express the tightening in em (`letter-spacing:-.03em`, tuned to 17px body density) so it scales with context. If a px value is genuinely required for mono block-character alignment, leave a one-line comment so it does not read as drift.
+### UXP-155 ◐ est sparkline uses px letter-spacing inside an em type system (P5/design-language §2) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** the est sparkline tightened glyphs with an absolute `-.5px` in an otherwise relative type system, so it didn't scale when a pill sat in a heading.
+- **Rule:** P5 / design-language §2 (relative type units).
+- **Resolved:** `.est-pill .est-spark` and `.est-preview-spark` now use `letter-spacing:-.03em` (≈ -.5px at 17px body, scales with context). Verified in-browser: computes to -0.51px at body size, and now scales up in a heading. No px tracking left in the em system.
 
-### UXP-156 ☐ Row-level surfaces carry a bare 4px radius that belongs to no §4 recipe (design-language §4) 🟢  [Batch 4]
-- **Problem:** §4 locks the radius ladder (`--r-xs:3px`/`--r-sm:6px`/…) and spells the badge as "`--r-xs`+1" (=4px) and keycaps as "radius 4px" — so a bare `4px` on `.todo-state`/`.todo-prio`/`.prop-chip`/keycaps is conformant-by-spelling. The LEAK is the load-bearing half: `.node-row`, `.node-selected>.node-row`, `.node-cursor>.node-row`, `.drop-child-hi>.node-row>.node-content`, and `.fm-title` carry an eyeballed 4px that sits between the ladder's 3px and 6px and belongs to neither recipe.
-- **Rule:** design-language §4 (the radius ladder; §4 never blesses a row/selection/drop radius).
-- **Target:** move those five row-level surfaces onto `--r-sm` so only the sanctioned badge/keycap selectors carry 4px. A `--r-chip:4px` token for the badge/keycap literals is optional polish, not required. (`.fm-title` is the inline-editable file-menu title, kin to `.node-content` which uses `--r-xs` — a leak, not part of the recipe.)
+### UXP-156 ◐ Row-level surfaces carry a bare 4px radius that belongs to no §4 recipe (design-language §4) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** `.node-row`, `.node-selected>.node-row`, `.node-cursor>.node-row`, `.drop-child-hi>.node-row>.node-content`, and `.fm-title` carried an eyeballed 4px between the ladder's 3px and 6px, blessed by no §4 recipe.
+- **Rule:** design-language §4 (the radius ladder).
+- **Resolved:** moved all five row-level surfaces onto `var(--r-sm)` (6px). The sanctioned badge/keycap 4px literals (conformant-by-spelling) are untouched. Verified in-browser: `.node-row` computes to 6px. Skipped the optional `--r-chip:4px` token (not required).
 
-### UXP-157 ☐ `--ring` alpha disagrees between its two homes (tidiness, not an invariant breach) 🟢  [Batch 4]
-- **Problem:** `:root`/dark `--ring` use `.2` alpha; `applyAccentCSS` uses `.25`, and its appended `<style>` always wins, so `.2` renders only as a pre-boot fallback. Real delta, but NOT a §3 "two homes" violation (verify corrected this): §3 explicitly carves the accent-derived tokens — `--acc`, `--acc-fg`, `--ring`, `--bullet-h`, `--qbdr` — OUT of the `:root`+forced-string match rule and assigns them to `applyAccentCSS` as their single home. The `.2` fallback is normal defensive practice.
-- **Rule:** none breached — bottom-of-low tidiness on a non-user-visible 5% focus-ring alpha.
-- **Target (optional):** align the two values (set `:root`/dark `--ring` to `.25`, or `applyAccentCSS` to `.2`) so a future reader sees the effect they expect. Harmless; do only if a batch is already touching that CSS.
+### UXP-157 ◐ `--ring` alpha disagrees between its two homes (tidiness, not an invariant breach) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** the `:root`/dark `--ring` fallbacks used `.2` while the live `applyAccentCSS` value (which always wins) uses `.25`, so a reader of the static CSS saw the wrong effect.
+- **Rule:** none breached — bottom-of-low tidiness.
+- **Resolved:** raised both static `--ring` fallbacks (light + dark `:root`) to `.25` to match the live `applyAccentCSS` value, so what renders and what the static CSS shows now agree. No user-visible change (the live `.25` already won). Verified: `--ring` resolves to `.25`.
 
 ### UXP-158 ⊘ Custom sequences only treat literal WAITING as blocked (DECISION-PENDING, needs owner sign-off) 🟢
 - **Problem (real):** `collectActions()` hardcodes `waiting: keyword === 'WAITING'`, so a user-defined sequence `{seq Flow: BACKLOG DOING BLOCKED | SHIPPED}` surfaces every BLOCKED point in the Actions row as a live next-action (no Waiting badge, tier 0) — the opposite of a next-actions list.
