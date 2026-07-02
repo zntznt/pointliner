@@ -210,6 +210,12 @@ editable content and `text-transform` would lie about it.
 - **Eyebrow labels are one recipe:** 10px / 600 / `.07em` caps in `--muted`, **never
   opacity-faded** (§3's role-not-failing-ink rule applies to labels too).
 - **Toolbar controls share one 28px height.**
+- **Docked strip controls share the agenda's chip grammar.** Every toolbar-docked strip
+  (agenda, capture) builds its controls as `.ag-toggle`-style chips: 11px / 600, `--muted`
+  ink, `--bdr-ui` hairline, `--r-sm`, 2px 8px padding, the §4 tint recipe when active. A
+  strip's single primary commit action wears the solid accent at the same chip scale; text
+  fields keep field chrome at the strip's density. A new docked strip adopts this grammar
+  rather than minting its own (decided 2026-07-01, capture aligned to agenda).
 
 **Decision: the indent thread.** Nesting depth gets a physical trace: a hairline at every
 indent step, painted per row via a repeating gradient clipped to `--depth-w` (set in
