@@ -2615,23 +2615,48 @@ test('grSrcSpanClean: broken or misplaced brace is dirty', () => {
 // right of it are done. The built-in TODO/NEXT/WAITING/DONE is the DEFAULT
 // sequence; done-ness generalizes from keyword===DONE to "right of the |".
 
-const FLOW = { key: 'q1', name: 'Flow', states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2 };
+const FLOW = { key: 'q1', name: 'Flow', states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2, heldFrom: 2 };
 const DEFAULT_SEQ = { key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3 };
 
 test('parseSequence: pipe splits active from done; states uppercased', () => {
+  // a one-pipe sequence has no held band → heldFrom === doneFrom (UXP-158)
   assert.deepEqual(host(c.parseSequence('TODO NEXT WAITING | DONE CANCELLED')),
-    { states: ['TODO', 'NEXT', 'WAITING', 'DONE', 'CANCELLED'], doneFrom: 3 });
+    { states: ['TODO', 'NEXT', 'WAITING', 'DONE', 'CANCELLED'], doneFrom: 3, heldFrom: 3 });
   assert.deepEqual(host(c.parseSequence('backlog doing | shipped')),
-    { states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2 });
+    { states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2, heldFrom: 2 });
+});
+
+test('parseSequence: an optional middle band declares HELD (active | held | done) (UXP-158)', () => {
+  assert.deepEqual(host(c.parseSequence('BACKLOG DOING | BLOCKED | SHIPPED')),
+    { states: ['BACKLOG', 'DOING', 'BLOCKED', 'SHIPPED'], heldFrom: 2, doneFrom: 3 });
+  // multiple held states, multiple done states
+  assert.deepEqual(host(c.parseSequence('TODO | WAITING PAUSED | DONE CANCELLED')),
+    { states: ['TODO', 'WAITING', 'PAUSED', 'DONE', 'CANCELLED'], heldFrom: 1, doneFrom: 3 });
+});
+
+test('keywordIsHeld — structural held-band membership, not a WAITING string match (UXP-158)', () => {
+  const def = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'], heldFrom: 2, doneFrom: 3 }];  // built-in shape
+  assert.equal(c.keywordIsHeld('WAITING', def), true);    // in [heldFrom, doneFrom)
+  assert.equal(c.keywordIsHeld('TODO', def), false);      // active
+  assert.equal(c.keywordIsHeld('DONE', def), false);      // done, not held
+  // a custom sequence's OWN held state works the same way — the whole point of UXP-158
+  const flow = [{ states: ['BACKLOG', 'DOING', 'BLOCKED', 'SHIPPED'], heldFrom: 2, doneFrom: 3 }];
+  assert.equal(c.keywordIsHeld('BLOCKED', flow), true);
+  assert.equal(c.keywordIsHeld('DOING', flow), false);
+  // a one-pipe sequence (heldFrom === doneFrom) has NO held states
+  const plain = [{ states: ['A', 'B', 'C'], heldFrom: 2, doneFrom: 2 }];
+  assert.equal(c.keywordIsHeld('B', plain), false);
 });
 
 test('parseSequence: invalid forms return null (callers branch on null)', () => {
   assert.equal(c.parseSequence('TODO DONE'), null);          // no pipe
-  assert.equal(c.parseSequence('A | B | C'), null);          // two pipes
+  assert.equal(c.parseSequence('A | B | C | D'), null);      // three pipes (four bands) — too many
   assert.equal(c.parseSequence(' | DONE'), null);            // empty active side
   assert.equal(c.parseSequence('TODO | '), null);            // empty done side
+  assert.equal(c.parseSequence('A | | C'), null);            // empty held band
   assert.equal(c.parseSequence('TO DO! | DONE'), null);      // bad token
   assert.equal(c.parseSequence('A B | A'), null);            // duplicate state
+  assert.equal(c.parseSequence('A | A | B'), null);          // duplicate across bands
   assert.equal(c.parseSequence(''), null);
 });
 
@@ -2651,11 +2676,14 @@ test('sequenceLint: flags a whitespace-split state, quiet for single-word states
 });
 
 // ── typed sequence declaration: {seq Flow: BACKLOG DOING | SHIPPED} ──────────
-test('seqDeclParts: a named sequence declaration → { name, states, doneFrom }', () => {
+test('seqDeclParts: a named sequence declaration → { name, states, doneFrom, heldFrom }', () => {
   assert.deepEqual(host(c.seqDeclParts('seq Flow: BACKLOG DOING | SHIPPED')),
-    { name: 'Flow', states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2 });
+    { name: 'Flow', states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2, heldFrom: 2 });
   assert.deepEqual(host(c.seqDeclParts('seq Review: DRAFT | DONE')),
-    { name: 'Review', states: ['DRAFT', 'DONE'], doneFrom: 1 });
+    { name: 'Review', states: ['DRAFT', 'DONE'], doneFrom: 1, heldFrom: 1 });
+  // UXP-158: a held band carries through the declaration
+  assert.deepEqual(host(c.seqDeclParts('seq Flow: BACKLOG DOING | BLOCKED | SHIPPED')),
+    { name: 'Flow', states: ['BACKLOG', 'DOING', 'BLOCKED', 'SHIPPED'], doneFrom: 3, heldFrom: 2 });
   assert.match(c.seqDeclParts('seq Flow: a | b').name, /Flow/); // name preserves case
 });
 test('seqDeclParts: NOT a sequence declaration (no false positives)', () => {
@@ -2765,7 +2793,11 @@ test('continuationPrefix: a done custom state restarts at its sequence FIRST sta
 test('seqDefString: inverse of parseSequence (modulo spacing)', () => {
   assert.equal(c.seqDefString(FLOW), 'BACKLOG DOING | SHIPPED');
   assert.deepEqual(host(c.parseSequence(c.seqDefString(FLOW))),
-    { states: FLOW.states, doneFrom: FLOW.doneFrom });
+    { states: FLOW.states, doneFrom: FLOW.doneFrom, heldFrom: FLOW.heldFrom });
+  // UXP-158: a held-band sequence round-trips its middle pipe
+  const held = { states: ['BACKLOG', 'DOING', 'BLOCKED', 'SHIPPED'], heldFrom: 2, doneFrom: 3 };
+  assert.equal(c.seqDefString(held), 'BACKLOG DOING | BLOCKED | SHIPPED');
+  assert.deepEqual(host(c.parseSequence(c.seqDefString(held))), held);
 });
 
 test('OPML: a [[seq:KEY]] record serializes into the _seq attribute', () => {
@@ -5471,14 +5503,14 @@ test('progress cookies: flattenArtifacts freezes the tally for one-way export', 
 });
 
 test('progress cookies: render + front-door wiring (src pins)', () => {
-  assert.ok(_src.includes('progressCount(cookieNode)'), 'mdInline cookie pass missing');
+  assert.ok(_src.includes('progressCount(cookieNode, allSequences(), depth)'), 'mdInline cookie pass missing');
   assert.ok(_src.includes('let cookieNode = null'), 'cookieNode global missing');
   assert.ok(_src.includes("id:'progress'"), 'progress @ entry missing');
   assert.ok(_src.includes("applyInlineInsertion(nodeId, offset, '[/]')"), 'progress insert missing');
   // P5-4: the syntax also lives in the GUIDE (? concept guide), not only the @ menu
   assert.ok(_src.includes("id:'progress'") && _src.includes("syn:'[/]'"), 'GUIDE progress entry or [/] example missing');
-  // P4: a child partial-toggle refreshes a cookie-bearing parent
-  assert.ok(_src.includes('/\\[(?:\\/|%)\\]/.test(par.text'), 'parent-cookie refresh missing');
+  // P4: a child partial-toggle refreshes a cookie-bearing ancestor (UXP-159: scope-aware walk)
+  assert.ok(_src.includes('COOKIE_ANY') && _src.includes('COOKIE_DEEP'), 'ancestor-cookie refresh missing');
 });
 
 // ── subtree aggregation: {= sum|avg|count(prop)} over direct children ────────
@@ -5523,6 +5555,90 @@ test('subtree aggregation: aggregateChildren sum / avg / count over DIRECT child
   assert.equal(c.aggregateChildren(p, 'avg', 'cost'), 4);    // 8 / 2 (only children that have cost)
   assert.equal(c.aggregateChildren(p, 'count', 'cost'), 2);
   assert.equal(c.aggregateChildren(p, 'sum', 'missing'), 0); // nothing → 0
+});
+
+// ── depth-scope core (UXP-159) ───────────────────────────────────────────────
+test('resolveScopeDepth — keywords and numbers map to a max depth; junk → null', () => {
+  assert.equal(c.resolveScopeDepth('self'), 0);
+  assert.equal(c.resolveScopeDepth('children'), 1);
+  assert.equal(c.resolveScopeDepth('subtree'), Infinity);
+  assert.equal(c.resolveScopeDepth('1'), 1);
+  assert.equal(c.resolveScopeDepth('2'), 2);
+  assert.equal(c.resolveScopeDepth('3'), 3);
+  assert.equal(c.resolveScopeDepth(2), 2);              // a number, not a string
+  assert.equal(c.resolveScopeDepth('CHILDREN'), 1);     // case-insensitive
+  assert.equal(c.resolveScopeDepth('0'), null);         // 0 would mean self; write `self`
+  assert.equal(c.resolveScopeDepth('nonsense'), null);
+  assert.equal(c.resolveScopeDepth(''), null);
+});
+
+test('collectScoped — gathers descendants to depth N, never self (UXP-159)', () => {
+  // tree: root > A > A1 > A1a ; root > B
+  const root = c.mkNode('root');
+  const A = c.mkNode('A'), A1 = c.mkNode('A1'), A1a = c.mkNode('A1a'), B = c.mkNode('B');
+  A1.children.push(A1a); A.children.push(A1); root.children.push(A, B);
+  const ids = d => host(c.collectScoped(root, d).map(n => n.text)).sort();
+  assert.deepEqual(ids(1), ['A', 'B']);                       // direct children only
+  assert.deepEqual(ids(2), ['A', 'A1', 'B']);                 // + grandchildren
+  assert.deepEqual(ids(3), ['A', 'A1', 'A1a', 'B']);          // + great-grandchildren
+  assert.deepEqual(ids(Infinity), ['A', 'A1', 'A1a', 'B']);   // whole subtree
+  assert.deepEqual(ids(0), []);                               // self → no descendants
+});
+
+test('aggregateChildren depth: sum reaches deeper with a depth arg (UXP-159)', () => {
+  // Cart > (milk 3) ; Cart > Produce > (apples 5) > (organic 2)   [nested costs]
+  const cart = c.mkNode('Cart');
+  const milk = c.mkNode('milk'); milk.props.push({ key: 'cost', val: '3' });
+  const produce = c.mkNode('Produce'); // no cost of its own
+  const apples = c.mkNode('apples'); apples.props.push({ key: 'cost', val: '5' });
+  const organic = c.mkNode('organic'); organic.props.push({ key: 'cost', val: '2' });
+  apples.children.push(organic); produce.children.push(apples); cart.children.push(milk, produce);
+  assert.equal(c.aggregateChildren(cart, 'sum', 'cost'), 3);              // depth 1 default: only milk
+  assert.equal(c.aggregateChildren(cart, 'sum', 'cost', 1), 3);          // explicit direct
+  assert.equal(c.aggregateChildren(cart, 'sum', 'cost', 2), 8);          // + apples (3+5)
+  assert.equal(c.aggregateChildren(cart, 'sum', 'cost', Infinity), 10);  // whole subtree (3+5+2)
+  assert.equal(c.aggregateChildren(cart, 'count', 'cost', Infinity), 3); // three priced nodes
+});
+
+test('expandAggExpr depth arg: sum(prop, scope) parses; bad scope → literal → #ERR (UXP-159)', () => {
+  const cart = c.mkNode('Cart');
+  const a = c.mkNode('a'); a.props.push({ key: 'cost', val: '4' });
+  const b = c.mkNode('b'); const b1 = c.mkNode('b1'); b1.props.push({ key: 'cost', val: '6' });
+  b.children.push(b1); cart.children.push(a, b);
+  assert.equal(c.expandAggExpr('sum(cost)', cart), '(4)');            // direct only, unchanged
+  assert.equal(c.expandAggExpr('sum(cost, subtree)', cart), '(10)');  // + grandchild
+  assert.equal(c.expandAggExpr('sum(cost, 2)', cart), '(10)');        // depth 2
+  assert.equal(c.expandAggExpr('sum(cost, children)', cart), '(4)');  // explicit direct
+  // an unrecognized scope stays literal, so evalMath (downstream) reports #ERR, not a wrong number
+  assert.equal(c.expandAggExpr('sum(cost, nonsense)', cart), 'sum(cost, nonsense)');
+});
+
+test('words() depth: a number picks an exact depth; keywords unchanged (UXP-159)', () => {
+  const root = c.mkNode('root has three words');   // 4 words
+  const kid = c.mkNode('kid two');                  // 2
+  const grandkid = c.mkNode('deep one');            // 2
+  kid.children.push(grandkid); root.children.push(kid);
+  assert.equal(c.expandAggExpr('words(self)', root), '(4)');
+  assert.equal(c.expandAggExpr('words(children)', root), '(2)');     // direct child only, no self
+  assert.equal(c.expandAggExpr('words(subtree)', root), '(8)');      // 4+2+2
+  // a NUMBER is self-inclusive ("me plus N levels"); the `children` KEYWORD keeps its legacy no-self meaning
+  assert.equal(c.expandAggExpr('words(1)', root), '(6)');            // self + direct child: 4+2
+  assert.equal(c.expandAggExpr('words(2)', root), '(8)');            // self + 2 levels: 4+2+2
+});
+
+test('progressCount depth: a scoped cookie tallies deeper (UXP-159)', () => {
+  // Project > (- [x] a) ; Project > Phase > (- [ ] b) > (- [x] c)
+  const proj = c.mkNode('Project');
+  const a = c.mkNode('- [x] a');
+  const phase = c.mkNode('Phase');
+  const b = c.mkNode('- [ ] b');
+  const cc = c.mkNode('- [x] c');
+  b.children.push(cc); phase.children.push(b); proj.children.push(a, phase);
+  const SEQS = host(c.allSequences());
+  const at = d => { const r = host(c.progressCount(proj, SEQS, d)); return r.done + '/' + r.total; };
+  assert.equal(at(1), '1/1');          // direct: only `a` (done)
+  assert.equal(at(2), '1/2');          // + `b` (not done): 1 done of 2
+  assert.equal(at(Infinity), '2/3');   // whole subtree: a✓, b✗, c✓
 });
 
 test('subtree aggregation: only DIRECT children count (grandchildren excluded)', () => {
@@ -7300,7 +7416,7 @@ test('filterEmojiCandidates — no match is an empty list', () => {
 });
 
 // ── priority: search + agenda rollup (UXP-109) ───────────────────────────────
-const SEQS = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3 }];  // the default sequence shape (DONE at index 3 is the done split)
+const SEQS = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'], heldFrom: 2, doneFrom: 3 }];  // the default sequence shape: active(TODO,NEXT) | held(WAITING) | done(DONE)  (UXP-158)
 
 test('priorityRank — A < B < C < none', () => {
   assert.equal(c.priorityRank('A'), 0);
