@@ -204,7 +204,7 @@ export function loadCores() {
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','seqDeclParts','sequenceLint','collectSequences','sequenceForKeyword','keywordIsDone','seqDefString',
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
-    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles',
+    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','queryRows','queryParts',
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie',
     'childPropNumber','aggregateChildren','expandAggExpr','countWords','subtreeWords',

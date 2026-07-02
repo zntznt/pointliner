@@ -7730,3 +7730,62 @@ test('QX-5 searchHighlightNeedles ignores or markers and collects across clauses
   const needles = host(c.searchHighlightNeedles(host(c.parseSearchQuery('alpha | #beta -gamma'))));
   assert.deepEqual(needles, ['alpha', '#beta']);
 });
+
+// ── query pill: the pure queryRows core (shared with the future base view) ──
+test('queryRows — matches across the tree, excludes the host, caps with a total', () => {
+  const root = { children: [
+    { id: 'h1', text: '#TODO alpha', children: [
+      { id: 'c1', text: '#TODO nested one', children: [] },
+      { id: 'c2', text: '#DONE nested two', children: [] },
+    ] },
+    { id: 'h2', text: '#TODO beta', children: [] },
+  ] };
+  const r = host(c.queryRows('is:todo', root, 'host-not-present'));
+  assert.deepEqual(r.rows.map(x => x.id).sort(), ['c1', 'h1', 'h2']);   // three open to-dos, done excluded
+  assert.equal(r.total, 3);
+  assert.equal(r.truncated, false);
+  // titles are stripped display text
+  assert.equal(r.rows.find(x => x.id === 'h1').title, 'alpha');
+  // the host point is excluded even when it matches
+  const r2 = host(c.queryRows('is:todo', root, 'h1'));
+  assert.equal(r2.rows.find(x => x.id === 'h1'), undefined);
+  assert.equal(r2.total, 2);
+});
+
+test('queryRows — an empty or whitespace query returns nothing (never matches everything)', () => {
+  const root = { children: [{ id: 'a', text: 'x', children: [] }] };
+  assert.deepEqual(host(c.queryRows('', root, null)), { rows: [], total: 0, truncated: false });
+  assert.deepEqual(host(c.queryRows('   ', root, null)), { rows: [], total: 0, truncated: false });
+});
+
+test('queryRows — caps the row slice but reports the true total (truncated flag)', () => {
+  const kids = [];
+  for (let i = 0; i < 15; i++) kids.push({ id: 'k' + i, text: '#TODO item ' + i, children: [] });
+  const root = { children: kids };
+  const r = host(c.queryRows('is:todo', root, null, 10));
+  assert.equal(r.rows.length, 10);
+  assert.equal(r.total, 15);
+  assert.equal(r.truncated, true);
+});
+
+test('queryRows — the full operator grammar composes (OR, negation, dates)', () => {
+  const root = { children: [
+    { id: 'a', text: '#TODO write', props: [{ key: 'due', val: '2000-01-01' }], children: [] },   // overdue
+    { id: 'b', text: '#TODO plan', children: [] },
+    { id: 'd', text: '#DONE ship', children: [] },
+  ] };
+  // is:overdue | is:todo -is:done → a (overdue) and b (open todo), not d
+  const r = host(c.queryRows('is:overdue | is:todo -is:done', root, null));
+  assert.deepEqual(r.rows.map(x => x.id).sort(), ['a', 'b']);
+});
+
+test('queryParts — sniffs {query: expr}, rejects the empty and keywordless forms', () => {
+  assert.deepEqual(host(c.queryParts('query: is:todo | due:week')), { expr: 'is:todo | due:week' });
+  assert.deepEqual(host(c.queryParts('query:#idea -is:done')), { expr: '#idea -is:done' });
+  assert.equal(c.queryParts('query:'), null);        // no search string
+  assert.equal(c.queryParts('query:   '), null);     // whitespace only
+  assert.equal(c.queryParts('is:todo'), null);       // no keyword
+  assert.equal(c.queryParts('querylike: x'), null);  // the keyword must be exactly 'query'
+  // classifyBraceBody routes it to an artifact so exit-promotion fires
+  assert.equal(c.classifyBraceBody('query: is:todo', [], {}), 'artifact');
+});

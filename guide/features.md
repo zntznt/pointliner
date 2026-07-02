@@ -94,6 +94,9 @@ Turn the outline into a lightweight planner.
   `priority:a`, `var:name`, `has:key`, `key:value`, numeric compares `key:>N` / `key:<=N`), exact
   `"phrases"`, `-` to exclude, and `a | b` for either-side (OR) matching. Star a search to save it.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
+- **Embedded queries.** Drop `{query: is:todo | due:week}` into a point for a live, self-updating
+  list of matching points; reuses every search operator, click a result to jump.
+  ([embedded queries](getting-around.md#embedded-queries))
 
 ## Linking and connecting notes
 

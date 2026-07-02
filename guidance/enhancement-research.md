@@ -69,8 +69,11 @@ genuinely *first-in-class* feature, per the frontier report's F3); the cheapest 
 - **`evalMath` always returns a number.** Date *formatting* is display-only; pick values are
   text and fail visibly in math. A distribution/symbolic value type is a real engine change
   (B2), not a one-line add.
-- **Out of scope (recorded):** a `{query: tag=…}` saved-views DB layer; code execution; binary
-  attachments. (`backlog.md`, `roadmap.md`.)
+- **Query pill SHIPPED** (2026-07-02): `{query: <search>}` renders a live embedded search
+  inline (the pure `queryRows` core over `parseSearchQuery`/`queryMatchesNode`). A rendering
+  of the live data, not a stored view. **Still out of scope (recorded):** a saved-views DB
+  layer (named/persisted views as a data model); code execution; binary attachments.
+  (`backlog.md`, `roadmap.md`.)
 - **Synchronous render.** `mdToHtml`/`resolveBrace` are synchronous (render-context globals
   depend on it). Nothing here may make rendering async.
 
