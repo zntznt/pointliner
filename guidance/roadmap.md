@@ -165,7 +165,7 @@ Zettelkasten shipped first and everywhere; the multi-file network rode on Phase 
 3. ✅ **Backlink index + backlinks panel** for the current node.
 4. ✅ **Quick-switcher / `[[` picker** — **live** (UXP-4 resolved): typing `[[` opens the
    picker (pure `linkCandidates` core); apply writes the live-title form `[[#id|]]`;
-   `LINK_PICKER_ENABLED` survives only as a kill switch defaulting on.
+   the picker is permanently on (the UXP-4 rollout kill switch was retired 2026-07-02).
    *(backlog: Node links & backlinks)*
 5. ✅ **Generalize to cross-file** — `[[docId#nodeId|label]]`; the workspace-wide index spans every
    doc in the folder (CF-1…CF-5: token, picker, backlinks, "+ New note"). The cross-file lane is

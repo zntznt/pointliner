@@ -2406,13 +2406,8 @@ function dueDateToday() {
 // todayISO() — pure, but depends on current time. Returns 'YYYY-MM-DD'.
 function todayISO() { return formatEpochDays(dueDateToday()); }
 
-// journalFileName(iso, perEntry, stamp) — pure, Node-testable.
-// perEntry=true → one file per capture (iso + '-' + stamp + '.opml').
-// perEntry=false → one file per day (iso + '.opml').  stamp is a string suffix (e.g. '143022').
-function journalFileName(iso, perEntry, stamp) {
-  if (perEntry && stamp) return iso + '-' + stamp + '.opml';
-  return iso + '.opml';
-}
+// journalFileName(iso) — pure, Node-testable. One file per day: iso + '.opml'.
+function journalFileName(iso) { return iso + '.opml'; }
 
 // findOrCreateChild(parent, label, mk, fuzzy) — find-or-create one direct child.
 // Matches a child whose first line is exactly `label` (or, when fuzzy, starts with
@@ -7948,7 +7943,7 @@ async function openJournalEntry() {
       flashHint('Connect a folder to use file-per-day journal mode. Using in-doc mode.');
       // fall through to append mode
     } else {
-      const name = journalFileName(iso, false, null);
+      const name = journalFileName(iso);
       const names = await listWorkspaceNames(workspaceDir);
       if (!names.includes(name)) {
         // Create the new day file.
@@ -8572,7 +8567,7 @@ function attachContentEvents(content, node) {
     if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideBracePreview(); return; }
     if (checkMdBlockPrefix(content, node)) return;
     checkSlash(content, node.id);
-    if (LINK_PICKER_ENABLED) checkLinkTrigger(content, node.id);
+    checkLinkTrigger(content, node.id);
     checkBraceTrigger(content, node.id);
     checkTagTrigger(content, node.id);
     updateSelToolbar();
@@ -9224,7 +9219,7 @@ function onKeyDown(e, id, content) {
   }
   // Copy a ready-to-paste link token for this node to the clipboard.
   if ((e.key === 'l' || e.key === 'L') && ctrl && e.shiftKey) { e.preventDefault(); copyNodeLink(id); return; }
-  if (LINK_PICKER_ENABLED && lpState && isLpMenuOpen()) {
+  if (lpState && isLpMenuOpen()) {
     if (e.key==='ArrowDown') { e.preventDefault(); lpMove(1); return; }
     if (e.key==='ArrowUp')   { e.preventDefault(); lpMove(-1); return; }
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); lpApply(); return; }
@@ -14214,13 +14209,11 @@ function announce(msg) {
 function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
-// ON by default (UXP-4 — a built capability with no front door at any verbosity is
-// non-conformant; this flag is now a kill switch, not a gate). The picker is a
-// discoverability layer over the keyboard-first base path — type/paste a [[#id]]
-// token directly (LINK_RE + renderLinkPill), or "Copy link to this node" (bullet
-// menu / Ctrl-Shift-L) and paste — never the only way, and the trigger regex
-// excludes `#` so typing/pasting a raw token is never intercepted.
-const LINK_PICKER_ENABLED = true;
+// Always on (UXP-4: a built capability with no front door is non-conformant; the
+// rollout kill switch retired 2026-07-02). The picker is a discoverability layer over
+// the keyboard-first base path: type/paste a [[#id]] token directly (LINK_RE +
+// renderLinkPill), or "Copy link to this node" (bullet menu / Ctrl-Shift-L) and paste,
+// never the only way; the trigger regex excludes `#` so a raw token is never intercepted.
 const lpMenu = document.getElementById('lp-menu');
 let lpState = null;
 function isLpMenuOpen() { return lpMenu.classList.contains('on'); }
