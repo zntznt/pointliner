@@ -36,6 +36,12 @@ as the work ships.
    `render()` pass that builds the DOM.
 3. **No visual changes.** All fixes are attribute/CSS additions. Do not alter
    sizing, color, or layout as part of accessibility work.
+4. **Filter changes announce.** Any action that filters or re-populates the visible
+   outline without moving focus must write a short result summary (e.g. a match
+   count) to `#a11y-live`.
+5. **Tap-target floor.** Under `@media(hover:none)`, every tappable control must
+   present at least a ~44px hit area; the visual box may stay smaller as long as
+   padding or an overlay extends the target.
 
 ## Phase 0 — Accessible names (quick wins, zero risk)
 
