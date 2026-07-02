@@ -76,6 +76,8 @@ spot everything that is overdue.
 Type words in the search box and **every word must appear**. The operators:
 
 - `-word` excludes a word.
+- `a | b` matches either side (OR). Put spaces around the pipe; words on each side still combine
+  with AND, so `draft is:todo | is:done` means (draft AND is:todo) OR is:done.
 - `"exact phrase"` matches that phrase exactly.
 - `#tag` filters to a label (see [Hashtags](#hashtags) below).
 - `is:done` / `is:todo` / `is:note` / `is:failing` / `is:passing` filter structurally (finished, open,

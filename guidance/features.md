@@ -368,7 +368,7 @@ Implemented:
   only against recognized states; `status:` stays the generic property lookup, not
   a synonym) — and `is:todo` / `is:done` / `is:note` filter structurally (open to-do /
   finished to-do / has a note; done-ness derives from the text via
-  `todoDoneFromText`, sequence-aware). **UXP-145 added the structural + artifact +
+  `todoDoneFromText`, sequence-aware). **QX-1 added the structural + artifact +
   symmetry `is:`/`has:` family** (all pure node reads, no parser arm beyond one
   regex widen): `is:passing` (`evalCheck === 'pass'`, distinct from `-is:failing`
   since a check-less point is neither), `is:leaf`/`is:parent` and `has:children`
@@ -379,8 +379,11 @@ Implemented:
   reserved before the property fall-through so `has:<propkey>` still works via a
   real property). Anything malformed (unknown `is:` value,
   lone `-`, a bare `#`) stays a **literal text term** — the `{…}` invalid-body
-  escape-hatch rule, so a query never silently matches everything. `OR` is
-  deliberately absent (no precedence rule until real queries demand one). Pure
+  escape-hatch rule, so a query never silently matches everything. **QX-5 added
+  `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
+  marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
+  ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
+  grouping until real queries demand it). Pure
   cores: `parseSearchQuery` (string → terms), `termMatchesNode` /
   `queryMatchesNode` (terms × node → bool, seqs injectable),
   `searchHighlightNeedles` (what `<mark>` highlights — positive text + tag terms;
@@ -531,12 +534,12 @@ Implemented:
   month **Calendar** (`agendaMonthCells` over `calendarMonthGrid`, ‹ ›/Today nav, up to 3 chips/cell
   then `+N`). Timeline and Calendar are independent toggles (persisted `agendaBars`). The two layout
   models are **pure cores**, test-pinned. Search operators `due:`/`start:` take
-  `today`/`overdue`/`<date`/`>date`, and **UXP-146** added the forward relative windows
+  `today`/`overdue`/`<date`/`>date`, and **QX-2** added the forward relative windows
   `week`/`month` (`op:'window'`, matching today through today+7/+30 inclusive; a recorded
-  value-vocabulary growth of the date arm, no new sigil). **UXP-147** added `var:NAME` (a
+  value-vocabulary growth of the date arm, no new sigil). **QX-3** added `var:NAME` (a
   `kind:value` operator like `state:`/`priority:`, matching the point whose `node.vars` has a
   declaration, a truthy `expr`, named NAME; reference pills with empty `expr` never match).
-  **UXP-148** added **numeric comparison on any own property** (`kind:'propnum'`): `cost:>100`,
+  **QX-4** added **numeric comparison on any own property** (`kind:'propnum'`): `cost:>100`,
   `key:<N`/`>=N`/`<=N` over `node.props`, coerced with `Number` and requiring a finite result
   (so a word or a date-shaped value never matches, and dates stay a `due:`/`start:` concern).
   This is the one real parser extension of the family: `key:value` is exact-only, so the two-char

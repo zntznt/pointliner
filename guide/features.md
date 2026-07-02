@@ -92,7 +92,7 @@ Turn the outline into a lightweight planner.
   `has:children` / `has:footnote` and `has:dice` / `has:math` / `has:est` / `has:grammar` / `has:markov`
   / `has:var` / `has:seq`), date and property operators (`due:overdue`, `due:week` / `due:month`,
   `priority:a`, `var:name`, `has:key`, `key:value`, numeric compares `key:>N` / `key:<=N`), exact
-  `"phrases"`, and `-` to exclude. Star a search to save it.
+  `"phrases"`, `-` to exclude, and `a | b` for either-side (OR) matching. Star a search to save it.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 
 ## Linking and connecting notes
