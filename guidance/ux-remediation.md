@@ -819,24 +819,24 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 
 **Lens: copy and terminology (§1 vocabulary, `concept-guide.md`)**
 
-### UXP-91 ☐ The document is called a "note" in the link picker and concept guide (§1, V-1) 🔴
+### UXP-91 ✓ The document is called a "note" in the link picker and concept guide (§1, V-1) 🔴 (RESOLVED: PR #283)
 - **Problem:** the `[[` picker's create row says `+ New note`, its aria-label says "Create a new note", the flash says `Created note`, and the GUIDE has "Searching all your notes" and "divide a long note into sections", all meaning the document (one `.opml`). Everywhere else says "document" (`Switch document…`, `New document "…" in the folder`).
 - **Rule:** §1 canonical vocabulary: the document is a "document"; "note" is reserved for per-point notes. The vocabulary table is binding for aria-labels.
 - **Target (small):** rename all five sites to "document".
 
-### UXP-92 ☐ Agenda calendar/week aria-labels call points "items" (§1) 🟡
+### UXP-92 ✓ Agenda calendar/week aria-labels call points "items" (§1) 🟡 (RESOLVED: PR #283)
 - **Problem:** the calendar's `+N` overflow and the week strip's "Earlier" aria-labels say "item(s)"; §1 bans "item" for a point.
 - **Target (trivial):** "Show N more points for this day", "Earlier, N points".
 
-### UXP-93 ☐ Concept guide cites a menu path that does not exist (`concept-guide.md` house rules) 🟡
+### UXP-93 ✓ Concept guide cites a menu path that does not exist (`concept-guide.md` house rules) 🟡 (RESOLVED: PR #283)
 - **Problem:** the GUIDE export entry's syn reads `File → Export Markdown`, but the real File menu is group "Export a copy" with the item labeled "Markdown". The house rule: verify every fact against the UI; a wrong path is worse than no entry.
 - **Target (trivial):** `File → Export a copy → Markdown`; give the sibling `Web page (HTML)` example the same middle step.
 
-### UXP-94 ☐ GUIDE export entry says "Share your outline" meaning the document (§1) 🟢
+### UXP-94 ✓ GUIDE export entry says "Share your outline" meaning the document (§1) 🟢 (RESOLVED: PR #283)
 - **Problem:** the entry opens "Share your outline with someone…" then says "your document" later in the same body. §1 sanctions "the outline" only for the navigable tree/view.
 - **Target (trivial):** "Share your document with someone who doesn't have the app".
 
-### UXP-95 ☐ GAP: no written casing convention; "Markdown" and Title Case drift in the same menus 🟡
+### UXP-95 ✓ GAP: no written casing convention; "Markdown" and Title Case drift in the same menus 🟡 (RESOLVED: D1 sentence + PR #283)
 - **Problem:** `Export to Markdown` vs `Edit as markdown` and `Copy as markdown` in the same bullet menu; `Save As…` (Title Case) vs sentence-case siblings (`Switch document…`, `Save as template`). No guideline covers label casing or proper-noun treatment.
 - **Target (small):** normalize code to sentence case with "Markdown" always capitalized. Guideline sentence: see below.
 
