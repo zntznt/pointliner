@@ -1410,6 +1410,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   #outline{padding:20px 14px 140px}
   .crumb{max-width:120px}
   .zoom-title{--zoom-title-size:22px}
+  /* UXP-121: the zoom-title drops to 22px here, but the body.zoomed heading cap is em-against-17px
+     (h1 1.5em ~25.5px) and unscoped for mobile, so a `# child` out-sizes the title again — the
+     DL §2 inversion reintroduced at this breakpoint. Step the zoomed headings down to sit under
+     the 22px title (h1 1.15em ~19.5px / opsz 40, h2 1.1em ~18.7px), h1>h2 preserved. Do NOT raise
+     the title (DL §2 forbids it; fitZoomTitle only shrinks). */
+  body.zoomed .node-content h1.md-h{font-size:1.15em;font-variation-settings:'opsz' 40}
+  body.zoomed .node-content h2.md-h{font-size:1.1em;font-variation-settings:'opsz' 22}
   /* keep floating menus inside the viewport */
   #slash-menu{width:min(204px,calc(100vw - 16px))}
   #bpop{min-width:0;width:min(248px,calc(100vw - 16px))}

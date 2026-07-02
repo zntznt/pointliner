@@ -1016,6 +1016,141 @@ A group of copy/labeling fixes around save, backup, and browser tiers (no new do
 
 ---
 
+### Second seven-persona design review (2026-07-02, blind re-audit) — UXP-121…144
+
+A second seven-persona review fleet audited the app **after** UXP-102…120 shipped, run **blind** (no knowledge of the prior review, and told not to mine this ledger) so it would find the next layer rather than re-litigate. 32 raw findings → adversarially verified → **21 confirmed** (2 more downgraded to low doc-nits; 11 refuted, including the whole UX-persona batch, which kept rediscovering already-shipped doors and the sanctioned UXP-63 body-click carve-out). The blind pass earned its keep twice: it caught a **regression I shipped** (UXP-121, the mobile half of UXP-108) and graded my own Batch-4 work (UXP-123/124). Entries carry a **[Batch N]** tag matching the closing order at the end. Verify every named symbol with grep before acting.
+
+### UXP-121 ◐ Mobile zoom re-inverts: a child `# heading` out-sizes the zoom-title (DL §2 regression) 🔴  [Batch 1] (RESOLVED pending merge)
+- **Problem:** UXP-108 caps zoomed descendant headings via `body.zoomed .node-content h1.md-h{1.5em}` (em-against-17px, unscoped for mobile), but in the `@media(max-width:560px)` block the `.zoom-title` drops to 22px while the child `# heading` stays 1.5em ≈ 25.5px at the same opsz 60 — 3.5px larger, the exact inversion DL §2 forbids, silently reintroduced at the breakpoint. `fitZoomTitle` only shrinks, so it can't recover. Desktop-only verification hid it (the miss that let it ship). (The blind reviewer estimated 768px; the actual mobile zoom-title breakpoint is 560px.)
+- **Rule:** DL §2 (the zoomed title outranks an inline heading), reintroduced UXP-108 regression.
+- **Resolved:** added to the existing `@media(max-width:560px)` block: `body.zoomed .node-content h1.md-h{font-size:1.15em;font-variation-settings:'opsz' 40}` (≈19.5px) and `h2.md-h{font-size:1.1em;font-variation-settings:'opsz' 22}` (≈18.7px) — both under the 22px title, h1>h2 preserved. Title not raised (DL §2). Verified per §6 with a narrow-width display shot: title 22px, child h1 ~19.5px, `titleOutranksH1: true`.
+
+### UXP-122 ◐ PWA install icon draws a different mark than the favicon/wordmark (DL §1 regression) 🔴  [Batch 1] (RESOLVED pending merge)
+- **Problem:** DL §1 locks "the mark and favicon must never diverge, change both in the same commit or neither." The three in-app homes (`.logo-mark`, `#favicon`, `updateFavicon`) render one compound evenodd path (solid accent disc with point+line knocked out). But `icon.svg` — the source of `icon-192/512.png`, the **installed-app** icon — drew a hollow stroked ring in fixed ink `#1f1d1a`, never the accent (its own comment admitted the fork).
+- **Rule:** DL §1 (mark and favicon never diverge).
+- **Resolved:** rebuilt `icon.svg` to use the ONE canonical compound path (the same `M256 512A256…` evenodd `d` as the favicon/`.logo-mark`/`updateFavicon`) filled indigo `#4338ca`, scaled 0.74 on the maskable warm-paper tile — so all four homes now draw the identical silhouette. Regenerated `icon-192.png`/`icon-512.png` from it (canvas Path2D render, the CLAUDE.md workflow). Verified the knockouts read cleanly at full size (screenshot: accent disc with the point + line as paper voids); the "fails at 48px" worry was unfounded.
+
+### UXP-123 ◐ The oracle-play walkthrough's three "see the full rules" links all 404 (P4/docs) 🔴  [Batch 1] (RESOLVED pending merge)
+- **Problem:** `guide/solo-rpg/oracle-play/oracle-play.md` (shipped in the prior review's Batch 4) had every deep-guide cross-link broken: lines 12 and 48 pointed at `generating-text.md#dynamic-odds`, and line 54 at `#name-generators` — neither slug exists.
+- **Rule:** P4 (a promised affordance must work); the `guide/` cross-link contract (slugs are the contract).
+- **Resolved:** fixed all three anchors to the real headings, **derived programmatically** with GitHub's own slug algorithm (not hand-typed — that was the error class): `#dynamic-odds`→`#when-the-odds-depend-on-something-dynamic-odds` (lines 12, 48) and `#name-generators`→`#name-things-youll-reuse-rules` (line 54, "the name-generator two-rule pattern" → the rules mechanism heading). Both slugs verified to resolve against `generating-text.md`'s actual headings.
+
+### UXP-124 ☐ Swing oracle's flat weight-1 twists ignore the likelihood band (P1) 🟡  [Batch 2]
+- **Problem:** `oracleSwingBody(yesW,noW)` (shipped in the prior review, UXP-111) keeps the four twist arms at flat weight 1, so at "Certain" the No-family totals ~12.5% and a full-reversal "No, and" comes up as often as plain No — the band label no longer means what it means on the plain oracle (P1). The shipped demo hand-tuned a better body, proving the dialog default is the weak version; the in-code comment ("dominant weight 5") is stale.
+- **Rule:** P1 (a band label means the same thing on the plain and swing oracle).
+- **Target:** derive each side's three arms as fractions of that side's band weight (e.g. plain ~70%, and/but ~15% each), rounded to a small integer with a **minimum of 1** so a swing oracle still swings on the weak side. The Yes:No family split then tracks the plain oracle at every band. Fix the stale comment in the same change. No new syntax (same `Yes N | No M` weighted grammar). Re-pin `oracleSwingBody` tests.
+
+### UXP-125 ☐ The concept guide has no keyboard shortcut or persistent affordance (P2, ux.md floor) 🔴  [Batch 3]
+- **Problem:** `ux.md` commits that the complete reference be reachable from every mode via a keyboard shortcut and a small persistent affordance. Today `openGuide` is a File-menu row + a footer button inside the shortcuts panel, so you must open a menu first, and the intuitive `?` gesture lands on the keyboard cheat-sheet (`toggleShortcuts`), not the feature reference.
+- **Rule:** P2 (a capability's front door; the ux.md "floor under the dial" commitment).
+- **Target:** add a direct chord (`Ctrl/⌘+Shift+/` — the "bigger help," mirrors the shortcuts key; NOT `Shift+?` which is already `?`), gated to not fire while typing, calling `openGuide`. Add a small persistent affordance (may be verbosity-gated, "Discoverable ≠ loud"). Document the chord in the §3 grammar + the `?` panel so it self-documents.
+
+### UXP-126 ☐ First-open has no first-run experience beyond one placeholder line (P2) 🟡  [Batch 3]
+- **Problem:** on cold open a newcomer sees one empty bullet and three sigils (the UXP-104 placeholder) they have no reason to trust; every distinguishing capability (pills) is invisible until they type a sigil. The doors exist (`btn-guide`, the `?` panel) but neither surfaces a live example at the empty-canvas moment.
+- **Rule:** P2 (surface the teaching at the moment of need). NOTE: this is "surface an existing door / show a live example at first open," not "the app teaches nothing."
+- **Target:** open a read-only, clearly-labeled **Examples** doc showing a handful of live pills (a dice roll, a `{grammar}` pick, a `{= math}` line, a linked point, a dated task) with a "Start a blank outline" button, reachable afterward from the File menu / Concept guide. Author the demo pills as plain `{…}` source (they promote via `promoteLoadedShorthand` in `adoptDoc`, like the solo-rpg demos). **Gate on a genuinely-fresh boot** (no `AUTOSAVE_KEY`, not `loadedFromEmbed`, no workspace) — do NOT gate on a "Guided verbosity" dial (that dial is not built). No em dashes.
+
+### UXP-127 ☐ Single-file tier has no reopen-last-file and misreports "saved" state (P4) 🟡  [Batch 3]
+- **Problem:** the `fileHandle` (File → Open) path persists no handle — only `WORKSPACE_KEY`/`OPEN_TABS_KEY` are in IndexedDB — so a user editing `outline.opml` across sessions boots the localStorage copy with no memory of which disk file it was. Worse: `applyAutosaveData` restores `fileName` but not the handle, so `updateFmStatus` prints "All changes saved" under the real filename against an **unbound** handle, and Ctrl+S falls through `saveFile` (handle null) into a fresh Save-As. The workspace tier solved exactly this; the single-file tier (more browsers than folders) was left without it.
+- **Rule:** P4 (don't claim "saved" when there is no write target; don't silently redirect Ctrl+S).
+- **Target:** persist the last single-file `FileSystemFileHandle` in IndexedDB (same mechanism workspaces use) and offer a one-click "Reopen `<name>`" on boot via `queryPermission`/`requestPermission` (mirror `showReconnectBanner`). **At minimum**, correct `updateFmStatus` to distinguish "named but unbound" ("Reopen `<name>` to save back to it") instead of claiming saved. Feature-gate on `hasFSA`.
+
+### UXP-128 ☐ Installable PWA has no in-app install affordance (P2, low) 🟢  [Batch 3]
+- **Problem:** the manifest declares `display:standalone` with maskable icons, so install is an intended touchpoint, yet `registerPWA` registers only the SW — the only door on Chromium is the address-bar icon most users miss. For an offline-first "keep it on my machine" tool that's a soft handoff.
+- **Rule:** P2 (an intended touchpoint has no visible door).
+- **Target:** capture `beforeinstallprompt`, show a small dismissible "Install Pointliner" control (near the File menu) calling `prompt()` on click; listen for `appinstalled` + check `matchMedia('(display-mode: standalone)')` at boot to never show it once installed; null the saved event after `prompt()` (single-use). A real `<button>` is fine here (not caret-bound), keyboard-operable + aria-labeled, design tokens only. Guard inert/silent like `registerPWA` so `file://` copies are byte-for-byte unaffected. No em dash.
+
+### UXP-129 ☐ Agenda Actions row collapses NEXT (do-now) and WAITING (blocked) into one pile (P1) 🟡  [Batch 4]
+- **Problem:** `collectActions` (shipped UXP-112) gathers undated to-dos and orders live-then-done, but never captures the state keyword, so `#WAITING` (blocked) sits undifferentiated among `#NEXT`/`#TODO` in a row labeled "Actions." A GTD user must mentally filter blocked items every scan.
+- **Rule:** P1 (a state keyword reads the same everywhere).
+- **Target:** thread the leading keyword into the item, render `#WAITING` points with a distinct muted "Waiting" badge (reuse `.ag-badge`; the WAITING icon already exists) and sort them after live NEXT/TODO. Keep it narrow to the built-in WAITING keyword; do NOT invent a general "states after the first active one" blocked notion (the model carries only active-vs-done via `doneFrom`).
+
+### UXP-130 ☐ No unified overdue axis; start-only slips are invisible to search (P2) 🟡  [Batch 4]
+- **Problem:** `due:overdue` matches only a `due` prop `< today`; a started-but-undeadlined point (start prop, no due) hits `if(!prop) return false` and returns nothing, reading as "nothing overdue" when a two-week-old started task sits right there. The agenda shows these (Running row) but there's no queryable twin and no single overdue axis spanning both keys.
+- **Rule:** P2/P5-4 (a new value in the `is:` family, the `is:failing`/`is:scheduled` precedent). Not new syntax.
+- **Target:** add `is:overdue` to the `is:` family: matches `(due<today || (no due && start<today)) && !done`, done-ness seq-aware via `todoDoneFromText(node.text, seqs)` (not `node.checked`). Leave the existing `due:overdue`/`start:overdue` untouched. Add the legend + `?`-panel + `guide/features.md` rows (the drift guard requires it). Pin tests.
+
+### UXP-131 ☐ `key:value` search can't match a spaced value (P2) 🟡  [Batch 4]
+- **Problem:** properties are the planner metadata layer (`owner:zeo`), but the value side is one word/hyphen token, so `owner:Jane Doe`, `area:Home Renovation`, `context:@errands` are storable (free-text input) yet unsearchable. Verified: the top-level tokenizer splits `owner:"Jane Doe"` on the interior space before any arm sees it. (`has:owner` still surfaces the point, so not invisible, only not value-filterable — supports medium.)
+- **Rule:** P2 (a storable value should be filterable). Zero new syntax (reuse the existing `"…"` phrase quoting).
+- **Target:** teach the top-level lexer to keep `key:"…"`/`key:'…'` as one token (reuse the phrase-quote convention), then add a prop arm that strips quotes and switches the compare to **contains** (matching the text-term spirit); this also fixes the `@errands` leading-sigil case. Update the search legend + `?`-panel + properties concept-guide entry. Pin the lexer + match tests.
+
+### UXP-132 ☐ Agenda has no sort/group control beyond date (P2, low-end medium) 🟡  [Batch 4]
+- **Problem:** `collectDueDates` hard-sorts epochDay-then-priority, so an `[#A]` due in three days always sorts below a no-priority item due tomorrow, with no toggle for a priority-first view. Achievable via search on the outline, but not from inside the agenda strip.
+- **Rule:** P2 (a reasonable view the feature that owns the job can't produce).
+- **Target:** add a "Sort" segmented control (Date · Priority) beside the existing chips, built with `mkAgToggle`, persisted like `agendaShowRunning`, re-sorting the same rows (a comparator swap). Optionally a free-text focus reusing `parseSearchQuery`/`queryMatchesNode` against the collected items (zero new syntax). Ship always-visible (no verbosity dial exists).
+
+### UXP-133 ☐ Bulk action bar lacks Refile (P1) 🟢  [Batch 4]
+- **Problem:** `#node-sel-bar` covers copy/indent/outdent/state/dates/check/props/type/delete but NOT Refile, so after a brain-dump you must refile each subtree one at a time. The infrastructure exists (`buildTreePicker` is reusable; the per-point dialogs accept a `targets[]` list).
+- **Rule:** P1 (refile should behave the same for one or many).
+- **Target:** add a "Refile" button to `#node-sel-bar` opening `buildTreePicker` once, applying `refileNodeTo` across the selected roots. The **top-most-subtrees-only dedupe is REQUIRED** (add a `selectionRoots()` helper: drop any selected node with a selected ancestor via `parentMap`) — `refileNodeTo`'s `isDescOf` guard covers filing-into-a-member but not overlapping roots. One summarizing toast.
+
+### UXP-134 ☐ `fa-left-right` carries three unrelated meanings (width, estimate, refile) (DL §1 corollary) 🟡  [Batch 2]
+- **Problem:** DL §1 corollary: refile moved to `fa-arrow-right-arrow-left`, leaving `fa-left-right` for horizontal-span only. Today the glyph is worn by width (the sanctioned use), the whole estimate family, AND the Refile picker header (even though every other refile surface already uses `fa-arrow-right-arrow-left`). The migration was left half-done and estimate additionally claimed the width glyph.
+- **Rule:** DL §1 corollary (one glyph, one concept).
+- **Target:** (1) **Refile — ship immediately:** change the Refile picker header `fa` class to `fa-arrow-right-arrow-left` (the `fb` is already `⇄`; one-token regression fix). (2) **Estimate — deliberate design change:** give uncertainty its own tilde/wave glyph (the `≈`/`∿` fallbacks already point at that identity) via the FA subset-rebuild workflow (`FA_GLYPHS` + `::before` + woff2 re-subset), then swap all five estimate references off `fa-left-right`, leaving it for width alone.
+
+### UXP-135 ☐ `.sh-saved-title` eyebrow omits `font-weight` (DL §4) 🟢  [Batch 2]
+- **Problem:** DL §4 locks the eyebrow as one recipe: 10px / 600 / .07em caps in `--muted`. `.sh-saved-title` (the "Saved" / "Found in other documents" search-panel labels) sets 10px, uppercase, .06em, `--muted` but NO font-weight, inheriting body 400 — so these read thinner than every sibling eyebrow in the same session.
+- **Rule:** DL §4 (one eyebrow recipe).
+- **Target:** add `font-weight:600` (the load-bearing fix); optionally bump `.06em`→`.07em` to match exactly.
+
+### UXP-136 ☐ Insert-dialog `.io-chip:hover` uses the reserved commit fill (DL §4) 🟢  [Batch 2]
+- **Problem:** the insert-dialog syntax-example chips light to a full `--acc` fill on hover — the treatment reserved for the dialog's actual commit button (`.io-btn.primary`). Hover-transient, so a hover-language coherence drift, not "two loud things"; the sibling `.io-seg-btn.on` already uses a 16% tint, making the chip the outlier.
+- **Rule:** DL §4 (solid accent fill reserved for the primary commit action; active/hover states use the tint recipe).
+- **Target:** match the shipped pill hover recipe: `border-color:var(--acc)` + `background:color-mix(in srgb,var(--acc) 6%,var(--cbg))`; drop `color:var(--acc-fg)` (near-invisible without the fill). Leaves one persistent loud object per dialog.
+
+### UXP-137 ☐ No way to freeze a rolled pill to plain text (P2/product, solo) 🟡  [Batch 5]
+- **Problem:** the lonelog guide sells the pill's freeze as "an honest record … only changes if you deliberately click to re-roll," but the whole journal is clickable live pills and a display-mode mis-tap re-rolls a committed beat (Undo helps only if noticed). The only escape is a full export that flattens everything.
+- **Rule:** P2/product (a missing affordance; the harm is silent-noticed-late mutation, recoverable via `pushUndo`, so medium not P4).
+- **Target:** add a per-pill "Freeze to text" action (new `collectPillActions` row + bullet-menu entry). Do NOT call `flattenArtifacts` for one pill (it's a whole-string regex over ALL tokens). Factor a shared `frozenTokenText(type,key,node,varMap)` (dice `${expr} = ${total}`, markov `path.join(' → ')`, grammar `g.result`, est `formatDist`, var `formatVarValue`) so callers stay in lockstep (P1); splice just that `[[type:key]]` occurrence and drop the matching sidecar via `pruneXxx`. Wrap in `pushUndo`, `announce()` it (P4), handle the edit-mode unfold/refold buffer. No new syntax.
+
+### UXP-138 ☐ A spent `once` deck pops as if it drew (P4) 🟢  [Batch 5]
+- **Problem:** clicking an exhausted `once` deck is a dead event (`nextSeqIndex` returns -1, result stays `''`, repaints to muted `—`) yet still runs `pushUndo()`+`markDirty()` and re-adds `.gr-rolled`, firing the celebratory `roll-pop` on a non-event while title/aria still read "Click to advance." A `shuffle` deck gets a courteous reshuffle flash; `once` gets a false-positive flourish.
+- **Rule:** P4 (feedback fires on a non-event).
+- **Target:** gate on `g.mode==='once' && (g.pos||0) >= g.items.length` (do NOT include `stopping` — it never returns -1 and its repeat can be a real re-roll). In that case skip `pushUndo`/`markDirty`, don't add `.gr-rolled`, and branch verb/title/aria on the existing `ended` flag so it reads "Deck spent" not "Click to advance." A one-time `flashHint('Deck spent')` is fine. Leave `shuffle` and all real draws untouched.
+
+### UXP-139 ☐ A natural max die roll looks like any other number (experience polish) 🟢  [Batch 5]
+- **Problem:** the RPG-soul "click a pill, get a surprise" moment goes unmarked: a natural max face renders as bare `escHtml(String(...))`, indistinguishable from a 3. The engine values valence everywhere else (Fate colors, exploding chains, reroll strikes) but single-die extremes stay flat. Polish opportunity, not a conformance defect (the standard requires no crit marking and demands identity stay "at whisper level, never candy").
+- **Rule:** product/experience (optional; must clear the DoD gate and the whisper-level rule).
+- **Target:** IF pursued, a display-only class on the max face — but do NOT reuse `.dice-hit`'s accent-700 (that means a counted pool success and `.dice-total` owns it; one glyph, three meanings breaks DL §1). Give max its own whisper cue (accent ink at normal weight, or an accent underline). Key it on whether ANY face in the chain hit `p.sides` (an exploding die's last face is never the max, so `chain[len-1]===p.sides` silently never fires). Decoration, not information.
+
+### UXP-140 ☐ The yes/no oracle answer has no valence (experience polish) 🟢  [Batch 5]
+- **Problem:** "Yes," "No," "Yes, and," "No, but" all render identical neutral `.gr-result`, so the most "ask the universe" beat lands as data. Self-declared optional; a recorded non-fix is acceptable.
+- **Rule:** product/experience (optional).
+- **Target:** IF pursued, do it at the oracle door ONLY (a dedicated variant class on the anon oracle roll, never a content-sniff in `renderGrammarPill`). Use the §4 badge recipe as a BACKGROUND tint (`color-mix(--ok 16%)` for leading-Yes, `--muted` for leading-No) while the result INK stays full-contrast `--fg` (the verdict is load-bearing, must clear 4.5:1). Prefer `--muted` over `--warn` for No (a No is not an error).
+
+### UXP-141 ☐ A `shuffle` deck nested in a rule silently degrades to a stateless pick (P1, doc-only) 🟢  [Batch 5]
+- **Problem:** the oracle-play meaning-table section recommends a deck for draw-without-repeats, but folding `{shuffle:…}` into a named rule (`meaning: {shuffle: …} {subject}`) quietly makes it a uniform pick — repeats return with no signal that the no-repeat guarantee dropped. No shipped guide teaches the broken pattern (so low), but the recommendation invites it.
+- **Rule:** P1 (a construct's guarantee changes by context invisibly).
+- **Target (doc-only):** one line in `oracle-play.md` and `generating-text.md` noting a deck draws without repeats only as its own standalone pill; nested in a rule it becomes an ordinary pick. Do NOT add detection in `classifyBraceBody`/`parseRules` (they lack the nesting context, which only exists at expansion) — a persistent marker would inject non-content into a valid draw.
+
+### UXP-142 ☐ No in-app acknowledgement that tasks don't recur (P2, expectations copy) 🟢  [Batch 5]
+- **Problem:** the agenda GUIDE explains the no-reminders limit, but neither it nor the `dates` entry says a completed dated task stays put and tasks don't roll forward, so a user infers "the agenda is my planning home" then discovers recurrence must be hand-recreated with no hint. (The full `repeat`-property build stays a `backlog.md` feature needing P5 sign-off; the confirmable defect here is the missing sentence.)
+- **Rule:** P2 (set honest expectations).
+- **Target:** add one honest AP-style line to the `dates` and/or `agenda` GUIDE body: a completed dated point stays in place and tasks do not repeat automatically yet. No em dashes.
+
+### UXP-143 ☐ Keyboard state-cycle to done gives no "now hidden" notice the mouse paths give (P1, low) 🟢  [Batch 5]
+- **Problem:** (Downgraded from the blind review's medium — the stated "silent disappearance on blur" mechanism is false: the keyboard cycle repaints in place and does NOT `render()`, so the row stays visible until a later unrelated full render; the chord's P4 duty is met via the `#a11y-live` announce.) The residual real issue: the `Ctrl/⌘+Shift+S` cycle branch never calls `flashHiddenIfDone`, while all three mouse/menu commit paths do — an inconsistency in the "done, now hidden" cue.
+- **Rule:** P1 (mouse and keyboard commit paths give different feedback).
+- **Target:** unify at `exitEdit`, not the keystroke: fire the "Done, now hidden" notice when a just-committed done row will actually be hidden by the next render, covering all commit paths — do NOT bolt `flashHiddenIfDone` onto the transient cycle keystroke (it would over-notify every time the user cycles PAST done while still editing a visible point, a P4 over-notification).
+
+### UXP-144 ☐ `Alt+1–9` doc-tab jump is absent from the §3 keyboard-grammar table (§3 completeness, low) 🟢  [Batch 5]
+- **Problem:** (Downgraded — the blind review wrongly said it's absent from the `?` panel; it IS there (`file-tab-n` essential entry), and P5-4 is authoring-syntax-only so it doesn't bind a navigation accelerator.) The residual real gap: the §3 keyboard-grammar table lists the sibling `Ctrl/⌘+Shift+]`/`[` tab-cycle but omits bare `Alt+1–9`.
+- **Rule:** §3 keyboard-grammar table completeness (not P5-4).
+- **Target:** add an `Alt+1–9` row to the §3 table beside the tab-cycle line. Separately, the P1 observation that `Alt` is elsewhere the point-movement modifier (so `Alt+digit` overloads it onto navigation) is an **owner grammar decision** — flag it, do NOT change the binding without sign-off.
+
+### Recommended closing order (2026-07-02 blind re-audit, UXP-121…144)
+1. **Batch 1 — regressions + broken promises (UXP-121, 122, 123).** Two locked-Decision 🔴 regressions (mobile zoom inversion — a defect shipped in the prior review's Batch 3 — and the PWA icon divergence) plus the dead oracle-play links. Do first: they break a locked Decision or a promised affordance. Verify the mobile zoom per §6 with narrow-width shots (the discipline that would have caught it).
+2. **Batch 2 — glyph + visual coherence + the swing fix (UXP-124, 134, 135, 136).** The stale swing-oracle weighting (P1, my Batch-4 code), the fa-left-right refile half (one-token fix) + estimate glyph (subset rebuild), the eyebrow weight, the io-chip hover. All small; the estimate glyph needs the FA subset workflow.
+3. **Batch 3 — discoverability + durability (UXP-125, 126, 127, 128).** The concept-guide shortcut+affordance (🔴), the first-run Examples doc, the single-file reopen/misreport fix, the PWA install affordance. The heaviest batch (new surfaces + IndexedDB handle persistence).
+4. **Batch 4 — planner surface (UXP-129, 130, 131, 132, 133).** Agenda NEXT/WAITING split, `is:overdue`, spaced `key:value` search, agenda sort, bulk Refile. All reuse existing engines (the `is:` family, the search lexer, `mkAgToggle`, `buildTreePicker`). Pure cores → pin → wire.
+5. **Batch 5 — solo/experience polish + copy (UXP-137, 138, 139, 140, 141, 142, 143, 144).** Freeze-to-text, the spent-deck pop, crit/oracle valence (both optional), the shuffle-in-rule + recurrence copy, and the two downgraded UX doc-nits. Lowest urgency; several are opt-in or doc-only.
+
+> **Feature request (NOT conformance, already in `backlog.md`):** the "random point / random child draw" (a `{…}` reference that resolves against a scope of the outline — a `#tag` or subtree) surfaced again as the solo-RPG thread/NPC-table gap. It is a genuinely new semantic (a grammar reference reaching live tree content outside its own body), needs owner sign-off, and is NOT a UXP. The blind reviewer agreed it is not the highest-leverage gap (discoverability is). Left in `backlog.md`.
+
+---
+
 ## Tier 3 — Accessibility conformance (additive; sequenced in `accessibility.md`)
 
 These are **not new tickets** — they are the standard's P3 requirements mapped onto the existing accessibility phases, listed here so a11y is visible as part of the *one* conformance picture rather than a separate track. **Do not front-run the deferred items**; do satisfy the interim labels now.
