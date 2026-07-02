@@ -8212,7 +8212,7 @@ function cycleJournalMode() {
 
 // Parse a query string into terms: [{neg, kind:'text'|'tag'|'is', value}].
 // Values are lowercased (search is case-insensitive throughout). Pure.
-// UXP-145: the artifact sidecar arrays (mkNode), and the has:<word> -> field map
+// QX-1: the artifact sidecar arrays (mkNode), and the has:<word> -> field map
 // (`var` reads `vars`; every other word is its own field). Pruned on exitEdit, so a
 // non-empty array means a live pill. Shared by is:pill/is:random and has:<sidecar>.
 const SIDECAR_KEYS = ['dice', 'markov', 'math', 'grammar', 'est', 'vars', 'seq'];
@@ -8252,7 +8252,7 @@ function parseSearchQuery(q) {
       else if (raw[0] === '>') { op = '>'; dval = raw.slice(1); }
       const lc = dval.toLowerCase();
       if (lc === 'overdue') { terms.push({ neg, kind, op: 'overdue' }); }
-      // UXP-146: forward relative windows (this week / month). op:'window' matches a
+      // QX-2: forward relative windows (this week / month). op:'window' matches a
       // date from today through today+N inclusive. A recorded value-vocabulary growth of
       // the date arm (no new sigil), reusing the epoch-day machinery. `< / >` don't apply.
       else if ((lc === 'week' || lc === 'month') && op === '=') { terms.push({ neg, kind, op: 'window', epochDay: dueDateToday() + (lc === 'week' ? 7 : 30) }); }
@@ -8263,10 +8263,10 @@ function parseSearchQuery(q) {
     // letter, case-insensitive, stored uppercase like the [#A] marker. Placed before the generic
     // prop arm so `priority` is not read as a free-form key:value property lookup.
     else if ((t = tok.match(/^priority:([A-Za-z])$/i))) terms.push({ neg, kind: 'priority', value: t[1].toUpperCase() });
-    // UXP-147: var:NAME finds the point that DECLARES variable NAME (not reference pills).
+    // QX-3: var:NAME finds the point that DECLARES variable NAME (not reference pills).
     // Before the generic prop arm (like priority:) so `var` is not a free-form key:value.
     else if ((t = tok.match(/^var:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'var', value: t[1].toLowerCase() });
-    // UXP-148: numeric comparison on any own property (cost:>100). key:value is EXACT-only,
+    // QX-4: numeric comparison on any own property (cost:>100). key:value is EXACT-only,
     // so a `>N` value never fit the generic prop arm below (it fell to literal text). This is
     // the one real parser extension: the two-char ops (>=|<=) MUST precede (>|<) so >= wins
     // longest-match. Value is a signed decimal; a non-`is` key. Placed before the generic prop
@@ -8318,11 +8318,11 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
       const v = evalCheck(node, vars);
       return v === 'fail' || v === 'error';
     }
-    // UXP-145: is:passing is the symmetry fill for is:failing. NOT the same as
+    // QX-1: is:passing is the symmetry fill for is:failing. NOT the same as
     // -is:failing: evalCheck returns null for a check-less point, so -is:failing also
     // matches un-checked points; is:passing requires an actual passing check.
     if (term.value === 'passing') return evalCheck(node, vars) === 'pass';
-    // UXP-145: structural + artifact axes — all pure reads of the node object.
+    // QX-1: structural + artifact axes — all pure reads of the node object.
     if (term.value === 'leaf')      return !(node.children || []).length;
     if (term.value === 'parent')    return (node.children || []).length > 0;
     if (term.value === 'collapsed') return !!node.collapsed;
@@ -8365,7 +8365,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     return (parseTodo(node.text || '', states).priority || '') === term.value;
   }
   if (term.kind === 'has') {
-    // UXP-145: reserved has: words read the node's own arrays BEFORE the property
+    // QX-1: reserved has: words read the node's own arrays BEFORE the property
     // scan, so `has:dice` etc. mean "carries that pill/structure". A user property
     // literally keyed `dice`/`children`/`footnote` still matches via the fall-through,
     // preserving the has:<propkey> contract (a non-empty array wins; else the scan runs).
@@ -8376,7 +8376,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     return (node.props || []).some(p => p.key.toLowerCase() === term.value);
   }
   if (term.kind === 'propnum') {
-    // UXP-148: numeric comparison. Coerce the property's value with Number; a non-finite
+    // QX-4: numeric comparison. Coerce the property's value with Number; a non-finite
     // result (a word, a blank, a date-shaped string) never matches, so cost:>100 quietly
     // skips a point whose cost is "soon" rather than throwing or comparing NaN. Dates belong
     // to due:/start:, so a date string is deliberately not numeric here.
@@ -8406,13 +8406,13 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     const ep = parseDueDate(prop.val);
     if (ep === null) return false;
     if (term.op === 'overdue') return ep < dueDateToday();
-    if (term.op === 'window') return ep >= dueDateToday() && ep <= term.epochDay;  // UXP-146
+    if (term.op === 'window') return ep >= dueDateToday() && ep <= term.epochDay;  // QX-2
     if (term.op === '<') return ep < term.epochDay;
     if (term.op === '>') return ep > term.epochDay;
     return ep === term.epochDay;
   }
   if (term.kind === 'var') {
-    // UXP-147: match the DECLARING point. A declaration has a truthy expr (the same test
+    // QX-3: match the DECLARING point. A declaration has a truthy expr (the same test
     // collectVars uses); a display-only reference pill has an empty expr, so it never matches.
     return (node.vars || []).some(v => v.expr && (v.name || '').toLowerCase() === term.value);
   }

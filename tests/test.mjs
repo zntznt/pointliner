@@ -7500,11 +7500,11 @@ test('termMatchesNode — a quoted prop matches by contains; bare matches exact'
   assert.equal(c.termMatchesNode({ kind: 'prop', key: 'area', value: 'home renovation' }, node, SEQS), true);
 });
 
-// ── UXP-145: is:/has: structural + artifact + symmetry filters ───────────────
+// ── QX-1: is:/has: structural + artifact + symmetry filters ───────────────
 const isM = (val, node) => c.termMatchesNode({ kind: 'is', value: val }, node, SEQS);
 const hasM = (val, node) => c.termMatchesNode({ kind: 'has', value: val }, node, SEQS);
 
-test('UXP-145 parseSearchQuery — the new is: verbs tokenize as is: terms, not text', () => {
+test('QX-1 parseSearchQuery — the new is: verbs tokenize as is: terms, not text', () => {
   for (const v of ['passing', 'pill', 'random', 'leaf', 'parent', 'collapsed', 'expanded']) {
     const t = host(c.parseSearchQuery('is:' + v))[0];
     assert.equal(t.kind, 'is', v);
@@ -7514,7 +7514,7 @@ test('UXP-145 parseSearchQuery — the new is: verbs tokenize as is: terms, not 
   assert.equal(host(c.parseSearchQuery('is:banana'))[0].kind, 'text');
 });
 
-test('UXP-145 is:passing / is:leaf / is:parent / is:collapsed / is:expanded', () => {
+test('QX-1 is:passing / is:leaf / is:parent / is:collapsed / is:expanded', () => {
   // is:passing requires an actual passing check; distinct from -is:failing
   const passing = { text: '', props: [{ key: 'check', val: '1 < 2' }] };
   const failing = { text: '', props: [{ key: 'check', val: '2 < 1' }] };
@@ -7537,7 +7537,7 @@ test('UXP-145 is:passing / is:leaf / is:parent / is:collapsed / is:expanded', ()
   assert.equal(isM('expanded', { text: 'x' }), true);      // undefined collapsed reads as expanded
 });
 
-test('UXP-145 is:pill and is:random over the sidecar arrays', () => {
+test('QX-1 is:pill and is:random over the sidecar arrays', () => {
   const bare = { text: 'x' };
   assert.equal(isM('pill', bare), false);
   assert.equal(isM('random', bare), false);
@@ -7553,7 +7553,7 @@ test('UXP-145 is:pill and is:random over the sidecar arrays', () => {
   assert.equal(isM('random', { text: 'x', vars: [{ key: 'a', kind: 'pick' }] }), true);     // a pick var IS random
 });
 
-test('UXP-145 has:<sidecar> and has:children / has:footnote, with props fall-through', () => {
+test('QX-1 has:<sidecar> and has:children / has:footnote, with props fall-through', () => {
   assert.equal(hasM('dice', { dice: [{ key: 'a' }] }), true);
   assert.equal(hasM('var', { vars: [{ key: 'a' }] }), true);   // token 'var' -> field 'vars'
   assert.equal(hasM('seq', { seq: [{ key: 'a' }] }), true);
@@ -7570,8 +7570,8 @@ test('UXP-145 has:<sidecar> and has:children / has:footnote, with props fall-thr
   assert.equal(hasM('owner', { props: [] }), false);
 });
 
-// ── UXP-146/147: relative date windows + var: declaration lookup ─────────────
-test('UXP-146 parseSearchQuery — due:week/month become op:window; < / > and bad values unaffected', () => {
+// ── QX-2/147: relative date windows + var: declaration lookup ─────────────
+test('QX-2 parseSearchQuery — due:week/month become op:window; < / > and bad values unaffected', () => {
   const today = c.dueDateToday();
   const wk = host(c.parseSearchQuery('due:week'))[0];
   assert.equal(wk.kind, 'due'); assert.equal(wk.op, 'window'); assert.equal(wk.epochDay, today + 7);
@@ -7583,7 +7583,7 @@ test('UXP-146 parseSearchQuery — due:week/month become op:window; < / > and ba
   assert.equal(host(c.parseSearchQuery('due:overdue'))[0].op, 'overdue');
 });
 
-test('UXP-146 termMatchesNode — due:week matches today..today+7 inclusive, not before/after', () => {
+test('QX-2 termMatchesNode — due:week matches today..today+7 inclusive, not before/after', () => {
   const today = c.dueDateToday();
   const iso = ep => c.formatEpochDays(ep);
   const dueTerm = host(c.parseSearchQuery('due:week'))[0];
@@ -7599,7 +7599,7 @@ test('UXP-146 termMatchesNode — due:week matches today..today+7 inclusive, not
   assert.equal(c.termMatchesNode(startTerm, { props: [{ key: 'start', val: iso(today + 31) }] }, SEQS), false);
 });
 
-test('UXP-147 var:NAME parses and matches the DECLARING point, not a reference pill', () => {
+test('QX-3 var:NAME parses and matches the DECLARING point, not a reference pill', () => {
   const t = host(c.parseSearchQuery('var:strength'))[0];
   assert.equal(t.kind, 'var'); assert.equal(t.value, 'strength');
   const varM = (name, node) => c.termMatchesNode({ kind: 'var', value: name }, node, SEQS);
@@ -7612,8 +7612,8 @@ test('UXP-147 var:NAME parses and matches the DECLARING point, not a reference p
   assert.equal(varM('other', { vars: [{ name: 'strength', expr: '10' }] }), false);
 });
 
-// ── UXP-148: numeric comparison on properties (the real parser extension) ────
-test('UXP-148 parseSearchQuery — key:>N parses to propnum; longest-match >= over >; signs and decimals', () => {
+// ── QX-4: numeric comparison on properties (the real parser extension) ────
+test('QX-4 parseSearchQuery — key:>N parses to propnum; longest-match >= over >; signs and decimals', () => {
   const p = q => host(c.parseSearchQuery(q))[0];
   let t = p('cost:>100');
   assert.equal(t.kind, 'propnum'); assert.equal(t.key, 'cost'); assert.equal(t.op, '>'); assert.equal(t.num, 100);
@@ -7627,7 +7627,7 @@ test('UXP-148 parseSearchQuery — key:>N parses to propnum; longest-match >= ov
   assert.equal(p('cost:>high').kind, 'text');   // op but no number → falls through to literal text
 });
 
-test('UXP-148 termMatchesNode — numeric compare, with non-numeric and date values rejected', () => {
+test('QX-4 termMatchesNode — numeric compare, with non-numeric and date values rejected', () => {
   const m = (q, props) => c.termMatchesNode(host(c.parseSearchQuery(q))[0], { props }, SEQS);
   assert.equal(m('cost:>100', [{ key: 'cost', val: '150' }]), true);
   assert.equal(m('cost:>100', [{ key: 'cost', val: '100' }]), false);   // strict >
