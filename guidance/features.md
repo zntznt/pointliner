@@ -531,7 +531,12 @@ Implemented:
   month **Calendar** (`agendaMonthCells` over `calendarMonthGrid`, ‹ ›/Today nav, up to 3 chips/cell
   then `+N`). Timeline and Calendar are independent toggles (persisted `agendaBars`). The two layout
   models are **pure cores**, test-pinned. Search operators `due:`/`start:` take
-  `today`/`overdue`/`<date`/`>date`. Pure cores: `parseDueDate`, `formatDueDate`, `collectDueDates`,
+  `today`/`overdue`/`<date`/`>date`, and **UXP-146** added the forward relative windows
+  `week`/`month` (`op:'window'`, matching today through today+7/+30 inclusive; a recorded
+  value-vocabulary growth of the date arm, no new sigil). **UXP-147** added `var:NAME` (a
+  `kind:value` operator like `state:`/`priority:`, matching the point whose `node.vars` has a
+  declaration, a truthy `expr`, named NAME; reference pills with empty `expr` never match).
+  Pure cores: `parseDueDate`, `formatDueDate`, `collectDueDates`,
   `agendaGantt`, `agendaMonthCells`, `calendarMonthGrid`, `addMonths`.
 ### Linking, workspace & knowledge (PKM)
 

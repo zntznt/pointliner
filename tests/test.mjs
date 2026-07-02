@@ -7569,3 +7569,45 @@ test('UXP-145 has:<sidecar> and has:children / has:footnote, with props fall-thr
   assert.equal(hasM('owner', { props: [{ key: 'owner', val: 'zeo' }] }), true);
   assert.equal(hasM('owner', { props: [] }), false);
 });
+
+// ── UXP-146/147: relative date windows + var: declaration lookup ─────────────
+test('UXP-146 parseSearchQuery — due:week/month become op:window; < / > and bad values unaffected', () => {
+  const today = c.dueDateToday();
+  const wk = host(c.parseSearchQuery('due:week'))[0];
+  assert.equal(wk.kind, 'due'); assert.equal(wk.op, 'window'); assert.equal(wk.epochDay, today + 7);
+  const mo = host(c.parseSearchQuery('start:month'))[0];
+  assert.equal(mo.kind, 'start'); assert.equal(mo.op, 'window'); assert.equal(mo.epochDay, today + 30);
+  // an explicit bound is NOT a window (< / > keep their compare meaning)
+  assert.equal(host(c.parseSearchQuery('due:<week'))[0].kind, 'text');  // 'week' is not a date, so <week falls to text
+  // overdue still wins
+  assert.equal(host(c.parseSearchQuery('due:overdue'))[0].op, 'overdue');
+});
+
+test('UXP-146 termMatchesNode — due:week matches today..today+7 inclusive, not before/after', () => {
+  const today = c.dueDateToday();
+  const iso = ep => c.formatEpochDays(ep);
+  const dueTerm = host(c.parseSearchQuery('due:week'))[0];
+  const node = d => ({ props: [{ key: 'due', val: iso(d) }] });
+  assert.equal(c.termMatchesNode(dueTerm, node(today), SEQS), true);       // today: in
+  assert.equal(c.termMatchesNode(dueTerm, node(today + 7), SEQS), true);    // +7: inclusive end
+  assert.equal(c.termMatchesNode(dueTerm, node(today + 8), SEQS), false);   // +8: past the window
+  assert.equal(c.termMatchesNode(dueTerm, node(today - 1), SEQS), false);   // yesterday: before today
+  assert.equal(c.termMatchesNode(dueTerm, { props: [] }, SEQS), false);     // undated
+  // start:month over the start key
+  const startTerm = host(c.parseSearchQuery('start:month'))[0];
+  assert.equal(c.termMatchesNode(startTerm, { props: [{ key: 'start', val: iso(today + 30) }] }, SEQS), true);
+  assert.equal(c.termMatchesNode(startTerm, { props: [{ key: 'start', val: iso(today + 31) }] }, SEQS), false);
+});
+
+test('UXP-147 var:NAME parses and matches the DECLARING point, not a reference pill', () => {
+  const t = host(c.parseSearchQuery('var:strength'))[0];
+  assert.equal(t.kind, 'var'); assert.equal(t.value, 'strength');
+  const varM = (name, node) => c.termMatchesNode({ kind: 'var', value: name }, node, SEQS);
+  // a declaration has a truthy expr
+  assert.equal(varM('strength', { vars: [{ name: 'strength', expr: '10' }] }), true);
+  assert.equal(varM('strength', { vars: [{ name: 'Strength', expr: 'pi*r' }] }), true);   // case-insensitive
+  // a display-only reference pill has an empty expr, so it does NOT match
+  assert.equal(varM('strength', { vars: [{ name: 'strength', expr: '' }] }), false);
+  assert.equal(varM('strength', { vars: [] }), false);
+  assert.equal(varM('other', { vars: [{ name: 'strength', expr: '10' }] }), false);
+});

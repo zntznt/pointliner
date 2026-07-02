@@ -85,7 +85,9 @@ Type words in the search box and **every word must appear**. The operators:
 - `is:pill` finds a point carrying any pill; `is:random` narrows to the re-rollable ones (dice,
   generators). `has:dice` (and `has:math`, `has:est`, `has:grammar`, `has:markov`, `has:var`,
   `has:seq`) find a specific kind; `has:children` / `has:footnote` find sub-points or a footnote.
-- `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date.
+- `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date, and
+  `due:week` / `due:month` catch anything due within the next 7 or 30 days (also `start:week` / `start:month`).
+- `var:strength` finds the point that declares a variable.
 - `has:key` / `key:value` filter by a property.
 
 Anything malformed stays a literal text term, so a stray `:` or `#` never breaks the search.

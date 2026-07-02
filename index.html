@@ -1627,10 +1627,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>is:pill</kbd><kbd>is:random</kbd><kbd>has:dice</kbd><span>carries a pill / a re-rollable one; <code>has:</code> also takes <code>math est grammar markov var seq</code></span></div>
         <div class="sh-row"><kbd>has:children</kbd><kbd>has:footnote</kbd><span>has sub-points / a footnote</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
+        <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next 7 / 30 days (also <code>start:week</code>/<code>month</code>)</span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
         <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code>; quote a spaced value: <code>area:"Home Reno"</code></span></div>
-        <div class="sh-row"><kbd>state:value</kbd><span>sequence status, like <code>state:waiting</code> or <code>state:done</code></span></div>
+        <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><span>to-do priority, like <code>priority:a</code> or <code>priority:b</code></span></div>
       </div>
     </div>
@@ -8248,7 +8249,12 @@ function parseSearchQuery(q) {
       const raw = t[2]; let op = '=', dval = raw;
       if (raw[0] === '<') { op = '<'; dval = raw.slice(1); }
       else if (raw[0] === '>') { op = '>'; dval = raw.slice(1); }
-      if (dval.toLowerCase() === 'overdue') { terms.push({ neg, kind, op: 'overdue' }); }
+      const lc = dval.toLowerCase();
+      if (lc === 'overdue') { terms.push({ neg, kind, op: 'overdue' }); }
+      // UXP-146: forward relative windows (this week / month). op:'window' matches a
+      // date from today through today+N inclusive. A recorded value-vocabulary growth of
+      // the date arm (no new sigil), reusing the epoch-day machinery. `< / >` don't apply.
+      else if ((lc === 'week' || lc === 'month') && op === '=') { terms.push({ neg, kind, op: 'window', epochDay: dueDateToday() + (lc === 'week' ? 7 : 30) }); }
       else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
     }
     else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });
@@ -8256,6 +8262,9 @@ function parseSearchQuery(q) {
     // letter, case-insensitive, stored uppercase like the [#A] marker. Placed before the generic
     // prop arm so `priority` is not read as a free-form key:value property lookup.
     else if ((t = tok.match(/^priority:([A-Za-z])$/i))) terms.push({ neg, kind: 'priority', value: t[1].toUpperCase() });
+    // UXP-147: var:NAME finds the point that DECLARES variable NAME (not reference pills).
+    // Before the generic prop arm (like priority:) so `var` is not a free-form key:value.
+    else if ((t = tok.match(/^var:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'var', value: t[1].toLowerCase() });
     else if ((t = tok.match(/^([\w][\w-]*):([\w][\w-]*)$/)) && t[1].toLowerCase() !== 'is') terms.push({ neg, kind: 'prop', key: t[1].toLowerCase(), value: t[2].toLowerCase() });
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
   }
@@ -8371,9 +8380,15 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     const ep = parseDueDate(prop.val);
     if (ep === null) return false;
     if (term.op === 'overdue') return ep < dueDateToday();
+    if (term.op === 'window') return ep >= dueDateToday() && ep <= term.epochDay;  // UXP-146
     if (term.op === '<') return ep < term.epochDay;
     if (term.op === '>') return ep > term.epochDay;
     return ep === term.epochDay;
+  }
+  if (term.kind === 'var') {
+    // UXP-147: match the DECLARING point. A declaration has a truthy expr (the same test
+    // collectVars uses); a display-only reference pill has an empty expr, so it never matches.
+    return (node.vars || []).some(v => v.expr && (v.name || '').toLowerCase() === term.value);
   }
   return stripMd(textForDisplay(node)).toLowerCase().includes(term.value)
     || (!!node.note && node.note.toLowerCase().includes(term.value));
@@ -19724,8 +19739,10 @@ const GUIDE = [
       { syn:'has:dice (math, est, grammar, markov, var, seq)', desc:'carries that kind of pill' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
+      { syn:'var:name',               desc:'the point that declares a variable (var:strength)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
+      { syn:'due:week / due:month',   desc:'due within the next 7 / 30 days (also start:week/month)' },
       { syn:'start:<date',            desc:'started before date (YYYY-MM-DD or today±N)' },
     ] },
   { id:'saved-searches', cat:'getting-around',

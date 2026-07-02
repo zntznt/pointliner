@@ -90,8 +90,9 @@ Turn the outline into a lightweight planner.
   `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` flags, structure and artifact flags
   (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus
   `has:children` / `has:footnote` and `has:dice` / `has:math` / `has:est` / `has:grammar` / `has:markov`
-  / `has:var` / `has:seq`), date and property operators (`due:overdue`, `priority:a`, `has:key`,
-  `key:value`), exact `"phrases"`, and `-` to exclude. Star a search to save it.
+  / `has:var` / `has:seq`), date and property operators (`due:overdue`, `due:week` / `due:month`,
+  `priority:a`, `var:name`, `has:key`, `key:value`), exact `"phrases"`, and `-` to exclude. Star a
+  search to save it.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 
 ## Linking and connecting notes
