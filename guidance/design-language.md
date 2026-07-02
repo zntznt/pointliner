@@ -216,6 +216,14 @@ editable content and `text-transform` would lie about it.
   strip's single primary commit action wears the solid accent at the same chip scale; text
   fields keep field chrome at the strip's density. A new docked strip adopts this grammar
   rather than minting its own (decided 2026-07-01, capture aligned to agenda).
+  **Capture layout (re-evaluated and defended 2026-07-01):** the strip docks and never
+  navigates (a modal would hide the outline a brain-dump references); the text field
+  leads the row on every width, content before chrome, with destination and commit
+  following; the strip carries no dismiss button, it closes the way it opened (the
+  toolbar toggle, the chord, or Esc), same as the agenda; the transient manager row
+  stays in the strip because it is the slot-chord teaching surface; capture feedback
+  (running count, empty-draft hint) rides the standard toast per the one-feedback-pattern
+  rule, so the strip carries no private feedback line and its height never moves mid-dump.
 
 **Decision: the indent thread.** Nesting depth gets a physical trace: a hairline at every
 indent step, painted per row via a repeating gradient clipped to `--depth-w` (set in

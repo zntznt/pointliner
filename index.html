@@ -979,7 +979,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cap-caret{font-size:10px;color:var(--muted);transition:transform .12s}
 .cap-dest-btn.open .cap-caret{transform:rotate(180deg)}
-.cap-slot-n{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--muted) 22%,transparent);color:var(--fg);font-family:var(--mono);font-size:10px;font-weight:700;flex-shrink:0}
+.cap-slot-n{display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--muted) 22%,transparent);color:var(--fg);font-family:var(--mono);font-size:10px;font-weight:700;flex-shrink:0} /* 14px fits inside the 11px/1.4 chip content box, so badge chips and the Add chip share one height */
 /* the input grows with content; single-row default */
 .cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:13px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 9px;outline:none;min-height:24px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto}
 .cap-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
@@ -989,11 +989,8 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-go:hover{background:var(--acc);filter:brightness(1.07)}
 .cap-go:disabled{background:var(--acc);opacity:.4;cursor:not-allowed;filter:none}
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-.cap-close{flex:0 0 auto;width:24px;height:22px;font-size:14px}
-.cap-confirm{font-size:11px;color:var(--ok);font-weight:600;white-space:nowrap;min-height:1.1em;padding:0 2px}
-.cap-confirm:empty{display:none}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
-.cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:3px 0 1px;border-top:1px dashed var(--bdr)}
+.cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:3px 0 1px;border-top:1px solid var(--bdr)} /* solid hairline: the .ag-pane secondary-bar language; dashed is the broken-pill voice */
 .cap-chip{display:inline-flex;align-items:stretch;max-width:230px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
 /* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
 .cap-chip:hover{border-color:var(--muted)}
@@ -1007,7 +1004,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 /* plain .ag-toggle chip (DL §4 docked-strip grammar); dashed borders are the broken-pill language, not an affordance */
 .cap-add{font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 .cap-add:hover{color:var(--fg);border-color:var(--muted)}
-.cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-btn:focus-visible,.cap-close:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-btn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
 .cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:100%;box-sizing:border-box}
 .cal-open>.cal,.cal-open .cal{display:block}
@@ -1368,7 +1365,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* capture strip on narrow screens: give the input the full width by wrapping the dest chip
      + Capture onto their own line, so the placeholder doesn't cram into ~130px */
   .cap-row{flex-wrap:wrap}
-  .cap-input{order:-1;flex:1 0 100%;min-height:38px}
+  .cap-input{flex:1 0 100%;min-height:38px}
   .cap-go{flex:1 1 auto}
   .logo .logo-text{display:none}
   .logo{padding:4px 3px}
@@ -1548,8 +1545,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      The 16px input stops iOS focus-zoom. Pick/remove overlays extend away from each
      other so the destructive ✕ never wins ambiguous taps. */
   .cap-input{min-height:38px;font-size:16px}
-  .cap-close,.cap-chip-rm,.cap-chip-pick,.cap-add,.cap-dest-btn,.cap-go{position:relative}
-  .cap-close::after,.cap-add::after,.cap-dest-btn::after,.cap-go::after{content:'';position:absolute;inset:-8px -2px}
+  .cap-chip-rm,.cap-chip-pick,.cap-add,.cap-dest-btn,.cap-go{position:relative}
+  .cap-add::after,.cap-dest-btn::after,.cap-go::after{content:'';position:absolute;inset:-8px -2px}
   /* the chip's overflow:hidden (corner rounding) would clip the overlays; on touch the
      chip overflows and the children carry the rounding themselves */
   .cap-chip{overflow:visible}
@@ -7676,7 +7673,6 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   dest.setAttribute('aria-label', 'Capture destination: ' + (inbox ? `inbox ${captureSlot === 10 ? '0' : captureSlot}, ${crumbLabel(inbox)}` : 'not set') + '. Click to change.');
   dest.innerHTML = `<span class="cap-caret" aria-hidden="true">▾</span><span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${inbox ? escHtml(crumbLabel(inbox)) : 'set an inbox…'}</span>`;
   dest.addEventListener('click', () => { captureManage = !captureManage; renderCaptureStrip(); });
-  row.appendChild(dest);
 
   const input = document.createElement('textarea');
   input.id = 'cap-input'; input.className = 'cap-input'; input.rows = 1; input.value = captureDraft;
@@ -7686,21 +7682,14 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   input.addEventListener('input', () => { captureDraft = input.value; capBtn.disabled = !inbox || !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', capInputKeydown);
   row.appendChild(input);
+  row.appendChild(dest); // input leads on every width (content before chrome); destination, commit, dismiss follow
 
   const capBtn = document.createElement('button'); capBtn.type = 'button'; capBtn.className = 'cap-go'; capBtn.textContent = 'Capture';
   capBtn.disabled = !inbox || !(captureDraft || '').trim(); capBtn.addEventListener('click', () => doCapture());
   row.appendChild(capBtn);
 
-  const closeBtn = document.createElement('button'); closeBtn.type = 'button'; closeBtn.className = 'cap-close close-btn'; closeBtn.setAttribute('aria-label', 'Close capture'); setIcon(closeBtn, { fa: 'fa-solid fa-xmark', fb: '✕' });
-  closeBtn.addEventListener('click', closeCapture);
-  row.appendChild(closeBtn);
+  // no in-strip close: the toolbar toggle is the open AND close door (aria-pressed), same as the agenda strip; Esc and the chord also close
   strip.appendChild(row);
-
-  // ── transient capture confirmation (a running count; NOT a static how-to — the shortcut
-  //    hints live in the ? panel, the concept guide, and the docs) ──
-  const conf = document.createElement('div'); conf.className = 'cap-confirm'; conf.setAttribute('aria-live', 'polite');
-  if (captureCount > 0) conf.textContent = `✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'}`;
-  strip.appendChild(conf);
 
   // ── row 2 (manager): slot chips + add/remove — shown only when the ▾ is open ──
   if (captureManage) strip.appendChild(buildCaptureManager());
@@ -7787,7 +7776,7 @@ function doCapture() {
   const inbox = inboxAt(captureSlot) || resolveInbox();
   const text = (captureDraft || '').replace(/\s+$/, ''); // drop trailing blank lines/space
   if (!inbox) { captureManage = true; renderCaptureStrip(); return; }  // no destination → open the picker
-  if (!text.trim()) { const c = document.querySelector('.cap-confirm'); if (c) c.textContent = 'Type something to capture'; return; } // P4: never silent (UXP-83)
+  if (!text.trim()) { flashHint('Type something to capture'); return; } // P4: never silent (UXP-83); the toast is the one feedback channel
   pushUndo();
   const n = mkNode(text);
   n.type = deriveTypeFromText(text) || 'ul';
@@ -7799,7 +7788,8 @@ function doCapture() {
   render();
   captureCount++;
   captureDraft = '';
-  flashHint(`Captured to ${crumbLabel(inbox)}`);
+  // the running count rides the canonical toast (§6 one-pattern rule); no in-strip feedback line
+  flashHint(`✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'} · ${crumbLabel(inbox)}`);
   renderCaptureStrip(); // clear + keep the strip open for the next capture (brain-dump flow)
 }
 
