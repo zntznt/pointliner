@@ -1235,6 +1235,101 @@ Defects found by the chrome design review, fixed together — recorded so the de
 - **Tag / link presence filters** (`has:tag`, `has:backlink`, `is:broken-link`) — the read is doc-wide (`collectTags`/`collectLinks`), not available to `termMatchesNode` as handed. Feasible but needs threading the index in, so a separate design decision, not a one-liner.
 
 **Batch + register plan:** UXP-145 = batch 1 (one PR, one regex widen + two existing arms). UXP-146 + UXP-147 = batch 2 (relative windows + `var:`, one PR, both small new-arm changes). UXP-148 = batch 3 (numeric compare, ships alone for focused parser-precedence review). **Docs each batch must freshen in the same change:** the `?` panel Search rows (grep the `is:todo`/`is:done` `sh-row`), the GUIDE array search entry (`covers:['search']`, the drift-guard requires every typed operator appear), the focus-shown search legend under the box, `guide/getting-around.md` search section, `guide/features.md` (user inventory) + `guidance/features.md` (engine reference), and the test pins in `tests/test.mjs` + `load-cores.mjs`.
+## Seven-persona design review (2026-07-02, THIRD blind pass) — UXP-149…163
+
+A third BLIND re-audit run after Reviews 1 (UXP-102…120) and 2 (UXP-121…144) shipped: same
+seven-persona fleet, no knowledge that any prior review happened, told NOT to mine this ledger, and
+explicitly told the app is mature and a short honest list is the right outcome. **21 raw → 15
+survived adversarial verification, 6 refuted.** No high-severity findings; three mediums, the rest
+low. The verify pass reframed several fixes away from hard-rule violations (a sequence `||` split, a
+`[/subtree]` cookie marker, tightening `parseTodo`) toward zero-syntax alternatives, and flagged two
+findings whose only honest fix is a **model extension needing owner sign-off** (logged below as
+DECISION-PENDING, not batched). Recurring theme: **provenance divergence** — the same content renders
+differently by which door made it (oracle tint, est debut). Second theme: **silent-truncation /
+dead-end states** that confirm a non-event without teaching the next step.
+
+### UXP-149 ☐ Oracle valence tint is dialog-only; the recommended demo imports flat (P1/P5, solo) 🟡  [Batch 1]
+- **Problem:** the `.gr-yes`/`.gr-no` valence plate (UXP-140) is gated on a stored `g.oracle` flag set in exactly ONE place — `openOracleDialog` onSubmit. The two most natural ways to make an oracle both skip it: typed `{Yes 3 | No 1}` shorthand (promotes via `promoteBraceBody`) and imported docs. The shipped `guide/solo-rpg/oracle-play/oracle-play-demo.opml` stores its swing oracle as shorthand, so the recommended worked example renders every answer untinted. Same `{Yes|No}` content, different render by provenance.
+- **Rule:** P1/P5 (same content, same render). Low-end medium (the tint is a faint ~16% color-mix; glanceability not blocking).
+- **Target:** make valence a **content-sniff at render time** in `renderGrammarPill` — compute it when the record's alternatives are a pure Yes/No family (all templates match `/^(yes|no)\b/i`), regardless of creation path. Then typed, imported, and dialog-made oracles tint identically and the demo comes alive. The `roll.oracle` set-flag can stay as a fast path or be dropped. Do NOT take the opt-in arm (set `oracle:true` in `promoteBraceBody`) — it still leaves hand-typed oracles untinted. Keep the whisper `--ok`/`--muted` plates, ink stays `--fg`. Verify with the demo opml in-browser.
+
+### UXP-150 ☐ Whole-folder search silently truncates at 50 with a count that reads complete (P4) 🟡  [Batch 1]
+- **Problem:** `searchWorkspace(query, index, currentDocId, cap = 50)` runs the full query language across every doc but hard-caps at 50; `renderWorkspaceSearchResults` reads `Found in other documents · ${results.length}` with no truncation signal. A planner running `is:overdue`/`priority:A` across a mature notebook can exceed 50 and conclude they have seen everything overdue. The in-doc filter has no such cap — the cross-doc surface is the only search path that silently clips.
+- **Rule:** P4 (no silent success/failure), on the query a serious planner leans on hardest.
+- **Target:** when the result set hits the cap, mark it truncated (return `{items, capped:true}` or equivalent) and render `Found in other documents · 50+`. The `capped` flag + copy is the load-bearing, fully-conformant fix — a trust issue, not data loss (every hit is still reachable via in-doc search after jumping in). A raised cap that still clips silently does NOT satisfy P4; raising the cap or "50 of 214" walk-to-count is optional. Pin the cap/flag.
+
+### UXP-151 ☐ Default-tier users can't recover an unnoticed destructive edit after reload/crash (P4/service) 🟡  [Batch 2]
+- **Problem:** for the universal default tier (no file handle, no folder), the "recover from a mistake" leg is unsupported. Autosave debounces into ONE `AUTOSAVE_KEY` slot (+ one OPFS copy), overwrite-in-place, no rolling slot; `undoStack` is in-memory, cleared at `adoptDoc`, never persisted. In pure default mode `unsavedToDisk()` is false so the `beforeunload` guard doesn't fire. The narrow-but-real unhandled slice: a destructive edit the user does NOT notice in-session, then reload/crash before undoing.
+- **Rule:** P4 (a recovery path exists in-session — the UXP-12 "Ctrl+Z to undo" flash — but doesn't survive a reload).
+- **Target:** frame as *making the Ctrl+Z promise survive a reload*. Before `writeLocalAutosave` overwrites `AUTOSAVE_KEY`, and at most once per N minutes, copy the OUTGOING value to a second key (`pointliner_autosave_prev`); same for OPFS. Add one File-menu row "Restore earlier version" behind the `unsavedToDisk()` confirm. O(1) storage, no backend; gate the prev-slot write past `STORAGE_SOFT_LIMIT` if the ceiling is tight (folder tier covers those users). No em dashes in copy.
+
+### UXP-152 ☐ Examples doc is a destroy-on-first-contact one-shot; the promised re-entry was never built (P2/service) 🟢  [Batch 2]
+- **Problem:** the live re-rollable Examples doc (`FIRST_RUN_EXAMPLES`) shows only on a fresh boot and is destroyed on the first keystroke (`markDirty` clears `_showingExamples`) or on "Start a blank outline," with no re-entry (`btn-examples`/`openExamples` grep empty). The `maybeShowFirstRun` comment says "Reachable again afterward from the File menu" — a door never built. The shipped re-entry surface is the static Concept guide modal, not the live doc.
+- **Rule:** P2 (honor the code's own stated intent; `CLAUDE.md` says the standard governs where guide/app differ).
+- **Target:** add a File-menu row `btn-examples` → a small `openExamples()` that sets `_adoptingExamples`/`_showingExamples` and runs `adoptDoc(fromOpml(FIRST_RUN_EXAMPLES))` exactly as `maybeShowFirstRun` does, guarded by the same `unsavedToDisk()` confirm New/Open use (never silently discard work). Copy: label "Examples", desc "Open the sample document to explore what pills can do." No em dashes.
+
+### UXP-153 ☐ est pill debut announce drops its result; thinner than a re-roll (P4) 🟢  [Batch 3]
+- **Problem:** `announceDebut` `case 'est'` announces only `Estimate ${rec.expr}` — thinner than every sibling family's debut (dice announces `Rolled ${expr}: ${total}`) and thinner than clicking the same pill once (`rerollEst` announces the full `mean (p5 – p95)`). The est first appearance is less informative than a re-roll.
+- **Rule:** P4 (consistent feedback across the pill family).
+- **Target:** in `announceDebut`'s est branch, carry the sampled summary the way dice does, reusing the one-liner `rerollEst` already runs (`sampleUncertain(rec.expr, EST_N, rec.seed, node)` → `distSummary`); the record and node are in hand at the insert site. Do NOT pursue the finding's "fire the `-rolled` pop on debut" arm — UXP-110 records the pop cannot persist (`applyInlineReplace` re-enters edit mode within a frame); the AT announce IS the intended debut reward. No new syntax.
+
+### UXP-154 ☐ Spent `once` deck toast withholds the reset route (P2, copy) 🟢  [Batch 3]
+- **Problem:** a spent `{once:…}` deck flashes "Deck spent" and the title/aria read "spent" (UXP-138) — a terminal state whose toast withholds the recovery route (contrast delete/cut toasts, which always teach undo). The reset door DOES exist and is discoverable: the visible, AT-reachable `.gr-edit` pencil → `editGrammar` → `openDeckDialog` resets `pos`/`bag`. So this is copy, NOT a P2 reachability gap (the reviewer's "reachable only via the pencil" premise was corrected in verify).
+- **Rule:** P2 (a dead-end toast should point at the door).
+- **Target (copy only):** flash "Deck spent. Edit it to reshuffle" and set the pill title to "Spent. Edit to reset." Reuses the existing Edit-deck path; no new gesture (do NOT add a reset click on the spent body — collides with the deliberate UXP-138 dead-click). Also fix the stale "NO pencil" comment at `renderSeqGenPill`'s header, which now contradicts the code. No em dashes.
+
+### UXP-155 ☐ Priorities above C render as uncolored chips (P5/graphic, importer) 🟢  [Batch 3]
+- **Problem:** the picker/cycler lock to A/B/C (`TODO_PRIOS`), but `parseTodo` accepts any letter, `priorityRank` ranks any charCode, and `priority:` search matches any letter — so `[#D]`/`[#Z]` (org-mode importers run A–E) sort and filter first-class but get no hue (CSS has only `.todo-prio-a/-b/-c`). Accepted in three places, styled in one.
+- **Rule:** P5 (a consistent chip system). Mild harm — the base `.todo-prio` padding/radius + literal `[#D]` text still render, so the P3-4 legibility floor already holds; this is hue consistency.
+- **Target:** give the base `.todo-prio` a muted `--muted` fallback color so any out-of-range letter still reads as a priority chip. Do NOT tighten `parseTodo` to `[#A-Ca-c]` — that silently drops `[#D]` into body text on import (a data-fidelity regression for the exact persona cited). design-language locks the A/B/C bad/warn/info triad, so a single neutral fallback (not new hues for D+) is the consistent move.
+
+### UXP-156 ☐ Non-FSA save status line says "saves to file" but downloads a copy (P1/P4, copy) 🟢  [Batch 3]
+- **Problem:** the broad "downloads misrepresented as saving" framing is MOSTLY already handled (verify corrected it): `dlOpml` flashes the honest `Downloaded "…"`, the Save row is hidden on non-FSA, `maybeBackupNudge` + `#workspace-invite` already point this tier at the durable path. The genuine residue is ONE string: on non-FSA, `Ctrl+S` downloads a fresh copy rather than saving back to a file, yet the status reads `'Unsaved changes. ' + fmtKey('S') + ' saves to file'`.
+- **Rule:** P1/P4 (an accurate status line).
+- **Target:** reword that one status string to reflect "downloads a copy" on the non-FSA tier. No architecture change; skip the flash/invite additions the original finding proposed (they already exist). No em dashes.
+
+### UXP-157 ☐ Toggle buttons flip their accessible NAME while also carrying aria-pressed (P3) 🟢  [Batch 3]
+- **Problem:** `#btn-notes` (default shown) has `aria-label="Hide notes"` AND `aria-pressed="true"`, and `syncNotesBtn()` flips the name with state — so AT announces "Hide notes, toggle button, pressed," which reads as "the hide action is engaged," the opposite of reality. The two channels fight. `#btn-capture`/`#btn-journal`/`#btn-agenda` keep a constant state-neutral name and let `aria-pressed` alone carry state; `#btn-notes` and `#btn-done` are the two odd ones out (toolbar splits 3-vs-2).
+- **Rule:** P3 (a coherent toggle-button a11y model).
+- **Target:** give `#btn-notes` a stable state-neutral name (`aria-label`/`title` = "Notes") and let `aria-pressed` alone signal shown/hidden, matching the three conforming siblings. Same for `#btn-done` ("Done points"). Additive ARIA only — no activation-model change (already real `<button>`s), no caret touch. Update `syncNotesBtn()`/its `#btn-done` twin to stop rewriting the name.
+
+### UXP-158 ☐ Four eyebrow labels drift off the locked .07em tracking (design-language §4) 🟢  [Batch 4]
+- **Problem:** §4 locks ONE eyebrow recipe (10px / 600 / `.07em` caps / `--muted`). ~20 selectors honor it; four drift to `.06em`: `.io-field label` (the label on every dialog field — the loudest), `.guide-nav-group`, `.agg-today-lbl`, `.agg-hover-lbl`. Sub-pixel at 10px, but the "one recipe" decision exists so the caps voice reads as one system (the repo already tracks this drift class — UXP-135).
+- **Rule:** design-language §4 (one eyebrow recipe).
+- **Target:** normalize exactly those four selectors to `letter-spacing:.07em`. Leave `.todo-state`/`.todo-prio` (a different `.72em` component) alone. `.cal-dow`/`.collapse-count` at `.05em` are arguable micro-contexts — if intentional, a one-word comment is the honest resolution, else converge. Pure convergence, zero new decisions.
+
+### UXP-159 ☐ est sparkline uses px letter-spacing inside an em type system (P5/design-language §2) 🟢  [Batch 4]
+- **Problem:** `.est-pill .est-spark` / `.est-preview-spark` tighten glyphs with an absolute `letter-spacing:-.5px` in a type system that is otherwise rigorously relative. Pills render inside markdown headings, so a spark on an `h1.md-h` (2em) or `.zoom-title` scales its glyphs but not the tightening. The one place a hardcoded px tracking slips into the em system.
+- **Rule:** P5 / design-language §2 (relative type units). Minimal harm — the spark is `aria-hidden` decorative rhythm and merely under-tightens at scale (graceful).
+- **Target:** express the tightening in em (`letter-spacing:-.03em`, tuned to 17px body density) so it scales with context. If a px value is genuinely required for mono block-character alignment, leave a one-line comment so it does not read as drift.
+
+### UXP-160 ☐ Row-level surfaces carry a bare 4px radius that belongs to no §4 recipe (design-language §4) 🟢  [Batch 4]
+- **Problem:** §4 locks the radius ladder (`--r-xs:3px`/`--r-sm:6px`/…) and spells the badge as "`--r-xs`+1" (=4px) and keycaps as "radius 4px" — so a bare `4px` on `.todo-state`/`.todo-prio`/`.prop-chip`/keycaps is conformant-by-spelling. The LEAK is the load-bearing half: `.node-row`, `.node-selected>.node-row`, `.node-cursor>.node-row`, `.drop-child-hi>.node-row>.node-content`, and `.fm-title` carry an eyeballed 4px that sits between the ladder's 3px and 6px and belongs to neither recipe.
+- **Rule:** design-language §4 (the radius ladder; §4 never blesses a row/selection/drop radius).
+- **Target:** move those five row-level surfaces onto `--r-sm` so only the sanctioned badge/keycap selectors carry 4px. A `--r-chip:4px` token for the badge/keycap literals is optional polish, not required. (`.fm-title` is the inline-editable file-menu title, kin to `.node-content` which uses `--r-xs` — a leak, not part of the recipe.)
+
+### UXP-161 ☐ `--ring` alpha disagrees between its two homes (tidiness, not an invariant breach) 🟢  [Batch 4]
+- **Problem:** `:root`/dark `--ring` use `.2` alpha; `applyAccentCSS` uses `.25`, and its appended `<style>` always wins, so `.2` renders only as a pre-boot fallback. Real delta, but NOT a §3 "two homes" violation (verify corrected this): §3 explicitly carves the accent-derived tokens — `--acc`, `--acc-fg`, `--ring`, `--bullet-h`, `--qbdr` — OUT of the `:root`+forced-string match rule and assigns them to `applyAccentCSS` as their single home. The `.2` fallback is normal defensive practice.
+- **Rule:** none breached — bottom-of-low tidiness on a non-user-visible 5% focus-ring alpha.
+- **Target (optional):** align the two values (set `:root`/dark `--ring` to `.25`, or `applyAccentCSS` to `.2`) so a future reader sees the effect they expect. Harmless; do only if a batch is already touching that CSS.
+
+### UXP-162 ⊘ Custom sequences only treat literal WAITING as blocked (DECISION-PENDING, needs owner sign-off) 🟢
+- **Problem (real):** `collectActions()` hardcodes `waiting: keyword === 'WAITING'`, so a user-defined sequence `{seq Flow: BACKLOG DOING BLOCKED | SHIPPED}` surfaces every BLOCKED point in the Actions row as a live next-action (no Waiting badge, tier 0) — the opposite of a next-actions list.
+- **Why NOT batched:** this is doubly-documented deliberate scope (two comments at the `keyword === 'WAITING'` site + UXP-129). The finding's headline fix (a second `||` split) would grow the closed one-pipe `active | done` sequence grammar `parseSequence` enforces — the exact P5 violation it invokes. There is no zero-syntax fix: a custom sequence has no place to declare a held band today.
+- **If pursued (owner decision):** own it as a deliberate MODEL extension — a `heldFrom`-style serialized field (mirroring `doneFrom`) set via the sequence dialog, NO new inline syntax — requiring P5 sign-off. Not a coherence bug to close silently.
+
+### UXP-163 ⊘ Subtree rollups / progress cookies stop at direct children (DECISION-PENDING, needs owner sign-off) 🟢
+- **Problem (real for deep trees):** `progressCount`/`tallyMarkers` and `aggregateChildren`/`childPropNumber` (`{= sum(cost)}`) scope to own text + DIRECT children, so a `[/]` cookie or `sum(prop)` on a multi-level Area>Project>task tree reports on immediate sub-headings, not leaves — shallow at the altitude a planner wants.
+- **Why NOT batched:** `ux-discipline.md` pins "scope = own text + direct children" (UXP-20) and explicitly contrasts `words(subtree)` (recurses) with the non-recursing property rollups; the guide teaches it. A `[1/3]` cookie truthfully reports its documented contract. The finding's `[/subtree]` cookie marker is NOT free — today's `[/]`/`[%]` has nothing parameterizable, so a keyword arg grows the closed inventory.
+- **If pursued (owner decision):** only the `sum(prop, subtree)` recursive-scope-arg direction (riding the real `words(subtree)` precedent) is defensible, as a recorded decision with P5 sign-off. Not a defect.
+
+### Closing order (Review 3)
+
+1. **Batch 1 — the two mediums with user reach (UXP-149, 150).** Oracle valence content-sniff (the recommended demo renders flat — highest solo leverage) and the workspace-search truncation signal (a trust break on the planner's hardest query). Both zero-syntax, both need an in-browser check + a pin.
+2. **Batch 2 — durability + the promised door (UXP-151, 152).** The pre-overwrite autosave snapshot + "Restore earlier version" row, and the Examples File-menu re-entry the code comment already promises. Heaviest batch (new storage slot + new File-menu surfaces); share the `unsavedToDisk()` confirm.
+3. **Batch 3 — feedback + copy + a11y (UXP-153, 154, 155, 156, 157).** est debut parity, the spent-deck reset copy, the priority-chip neutral fallback, the non-FSA status reword, the toggle-button aria-pressed unification. Small, mostly one-string or one-rule each.
+4. **Batch 4 — token convergence (UXP-158, 159, 160, 161).** The four `.06em` eyebrows → `.07em`, the est sparkline px → em, the row-radius leak → `--r-sm`, the optional `--ring` alpha align. Pure CSS convergence onto locked tokens; lowest urgency, do as one sweep.
+5. **DECISION-PENDING (UXP-162, 163).** Not batched — surface to the owner. Each needs a model/inventory extension with P5 sign-off, not a code fix. Left here as recorded decisions.
 
 ---
 
