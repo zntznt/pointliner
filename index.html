@@ -201,7 +201,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #fm-levels-group,#fm-levels-row{display:none}
 #fm-levels-row{align-items:center}
 #fm-levels{display:flex;border:1px solid var(--bdr);background:var(--cbg);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;padding:2px;gap:1px;align-items:stretch;margin-left:auto}
-.acc-swatch{width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s,box-shadow .12s;padding:0;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.acc-swatch{width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s,box-shadow .12s;padding:0;flex-shrink:0;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--fg) 10%,transparent)}
 .acc-swatch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .acc-swatch:hover{transform:scale(1.22)}
 .acc-swatch.on{outline:2px solid var(--fg);outline-offset:2px}
@@ -241,7 +241,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .sh-chip:hover{border-color:var(--acc)}
 .sh-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .sh-chip-q{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sh-chip-x{color:var(--muted);font-size:12px;line-height:1;border-radius:3px;padding:0 1px}
+.sh-chip-x{color:var(--muted);font-size:12px;line-height:1;border-radius:var(--r-xs);padding:0 1px}
 .sh-chip-x:hover{color:var(--bad)}
 .sh-chip-x:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* workspace search results (WS-2): cross-doc hits — the interactive island atop the hint panel */
@@ -257,7 +257,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   font-size:12px;display:none;line-height:1;border:none;background:transparent;padding:2px}
 #search-save.on{display:block}
 #search-save:hover,#search-save[aria-pressed="true"]{color:var(--acc)}
-#search-save:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:3px}
+#search-save:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 #search-wrap:has(#search-clear.on) #search-box{padding-right:60px}
 /* Pin the search hint to the viewport edges whenever the window is too narrow to hold
    the centered popup (its content is ~590px, so center-anchoring overflows below ~720px).
@@ -289,7 +289,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .doc-tab-add:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 #breadcrumb-row{display:none;padding:5px 16px;border-top:1px solid var(--bdr);font-size:12px;flex-wrap:wrap;align-items:center;gap:4px;background:var(--hbg)}
 #breadcrumb-row.visible{display:flex}
-.crumb{color:var(--muted);cursor:pointer;border-radius:3px;padding:1px 4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.crumb{color:var(--muted);cursor:pointer;border-radius:var(--r-xs);padding:1px 4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
 .crumb:hover{color:var(--acc)}
 .crumb.current{color:var(--fg);font-weight:500;cursor:default}
 .crumb-sep{color:var(--muted);user-select:none;font-size:11px}
@@ -310,7 +310,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    still overflows at the floor, the title scrolls vertically within the cap. */
 .zoom-title{--zoom-title-size:30px;--zoom-title-max:40vh;font-size:var(--zoom-title-size);font-weight:640;font-family:var(--display-font);font-variation-settings:'opsz' 60;letter-spacing:-.025em;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;white-space:normal;overflow-wrap:break-word;max-height:var(--zoom-title-max);overflow-y:auto;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
-.zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:3px}
+.zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:var(--r-xs)}
 .zoom-title:focus-visible{outline:2px solid color-mix(in srgb,var(--acc) 70%,transparent);outline-offset:1px}
 .zoom-title-base{cursor:default;white-space:normal;overflow-x:visible;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
 
@@ -395,7 +395,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    word as a last resort for a genuinely unbreakable string (long URL/token). word-break
    was eagerly chopping normal words when a non-breakable inline pill starved the line,
    e.g. "{2d6} rooms" splitting "rooms" → "roo/ms" at narrow widths. */
-.node-content{flex:1;min-width:0;outline:none;overflow-wrap:break-word;line-height:var(--lh);padding:1px 3px;border-radius:3px;white-space:pre-wrap}
+.node-content{flex:1;min-width:0;outline:none;overflow-wrap:break-word;line-height:var(--lh);padding:1px 3px;border-radius:var(--r-xs);white-space:pre-wrap}
 .node-content:focus{box-shadow:0 0 0 2px var(--ring)}
 .node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
 /* ── per-point note: a second mirrored flex row (invisible gutter clones keep the
@@ -408,7 +408,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .node-note-row>.bullet{cursor:default}
 .note-mark{width:6px;display:flex;justify-content:center;color:var(--muted);font-size:12px;line-height:0;flex-shrink:0}
 .node-note{flex:1;min-width:0;outline:none;overflow-wrap:break-word;white-space:pre-wrap;
-  font-size:.88em;line-height:1.5;color:var(--muted);padding:1px 3px 2px;border-radius:3px;cursor:text}
+  font-size:.88em;line-height:1.5;color:var(--muted);padding:1px 3px 2px;border-radius:var(--r-xs);cursor:text}
 .node-note[data-editing]{color:var(--fg);box-shadow:0 0 0 2px var(--ring)}
 .node-note:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
 .node-note:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -421,7 +421,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .node-content strong{font-weight:700}
 .node-content em{font-style:italic}
 .node-content u{text-decoration:underline}
-.node-content code{font-family:var(--mono);font-size:.88em;background:var(--cbg);padding:1px 5px;border-radius:3px}
+.node-content code{font-family:var(--mono);font-size:.88em;background:var(--cbg);padding:1px 5px;border-radius:var(--r-xs)}
 .node-content del{text-decoration:line-through;color:var(--del)}
 .md-list{margin:2px 0;padding-left:1.5em}
 .md-list li{margin:1px 0}
@@ -486,7 +486,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-colhead:hover{background:var(--hbg)}
 .mt-colhead:active{cursor:grabbing}
 .mt-colhead.mt-dragover{background:var(--acc)}
-.mt-name-pill{display:inline-block;max-width:100%;padding:1px 7px;border-radius:6px;font-weight:700;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;min-width:1.4em;min-height:1.25em;line-height:1.3;outline:none;background:transparent;transition:background .12s}
+.mt-name-pill{display:inline-block;max-width:100%;padding:1px 7px;border-radius:var(--r-sm);font-weight:700;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;min-width:1.4em;min-height:1.25em;line-height:1.3;outline:none;background:transparent;transition:background .12s}
 .mt-name-pill:hover{background:var(--bg)}
 .mt-name-pill:focus{background:var(--bg);box-shadow:inset 0 0 0 2px var(--ring);overflow:visible;text-overflow:clip}
 .mt-name-pill:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
@@ -512,7 +512,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-base-views{display:flex;align-items:center;gap:4px;flex:1}
 .mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:6px 10px 2px}
 .mt-col-section.mt-col-sep{border-top:1px solid var(--bdr);margin-top:4px;padding-top:6px}
-.mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;gap:12px;outline:none}
+.mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;gap:12px;outline:none}
 .mt-col-item:hover,.mt-col-item:focus{background:var(--bdr)}
 .mt-col-item.on{font-weight:600}
 .mt-col-item.mt-col-danger{color:var(--del)}
@@ -533,7 +533,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-align-bar{display:flex;gap:3px;align-items:center;margin:4px 0 2px;font-size:11px;color:var(--muted)}
 .mt-align-bar button{font-size:11px;padding:1px 6px}
 .mt-align-bar button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
-.md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:6px;margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
+.md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:var(--r-sm);margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
 /* Hashtags read as bounded label chips (the design-language badge recipe: color-mix 14%
@@ -698,7 +698,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-key{font-size:.73em;color:var(--acc);font-weight:600;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:3px 8px;user-select:none;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;align-self:start;margin-top:1px;line-height:1.6}
 .fn-key:hover{background:var(--ring);border-color:var(--acc)}
 .fn-key.hi{background:var(--ring);border-color:var(--acc)}
-.fn-content{outline:none;font:inherit;font-size:16px;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
+.fn-content{outline:none;font:inherit;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
 .fn-content:empty::before{content:'Add a note…';color:var(--muted);opacity:.65;pointer-events:none}
 
 /* node types */
@@ -881,7 +881,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .tp-group+.tp-group{border-top:1px solid var(--bdr);margin-top:3px}
 .tp-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0 0 4px 2px}
 .tp-chips{display:flex;gap:4px;flex-wrap:wrap}
-.tp-chip{padding:2px 9px;border-radius:6px;background:var(--bdr);cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);transition:background .1s,color .1s;user-select:none}
+.tp-chip{padding:2px 9px;border-radius:var(--r-sm);background:var(--bdr);cursor:pointer;font-size:12px;font-weight:700;color:var(--fg);transition:background .1s,color .1s;user-select:none}
 .tp-chip:hover{background:var(--acc);color:var(--acc-fg)}
 .tp-chip.cur{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--acc) 35%,transparent)}
 .tp-chip:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
@@ -900,7 +900,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 #slash-menu.sp-mode{width:auto}
 #size-picker{padding:10px 11px}
 .sp-grid{display:grid;gap:3px;width:max-content;margin:0 auto 7px}
-.sp-cell{width:15px;height:15px;border:1px solid var(--bdr);border-radius:3px;background:var(--bg);cursor:pointer}
+.sp-cell{width:15px;height:15px;border:1px solid var(--bdr);border-radius:var(--r-xs);background:var(--bg);cursor:pointer}
 .sp-cell.on{background:var(--acc);border-color:var(--acc)}
 .sp-label{font-size:12px;font-weight:600;text-align:center;color:var(--fg)}
 .sp-hint{font-size:11px;color:var(--muted);text-align:center;margin-top:3px;white-space:nowrap}
@@ -1028,7 +1028,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .io-seg-btn:hover{border-color:var(--acc)}
 .io-seg-btn.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .io-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
-.io-chip{font-family:var(--mono);font-size:11.5px;line-height:1;padding:4px 9px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.io-chip{font-family:var(--mono);font-size:11.5px;line-height:1;padding:4px 9px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .io-chip:hover{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
 .io-preview{margin-top:8px;min-height:22px;line-height:1.5}
 .io-preview-bad{font-size:12px;color:var(--del)}
@@ -1088,7 +1088,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .guide-entry-title{font-size:13px;font-weight:600;margin-bottom:5px}
 .guide-entry-body{font-size:12.5px;line-height:1.57;margin:0 0 8px;color:var(--fg)}
 .guide-ex{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12px}
-.guide-ex dt code{background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 15%,transparent);border-radius:3px;padding:1px 5px;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.guide-ex dt code{background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:1px 5px;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
 .guide-ex dd{color:var(--muted);align-self:center;margin:0}
 .guide-no-results{color:var(--muted);font-size:12.5px;padding:16px 12px;text-align:center}
 @media(max-width:540px){.guide-nav{width:150px}.guide-pane{padding:12px 14px}}
@@ -1143,7 +1143,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
    here now; a dotted grip (the same radial-gradient idiom as the table row handle)
    sits on it ALWAYS so resizability is discoverable at rest (P2), strengthening to
    accent on hover/drag. */
-.agg-names-resize{flex:0 0 auto;width:11px;align-self:stretch;min-height:40px;max-height:min(46vh,300px);position:relative;cursor:col-resize;touch-action:none;border-radius:3px}
+.agg-names-resize{flex:0 0 auto;width:11px;align-self:stretch;min-height:40px;max-height:min(46vh,300px);position:relative;cursor:col-resize;touch-action:none;border-radius:var(--r-xs)}
 .agg-names-resize::before{content:'';position:absolute;inset:0;margin:auto;width:4px;height:46%;min-height:18px;background:radial-gradient(circle,var(--muted) 1.4px,transparent 1.4px) center/4px 6px repeat-y;opacity:.85}
 .agg-names-resize:hover::before,body.agg-resizing .agg-names-resize::before,.agg-names-resize:focus-visible::before{background-image:radial-gradient(circle,var(--acc) 1.4px,transparent 1.4px);opacity:1}
 .agg-names-resize:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -1247,8 +1247,8 @@ body.agg-resizing{cursor:col-resize;user-select:none}
    it scrolls internally so it never clips. */
 .agc-cell.agd-expanded{align-self:start;z-index:6;height:auto;max-height:min(52vh,360px);overflow-y:auto;box-shadow:var(--sh-2);border:1px solid var(--acc);background:var(--hbg)}
 .agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding:0 1px;flex-shrink:0}
-.agc-cell.today .agc-dom{color:var(--acc);font-weight:700;background:color-mix(in srgb,var(--acc) 18%,transparent);border-radius:3px;padding:0 4px}
-.agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg);flex-shrink:0}
+.agc-cell.today .agc-dom{color:var(--acc);font-weight:700;background:color-mix(in srgb,var(--acc) 18%,transparent);border-radius:var(--r-xs);padding:0 4px}
+.agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:var(--r-xs);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg);flex-shrink:0}
 .agc-item:hover{opacity:.82}
 .agc-item:focus-visible{outline:2px solid var(--acc);outline-offset:1px;opacity:1}
 .agc-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
@@ -1265,7 +1265,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agd-todo{color:var(--acc)}
 .agd-done{color:var(--muted)}
 .agd-dot{opacity:.5}
-.agd-more{font-size:10px;font-weight:600;color:var(--acc);background:transparent;border:none;padding:1px 2px;cursor:pointer;line-height:1.3;flex-shrink:0;text-align:left;border-radius:3px}
+.agd-more{font-size:10px;font-weight:600;color:var(--acc);background:transparent;border:none;padding:1px 2px;cursor:pointer;line-height:1.3;flex-shrink:0;text-align:left;border-radius:var(--r-xs)}
 .agd-more:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
 .agd-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 @media(hover:none){
@@ -1445,7 +1445,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── link picker ([[ trigger) ── */
 #lp-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:260px;max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #lp-menu.on{display:block}
-.lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:var(--r-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
 /* link-and-create: the "+ New point" row reads as a create affordance, not a match */
 .lp-item.lp-create{color:var(--muted);font-style:italic}
@@ -1459,7 +1459,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #brace-menu,#tag-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #brace-menu.on,#tag-menu.on{display:block}
 .bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
-.bm-item{display:flex;align-items:baseline;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px}
+.bm-item{display:flex;align-items:baseline;gap:8px;padding:5px 8px;border-radius:var(--r-sm);cursor:pointer;font-size:13px}
 .bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
 .bm-name{flex:none;font-family:var(--mono)}
 .bm-val{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
@@ -15373,7 +15373,7 @@ function attachDragHandlers(bullet, row, node) {
     // Custom ghost image showing node text (or count when multi-dragging)
     const ghost = document.createElement('div');
     ghost.textContent = dragIds ? `${dragIds.size} points` : (textForDisplay(node) || '…');
-    ghost.style.cssText = 'position:fixed;top:-999px;padding:4px 12px;background:var(--hbg);border:1px solid var(--bdr);border-radius:6px;font-size:14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.15)';
+    ghost.style.cssText = 'position:fixed;top:-999px;padding:4px 12px;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-sm);font-size:14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:var(--sh-1)';
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 16, 16);
     setTimeout(() => ghost.remove(), 0);
