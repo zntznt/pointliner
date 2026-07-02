@@ -442,6 +442,24 @@ test('parseRules — accepts dotted sub-rule names; rejects stray dots', () => {
   assert.equal(c.parseRules('a.: y'), null);   // trailing dot
 });
 
+test('isYesNoOracle — content-sniff: every origin alt leads yes/no, regardless of provenance (UXP-145)', () => {
+  const O = (def, origin) => c.isYesNoOracle({ def, origin, result: 'x' });
+  // a pure Yes/No family (typed shorthand form) → oracle
+  assert.equal(O('origin: Yes | No'), true);
+  assert.equal(O('origin: Yes, and | Yes | No | No, but'), true);   // swing oracle
+  assert.equal(O('origin: Yes 3 | No 1'), true);                    // weighted
+  // NOT an oracle: an alt that isn't yes/no
+  assert.equal(O('origin: Yes | No | Maybe'), false);
+  assert.equal(O('origin: goblin | orc'), false);
+  // "yesterday"/"nope" must NOT match — \b anchors the word
+  assert.equal(O('origin: yesterday | nope'), false);
+  // a stateful deck is never an oracle
+  assert.equal(c.isYesNoOracle({ mode: 'shuffle', items: ['Yes', 'No'] }), false);
+  // honors an explicit origin over order[0]
+  assert.equal(O('junk: a | b\nask: Yes | No', 'ask'), true);
+  assert.equal(c.isYesNoOracle(null), false);
+});
+
 test('fieldParts — a 2-segment ref whose suffix is NOT a modifier', () => {
   assert.deepEqual(host(c.fieldParts('weapon.damage')), { base: 'weapon', field: 'damage' });
   assert.deepEqual(host(c.fieldParts('w.value')), { base: 'w', field: 'value' });
@@ -7488,6 +7506,21 @@ test('parseSearchQuery — the bare key:value form is unchanged (exact, no conta
 test('parseSearchQuery — a bare phrase and a bare word still tokenize normally', () => {
   const terms = host(c.parseSearchQuery('"a b" plain'));
   assert.deepEqual(terms.map(t => [t.kind, t.value]), [['text', 'a b'], ['text', 'plain']]);
+});
+
+test('searchWorkspace — flags .capped when the result set hits the cap (UXP-146)', () => {
+  // a doc of N matching points under one other doc; current doc is excluded
+  const mkDoc = (n) => ({ id: 'r', children: Array.from({ length: n }, (_, i) => ({ id: 'n' + i, text: 'apple ' + i, children: [] })) });
+  const index = { roots: new Map([['other', mkDoc(60)]]), nameByDocId: new Map([['other', 'Other']]) };
+  // read the raw return (not host()/JSON-normalized — that would drop the array's .capped property)
+  const capped = c.searchWorkspace('apple', index, 'current', 50);
+  assert.equal(capped.length, 50, 'stops at the cap');
+  assert.equal(capped.capped, true, 'signals truncation');
+  // under the cap → no flag
+  const small = { roots: new Map([['other', mkDoc(5)]]), nameByDocId: new Map([['other', 'Other']]) };
+  const few = c.searchWorkspace('apple', small, 'current', 50);
+  assert.equal(few.length, 5);
+  assert.ok(!few.capped, 'no truncation flag under the cap');
 });
 
 test('termMatchesNode — a quoted prop matches by contains; bare matches exact', () => {

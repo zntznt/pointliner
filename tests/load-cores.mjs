@@ -158,7 +158,7 @@ export function loadCores() {
     'parseDice', 'rollParsed', 'diceExprStr',
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
-    'parseRules', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
+    'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'fieldParts',
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'collectRules', 'collectLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',

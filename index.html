@@ -12638,6 +12638,9 @@ function searchWorkspace(query, index, currentDocId, cap = 50) {
     for (const c of (root?.children || [])) walk(c);
     if (out.length >= cap) break;
   }
+  // UXP-146: signal truncation so the count doesn't read as complete (P4). The array's items are
+  // unchanged; `.capped` rides on the array object (the sole caller reads it, iteration is unaffected).
+  if (out.length >= cap) out.capped = true;
   return out;
 }
 
@@ -12774,6 +12777,20 @@ function renderSeqGenPill(key, g) {
     + `</span>`;
 }
 
+// UXP-145: is this grammar a pure Yes/No oracle? A CONTENT-SNIFF, not a stored flag — every
+// alternative of its origin rule must lead with yes/no. This replaces the UXP-140 `g.oracle` gate
+// (set only by the oracle dialog), so a typed `{Yes 3 | No 1}` shorthand and an imported oracle
+// tint identically to a dialog-made one (P1/P5: same content, same render). Sniff, not classify:
+// a grammar whose *result* happens to start "Yes" but whose alts aren't all yes/no is NOT tinted.
+function isYesNoOracle(g) {
+  if (!g || g.mode) return false;
+  const parsed = parseRules(g.def);
+  const origin = g.origin || parsed?.order?.[0];
+  const alts = parsed?.rules?.[origin];
+  if (!alts || !alts.length) return false;
+  return alts.every(a => /^(yes|no)\b/i.test(a.template || ''));
+}
+
 function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)"><span class="gr-ico"><i class="fa-solid fa-shuffle" aria-hidden="true"></i></span> ?</span>`;
   if (g.mode) return renderSeqGenPill(key, g);   // a stateful sequence rides on the grammar record
@@ -12781,11 +12798,12 @@ function renderGrammarPill(key, g) {
   // show it (the named-table affordance: tells you what {name} calls)
   const name = !g.anon && g.origin ? g.origin : '';
   const nameTag = name ? `<span class="gr-name" title="Callable as {${escQ(name)}}">${escHtml(name)}</span>` : '';
-  // UXP-140: an oracle answer gets a whisper of valence at the door ONLY (g.oracle, set by the
-  // oracle dialog) — a leading-Yes tints the result plate faintly positive, a leading-No muted.
-  // The INK stays full-contrast --fg (the verdict is load-bearing); only the plate tints. A No is
-  // not an error, so it uses --muted, never --warn. Non-oracle grammar is untouched.
-  const valence = g.oracle ? (/^yes\b/i.test(g.result) ? ' gr-yes' : /^no\b/i.test(g.result) ? ' gr-no' : '') : '';
+  // UXP-140/145: an oracle answer gets a whisper of valence — a leading-Yes tints the result plate
+  // faintly positive, a leading-No muted. The INK stays full-contrast --fg (the verdict is
+  // load-bearing); only the plate tints. A No is not an error, so it uses --muted, never --warn.
+  // Gated on a CONTENT-SNIFF of the alternatives (isYesNoOracle), not a stored flag, so typed and
+  // imported oracles tint like dialog-made ones. Non-oracle grammar is untouched.
+  const valence = isYesNoOracle(g) ? (/^yes\b/i.test(g.result) ? ' gr-yes' : /^no\b/i.test(g.result) ? ' gr-no' : '') : '';
   return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. Click to re-generate` : 'Click to re-generate'}"`
     + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. Click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
@@ -12947,7 +12965,7 @@ function openOracleDialog({ onResult }) {
     validate: v => splitTopLevel(v.body, '|').length >= 2 && !!build(v.body),
     onSubmit: v => {
       const roll = build(v.body);
-      if (roll) { roll.anon = true; roll.oracle = true; onResult(roll); }   // UXP-140: flag for the valence tint
+      if (roll) { roll.anon = true; onResult(roll); }   // UXP-145: valence is now a render-time content-sniff (isYesNoOracle), no stored flag
     },
   });
 }
@@ -17872,7 +17890,9 @@ function renderWorkspaceSearchResults(query) {
   const results = (workspaceDir && workspaceIndex && query)
     ? searchWorkspace(query, workspaceIndex, root.docId) : [];
   if (!results.length) { sec.hidden = true; list.innerHTML = ''; return; }
-  document.getElementById('sh-workspace-title').textContent = `Found in other documents · ${results.length}`;
+  // UXP-146: a truncated set reads "50+" so the count doesn't imply completeness (P4). Every hit is
+  // still reachable — jumping into any doc gives full uncapped in-doc search there.
+  document.getElementById('sh-workspace-title').textContent = `Found in other documents · ${results.length}${results.capped ? '+' : ''}`;
   list.innerHTML = '';
   results.forEach(({ docId, nodeId, title, docName, snippet }) => {
     const row = document.createElement('div');
