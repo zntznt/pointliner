@@ -7611,3 +7611,40 @@ test('UXP-147 var:NAME parses and matches the DECLARING point, not a reference p
   assert.equal(varM('strength', { vars: [] }), false);
   assert.equal(varM('other', { vars: [{ name: 'strength', expr: '10' }] }), false);
 });
+
+// ── UXP-148: numeric comparison on properties (the real parser extension) ────
+test('UXP-148 parseSearchQuery — key:>N parses to propnum; longest-match >= over >; signs and decimals', () => {
+  const p = q => host(c.parseSearchQuery(q))[0];
+  let t = p('cost:>100');
+  assert.equal(t.kind, 'propnum'); assert.equal(t.key, 'cost'); assert.equal(t.op, '>'); assert.equal(t.num, 100);
+  t = p('cost:>=100'); assert.equal(t.op, '>=');    // >= wins longest-match, NOT '>' + text '=100'
+  t = p('score:<=3.5'); assert.equal(t.op, '<='); assert.equal(t.num, 3.5);
+  t = p('temp:<-4');    assert.equal(t.op, '<'); assert.equal(t.num, -4);   // signed
+  // is: is never a numeric prop key
+  assert.equal(p('is:>1').kind, 'text');
+  // a non-numeric value is NOT propnum: it stays the exact key:value (bare) or text
+  assert.equal(p('cost:high').kind, 'prop');
+  assert.equal(p('cost:>high').kind, 'text');   // op but no number → falls through to literal text
+});
+
+test('UXP-148 termMatchesNode — numeric compare, with non-numeric and date values rejected', () => {
+  const m = (q, props) => c.termMatchesNode(host(c.parseSearchQuery(q))[0], { props }, SEQS);
+  assert.equal(m('cost:>100', [{ key: 'cost', val: '150' }]), true);
+  assert.equal(m('cost:>100', [{ key: 'cost', val: '100' }]), false);   // strict >
+  assert.equal(m('cost:>=100', [{ key: 'cost', val: '100' }]), true);   // inclusive
+  assert.equal(m('cost:<=100', [{ key: 'cost', val: '100' }]), true);
+  assert.equal(m('cost:<100', [{ key: 'cost', val: '99.5' }]), true);   // decimal value
+  // a non-numeric property value never matches (no throw, no NaN compare)
+  assert.equal(m('cost:>100', [{ key: 'cost', val: 'soon' }]), false);
+  assert.equal(m('cost:>100', [{ key: 'cost', val: '' }]), false);
+  // a date-shaped value on an arbitrary key is NOT numeric here (dates belong to due:/start:);
+  // use a non-date key so the propnum arm handles it (due:/start: have their own date arm).
+  assert.equal(m('deadline:>100', [{ key: 'deadline', val: '2026-06-13' }]), false);
+  // a missing property never matches
+  assert.equal(m('cost:>100', [{ key: 'weight', val: '200' }]), false);
+  assert.equal(m('cost:>100', []), false);
+  // negation composes (a point whose cost is NOT > 100)
+  const neg = c.parseSearchQuery('-cost:>100');
+  assert.equal(c.queryMatchesNode(host(neg), { props: [{ key: 'cost', val: '50' }] }, SEQS), true);
+  assert.equal(c.queryMatchesNode(host(neg), { props: [{ key: 'cost', val: '150' }] }, SEQS), false);
+});

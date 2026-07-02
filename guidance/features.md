@@ -536,7 +536,13 @@ Implemented:
   value-vocabulary growth of the date arm, no new sigil). **UXP-147** added `var:NAME` (a
   `kind:value` operator like `state:`/`priority:`, matching the point whose `node.vars` has a
   declaration, a truthy `expr`, named NAME; reference pills with empty `expr` never match).
-  Pure cores: `parseDueDate`, `formatDueDate`, `collectDueDates`,
+  **UXP-148** added **numeric comparison on any own property** (`kind:'propnum'`): `cost:>100`,
+  `key:<N`/`>=N`/`<=N` over `node.props`, coerced with `Number` and requiring a finite result
+  (so a word or a date-shaped value never matches, and dates stay a `due:`/`start:` concern).
+  This is the one real parser extension of the family: `key:value` is exact-only, so the two-char
+  ops (`>=`/`<=`) precede the one-char ops for longest-match, placed **before** the generic prop
+  arm so `cost:>100` is a compare, not a failing exact lookup. Pure cores:
+  `parseDueDate`, `formatDueDate`, `collectDueDates`,
   `agendaGantt`, `agendaMonthCells`, `calendarMonthGrid`, `addMonths`.
 ### Linking, workspace & knowledge (PKM)
 

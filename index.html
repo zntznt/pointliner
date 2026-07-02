@@ -1631,6 +1631,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
         <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code>; quote a spaced value: <code>area:"Home Reno"</code></span></div>
+        <div class="sh-row"><kbd>key:&gt;N</kbd><kbd>key:&lt;=N</kbd><span>numeric property compare, like <code>cost:&gt;100</code> or <code>score:&lt;=3.5</code></span></div>
         <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><span>to-do priority, like <code>priority:a</code> or <code>priority:b</code></span></div>
       </div>
@@ -8265,6 +8266,13 @@ function parseSearchQuery(q) {
     // UXP-147: var:NAME finds the point that DECLARES variable NAME (not reference pills).
     // Before the generic prop arm (like priority:) so `var` is not a free-form key:value.
     else if ((t = tok.match(/^var:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'var', value: t[1].toLowerCase() });
+    // UXP-148: numeric comparison on any own property (cost:>100). key:value is EXACT-only,
+    // so a `>N` value never fit the generic prop arm below (it fell to literal text). This is
+    // the one real parser extension: the two-char ops (>=|<=) MUST precede (>|<) so >= wins
+    // longest-match. Value is a signed decimal; a non-`is` key. Placed before the generic prop
+    // arm so cost:>100 is a numeric compare, not a (failing) exact key:value.
+    else if ((t = tok.match(/^([\w][\w-]*):(>=|<=|>|<)(-?\d+(?:\.\d+)?)$/)) && t[1].toLowerCase() !== 'is')
+      terms.push({ neg, kind: 'propnum', key: t[1].toLowerCase(), op: t[2], num: parseFloat(t[3]) });
     else if ((t = tok.match(/^([\w][\w-]*):([\w][\w-]*)$/)) && t[1].toLowerCase() !== 'is') terms.push({ neg, kind: 'prop', key: t[1].toLowerCase(), value: t[2].toLowerCase() });
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
   }
@@ -8366,6 +8374,24 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     if (term.value === 'children' && (node.children || []).length) return true;
     if (term.value === 'footnote' && (node.footnotes || []).length) return true;
     return (node.props || []).some(p => p.key.toLowerCase() === term.value);
+  }
+  if (term.kind === 'propnum') {
+    // UXP-148: numeric comparison. Coerce the property's value with Number; a non-finite
+    // result (a word, a blank, a date-shaped string) never matches, so cost:>100 quietly
+    // skips a point whose cost is "soon" rather than throwing or comparing NaN. Dates belong
+    // to due:/start:, so a date string is deliberately not numeric here.
+    return (node.props || []).some(p => {
+      if (p.key.toLowerCase() !== term.key) return false;
+      const n = Number(String(p.val).trim());
+      if (!Number.isFinite(n)) return false;
+      switch (term.op) {
+        case '>':  return n >  term.num;
+        case '<':  return n <  term.num;
+        case '>=': return n >= term.num;
+        case '<=': return n <= term.num;
+      }
+      return false;
+    });
   }
   if (term.kind === 'prop') {
     // UXP-131: a quoted value (key:"a b") matches by CONTAINS (the text-term spirit, and the only
@@ -19738,6 +19764,7 @@ const GUIDE = [
       { syn:'has:children / has:footnote', desc:'has sub-points / a footnote' },
       { syn:'has:dice (math, est, grammar, markov, var, seq)', desc:'carries that kind of pill' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
+      { syn:'key:>N / key:<=N',       desc:'numeric property compare (cost:>100, score:<=3.5)' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
       { syn:'var:name',               desc:'the point that declares a variable (var:strength)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },
