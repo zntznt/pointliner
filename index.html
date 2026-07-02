@@ -1537,13 +1537,22 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .cmd-item{padding:10px}
   #search-save{right:44px;padding:10px;font-size:16px}
   #search-clear{right:0;padding:10px 12px;font-size:16px}
-  /* capture strip: the phone-first surface meets the ~44px floor; 16px input also stops iOS focus-zoom */
-  .cap-dest-btn,.cap-input,.cap-go{min-height:44px}
+  /* capture strip on touch: visuals stay at the app's 38px touch idiom (the toolbar
+     height; matches the ≤560px rules) — the ~44px floor is met by INVISIBLE hit-area
+     overlays (guardrail 5's overlay path), so the strip never outgrows its siblings.
+     The 16px input stops iOS focus-zoom. Pick/remove overlays extend away from each
+     other so the destructive ✕ never wins ambiguous taps. */
+  .cap-dest-btn,.cap-input,.cap-go,.cap-close{min-height:38px}
   .cap-input{font-size:16px}
-  .cap-close{width:44px;min-height:44px;font-size:19px}
-  .cap-chip-pick{padding:10px 6px 10px 10px}
-  .cap-chip-rm{padding:0 14px;font-size:16px}
-  .cap-add{padding:10px 14px}
+  .cap-close,.cap-chip-rm,.cap-chip-pick,.cap-add,.cap-dest-btn{position:relative}
+  .cap-close::after,.cap-add::after,.cap-dest-btn::after{content:'';position:absolute;inset:-4px}
+  /* the chip's overflow:hidden (corner rounding) would clip the overlays; on touch the
+     chip overflows and the children carry the rounding themselves */
+  .cap-chip{overflow:visible}
+  .cap-chip-pick{padding:6px 6px 6px 10px;border-radius:calc(var(--r-md) - 1px) 0 0 calc(var(--r-md) - 1px)}
+  .cap-chip-pick::after{content:'';position:absolute;inset:-5px 0 -5px -5px}
+  .cap-chip-rm{padding:0 10px;border-radius:0 calc(var(--r-md) - 1px) calc(var(--r-md) - 1px) 0}
+  .cap-chip-rm::after{content:'';position:absolute;inset:-5px -5px -5px 0}
   .fn-key{padding:6px 11px}
   #sc-toggle{width:36px;height:36px;font-size:15px}
   /* suppress the iOS long-press text/callout on tappable widgets */
