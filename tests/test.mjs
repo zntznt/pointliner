@@ -5722,7 +5722,7 @@ test('outline constraints: front-door + render + search wiring (src pins)', () =
   assert.ok(_src.includes('function openCheckDialog'), 'openCheckDialog missing');
   assert.ok(_src.includes('function buildCheckChip'), 'check chip builder missing');
   assert.ok(_src.includes('prop-check-fail'), 'check chip fail CSS class missing');
-  assert.ok(_src.includes('is:(done|todo|note|failing|scheduled|unscheduled|overdue)'), 'is:failing missing from parseSearchQuery');
+  assert.ok(/is:\(done\|todo\|note\|failing\|passing\|/.test(_src), 'is:failing/is:passing missing from parseSearchQuery');
   assert.ok(_src.includes("openCheckDialog(chip.dataset.propsId)"), 'check chip not routed in openPropChip');
 });
 
@@ -7498,4 +7498,74 @@ test('termMatchesNode — a quoted prop matches by contains; bare matches exact'
   assert.equal(c.termMatchesNode({ kind: 'prop', key: 'area', value: 'renovation' }, node, SEQS), false);
   // bare exact: the full (lowercased) value DOES match
   assert.equal(c.termMatchesNode({ kind: 'prop', key: 'area', value: 'home renovation' }, node, SEQS), true);
+});
+
+// ── UXP-145: is:/has: structural + artifact + symmetry filters ───────────────
+const isM = (val, node) => c.termMatchesNode({ kind: 'is', value: val }, node, SEQS);
+const hasM = (val, node) => c.termMatchesNode({ kind: 'has', value: val }, node, SEQS);
+
+test('UXP-145 parseSearchQuery — the new is: verbs tokenize as is: terms, not text', () => {
+  for (const v of ['passing', 'pill', 'random', 'leaf', 'parent', 'collapsed', 'expanded']) {
+    const t = host(c.parseSearchQuery('is:' + v))[0];
+    assert.equal(t.kind, 'is', v);
+    assert.equal(t.value, v, v);
+  }
+  // an unknown is: verb stays a literal text term (the escape-hatch rule)
+  assert.equal(host(c.parseSearchQuery('is:banana'))[0].kind, 'text');
+});
+
+test('UXP-145 is:passing / is:leaf / is:parent / is:collapsed / is:expanded', () => {
+  // is:passing requires an actual passing check; distinct from -is:failing
+  const passing = { text: '', props: [{ key: 'check', val: '1 < 2' }] };
+  const failing = { text: '', props: [{ key: 'check', val: '2 < 1' }] };
+  const noCheck = { text: 'plain' };
+  assert.equal(isM('passing', passing), true);
+  assert.equal(isM('passing', failing), false);
+  assert.equal(isM('passing', noCheck), false);            // check-less is NOT passing
+  assert.equal(isM('failing', noCheck), false);            // ...nor failing: so -is:failing != is:passing
+  // structure
+  const leaf = { text: 'x', children: [] };
+  const parent = { text: 'x', children: [{ id: '1' }] };
+  assert.equal(isM('leaf', leaf), true);
+  assert.equal(isM('parent', leaf), false);
+  assert.equal(isM('leaf', parent), false);
+  assert.equal(isM('parent', parent), true);
+  // fold state
+  assert.equal(isM('collapsed', { text: 'x', collapsed: true }), true);
+  assert.equal(isM('expanded', { text: 'x', collapsed: true }), false);
+  assert.equal(isM('expanded', { text: 'x', collapsed: false }), true);
+  assert.equal(isM('expanded', { text: 'x' }), true);      // undefined collapsed reads as expanded
+});
+
+test('UXP-145 is:pill and is:random over the sidecar arrays', () => {
+  const bare = { text: 'x' };
+  assert.equal(isM('pill', bare), false);
+  assert.equal(isM('random', bare), false);
+  for (const k of ['dice', 'markov', 'math', 'grammar', 'est', 'vars', 'seq']) {
+    const n = { text: 'x', [k]: [{ key: 'a' }] };
+    assert.equal(isM('pill', n), true, 'pill sees ' + k);
+  }
+  // random is the generative subset: dice/markov/grammar/est, plus a pick var
+  assert.equal(isM('random', { text: 'x', dice: [{ key: 'a' }] }), true);
+  assert.equal(isM('random', { text: 'x', grammar: [{ key: 'a' }] }), true);
+  assert.equal(isM('random', { text: 'x', math: [{ key: 'a' }] }), false);   // static math excluded
+  assert.equal(isM('random', { text: 'x', vars: [{ key: 'a', kind: 'formula' }] }), false); // display-only var excluded
+  assert.equal(isM('random', { text: 'x', vars: [{ key: 'a', kind: 'pick' }] }), true);     // a pick var IS random
+});
+
+test('UXP-145 has:<sidecar> and has:children / has:footnote, with props fall-through', () => {
+  assert.equal(hasM('dice', { dice: [{ key: 'a' }] }), true);
+  assert.equal(hasM('var', { vars: [{ key: 'a' }] }), true);   // token 'var' -> field 'vars'
+  assert.equal(hasM('seq', { seq: [{ key: 'a' }] }), true);
+  assert.equal(hasM('dice', { dice: [] }), false);             // empty sidecar
+  assert.equal(hasM('children', { children: [{ id: '1' }] }), true);
+  assert.equal(hasM('children', { children: [] }), false);
+  assert.equal(hasM('footnote', { footnotes: [{ key: 'a' }] }), true);
+  assert.equal(hasM('footnote', { footnotes: [] }), false);
+  // the has:<propkey> contract survives: a user property keyed 'dice' still matches
+  // (empty sidecar, so the fall-through property scan runs)
+  assert.equal(hasM('dice', { dice: [], props: [{ key: 'dice', val: 'yes' }] }), true);
+  // and a plain property still matches as before
+  assert.equal(hasM('owner', { props: [{ key: 'owner', val: 'zeo' }] }), true);
+  assert.equal(hasM('owner', { props: [] }), false);
 });

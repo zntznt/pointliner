@@ -1620,9 +1620,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         </div>
         <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><span>points with a tag (nested ok; <code>#tag</code> also matches <code>#tag/sub</code>), including state keywords (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
-        <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails (the lint filter)</span></div>
+        <div class="sh-row"><kbd>is:failing</kbd><kbd>is:passing</kbd><span>points whose <code>check</code> constraint fails / passes (the lint filter)</span></div>
         <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
         <div class="sh-row"><kbd>is:overdue</kbd><span>past its deadline and not done (due, or start if no due)</span></div>
+        <div class="sh-row"><kbd>is:leaf</kbd><kbd>is:parent</kbd><kbd>is:collapsed</kbd><kbd>is:expanded</kbd><span>structure and fold state</span></div>
+        <div class="sh-row"><kbd>is:pill</kbd><kbd>is:random</kbd><kbd>has:dice</kbd><span>carries a pill / a re-rollable one; <code>has:</code> also takes <code>math est grammar markov var seq</code></span></div>
+        <div class="sh-row"><kbd>has:children</kbd><kbd>has:footnote</kbd><span>has sub-points / a footnote</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
@@ -8207,6 +8210,12 @@ function cycleJournalMode() {
 
 // Parse a query string into terms: [{neg, kind:'text'|'tag'|'is', value}].
 // Values are lowercased (search is case-insensitive throughout). Pure.
+// UXP-145: the artifact sidecar arrays (mkNode), and the has:<word> -> field map
+// (`var` reads `vars`; every other word is its own field). Pruned on exitEdit, so a
+// non-empty array means a live pill. Shared by is:pill/is:random and has:<sidecar>.
+const SIDECAR_KEYS = ['dice', 'markov', 'math', 'grammar', 'est', 'vars', 'seq'];
+const HAS_SIDECAR_FIELD = { dice: 'dice', markov: 'markov', math: 'math', grammar: 'grammar', est: 'est', var: 'vars', seq: 'seq' };
+
 function parseSearchQuery(q) {
   const terms = [];
   // UXP-131: `key:"a b"` / `key:'a b'` is one token (a spaced property value), captured BEFORE the
@@ -8230,7 +8239,7 @@ function parseSearchQuery(q) {
     const tok = m[6];
     let t;
     if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)))            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note|failing|scheduled|unscheduled|overdue)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|pill|random|leaf|parent|collapsed|expanded)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -8292,6 +8301,22 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
       const v = evalCheck(node, vars);
       return v === 'fail' || v === 'error';
     }
+    // UXP-145: is:passing is the symmetry fill for is:failing. NOT the same as
+    // -is:failing: evalCheck returns null for a check-less point, so -is:failing also
+    // matches un-checked points; is:passing requires an actual passing check.
+    if (term.value === 'passing') return evalCheck(node, vars) === 'pass';
+    // UXP-145: structural + artifact axes — all pure reads of the node object.
+    if (term.value === 'leaf')      return !(node.children || []).length;
+    if (term.value === 'parent')    return (node.children || []).length > 0;
+    if (term.value === 'collapsed') return !!node.collapsed;
+    if (term.value === 'expanded')  return !node.collapsed;
+    if (term.value === 'pill')      return SIDECAR_KEYS.some(k => (node[k] || []).length);
+    if (term.value === 'random') {
+      // the generative subset of is:pill (re-rolls on click): dice/markov/grammar/est,
+      // plus a pick variable (display-only vars and static math are excluded).
+      return ['dice', 'markov', 'grammar', 'est'].some(k => (node[k] || []).length)
+        || (node.vars || []).some(v => v.kind === 'pick');
+    }
     // to-do-ness is SEQ-AWARE here: a leading keyword recognized in THESE seqs, or a task
     // line. deriveTypeFromText reads the module-global knownStates (the CURRENT doc's), which
     // is wrong for another doc's custom sequence — WS-1 amendment. In-doc, seqs is the current
@@ -8323,6 +8348,14 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     return (parseTodo(node.text || '', states).priority || '') === term.value;
   }
   if (term.kind === 'has') {
+    // UXP-145: reserved has: words read the node's own arrays BEFORE the property
+    // scan, so `has:dice` etc. mean "carries that pill/structure". A user property
+    // literally keyed `dice`/`children`/`footnote` still matches via the fall-through,
+    // preserving the has:<propkey> contract (a non-empty array wins; else the scan runs).
+    const sidecar = HAS_SIDECAR_FIELD[term.value];   // e.g. 'var' -> 'vars'
+    if (sidecar && (node[sidecar] || []).length) return true;
+    if (term.value === 'children' && (node.children || []).length) return true;
+    if (term.value === 'footnote' && (node.footnotes || []).length) return true;
     return (node.props || []).some(p => p.key.toLowerCase() === term.value);
   }
   if (term.kind === 'prop') {
@@ -19681,9 +19714,14 @@ const GUIDE = [
       { syn:'"a b"',                  desc:'exact phrase' },
       { syn:'#tag',                   desc:'tag or state keyword (#todo, #done); #tag also matches nested #tag/sub' },
       { syn:'is:todo / is:done / is:note', desc:'open tasks / done tasks / noted points' },
-      { syn:'is:failing',             desc:'points that break a check (the lint filter)' },
+      { syn:'is:failing / is:passing',desc:'points whose check constraint fails / passes (the lint filter)' },
       { syn:'is:scheduled / is:unscheduled', desc:'has a date / has no date' },
       { syn:'is:overdue',             desc:'past its deadline and not done (due, or start if no due)' },
+      { syn:'is:leaf / is:parent',    desc:'no sub-points / has sub-points' },
+      { syn:'is:collapsed / is:expanded', desc:'folded / unfolded' },
+      { syn:'is:pill / is:random',    desc:'carries a pill / a re-rollable one (dice, generator)' },
+      { syn:'has:children / has:footnote', desc:'has sub-points / a footnote' },
+      { syn:'has:dice (math, est, grammar, markov, var, seq)', desc:'carries that kind of pill' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },

@@ -87,8 +87,11 @@ Turn the outline into a lightweight planner.
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
   ([journal](dates-and-planning.md#daily-journal))
 - **Search and filter.** Filter with `#tag`, the `is:todo` / `is:done` / `is:note` / `is:failing` /
-  `is:scheduled` / `is:unscheduled` / `is:overdue` flags, date and property operators (`due:overdue`,
-  `priority:a`, `has:key`, `key:value`), exact `"phrases"`, and `-` to exclude. Star a search to save it.
+  `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` flags, structure and artifact flags
+  (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus
+  `has:children` / `has:footnote` and `has:dice` / `has:math` / `has:est` / `has:grammar` / `has:markov`
+  / `has:var` / `has:seq`), date and property operators (`due:overdue`, `priority:a`, `has:key`,
+  `key:value`), exact `"phrases"`, and `-` to exclude. Star a search to save it.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 
 ## Linking and connecting notes

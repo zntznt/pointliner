@@ -78,8 +78,13 @@ Type words in the search box and **every word must appear**. The operators:
 - `-word` excludes a word.
 - `"exact phrase"` matches that phrase exactly.
 - `#tag` filters to a label (see [Hashtags](#hashtags) below).
-- `is:done` / `is:todo` / `is:note` / `is:failing` filter structurally (finished, open, has a note,
-  a failing check).
+- `is:done` / `is:todo` / `is:note` / `is:failing` / `is:passing` filter structurally (finished, open,
+  has a note, a failing or passing check). `is:passing` is not the opposite of `is:failing`: a point
+  with no check at all is neither.
+- `is:leaf` / `is:parent`, `is:collapsed` / `is:expanded` filter by structure and fold state.
+- `is:pill` finds a point carrying any pill; `is:random` narrows to the re-rollable ones (dice,
+  generators). `has:dice` (and `has:math`, `has:est`, `has:grammar`, `has:markov`, `has:var`,
+  `has:seq`) find a specific kind; `has:children` / `has:footnote` find sub-points or a footnote.
 - `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date.
 - `has:key` / `key:value` filter by a property.
 

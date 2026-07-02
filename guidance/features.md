@@ -368,7 +368,16 @@ Implemented:
   only against recognized states; `status:` stays the generic property lookup, not
   a synonym) — and `is:todo` / `is:done` / `is:note` filter structurally (open to-do /
   finished to-do / has a note; done-ness derives from the text via
-  `todoDoneFromText`, sequence-aware). Anything malformed (unknown `is:` value,
+  `todoDoneFromText`, sequence-aware). **UXP-145 added the structural + artifact +
+  symmetry `is:`/`has:` family** (all pure node reads, no parser arm beyond one
+  regex widen): `is:passing` (`evalCheck === 'pass'`, distinct from `-is:failing`
+  since a check-less point is neither), `is:leaf`/`is:parent` and `has:children`
+  (`node.children.length`), `is:collapsed`/`is:expanded` (`node.collapsed`),
+  `has:footnote` (`node.footnotes`), `is:pill` (any sidecar) / `is:random` (the
+  generative subset: dice/markov/grammar/est + a `kind:'pick'` var), and
+  `has:dice|markov|math|grammar|est|var|seq` (the sidecar arrays, `var`→`vars`,
+  reserved before the property fall-through so `has:<propkey>` still works via a
+  real property). Anything malformed (unknown `is:` value,
   lone `-`, a bare `#`) stays a **literal text term** — the `{…}` invalid-body
   escape-hatch rule, so a query never silently matches everything. `OR` is
   deliberately absent (no precedence rule until real queries demand one). Pure
