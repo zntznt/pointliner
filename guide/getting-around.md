@@ -88,7 +88,8 @@ Type words in the search box and **every word must appear**. The operators:
 - `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date, and
   `due:week` / `due:month` catch anything due within the next 7 or 30 days (also `start:week` / `start:month`).
 - `var:strength` finds the point that declares a variable.
-- `has:key` / `key:value` filter by a property.
+- `has:key` / `key:value` filter by a property; `key:>N` (also `<`, `>=`, `<=`) compares a numeric
+  property, like `cost:>100` or `score:<=3.5`.
 
 Anything malformed stays a literal text term, so a stray `:` or `#` never breaks the search.
 
