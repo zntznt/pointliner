@@ -6332,7 +6332,12 @@ function renderRow(r) {
   content.contentEditable = (opts.searchCtx || isTable) ? 'false' : 'true';
   content.spellcheck = !isTable;
   content.dataset.id = node.id;
-  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block. Enter = line break · ⇧+Enter = new point' : (depth === 0 ? 'Start writing…' : '');
+  // UXP-104: the empty-point placeholder is the first-open front door to the syntax (P2).
+  // A blank canvas must cue that /, @, [[ exist, not just say "Start writing…". Shown at the
+  // structural entry points a newcomer lands on (top level + a parent's first child); deeper
+  // empties stay unlabeled so an experienced user isn't nagged on every new point.
+  const isEntryPoint = depth === 0 || (parent && parent.children[0] === node);
+  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block. Enter = line break · ⇧+Enter = new point' : (isEntryPoint ? 'Type / for blocks, @ to insert, or just write' : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
     // not as a separate button under the grid.
@@ -15744,11 +15749,34 @@ function performMultiDrop(ids, targetId, position) {
 // "doc-cache invalidation" regression test in tests/test.mjs.
 function resetDocCaches() { _varsVer++; }
 
+// UXP-103: the persistence signals must all mean the SAME thing — "unsaved to a named disk
+// target," not "there is any unpersisted keystroke." In default (no-handle) mode autosave keeps
+// the work safe in OPFS/localStorage, so a dirty dot and a "discard permanently" prompt there are
+// lies that train the user to click Discard reflexively. Two shared predicates keep the dot, the
+// beforeunload guard, and the New/Open confirms in agreement (P1).
+//   diskTargetOpen()  — a file handle or a folder-backed doc is the write destination
+//   unsavedToDisk()   — dirty AND there is a target we haven't written to (or one that vanished:
+//                       a shared snapshot has no target, and autosaveDisabled+no-OPFS means the
+//                       browser backup itself failed, so those are genuine loss risks too).
+function diskTargetOpen() { return !!(fileHandle || workspaceFile); }
+function unsavedToDisk() {
+  if (!dirty) return false;
+  if (diskTargetOpen()) return true;                        // a named target with unwritten edits
+  if (loadedFromEmbed) return true;                         // a shared snapshot: reload discards edits (UXP-102)
+  if (autosaveDisabled && !hasOPFS) return true;            // browser auto-backup failed, only memory holds it
+  return false;                                             // pure default mode: autosave has it, not a loss risk
+}
+function updateDirtyDot() {
+  // The dot tracks unsavedToDisk(), not the raw dirty flag, so it stops sitting permanently
+  // "on" for an auto-saving default-mode doc.
+  const show = unsavedToDisk();
+  document.getElementById('toolbar-row').classList.toggle('dirty', show);
+  document.getElementById('fm-dirty-dot').style.display = show ? 'block' : 'none';
+}
 function markDirty() {
   dirty = true;
   _varsVer++; // invalidate collectVars() cache
-  document.getElementById('toolbar-row').classList.add('dirty');
-  document.getElementById('fm-dirty-dot').style.display = 'block';
+  updateDirtyDot();
   scheduleAutosave();
   if (document.getElementById('var-panel')?.classList.contains('on')) updateVarPanelContent();
   if (agendaOpen) renderAgenda();
@@ -15865,8 +15893,7 @@ function redo() {
 }
 function markClean() {
   dirty = false;
-  document.getElementById('toolbar-row').classList.remove('dirty');
-  document.getElementById('fm-dirty-dot').style.display = 'none';
+  updateDirtyDot();
 }
 // Pure: the user-facing name for a stored filename , drop the .opml extension and
 // show the placeholder for the unsaved sentinel. The extension is an implementation
@@ -15943,9 +15970,12 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
 
 async function newFile() {
   if (workspaceDir) { await newWorkspaceDoc(); return; }   // folder connected → the new doc lands in the notebook (brief #5b)
-  if (dirty && !await openConfirmDialog({
+  // UXP-103: only confirm on a genuine loss risk. In pure default mode autosave keeps the doc
+  // safe, so a "discard permanently" prompt is a lie; with a file handle the in-memory edits to
+  // the old file really would be abandoned, so keep the confirm (worded to match the real risk).
+  if (unsavedToDisk() && !await openConfirmDialog({
     title: 'Discard unsaved changes?',
-    message: 'Your current document has unsaved changes. Starting a new one will discard them permanently.',
+    message: 'Your current document has changes not saved to its file. Starting a new one will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
   // Prompt for a name up front, so a new outline has an identity from the start.
@@ -15989,9 +16019,11 @@ async function commitFileName(rawDisplay) {
 }
 
 async function openFile() {
-  if (dirty && !await openConfirmDialog({
+  // UXP-103: confirm only on a real loss risk (a stale file handle / snapshot), not for an
+  // auto-saved default-mode doc.
+  if (unsavedToDisk() && !await openConfirmDialog({
     title: 'Discard unsaved changes?',
-    message: 'Your current document has unsaved changes. Opening a different one will discard them permanently.',
+    message: 'Your current document has changes not saved to its file. Opening a different one will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
   if (hasFSA) {
@@ -19918,10 +19950,13 @@ document.addEventListener('keydown', e => {
   }
 });
 // Only block reload when data would genuinely be lost:
-// - fileHandle means the user is working on a named OPML file whose disk copy is stale
-// - autosaveDisabled means localStorage is full and the only copy is in memory
-// Plain autosave (no file) survives a reload via localStorage, so no warning needed.
-window.addEventListener('beforeunload', e => { if (dirty && (fileHandle || autosaveDisabled)) { e.preventDefault(); e.returnValue=''; } });
+// Prompt only on a genuine loss-on-reload risk — the same unsavedToDisk() predicate the dirty
+// dot and the New/Open confirms use (P1), so the three never disagree:
+// - a file handle / folder-backed doc whose disk copy is stale
+// - a shared snapshot (loadedFromEmbed): reload re-hydrates the embedded island, discarding edits (UXP-102)
+// - autosave disabled with no OPFS fallback: memory is the only copy
+// Plain default-mode autosave (OPFS/localStorage) survives a reload, so it needs no warning.
+window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventDefault(); e.returnValue=''; } });
 
 // keep body padding in sync with toolbar height (toolbar is fixed; breadcrumb changes its height)
 new ResizeObserver(() => {
@@ -19998,10 +20033,12 @@ let storageWarnState = null;          // null | 'soft' | 'hard' — avoid re-nag
 const storageWarn     = document.getElementById('storage-warn');
 const storageWarnMsg  = document.getElementById('storage-warn-msg');
 const storageWarnBtn  = document.getElementById('storage-warn-save');
-// The action button is mode-aware: normally "Save to file", but the reconnect banner
-// (folder needs a fresh permission gesture after a relaunch) repurposes it to "Reconnect".
+// The action button is mode-aware: normally "Save to file", the reconnect banner (folder needs a
+// fresh permission gesture after a relaunch) repurposes it to "Reconnect", and the shared-snapshot
+// banner (UXP-102) repurposes it to "Export a copy".
 let _warnAction = 'save';
 storageWarnBtn.addEventListener('click', () => {
+  if (_warnAction === 'export') { exportSelfContainedHtml(); return; }  // keep the banner up: the doc is still an unsaved snapshot
   hideStorageWarn();
   if (_warnAction === 'reconnect') reconnectWorkspace(); else saveFile();
 });
@@ -20018,6 +20055,19 @@ function showReconnectBanner() {
   _warnAction = 'reconnect';
   storageWarnBtn.textContent = 'Reconnect';
   storageWarnMsg.textContent = 'Reconnect “' + (pendingDir.name || 'your folder') + '” to keep auto-saving to it. It was not moved, the browser just needs permission again.';
+  storageWarn.classList.add('soft');
+  storageWarn.classList.add('on');
+  storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
+
+// Shared-snapshot banner (UXP-102). A self-contained-HTML recipient's edits autosave but are
+// discarded on reload (restoreEmbeddedDoc re-hydrates the embedded island), and the file has no
+// disk target, so the one-time boot flash is too weak a warning. Show a persistent, dismissible
+// soft banner whose action exports a fresh copy — the recovery path. Independent of storageWarnState.
+function showSnapshotBanner() {
+  _warnAction = 'export';
+  storageWarnBtn.textContent = 'Export a copy';
+  storageWarnMsg.textContent = "You're editing a shared snapshot. Reloading this page loses your changes. Export a copy to keep them.";
   storageWarn.classList.add('soft');
   storageWarn.classList.add('on');
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
@@ -20225,6 +20275,7 @@ requestAnimationFrame(() => {
   // — edits-then-reload data loss is never silent.
   if (loadedFromEmbed) {
     flashHint('Opened a shared snapshot. Edits stay in this browser; export again to save a copy.');
+    showSnapshotBanner();   // UXP-102: a persistent, dismissible banner outlasts the boot flash
     return;
   }
   // Otherwise focus the first node so the user can start typing immediately.
