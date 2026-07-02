@@ -90,6 +90,9 @@ Type words in the search box and **every word must appear**. The operators:
 - `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date, and
   `due:week` / `due:month` catch anything due within the next 7 or 30 days (also `start:week` / `start:month`).
 - `var:strength` finds the point that declares a variable.
+- `has:link` / `has:backlink` find points that contain a link or are linked to by another point
+  (within this document); `is:broken` finds points holding a link whose target no longer exists.
+  `has:tag` matches any tagged point.
 - `has:key` / `key:value` filter by a property; `key:>N` (also `<`, `>=`, `<=`) compares a numeric
   property, like `cost:>100` or `score:<=3.5`.
 

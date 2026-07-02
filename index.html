@@ -1636,7 +1636,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
         </div>
-        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><span>points with a tag (nested ok; <code>#tag</code> also matches <code>#tag/sub</code>), including state keywords (<code>#todo</code>)</span></div>
+        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><kbd>has:tag</kbd><span>points with a tag (nested ok; <code>#tag</code> also matches <code>#tag/sub</code>, states like <code>#todo</code> count); <code>has:tag</code> matches any tag at all</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><kbd>is:passing</kbd><span>points whose <code>check</code> constraint fails / passes (the lint filter)</span></div>
         <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
@@ -1644,6 +1644,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>is:leaf</kbd><kbd>is:parent</kbd><kbd>is:collapsed</kbd><kbd>is:expanded</kbd><span>structure and fold state</span></div>
         <div class="sh-row"><kbd>is:pill</kbd><kbd>is:random</kbd><kbd>has:dice</kbd><span>carries a pill / a re-rollable one; <code>has:</code> also takes <code>math est grammar markov var seq</code></span></div>
         <div class="sh-row"><kbd>has:children</kbd><kbd>has:footnote</kbd><span>has sub-points / a footnote</span></div>
+        <div class="sh-row"><kbd>has:link</kbd><kbd>has:backlink</kbd><kbd>is:broken</kbd><span>contains a link / is linked to (this document) / has a broken link</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
         <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next 7 / 30 days (also <code>start:week</code>/<code>month</code>)</span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
@@ -8295,7 +8296,7 @@ function parseSearchQuery(q) {
     if (tok === '|' && !neg) { terms.push({ kind: 'or' }); continue; }
     let t;
     if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)))            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|pill|random|leaf|parent|collapsed|expanded)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|pill|random|leaf|parent|collapsed|expanded|broken)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -8335,7 +8336,11 @@ function parseSearchQuery(q) {
 
 // Does one term hit this node (negation NOT applied here)? Pure given seqs + vars
 // (vars feeds the is:failing check eval; defaults to the live globalVarMap).
-function termMatchesNode(term, node, seqs, vars = globalVarMap) {
+function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
+  // QX-6: `links` is the doc-wide link index (collectLinks: outgoing/backlinks/broken),
+  // threaded like seqs/vars. It is NOT defaulted in the signature: only the two branches
+  // that need it fall back to the cached collectLinks(), so a text query never pays for
+  // the index. Workspace search passes THIS doc's collectLinks(root), same as seqs/vars.
   if (term.kind === 'tag') {
     // mirror collectTags: hashtags live in node.text with [[…]] tokens blanked
     // (so link targets never read as tags); word-anchored both sides so #todo
@@ -8388,6 +8393,12 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
       return ['dice', 'markov', 'grammar', 'est'].some(k => (node[k] || []).length)
         || (node.vars || []).some(v => v.kind === 'pick');
     }
+    if (term.value === 'broken') {
+      // QX-6: this point contains a link whose target id does not exist in the document
+      // (the source side of collectLinks().broken, which lists the missing TARGET ids).
+      const lk = links || collectLinks();
+      return (lk.outgoing[node.id] || []).some(l => lk.broken.includes(l.target));
+    }
     // to-do-ness is SEQ-AWARE here: a leading keyword recognized in THESE seqs, or a task
     // line. deriveTypeFromText reads the module-global knownStates (the CURRENT doc's), which
     // is wrong for another doc's custom sequence — WS-1 amendment. In-doc, seqs is the current
@@ -8427,6 +8438,19 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     if (sidecar && (node[sidecar] || []).length) return true;
     if (term.value === 'children' && (node.children || []).length) return true;
     if (term.value === 'footnote' && (node.footnotes || []).length) return true;
+    // QX-6: link/tag presence. has:link and has:tag are PURE node reads (the deferral
+    // over-generalized): a link is any [[#id|..]] or [[docId#id|..]] token in the text
+    // (parseLinkToken's shape, unanchored); a tag is any hashtag sigil in the
+    // link-blanked text (the same rule the #tag matcher and collectTags use, so state
+    // keywords like #TODO count, consistent with the model). has:backlink needs the
+    // doc-wide index: is any point linking TO this one (same-document; the cross-doc
+    // index is CF-4's, not this filter's).
+    if (term.value === 'link' && /\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|[^\]\n]*)?\]\]/i.test(node.text || '')) return true;
+    if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\w-]/.test((node.text || '').replace(/\[\[[^\]]*\]\]/g, ' '))) return true;
+    if (term.value === 'backlink') {
+      const lk = links || collectLinks();
+      if ((lk.backlinks[node.id] || []).length) return true;
+    }
     return (node.props || []).some(p => p.key.toLowerCase() === term.value);
   }
   if (term.kind === 'propnum') {
@@ -8476,7 +8500,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
 
 // AND of all terms; a negated term must NOT match. Empty term list matches
 // nothing (callers gate on the raw query string anyway). Pure given seqs.
-function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap) {
+function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap, links) {
   if (!terms || !terms.length) return false;
   // QX-5: {kind:'or'} markers split the flat term list into clauses of ANDed terms;
   // the query matches when ANY clause does (OR binds looser than the implicit AND;
@@ -8485,7 +8509,7 @@ function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMa
   const clauses = [[]];
   for (const t of terms) { if (t.kind === 'or') clauses.push([]); else clauses[clauses.length - 1].push(t); }
   const live = clauses.filter(c => c.length);
-  return live.length > 0 && live.some(c => c.every(t => termMatchesNode(t, node, seqs, vars) === !t.neg));
+  return live.length > 0 && live.some(c => c.every(t => termMatchesNode(t, node, seqs, vars, links) === !t.neg));
 }
 
 // queryRows(expr, rootNode, hostId, cap) — the shared query-to-rows core: run a search
@@ -12726,15 +12750,18 @@ function searchWorkspace(query, index, currentDocId, cap = 50) {
   const terms = parseSearchQuery(query);
   if (!terms.length) return [];
   const needsCtx = terms.some(t => t.kind === 'is');      // only is:* reads seqs/vars — compute lazily
+  // QX-6: link filters read THIS doc's link index (backlinks/broken are doc-relative)
+  const needsLinks = terms.some(t => (t.kind === 'is' && t.value === 'broken') || (t.kind === 'has' && t.value === 'backlink'));
   const out = [];
   for (const [docId, root] of index.roots) {
     if (docId === currentDocId) continue;                 // current doc → the in-outline filter
     const docName = index.nameByDocId?.get(docId);
     const seqs = needsCtx ? allSequences(root) : undefined;   // THIS doc's sequences → exact is:done/is:todo
     const vars = needsCtx ? collectVars(root)  : undefined;   // THIS doc's resolved vars → exact is:failing
+    const links = needsLinks ? collectLinks(root) : undefined; // THIS doc's link index → exact has:backlink/is:broken (QX-6)
     const walk = (n) => {
       if (out.length >= cap) return;
-      if (queryMatchesNode(terms, n, seqs, vars)) {
+      if (queryMatchesNode(terms, n, seqs, vars, links)) {
         out.push({ docId, nodeId: n.id, docName,
                    title: textForDisplay(n) || '(untitled)',
                    snippet: searchSnippet(n, terms) });
@@ -19987,6 +20014,8 @@ const GUIDE = [
       { syn:'is:collapsed / is:expanded', desc:'folded / unfolded' },
       { syn:'is:pill / is:random',    desc:'carries a pill / a re-rollable one (dice, generator)' },
       { syn:'has:children / has:footnote', desc:'has sub-points / a footnote' },
+      { syn:'has:link / has:backlink',desc:'contains a link / is linked to by another point (this document)' },
+      { syn:'has:tag / is:broken',    desc:'carries any hashtag / contains a link whose target is gone' },
       { syn:'has:dice (math, est, grammar, markov, var, seq)', desc:'carries that kind of pill' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'key:>N / key:<=N',       desc:'numeric property compare (cost:>100, score:<=3.5)' },
