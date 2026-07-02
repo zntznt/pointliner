@@ -75,7 +75,8 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Keyboard operable** via a `keydown` listener **added beside** the existing `mousedown` — never by converting to `click`/`<button>`. *(P3-2, caret invariant)*
 - [ ] **Focus-visible** on every new focus stop; **reduced-motion** respected for any new animation. *(P3-3)*
 - [ ] **Not color-alone** — any new state/error also carries text or icon. *(P3-4)*
-- [ ] **Off-focus changes announced** via the `aria-live` region (reroll, error, async result). *(P3-5)*
+- [ ] **Off-focus changes announced** via the `aria-live` region (reroll, error, async result, a filter's match count). *(P3-5, `accessibility.md` guardrail 4)*
+- [ ] **~44px tap targets** under `@media(hover:none)` for every new tappable control; padding or an overlay may extend past the visual box. *(`accessibility.md` guardrail 5)*
 - [ ] **Deferred items still labeled** — if it's a pill or outline row, it carries an accurate `aria-label` even though `tabindex`/`role=tree` are sequenced later. *(P3-6 interim)*
 - [ ] **ARIA set per-row at render time**, not via a global post-pass. *(virtual-list invariant)*
 
@@ -85,6 +86,7 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Errors explain the cause** — no bare `#ERR`/no-op. *(P4-2)*
 - [ ] **Structural/destructive actions confirm** via the toast. *(P4-3)*
 - [ ] **Reuses the feedback pattern** (toast / inline marker / `aria-live` / banner) — no bespoke feedback UI. *(P4-4)*
+- [ ] **Drafts survive dismissal**: a transient input surface never silently discards non-empty typed input. *(`ux-discipline.md` §6 drafts)*
 
 ## 5. Coherent authoring language — P5
 
@@ -102,6 +104,9 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Internal `node`/`artifact` identifiers untouched.** *(V-2)*
 - [ ] **Reuses the menu / pill / feedback / affordance patterns** rather than reinventing. *(§7)*
 - [ ] **Copy describes outcomes, not mechanics**, in plain language. *(§8)*
+- [ ] **Labels are sentence case**; "Markdown" is always capitalized in user-facing copy. *(§8)*
+- [ ] **Dialog footers order dismiss/neutral first, the committing action last; danger takes the final slot.** *(§7.6)*
+- [ ] **Dismiss buttons reuse `.close-btn` and the `fa-xmark` glyph**; no bespoke close styling. *(design-language §4)*
 
 ## 7. Regression & verification
 
@@ -109,6 +114,7 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Touch path shipped** for any new hover/mouse interaction (`@media(hover:none)` + long-press where applicable). *(`CLAUDE.md` touch invariant)*
 - [ ] **OPML round-trip** preserved for any new persisted data (serialize + parse in the same change). *(`CLAUDE.md`)*
 - [ ] **Design-language conformance** for any visual change (`guidance/design-language.md`): colors via tokens (semantic `--ok/--warn/--bad/--info`, `--acc-fg` on accent backgrounds, radii/shadows from the token sets), new color pairs ship their contrast ratio, the palette change lands in **both** homes (CSS *and* the `applyTheme`/`applyAccentCSS` strings), and both-mode + forced-theme screenshots were checked. *(design-language §3/§6)*
+- [ ] **Drift guards stay green**: `node --test tests/test.mjs` carries the design pins (dual-home token parity, radius/weight/size floors, the em-dash ban) and CI runs them on every PR. *(tests/test.mjs)*
 - [ ] **Acceptance tests met** — the five self-checks below.
 
 ---
