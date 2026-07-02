@@ -26,6 +26,15 @@ work on **any line of any point**, including headings and quotes.
 ~~strikethrough~~               ++underline++
 ```
 
+## Emoji
+
+Type a colon to drop in an emoji. As you type `:` and the start of a name (`:fire`, `:tada`,
+`:check`), a small menu opens at your cursor listing the matches with their glyphs; use the arrow
+keys and `Enter` (or click) to pick one, the same as the tag and link menus. You can also just type
+the full shortcode (`:sparkles:`) and it turns into the emoji when you finish it. There are around a
+hundred common shortcodes: faces, hearts, hands, `:fire:`, `:star:`, `:rocket:`, `:warning:`,
+`:check:`, and the rest.
+
 ## Tables
 
 Put information in columns to compare options, lay out a small dataset, or present a schedule. Type
