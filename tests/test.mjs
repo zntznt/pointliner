@@ -7265,3 +7265,60 @@ test('filterEmojiCandidates — case-insensitive prefix', () => {
 test('filterEmojiCandidates — no match is an empty list', () => {
   assert.deepEqual(host(c.filterEmojiCandidates('zzz', EMOJI_FIXTURE)), []);
 });
+
+// ── priority: search + agenda rollup (UXP-109) ───────────────────────────────
+const SEQS = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'] }];  // the default sequence shape
+
+test('priorityRank — A < B < C < none', () => {
+  assert.equal(c.priorityRank('A'), 0);
+  assert.equal(c.priorityRank('B'), 1);
+  assert.equal(c.priorityRank('c'), 2);   // case-insensitive
+  assert.equal(c.priorityRank(null), 99); // no priority sorts last
+});
+
+test('parseSearchQuery — priority:A is its own term, not a prop lookup', () => {
+  const terms = host(c.parseSearchQuery('priority:a'));
+  assert.equal(terms.length, 1);
+  assert.equal(terms[0].kind, 'priority');
+  assert.equal(terms[0].value, 'A');       // stored uppercase
+});
+
+test('parseSearchQuery — a non-single-letter priority: falls back to a prop lookup', () => {
+  // priority:high is not a valid [#X] marker, so it is NOT a priority term; it stays a
+  // generic key:value prop filter (which simply won't match a real priority, by design).
+  const terms = host(c.parseSearchQuery('priority:high'));
+  assert.equal(terms[0].kind, 'prop');
+});
+
+test('termMatchesNode — priority:A matches a #TODO [#A] point, not [#B] or a plain point', () => {
+  const pri = (text, val) => c.termMatchesNode({ kind: 'priority', value: val }, { text }, SEQS);
+  assert.equal(pri('#TODO [#A] ship it', 'A'), true);
+  assert.equal(pri('#TODO [#B] later', 'A'), false);
+  assert.equal(pri('#NEXT [#A] soon', 'A'), true);   // any recognized state, not just TODO
+  assert.equal(pri('just a plain point', 'A'), false);
+  assert.equal(pri('#TODO no priority here', 'A'), false);
+});
+
+test('collectDueDates — carries priority and sorts higher priority first within a day', () => {
+  const day = '2099-01-15';
+  const root = { children: [
+    { id: 'lo', text: '#TODO [#C] low',  props: [{ key: 'due', val: day }], children: [] },
+    { id: 'hi', text: '#TODO [#A] high', props: [{ key: 'due', val: day }], children: [] },
+    { id: 'mid', text: '#TODO no-pri',   props: [{ key: 'due', val: day }], children: [] },
+  ] };
+  const items = host(c.collectDueDates(root));
+  assert.deepEqual(items.map(i => i.id), ['hi', 'lo', 'mid']);   // A, C, then none
+  assert.equal(items[0].priority, 'A');
+  assert.equal(items[2].priority, null);
+});
+
+// ── oracle swing (UXP-111) ───────────────────────────────────────────────────
+test('oracleSwingBody — six ordered options, plain answers keep the band weight, twists weight 1', () => {
+  const body = c.oracleSwingBody(3, 1);   // a "Likely" band
+  const alts = body.split('|').map(s => s.trim());
+  assert.deepEqual(alts, ['Yes, and 1', 'Yes 3', 'Yes, but 1', 'No, but 1', 'No 1', 'No, and 1']);
+});
+
+test('oracleSwingBody — an Even band is symmetric', () => {
+  assert.equal(c.oracleSwingBody(1, 1), 'Yes, and 1 | Yes 1 | Yes, but 1 | No, but 1 | No 1 | No, and 1');
+});

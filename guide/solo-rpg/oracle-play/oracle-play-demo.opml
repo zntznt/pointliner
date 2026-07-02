@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>Oracle-driven scene play (Pointliner demo)</title></head>
+  <body>
+    <outline text="Oracle-driven scene play" _id="orp00001">
+      <outline text="A demo of the solo-play loop: a swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck. Every {…} pill is live, click one to run it. See oracle-play.md for the walkthrough." _id="orp00002"/>
+      <outline text="Generators" _id="orp00010">
+        <outline text="Chaos factor (1 calm .. 5 chaos): {chaos := 3}" _id="orp00011"/>
+        <outline text="Interrupt check (click to roll): {proceed | interrupted {= chaos}}" _id="orp00012"/>
+        <outline text="Meaning table (click for two words): {action} {subject}" _id="orp00013">
+          <outline text="action: hide | reveal | pursue | abandon | protect | betray" _id="orp00014"/>
+          <outline text="subject: a secret | an ally | a debt | a route | a rumor | a relic" _id="orp00015"/>
+        </outline>
+        <outline text="Thread deck (click to pull one to feature): {shuffle: the torn letter | the missing sister | the merchant's debt}" _id="orp00016"/>
+      </outline>
+      <outline text="Scene: A yes with a catch" _id="orp00020">
+        <outline text="? Will the merchant help me?  (likely, with a swing)" _id="orp00021"/>
+        <outline text="-&gt; {Yes, and 3 | Yes 9 | Yes, but 3 | No, but 3 | No 3 | No, and 1}" _id="orp00022"/>
+        <outline text="If the answer needs a spark, pull two words: {action} {subject}" _id="orp00023"/>
+        <outline text="=&gt; He will help, but only to settle a debt he owes someone worse. #thread/merchants-debt" _id="orp00024"/>
+      </outline>
+      <outline text="Between scenes" _id="orp00030">
+        <outline text="Bump chaos if it went sideways, then check: {proceed | interrupted {= chaos}}" _id="orp00031"/>
+        <outline text="If interrupted, pull a thread: {shuffle: the torn letter | the missing sister | the merchant's debt}" _id="orp00032"/>
+      </outline>
+      <outline text="How to use this demo" _id="orp00040">
+        <outline text="Click any pill to run it. The interrupt check reads {= chaos} live, so edit chaos above and the odds shift. The thread deck draws each thread once, then reshuffles (it tells you when). Edit any list by clicking the text next to the pill." _id="orp00041"/>
+        <outline text="Nothing here is a new syntax: the swing oracle is a weighted list, the interrupt is dynamic odds, the meaning table is a two-rule grammar, and the thread deck is a shuffle deck. See oracle-play.md." _id="orp00042"/>
+      </outline>
+    </outline>
+  </body>
+</opml>

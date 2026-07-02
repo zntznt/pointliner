@@ -1615,6 +1615,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
         <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code></span></div>
         <div class="sh-row"><kbd>state:value</kbd><span>sequence status, like <code>state:waiting</code> or <code>state:done</code></span></div>
+        <div class="sh-row"><kbd>priority:A</kbd><span>to-do priority, like <code>priority:a</code> or <code>priority:b</code></span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -2582,6 +2583,9 @@ function setAliasProp(node, csv) {
 // given root.
 // Returns [{ id, title, path, start, due, started, done, runningDays,
 //            epochDay, iso, label, state }] sorted by primary date ascending.
+// UXP-109: order org priorities A < B < C < … with "no priority" last. A→0, B→1, …, null→99.
+// Pure + Node-testable.
+function priorityRank(p) { return p ? (p.toUpperCase().charCodeAt(0) - 65) : 99; }
 function collectDueDates(rootNode = root) {
   const today = dueDateToday();
   const items = [];
@@ -2602,6 +2606,7 @@ function collectDueDates(rootNode = root) {
         start, due, started,
         done: todoDoneFromText(n.text),
         runningDays: started ? today - start : null,
+        priority: parseTodo(n.text).priority,   // UXP-109: 'A'|'B'|… or null, for agenda ordering
         epochDay: primary, iso, label, state,
       });
     }
@@ -2609,7 +2614,9 @@ function collectDueDates(rootNode = root) {
     for (const c of (n.children || [])) walk(c, childPath);
   }
   for (const c of (rootNode?.children || [])) walk(c, []);
-  items.sort((a, b) => a.epochDay - b.epochDay);
+  // UXP-109: same date first, then higher priority (A < B < … < none) as the tiebreak, so the
+  // agenda surfaces the most urgent work within a given day rather than tree order.
+  items.sort((a, b) => a.epochDay - b.epochDay || priorityRank(a.priority) - priorityRank(b.priority));
   return items;
 }
 
@@ -8100,6 +8107,10 @@ function parseSearchQuery(q) {
       else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
     }
     else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });
+    // UXP-109: priority:A filters org priorities (a settable-but-unqueryable dimension). A single
+    // letter, case-insensitive, stored uppercase like the [#A] marker. Placed before the generic
+    // prop arm so `priority` is not read as a free-form key:value property lookup.
+    else if ((t = tok.match(/^priority:([A-Za-z])$/i))) terms.push({ neg, kind: 'priority', value: t[1].toUpperCase() });
     else if ((t = tok.match(/^([\w][\w-]*):([\w][\w-]*)$/)) && t[1].toLowerCase() !== 'is') terms.push({ neg, kind: 'prop', key: t[1].toLowerCase(), value: t[2].toLowerCase() });
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
   }
@@ -8149,6 +8160,14 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     const km = (node.text || '').match(LEAD_WORD_RE);
     if (!km || !sequenceForKeyword(km[1], seqs)) return false;
     return km[1].toLowerCase() === term.value;
+  }
+  if (term.kind === 'priority') {
+    // UXP-109: match the org priority marker `[#A]`. parseTodo only reads a priority when the
+    // leading keyword is a recognized state, so a non-todo point never matches. Derive the state
+    // set from the same seqs termMatchesNode was handed, so search and the live doc agree.
+    const states = new Set();
+    for (const sq of seqs) for (const st of sq.states) states.add(st);
+    return (parseTodo(node.text || '', states).priority || '') === term.value;
   }
   if (term.kind === 'has') {
     return (node.props || []).some(p => p.key.toLowerCase() === term.value);
@@ -10772,6 +10791,24 @@ function findFirstTableRange(text) {
 }
 
 // Insert an inline artifact at the current caret (used by the "@" menu).
+// UXP-110: announce the DEBUT result of a freshly-inserted generative pill, so the first roll
+// gets the same P4/AT reward as every re-roll (which already announce). Mirrors the reroll
+// phrasing per type. The visible `-rolled` pop can't persist on an inline insert (applyInlineReplace
+// re-enters edit mode, which unfolds the pill back to its {…} source), so the announce is the debut
+// reward that survives; the pop still fires on every subsequent click via the reroll path.
+function announceDebut(type, rec) {
+  if (!rec) return;
+  let msg;
+  switch (type) {
+    case 'dice':    msg = `Rolled ${rec.expr}: ${diceTotalStr(rec)}`; break;
+    case 'est':     msg = `Estimate ${rec.expr}`; break;
+    case 'markov':  msg = `Markov: ${rec.result || ''}`; break;
+    case 'grammar': msg = `Generated: ${rec.result || ''}`; break;
+    case 'math':    msg = `Result: ${rec.result != null ? rec.result : ''}`; break;
+    default:        return;
+  }
+  announce(msg);
+}
 function insertInlineArtifact(id, nodeId, content) {
   const node = nodeById(nodeId);
   if (!node) return;
@@ -10811,6 +10848,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.dice ||= []).push(roll);
         applyInlineInsertion(nodeId, offset, `[[dice:${roll.key}]]`);
+        announceDebut('dice', roll);   // UXP-110
       },
     });
   } else if (id === 'est') {
@@ -10823,6 +10861,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.est ||= []).push(rec);
         applyInlineInsertion(nodeId, offset, `[[est:${rec.key}]]`);
+        announceDebut('est', rec);   // UXP-110
       },
     });
   } else if (id === 'markov') {
@@ -10833,6 +10872,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.markov ||= []).push(roll);
         applyInlineInsertion(nodeId, offset, `[[markov:${roll.key}]]`);
+        announceDebut('markov', roll);   // UXP-110
       },
     });
   } else if (id === 'rolltable') {
@@ -10845,6 +10885,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.grammar ||= []).push(roll);
         applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
+        announceDebut('grammar', roll);   // UXP-110
       },
     });
   } else if (id === 'grammar') {
@@ -10855,6 +10896,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.grammar ||= []).push(roll);
         applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
+        announceDebut('grammar', roll);   // UXP-110
       },
     });
   } else if (id === 'deck') {
@@ -10866,6 +10908,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.grammar ||= []).push(rec);
         applyInlineInsertion(nodeId, offset, `[[grammar:${rec.key}]]`);
+        announceDebut('grammar', rec);   // UXP-110
       },
     });
   } else if (id === 'oracle') {
@@ -10874,6 +10917,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.grammar ||= []).push(roll);
         applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
+        announceDebut('grammar', roll);   // UXP-110
       },
     });
   } else if (id === 'math') {
@@ -10885,6 +10929,7 @@ function insertInlineArtifact(id, nodeId, content) {
         const n = nodeById(nodeId); if (!n) return;
         (n.math ||= []).push(roll);
         applyInlineInsertion(nodeId, offset, `[[math:${roll.key}]]`);
+        announceDebut('math', roll);   // UXP-110
       },
     });
   } else if (id === 'var') {
@@ -12074,7 +12119,12 @@ function collectTags(rootNode) {
   const counts = new Map();
   const TAG_RE = /(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g; // mirror mdInline's hashtag rule (nested tags via /)
   function walk(n) {
-    const text = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
+    // Blank [[…]] tokens (link/artifact targets) AND the leading org priority marker
+    // `[#A]` (UXP-109), so neither the `#id` inside a link nor the `#A` inside a priority
+    // marker leaks a phantom tag. The render side already strips the priority marker
+    // (renderContentHTML splits it off before mdInline), so this keeps collectTags in
+    // lockstep with mdInline. #KEYWORD status words are left to count deliberately.
+    const text = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ').replace(/^(\s*#\w+\s+)?\[#[A-Za-z]\]/, m => ' '.repeat(m.length));
     let m; TAG_RE.lastIndex = 0;
     while ((m = TAG_RE.exec(text)) !== null) counts.set(m[1], (counts.get(m[1]) || 0) + 1);
     for (const c of n.children || []) walk(c);
@@ -12551,18 +12601,39 @@ const ORACLE_BANDS = [
   { label: 'Unlikely',   body: 'Yes 1 | No 3'  },
   { label: 'Impossible', body: 'Yes 1 | No 19' },
 ];
+// UXP-111: the "with complication" (swing) oracle. A six-way answer so the most common solo ask —
+// yes/no plus a twist (Yes-and, No-but) — is produced by the pill, not hand-typed. The plain
+// Yes/No keep the band's dominant weight (5); each side's twist arms are a rarer 1|1 split, so
+// "and"/"but" surface occasionally. **These ratios are ORIGINAL and user-tunable** (the odds field
+// stays editable): they are not lifted from any published solo-RPG oracle table.
+function oracleSwingBody(yesW, noW) {
+  return `Yes, and 1 | Yes ${yesW} | Yes, but 1 | No, but 1 | No ${noW} | No, and 1`;
+}
+const ORACLE_SWING_BANDS = ORACLE_BANDS.map(b => {
+  const m = b.body.match(/Yes (\d+) \| No (\d+)/);
+  const yesW = m ? +m[1] : 1, noW = m ? +m[2] : 1;
+  return { label: b.label, body: oracleSwingBody(yesW, noW) };
+});
 const ORACLE_CHIPS = ORACLE_BANDS.map(b => ({ label: b.label, insert: el => { el.value = b.body; } }));
+const ORACLE_SWING_CHIPS = ORACLE_SWING_BANDS.map(b => ({ label: b.label, insert: el => { el.value = b.body; } }));
 
 function openOracleDialog({ onResult }) {
   const build = body => makeGrammarRoll('origin: ' + body, 'origin');
+  // UXP-111: two chip rows. The top row sets plain Yes/No odds; the "with complication" row
+  // fills the six-way swing body (Yes, and | Yes | Yes, but | No, but | No | No, and) at the same
+  // likelihood. Either fills the one editable odds field, so the field stays the power path.
+  const chips = [
+    ...ORACLE_CHIPS,
+    ...ORACLE_SWING_CHIPS.map(c => ({ label: c.label + ' + swing', insert: c.insert })),
+  ];
   openInsertDialog({
     icon: { fa: 'fa-solid fa-circle-question', fb: '🔮' },
     title: 'Yes/No oracle',
     submitLabel: 'Insert',
     fields: [
-      { key: 'body', label: 'Odds (Yes weight | No weight)', value: 'Yes 1 | No 1', chips: ORACLE_CHIPS,
+      { key: 'body', label: 'Odds (Yes weight | No weight)', value: 'Yes 1 | No 1', chips,
         placeholder: 'Yes 3 | No 1',
-        hint: 'Pick a likelihood, or set the odds yourself. The weight after each option tunes its chance. A weight can be a {= expression} over variables for dynamic odds. Click the pill to ask again.',
+        hint: 'Pick a likelihood, or set the odds yourself. A "+ swing" chip adds the Yes-and / No-but twists (a six-way answer). The weight after each option tunes its chance, and can be a {= expression} over variables. Click the pill to ask again.',
         preview: v => {
           if (splitTopLevel(v, '|').length < 2) return `<span class="io-preview-bad">Two options, e.g. Yes 3 | No 1</span>`;
           const roll = build(v);
@@ -12582,9 +12653,15 @@ function rerollGrammar(node, key) {
   if (!g) return;
   if (g.mode) {                                   // stateful sequence: ADVANCE, don't re-roll
     if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
+    // UXP-120: a shuffle deck reshuffles silently when its bag empties. Detect the wrap BEFORE
+    // the draw (empty bag + we've drawn before, so not the first-ever draw) and flash a courtesy
+    // cue, so "non-repeating" doesn't quietly recycle without notice. Read-only on g here (no
+    // junk flag persisted to _grammar); advanceSeq refills the bag as usual.
+    const willReshuffle = g.mode === 'shuffle' && g.last != null && (!Array.isArray(g.bag) || g.bag.length === 0);
     g.result = advanceSeq(g);
     markDirty();
     announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
+    if (willReshuffle) flashHint('Deck reshuffled');
     const el = repaintNodeContent(node);
     el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
     return;
@@ -19307,6 +19384,7 @@ const GUIDE = [
       { syn:'is:failing',             desc:'points that break a check (the lint filter)' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo)' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
+      { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
       { syn:'start:<date',            desc:'started before date (YYYY-MM-DD or today±N)' },
     ] },
@@ -19588,7 +19666,7 @@ const GUIDE = [
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
-    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely, or Impossible), then click to ask. Type @ and choose Oracle.",
+    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely, or Impossible), then click to ask. For a yes/no with a twist, pick a \"+ swing\" likelihood: it answers six ways (Yes and, Yes, Yes but, No but, No, No and) so a complication or a bonus rides along. Type @ and choose Oracle.",
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
       { syn:'Yes 4 | No 1',      desc:'custom odds (80% yes here)' },
