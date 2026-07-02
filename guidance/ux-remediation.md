@@ -30,6 +30,10 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > **UXP-68 ✓ closed** (the inverse of UXP-60's caret-split). **UXP-20** remains the *standing* syntax-sprawl guard, which by design never
 > closes. Closed entries are retained as the record of the decisions (and the regression
 > tripwires) they encode.
+> A **five-lens design audit (July 2026)** (design tokens, interaction, accessibility, copy,
+> component consistency; every finding adversarially re-verified, 0 of 30 refuted) added
+> **UXP-70…99**, all ☐ open, tracked in their own section below with proposed guideline
+> additions and closing batches.
 
 Each entry: the **problem**, the **rule** it violates, and the **target** (the conformant end-state the fix must reach). Verify the named symbol with grep before acting — some controls drift (per `accessibility.md`'s "verify before you label").
 
@@ -708,6 +712,178 @@ A grab-bag of small, independent items from the audit (low priority; each a one-
 - **History:** PR #45 tried a ZWSP caret-anchor after `.gr-src` spans; **reverted in #46** — verified only on manually-typed text, it made picker-applied references **undeletable** (Backspace ate the invisible ZWSP, `editableText` came back unchanged, `checkInlineHighlight` regenerated the anchor: a no-op loop). The sibling **atomic-pill** anchor (offset 0) stays — pills are immune to that loop.
 - **Resolved (post-input span normalization, self-healing):** `grSrcSpanClean(text)` (pure, pinned) — a span is clean iff its text is exactly one balanced `{…}`, the only shape `highlightGrammarText` emits. `normalizeGrSrcSpans(content, node)` runs in the `input` handler: when any live span is dirty (typed/pasted chars merged past `}`, or `}` deleted), it re-renders `editModeHTML` from `node.text` and restores the caret by logical offset — the merged tail re-binds as plain prose and the caret lands outside the span. Synchronous (before paint) so the styled flash is never visible; **adds nothing to the DOM**, so every Backspace consumes a real character — the #45 loop is structurally impossible. **IME guard:** skipped while `e.isComposing` (a re-render mid-composition would drop the composed text); a `compositionend` listener normalizes on commit.
 - **Verified on the mandatory bar** (picker-apply path, not just manual typing): apply → type → tail renders plain; **Backspace ×19 and forward Delete** remove the reference with progress on every press (no loop; empty-buffer placeholder is the terminal state, identical to plain text); exit/re-enter correct (promotes, unfolds bounded); simulated IME composition right after the span is **not dropped** mid-composition and normalizes on `compositionend`; dice/rolltable/markov pills round-trip idempotently and delete without sticking.
+
+## Design and UX audit (July 2026): UXP-70…99
+
+*A five-lens audit (design tokens, interaction, accessibility, copy, component consistency) of
+`index.html` against `design-language.md`, `ux-discipline.md`, `ux.md`, `accessibility.md`, and
+`concept-guide.md`. Every finding was adversarially re-verified against the quoted rule and the
+cited code before entering this register; 0 of 30 were refuted. Entries marked **GAP** violate no
+written rule: they record a decision the guidelines do not yet govern, and each carries the
+guideline sentence to add (collected at the end of this section). Symbols are cited by name per
+the repo rule; verify with grep before acting. Effort tags: (trivial) / (small).*
+
+**Lens: design tokens (`design-language.md`)**
+
+### UXP-70 ☐ Forced theme misses six hardcoded dark-mode rules (DL §3 dual-home) 🔴
+- **Problem:** `.node-row:hover`, the `[data-editing]` row tint, `.md-hl`, `.mt-selected`, `mark`, and `.node-selected` each pair a light-mode literal with a `@media(prefers-color-scheme:dark)` override, but `applyTheme` rewrites only custom properties (no class or attribute toggle), so under a forced theme (OS-light + in-app Dark) none of the six dark variants ever apply: row hover degrades to a near-invisible black wash and the highlighter keeps its light hue.
+- **Rule:** DL §3, "the palette lives in two homes; change both or neither".
+- **Target (small):** promote each pair to dual-homed tokens (`--row-hover`, `--hl`, the selection/edit tints) declared in `:root`, the dark media query, AND both `applyTheme` strings; the six rules reference only tokens. Verify with the §6 forced-theme screenshot (OS-light + in-app dark).
+
+### UXP-71 ☐ `#edit-bar` keeps a hardcoded cold-black upward shadow (DL §3/§4) 🟡
+- **Problem:** `#edit-bar` ships `box-shadow:0 -2px 10px rgba(0,0,0,.06)`: not warm in light, invisible on the dark `--bg`, never swaps per theme, and a fourth ad-hoc shadow outside the token set. The exact defect class UXP-61 fixed on `#fn-panel`/`#bl-panel`/`#var-panel`.
+- **Rule:** DL §4 shadow tokens; §3 theme-paired shadows.
+- **Target (trivial):** `box-shadow:var(--sh-up)` (already dual-homed).
+
+### UXP-72 ☐ Active toggles painted solid accent (DL §4 reserve rule) 🟡
+- **Problem:** `.bpop-type.cur`, `.tp-chip.cur`, and `.mt-align-bar button.on` use solid `var(--acc)` fill, while the toolbar's own `button.active` correctly wears the 16%-tint recipe.
+- **Rule:** DL §4, "solid accent fill is reserved for the focus outline, primary dialog actions, and the brand mark".
+- **Target (trivial):** restyle all three to the tint recipe (16% accent mix background, accent ink, 35% border).
+
+### UXP-73 ☐ Informational text below the 11px floor, one opacity-faded (DL §4/§3) 🟡
+- **Problem:** the Gantt date readouts `.agg-today-lbl` and `.agg-hover-lbl` render at 8px; `.collapse-count` (the hidden-children count) renders at 9px AND is faded with `opacity:.6` against the role-not-failing-ink rule.
+- **Rule:** DL §4, "no informational text below 11px effective (caps+tracking earns 10px for labels only)"; §4 eyebrows "never opacity-faded".
+- **Target (small):** raise the Gantt labels to 10px caps+tracking or 11px plain; raise `.collapse-count` to 10-11px and replace the opacity fade with `color:var(--muted)`.
+
+### UXP-74 ☐ Off-token border radii: 5px, 7px, 9px one-offs (DL §4) 🟢
+- **Problem:** `.gr-src` 5px, `.fn-key` 7px, `.var-pick-card` 9px (plus a one-off 1.5px border width), `.nsb-btn` 5px; the locked set is 3/6/8/12/999.
+- **Target (trivial):** map to the nearest token (`--r-sm` for `.gr-src`/`.nsb-btn`/`.fn-key`, `--r-md` for `.var-pick-card`); normalize the 1.5px border to 1px.
+
+### UXP-75 ☐ Pill family hue registry drifted (DL §4, doc-only) 🟢
+- **Problem:** `.est-pill{--pill:#5a4a8a}` exists in code but not in DL §4's family-hue list; the doc still lists the table hue `#5b3a6e`, which has zero code occurrences since the rolltable-into-grammar collapse.
+- **Target (trivial):** update the §4 hue list: add `est #5a4a8a`, mark `table #5b3a6e` retired.
+
+### UXP-76 ☐ Calendar day-of-week header off the one eyebrow recipe (DL §4) 🟢
+- **Problem:** `.agc-dow span` is 10px/700/.05em; the recipe is 10px/600/.07em (conformant siblings: `.ag-rowlabel`, `.acc-row-lbl`).
+- **Target (trivial):** `font-weight:600;letter-spacing:.07em`.
+
+### UXP-77 ☐ Keycaps print two sizes: `.sh-row kbd` at 10px (DL §4) 🟢
+- **Problem:** `.sh-row kbd` duplicates the keycap recipe at 10px against the canonical 11px rule (`.cmd-key`, `#search-key`). UXP-67's keycap item closed the fill/ledge axis; the size axis still diverges.
+- **Target (trivial):** fold `.sh-row kbd` into the canonical 11px declaration.
+
+### UXP-78 ☐ GAP: the modal scrim is one hardcoded rgba with no token or theme pairing 🟢
+- **Problem:** `#io-back` uses a single warm-dark literal in both themes; over the dark `--bg` a 38% near-black scrim barely dims the page, so dark-mode dialogs get much weaker separation than light-mode ones. No guideline covers overlay/scrim color.
+- **Target (small):** a dual-homed `--scrim` token (stronger in dark) in `:root`, the dark media query, and both `applyTheme` strings; use it on `#io-back`. Guideline sentence: see the additions list below.
+
+### UXP-79 ☐ GAP: `font-weight:800` on the calendar today number; no written weight scale 🟢
+- **Problem:** `.agc-cell.today .agc-dom` uses weight 800, the only text weight above 700 in the app (the 900s are Font Awesome font-selection classes). Nothing bounds UI text weights.
+- **Target (trivial):** drop to 700 (the accent ink + tint plate already mark today). Guideline sentence: see below.
+
+**Lens: interaction (`ux-discipline.md`, `ux.md`)**
+
+### UXP-80 ☐ In-place dialog re-render clobbers `ioReturnFocus` (P3) 🟡
+- **Problem:** `openTemplatePicker` and `openWorkspaceSwitcher` re-invoke themselves after an in-dialog action (forget a template, delete a doc) and unconditionally recapture `ioReturnFocus = document.activeElement`, which by then is a disconnected node or body; `closeIo` then restores focus to body instead of the pre-dialog element.
+- **Rule:** §9 matrix "dialogs focus-trap + restore" (UXP-16); P3 keyboard operability.
+- **Target (small):** capture `ioReturnFocus` only when the dialog is not already open (guard on `ioBack.classList.contains('on')`), the `wasOpen` precedent `openCaptureDialog` already uses; ideally centralize in one `openIo()` helper.
+
+### UXP-81 ☐ Inbox-slot removal and saved-search forget: no toast, no undo (P4-3/P4-4, P1) 🟡
+- **Problem:** `removeInboxSlot` and `forgetSavedSearch` remove doc-level config with only `markDirty()`, no `flashHint` and no `pushUndo`, while the sibling action (template Forget) does both. Same conceptual action, three behaviors.
+- **Target (trivial):** add the `flashHint` confirmation to both, and `pushUndo` where the config is not trivially re-creatable, matching the template-forget pattern.
+
+### UXP-82 ☐ Capture with empty text is a silent no-op (P4-1) 🟢
+- **Problem:** `doCapture` returns early on empty text while the Capture button is enabled (it is only disabled when no inbox is set), so Enter or a click with an empty draft does nothing, silently.
+- **Target (trivial):** disable the button while the draft is empty, or flash a brief hint through the existing cap-confirm aria-live line.
+
+### UXP-83 ☐ GAP: Esc discards a typed capture draft, and skips the manager layer (P1-3 adjacent) 🟢
+- **Problem:** Esc in the capture input always calls `closeCapture()` even when the second-row inbox manager is open (one Esc collapses two layers, against the P1-3 one-layer-outward convention), and the next open wipes `captureDraft`, so a non-empty draft is lost with no warning. No guideline covers draft retention in transient input surfaces.
+- **Target (small, owner call on the retention behavior):** first Esc closes only the manager; preserve `captureDraft` across close/reopen within a session, clearing it only on successful capture. Guideline sentence: see below.
+
+### UXP-84 ☐ Gantt titles-column resize has no touch path (§7.5, CLAUDE.md touch invariant) 🟢
+- **Problem:** `@media(hover:none)` hides `.agg-names-resize`, the only affordance for resizing the titles column, and no menu or preset twin exists in the agenda bar, so touch users cannot adjust it at all. (The base column resize is conformant because the Column menu carries Width presets.)
+- **Target (small):** keep the separator visible on touch with a widened tap target and pointer-drag, or add a small width toggle (narrow/default/wide) to the agenda controls as the §7.5 twin.
+
+**Lens: accessibility (`accessibility.md`, P3)**
+
+### UXP-85 ☐ `#nsb-clear` has no accessible name (P3-1) 🟡
+- **Problem:** the multi-select bar's clear button is a bare `✕` with no `aria-label` and no `title`; every sibling nsb button is text-labeled. AT hears "multiplication sign, button".
+- **Target (trivial):** `aria-label="Clear selection"` (plus a matching `title`).
+
+### UXP-86 ☐ `#search-clear` is missing its mandated aria-label (a11y Phase 0, unexecuted) 🟡
+- **Problem:** `accessibility.md` Phase 0 explicitly instructs `aria-label="Clear search"` on `#search-clear`; the button still carries only a `title`. UXP-13's resolved list omits this control, so the doc's instruction was never executed.
+- **Target (trivial):** add the label exactly as the a11y doc specifies.
+
+### UXP-87 ☐ GAP: search filtering gives AT no result announcement 🟡
+- **Problem:** `applySearch()` re-renders the outline with no `announce()` call, so a query matching 0 or 500 points is visually obvious but silent to a screen-reader user whose focus stays in `#search-box`. No guideline mandates filter-result announcements (P3-5 comes close).
+- **Target (small):** after `render()`, announce a match count to `#a11y-live` (debounced by the existing search timer). Guideline sentence: see below.
+
+### UXP-88 ☐ GAP: `#search-clear` stays a ~14px tap target on touch; no written tap-target floor 🟢
+- **Problem:** the `@media(hover:none)` block enlarges pencils, toolbar buttons, tab closes, and nsb buttons, but never `#search-clear`, leaving a ~14px target beside a focused text field. The ~44px floor exists only as a CSS comment, in no guideline.
+- **Target (small):** enlarge `#search-clear` in the `@media(hover:none)` block (padding or min-width/height 44px). Guideline sentence: see below.
+
+### UXP-89 ☐ `#fm-dirty-dot` lacks the aria-label UXP-13 records as shipped (P3-1) 🟢
+- **Problem:** UXP-13 claims "both dirty dots" resolved; only the toolbar `#dirty-dot` has `aria-label="Unsaved changes"`. The file-menu `#fm-dirty-dot` has `title` only: a 6px decorative span invisible to AT inside the file dialog.
+- **Target (trivial):** add the aria-label, or fold the unsaved state into the adjacent `#fm-status` text AT already reads.
+
+**Lens: copy and terminology (§1 vocabulary, `concept-guide.md`)**
+
+### UXP-90 ☐ The document is called a "note" in the link picker and concept guide (§1, V-1) 🔴
+- **Problem:** the `[[` picker's create row says `+ New note`, its aria-label says "Create a new note", the flash says `Created note`, and the GUIDE has "Searching all your notes" and "divide a long note into sections", all meaning the document (one `.opml`). Everywhere else says "document" (`Switch document…`, `New document "…" in the folder`).
+- **Rule:** §1 canonical vocabulary: the document is a "document"; "note" is reserved for per-point notes. The vocabulary table is binding for aria-labels.
+- **Target (small):** rename all five sites to "document".
+
+### UXP-91 ☐ Agenda calendar/week aria-labels call points "items" (§1) 🟡
+- **Problem:** the calendar's `+N` overflow and the week strip's "Earlier" aria-labels say "item(s)"; §1 bans "item" for a point.
+- **Target (trivial):** "Show N more points for this day", "Earlier, N points".
+
+### UXP-92 ☐ Concept guide cites a menu path that does not exist (`concept-guide.md` house rules) 🟡
+- **Problem:** the GUIDE export entry's syn reads `File → Export Markdown`, but the real File menu is group "Export a copy" with the item labeled "Markdown". The house rule: verify every fact against the UI; a wrong path is worse than no entry.
+- **Target (trivial):** `File → Export a copy → Markdown`; give the sibling `Web page (HTML)` example the same middle step.
+
+### UXP-93 ☐ GUIDE export entry says "Share your outline" meaning the document (§1) 🟢
+- **Problem:** the entry opens "Share your outline with someone…" then says "your document" later in the same body. §1 sanctions "the outline" only for the navigable tree/view.
+- **Target (trivial):** "Share your document with someone who doesn't have the app".
+
+### UXP-94 ☐ GAP: no written casing convention; "Markdown" and Title Case drift in the same menus 🟡
+- **Problem:** `Export to Markdown` vs `Edit as markdown` and `Copy as markdown` in the same bullet menu; `Save As…` (Title Case) vs sentence-case siblings (`Switch document…`, `Save as template`). No guideline covers label casing or proper-noun treatment.
+- **Target (small):** normalize code to sentence case with "Markdown" always capitalized. Guideline sentence: see below.
+
+**Lens: component consistency (DL §4, `ux-discipline.md` §7)**
+
+### UXP-95 ☐ Error toast pairs `--bad` background with `--acc-fg` ink (DL §3) 🔴
+- **Problem:** `flashError` sets `background:var(--bad);color:var(--acc-fg)`, but `--acc-fg` is computed against the *accent*, not against `--bad`. In dark mode `--bad` is a pastel; a deep accent (white `--acc-fg`) yields roughly 1.9:1 white-on-pastel-red on the app's error surface. The toast also hardcodes its shadow and radius off-token.
+- **Rule:** DL §3 (`--acc-fg` exists precisely to prevent this class of pairing; new color pairs ship with their WCAG ratio); §4 token systems.
+- **Target (small):** a `--bad-fg` twin computed in `applyAccentCSS`/theme strings (both palette homes), or restyle the toast to the badge recipe (16% `--bad` mix + `--bad` ink on the neutral toast surface); move shadow/radius onto `--sh-1`/`--r-md`.
+
+### UXP-96 ☐ Close/dismiss buttons: two glyphs and five bespoke recipes (DL §1 corollary, §4) 🟡
+- **Problem:** dismiss renders as `✕` (`#search-clear`, `#var-panel-close`, `#storage-warn-close`, saved-search chips), `×` (`.doc-tab-close`, `.cap-close`, `.guide-close`), and `fa-xmark` (via `setIcon`), with five divergent recipes including `.guide-close`'s `border-radius:50%` (outside the radius set). One concept, many faces.
+- **Target (small):** one dismiss glyph (`fa-xmark` through `setIcon`, `✕` fallback per the icon policy) and one shared `.close-btn` recipe (muted ink, `--fg` on hover, `--r-sm`); drop the 50% radius. Guideline sentence: see below.
+
+### UXP-97 ☐ GAP: the workspace-conflict dialog leads its footer with the danger button 🟡
+- **Problem:** the conflict footer appends `Keep my version` (`io-btn danger`) first, while `confirmDialog` and every other builder place dismiss/neutral first and the committing (or danger) action last. A code comment ("Primary first") shows the inversion was deliberate, so the rule needs writing either way.
+- **Target (trivial, owner call):** reorder danger-last to match `confirmDialog`, or record the stacked-layout exception. Guideline sentence: see below.
+
+### UXP-98 ☐ GAP: three row paddings for the same `.cmd-item` role 🟢
+- **Problem:** base `.cmd-item` 6px 10px, `#slash-menu` 5px 8px, `#file-menu` 7px 9px; the touch block diverges the same way. DL §4 unifies the hover language but nothing governs row metrics.
+- **Target (trivial):** collapse to the base padding and delete the overrides, or record the per-menu density as a decision. Guideline sentence: see below.
+
+### UXP-99 ☐ Concept-guide nav tints are off-recipe (DL §4) 🟢
+- **Problem:** `.guide-nav-btn.active` uses a 12% mix with no 35% border (vs the canonical 16%+35% worn by `button.active` and `.doc-tab.active`), and its hover uses 6% vs the 10% menu-hover language.
+- **Target (trivial):** adopt the canonical recipes, or record the quieter nav variant as a DL decision.
+
+### Proposed guideline additions (the gap half, one docs PR)
+
+Each GAP above proposes one sentence; collected here so they land together:
+1. **DL §3 (scrim):** "Modal backdrops use the one `--scrim` token (warm-dark in light, deeper black in dark, dual-homed like every theme token); no other full-screen darkening value may be introduced." (UXP-78)
+2. **DL §2/§4 (weights):** "UI text weights come from the set 400/500/600/700; nothing renders text heavier than 700 (icon-font weight classes exempt)." (UXP-79)
+3. **`ux-discipline.md` §6 (drafts):** "A transient input surface (capture strip, search box) MUST NOT discard a non-empty draft on dismiss; the draft is kept for the next open or its loss is confirmed." (UXP-83)
+4. **`accessibility.md` (filter announcements):** "Any action that filters or re-populates the visible outline without moving focus must write a short result summary (e.g. a match count) to `#a11y-live`." (UXP-87)
+5. **`accessibility.md` (tap targets):** "Under `@media(hover:none)`, every tappable control must present at least a ~44px hit area; the visual box may stay smaller as long as padding or an overlay extends the target." (UXP-88)
+6. **`ux-discipline.md` §1 (casing):** "Menu, button and dialog labels use sentence case (capitalize only the first word and proper nouns); 'Markdown' is a proper noun and is always capitalized in user-facing copy." (UXP-94)
+7. **DL §4 (close buttons):** "Dismiss/close buttons share one recipe and one glyph (`fa-xmark`, `✕` fallback) everywhere; a panel may not mint its own close styling." (UXP-96)
+8. **`ux-discipline.md` §7 (footer order):** "Dialog footers order buttons dismiss/neutral first, the committing action last; a danger action always occupies the final slot, never the first." (UXP-97)
+9. **DL §4 (menu rows):** "`.cmd-item` rows share one padding in every menu; a menu adopts the shared row metrics rather than restyling them." (UXP-98)
+10. **DL §4 (hue registry):** fold in UXP-75's registry fix (add `est #5a4a8a`, retire `table #5b3a6e`).
+
+### Suggested closing batches (UXP-70…99)
+
+- **Batch V1, theme plumbing (the 🔴 visual pair + its dependents):** UXP-70, 78, 95. One PR: introduce `--row-hover`/`--hl`/selection-edit tints, `--scrim`, `--bad-fg` across `:root`, the dark media query, `applyTheme`, and `applyAccentCSS`; verified with the §6 forced-theme screenshots and stated contrast ratios.
+- **Batch V2, CSS recipe one-liners:** UXP-71, 72, 73, 74, 76, 77, 99. Pure CSS, screenshot-verified in both themes.
+- **Batch C1, copy strings:** UXP-90, 91, 92, 93 (+ 94's code half). String edits only; includes the 🔴 vocabulary defect.
+- **Batch I1, small-JS interaction + a11y:** UXP-80, 81, 82, 85, 86, 87, 89. Additive JS/attributes.
+- **Batch D1, docs:** the ten guideline additions above + UXP-75. `UI: none`.
+- **Owner calls before build (the UXP-57/68 precedent):** UXP-83 (draft retention), UXP-84 (which touch twin), UXP-97 (footer order was deliberately inverted).
+
+---
 
 ## Tier 3 — Accessibility conformance (additive; sequenced in `accessibility.md`)
 
