@@ -3030,6 +3030,21 @@ test('flattenArtifacts: a display-only reference to a pick exports the frozen te
   assert.equal(out, 'It was wyrm!');
 });
 
+// UXP-137: the freeze-to-text core produces exactly what flattenArtifacts inlines (lockstep).
+test('frozenTokenText — per type, and matches flattenArtifacts', () => {
+  const node = c.mkNode('x');
+  node.dice = [{ key: 'd1', expr: '2d6', total: 7, parts: [{ kind: 'dice', sides: 6 }] }];
+  node.grammar = [{ key: 'g1', result: 'a goblin', anon: true }];
+  node.markov = [{ key: 'm1', path: ['a', 'b', 'c'] }];
+  assert.equal(c.frozenTokenText('dice', 'd1', node, {}), '2d6 = 7');
+  assert.equal(c.frozenTokenText('grammar', 'g1', node, {}), 'a goblin');
+  assert.equal(c.frozenTokenText('markov', 'm1', node, {}), 'a → b → c');
+  assert.equal(c.frozenTokenText('dice', 'missing', node, {}), '');   // no record → ''
+  // lockstep: flattening the token yields the same string frozenTokenText returns
+  node.text = 'You find [[grammar:g1]]';
+  assert.equal(c.flattenArtifacts(node.text, node, {}), 'You find a goblin');
+});
+
 test('OPML: a pick record serializes kind + rolled into the _vars attribute', () => {
   const root = mkPickRoot([{ key: 'p1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'dragon' }]);
   const xml = c.toOpml(root);

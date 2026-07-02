@@ -73,6 +73,11 @@ twice in a scene), make it a deck instead:
 A shuffle deck draws each item once, then reshuffles and tells you when it has (a
 "Deck reshuffled" note), so you always know when you have been through the whole list.
 
+One thing to know: a deck draws without repeats only as its own standalone pill. If you fold a
+`{shuffle: ...}` inside a named rule (like `meaning: {shuffle: hide | reveal} {subject}`), it turns
+into an ordinary random pick, so repeats can come back. Keep the deck as its own pill when the
+no-repeat behavior matters.
+
 ## Threads: pull one to feature next
 
 Solo play runs on threads: the open questions you are chasing. Keep them as a short **hand-written
