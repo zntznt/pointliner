@@ -975,7 +975,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-dest-btn{flex:0 0 auto;max-width:230px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;overflow:hidden}
 .cap-dest-btn:hover{color:var(--fg);border-color:var(--muted)}
 .cap-dest-btn.open{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
-.cap-dest-btn.unset{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.cap-dest-btn.unset{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 38%,transparent)}  /* the semantic tint recipe, warn-routed (same mix as .ag-toggle.ag-focus.on) */
 .cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cap-caret{font-size:10px;color:var(--muted);transition:transform .12s}
 .cap-dest-btn.open .cap-caret{transform:rotate(180deg)}
@@ -984,8 +984,10 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:13px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 9px;outline:none;min-height:24px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto}
 .cap-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .cap-go{flex:0 0 auto;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc-fg);background:var(--acc);border:1px solid var(--acc);border-radius:var(--r-sm);padding:2px 12px;cursor:pointer}
-.cap-go:hover{filter:brightness(1.06)}
-.cap-go:disabled{opacity:.45;cursor:default}
+/* solid-accent primary states mirror .io-btn.primary: one hover value app-wide, and disabled resets the filter (source order after :hover) so a dead control never hover-reacts.
+   Both rules re-pin background: the generic button:hover{background:var(--bdr)} wash (0,1,1) outranks the single-class .cap-go (0,1,0) and was painting --acc-fg text on a --bdr fill. */
+.cap-go:hover{background:var(--acc);filter:brightness(1.07)}
+.cap-go:disabled{background:var(--acc);opacity:.4;cursor:not-allowed;filter:none}
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .cap-close{flex:0 0 auto;width:24px;height:22px;font-size:14px}
 .cap-confirm{font-size:11px;color:var(--ok);font-weight:600;white-space:nowrap;min-height:1.1em;padding:0 2px}
@@ -993,14 +995,18 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
 .cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:3px 0 1px;border-top:1px dashed var(--bdr)}
 .cap-chip{display:inline-flex;align-items:stretch;max-width:230px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
+/* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
+.cap-chip:hover{border-color:var(--muted)}
 .cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-chip.cur .cap-chip-pick{color:var(--acc)}
 .cap-chip-pick{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:none;padding:2px 4px 2px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cap-chip-pick:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}  /* the .close-btn neutral segment hover; also keeps the generic button:hover --bdr wash out of the .cur tint */
 .cap-chip.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
 .cap-chip-rm{font-size:12px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 6px;cursor:pointer}
 .cap-chip-rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
-.cap-add{font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc);background:none;border:1px dashed color-mix(in srgb,var(--acc) 45%,transparent);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
-.cap-add:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+/* plain .ag-toggle chip (DL §4 docked-strip grammar); dashed borders are the broken-pill language, not an affordance */
+.cap-add{font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
+.cap-add:hover{color:var(--fg);border-color:var(--muted)}
 .cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-btn:focus-visible,.cap-close:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
 .cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:100%;box-sizing:border-box}
