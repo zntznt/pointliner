@@ -1101,45 +1101,45 @@ A second seven-persona review fleet audited the app **after** UXP-102…120 ship
 - **Rule:** DL §4 (solid accent fill reserved for the primary commit action; hover states use the tint recipe).
 - **Resolved:** `.io-chip:hover` now uses `background:color-mix(in srgb,var(--acc) 6%,var(--cbg))` + `border-color:var(--acc)`, and drops the `color:var(--acc-fg)` (the ink inherits `--fg`). One persistent loud object per dialog. Verified computed.
 
-### UXP-137 ☐ No way to freeze a rolled pill to plain text (P2/product, solo) 🟡  [Batch 5]
-- **Problem:** the lonelog guide sells the pill's freeze as "an honest record … only changes if you deliberately click to re-roll," but the whole journal is clickable live pills and a display-mode mis-tap re-rolls a committed beat (Undo helps only if noticed). The only escape is a full export that flattens everything.
-- **Rule:** P2/product (a missing affordance; the harm is silent-noticed-late mutation, recoverable via `pushUndo`, so medium not P4).
-- **Target:** add a per-pill "Freeze to text" action (new `collectPillActions` row + bullet-menu entry). Do NOT call `flattenArtifacts` for one pill (it's a whole-string regex over ALL tokens). Factor a shared `frozenTokenText(type,key,node,varMap)` (dice `${expr} = ${total}`, markov `path.join(' → ')`, grammar `g.result`, est `formatDist`, var `formatVarValue`) so callers stay in lockstep (P1); splice just that `[[type:key]]` occurrence and drop the matching sidecar via `pruneXxx`. Wrap in `pushUndo`, `announce()` it (P4), handle the edit-mode unfold/refold buffer. No new syntax.
+### UXP-137 ◐ No way to freeze a rolled pill to plain text (P2/product, solo) 🟡  [Batch 5] (RESOLVED pending merge)
+- **Problem:** a display-mode mis-tap re-rolls a committed journal beat; the only escape was a full flattening export.
+- **Rule:** P2/product (a missing affordance; recoverable via `pushUndo`, so medium not P4).
+- **Resolved:** factored a shared pure `frozenTokenText(type,key,node,varMap)` out of `flattenArtifacts` (both now call it, so they stay in lockstep — pinned). Added a "Freeze to text" row to every pill type in `collectPillActions` (dice/grammar/math/est/markov/pick-var), calling `freezePillToText(node,type,key)`: it splices just that `[[type:key]]` occurrence to its frozen value, `pruneArtifacts` drops the orphaned sidecar, wrapped in `pushUndo` + `announce`. Display-mode only (where the pill actions open), so no unfold-buffer handling needed. Verified in-browser: a `[[dice:…]]` froze to "2d6 = 9" and its record was dropped.
 
-### UXP-138 ☐ A spent `once` deck pops as if it drew (P4) 🟢  [Batch 5]
-- **Problem:** clicking an exhausted `once` deck is a dead event (`nextSeqIndex` returns -1, result stays `''`, repaints to muted `—`) yet still runs `pushUndo()`+`markDirty()` and re-adds `.gr-rolled`, firing the celebratory `roll-pop` on a non-event while title/aria still read "Click to advance." A `shuffle` deck gets a courteous reshuffle flash; `once` gets a false-positive flourish.
+### UXP-138 ◐ A spent `once` deck pops as if it drew (P4) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** clicking an exhausted `once` deck ran `pushUndo`/`markDirty` + re-added `.gr-rolled`, firing the pop on a non-event while the title read "Click to advance."
 - **Rule:** P4 (feedback fires on a non-event).
-- **Target:** gate on `g.mode==='once' && (g.pos||0) >= g.items.length` (do NOT include `stopping` — it never returns -1 and its repeat can be a real re-roll). In that case skip `pushUndo`/`markDirty`, don't add `.gr-rolled`, and branch verb/title/aria on the existing `ended` flag so it reads "Deck spent" not "Click to advance." A one-time `flashHint('Deck spent')` is fine. Leave `shuffle` and all real draws untouched.
+- **Resolved:** `rerollGrammar` short-circuits a spent `once` deck (`g.mode==='once' && (g.pos||0) >= g.items.length`) with a `flashHint('Deck spent')` and no state change / no pop. `renderSeqGenPill` reads "spent" (title + aria) instead of "Click to advance" once ended, and shows `(spent)` in the aria value. `shuffle`/`cycle`/`stopping` untouched. Verified in-browser: a spent once deck reads "spent"; a live one still says "advance".
 
-### UXP-139 ☐ A natural max die roll looks like any other number (experience polish) 🟢  [Batch 5]
-- **Problem:** the RPG-soul "click a pill, get a surprise" moment goes unmarked: a natural max face renders as bare `escHtml(String(...))`, indistinguishable from a 3. The engine values valence everywhere else (Fate colors, exploding chains, reroll strikes) but single-die extremes stay flat. Polish opportunity, not a conformance defect (the standard requires no crit marking and demands identity stay "at whisper level, never candy").
-- **Rule:** product/experience (optional; must clear the DoD gate and the whisper-level rule).
-- **Target:** IF pursued, a display-only class on the max face — but do NOT reuse `.dice-hit`'s accent-700 (that means a counted pool success and `.dice-total` owns it; one glyph, three meanings breaks DL §1). Give max its own whisper cue (accent ink at normal weight, or an accent underline). Key it on whether ANY face in the chain hit `p.sides` (an exploding die's last face is never the max, so `chain[len-1]===p.sides` silently never fires). Decoration, not information.
+### UXP-139 ◐ A natural max die roll looks like any other number (experience polish) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** a natural max face rendered as a bare number, indistinguishable from a 3.
+- **Rule:** product/experience (optional; whisper-level, must clear the DoD gate).
+- **Resolved (pursued):** `diceBreakdownHTML` adds a `.dice-max` class to a face when ANY face in the chain equals `p.sides` (an exploding die's last face is never the max) AND the die is kept + non-rerolled + numeric-sided. Its own whisper cue (accent ink + a 1px underline, NOT `.dice-hit`'s accent-700 which means a pool success, per DL §1). Decoration only; the value stays full-contrast. Verified: a d6's 6 gets `.dice-max`, a 3 doesn't.
 
-### UXP-140 ☐ The yes/no oracle answer has no valence (experience polish) 🟢  [Batch 5]
-- **Problem:** "Yes," "No," "Yes, and," "No, but" all render identical neutral `.gr-result`, so the most "ask the universe" beat lands as data. Self-declared optional; a recorded non-fix is acceptable.
+### UXP-140 ◐ The yes/no oracle answer has no valence (experience polish) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** "Yes," "No," "Yes, and," "No, but" all rendered identical neutral, so the oracle beat landed as data.
 - **Rule:** product/experience (optional).
-- **Target:** IF pursued, do it at the oracle door ONLY (a dedicated variant class on the anon oracle roll, never a content-sniff in `renderGrammarPill`). Use the §4 badge recipe as a BACKGROUND tint (`color-mix(--ok 16%)` for leading-Yes, `--muted` for leading-No) while the result INK stays full-contrast `--fg` (the verdict is load-bearing, must clear 4.5:1). Prefer `--muted` over `--warn` for No (a No is not an error).
+- **Resolved (pursued):** the oracle dialog sets `roll.oracle = true`; `renderGrammarPill` adds `.gr-yes` (leading Yes) or `.gr-no` (leading No) to the `.gr-result` span ONLY when `g.oracle` (no content-sniff on non-oracle grammar). The plate tints `color-mix(--ok 16%)` for Yes, `color-mix(--muted 16%)` for No (a No is not an error, so not `--warn`); the ink stays full-contrast `--fg`. Verified in-browser: Yes → green plate, No → muted plate, ink `--fg`, plain grammar untouched.
 
-### UXP-141 ☐ A `shuffle` deck nested in a rule silently degrades to a stateless pick (P1, doc-only) 🟢  [Batch 5]
-- **Problem:** the oracle-play meaning-table section recommends a deck for draw-without-repeats, but folding `{shuffle:…}` into a named rule (`meaning: {shuffle: …} {subject}`) quietly makes it a uniform pick — repeats return with no signal that the no-repeat guarantee dropped. No shipped guide teaches the broken pattern (so low), but the recommendation invites it.
+### UXP-141 ◐ A `shuffle` deck nested in a rule silently degrades to a stateless pick (P1, doc-only) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** folding `{shuffle:…}` into a named rule quietly makes it a uniform pick, so the no-repeat guarantee drops with no signal.
 - **Rule:** P1 (a construct's guarantee changes by context invisibly).
-- **Target (doc-only):** one line in `oracle-play.md` and `generating-text.md` noting a deck draws without repeats only as its own standalone pill; nested in a rule it becomes an ordinary pick. Do NOT add detection in `classifyBraceBody`/`parseRules` (they lack the nesting context, which only exists at expansion) — a persistent marker would inject non-content into a valid draw.
+- **Resolved (doc-only):** added the caveat to both `oracle-play.md` (the meaning-table deck section) and `generating-text.md` (the decks section): a deck draws without repeats only as its own standalone pill; nested in a rule it becomes an ordinary pick. No engine/detection change.
 
-### UXP-142 ☐ No in-app acknowledgement that tasks don't recur (P2, expectations copy) 🟢  [Batch 5]
-- **Problem:** the agenda GUIDE explains the no-reminders limit, but neither it nor the `dates` entry says a completed dated task stays put and tasks don't roll forward, so a user infers "the agenda is my planning home" then discovers recurrence must be hand-recreated with no hint. (The full `repeat`-property build stays a `backlog.md` feature needing P5 sign-off; the confirmable defect here is the missing sentence.)
+### UXP-142 ◐ No in-app acknowledgement that tasks don't recur (P2, expectations copy) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** nothing said a completed dated task stays put and tasks don't roll forward, so a user infers recurrence works.
 - **Rule:** P2 (set honest expectations).
-- **Target:** add one honest AP-style line to the `dates` and/or `agenda` GUIDE body: a completed dated point stays in place and tasks do not repeat automatically yet. No em dashes.
+- **Resolved:** added an honest AP-style sentence to the agenda GUIDE body and `guide/dates-and-planning.md`: "A completed dated point stays where it is, and tasks do not repeat on their own yet, so a recurring task is one you re-date by hand." (The `repeat`-property build stays the `backlog.md` feature.)
 
-### UXP-143 ☐ Keyboard state-cycle to done gives no "now hidden" notice the mouse paths give (P1, low) 🟢  [Batch 5]
-- **Problem:** (Downgraded from the blind review's medium — the stated "silent disappearance on blur" mechanism is false: the keyboard cycle repaints in place and does NOT `render()`, so the row stays visible until a later unrelated full render; the chord's P4 duty is met via the `#a11y-live` announce.) The residual real issue: the `Ctrl/⌘+Shift+S` cycle branch never calls `flashHiddenIfDone`, while all three mouse/menu commit paths do — an inconsistency in the "done, now hidden" cue.
+### UXP-143 ◐ Keyboard state-cycle to done gives no "now hidden" notice the mouse paths give (P1, low) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** the keyboard `Ctrl/⌘+Shift+S` cycle branch never called `flashHiddenIfDone`, while all three mouse/menu commit paths did — an inconsistent "done, now hidden" cue.
 - **Rule:** P1 (mouse and keyboard commit paths give different feedback).
-- **Target:** unify at `exitEdit`, not the keystroke: fire the "Done, now hidden" notice when a just-committed done row will actually be hidden by the next render, covering all commit paths — do NOT bolt `flashHiddenIfDone` onto the transient cycle keystroke (it would over-notify every time the user cycles PAST done while still editing a visible point, a P4 over-notification).
+- **Resolved:** unified at `exitEdit` (the one chokepoint every text commit passes through), NOT the keystroke: it computes `wasDone` from `prevText`, and after recomputing `node.checked`, calls `flashHiddenIfDone(node, wasDone)` so a point that just became done and will be hidden (show-done off) flashes the notice once — covering the keyboard cycle, typing `#DONE`, etc. No over-notification while mid-edit (it fires only on the commit). `#DONE` derives `node.type==='todo'`, so `isVisible` correctly gates the hide.
 
-### UXP-144 ☐ `Alt+1–9` doc-tab jump is absent from the §3 keyboard-grammar table (§3 completeness, low) 🟢  [Batch 5]
-- **Problem:** (Downgraded — the blind review wrongly said it's absent from the `?` panel; it IS there (`file-tab-n` essential entry), and P5-4 is authoring-syntax-only so it doesn't bind a navigation accelerator.) The residual real gap: the §3 keyboard-grammar table lists the sibling `Ctrl/⌘+Shift+]`/`[` tab-cycle but omits bare `Alt+1–9`.
+### UXP-144 ◐ `Alt+1–9` doc-tab jump is absent from the §3 keyboard-grammar table (§3 completeness, low) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** the §3 keyboard-grammar table listed the sibling `Ctrl/⌘+Shift+]`/`[` tab-cycle but omitted bare `Alt+1–9`.
 - **Rule:** §3 keyboard-grammar table completeness (not P5-4).
-- **Target:** add an `Alt+1–9` row to the §3 table beside the tab-cycle line. Separately, the P1 observation that `Alt` is elsewhere the point-movement modifier (so `Alt+digit` overloads it onto navigation) is an **owner grammar decision** — flag it, do NOT change the binding without sign-off.
+- **Resolved:** added the `Alt+1–9` row to the §3 table beside the tab-cycle line, with the note that `Alt` is elsewhere the point-movement modifier so this overloads it onto navigation — an accepted convenience, flagged as an owner grammar decision if it ever bites (binding unchanged).
 
 ### Recommended closing order (2026-07-02 blind re-audit, UXP-121…144)
 1. **Batch 1 — regressions + broken promises (UXP-121, 122, 123).** Two locked-Decision 🔴 regressions (mobile zoom inversion — a defect shipped in the prior review's Batch 3 — and the PWA icon divergence) plus the dead oracle-play links. Do first: they break a locked Decision or a promised affordance. Verify the mobile zoom per §6 with narrow-width shots (the discipline that would have caught it).

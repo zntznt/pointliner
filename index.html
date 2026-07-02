@@ -556,6 +556,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .dice-roll-v{display:inline-flex;align-items:center}
 .dice-dropped{opacity:.28;text-decoration:line-through}
 .dice-hit{color:var(--acc);font-weight:700}
+.dice-max{color:var(--acc);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}/* UXP-139: a natural max face, a whisper cue (accent ink + underline, NOT the .dice-hit 700 that means a pool success) */
 .dice-expl{color:var(--acc);opacity:.65;font-size:.78em;padding:0 1px}
 .dice-reroll-orig{opacity:.4;text-decoration:line-through;font-size:.92em}
 .fate-die{font-weight:700;font-size:.95em}
@@ -596,6 +597,8 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-roll:hover .gr-ico{transform:rotate(180deg)}
 .gr-name{font-family:var(--mono);font-style:italic;font-size:.82em;color:var(--muted);border-right:1px solid var(--bdr);padding-right:5px}
 .gr-result{font-weight:600;color:var(--fg)}
+.gr-result.gr-yes{background:color-mix(in srgb,var(--ok) 16%,transparent);border-radius:var(--r-xs);padding:0 4px}/* UXP-140: oracle Yes, a faint positive plate; ink stays --fg */
+.gr-result.gr-no{background:color-mix(in srgb,var(--muted) 16%,transparent);border-radius:var(--r-xs);padding:0 4px}/* UXP-140: oracle No, a muted plate (a No is not an error, so not --warn) */
 .gr-seq-end .gr-result{color:var(--muted);font-weight:400}
 .gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .gr-roll:hover .gr-edit{opacity:.6}
@@ -3734,7 +3737,12 @@ function diceBreakdownHTML(d) {
         // a rerolled die shows its struck original before the kept new value
         const orig = rerolledFrom[ri];
         const origHtml = orig != null ? `<span class="dice-reroll-orig">${escHtml(String(orig))}</span><span class="dice-expl">↻</span>` : '';
-        return `<span class="dice-roll-v${cls}">${origHtml}${inner}</span>`;
+        // UXP-139: a natural max face gets a whisper cue (its own .dice-max, NOT .dice-hit which
+        // means a pool success). Keyed on ANY face in the chain == p.sides (an exploding die's LAST
+        // face is never the max by construction), and only for a kept, non-rerolled numeric die.
+        // Decoration, not information; the value stays full-contrast.
+        const isMax = typeof p.sides === 'number' && !dropped && orig == null && chain.some(v => v === p.sides);
+        return `<span class="dice-roll-v${cls}${isMax ? ' dice-max' : ''}">${origHtml}${inner}</span>`;
       }).join('');
       return `${ops}<span class="dice-grp">${label}<span class="dice-rolls">${rollsHtml}</span></span>`;
     }
@@ -9175,7 +9183,14 @@ function exitEdit(content, node) {
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
+  const wasDone = todoDoneFromText(prevText);
   node.checked = todoDoneFromText(node.text);
+  // UXP-143: unify the "Done, now hidden" cue across ALL commit paths (typing #DONE, the
+  // keyboard state-cycle chord, etc.) at the ONE chokepoint every edit passes through, rather
+  // than bolting it onto the transient cycle keystroke (which would over-notify while still
+  // editing). If this edit just turned the point done AND show-done is off, it will vanish on the
+  // next render, so say so once (P4). node.type is a derived hint, so gate on todo-ness by text.
+  if (node.checked) flashHiddenIfDone(node, wasDone);
   if (!_suppressPruneOnFlush) pruneArtifacts(node); // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
@@ -10168,6 +10183,26 @@ document.addEventListener('click', e => {
 // Build the inline-artifact (pill) action rows for a point's Shift+F10 menu (C4) — the
 // keyboard front door to the pill wall. For each artifact record in the node's sidecars,
 // emit a primary-action row (re-roll/advance/re-sample, or edit for non-generators) and,
+// UXP-137: freeze ONE pill to its current shown value as plain text — a committed journal record
+// that can't re-roll on a stray click. Replaces just this `[[type:key]]` occurrence in node.text
+// with frozenTokenText() (the same value flattenArtifacts writes, so the two stay in lockstep),
+// then pruneArtifacts drops the now-orphaned sidecar. Undoable + announced (P4). Display-mode only
+// (the pill actions open from display mode), so it operates on node.text directly, not the unfold
+// buffer. A no-op if the token is missing.
+function freezePillToText(node, type, key) {
+  if (!node) return;
+  const token = `[[${type}:${key}]]`;
+  if (!node.text.includes(token)) return;
+  const frozen = frozenTokenText(type, key, node, collectVars());
+  pushUndo();
+  node.text = node.text.replace(token, frozen);   // just this occurrence (a pill is a unique key)
+  pruneArtifacts(node);                            // the record's token is gone → the prune drops it
+  markDirty();
+  rerenderNode(node.id);
+  announce(`Frozen to text: ${frozen}`);
+  flashHint('Pill frozen to text');
+}
+
 // where the pill has a separate editor, an edit row. A short suffix (expr/name/result)
 // disambiguates when a point has several pills. Skips records whose token is gone (a
 // dead sidecar pruned on exitEdit). Returns [] when the node has no live pills.
@@ -10177,9 +10212,12 @@ function collectPillActions(node) {
   const has = (type, key) => node.text.includes(`[[${type}:${key}]]`);
   const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
   const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
+  const FRZ = { fa:'fa-solid fa-snowflake', fb:'❄' };   // UXP-137: freeze-to-text (degrades to ❄)
+  const freeze = (type, key) => ({ icon:FRZ, label:'Freeze to text', fn:() => freezePillToText(node, type, key) });
   for (const d of node.dice || []) if (has('dice', d.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'🎲' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
     rows.push({ icon:PEN, label:'Edit dice' + tag(d.expr), fn:() => editDice(node, d.key) });
+    rows.push(freeze('dice', d.key));
   }
   for (const g of node.grammar || []) if (has('grammar', g.key)) {
     const verb = g.mode ? (g.mode === 'shuffle' ? 'Draw next' : 'Advance deck') : 'Re-generate';
@@ -10188,20 +10226,25 @@ function collectPillActions(node) {
     const genIcon = g.mode ? { fa:'fa-solid fa-clone', fb:'🃏' } : { fa:'fa-solid fa-shuffle', fb:'❖' };
     rows.push({ icon:genIcon, label:verb + tag(g.mode ? g.mode : (g.origin || g.result)), fn:() => rerollGrammar(node, g.key) });
     rows.push({ icon:PEN, label:(g.mode ? 'Edit deck' : 'Edit grammar') + tag(g.mode ? g.mode : g.origin), fn:() => editGrammar(node, g.key) });
+    rows.push(freeze('grammar', g.key));
   }
   for (const m of node.math || []) if (has('math', m.key)) {
     rows.push({ icon:PEN, label:'Edit expression' + tag(m.expr), fn:() => editMath(node, m.key) });
+    rows.push(freeze('math', m.key));
   }
   for (const e of node.est || []) if (has('est', e.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-left-right', fb:'∿' }, label:'Re-sample estimate' + tag(e.expr), fn:() => rerollEst(node, e.key) });
     rows.push({ icon:PEN, label:'Edit estimate' + tag(e.expr), fn:() => editEst(node, e.key) });
+    rows.push(freeze('est', e.key));
   }
   for (const mk of node.markov || []) if (has('markov', mk.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-circle-nodes', fb:'⤳' }, label:'Re-walk chain' + tag(mk.name), fn:() => rerollMarkov(node, mk.key) });
     rows.push({ icon:PEN, label:'Edit chain' + tag(mk.name), fn:() => editMarkov(node, mk.key) });
+    rows.push(freeze('markov', mk.key));
   }
   for (const v of node.vars || []) if (v.kind === 'pick' && has('var', v.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-roll pick' + tag(v.name), fn:() => rerollPickVar(node, v.key) });
+    rows.push(freeze('var', v.key));
   }
   return rows;
 }
@@ -12624,15 +12667,18 @@ function repeatParts(body) {
 // User-facing umbrella term is "Deck" with the mode as the qualifier — kept
 // distinct from the reserved word "sequence" (the to-do state-set feature).
 function renderSeqGenPill(key, g) {
-  const verb = g.mode === 'shuffle' ? 'draw the next' : 'advance';
-  // An exhausted `once` has nothing left to emit (empty result). Show a muted "—"
-  // end marker so the pill reads as intentionally finished, not blank/broken (P4);
-  // items are never empty (seqParts filters them), so an empty result IS the end.
+  // An exhausted `once` has nothing left to emit (empty result). Show a muted "—" end marker so
+  // the pill reads as intentionally finished, not blank/broken (P4); items are never empty
+  // (seqParts filters them), so an empty result IS the end.
   const ended = g.result === '';
   const shown = ended ? '—' : g.result;
-  const ariaVal = ended ? '(end)' : g.result;
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}). Click to ${verb}"`
-    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}. Click to ${verb}">`
+  const ariaVal = ended ? '(spent)' : g.result;
+  // UXP-138: a spent deck no longer invites a click (the click is a dead event, guarded in
+  // rerollGrammar), so its title reads "spent", not "Click to advance".
+  const verb = ended ? '' : (g.mode === 'shuffle' ? 'draw the next' : 'advance');
+  const cta = ended ? 'spent' : ('Click to ' + verb);
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}). ${cta}"`
+    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -12646,11 +12692,16 @@ function renderGrammarPill(key, g) {
   // show it (the named-table affordance: tells you what {name} calls)
   const name = !g.anon && g.origin ? g.origin : '';
   const nameTag = name ? `<span class="gr-name" title="Callable as {${escQ(name)}}">${escHtml(name)}</span>` : '';
+  // UXP-140: an oracle answer gets a whisper of valence at the door ONLY (g.oracle, set by the
+  // oracle dialog) — a leading-Yes tints the result plate faintly positive, a leading-No muted.
+  // The INK stays full-contrast --fg (the verdict is load-bearing); only the plate tints. A No is
+  // not an error, so it uses --muted, never --warn. Non-oracle grammar is untouched.
+  const valence = g.oracle ? (/^yes\b/i.test(g.result) ? ' gr-yes' : /^no\b/i.test(g.result) ? ' gr-no' : '') : '';
   return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. Click to re-generate` : 'Click to re-generate'}"`
     + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. Click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
-    + `<span class="gr-result">${escHtml(g.result)}</span>`
+    + `<span class="gr-result${valence}">${escHtml(g.result)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit grammar" title="Edit grammar"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
@@ -12807,7 +12858,7 @@ function openOracleDialog({ onResult }) {
     validate: v => splitTopLevel(v.body, '|').length >= 2 && !!build(v.body),
     onSubmit: v => {
       const roll = build(v.body);
-      if (roll) { roll.anon = true; onResult(roll); }
+      if (roll) { roll.anon = true; roll.oracle = true; onResult(roll); }   // UXP-140: flag for the valence tint
     },
   });
 }
@@ -12816,6 +12867,12 @@ function rerollGrammar(node, key) {
   const g = node?.grammar?.find(x => x.key === key);
   if (!g) return;
   if (g.mode) {                                   // stateful sequence: ADVANCE, don't re-roll
+    // UXP-138: a spent `once` deck is a dead click — advanceSeq would return '' (the muted `—`
+    // marker), yet the old path still ran pushUndo/markDirty and re-added .gr-rolled, firing the
+    // celebratory pop on a non-event. Short-circuit: no state change, no pop, just say it's spent.
+    // Only `once` can be truly exhausted (shuffle recycles, cycle loops, stopping stays), so the
+    // guard is scoped to it, keyed on pos past the last item.
+    if (g.mode === 'once' && (g.pos || 0) >= (g.items?.length || 0)) { flashHint('Deck spent'); return; }
     if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
     // UXP-120: a shuffle deck reshuffles silently when its bag empties. Detect the wrap BEFORE
     // the draw (empty bag + we've drawn before, so not the first-ever draw) and flash a courtesy
@@ -17392,45 +17449,50 @@ window.addEventListener('focus', () => { checkExternalChange(); });
 // file can't carry that behaviour, so each [[type:key]] token is replaced with the
 // frozen result it currently shows. The export is a snapshot, not a round-trip.
 
+// UXP-137: the frozen plain-text form of ONE artifact token — the value it currently shows,
+// per type. Factored out of flattenArtifacts so the whole-doc flatten AND the per-pill "Freeze to
+// text" action stay in lockstep (P1). Returns '' when the sidecar record is missing.
+function frozenTokenText(type, key, node, varMap) {
+  type = type.toLowerCase();
+  if (type === 'grammar') {
+    const g = node.grammar?.find(x => x.key === key); if (!g) return '';
+    return g.result;
+  }
+  if (type === 'est') {
+    const e = node.est?.find(x => x.key === key); if (!e) return '';
+    const samples = sampleUncertain(e.expr, EST_N, e.seed, node);
+    return `${e.expr} ≈ ${samples ? formatDist(samples) : '#ERR'}`;
+  }
+  if (type === 'seq') {
+    const sq = node.seq?.find(x => x.key === key); if (!sq) return '';
+    return `${sq.name}: ${seqDefString(sq)}`;
+  }
+  if (type === 'dice') {
+    const d = node.dice?.find(x => x.key === key); if (!d) return '';
+    const isFate = d.parts?.some(p => p.kind === 'dice' && p.sides === 'F');
+    const total = isFate && d.total > 0 ? '+' + d.total : String(d.total);
+    return `${d.expr} = ${total}`;
+  }
+  if (type === 'markov') {
+    const mk = node.markov?.find(x => x.key === key); if (!mk) return '';
+    return mk.path.join(' → ');
+  }
+  if (type === 'math') {
+    const m = node.math?.find(x => x.key === key); if (!m) return '';
+    const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
+    return fresh !== null ? formatMathResult(fresh) : m.result;
+  }
+  // var: "name = value" for defining pills, or just "value" for display-only
+  const rec = node.vars?.find(x => x.key === key);
+  if (!rec) return '';
+  const val = varMap[(rec.name || '').toLowerCase()];
+  const valStr = val !== undefined ? formatVarValue(val) : '?';
+  return rec.expr ? `${rec.name} = ${valStr}` : valStr;
+}
+
 function flattenArtifacts(text, node, varMap) {
-  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est):([a-z0-9]+)\]\]/gi, (_, type, key) => {
-    type = type.toLowerCase();
-    if (type === 'grammar') {
-      const g = node.grammar?.find(x => x.key === key); if (!g) return '';
-      return g.result;
-    }
-    if (type === 'est') {
-      const e = node.est?.find(x => x.key === key); if (!e) return '';
-      const samples = sampleUncertain(e.expr, EST_N, e.seed, node);
-      return `${e.expr} ≈ ${samples ? formatDist(samples) : '#ERR'}`;
-    }
-    if (type === 'seq') {
-      const sq = node.seq?.find(x => x.key === key); if (!sq) return '';
-      return `${sq.name}: ${seqDefString(sq)}`;
-    }
-    if (type === 'dice') {
-      const d = node.dice?.find(x => x.key === key); if (!d) return '';
-      const isFate = d.parts?.some(p => p.kind === 'dice' && p.sides === 'F');
-      const total = isFate && d.total > 0 ? '+' + d.total : String(d.total);
-      return `${d.expr} = ${total}`;
-    }
-    if (type === 'markov') {
-      const mk = node.markov?.find(x => x.key === key); if (!mk) return '';
-      return mk.path.join(' → ');
-    }
-    if (type === 'math') {
-      const m = node.math?.find(x => x.key === key); if (!m) return '';
-      const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
-      return fresh !== null ? formatMathResult(fresh) : m.result;
-    }
-    // var: show "name = value" for defining pills, or just "value" for display-only
-    // (a random pick's frozen text flows through formatVarValue unchanged)
-    const rec = node.vars?.find(x => x.key === key);
-    if (!rec) return '';
-    const val = varMap[(rec.name || '').toLowerCase()];
-    const valStr = val !== undefined ? formatVarValue(val) : '?';
-    return rec.expr ? `${rec.name} = ${valStr}` : valStr;
-  });
+  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est):([a-z0-9]+)\]\]/gi,
+    (_, type, key) => frozenTokenText(type, key, node, varMap));
   // progress cookies freeze to their computed tally in a one-way snapshot
   return flat.replace(/\[(\/|%)\]/g, (_, k) => {
     const { done, total } = progressCount(node);
@@ -19813,7 +19875,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any #NEXT or #TODO point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with state:next or is:todo. Note that Pointliner has no background reminders or notifications (it runs entirely offline with no server), so the agenda is where you come to check what is due. Click any point to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any #NEXT or #TODO point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with state:next or is:todo. Note that Pointliner has no background reminders or notifications (it runs entirely offline with no server), so the agenda is where you come to check what is due. A completed dated point stays where it is, and tasks do not repeat on their own yet, so a recurring task is one you re-date by hand. Click any point to jump straight to it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },

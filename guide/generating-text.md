@@ -173,6 +173,10 @@ Four modes:
 A deck pill is **stateful**: click it to **draw the next card** (it doesn't re-roll, it advances).
 Its position is saved with the document.
 
+The stateful, no-repeat behavior only holds when the deck is **its own pill**. If you nest a
+`{shuffle: ...}` (or any mode) inside a named rule, it becomes an ordinary random pick with no
+memory, so items can repeat. Keep a deck as a standalone pill when the draw order matters.
+
 ---
 
 ## Do it N times (repeat)

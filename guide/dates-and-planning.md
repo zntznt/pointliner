@@ -49,7 +49,9 @@ not scheduled yet still has a home; the same list is a search away with `state:n
 Click any item to jump straight to it.
 
 Pointliner has no background reminders or notifications: it runs entirely offline with no server, so
-the agenda is where you come to check what is due, rather than something that pings you.
+the agenda is where you come to check what is due, rather than something that pings you. A completed
+dated point stays where it is, and tasks do not repeat on their own yet, so a recurring task is one
+you re-date by hand.
 
 ## Daily journal
 
