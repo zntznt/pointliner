@@ -5707,7 +5707,7 @@ test('outline constraints: front-door + render + search wiring (src pins)', () =
   assert.ok(_src.includes('function openCheckDialog'), 'openCheckDialog missing');
   assert.ok(_src.includes('function buildCheckChip'), 'check chip builder missing');
   assert.ok(_src.includes('prop-check-fail'), 'check chip fail CSS class missing');
-  assert.ok(_src.includes('is:(done|todo|note|failing)'), 'is:failing missing from parseSearchQuery');
+  assert.ok(_src.includes('is:(done|todo|note|failing|scheduled|unscheduled)'), 'is:failing missing from parseSearchQuery');
   assert.ok(_src.includes("openCheckDialog(chip.dataset.propsId)"), 'check chip not routed in openPropChip');
 });
 
@@ -7267,7 +7267,7 @@ test('filterEmojiCandidates — no match is an empty list', () => {
 });
 
 // ── priority: search + agenda rollup (UXP-109) ───────────────────────────────
-const SEQS = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'] }];  // the default sequence shape
+const SEQS = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3 }];  // the default sequence shape (DONE at index 3 is the done split)
 
 test('priorityRank — A < B < C < none', () => {
   assert.equal(c.priorityRank('A'), 0);
@@ -7312,6 +7312,32 @@ test('collectDueDates — carries priority and sorts higher priority first withi
   assert.equal(items[2].priority, null);
 });
 
+// ── collectActions (UXP-112) ─────────────────────────────────────────────────
+test('collectActions — undated to-dos only; dated ones and non-todos are excluded', () => {
+  const root = { children: [
+    { id: 'dated', text: '#TODO with a date', props: [{ key: 'due', val: '2099-01-01' }], children: [] },
+    { id: 'action1', text: '#NEXT [#B] call the vet', props: [], children: [] },
+    { id: 'action2', text: '- [ ] buy milk', props: [], children: [] },
+    { id: 'prose', text: 'just a note, not a task', props: [], children: [] },
+    { id: 'done', text: '#DONE shipped it', props: [], children: [] },
+  ] };
+  const items = host(c.collectActions(root, SEQS));
+  // dated excluded, prose excluded; action1/action2 live, done included but sinks last
+  assert.deepEqual(items.map(i => i.id), ['action1', 'action2', 'done']);
+  assert.equal(items[0].priority, 'B');
+  assert.equal(items.find(i => i.id === 'done').done, true);
+});
+
+test('collectActions — live actions sort before done, higher priority first', () => {
+  const root = { children: [
+    { id: 'noPri', text: '#TODO no priority', props: [], children: [] },
+    { id: 'hiPri', text: '#TODO [#A] urgent', props: [], children: [] },
+    { id: 'doneItem', text: '#DONE finished', props: [], children: [] },
+  ] };
+  const items = host(c.collectActions(root, SEQS));
+  assert.deepEqual(items.map(i => i.id), ['hiPri', 'noPri', 'doneItem']);
+});
+
 // ── oracle swing (UXP-111) ───────────────────────────────────────────────────
 test('oracleSwingBody — six ordered options, plain answers keep the band weight, twists weight 1', () => {
   const body = c.oracleSwingBody(3, 1);   // a "Likely" band
@@ -7321,4 +7347,27 @@ test('oracleSwingBody — six ordered options, plain answers keep the band weigh
 
 test('oracleSwingBody — an Even band is symmetric', () => {
   assert.equal(c.oracleSwingBody(1, 1), 'Yes, and 1 | Yes 1 | Yes, but 1 | No, but 1 | No 1 | No, and 1');
+});
+
+// ── is:scheduled / is:unscheduled (UXP-113) ──────────────────────────────────
+test('parseSearchQuery — is:scheduled and is:unscheduled are recognized is: values', () => {
+  assert.equal(host(c.parseSearchQuery('is:scheduled'))[0].value, 'scheduled');
+  assert.equal(host(c.parseSearchQuery('is:unscheduled'))[0].value, 'unscheduled');
+  // a bogus is: value falls through to plain text (the reserved-prefix rule)
+  assert.equal(host(c.parseSearchQuery('is:nonsense'))[0].kind, 'text');
+});
+
+test('termMatchesNode — is:scheduled matches a dated point; is:unscheduled its complement', () => {
+  const sched   = { props: [{ key: 'due', val: '2099-03-01' }] };
+  const started = { props: [{ key: 'start', val: 'today' }] };
+  const bad     = { props: [{ key: 'due', val: 'not-a-date' }] };   // unparseable → not scheduled
+  const bare    = { text: 'no dates here' };
+  const isSched = n => c.termMatchesNode({ kind: 'is', value: 'scheduled' }, n, SEQS);
+  const isUnsch = n => c.termMatchesNode({ kind: 'is', value: 'unscheduled' }, n, SEQS);
+  assert.equal(isSched(sched), true);
+  assert.equal(isSched(started), true);   // start counts, not just due
+  assert.equal(isSched(bad), false);      // an invalid date does not schedule
+  assert.equal(isSched(bare), false);
+  assert.equal(isUnsch(bare), true);      // complement
+  assert.equal(isUnsch(sched), false);
 });
