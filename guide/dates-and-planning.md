@@ -43,7 +43,13 @@ previous and next months peeking in at the sides (the same size as the centred o
 jump to it. The **‹‹** and **››** buttons jump a whole month (Week) or year (Month).
 
 Turn on **Done** to include completed points; toggle **Running** to show or hide started work; turn
-on **Overdue** to focus every view on just the late items. Click any item to jump straight to it.
+on **Overdue** to focus every view on just the late items. Below the dated rows, an **Actions** row
+gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the work you have
+not scheduled yet still has a home; the same list is a search away with `state:next` or `is:todo`.
+Click any item to jump straight to it.
+
+Pointliner has no background reminders or notifications: it runs entirely offline with no server, so
+the agenda is where you come to check what is due, rather than something that pings you.
 
 ## Daily journal
 

@@ -1610,6 +1610,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><span>points with a tag (nested ok; <code>#tag</code> also matches <code>#tag/sub</code>), including state keywords (<code>#todo</code>)</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails (the lint filter)</span></div>
+        <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
@@ -1660,7 +1661,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="fm-group">Export a copy</div>
   <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot, pills frozen to text</span></div></div>
   <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">One-way snapshot, plain outline</span></div></div>
-  <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Web page (HTML)</span><span class="cmd-desc">Shareable file, keeps pills live</span></div></div>
+  <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Web page (HTML)</span><span class="cmd-desc">Shareable file, reopens as the live app</span></div></div>
 
   <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
        version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels). -->
@@ -2617,6 +2618,36 @@ function collectDueDates(rootNode = root) {
   // UXP-109: same date first, then higher priority (A < B < … < none) as the tiebreak, so the
   // agenda surfaces the most urgent work within a given day rather than tree order.
   items.sort((a, b) => a.epochDay - b.epochDay || priorityRank(a.priority) - priorityRank(b.priority));
+  return items;
+}
+
+// UXP-112: the agenda's companion to collectDueDates — UNDATED actionable to-dos (the GTD
+// next-actions that never get a date). A point qualifies when it reads as a to-do (a task line
+// `- [ ]` or a leading recognized #keyword state) AND carries no `due`/`start` date. Done-ness
+// via todoDoneFromText; ordered by priority then tree order. Pure + Node-testable, mirroring
+// collectDueDates minus the date gate. `seqs` defaults to the live sequences for the keyword test.
+function collectActions(rootNode = root, seqs = allSequences()) {
+  const items = [];
+  function walk(n, path) {
+    const props = n.props || [];
+    const hasDate = props.some(p => (p.key.toLowerCase() === 'due' || p.key.toLowerCase() === 'start') && parseDueDate(p.val) !== null);
+    const km = (n.text || '').match(LEAD_WORD_RE);
+    const isTodo = (km && !!sequenceForKeyword(km[1], seqs)) || isTaskFirst(n.text);
+    if (isTodo && !hasDate) {
+      items.push({
+        id: n.id,
+        title: textForDisplay(n) || '(untitled)',
+        path: path.slice(),
+        done: todoDoneFromText(n.text, seqs),
+        priority: parseTodo(n.text, new Set(seqs.flatMap(s => s.states))).priority,
+      });
+    }
+    const childPath = path.concat(textForDisplay(n) || '(untitled)');
+    for (const c of (n.children || [])) walk(c, childPath);
+  }
+  for (const c of (rootNode?.children || [])) walk(c, []);
+  // live actions first, done last; within each, higher priority first.
+  items.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || priorityRank(a.priority) - priorityRank(b.priority));
   return items;
 }
 
@@ -4615,7 +4646,7 @@ const INSERT_CMDS = [
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
-  { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and child tasks. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
+  { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
@@ -8094,7 +8125,7 @@ function parseSearchQuery(q) {
     const tok = m[3];
     let t;
     if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)))            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note|failing)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing|scheduled|unscheduled)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -8133,6 +8164,12 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
   }
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
+    // UXP-113: has any date / is dateless — the "tasks I forgot to schedule" axis. Not
+    // to-do-gated: any point with a valid due/start counts (mirrors the due:/start: readers).
+    if (term.value === 'scheduled' || term.value === 'unscheduled') {
+      const dated = (node.props || []).some(p => (p.key.toLowerCase() === 'due' || p.key.toLowerCase() === 'start') && parseDueDate(p.val) !== null);
+      return term.value === 'scheduled' ? dated : !dated;
+    }
     if (term.value === 'failing') {
       // the lint filter: a failing OR errored check is a violation to surface (a
       // check you can't evaluate is itself a defect — P4, never silently passed).
@@ -18292,6 +18329,15 @@ function mkAgChip(it, kind) {
     }
     const runTxt = it.runningDays === 0 ? 'started today' : 'running ' + it.runningDays + 'd';
     aria = it.title + ', ' + runTxt + deadlineTxt + pathStr;
+  } else if (kind === 'action') {
+    // UXP-112: an undated next-action. No date badge; a done one reads muted, and a priority
+    // marker (if any) leads so the row surfaces the most urgent action first.
+    chip.className = 'ag-chip ' + (it.done ? 'done' : 'none');
+    if (it.priority) {
+      const pri = document.createElement('span'); pri.className = 'ag-badge deadline'; pri.textContent = '#' + it.priority;
+      chip.appendChild(pri);
+    }
+    aria = it.title + (it.priority ? ', priority ' + it.priority : '') + (it.done ? ', done' : '') + pathStr;
   } else {
     // upcoming deadline (a done item collapses to 'done', never overdue-red)
     chip.className = 'ag-chip ' + agendaState(it);
@@ -18380,7 +18426,10 @@ function renderAgenda() {
 let _refocusGanttResize = false;
 
 function renderAgendaList(host, visible, totalDated) {
-  if (!totalDated) { host.appendChild(agMini('No dated points. Set dates via /due or the bullet menu.')); return; }
+  // UXP-112: undated next-actions (the GTD action list) get a front door here, so the agenda is
+  // not dated-only. Honors the Done toggle, same as the dated rows.
+  const actionItems = collectActions().filter(it => agendaShowDone || !it.done);
+  if (!totalDated && !actionItems.length) { host.appendChild(agMini('No dated points or actions. Set dates via /due, or add a #NEXT/#TODO.')); return; }
   const body = document.createElement('div'); body.className = 'ag-rows';
   host.appendChild(body);
   // Top row: deadlines not yet started. Bottom row: started points. Within each row, DONE
@@ -18390,18 +18439,26 @@ function renderAgendaList(host, visible, totalDated) {
     .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || a.due - b.due);
   const runItems = visible.filter(it => it.started)
     .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || (a.due ?? Infinity) - (b.due ?? Infinity) || a.start - b.start);
-  if (!dueItems.length && !runItems.length) { body.appendChild(agMini('Nothing to show. Adjust the toggles.')); return; }
 
-  const dueRow = mkAgRow('Due');
-  if (dueItems.length) for (const it of dueItems) dueRow.appendChild(mkAgChip(it, 'due'));
-  else dueRow.appendChild(agMini('Nothing due'));
-  body.appendChild(dueRow);
+  // Dated rows only when there ARE dated points (else the Actions row stands alone).
+  if (totalDated) {
+    const dueRow = mkAgRow('Due');
+    if (dueItems.length) for (const it of dueItems) dueRow.appendChild(mkAgChip(it, 'due'));
+    else dueRow.appendChild(agMini('Nothing due'));
+    body.appendChild(dueRow);
 
-  if (agendaShowRunning) {
-    const runRow = mkAgRow('Running');
-    if (runItems.length) for (const it of runItems) runRow.appendChild(mkAgChip(it, 'run'));
-    else runRow.appendChild(agMini('Nothing running'));
-    body.appendChild(runRow);
+    if (agendaShowRunning) {
+      const runRow = mkAgRow('Running');
+      if (runItems.length) for (const it of runItems) runRow.appendChild(mkAgChip(it, 'run'));
+      else runRow.appendChild(agMini('Nothing running'));
+      body.appendChild(runRow);
+    }
+  }
+
+  if (actionItems.length) {
+    const actRow = mkAgRow('Actions');
+    for (const it of actionItems) actRow.appendChild(mkAgChip(it, 'action'));
+    body.appendChild(actRow);
   }
 }
 
@@ -19100,7 +19157,7 @@ document.getElementById('btn-workspace-disconnect').addEventListener('click', ()
 // the whole menu , wider.
 document.getElementById('workspace-invite').addEventListener('click', () => {
   const url = location.href;
-  const done = () => flashHint('Link copied. Open it in Chrome, Edge, or a similar browser');
+  const done = () => flashHint('Link copied. Save your document to a file first, then open it in Chrome or Edge and open the file there.');
   if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done)); }
   else { fallbackCopy(url, done); }   // UX audit: actually copy (was a false-success claim with no clipboard)
   closeFileMenu();
@@ -19382,6 +19439,7 @@ const GUIDE = [
       { syn:'#tag',                   desc:'tag or state keyword (#todo, #done); #tag also matches nested #tag/sub' },
       { syn:'is:todo / is:done / is:note', desc:'open tasks / done tasks / noted points' },
       { syn:'is:failing',             desc:'points that break a check (the lint filter)' },
+      { syn:'is:scheduled / is:unscheduled', desc:'has a date / has no date' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo)' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },
@@ -19492,7 +19550,7 @@ const GUIDE = [
     ] },
   { id:'notes', cat:'writing',
     title:'Per-point notes',
-    body:"Tuck a bit of context under any point without cluttering the line: a source, a reminder, a caption or a few sentences of background. The note sits below the point as a quiet plain-text block you click to edit in place; press Enter for a line break and Esc or click away to save, and clearing all the text removes it. Open a point's menu and choose Add note, or Edit note if it already has one. Notes are searched along with the rest of your outline and you can hide them all with the notes button in the header. A small mark stays on each noted point so you can click to peek.",
+    body:"Tuck a bit of context under any point without cluttering the line: a source, a note-to-self, a caption or a few sentences of background. The note sits below the point as a quiet plain-text block you click to edit in place; press Enter for a line break and Esc or click away to save, and clearing all the text removes it. Open a point's menu and choose Add note, or Edit note if it already has one. Notes are searched along with the rest of your outline and you can hide them all with the notes button in the header. A small mark stays on each noted point so you can click to peek.",
     examples:[
       { syn:'Menu → Add note',  desc:'start a note under this point' },
       { syn:'Menu → Edit note', desc:'open an existing note to change it' },
@@ -19573,7 +19631,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Click any point to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any #NEXT or #TODO point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with state:next or is:todo. Note that Pointliner has no background reminders or notifications (it runs entirely offline with no server), so the agenda is where you come to check what is due. Click any point to jump straight to it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
@@ -19801,10 +19859,11 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"Share your document with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file: it works offline, opens in any browser and keeps all the interactive features (dice, generators and calculations) live. All in the File menu.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.",
     examples:[
-      { syn:'File → Export a copy → Markdown', desc:'a plain text snapshot' },
-      { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable interactive page' },
+      { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },
+      { syn:'File → Export a copy → Markdown', desc:'a one-way plain text snapshot for sharing' },
+      { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable file that reopens as the live app' },
     ] },
 ];
 
@@ -20338,7 +20397,23 @@ function scheduleAutosave() {
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
     if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
+    maybeBackupNudge(payload.length);                    // UXP-119: gentle backup reminder on the weakest durability tier
   }, 800);
+}
+// UXP-119: on the weakest durability tier (no File System Access, so no folder auto-write and
+// "Save" is a plain download), the notes live in this browser only and vanish on clear-site-data.
+// Nudge once per session, after the doc has real content, to download a backup — reusing the soft
+// #storage-warn banner (its "Save to file" button already triggers the download). Session-scoped
+// (not persisted), so it re-reminds on a later session but never nags twice in one sitting; skipped
+// entirely when a file/folder target exists (the work already lands on disk) or the size warning
+// is already showing.
+let _backupNudged = false;
+const BACKUP_NUDGE_MIN = 4000; // chars — a doc with a paragraph or two of real work, not an empty shell
+function maybeBackupNudge(size) {
+  if (_backupNudged || hasFSA || fileHandle || workspaceFile || storageWarnState) return;
+  if (size < BACKUP_NUDGE_MIN) return;
+  _backupNudged = true;
+  showStorageWarn('soft', 'Your notes live in this browser only. Save to a file to keep a backup you can reopen.');
 }
 let _autosaveDeferred = false;   // an autosave was requested before reconcile finished
 // The localStorage crash-buffer write. With OPFS as the durable store, hitting the
