@@ -212,7 +212,7 @@ export function loadCores() {
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
-    'pickerTitle','treeRows',
+    'pickerTitle','treeRows','selectionRoots',
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates','collectActions','priorityRank','oracleSwingBody',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',

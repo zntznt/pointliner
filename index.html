@@ -1140,6 +1140,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .ag-chip.today .ag-badge.deadline{color:var(--ok)}
 .ag-chip.soon .ag-badge.deadline{color:var(--acc)}
 .ag-chip.future .ag-badge.deadline,.ag-chip.none .ag-badge.deadline{color:var(--muted)}
+.ag-chip.ag-waiting .ag-badge{color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;font-size:10px}/* UXP-129: the Waiting badge reads muted/blocked, the eyebrow recipe (10px caps floor, DL §4) */
 .ag-run{font-size:11px;font-weight:600;color:var(--muted);flex-shrink:0}
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
 .ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
@@ -1618,10 +1619,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><span>points whose <code>check</code> constraint fails (the lint filter)</span></div>
         <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
+        <div class="sh-row"><kbd>is:overdue</kbd><span>past its deadline and not done (due, or start if no due)</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
-        <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code></span></div>
+        <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code>; quote a spaced value: <code>area:"Home Reno"</code></span></div>
         <div class="sh-row"><kbd>state:value</kbd><span>sequence status, like <code>state:waiting</code> or <code>state:done</code></span></div>
         <div class="sh-row"><kbd>priority:A</kbd><span>to-do priority, like <code>priority:a</code> or <code>priority:b</code></span></div>
       </div>
@@ -1729,6 +1731,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <button class="nsb-btn" id="nsb-check">Check</button>
   <button class="nsb-btn" id="nsb-props">Properties</button>
   <button class="nsb-btn" id="nsb-type">Turn into</button>
+  <button class="nsb-btn" id="nsb-refile">Refile</button>
   <span class="nsb-sep"></span>
   <button class="nsb-btn danger" id="nsb-delete">Delete</button>
   <button class="nsb-btn" id="nsb-clear" title="Clear selection" aria-label="Clear selection">✕</button>
@@ -2642,20 +2645,26 @@ function collectActions(rootNode = root, seqs = allSequences()) {
     const km = (n.text || '').match(LEAD_WORD_RE);
     const isTodo = (km && !!sequenceForKeyword(km[1], seqs)) || isTaskFirst(n.text);
     if (isTodo && !hasDate) {
+      const keyword = km && sequenceForKeyword(km[1], seqs) ? km[1] : '';
       items.push({
         id: n.id,
         title: textForDisplay(n) || '(untitled)',
         path: path.slice(),
         done: todoDoneFromText(n.text, seqs),
         priority: parseTodo(n.text, new Set(seqs.flatMap(s => s.states))).priority,
+        keyword,                          // UXP-129: the leading state keyword ('' for a bare task)
+        waiting: keyword === 'WAITING',   // the built-in blocked state — read as blocked, not actionable
       });
     }
     const childPath = path.concat(textForDisplay(n) || '(untitled)');
     for (const c of (n.children || [])) walk(c, childPath);
   }
   for (const c of (rootNode?.children || [])) walk(c, []);
-  // live actions first, done last; within each, higher priority first.
-  items.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || priorityRank(a.priority) - priorityRank(b.priority));
+  // UXP-129: live actionable first, then WAITING (blocked, not mine to act on), then done. Within
+  // each tier, higher priority first. WAITING is the one built-in blocked keyword — do NOT invent a
+  // general "states after the first active one are blocked" notion (the model carries only doneFrom).
+  const tier = it => it.done ? 2 : (it.waiting ? 1 : 0);
+  items.sort((a, b) => tier(a) - tier(b) || priorityRank(a.priority) - priorityRank(b.priority));
   return items;
 }
 
@@ -7404,12 +7413,16 @@ function treeRows(rootNode, opts) {
   opts = opts || {};
   const expanded  = opts.expanded || new Set();
   const excludeId = opts.excludeId || '';
+  // UXP-133: excludeIds (a Set) drops several subtrees at once — the bulk-refile self-guard, so
+  // the selected roots aren't offered as their own destination. `excludeId` (single) still works.
+  const excludeIds = opts.excludeIds || null;
+  const excluded = id => id === excludeId || (excludeIds && excludeIds.has(id));
   const q = (opts.query || '').trim().toLowerCase();
   const out = [];
   if (q) {
     // filter: a node is kept iff it matches or has a kept descendant.
     const collect = (n, depth) => {
-      if (n.id === excludeId) return null;
+      if (excluded(n.id)) return null;
       const title = pickerTitle(n);
       const selfMatch = title.toLowerCase().includes(q);
       const kids = [];
@@ -7420,8 +7433,8 @@ function treeRows(rootNode, opts) {
     for (const c of (rootNode?.children || [])) { const r = collect(c, 0); if (r) out.push(...r); }
   } else {
     const walk = (n, depth) => {
-      if (n.id === excludeId) return;
-      const kids = n.children.filter(c => c.id !== excludeId);
+      if (excluded(n.id)) return;
+      const kids = n.children.filter(c => !excluded(c.id));
       const isExp = expanded.has(n.id);
       out.push({ id: n.id, title: pickerTitle(n), depth, hasChildren: kids.length > 0, expanded: isExp, match: false });
       if (kids.length && isExp) for (const c of kids) walk(c, depth + 1);
@@ -7547,6 +7560,7 @@ function buildTreePicker(opts) {
 
   const rootNode  = opts.rootNode || root;
   const excludeId = opts.excludeId || '';
+  const excludeIds = opts.excludeIds || null;   // UXP-133: bulk-refile self-guard (a Set of roots)
   const leading   = opts.leading || [];
   const expanded  = new Set();
   let activeIdx = 0, rows = [];
@@ -7581,7 +7595,7 @@ function buildTreePicker(opts) {
     const lead = leading
       .filter(l => q === '' || l.title.toLowerCase().includes(ql))
       .map(l => ({ id: l.id, title: l.title, depth: 0, hasChildren: false, expanded: false, match: true, top: true }));
-    rows = [...lead, ...treeRows(rootNode, { expanded, excludeId, query: q })];
+    rows = [...lead, ...treeRows(rootNode, { expanded, excludeId, excludeIds, query: q })];
     if (activeIdx >= rows.length) activeIdx = Math.max(0, rows.length - 1);
     renderTreeRows(listEl, rows, {
       activeIdx, filtering: q !== '', emptyText: opts.emptyText,
@@ -7623,6 +7637,71 @@ function buildTreePicker(opts) {
   });
   rebuild();
   requestAnimationFrame(() => search.focus());
+}
+
+// UXP-133: the top-most selected subtrees — drop any selected node that has a selected ANCESTOR,
+// so a bulk move relocates each subtree once (an ancestor already carries its selected descendants).
+// refileNodeTo's isDescOf guard covers filing-into-a-member but NOT overlapping roots, so this is
+// required, not cosmetic. Walks parentMap up from each selected id.
+function selectionRoots(ids = selectedIds, pmap = parentMap) {
+  const set = ids instanceof Set ? ids : new Set(ids);
+  const roots = [];
+  for (const id of set) {
+    let anc = pmap.get(id), hasSelAnc = false;
+    while (anc) { if (set.has(anc.id)) { hasSelAnc = true; break; } anc = pmap.get(anc.id); }
+    if (!hasSelAnc) roots.push(id);
+  }
+  return roots;
+}
+
+// UXP-133: move several subtrees to one target in a single undo/render/toast. Skips a target that
+// is a member (refileNodeTo's own guard) so the batch stays consistent. Returns how many moved.
+function refileNodesTo(moveIds, targetId) {
+  const target = nodeById(targetId);
+  if (!target) return 0;
+  // resolve nodes up front (ids are stable; nodes get spliced as we go)
+  const movers = moveIds.map(id => ({ id, node: nodeById(id), from: parentOf(id) }))
+    .filter(m => m.node && m.from && m.id !== targetId && !isDescOf(m.id, targetId));
+  if (!movers.length) return 0;
+  // leave edit mode on any moving node first (blur-during-render clobbers text)
+  for (const m of movers) if (activeContentId === m.id) document.querySelector(`.node-content[data-id="${m.id}"][data-editing]`)?.blur();
+  pushUndo();
+  if (target.collapsed) target.collapsed = false;
+  for (const m of movers) {
+    const idx = m.from.children.findIndex(c => c.id === m.id);
+    if (idx === -1) continue;
+    m.from.children.splice(idx, 1);
+    target.children.push(m.node);
+    parentMap.set(m.node.id, target);
+  }
+  markDirty();
+  render();
+  const where = targetId === root.id ? 'Top level' : crumbLabel(target);
+  flashHint(`Refiled ${movers.length} point${movers.length === 1 ? '' : 's'} → ${where}`);
+  return movers.length;
+}
+
+// UXP-133: the bulk refile picker — the same tree navigator as single refile, excluding all
+// selected roots, moving them together on pick.
+function openBulkRefileDialog() {
+  const roots = selectionRoots();
+  if (!roots.length) return;
+  const excludeIds = new Set(roots);
+  ioReturnFocus = document.activeElement;
+  ioCancel = closeIo;
+  buildTreePicker({
+    icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },
+    title: `Refile ${roots.length} point${roots.length === 1 ? '' : 's'} to…`,
+    searchAria: 'Search for a destination point',
+    listAria: 'Destination points',
+    excludeIds,
+    leading: [{ id: root.id, title: 'Top level' }],
+    onPick: it => { closeIo(); refileNodesTo(roots, it.id); clearSelection(); },
+    footLabel: 'Cancel',
+    onFoot: closeIo,
+  });
+  ioCard.setAttribute('aria-label', 'Refile points');
+  ioBack.classList.add('on');
 }
 
 // The refile picker: a modal tree navigator. "Top level" is the leading option
@@ -8122,18 +8201,28 @@ function cycleJournalMode() {
 // Values are lowercased (search is case-insensitive throughout). Pure.
 function parseSearchQuery(q) {
   const terms = [];
-  const re = /(-)?(?:"([^"]*)"|(\S+))/g;
+  // UXP-131: `key:"a b"` / `key:'a b'` is one token (a spaced property value), captured BEFORE the
+  // bare quoted-phrase and the whitespace-token arms so its interior space isn't split. Groups:
+  //   m[2] key of a quoted key:value · m[3] its quoted value · m[4] a bare "phrase" · m[5] a \S+ word
+  const re = /(-)?(?:([\w][\w-]*):(?:"([^"]*)"|'([^']*)')|"([^"]*)"|(\S+))/g;
   let m;
   while ((m = re.exec(q || '')) !== null) {
     const neg = !!m[1];
-    if (m[2] !== undefined) {                       // quoted phrase (spaces kept)
-      if (m[2]) terms.push({ neg, kind: 'text', value: m[2].toLowerCase() });
+    if (m[2] !== undefined) {                       // key:"value with spaces" — a contains prop filter
+      const val = (m[3] !== undefined ? m[3] : m[4]) || '';
+      const key = m[2].toLowerCase();
+      if (key === 'is') { terms.push({ neg, kind: 'text', value: (m[2] + ':' + val).toLowerCase() }); continue; }  // is: is reserved, never a prop
+      terms.push({ neg, kind: 'prop', key, value: val.toLowerCase(), contains: true });
       continue;
     }
-    const tok = m[3];
+    if (m[5] !== undefined) {                        // bare quoted phrase (spaces kept)
+      if (m[5]) terms.push({ neg, kind: 'text', value: m[5].toLowerCase() });
+      continue;
+    }
+    const tok = m[6];
     let t;
     if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)))            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note|failing|scheduled|unscheduled)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing|scheduled|unscheduled|overdue)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -8178,6 +8267,17 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
       const dated = (node.props || []).some(p => (p.key.toLowerCase() === 'due' || p.key.toLowerCase() === 'start') && parseDueDate(p.val) !== null);
       return term.value === 'scheduled' ? dated : !dated;
     }
+    if (term.value === 'overdue') {
+      // UXP-130: the unified overdue axis — a not-done point past its DEADLINE, spanning both keys.
+      // The deadline is `due` when present, else `start` (a started-but-undeadlined slip, which the
+      // date-only `due:overdue` misses). done-ness is seq-aware (a done point is never overdue).
+      if (todoDoneFromText(node.text, seqs)) return false;
+      const props = node.props || [];
+      const due   = parseDueDate(props.find(p => p.key.toLowerCase() === 'due')?.val   ?? '');
+      const start = parseDueDate(props.find(p => p.key.toLowerCase() === 'start')?.val ?? '');
+      const primary = due !== null ? due : start;   // deadline drives; start only when no due
+      return primary !== null && primary < dueDateToday();
+    }
     if (term.value === 'failing') {
       // the lint filter: a failing OR errored check is a violation to surface (a
       // check you can't evaluate is itself a defect — P4, never silently passed).
@@ -8218,7 +8318,11 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap) {
     return (node.props || []).some(p => p.key.toLowerCase() === term.value);
   }
   if (term.kind === 'prop') {
-    return (node.props || []).some(p => p.key.toLowerCase() === term.key && p.val.toLowerCase() === term.value);
+    // UXP-131: a quoted value (key:"a b") matches by CONTAINS (the text-term spirit, and the only
+    // sane compare for a spaced/free-text value); the bare key:value form stays exact-equals.
+    return (node.props || []).some(p =>
+      p.key.toLowerCase() === term.key &&
+      (term.contains ? p.val.toLowerCase().includes(term.value) : p.val.toLowerCase() === term.value));
   }
   if (term.kind === 'due' || term.kind === 'start') {
     const prop = (node.props || []).find(p => p.key.toLowerCase() === term.kind);
@@ -9864,6 +9968,9 @@ document.getElementById('nsb-props').addEventListener('click', () => {
 });
 document.getElementById('nsb-type').addEventListener('click', () => {
   showSelTypeMenu(document.getElementById('nsb-type'));
+});
+document.getElementById('nsb-refile').addEventListener('click', () => {   // UXP-133: bulk refile
+  openBulkRefileDialog();
 });
 
 // A compact "turn into" menu for the selection — the same type-switcher row the
@@ -18296,6 +18403,7 @@ let agendaBars = { timeline: false, calendar: false };  // legacy (persisted) �
 let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
 let agendaOverdueOnly = false;  // focus filter: when on, every view shows only overdue items
+let agendaSort = 'date';        // UXP-132: 'date' (default) | 'priority' — List row ordering
 let agendaMonth = null;         // Month/Week view: any epoch-day in the shown period (session-only)
 let agendaWeek = null;          // Week view: any epoch-day in the shown week (session-only)
 let ganttNamesW = null;         // Timeline: pinned width (px) of the titles column, null = CSS clamp default
@@ -18379,13 +18487,18 @@ function mkAgChip(it, kind) {
     aria = it.title + ', ' + runTxt + deadlineTxt + pathStr;
   } else if (kind === 'action') {
     // UXP-112: an undated next-action. No date badge; a done one reads muted, and a priority
-    // marker (if any) leads so the row surfaces the most urgent action first.
-    chip.className = 'ag-chip ' + (it.done ? 'done' : 'none');
+    // marker (if any) leads so the row surfaces the most urgent action first. UXP-129: a #WAITING
+    // point (blocked, not mine to act on) gets a muted "Waiting" badge so it reads as blocked.
+    chip.className = 'ag-chip ' + (it.done ? 'done' : it.waiting ? 'none ag-waiting' : 'none');
+    if (it.waiting) {
+      const w = document.createElement('span'); w.className = 'ag-badge'; w.textContent = 'Waiting';
+      chip.appendChild(w);
+    }
     if (it.priority) {
       const pri = document.createElement('span'); pri.className = 'ag-badge deadline'; pri.textContent = '#' + it.priority;
       chip.appendChild(pri);
     }
-    aria = it.title + (it.priority ? ', priority ' + it.priority : '') + (it.done ? ', done' : '') + pathStr;
+    aria = it.title + (it.waiting ? ', waiting' : '') + (it.priority ? ', priority ' + it.priority : '') + (it.done ? ', done' : '') + pathStr;
   } else {
     // upcoming deadline (a done item collapses to 'done', never overdue-red)
     chip.className = 'ag-chip ' + agendaState(it);
@@ -18444,7 +18557,14 @@ function renderAgenda() {
   const overdueT = mkAgToggle('Overdue', agendaOverdueOnly, () => { agendaOverdueOnly = !agendaOverdueOnly; renderAgenda(); scheduleAutosave(); });
   overdueT.classList.add('ag-focus');
   overdueT.title = 'Focus on overdue items only';
-  filters.append(doneT, runT, overdueT);
+  // UXP-132: a Sort control the List can produce from inside the strip (Date is the default hard
+  // sort; Priority surfaces [#A] first). Cycles the two like the Titles toggle; persisted.
+  const sortByPri = agendaSort === 'priority';
+  const sortT = mkAgToggle(sortByPri ? 'Sort: priority' : 'Sort: date', sortByPri, () => {
+    agendaSort = sortByPri ? 'date' : 'priority'; renderAgenda(); scheduleAutosave();
+  });
+  sortT.title = 'Order the List by date or by priority';
+  filters.append(doneT, runT, overdueT, sortT);
   if (agendaView === 'timeline') {  // §7.5 twin for the titles-column drag (the separator is hidden on touch), UXP-85
     const wName = ganttNamesW == null ? 'default' : (ganttNamesW <= 110 ? 'narrow' : 'wide');
     const wT = mkAgToggle('Titles', ganttNamesW != null, () => {
@@ -18480,13 +18600,18 @@ function renderAgendaList(host, visible, totalDated) {
   if (!totalDated && !actionItems.length) { host.appendChild(agMini('No dated points or actions. Set dates via /due, or add a #NEXT/#TODO.')); return; }
   const body = document.createElement('div'); body.className = 'ag-rows';
   host.appendChild(body);
-  // Top row: deadlines not yet started. Bottom row: started points. Within each row, DONE
-  // items sink to the end (they're no longer actionable); live items keep their urgency
-  // order (soonest/most-overdue first).
+  // Top row: deadlines not yet started. Bottom row: started points. Within each row, DONE items
+  // sink to the end; live items keep their urgency order (soonest/most-overdue first) UNLESS the
+  // user picked Sort: priority (UXP-132), which orders [#A] first with date as the tiebreak.
+  const byPri = agendaSort === 'priority';
+  const dueDate = it => it.due ?? Infinity;
   const dueItems = visible.filter(it => it.due !== null && !it.started)
-    .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || a.due - b.due);
+    .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) ||
+      (byPri ? (priorityRank(a.priority) - priorityRank(b.priority) || a.due - b.due) : a.due - b.due));
   const runItems = visible.filter(it => it.started)
-    .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || (a.due ?? Infinity) - (b.due ?? Infinity) || a.start - b.start);
+    .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) ||
+      (byPri ? (priorityRank(a.priority) - priorityRank(b.priority) || dueDate(a) - dueDate(b) || a.start - b.start)
+             : dueDate(a) - dueDate(b) || a.start - b.start));
 
   // Dated rows only when there ARE dated points (else the Actions row stands alone).
   if (totalDated) {
@@ -19496,7 +19621,8 @@ const GUIDE = [
       { syn:'is:todo / is:done / is:note', desc:'open tasks / done tasks / noted points' },
       { syn:'is:failing',             desc:'points that break a check (the lint filter)' },
       { syn:'is:scheduled / is:unscheduled', desc:'has a date / has no date' },
-      { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo)' },
+      { syn:'is:overdue',             desc:'past its deadline and not done (due, or start if no due)' },
+      { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
@@ -19635,7 +19761,7 @@ const GUIDE = [
     ] },
   { id:'properties', cat:'todos',
     title:'Properties',
-    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Open a point's menu and choose Add property to open the editor, type a key and a value, then Save. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one. Child properties feed the roll-up totals.",
+    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Open a point's menu and choose Add property to open the editor, type a key and a value, then Save. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.",
     examples:[
       { syn:'Menu → Add property', desc:'open the key:value editor' },
       { syn:'owner:zeo',           desc:'a property pill below the point' },
@@ -20494,7 +20620,7 @@ function scheduleAutosave() {
   if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, ganttNamesW, savedAt: Date.now() }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
     if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
@@ -20522,7 +20648,7 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 // is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
 // avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
 function writeLocalAutosave(payload) {
-  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, ganttNamesW, savedAt: Date.now() }));
+  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
   try {
     localStorage.setItem(AUTOSAVE_KEY, payload);
     if (!hasOPFS && payload.length > STORAGE_SOFT_LIMIT) {
@@ -20594,6 +20720,7 @@ function applyAutosaveData(data) {
   if (typeof data.agendaShowRunning === 'boolean') agendaShowRunning = data.agendaShowRunning;
   if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
   if (typeof data.agendaOverdueOnly === 'boolean') agendaOverdueOnly = data.agendaOverdueOnly;
+  if (data.agendaSort === 'date' || data.agendaSort === 'priority') agendaSort = data.agendaSort;   // UXP-132
   if (typeof data.ganttNamesW === 'number' && data.ganttNamesW > 0) ganttNamesW = clampGanttNamesW(data.ganttNamesW);
   if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) accentId = data.accentId;
   if (data.forcedTheme !== undefined) forcedTheme = data.forcedTheme;

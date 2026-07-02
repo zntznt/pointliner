@@ -5707,7 +5707,7 @@ test('outline constraints: front-door + render + search wiring (src pins)', () =
   assert.ok(_src.includes('function openCheckDialog'), 'openCheckDialog missing');
   assert.ok(_src.includes('function buildCheckChip'), 'check chip builder missing');
   assert.ok(_src.includes('prop-check-fail'), 'check chip fail CSS class missing');
-  assert.ok(_src.includes('is:(done|todo|note|failing|scheduled|unscheduled)'), 'is:failing missing from parseSearchQuery');
+  assert.ok(_src.includes('is:(done|todo|note|failing|scheduled|unscheduled|overdue)'), 'is:failing missing from parseSearchQuery');
   assert.ok(_src.includes("openCheckDialog(chip.dataset.propsId)"), 'check chip not routed in openPropChip');
 });
 
@@ -7338,7 +7338,36 @@ test('collectActions — live actions sort before done, higher priority first', 
   assert.deepEqual(items.map(i => i.id), ['hiPri', 'noPri', 'doneItem']);
 });
 
-// ── oracle swing (UXP-111, band-proportional weights UXP-124) ─────────────────
+// ── bulk-refile selection roots (UXP-133) ────────────────────────────────────
+test('selectionRoots — drops a selected node that has a selected ancestor', () => {
+  // tree: A > B > C ; D (sibling). parentMap: A→null, B→A, C→B, D→null
+  const nodeA = {id:'A'}, nodeB = {id:'B'}, nodeD = {id:'D'};
+  const pmap = new Map([['A', null], ['B', nodeA], ['C', nodeB], ['D', null]]);
+  // select A, C, D: C is under A (selected), so it drops; A and D are roots.
+  const roots = host(c.selectionRoots(new Set(['A','C','D']), pmap)).sort();
+  assert.deepEqual(roots, ['A','D']);
+});
+
+test('selectionRoots — non-overlapping selections are all roots', () => {
+  const pmap = new Map([['A', null], ['B', null], ['C', {id:'A'}]]);
+  // select B and C: B is a root, C's parent A is NOT selected, so C is a root too.
+  assert.deepEqual(host(c.selectionRoots(new Set(['B','C']), pmap)).sort(), ['B','C']);
+});
+
+test('collectActions — WAITING is blocked: captured, flagged, and sorted after live NEXT/TODO (UXP-129)', () => {
+  const root = { children: [
+    { id: 'wait', text: '#WAITING [#A] blocked on a reply', props: [], children: [] },
+    { id: 'next', text: '#NEXT do this now', props: [], children: [] },
+    { id: 'done', text: '#DONE shipped', props: [], children: [] },
+  ] };
+  const items = host(c.collectActions(root, SEQS));
+  // live (next) → waiting → done, even though waiting has priority A (blocked outranks nothing)
+  assert.deepEqual(items.map(i => i.id), ['next', 'wait', 'done']);
+  const w = items.find(i => i.id === 'wait');
+  assert.equal(w.keyword, 'WAITING');
+  assert.equal(w.waiting, true);
+  assert.equal(items.find(i => i.id === 'next').waiting, false);
+});
 // Helper: sum the Yes-family vs No-family weights from a swing body, to assert the split
 // tracks the plain oracle's band ratio rather than the old flat-weight-1 dilution.
 function swingFamilies(body) {
@@ -7400,4 +7429,58 @@ test('termMatchesNode — is:scheduled matches a dated point; is:unscheduled its
   assert.equal(isSched(bare), false);
   assert.equal(isUnsch(bare), true);      // complement
   assert.equal(isUnsch(sched), false);
+});
+
+test('termMatchesNode — is:overdue spans due and start, and excludes done (UXP-130)', () => {
+  const isOverdue = n => c.termMatchesNode({ kind: 'is', value: 'overdue' }, n, SEQS);
+  const PAST = '1990-01-01', FUTURE = '2099-01-01';
+  // a not-done point past its DUE deadline → overdue
+  assert.equal(isOverdue({ text: '#TODO late', props: [{ key: 'due', val: PAST }] }), true);
+  // a not-done STARTED-but-undeadlined slip (start past, no due) → overdue (the axis due:overdue misses)
+  assert.equal(isOverdue({ text: '#TODO started long ago', props: [{ key: 'start', val: PAST }] }), true);
+  // a future due → not overdue
+  assert.equal(isOverdue({ text: '#TODO soon', props: [{ key: 'due', val: FUTURE }] }), false);
+  // a DONE point past its deadline → never overdue
+  assert.equal(isOverdue({ text: '#DONE finished', props: [{ key: 'due', val: PAST }] }), false);
+  // due present + past wins even if start is future (deadline drives)
+  assert.equal(isOverdue({ text: '#TODO x', props: [{ key: 'due', val: PAST }, { key: 'start', val: FUTURE }] }), true);
+  // a past start but a future due → NOT overdue (the deadline, the due, isn't passed yet)
+  assert.equal(isOverdue({ text: '#TODO x', props: [{ key: 'start', val: PAST }, { key: 'due', val: FUTURE }] }), false);
+  // no dates → not overdue
+  assert.equal(isOverdue({ text: '#TODO no dates' }), false);
+});
+
+// ── spaced key:value search (UXP-131) ────────────────────────────────────────
+test('parseSearchQuery — key:"spaced value" is ONE token, a contains prop filter', () => {
+  const terms = host(c.parseSearchQuery('owner:"Jane Doe"'));
+  assert.equal(terms.length, 1);
+  assert.deepEqual({ kind: terms[0].kind, key: terms[0].key, value: terms[0].value, contains: terms[0].contains },
+    { kind: 'prop', key: 'owner', value: 'jane doe', contains: true });
+});
+
+test('parseSearchQuery — single quotes work too; is:"x" stays reserved (not a prop)', () => {
+  assert.equal(host(c.parseSearchQuery(`area:'Home Renovation'`))[0].value, 'home renovation');
+  // is: is reserved; is:"foo" must NOT become a prop filter
+  assert.notEqual(host(c.parseSearchQuery('is:"foo"'))[0].kind, 'prop');
+});
+
+test('parseSearchQuery — the bare key:value form is unchanged (exact, no contains)', () => {
+  const t = host(c.parseSearchQuery('owner:zeo'))[0];
+  assert.equal(t.kind, 'prop'); assert.equal(t.value, 'zeo');
+  assert.ok(!t.contains);   // bare form is exact-equals
+});
+
+test('parseSearchQuery — a bare phrase and a bare word still tokenize normally', () => {
+  const terms = host(c.parseSearchQuery('"a b" plain'));
+  assert.deepEqual(terms.map(t => [t.kind, t.value]), [['text', 'a b'], ['text', 'plain']]);
+});
+
+test('termMatchesNode — a quoted prop matches by contains; bare matches exact', () => {
+  const node = { props: [{ key: 'area', val: 'Home Renovation' }] };
+  // quoted: contains a substring
+  assert.equal(c.termMatchesNode({ kind: 'prop', key: 'area', value: 'renovation', contains: true }, node, SEQS), true);
+  // bare exact: a substring does NOT match
+  assert.equal(c.termMatchesNode({ kind: 'prop', key: 'area', value: 'renovation' }, node, SEQS), false);
+  // bare exact: the full (lowercased) value DOES match
+  assert.equal(c.termMatchesNode({ kind: 'prop', key: 'area', value: 'home renovation' }, node, SEQS), true);
 });
