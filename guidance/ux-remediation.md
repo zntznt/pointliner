@@ -1201,6 +1201,43 @@ Defects found by the chrome design review, fixed together — recorded so the de
 
 ---
 
+## Query expansion — missing search operators (2026-07-02): UXP-145…148
+
+*A data-model-vs-grammar analysis of the search subsystem (four parallel readers mapping structure, artifacts, dates/numbers, and grammar symmetry against the pure `parseSearchQuery`/`termMatchesNode` cores; every candidate adversarially verified against the actual code, 15 confirmed of 23, 8 refuted). Part of the query-expansion effort. These are **planned additions, not defects**: the grammar is conformant, these grow its vocabulary. Each reuses the existing field-prefix pattern (`is:x`, `has:x`, `kind:value`), so none mints new syntax (P5 holds); UXP-146 and UXP-148 are the sanctioned syntax-inventory growth decisions (a value-vocabulary add and an operator add), recorded like UXP-20/109/113/130. Code seams cited by symbol; the `is:` whitelist regex is at `parseSearchQuery` (grep `is:(done|todo|note`), the `has:`/`is:` matcher arms in `termMatchesNode`.*
+
+### UXP-145 ☐ `is:`/`has:` structural + artifact + symmetry filters 🟢 (batch 1, trivial)
+- **Gap:** structure and generated content are settable but unqueryable. Confirmed missing (no arm parses them today), all pure reads of the node object:
+  - **`is:passing`** — `evalCheck(node, vars) === 'pass'`. The symmetry fill for the shipped `is:failing`. NOT the same as `-is:failing`: `evalCheck` returns `null` for check-less points, so `-is:failing` also matches un-checked points, `is:passing` does not. Reuses the `evalCheck` core already threaded into the matcher.
+  - **`has:dice|markov|math|grammar|est|var|seq`** — the sidecar array (`node.dice` … `node.seq`; `var`→`vars`) is non-empty. Sidecars are pruned on `exitEdit`, so non-empty means a live pill. Falls through to the existing `props.some` scan, so a user property literally keyed `dice` still matches (the `has:<propkey>` contract holds).
+  - **`is:pill`** — union of all seven sidecars (any artifact at all). Homed in the closed `is:` family, NOT `has:` (`has:pill` already parses as a property-key lookup, overloading it breaks the contract).
+  - **`is:random`** — the generative subset (dice/markov/grammar/est plus `vars` with `kind:'pick'`); points that re-roll on click. Excludes math and display-only vars.
+  - **`has:children` / `is:leaf` / `is:parent`** — `node.children.length`. `is:leaf`/`is:parent` are the negation-friendly pair; `has:children` the has-family completeness spelling (same predicate as `is:parent`).
+  - **`has:footnote`** — `node.footnotes` non-empty. Distinct field from `node.note` (which `is:note` reads), so genuinely unqueryable. Reserve the word before the `props.some` scan.
+  - **`is:collapsed` / `is:expanded`** — `node.collapsed` boolean (round-trips via `_collapsed`). Transient fold state, so medium value, but a trivial pure read.
+- **Target (small, one PR):** widen the one `is:` whitelist regex to add `passing|pill|leaf|parent|collapsed|expanded|random`; the `has:` tokens need NO parser change (they already match the `has:` regex). All matcher edits live in the existing `is:` and `has:` arms of `termMatchesNode`: the `has:` arm gains a sidecar-map lookup + children + footnote checks BEFORE the `props.some` scan (fall through preserves `has:<propkey>`). One test-pin block over synthetic nodes (each sidecar populated, collapsed, leaf vs parent, footnoted, passing vs failing vs check-less, a pick-var node); ensure `termMatchesNode`/`queryMatchesNode`/`evalCheck` are in `load-cores` `need`.
+
+### UXP-146 ☐ Relative date windows `due:week|month`, `start:week|month` 🟡 (batch 2, small) — SANCTIONED SYNTAX-INVENTORY GROWTH
+- **Gap:** `due:`/`start:` support `today`/`overdue`/`YYYY-MM-DD`/`<date`/`>date` but no forward day-count window. `is:scheduled`/`overdue` do not cover "due within the next 7/30 days".
+- **Target (small):** in the existing `due`/`start` parser arm, when `dval` is `week` or `month` push `op:'window'` with `epochDay = dueDateToday() + (week?7:30)`; in the matcher add an `op:'window'` branch returning `ep >= dueDateToday() && ep <= term.epochDay`. Pure integer range compare, reuses `parseDueDate` + the epoch-day machinery, NO new sigil (new value tokens in an existing operator vocabulary, the recorded P5 sign-off case). Pin the window compare against a stubbed `dueDateToday()`.
+
+### UXP-147 ☐ `var:NAME` declaration lookup 🟡 (batch 2, small)
+- **Gap:** no way to find the point that DECLARES a variable. New `kind:value` operator like `state:`/`priority:`.
+- **Target (small):** new parser arm BEFORE the generic prop arm (placed like `priority:`), producing `kind:'var'`; matcher branch returns true if any `node.vars` entry has a truthy `expr` (the declaration test `collectVars` uses) and a `name` matching `term.value`, so it matches the declaring point, not display-only reference pills. Pin true on a declaring node (expr set), false on a reference-only node.
+
+### UXP-148 ☐ Numeric comparison on properties `key:>N` / `<N` / `>=N` / `<=N` 🟡 (batch 3, medium) — SANCTIONED SYNTAX-INVENTORY GROWTH
+- **Gap:** the highest user value of the set (quantitative filtering, `cost:>100`), and the one real parser extension. `key:value` is **exact-only** today (the generic prop arm requires a bare-word value), so `>N` fails that regex and falls to literal text. The comparison ops exist for `due:`/`start:` but only as DATE compares; this is a new numeric-property axis.
+- **Target (medium, ships alone):** a genuinely new parser arm before the generic prop arm matching `key` + a comparison op + a signed decimal (`key !== 'is'`, two-char ops `>=`/`<=` ordered first for longest-match), producing `kind:'propnum'`. Matcher: find `node.props[key]`, `Number(val)`, reject non-finite (skips date strings and words), compare by op. Mirrors the numeric-first parse `childPropNumber`/`nodePropVars` already use. Mandatory test pin: all four ops, longest-match on `>=` vs `>`, negatives, decimals, and the matcher rejecting `cost foo` / a missing prop / a date-shaped val without throwing. Focused review for parser precedence.
+
+**Refuted candidates (considered, rejected by adversarial verify — kept so they are not re-proposed):** `is:note` reforms (already shipped); `has:note`/`is:has-note` (dup of `is:note`); `type:todo` (dup of `is:todo`); `has:tag`/`is:tagged` and `has:link`/`is:broken-link` (need the doc-wide `collectTags`/`collectLinks` index, NOT reads of the node object `termMatchesNode` is handed, so not pure-cheap — see deferred); `has:priority`/`priority:none` and `due:soon` (rate-limited before verdict, re-verify if pursued); a bare `is:heading` without a level (weaker than a `type:hN`, deferred pending demand).
+
+**Deferred (real, NOT low-hanging):**
+- **`OR` / disjunction** — the one genuine structural grammar gap. `queryMatchesNode` is a hard `terms.every(...)` AND over a FLAT term list with no grouping. OR needs (a) a new token or grouping delimiter (new punctuation, or a bare `OR` keyword that collides with text terms — a P5 violation) AND (b) a flat-`every()`-to-boolean-tree matcher rewrite. Already recorded deferred in the UXP-20 search decision and CLAUDE.md. Leave deferred; all four batches above are structurally compatible with a future OR tree.
+- **Tag / link presence filters** (`has:tag`, `has:backlink`, `is:broken-link`) — the read is doc-wide (`collectTags`/`collectLinks`), not available to `termMatchesNode` as handed. Feasible but needs threading the index in, so a separate design decision, not a one-liner.
+
+**Batch + register plan:** UXP-145 = batch 1 (one PR, one regex widen + two existing arms). UXP-146 + UXP-147 = batch 2 (relative windows + `var:`, one PR, both small new-arm changes). UXP-148 = batch 3 (numeric compare, ships alone for focused parser-precedence review). **Docs each batch must freshen in the same change:** the `?` panel Search rows (grep the `is:todo`/`is:done` `sh-row`), the GUIDE array search entry (`covers:['search']`, the drift-guard requires every typed operator appear), the focus-shown search legend under the box, `guide/getting-around.md` search section, `guide/features.md` (user inventory) + `guidance/features.md` (engine reference), and the test pins in `tests/test.mjs` + `load-cores.mjs`.
+
+---
+
 ## Enhancements (tracked, not defects)
 
 These are **not non-conformances** — the standard is satisfied — just nice-to-haves noted so they aren't lost.
