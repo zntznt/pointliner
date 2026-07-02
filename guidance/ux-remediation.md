@@ -768,7 +768,7 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** `#io-back` uses a single warm-dark literal in both themes; over the dark `--bg` a 38% near-black scrim barely dims the page, so dark-mode dialogs get much weaker separation than light-mode ones. No guideline covers overlay/scrim color.
 - **Target (small):** a dual-homed `--scrim` token (stronger in dark) in `:root`, the dark media query, and both `applyTheme` strings; use it on `#io-back`. Guideline sentence: see the additions list below.
 
-### UXP-80 ☐ GAP: `font-weight:800` on the calendar today number; no written weight scale 🟢
+### UXP-80 ✓ GAP: `font-weight:800` on the calendar today number; no written weight scale 🟢 (RESOLVED: batch V3 + the D1 guideline sentence)
 - **Problem:** `.agc-cell.today .agc-dom` uses weight 800, the only text weight above 700 in the app (the 900s are Font Awesome font-selection classes). Nothing bounds UI text weights.
 - **Target (trivial):** drop to 700 (the accent ink + tint plate already mark today). Guideline sentence: see below.
 
@@ -809,7 +809,7 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** `applySearch()` re-renders the outline with no `announce()` call, so a query matching 0 or 500 points is visually obvious but silent to a screen-reader user whose focus stays in `#search-box`. No guideline mandates filter-result announcements (P3-5 comes close).
 - **Target (small):** after `render()`, announce a match count to `#a11y-live` (debounced by the existing search timer). Guideline sentence: see below.
 
-### UXP-89 ☐ GAP: `#search-clear` stays a ~14px tap target on touch; no written tap-target floor 🟢
+### UXP-89 ✓ GAP: `#search-clear` stays a ~14px tap target on touch; no written tap-target floor 🟢 (RESOLVED: batch V3 + the D1 guardrail)
 - **Problem:** the `@media(hover:none)` block enlarges pencils, toolbar buttons, tab closes, and nsb buttons, but never `#search-clear`, leaving a ~14px target beside a focused text field. The ~44px floor exists only as a CSS comment, in no guideline.
 - **Target (small):** enlarge `#search-clear` in the `@media(hover:none)` block (padding or min-width/height 44px). Guideline sentence: see below.
 
@@ -847,7 +847,7 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Rule:** DL §3 (`--acc-fg` exists precisely to prevent this class of pairing; new color pairs ship with their WCAG ratio); §4 token systems.
 - **Target (small):** a `--bad-fg` twin computed in `applyAccentCSS`/theme strings (both palette homes), or restyle the toast to the badge recipe (16% `--bad` mix + `--bad` ink on the neutral toast surface); move shadow/radius onto `--sh-1`/`--r-md`.
 
-### UXP-97 ☐ Close/dismiss buttons: two glyphs and five bespoke recipes (DL §1 corollary, §4) 🟡
+### UXP-97 ✓ Close/dismiss buttons: two glyphs and five bespoke recipes (DL §1 corollary, §4) 🟡 (RESOLVED: batch V3)
 - **Problem:** dismiss renders as `✕` (`#search-clear`, `#var-panel-close`, `#storage-warn-close`, saved-search chips), `×` (`.doc-tab-close`, `.cap-close`, `.guide-close`), and `fa-xmark` (via `setIcon`), with five divergent recipes including `.guide-close`'s `border-radius:50%` (outside the radius set). One concept, many faces.
 - **Target (small):** one dismiss glyph (`fa-xmark` through `setIcon`, `✕` fallback per the icon policy) and one shared `.close-btn` recipe (muted ink, `--fg` on hover, `--r-sm`); drop the 50% radius. Guideline sentence: see below.
 
@@ -855,7 +855,7 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** the conflict footer appends `Keep my version` (`io-btn danger`) first, while `confirmDialog` and every other builder place dismiss/neutral first and the committing (or danger) action last. A code comment ("Primary first") shows the inversion was deliberate, so the rule needs writing either way.
 - **Target (trivial, owner call):** reorder danger-last to match `confirmDialog`, or record the stacked-layout exception. Guideline sentence: see below.
 
-### UXP-99 ☐ GAP: three row paddings for the same `.cmd-item` role 🟢
+### UXP-99 ✓ GAP: three row paddings for the same `.cmd-item` role 🟢 (RESOLVED: batch V3 + the D1 guideline sentence)
 - **Problem:** base `.cmd-item` 6px 10px, `#slash-menu` 5px 8px, `#file-menu` 7px 9px; the touch block diverges the same way. DL §4 unifies the hover language but nothing governs row metrics.
 - **Target (trivial):** collapse to the base padding and delete the overrides, or record the per-menu density as a decision. Guideline sentence: see below.
 
