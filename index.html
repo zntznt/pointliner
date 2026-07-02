@@ -967,21 +967,21 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .tp-title.tp-anc{color:var(--muted)}
 .rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
 /* ── capture strip (toolbar dock, like the agenda — not a modal) ── */
-#capture-strip{display:none;flex-direction:column;gap:4px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
-#capture-strip.on{display:flex}
-#btn-capture.active{color:var(--acc)}
+#capture-strip,#journal-strip{display:none;flex-direction:column;gap:4px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
+#capture-strip.on,#journal-strip.on{display:flex}
+#btn-capture.active,#btn-journal.active{color:var(--acc)}
 .cap-row{display:flex;align-items:center;gap:5px;min-width:0}
 /* destination selector: [▾ N · name] — click to open the in-strip manager */
-.cap-dest-btn{flex:0 0 auto;max-width:230px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;overflow:hidden}
+.cap-dest-btn{flex:0 0 auto;max-width:230px;height:22px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;min-width:94px;cursor:pointer;white-space:nowrap;overflow:hidden} /* min-width matches the journal date chip so the stacked chip column aligns */
 .cap-dest-btn:hover{color:var(--fg);border-color:var(--muted)}
 .cap-dest-btn.open{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-dest-btn.unset{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 38%,transparent)}  /* the semantic tint recipe, warn-routed (same mix as .ag-toggle.ag-focus.on) */
 .cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cap-slot-n{display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--muted) 22%,transparent);color:var(--fg);font-family:var(--mono);font-size:10px;font-weight:700;flex-shrink:0} /* 14px fits inside the 11px/1.4 chip content box, so badge chips and the Add chip share one height */
 /* the input grows with content; single-row default */
-.cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:13px;line-height:1.5;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 9px;outline:none;min-height:24px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto}
+.cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:12px;line-height:18px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:1px 9px;outline:none;min-height:22px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto} /* one 22px strip-row height, same as the chips; grows only with content */
 .cap-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
-.cap-go{flex:0 0 auto;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc-fg);background:var(--acc);border:1px solid var(--acc);border-radius:var(--r-sm);padding:2px 12px;cursor:pointer}
+.cap-go{flex:0 0 auto;height:22px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc-fg);background:var(--acc);border:1px solid var(--acc);border-radius:var(--r-sm);padding:2px 12px;min-width:72px;text-align:center;cursor:pointer} /* shared min-width: stacked strips (capture, journal) keep their commit column aligned */
 /* solid-accent primary states mirror .io-btn.primary: one hover value app-wide, and disabled resets the filter (source order after :hover) so a dead control never hover-reacts.
    Both rules re-pin background: the generic button:hover{background:var(--bdr)} wash (0,1,1) outranks the single-class .cap-go (0,1,0) and was painting --acc-fg text on a --bdr fill. */
 .cap-go:hover{background:var(--acc);filter:brightness(1.07)}
@@ -989,7 +989,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
 .cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:6px 0 1px;/* chips centered in the band BELOW the hairline: 6px under it, 1px + the strip 5px bottom padding beneath */border-top:1px solid var(--bdr)} /* solid hairline: the .ag-pane secondary-bar language; dashed is the broken-pill voice */
-.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
+.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;height:22px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
 /* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
 .cap-chip:hover{border-color:var(--muted)}
 .cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
@@ -998,9 +998,10 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .cap-chip-pick:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}  /* the .close-btn neutral segment hover; also keeps the generic button:hover --bdr wash out of the .cur tint */
 .cap-chip.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
 .cap-chip-rm{font-size:12px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 6px;cursor:pointer}
+.cap-chip>.cap-chip-pick+.cap-chip-pick{border-left:1px solid var(--bdr-ui)} /* multi-segment chips (the journal date) divide internally like pick|remove */
 .cap-chip-rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
 /* plain .ag-toggle chip (DL §4 docked-strip grammar); dashed borders are the broken-pill language, not an affordance */
-.cap-add{font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
+.cap-add{height:22px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 .cap-add:hover{color:var(--fg);border-color:var(--muted)}
 .cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-btn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
@@ -1363,7 +1364,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* capture strip on narrow screens: give the input the full width by wrapping the dest chip
      + Capture onto their own line, so the placeholder doesn't cram into ~130px */
   .cap-row{flex-wrap:wrap}
-  .cap-input{flex:1 0 100%;min-height:38px}
+  .cap-input{flex:1 0 100%} /* height only grows on TOUCH (hover:none block); a narrow mouse window keeps the strip density */
   .cap-go{flex:1 1 auto}
   .logo .logo-text{display:none}
   .logo{padding:4px 3px}
@@ -1616,7 +1617,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
-    <button id="btn-journal" title="New journal entry" aria-label="New journal entry"><i class="fa-solid fa-book"></i></button>
+    <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <span class="tbtn-sep" aria-hidden="true"></span>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-done" class="tbtn-toggle" title="Show done points" aria-label="Show done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
@@ -1625,6 +1626,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div id="doc-tabs" role="tablist" aria-label="Open documents" style="display:none"></div>
   <div id="breadcrumb-row"></div>
   <div id="capture-strip" role="region" aria-label="Capture"></div>
+  <div id="journal-strip" role="region" aria-label="Journal"></div>
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
 <div id="file-menu" role="dialog" aria-label="Pointliner menu">
@@ -7797,6 +7799,120 @@ function doCapture() {
 //   a dated child point for today. Zoom + focus the entry.
 // File mode (workspace-gated): open/create YYYY-MM-DD.opml in the workspace folder;
 //   if no workspace is connected, fall back to append mode with a hint.
+
+// ── journal strip: capture's twin for today's entry (DL §4: docked strips share one
+//    grammar). The date chip is segmented: year / month / day each navigate to that
+//    level of the journal tree. `journalOpen` mirrors the strip's .on class.
+let journalOpen = false, journalDraft = '', journalCount = 0, journalReturnFocus = null;
+function toggleJournalStrip() { if (journalOpen) closeJournalStrip(); else openJournalStrip(); }
+function openJournalStrip() {
+  if (!journalOpen) { journalCount = 0; journalReturnFocus = document.activeElement; } // journalDraft survives close/reopen (§6)
+  journalOpen = true;
+  document.getElementById('journal-strip').classList.add('on');
+  const btn = document.getElementById('btn-journal');
+  btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+  renderJournalStrip();
+  requestAnimationFrame(() => document.getElementById('jr-input')?.focus());
+}
+function closeJournalStrip() {
+  journalOpen = false;
+  document.getElementById('journal-strip').classList.remove('on');
+  const btn = document.getElementById('btn-journal');
+  btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
+  const rf = journalReturnFocus; journalReturnFocus = null;
+  if (rf && rf.isConnected) rf.focus(); else document.getElementById('btn-journal').focus();
+}
+function renderJournalStrip() {
+  const strip = document.getElementById('journal-strip');
+  strip.innerHTML = '';
+  if (!journalOpen) return;
+  const iso = todayISO(), [y, mo, d] = iso.split('-');
+  const row = document.createElement('div'); row.className = 'cap-row';
+
+  const input = document.createElement('textarea');
+  input.id = 'jr-input'; input.className = 'cap-input'; input.rows = 1; input.value = journalDraft;
+  input.placeholder = "Type a point for today's journal…";
+  input.setAttribute('aria-label', "Text for today's journal");
+  input.spellcheck = true;
+  input.addEventListener('input', () => { journalDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doJournalAdd(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeJournalStrip(); } // draft survives (§6)
+    else if (e.key !== 'Tab') e.stopPropagation();   // don't leak edits to global shortcuts
+  });
+  row.appendChild(input);
+
+  // the date it saves to, segmented: each part opens that level of the journal
+  const chip = document.createElement('div'); chip.className = 'cap-chip';
+  chip.setAttribute('role', 'group'); chip.setAttribute('aria-label', "Today's journal date");
+  [[y, 'year', 1], [mo, 'month', 2], [d, 'day', 3]].forEach(([label, level, depth]) => {
+    const seg = document.createElement('button'); seg.type = 'button'; seg.className = 'cap-chip-pick';
+    seg.textContent = label;
+    seg.title = 'Open journal ' + level;
+    seg.setAttribute('aria-label', 'Open journal ' + level + ' ' + label);
+    seg.addEventListener('click', () => openJournalLevel(depth));
+    chip.appendChild(seg);
+  });
+  row.appendChild(chip);
+
+  const goBtn = document.createElement('button'); goBtn.type = 'button'; goBtn.className = 'cap-go'; goBtn.textContent = 'Journal';
+  goBtn.disabled = !journalDraft.trim();
+  goBtn.addEventListener('click', () => doJournalAdd());
+  row.appendChild(goBtn);
+  strip.appendChild(row);
+}
+// Zoom to the year (depth 1), month (2) or day (3) node of today's journal path,
+// creating the path as needed (the same find-or-create walk the entry uses). In
+// file mode the day file IS the journal, so every segment opens today's file.
+function openJournalLevel(depth) {
+  // the strip stays open across the jump, same as the agenda when zooming from a chip
+  const mode = root.journal?.mode || 'append';
+  if (mode === 'file' && workspaceDir) { openJournalEntry(); return; }
+  const iso = todayISO(), segs = iso.split('-');
+  pushUndo();
+  const home = findOrCreateJournalHome();
+  let parent = home, entry = home;
+  for (let i = 0; i < depth; i++) {
+    const r = findOrCreateChild(parent, segs[i], (t, p) => { const n = mkNode(t); n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); return n; }, i === 2);
+    entry = r.entry; parent = r.entry;
+  }
+  markDirty(); render();
+  zoomInto(entry.id); focusNode(entry.id);
+}
+function doJournalAdd() {
+  const text = (journalDraft || '').replace(/\s+$/, '');
+  if (!text.trim()) { flashHint('Type something to journal'); return; } // P4: never silent; the toast is the one feedback channel
+  const mode = root.journal?.mode || 'append';
+  if (mode === 'file' && workspaceDir) {
+    // file mode: the day file is the context; open/create it (navigates by nature) and append there
+    journalDraft = '';
+    closeJournalStrip();
+    openJournalEntry().then(() => {
+      const entry = root.children[0]; if (!entry) return;
+      pushUndo(); appendJournalPoint(entry, text);
+      flashHint('✓ Journaled to ' + todayISO());
+    });
+    return;
+  }
+  pushUndo();
+  const home = findOrCreateJournalHome();
+  const { entry } = findOrCreateDatedEntry(home, todayISO(), (t, p) => { const n = mkNode(t); n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); return n; });
+  appendJournalPoint(entry, text);
+  journalCount++; journalDraft = '';
+  // feedback rides the one toast channel (§6), same as capture
+  flashHint('✓ Journaled ' + (journalCount === 1 ? '1 point' : journalCount + ' points') + ' · ' + todayISO());
+  renderJournalStrip();
+  document.getElementById('jr-input')?.focus();
+}
+function appendJournalPoint(entry, text) {
+  const n = mkNode(text);
+  n.type = deriveTypeFromText(text) || 'ul';
+  n.checked = todoDoneFromText(text);
+  if (entry.collapsed) entry.collapsed = false;
+  entry.children.push(n);
+  nodeMap.set(n.id, n); parentMap.set(n.id, entry);
+  markDirty(); render();
+}
 
 function findOrCreateJournalHome() {
   // If a targetId is set, use that point (user-designated home).
@@ -18937,7 +19053,7 @@ document.getElementById('btn-capture').addEventListener('click', () => toggleCap
 document.getElementById('capture-strip').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeCapture(); }
 });
-document.getElementById('btn-journal').addEventListener('click', () => openJournalEntry());
+document.getElementById('btn-journal').addEventListener('click', () => toggleJournalStrip());
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. The modifier
 // key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
@@ -19213,7 +19329,7 @@ const GUIDE = [
     ] },
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',
-    body:"Keep a running log of what you worked on, decisions you made or anything worth noting each day. Type /journal, or the toolbar journal button, to open or create today's entry. Entries go one of two ways: in this document, filed by date under a Journal point (nested year then month then day, 2026 > 06 > 16), or as one file per day in a connected folder. Switch between the two with Ctrl/Cmd+Shift+J.",
+    body:"Keep a running log of what you worked on, decisions you made or anything worth noting each day. The toolbar journal button toggles the Journal bar: type a point and press Enter (or click Journal) to file it under today's entry without leaving your place. The bar shows the date it saves to; click the year, month or day to jump to that part of the journal. Type /journal to open today's entry directly. Entries go one of two ways: in this document, filed by date under a Journal point (nested year then month then day, 2026 > 06 > 16), or as one file per day in a connected folder. Switch between the two with Ctrl/Cmd+Shift+J.",
     examples:[
       { syn:'/journal', desc:"open or start today's entry" },
       { syn:'Ctrl/Cmd+Shift+J', desc:'switch in-doc / file per day' },

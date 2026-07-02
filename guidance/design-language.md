@@ -213,8 +213,8 @@ editable content and `text-transform` would lie about it.
 - **Docked strip controls share the agenda's chip grammar.** Every toolbar-docked strip
   (agenda, capture) builds its controls as `.ag-toggle`-style chips: 11px / 600, `--muted`
   ink, `--bdr-ui` hairline, `--r-sm`, 2px 8px padding, the §4 tint recipe when active. A
-  strip's single primary commit action wears the solid accent at the same chip scale; text
-  fields keep field chrome at the strip's density. A new docked strip adopts this grammar
+  strip's single primary commit action wears the solid accent at the same chip scale; every control in a strip row shares one 22px height, the text field included
+  (it grows only with content). A new docked strip adopts this grammar
   rather than minting its own (decided 2026-07-01, capture aligned to agenda).
   **Capture layout (re-evaluated and defended 2026-07-01):** the strip docks and never
   navigates (a modal would hide the outline a brain-dump references); the text field
