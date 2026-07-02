@@ -19,7 +19,7 @@
      tinted to the current accent at runtime by updateFavicon(), which also re-asserts the
      link and rasterizes a PNG so a root-site /favicon.ico can't override the accent icon.
      This static path must match updateFavicon()'s path and the in-app .logo-mark. -->
-<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Cpath%20fill%3D%22%234a90d9%22%20fill-rule%3D%22evenodd%22%20d%3D%22M256%20512A256%20256%200%201%200%20256%200a256%20256%200%201%200%200%20512zM160%20216a40%2040%200%201%201%200%2080%2040%2040%200%200%201%200-80zm104%2016h104c13.3%200%2024%2010.7%2024%2024s-10.7%2024-24%2024H264c-13.3%200-24-10.7-24-24s10.7-24%2024-24z%22%2F%3E%3C%2Fsvg%3E">
+<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20512%20512%22%3E%3Cpath%20fill%3D%22%234338ca%22%20fill-rule%3D%22evenodd%22%20d%3D%22M256%20512A256%20256%200%201%200%20256%200a256%20256%200%201%200%200%20512zM160%20216a40%2040%200%201%201%200%2080%2040%2040%200%200%201%200-80zm104%2016h104c13.3%200%2024%2010.7%2024%2024s-10.7%2024-24%2024H264c-13.3%200-24-10.7-24-24s10.7-24%2024-24z%22%2F%3E%3C%2Fsvg%3E">
 <!-- Font Awesome Free 6.5.2 (subset) — fontawesome.com
      Icons: CC BY 4.0 | Fonts: SIL OFL 1.1 | Code: MIT
      Only the glyphs used by this app are embedded below. -->
@@ -229,7 +229,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted);pointer-events:none}
 #search-wrap:focus-within #search-hint{display:block}
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap}
-.sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:0 4px;line-height:1.6}
+.sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.sc-panel kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
 .sh-row code{font-family:var(--mono);font-size:10px}
 /* saved searches: the one interactive island in the otherwise inert hint panel */
 #sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
@@ -490,7 +490,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-name-pill:hover{background:var(--bg)}
 .mt-name-pill:focus{background:var(--bg);box-shadow:inset 0 0 0 2px var(--ring);overflow:visible;text-overflow:clip}
 .mt-name-pill:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
-.mt-name-pill:empty::before{content:attr(data-ph);color:var(--muted);opacity:.6;font-weight:400}
+.mt-name-pill:empty::before{content:attr(data-ph);color:var(--muted);font-weight:400}/* UXP-107: no opacity fade (kept it sub-floor); weight 400 vs filled 700 carries the empty cue */
 @media(prefers-reduced-motion:reduce){.mt-name-pill{transition:none}}
 /* column resize: an invisible grab zone straddling the column's right border. No
    visual cue — you discover it by dragging the border, and the col-resize cursor on
@@ -636,7 +636,8 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .est-pill{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .est-pill:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
 .est-pill:active{transform:translateY(.5px)}
-.est-pill .est-ico{color:var(--acc);font-size:.86em;display:inline-flex}
+.est-pill .est-ico{color:var(--acc);font-size:.86em;display:inline-flex;transition:transform .25s ease}
+.est-pill:hover .est-ico{transform:rotate(-18deg)}/* UXP-117: the est pill re-samples on click like dice reroll, so its icon tilts on hover like the rest of the family (DL §4/P1) */
 .est-pill .est-expr{color:var(--muted);font-family:var(--mono);font-size:.9em}
 .est-pill .est-eq{color:var(--muted);opacity:.55;padding:0 1px}
 .est-pill .est-summary{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;font-family:var(--mono)}
@@ -699,7 +700,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-key:hover{background:var(--ring);border-color:var(--acc)}
 .fn-key.hi{background:var(--ring);border-color:var(--acc)}
 .fn-content{outline:none;font:inherit;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
-.fn-content:empty::before{content:'Add a note…';color:var(--muted);opacity:.65;pointer-events:none}
+.fn-content:empty::before{content:'Add a note…';color:var(--muted);pointer-events:none}/* UXP-107: --muted (AA on --bg) reads as lighter than the filled --fg body; no opacity fade */
 
 /* node types */
 .nt-h1{margin-top:28px}.nt-h2{margin-top:18px}.nt-h3{margin-top:10px}
@@ -713,6 +714,13 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .node-content h4.md-h{font-size:1.05em;font-variation-settings:'opsz' 14}
 .node-content h5.md-h{font-size:.8em;font-weight:600;text-transform:uppercase;letter-spacing:.07em}
 .node-content h6.md-h{font-size:.8em;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+/* UXP-108: inside a zoomed page the .zoom-title (30px / opsz 60, 22px mobile) is the masthead,
+   so descendant headings step down beneath it — a `# child` must not out-size/out-grade the title
+   of the page it lives on (DL §2). h1→1.5em (~25.5px) / opsz 60 sits clearly under the 30px title
+   (and, once fitZoomTitle shrinks a long title, still reads as a heading, not a rival masthead);
+   h2 follows to keep h1>h2. h3–h6 already sit below and are untouched. */
+body.zoomed .node-content h1.md-h{font-size:1.5em;font-variation-settings:'opsz' 60}
+body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz' 34}
 /* markdown blockquote — element-driven so it works on any line */
 .node-content blockquote.md-bq{border-left:2px solid var(--acc);padding-left:14px;margin:6px 0 6px 2px;color:color-mix(in srgb,var(--fg) 88%,var(--bg));font-family:var(--display-font);font-style:italic;font-size:1.04em;font-variation-settings:'opsz' 12}
 .nt-quote>.node-row>.bullet .bullet-dot{opacity:.25}
@@ -921,7 +929,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .io-field{margin-bottom:11px}
 .io-field label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
 .io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
-.io-field input::placeholder{color:var(--muted);opacity:.7}
+.io-field input::placeholder{color:var(--muted)}/* UXP-107: no opacity; filled text is --fg, so --muted already reads lighter than typed input */
 .io-field input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
 .io-foot-stack{flex-direction:column;align-items:stretch}
@@ -936,7 +944,7 @@ mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .io-field textarea{width:100%;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;resize:vertical;line-height:1.5;transition:border-color .12s,box-shadow .12s}
 .io-field textarea.io-mono{font-family:var(--mono)}
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
-.io-field textarea::placeholder{color:var(--muted);opacity:.6}
+.io-field textarea::placeholder{color:var(--muted)}/* UXP-107: no opacity fade (see input::placeholder) */
 .io-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
 .props-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
 .props-list-row{display:flex;align-items:center;gap:6px}
@@ -4748,6 +4756,16 @@ function copyNodeLink(id) {
 // Minimal transient confirmation toast (no persistent chrome). Self-styled so it
 // needs no CSS rule; respects the theme via custom properties.
 let _hintTimer = null;
+// UXP-116: lift the toast above any open bottom-docked panel (footnotes/backlinks/variables)
+// so it never stacks over their content — the same collision syncHelpBtnBottom solves for the
+// help toggle, extended to count #var-panel too. Stays bottom-center (not top) so the toast's
+// location never becomes context-dependent (P1). Returns a CSS length for `bottom`.
+function flashBottom() {
+  const on = id => { const el = document.getElementById(id); return el?.classList.contains('on') ? el.offsetHeight : 0; };
+  const stack = on('fn-panel') + on('bl-panel') + on('var-panel');   // 0 when none open
+  const safe = 'env(safe-area-inset-bottom)';
+  return stack ? `calc(${stack + 20}px + ${safe})` : `calc(20px + ${safe})`;
+}
 function flashHint(msg) {
   let el = document.getElementById('flash-hint');
   if (!el) {
@@ -4757,7 +4775,7 @@ function flashHint(msg) {
   }
   // Re-apply neutral styling every call so a prior flashError (which reddened the shared
   // element) doesn't leave later hints red.
-  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;'
+  el.style.cssText = `position:fixed;bottom:${flashBottom()};left:50%;transform:translateX(-50%);z-index:800;`
     + 'background:var(--fg);color:var(--bg);font-size:12.5px;padding:7px 14px;border-radius:var(--r-md);'
     + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none';
   el.textContent = msg;
@@ -4775,7 +4793,7 @@ function flashHint(msg) {
 function flashError(msg) {
   let el = document.getElementById('flash-hint');
   if (!el) { flashHint(''); el = document.getElementById('flash-hint'); }
-  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;'
+  el.style.cssText = `position:fixed;bottom:${flashBottom()};left:50%;transform:translateX(-50%);z-index:800;`
     + 'background:var(--bad);color:var(--bad-fg);font-size:12.5px;padding:7px 14px;border-radius:var(--r-md);'
     + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none;max-width:calc(100vw - 32px)';
   el.textContent = msg;
@@ -4876,6 +4894,9 @@ function render() {
 
   // zoomed INTO a base → the base is the whole view and renders full-width (see CSS)
   document.body.classList.toggle('base-zoom', !!(focusedId && vp.type === 'base'));
+  // UXP-108: mark zoom mode so descendant headings step down under the .zoom-title masthead
+  // (a `# child` must never out-size/out-grade the title of the page it lives on, DL §2).
+  document.body.classList.toggle('zoomed', !!focusedId);
 
   if (focusedId) {
     if (vp.type === 'base') {
