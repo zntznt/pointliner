@@ -276,6 +276,13 @@ sugar onto the persistent variable system, not the reverted scope.)
   **Roll tables: done** (June 2026) — the artifact collapsed into grammar entirely (a named
   table IS a one-rule grammar; legacy records migrate on load; `parseRolltable` survives
   migration-only). The decision record is in `ux-remediation.md` UXP-20.
-- **Out of scope:** a `{query: tag=…}` / saved-views database layer. (The *links + backlinks*
-  half of the old "Tier 3" is now the planned direction — see the phases above; only the
-  query/DB part remains out of scope.)
+- **Query pill: SHIPPED** (2026-07-02, owner call reversing the deferral below). A
+  `{query: <search>}` pill renders a live list of matching points inline, recomputed each
+  render, reusing `parseSearchQuery`/`queryMatchesNode` verbatim over the shared pure core
+  `queryRows`. It is a **rendering of the live data, not a stored view** — no saved-view
+  store, no query language of its own, no DB. **"Bases as queries"** (a base VIEW whose rows
+  come from the same `queryRows` core) is the planned base-form sibling, the reason the core
+  is factored out. See the register (QP-1).
+- **Still out of scope:** a **saved-views database layer** (a `{query: tag=…}` store of named,
+  persisted views as a data model). The query pill and the future query-base are renderings of
+  the outline, never a second base of the data; a views DB is the thing that stays parked.

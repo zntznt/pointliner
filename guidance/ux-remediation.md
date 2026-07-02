@@ -1347,6 +1347,22 @@ dead-end states** that confirm a non-event without teaching the next step.
 
 ---
 
+## Query pill (2026-07-02): QP-1 shipped, QP-2 planned
+
+*The query pill is the inline sibling of the future "bases as queries". Both are **renderings of the live data, not a stored view**, which is what puts them in scope: the roadmap parks a saved-views DATABASE layer, not a rendering of a search. The out-of-scope decision was reversed narrowly (owner call, 2026-07-02): renderings-of-a-search are in; a views DB stays parked. Recorded like the QX-5 OR reversal.*
+
+### QP-1 ✓ Query pill: `{query: <search>}` renders a live embedded search 🟡 — SCOPE REVERSAL + NEW ARTIFACT (RESOLVED: 2026-07-02)
+- **What:** a `[[query:KEY]]` artifact (sidecar `node.query = [{key, expr}]`) whose body is a normal search string. It renders a live list of matching points as links (capped at 10 with a `+N more`), recomputed every render, never stored. Zero new query language: it reuses `parseSearchQuery`/`queryMatchesNode` verbatim, so all 22 operators + OR compose inside it.
+- **The shared core (the reason to build it now):** the pure `queryRows(expr, root, hostId, cap)` walks the tree and returns `{rows, total, truncated}`, excluding the host point (a query never lists itself). The pill is a thin renderer over it; **QP-2's query-base view reuses the same core**, so "bases as queries" is later a VIEW over an existing seam, not a reimplementation.
+- **Re-entrancy:** the pill renders point TITLES only (`stripMd(textForDisplay)`), never re-entering `mdInline`, so unlike the link mirror it needs no save/restore guard. The render globals (`queryRenderList`) still thread through `renderContentHTML`/`renderNodeInline`/`mtInline` for the sidecar lookup.
+- **Doors (P2):** the `@ Query` insert command (a dialog with a live match-count preview), typed `{query: expr}` promotion on exit (`queryParts`/`promoteBraceBody`), and edit via the pill's pencil or body-click (`editQuery`); a result link click navigates (reuses the `.node-link`/`followNodeLink` path). Atomic in edit mode (like seq). OPML round-trips via `_query`; pruned by `pruneQueries`.
+- **Pins:** `queryRows` (cross-tree match, host exclusion, empty query, cap+total, full-grammar compose) and `queryParts` (sniff, empty/keywordless rejection, classify→artifact). Live-verified: render, result navigation, OPML round-trip, self-reference exclusion, typed promotion, empty state.
+
+### QP-2 ☐ Bases as queries: a base VIEW whose rows come from a query (planned)
+- **What:** the base-form sibling of QP-1. A base (`node.type === 'base'`) whose rows are not hand-entered but produced by a query over the document, rendered in the base's tabular form. Reuses `queryRows` for the row set; the base layer supplies the columns/display.
+- **Not a DB:** still a rendering of the live outline, not a stored/persisted view model. The saved-views database layer stays out of scope.
+- **Depends on:** the `guidance/bases-direction.md` scope fence (views/typed-fields/filters currently deferred there); QP-2 is the first sanctioned crack in it, and should be designed against that doc.
+
 ## Enhancements (tracked, not defects)
 
 These are **not non-conformances** — the standard is satisfied — just nice-to-haves noted so they aren't lost.

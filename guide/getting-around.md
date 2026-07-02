@@ -105,6 +105,17 @@ in once it is kept. Saved searches show as chips under the **Saved** heading whe
 has focus; click one to run it again, or the ✕ on a chip to forget it. Click the filled star to
 forget the one you are currently looking at.
 
+## Embedded queries
+
+Pin a live search inside the document itself. Instead of running a search in the box each time,
+drop the search into a point and it renders a list of every matching point, kept up to date as
+the document changes: a this-week view, an open-questions roundup, everything tagged a project.
+
+Type `@` and choose **Query**, or write it inline: `{query: is:todo | due:week}`. The part after
+`query:` is a normal search, so every operator works (`#tag`, `is:todo`, `due:week`, `key:value`,
+`-` to exclude, `|` for OR). Click any result to jump to it, or the pencil to change the search. A
+long list shows the first ten with a `+N more`. The query never lists its own point.
+
 ## Searching all your documents
 
 When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-notes)),

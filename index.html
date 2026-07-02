@@ -351,7 +351,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    per-pill rules via higher specificity so it wins the cascade on touch. */
 @media(hover:none){
   .dice-roll .dice-edit,.mk-roll .mk-edit,.gr-roll .gr-edit,
-  .math-roll .math-edit,.est-pill .est-edit,.var-pill .var-edit,.seq-pill .seq-edit{opacity:.55}
+  .math-roll .math-edit,.est-pill .est-edit,.var-pill .var-edit,.seq-pill .seq-edit,.query-pill .query-edit{opacity:.55}
 }
 @media(prefers-reduced-motion:reduce){
   .node-row:hover,.bullet:hover .bullet-dot,.bullet-base:hover .bullet-base-ic,
@@ -774,6 +774,24 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .seq-pill .seq-states{color:var(--muted);font-size:.92em}
 .seq-pill .seq-pipe{color:var(--acc);font-weight:700;padding:0 1px}
 .seq-pill.seq-bad{color:var(--del);border-style:dashed;cursor:default}
+/* query pill (block): a live embedded search. --pill hue #4a6b8a (info-family blue, distinct
+   from the artifact hues per design-language §4). Uses only tokens + the --r-* radii. */
+.query-pill{--pill:#4a6b8a;display:block;margin:3px 0;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.92em;cursor:pointer;user-select:none;overflow:hidden}
+.query-pill:hover{border-color:color-mix(in srgb,var(--pill) 40%,var(--bdr))}
+.query-head{display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid color-mix(in srgb,var(--pill) 14%,var(--bdr))}
+.query-head .query-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));font-size:.85em;display:inline-flex;flex-shrink:0}
+.query-head .query-expr{font-family:var(--mono);font-size:.86em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.query-head .query-count{font-size:.78em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted);flex-shrink:0}
+.query-head .query-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.query-pill:hover .query-edit{opacity:.6}
+.query-edit:hover{background:color-mix(in srgb,var(--pill) 16%,transparent);color:var(--fg)}
+.query-rows{display:flex;flex-direction:column;padding:3px 0}
+.query-row{display:block;padding:2px 10px;color:var(--fg);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5}
+.query-row::before{content:'\2022';color:color-mix(in srgb,var(--pill) 70%,var(--muted));margin-right:6px}
+.query-row:hover{background:color-mix(in srgb,var(--pill) 9%,transparent);color:color-mix(in srgb,var(--pill) 90%,var(--fg))}
+.query-more{padding:2px 10px 2px 22px;font-size:.82em;color:var(--muted);font-style:normal}
+.query-empty{display:block;padding:5px 10px;font-size:.86em;color:var(--muted)}
+.query-pill.query-bad{border-style:dashed;color:var(--del);cursor:default}
 .todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 5px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback so out-of-range letters ([#D]+, org A-E importers) still read as a priority chip; the a/b/c variants override with their bad/warn/info hues */
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
@@ -1635,6 +1653,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>key:&gt;N</kbd><kbd>key:&lt;=N</kbd><span>numeric property compare, like <code>cost:&gt;100</code> or <code>score:&lt;=3.5</code></span></div>
         <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><span>to-do priority, like <code>priority:a</code> or <code>priority:b</code></span></div>
+        <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -1838,7 +1857,7 @@ function ensureDocId(root, gen) {
   return root.docId;
 }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [], query: [] };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -2039,6 +2058,19 @@ function seqDeclParts(body) {
   const p = parseSequence(m[2]);                       // the states tail (active | done)
   return p ? { name, states: p.states, doneFrom: p.doneFrom } : null;
 }
+
+// queryParts(body) — sniff a typed query pill: {query: is:todo | due:week}. The reserved
+// `query:` keyword (like seqParts' modes) before the FIRST colon, then the search string
+// verbatim (which itself may contain colons and pipes, so we split on the first colon only).
+// Returns { expr } or null. Pure.
+function queryParts(body) {
+  const m = /^query\s*:(.*)$/is.exec((body || '').trim());
+  if (!m) return null;
+  const expr = m[1].trim();
+  if (!expr) return null;                              // {query:} with no search string → not a pill
+  return { expr };
+}
+function queryKey() { return 'qy' + Math.random().toString(36).slice(2, 9); }
 
 // Pure P4 advisory for the @sequence dialog (C5). parseSequence tokenizes states on
 // whitespace, so a multi-word phrase like "IN PROGRESS" SILENTLY becomes two states
@@ -2878,6 +2910,7 @@ function renderContentHTML(node) {
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
+  queryRenderList   = node.query   || null;
   cookieNode        = node;
   globalVarMap      = collectVars();
   // Positional resolution (Stage B): this node's pills resolve {name} against the variables
@@ -3386,12 +3419,14 @@ function renderNodeInline(node) {
   const saved = { dice: diceRenderList, markov: markovRenderList,
                   math: mathRenderList, est: estRenderList,
                   vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList,
+                  query: queryRenderList,
                   cookie: cookieNode, varMap: renderVarMap };
   _inlineDepth++;
   diceRenderList = node.dice || null; markovRenderList = node.markov || null;
   mathRenderList = node.math || null; estRenderList = node.est || null;
   varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
   seqRenderList = node.seq || null;
+  queryRenderList = node.query || null;
   cookieNode = node;
   // globalVarMap is document-wide — leave it. renderVarMap is POSITIONAL scope, so it must
   // follow the mirrored target or its var/math pills resolve against the source's scope.
@@ -3401,6 +3436,7 @@ function renderNodeInline(node) {
   mathRenderList = saved.math; estRenderList = saved.est;
   varRenderList = saved.vars; grammarRenderList = saved.grammar;
   seqRenderList = saved.seq;
+  queryRenderList = saved.query;
   cookieNode = saved.cookie;
   renderVarMap = saved.varMap;
   _inlineDepth--;
@@ -3488,6 +3524,9 @@ function mdInline(s) {
   // sequence declarations — [[seq:KEY]] resolves against the node's stored sequences
   s = s.replace(/\[\[seq:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderSeqPill(k, seqRenderList?.find(q => q.key === k))));
+  // query pills — [[query:KEY]] runs the stored search over the live document
+  s = s.replace(/\[\[query:([a-z0-9]+)\]\]/gi, (_, k) =>
+    stash(renderQueryPill(k, queryRenderList?.find(q => q.key === k))));
   // cross-document node links — [[DOCID#TARGETID]] or [[DOCID#TARGETID|label]] (CF-2).
   // Mutually exclusive with the same-doc form below: this requires >=1 char before '#',
   // the same-doc form requires none — so neither steals the other and order is irrelevant.
@@ -3522,6 +3561,7 @@ function mdInline(s) {
 // Set by renderContentHTML before calling mdToHtml so that mdInline token
 // handlers can access the node's per-feature data without extra arguments.
 let diceRenderList = null;
+let queryRenderList = null;   // node.query for the current render node (query pill)
 let markovRenderList = null;
 let mathRenderList = null;
 let estRenderList = null;
@@ -4511,6 +4551,7 @@ function toOpml(r) {
       n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
       n.est?.length      ? `_est="${ex(JSON.stringify(n.est))}"` : '',
       n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
+      n.query?.length    ? `_query="${ex(JSON.stringify(n.query))}"` : '',
       n.note             ? `_note="${ex(n.note)}"` : '',
       n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
@@ -4572,6 +4613,7 @@ function fromOpml(xml) {
       grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
       est:       (() => { try { const e = JSON.parse(el.getAttribute('_est')    || '[]'); return Array.isArray(e) ? e : []; } catch(_) { return []; } })(),
       seq:       (() => { try { return JSON.parse(el.getAttribute('_seq')       || '[]'); } catch(_) { return []; } })(),
+      query:     (() => { try { const q = JSON.parse(el.getAttribute('_query')  || '[]'); return Array.isArray(q) ? q : []; } catch(_) { return []; } })(),
       props:     (() => { try { const p = JSON.parse(el.getAttribute('_props')  || '[]'); return Array.isArray(p) ? p : []; } catch(_) { return []; } })(),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
     };
@@ -4693,6 +4735,7 @@ const INSERT_CMDS = [
   { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
   // Organize — document-wide state sets
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
+  { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -5389,11 +5432,12 @@ function mtInline(node, raw) {
   varRenderList     = node.vars    || null;
   grammarRenderList = node.grammar || null;
   seqRenderList     = node.seq     || null;
+  queryRenderList   = node.query   || null;
   cookieNode        = node;
   globalVarMap      = collectVars();
   renderVarMap      = varMapAt(node);   // positional scope for this cell's var/math pills
   const html = mdInline(raw || '');
-  diceRenderList = markovRenderList = mathRenderList = estRenderList = varRenderList = grammarRenderList = seqRenderList = null;
+  diceRenderList = markovRenderList = mathRenderList = estRenderList = varRenderList = grammarRenderList = seqRenderList = queryRenderList = null;
   cookieNode = null;
   return html;
 }
@@ -8444,6 +8488,37 @@ function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMa
   return live.length > 0 && live.some(c => c.every(t => termMatchesNode(t, node, seqs, vars) === !t.neg));
 }
 
+// queryRows(expr, rootNode, hostId, cap) — the shared query-to-rows core: run a search
+// STRING over a tree and return the matching points as [{id, title}], capped, excluding
+// the host point (a query never lists itself). Pure and Node-testable, reusing
+// parseSearchQuery/queryMatchesNode verbatim, so the query pill and the future "bases as
+// queries" view sit on ONE core (renderings of the live data, never a stored view). The
+// caller passes the doc-wide context (seqs/vars/links) it already has; here they default
+// to the explicit-root collectors so the core is a pure function of its tree argument.
+// Returns { rows, total, truncated }: rows is the capped slice, total the full count.
+const QUERY_ROW_CAP = 10;
+function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
+  const terms = parseSearchQuery(expr || '');
+  if (!terms.length) return { rows: [], total: 0, truncated: false };
+  const seqs = allSequences(rootNode);
+  const needsCtx = terms.some(t => t.kind === 'is');
+  const vars = needsCtx ? collectVars(rootNode) : undefined;
+  const needsLinks = terms.some(t => (t.kind === 'is' && t.value === 'broken') || (t.kind === 'has' && t.value === 'backlink'));
+  const links = needsLinks ? collectLinks(rootNode) : undefined;
+  const rows = [];
+  let total = 0;
+  (function walk(n) {
+    for (const c of (n.children || [])) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+        total++;
+        if (rows.length < cap) rows.push({ id: c.id, title: stripMd(textForDisplay(c)) || '(untitled)' });
+      }
+      walk(c);
+    }
+  })(rootNode);
+  return { rows, total, truncated: total > rows.length };
+}
+
 // The strings worth <mark>ing for a parsed query: positive text terms plus
 // positive tags (as `#tag`, how they appear in the text). is: terms are
 // structural — nothing to highlight. Pure.
@@ -8799,6 +8874,15 @@ function attachContentEvents(content, node) {
       editSeq(node, sq2.dataset.key);
       return;
     }
+    // query pill: a result link already navigated above (.node-link handler); clicking
+    // anywhere ELSE on the pill (the head, the pencil, the empty state) opens the editor.
+    const qp2 = e.target.closest?.('.query-pill');
+    if (qp2 && !qp2.classList.contains('query-bad')) {
+      e.preventDefault(); e.stopPropagation();
+      if (content.dataset.editing) exitEdit(content, node);
+      editQuery(node, qp2.dataset.key);
+      return;
+    }
     // Cmd/Ctrl-click: toggle THIS point in/out of the selection (out-of-order, non-
     // contiguous) — the file-manager gesture, alongside Shift-click for a contiguous range.
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !content.dataset.editing) {
@@ -9025,6 +9109,7 @@ function classifyBraceBody(body, rules, vars) {
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
   if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
+  if (queryParts(body)) return 'artifact';                             // {query: is:todo}
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
@@ -9069,6 +9154,7 @@ function braceTypeLabel(body, rules, vars) {
   if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
   if (markovParts(body)) return ['markov', null];                      // {markov: a→b, b→c}
   if (seqDeclParts(body)) return ['seq', null];                        // {seq Flow: A B | C}
+  if (queryParts(body)) return ['query', null];                        // {query: is:todo}
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
@@ -9150,7 +9236,7 @@ function anchorEditInlines(html) {
 // form render as contenteditable=false pill spans (edited via the pencil/dialog);
 // inline-able artifacts are unfolded to {…} text by enterEdit before this runs.
 function editModeHTML(node) {
-  const TOKEN_RE = /(\[\[(dice|markov|math|var|grammar|seq|est):([a-z0-9]+)\]\])/gi;
+  const TOKEN_RE = /(\[\[(dice|markov|math|var|grammar|seq|est|query):([a-z0-9]+)\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
   // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
   // the rule isn't currently defined in the document).
@@ -9168,6 +9254,7 @@ function editModeHTML(node) {
     else if (type === 'est')       pill = renderEstPill(key, node.est?.find(d => d.key === key));
     else if (type === 'grammar')   pill = renderGrammarPill(key, node.grammar?.find(d => d.key === key));
     else if (type === 'seq')       pill = renderSeqPill(key, node.seq?.find(d => d.key === key));
+    else if (type === 'query')     pill = renderQueryPill(key, node.query?.find(d => d.key === key));
     else                           pill = renderVarPill(key, node.vars?.find(d => d.key === key));
     html += `<span contenteditable="false" data-token="${escQ(raw)}">${pill}</span>${EDIT_ANCHOR}`;
     last = m.index + m[0].length;
@@ -11245,6 +11332,17 @@ function insertInlineArtifact(id, nodeId, content) {
         applyInlineInsertion(nodeId, offset, `[[seq:${rec.key}]]`);
       },
     });
+  } else if (id === 'query') {
+    openQueryDialog({
+      title: 'Embedded query',
+      submitLabel: 'Insert',
+      onResult: expr => {
+        const n = nodeById(nodeId); if (!n) return;
+        const rec = { key: queryKey(), expr };
+        (n.query ||= []).push(rec);
+        applyInlineInsertion(nodeId, offset, `[[query:${rec.key}]]`);
+      },
+    });
   } else if (id === 'progress') {
     // a cookie is plain computed text (no sidecar) — insert the [/] recipe; it
     // renders as a live [done/total] tally. Type [%] by hand for the percent form.
@@ -13182,6 +13280,13 @@ function promoteBraceBody(node, body) {
     (node.seq ||= []).push(rec);
     return `[[seq:${rec.key}]]`;
   }
+  // typed query pill: {query: is:todo | due:week} → a live [[query:KEY]] embedded search.
+  const qp = queryParts(body);
+  if (qp) {
+    const rec = { key: queryKey(), expr: qp.expr };
+    (node.query ||= []).push(rec);
+    return `[[query:${rec.key}]]`;
+  }
   // text modifier: {beast.cap} / {var.s} → an anonymous grammar wrapped `origin:
   // {ref.mod}`, so unfold/refold/prune/export all reuse the grammar machinery (the
   // load-bearing A1 decision — both rule and var bases route through grammar, never
@@ -14306,6 +14411,10 @@ function pruneSeqs(node) {
   if (!node.seq?.length) return;
   node.seq = node.seq.filter(q => node.text.includes(`[[seq:${q.key}]]`));
 }
+function pruneQueries(node) {
+  if (!node.query?.length) return;
+  node.query = node.query.filter(q => node.text.includes(`[[query:${q.key}]]`));
+}
 
 // Re-serialize a sequence record's states back to the "A B | C" definition form
 // (the dialog's editable representation; doneFrom is the pipe position).
@@ -14325,6 +14434,33 @@ function renderSeqPill(key, sq) {
     + `<span class="seq-states">${states}</span>`
     + `<span class="seq-edit" role="button" tabindex="-1" aria-label="Edit sequence" title="Edit sequence"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
+}
+
+// renderQueryPill(key, q) — a live embedded search: runs q.expr over the current document
+// and lists matching points as links, capped with a "+N more". Recomputes every render
+// (no stored results), so it stays live like the math/cookie pills. It renders point
+// TITLES only (never re-enters mdInline), so it needs no mirror-style re-entrancy guard;
+// the host point excludes itself (queryRows), so a query never lists its own point.
+function renderQueryPill(key, q) {
+  if (!q) return `<span class="query-pill query-bad" data-key="${escQ(key)}" aria-label="Query (missing data)"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> ?</span>`;
+  const expr = q.expr || '';
+  const { rows, total, truncated } = queryRows(expr, root, cookieNode?.id);
+  const head = `<span class="query-head" contenteditable="false"><span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
+    + `<span class="query-expr">${escHtml(expr || 'empty query')}</span>`
+    + `<span class="query-count">${total}</span>`
+    + `<span class="query-edit" role="button" tabindex="-1" aria-label="Edit query" title="Edit query"><i class="fa-solid fa-pen" aria-hidden="true"></i></span></span>`;
+  let body;
+  if (!expr.trim()) body = `<span class="query-empty">No query yet. Click to edit.</span>`;
+  else if (!total) body = `<span class="query-empty">No matching points.</span>`;
+  else {
+    const items = rows.map(r =>
+      `<a class="query-row node-link" data-target="${escQ(r.id)}" href="#" tabindex="-1">${escHtml(r.title)}</a>`).join('');
+    const more = truncated ? `<span class="query-more">+${total - rows.length} more</span>` : '';
+    body = `<span class="query-rows">${items}${more}</span>`;
+  }
+  return `<span class="query-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
+    + ` aria-label="Query ${escQ(expr)}: ${total} matching point${total === 1 ? '' : 's'}. Click a result to jump, or the pencil to edit.">`
+    + head + body + `</span>`;
 }
 
 // Declare/edit dialog on the shared openInsertDialog harness. Validation and the
@@ -14353,6 +14489,43 @@ function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
       const p = parseSequence(v.def);
       if (!p) return;
       onResult({ name: v.name, states: p.states, doneFrom: p.doneFrom });
+    },
+  });
+}
+
+function openQueryDialog({ title, submitLabel, expr = '', onResult }) {
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-magnifying-glass', fb: '🔍' },
+    title,
+    submitLabel,
+    fields: [
+      { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true,
+        preview: (v) => {
+          if (!v.trim()) return '<span class="io-preview-bad">Type a search, like is:todo or #idea -is:done</span>';
+          const { total } = queryRows(v, root, null);
+          return `<span class="io-preview-ok">${total} matching point${total === 1 ? '' : 's'} right now</span>`;
+        },
+        hint: 'Any search the box accepts: words, #tag, is:todo, due:week, key:value, and | for OR. The list updates itself as the document changes.' },
+    ],
+    validate: (v) => !!v.expr.trim(),
+    onSubmit: (v) => onResult(v.expr.trim()),
+  });
+}
+
+function editQuery(node, key) {
+  const q = node?.query?.find(x => x.key === key);
+  if (!q) return;
+  openQueryDialog({
+    title: 'Edit query',
+    submitLabel: 'Save',
+    expr: q.expr,
+    onResult: expr => {
+      q.expr = expr;
+      markDirty();
+      // repaint the host point so the new results show; in edit mode it stays atomic.
+      const content = document.querySelector(`.node-content[data-id="${CSS.escape(node.id)}"]`);
+      if (content) content.innerHTML = content.dataset.editing ? editModeHTML(node) : renderContentHTML(node);
+      else render();
     },
   });
 }
@@ -15560,7 +15733,7 @@ function editDice(node, key) {
 // half's orphaned artifact records.
 function pruneArtifacts(node) {
   pruneDice(node); pruneMarkov(node); pruneMath(node); pruneEst(node);
-  pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneFootnotes(node);
+  pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneQueries(node); pruneFootnotes(node);
 }
 // Drop dice records whose [[dice:KEY]] token no longer appears in the text.
 function pruneDice(node) {
@@ -19970,6 +20143,14 @@ const GUIDE = [
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
+    ] },
+  { id:'query', cat:'todos', covers:['query'],
+    title:'Embedded queries',
+    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project, or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or the pencil to change the search. Long lists cap with a +N more.",
+    examples:[
+      { syn:'{query: is:todo}',        desc:'every open task, live' },
+      { syn:'{query: #idea -is:done}', desc:'combine any search operators' },
+      { syn:'@ then Query',            desc:'insert one from the menu' },
     ] },
   { id:'templates', cat:'todos', covers:['template'],
     title:'Templates',
