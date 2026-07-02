@@ -50,8 +50,11 @@ on **Overdue** to focus every view on just the late items. Click any item to jum
 Keep a running log of what you worked on, decisions you made, or anything worth noting each day.
 
 Entries file themselves by date under a **Journal** point, nested year then month then day
-(`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your outline. Type
-**`/journal`**, or click the calendar button, to open or create today's entry.
+(`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your outline. The
+toolbar book button toggles the **Journal bar**: type a point and press Enter to file it under
+today's entry without leaving your place. The bar shows the date it is saving to; click the
+year, month, or day to jump to that part of the journal. Type **`/journal`** to open today's
+entry directly.
 
 (When a folder of documents is connected (a [folder](features.md#linking-and-connecting-notes)), the
 journal can instead write one file per day on disk.)
