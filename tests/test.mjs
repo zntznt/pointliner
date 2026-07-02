@@ -7338,15 +7338,45 @@ test('collectActions — live actions sort before done, higher priority first', 
   assert.deepEqual(items.map(i => i.id), ['hiPri', 'noPri', 'doneItem']);
 });
 
-// ── oracle swing (UXP-111) ───────────────────────────────────────────────────
-test('oracleSwingBody — six ordered options, plain answers keep the band weight, twists weight 1', () => {
-  const body = c.oracleSwingBody(3, 1);   // a "Likely" band
+// ── oracle swing (UXP-111, band-proportional weights UXP-124) ─────────────────
+// Helper: sum the Yes-family vs No-family weights from a swing body, to assert the split
+// tracks the plain oracle's band ratio rather than the old flat-weight-1 dilution.
+function swingFamilies(body) {
   const alts = body.split('|').map(s => s.trim());
-  assert.deepEqual(alts, ['Yes, and 1', 'Yes 3', 'Yes, but 1', 'No, but 1', 'No 1', 'No, and 1']);
+  let yes = 0, no = 0;
+  for (const a of alts) {
+    const m = a.match(/^(Yes|No)[^0-9]*(\d+)$/);
+    if (!m) continue;
+    if (m[1] === 'Yes') yes += +m[2]; else no += +m[2];
+  }
+  return { yes, no, yesPct: Math.round(100 * yes / (yes + no)) };
+}
+
+test('oracleSwingBody — six ordered options in the fixed order', () => {
+  const alts = c.oracleSwingBody(3, 1).split('|').map(s => s.trim().replace(/\s+\d+$/, ''));
+  assert.deepEqual(alts, ['Yes, and', 'Yes', 'Yes, but', 'No, but', 'No', 'No, and']);
 });
 
 test('oracleSwingBody — an Even band is symmetric', () => {
-  assert.equal(c.oracleSwingBody(1, 1), 'Yes, and 1 | Yes 1 | Yes, but 1 | No, but 1 | No 1 | No, and 1');
+  const f = swingFamilies(c.oracleSwingBody(1, 1));
+  assert.equal(f.yes, f.no);
+  assert.equal(f.yesPct, 50);
+});
+
+test('oracleSwingBody — the family split tracks the plain oracle band (UXP-124)', () => {
+  // plain oracle: Likely = Yes 3 | No 1 = 75% Yes; the swing must land at the same lean,
+  // not the old flat-weight dilution (which made Likely-swing ~57% Yes).
+  assert.equal(swingFamilies(c.oracleSwingBody(3, 1)).yesPct, 75);   // Likely
+  assert.equal(swingFamilies(c.oracleSwingBody(19, 1)).yesPct, 95);  // Certain
+  assert.equal(swingFamilies(c.oracleSwingBody(1, 3)).yesPct, 25);   // Unlikely
+});
+
+test('oracleSwingBody — every arm is a nonzero weight (a swing still swings)', () => {
+  // even at the extreme Certain band, the weak No side keeps nonzero twist arms
+  for (const a of c.oracleSwingBody(19, 1).split('|')) {
+    const w = +a.trim().match(/\d+$/)[0];
+    assert.ok(w >= 1, `arm "${a.trim()}" should be >= 1`);
+  }
 });
 
 // ── is:scheduled / is:unscheduled (UXP-113) ──────────────────────────────────
