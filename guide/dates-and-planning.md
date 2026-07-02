@@ -34,7 +34,7 @@ deeper view at a time below the List (click the active one again to return to ju
 
 - **Week** , a 7-day planner spread; overdue items are gathered in a leading **Earlier** column.
 - **Month** , a full month calendar.
-- **Timeline** , a Gantt-style view of overlapping tasks.
+- **Timeline** , a Gantt-style view of overlapping tasks. A Titles chip cycles the name-column width (narrow, default, wide); on desktop you can also drag the dotted separator.
 
 In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
 do, y done**) and lists the active ones first; when a day has more than fit, click its **more** to
