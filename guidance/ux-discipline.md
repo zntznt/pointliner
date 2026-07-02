@@ -227,6 +227,8 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Esc` | Back out one layer | menu → cell sel → point sel → zoom → blur (P1-3). **Backing out of chrome restores the interrupted edit**: leaving the search field, the file menu, or the help panel via `Esc` puts the caret back exactly where it stood — same point, same offset — unless another point was focused meanwhile (`armChromeReturn`/`restoreChromeReturn`) |
 | Search `↓` | Step from the search field into the outline | First **matching** point while a filter is active, else the first displayed point. The filter stays applied; `Esc` from the landed point follows the normal back-out order |
 | `Ctrl/⌘ + S / O / F` | Save / open / find | — |
+| `Ctrl/⌘ + /` · `?` | Open the keyboard shortcuts panel | `?` only when not typing; the panel is the keyboard cheat-sheet |
+| `Ctrl/⌘ + Shift + /` | Open the Concept guide | The "bigger help": the full feature reference (vs the shortcuts panel). Works mid-edit. The File menu's Concept guide row and the panel's "Concept guide ›" footer are the pointer doors (UXP-125) |
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
 | `Ctrl/⌘ + Shift + I` | Toggle the Capture strip | Global; opening focuses the strip input, the same chord closes it |

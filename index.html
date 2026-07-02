@@ -1691,7 +1691,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 
   <div class="cmd-sep"></div>
   <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, Markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
-  <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div></div>
+  <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
+  <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
 </div>
@@ -16048,6 +16049,10 @@ function updateDirtyDot() {
 }
 function markDirty() {
   dirty = true;
+  // UXP-126: the first edit to the Examples doc means the user engaged — it becomes their doc, so
+  // stop suppressing autosave and drop the "these are examples" banner. (Guarded so it's a no-op
+  // in normal use; the flag only exists during a fresh first-run.)
+  if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
   _varsVer++; // invalidate collectVars() cache
   updateDirtyDot();
   scheduleAutosave();
@@ -16217,10 +16222,21 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   // doc's last edits never reached disk. Callers that need the outgoing doc persisted must
   // flush BEFORE calling adoptDoc (switchWorkspaceDoc does). This just prevents a misfire.
   clearTimeout(autosaveTimer);
+  // UXP-126: adopting any real doc (an open/new/reopened/swapped one) means the first-run Examples
+  // are done — stop suppressing autosave and drop the banner. The examples adoption itself sets
+  // _adoptingExamples so it doesn't clear its own flag.
+  if (typeof _showingExamples !== 'undefined' && _showingExamples && !_adoptingExamples) {
+    _showingExamples = false;
+    if (typeof hideExamplesBanner === 'function') hideExamplesBanner();
+  }
   root = newRoot;
   fileHandle = fh;
   fileName = fname;
   workspaceFile = wf;   // a new/opened/swapped doc is not folder-backed (deferred to #5); a future caller may pass one
+  // UXP-127: remember a STANDALONE file open (a handle with no folder backing) so next session can
+  // reopen it; a folder-backed doc is remembered via WORKSPACE_KEY instead, and a fresh/unsaved doc
+  // clears the memory (it has no disk identity to reopen).
+  if (hasFSA) { if (fh && !wf) saveLastFileHandle(fh, fname); else if (!fh) clearLastFileHandle(); }
   _wsWarned = false;    // fresh doc → a later lost-access event may warn again
   focusedId = null;
   clearTimeout(searchDebounce);
@@ -16331,6 +16347,7 @@ async function saveAsFile() {
       });
       fileHandle = newHandle;
       fileName = newHandle.name;
+      saveLastFileHandle(newHandle, newHandle.name);   // UXP-127: remember this standalone file for next session
       // Save As makes a standalone file, so it DETACHES from any connected folder.
       // Without this, workspaceFile kept pointing at the old folder file and autosave
       // silently kept writing there while the user thought they'd moved to a copy.
@@ -16395,6 +16412,17 @@ let _wsReconciling = false;// sync-safety: a reconcile prompt is open; suppress 
 let _wsForceWrite = false; // sync-safety: the user chose "keep mine" — the next flush overwrites disk without re-checking staleness (one-shot, avoids a prompt loop).
 const WORKSPACE_KEY = 'workspaceDir';
 const OPEN_TABS_KEY = 'openTabs';   // IndexedDB: the persisted list of open document tabs
+const LASTFILE_KEY  = 'lastFile';   // IndexedDB: the last STANDALONE (non-folder) FileSystemFileHandle + name (UXP-127)
+
+// UXP-127: persist the last single-file handle so a returning session can reopen the same disk
+// file (the folder tier already does this via WORKSPACE_KEY; the single-file tier didn't, so a
+// reopened session booted the localStorage copy with no memory of which file it was, misreported
+// "All changes saved" against an unbound handle, and turned Ctrl+S into a fresh Save-As).
+// FileSystemFileHandle is structured-clonable, so it round-trips through the kv store.
+async function saveLastFileHandle(handle, name) {
+  try { await idbSet(LASTFILE_KEY, { handle, name }); } catch (_) {}
+}
+async function clearLastFileHandle() { try { await idbDel(LASTFILE_KEY); } catch (_) {} }
 
 // ─── document tabs (over the workspace switcher) ───────────────────────────────
 // A tab strip that surfaces the existing workspace switcher: tabs are the documents
@@ -16787,6 +16815,7 @@ async function connectWorkspace() {
     await anchorWorkspaceFile();        // sync-safety: anchor to what we just wrote
     startWorkspaceWatch();              // sync-safety: watch the connected file
     await idbSet(WORKSPACE_KEY, { dir, name });
+    clearLastFileHandle();             // UXP-127: the doc is folder-backed now; drop the single-file reopen memory
     renderFileName();
     updateTitle();
     renderWorkspaceAffordance();       // also registers the current doc as a tab + renders the strip
@@ -19038,7 +19067,12 @@ const logoBtn   = document.getElementById('logo-btn');
 function updateFmStatus() {
   const status = document.getElementById('fm-status');
   if (!status) return;
+  // UXP-127: "named but unbound" — a reopened session restored the filename but not the write
+  // handle (single-file tier), so we can't save back to disk yet. Don't claim "saved"; point at
+  // the Reopen path. Folder-backed docs always have a live handle, so this only hits detached files.
+  const namedButUnbound = hasFSA && fileName !== 'unsaved' && !fileHandle && !workspaceFile;
   if (fileName === 'unsaved')      status.textContent = 'Autosaved in this browser, not saved to a file';
+  else if (namedButUnbound)        status.textContent = 'Autosaved in this browser. Reopen “' + displayName(fileName) + '” to save back to it';
   else if (dirty)                  status.textContent = 'Unsaved changes. ' + fmtKey('S') + ' saves to file';
   else                             status.textContent = 'All changes saved';
 }
@@ -19051,6 +19085,8 @@ function openFileMenu() {
   if (keySave) keySave.textContent = fmtKey('S');
   const keyOpen = document.getElementById('key-open');
   if (keyOpen) keyOpen.textContent = fmtKey('O');
+  const guideKey = document.getElementById('guide-key');   // UXP-125: advertise the Concept guide chord
+  if (guideKey) guideKey.textContent = fmtKey('⇧/');
   const searchKey = document.getElementById('search-key');
   if (searchKey) searchKey.textContent = fmtKey('F');
   renderFileName();
@@ -19401,6 +19437,7 @@ const GUIDE = [
   { id:'nav-jump',    essential:true, essSection:'Navigate', keys:['↓ from search'],   essLabel:'Jump to first match' },
   { id:'nav-link',    essential:true, essSection:'Navigate', keys:[`${MOD}+⇧+Enter`],  essLabel:'Follow link under caret' },
   { id:'nav-help',    essential:true, essSection:'Navigate', keys:[`${MOD}+/`,'?'],     essLabel:'Open this shortcuts panel' },
+  { id:'nav-guide',   essential:true, essSection:'Navigate', keys:[`${MOD}+⇧+/`],       essLabel:'Open the Concept guide (every feature, explained)' },
 
   // ── Edit structure (essentials only) ──────────────────────────────────────
   { id:'edit-enter',   essential:true, essSection:'Edit', keys:['Enter'],               essLabel:'New point' },
@@ -20116,6 +20153,10 @@ document.addEventListener('keydown', e => {
   // Open the shortcuts panel from the keyboard (it's the keyboard reference; it should have a
   // key). ⌘/Ctrl+/ works anywhere, including mid-edit. A bare ? (the universal help key) also
   // toggles it, but only when NOT typing into a point/field, so it never eats a literal "?".
+  // ⌘/Ctrl+Shift+/ opens the Concept guide (the "bigger help": the full feature reference, vs the
+  // ⌘/Ctrl+/ keyboard cheat-sheet). Works mid-edit. Shift+/ is ? on most layouts, so accept either
+  // key char under ctrl+shift (UXP-125). Kept before the bare ⌘/Ctrl+/ so the shift form wins.
+  if (ctrl && e.shiftKey && (e.key==='/' || e.key==='?')) { e.preventDefault(); openGuide(); return; }
   if (ctrl && e.key==='/') { e.preventDefault(); toggleShortcuts(); return; }
   if (e.key==='?' && !ctrl && !e.altKey) {
     const t = e.target;
@@ -20336,7 +20377,10 @@ let _warnAction = 'save';
 storageWarnBtn.addEventListener('click', () => {
   if (_warnAction === 'export') { exportSelfContainedHtml(); return; }  // keep the banner up: the doc is still an unsaved snapshot
   hideStorageWarn();
-  if (_warnAction === 'reconnect') reconnectWorkspace(); else saveFile();
+  if (_warnAction === 'reconnect') reconnectWorkspace();
+  else if (_warnAction === 'reopenfile') reopenPendingFile();   // UXP-127
+  else if (_warnAction === 'startblank') startBlankOutline();   // UXP-126
+  else saveFile();
 });
 document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
 
@@ -20354,6 +20398,43 @@ function showReconnectBanner() {
   storageWarn.classList.add('soft');
   storageWarn.classList.add('on');
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
+
+// UXP-127: a single file was open in a previous session and its handle is stored, but the browser
+// re-gated the File System Access permission to 'prompt' on relaunch (the file was NOT moved). One
+// gesture rebinds it. Mirrors showReconnectBanner: a soft banner with a Reopen button. pendingFile
+// holds the stored handle; reopenPendingFile() re-requests permission on the click.
+let pendingFile = null;
+function showReopenFileBanner(name) {
+  _warnAction = 'reopenfile';
+  storageWarnBtn.textContent = 'Reopen';
+  storageWarnMsg.textContent = 'Reopen “' + displayName(name) + '” to save back to it. It was not moved, the browser just needs permission again.';
+  storageWarn.classList.add('soft');
+  storageWarn.classList.add('on');
+  storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
+// UXP-126: the first-run Examples banner. Reuses the soft #storage-warn surface with a "Start a
+// blank outline" button; dismissing keeps the examples visible to read.
+function showExamplesBanner() {
+  _warnAction = 'startblank';
+  storageWarnBtn.textContent = 'Start a blank outline';
+  storageWarnMsg.textContent = 'These are live examples to explore. Click any pill, or start your own outline.';
+  storageWarn.classList.add('soft');
+  storageWarn.classList.add('on');
+  storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
+function hideExamplesBanner() {
+  if (_warnAction === 'startblank') hideStorageWarn();
+}
+async function reopenPendingFile() {
+  if (!pendingFile) return;
+  try {
+    const perm = await pendingFile.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') { flashHint('Permission needed to reopen the file'); return; }
+    fileHandle = pendingFile; pendingFile = null;
+    updateFmStatus();
+    flashHint('Reopened “' + displayName(fileName) + '”. Saves now write to the file.');
+  } catch (_) { flashError('Could not reopen the file'); }
 }
 
 // Shared-snapshot banner (UXP-102). A self-contained-HTML recipient's edits autosave but are
@@ -20405,6 +20486,7 @@ function scheduleAutosave() {
   // disk. Only bail when there is NO durable store at all: localStorage disabled AND no
   // OPFS AND no folder. With OPFS present, a too-large tree still autosaves to OPFS.
   if (autosaveDisabled && !hasOPFS && !workspaceFile) return;
+  if (_showingExamples) return;   // UXP-126: the pristine first-run Examples doc never persists as the user's doc
   // Boot race guard: until the OPFS boot reconcile has run, do NOT autosave at all — a
   // fresh-boot empty doc would clobber the durable OPFS copy before we can restore it.
   // A real user keypress in that tiny window sets _userEdited, so we don't lose it: the
@@ -20522,14 +20604,64 @@ function applyAutosaveData(data) {
   return true;
 }
 
+let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from localStorage?
 (function restoreAutosave() {
   if (loadedFromEmbed) return; // a shared snapshot is authoritative over local autosave
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (!raw) return;
-    applyAutosaveData(JSON.parse(raw));
+    if (applyAutosaveData(JSON.parse(raw))) _restoredFromAutosave = true;
   } catch(_) {}
 })();
+
+// UXP-126: first-run Examples. On a genuinely-fresh boot (no restored autosave, not a snapshot,
+// no workspace to reopen) a newcomer would see one empty bullet + three sigils they have no reason
+// to trust. Instead, open a read-only-feeling Examples doc of LIVE pills (authored as plain {…}
+// source that promotes via promoteLoadedShorthand in adoptDoc, like the solo-rpg demos), plus a
+// "Start a blank outline" door. It never silently becomes the user's saved doc: `_showingExamples`
+// suppresses autosave until they edit (markDirty clears the flag) or hit Start blank. Reachable
+// again afterward from the File menu. NOT gated on a verbosity dial (that dial isn't built).
+const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Welcome to Pointliner</title></head><body>
+<outline text="# Welcome to Pointliner"/>
+<outline text="This is an outliner with live little widgets inside. Type inside {curly braces} and, when you click away, it becomes a pill you can click."/>
+<outline text="Roll dice: {2d6}"/>
+<outline text="Pick from a list: {sword | shield | potion}"/>
+<outline text="Do math: {= 2 * 19}"/>
+<outline text="Total a property across children: {= sum(cost)}">
+  <outline text="Sword" _props="[{&quot;key&quot;:&quot;cost&quot;,&quot;val&quot;:&quot;30&quot;}]"/>
+  <outline text="Shield" _props="[{&quot;key&quot;:&quot;cost&quot;,&quot;val&quot;:&quot;20&quot;}]"/>
+</outline>
+<outline text="An uncertain estimate: {5 to 10}"/>
+<outline text="- [ ] A to-do you can check"/>
+<outline text="When you are ready, open the File menu and choose Start a blank outline, or just start typing here."/>
+</body></opml>`;
+let _showingExamples = false;
+let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
+function startBlankOutline() {
+  _showingExamples = false;
+  hideExamplesBanner();
+  adoptDoc(mkRoot());
+  flashHint('New blank outline');
+}
+function maybeShowFirstRun() {
+  // Fresh boot = nothing restored synchronously (no autosave) and not a snapshot. A STORED
+  // workspace/single-file is reopened async by the reopen IIFEs below; if one exists it will
+  // adoptDoc a real doc and clear _showingExamples (adoptDoc does that for any non-examples doc),
+  // so the examples show only until (and unless) a stored doc rehydrates. Do NOT gate on
+  // `hasWorkspace` — that is the FSA *capability*, not a connected folder, and would suppress
+  // examples on every Chromium browser.
+  if (_restoredFromAutosave || loadedFromEmbed) return;   // returning user / snapshot
+  try {
+    const parsed = fromOpml(FIRST_RUN_EXAMPLES);
+    if (!parsed) return;
+    _adoptingExamples = true;
+    _showingExamples = true;                      // set BEFORE adoptDoc so its scheduleAutosave is suppressed
+    adoptDoc(parsed, { fileName: 'unsaved' });   // promotes the {…} to live pills; markClean inside
+    _adoptingExamples = false;
+  } catch (_) { _adoptingExamples = false; _showingExamples = false; }
+}
+maybeShowFirstRun();
 
 migrateNodePrefixes(root);
 buildIndex(root, null); resetDocCaches();
@@ -20537,6 +20669,7 @@ ensureDocId(root);
 render();
 updateTitle();
 refreshIcons();
+if (_showingExamples) showExamplesBanner();   // UXP-126: surface the Start-blank door beside the examples
 // Platform-correct the search box's shortcut chip on load. The HTML hardcodes ⌘F;
 // on Windows/Linux it must read Ctrl+F. (openFileMenu also fixes it, but the search
 // chip is visible immediately, before the File menu is ever opened.)
@@ -20619,6 +20752,24 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
   renderDocTabs();
 })();
 
+// UXP-127: reopen the last STANDALONE file (the single-file tier's twin of reopenStoredWorkspace).
+// Only runs when no folder is being reopened and no snapshot loaded — a detached file open. If the
+// stored handle's permission is still granted, rebind silently so Ctrl+S writes back; if it needs a
+// gesture, surface a one-click Reopen banner (P4, not silent). A moved/renamed file is forgotten.
+if (hasFSA) (async function reopenStoredFile() {
+  if (loadedFromEmbed || workspaceDir || pendingDir) return;   // a folder tier is handling reopen
+  try {
+    const stored = await idbGet(LASTFILE_KEY);
+    if (!stored || !stored.handle) return;
+    // Only rebind when the restored doc IS that file (the localStorage autosave carried its name);
+    // a different open (New / a different file) already cleared LASTFILE_KEY via adoptDoc.
+    if (fileName !== stored.name) { clearLastFileHandle(); return; }
+    const perm = await stored.handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') { fileHandle = stored.handle; updateFmStatus(); }
+    else { pendingFile = stored.handle; showReopenFileBanner(stored.name); }
+  } catch (_) { clearLastFileHandle(); }
+})();
+
 // PWA: register the service worker so the HOSTED copy is installable + offline-cached.
 // Strictly optional and self-disabling — the app is a self-contained index.html and never
 // depends on the SW. Guards keep it inert (and silent) when it can't or shouldn't run:
@@ -20636,6 +20787,34 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
       navigator.serviceWorker.register('./service-worker.js').catch(() => {});
     });
   } catch (_) { /* never let PWA wiring affect the app */ }
+})();
+
+// UXP-128: an in-app Install door. The manifest declares an installable standalone app, but the
+// only browser door is the address-bar icon most users miss. Capture beforeinstallprompt (fires
+// only on an eligible, not-yet-installed Chromium page over https), reveal the File-menu "Install"
+// row, and prompt() on click. Fully inert/silent on file:// and where the event never fires (the
+// row stays hidden), so the download-and-run identity is untouched. A real <button> is fine here:
+// it is not tied to the contenteditable caret, and it is keyboard-operable + aria-labeled.
+(function wireInstall() {
+  try {
+    if (location.protocol === 'file:') return;   // disk copy: no install
+    let deferred = null;
+    const btn = document.getElementById('btn-install');
+    const show = on => { if (btn) { btn.hidden = !on; btn.style.display = on ? '' : 'none'; } };
+    // never offer it once already installed / running standalone
+    const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    if (installed()) return;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();       // keep the browser's mini-infobar from auto-showing; we own the door
+      deferred = e; show(true);
+    });
+    window.addEventListener('appinstalled', () => { deferred = null; show(false); });
+    if (btn) btn.addEventListener('click', async () => {
+      if (!deferred) return;
+      const ev = deferred; deferred = null; show(false);   // single-use: the prompt can't be reused
+      try { await ev.prompt(); await ev.userChoice; } catch (_) {}
+    });
+  } catch (_) { /* never let install wiring affect the app */ }
 })();
 
 // One-time touch onboarding (D4): teach the press-hold menu + drag-to-nest gestures the
