@@ -89,6 +89,164 @@ scale board, and that is comfortably in reach.
 
 ---
 
+## 3a. The load-bearing law: a base is always text that must render
+
+Before the type catalogue, the rule everything below obeys, stated plainly:
+
+> **A base is text.** Whether authored (a pipe table you typed) or query-sourced, the base is
+> ultimately GFM pipe-table markdown in `node.text` (plus underscore-OPML sidecars, which are just
+> serialized strings). A "column type" does **not** store a typed value anywhere. It is a **(parse,
+> render, write-back) triple over a cell's text**: parse the cell string, render it richly, and any
+> editor affordance writes plain text back into that same cell. **Nothing exists that cannot be
+> reconstructed from the text and its sidecars.** If a visualization cannot round-trip through a
+> copy-paste of the markdown, it does not exist.
+
+This is why type roles and view config live in **sidecar attributes** (`_colrole`, `_view`), not in
+`node.text`: they are pure view state with no markdown representation, exactly like column widths
+already ride `_colw` and never the text. Formulas are the one thing that MUST stay in the text (the
+`#+TBLFM:` line), because that is how `computeTable` finds and recomputes them and how a pasted table
+recomputes elsewhere. So the split is: **content and formulas in the text (they must be, to
+render/compute); type roles and view config in sidecars (pure view state, kept out so the markdown
+stays clean and portable).** "Copy as markdown" keeps producing a clean GFM table; the roles and views
+are a lens the renderer applies, never a schema the data obeys.
+
+A role is therefore always **optional and non-destructive.** A column with no role is a plain text
+column, exactly like today. This preserves the freeform philosophy: no forced schema, no mandatory
+title column, no lock-in. You tag "this column is a date" only when you want the chip and the picker;
+the cell is still `2026-06-13` in the markdown either way.
+
+---
+
+## 3b. The column type catalogue (validated against the code)
+
+Every type below was checked against what a base cell can actually store, compute, and render. A base
+cell renders through the full inline markdown pipeline (`mtInline` -> `mdInline`), which is why the
+"free" tier is large: links, images, tags, and pills already render in a cell today. Two things
+(status chips, checkboxes) live only in the block parser, so they need a small cell-scoped render
+branch. Cells are strictly single-line (`serializeTable` collapses newlines to spaces), so no
+multi-line type exists.
+
+Types are grouped into families (this grouping also drives the picker, see 3c). Each entry notes its
+feasibility tier: **free** (renders today, the role is just a hint), **small** (needs an editor
+affordance or a value-to-render mapping), or **heavier** (a new render path).
+
+**Text family**
+- **Text** (free): the default. Inline emphasis and code already render (`mdEmph`, inline-code
+  stash). Every new column is this until enriched.
+- **Long text** (free-ish, single-line only): same as text; a base cell cannot hold newlines, so
+  "long text" is a soft label, not a multi-line type. Named so the picker can say so honestly rather
+  than implying a textarea.
+
+**Number family** (the computed heart, backed by TBLFM + evalMath)
+- **Number** (small): stored as text; a role runs the value through `formatMathResult` and right-
+  aligns. Free-form arithmetic already works via `#+TBLFM:` column formulas (`$3=$1*$2`).
+- **Formula** (free, already shipped): a `#+TBLFM:` column/cell formula. The full math grammar is
+  available: `+ - * / % ^`, comparisons, ternary/`if`, and every FN1/FN2/FN3 function (`sqrt`, trig,
+  `log`, `clamp`, `pctof`, `pctchange`, `hypot`, the `c2f`/`km2mi`/`kg2lb` unit conversions), plus
+  document variables by name (`$3=$1*tax`). Cross-row aggregates via `vsum`/`vmean`/`vmax`/`vmin`/
+  `vcount`/`vmedian` over a range give column totals and footers.
+- **Currency / Percent** (small): a Number with a display format (a `$`/`%` affix on the formatted
+  value). Pure display over the same numeric machinery.
+- **Rating (stars)** (heavier): a numeric value rendered as star glyphs; no star renderer exists, so
+  it is a new cell-render path over an existing number.
+- **Progress bar** (small-to-heavier): a numeric 0-100 rendered as a bar. The progress *cookie*
+  (`[/]`, `[%]`) already renders in a cell but computes against the base node's tasks, so a
+  per-row bar off a numeric cell is a small new renderer.
+
+**Date and time family** (dates are epoch-day numbers; the machinery exists)
+- **Date** (small): stored as ISO `YYYY-MM-DD` text, validated by `parseDueDate` (free), rendered as
+  an urgency-colored chip (today/soon/overdue/future, the agenda chip CSS exists) and edited via the
+  existing inline `buildDatePicker` calendar. The pieces all exist bound to properties today; the
+  wiring to a cell is the "small" part. Date math (`daysuntil`, `daysbetween`, `today+N`, `date(y,m,d)`,
+  `year`/`month`/`weekday`/`quarter`) works in a formula column over a numeric epoch-day.
+- **Date range** (small): two date cells or a `start -> due` pair, reusing the agenda's range model.
+- **Created / Modified** (heavier): auto-timestamps would need the base to write a timestamp on
+  row edit, which a query base (foreign rows) cannot own. Named but flagged as needing a decision.
+
+**Choice family** (the kanban keystone)
+- **Select / Status** (heavier, the load-bearing one): a cell holds a keyword from an allowed set,
+  rendered as a colored chip. The chip CSS (`.todo-state` variants) and the value-set engine
+  (`collectSequences`, the built-in `TODO NEXT WAITING | DONE`) both exist, but the colored badge is
+  produced in the block parser (`renderContentHTML`/`parseTodo`), NOT in `mdInline`, so a cell needs
+  a new cell-scoped render branch that maps a value to a chip. This is the single most important
+  "heavier" type because **kanban lanes are a Select column** and the editor offers its known values.
+- **Multi-select / Tags** (free): `#tag #tag2` already renders as chips in a cell (the hashtag pass).
+  A "tags" role is just a hint plus an authoring helper (the `#` picker).
+- **Checkbox / Boolean** (small-to-heavier): an interactive checkbox is a block-parser construct
+  (`md-task-check`), so a cell needs a cell-scoped emit + a toggle that splices the cell string. The
+  widget and its accent CSS exist; the cell wiring is new.
+
+**Link and media family** (the surprise free wins)
+- **Link / Relation** (free): `[[#id|label]]` already renders as a live node-link pill in a cell,
+  with the live target title and broken-link marking. This is the "relate to another point" column,
+  essentially free; a role is only an authoring hint. Cross-document `[[docId#id|label]]` works too.
+- **URL** (free): a bare `https://...` autolinks in a cell; `[text](url)` works too.
+- **Image** (free): `![alt](url)` renders a thumbnail, and there is already dedicated cell CSS
+  (`.mt-cell .md-img{max-height:120px}`). This is the **gallery cover** field, essentially free.
+- **File / attachment** (out): no binary attachments (single-file constraint). A "file" column can
+  only be a URL or link, so it collapses into URL. Named to say explicitly it is not a new type.
+
+**Generative family** (unique to this app, free)
+- **Pill columns** (free): any artifact pill renders in a cell (dice, math, grammar, estimate,
+  variable, query). A cell can hold `{= sum(cost)}` or a dice pill. Caveat: pill keys resolve against
+  the base node's shared sidecars, so this is document-authored, not per-cell config; useful but with
+  a known sharp edge, noted so a design does not over-promise per-row pills.
+
+**Row-meta family** (computed, free-ish)
+- **Row index** (free): `$#` in a formula gives the 1-based row number.
+- **Title / Name** (free, and the query-base default): for a query base, the matched point's title;
+  for an authored base, just a text column the user designates. The gallery/list "title" role.
+
+**What is deliberately NOT a column type** (the fence, restated as types):
+- **No multi-line rich text** (single-line cells).
+- **No relation-to-another-base** (freeform philosophy: relate to points via links, not a base-to-
+  base relation engine).
+- **No formula returning a string/label/boolean** (evalMath is number-only; a computed column
+  produces a number, a date via `asdate(...)`, or `#ERR (reason)` shown as text).
+- **No auto-computed created/modified on query bases** (foreign rows the base does not own).
+
+So the type set is genuinely rich (roughly twenty entries across seven families), and the honest
+tiering is: **most are free or small** because cells already run the full inline renderer, and the
+two that anchor the rich views (Select for kanban, Date for calendar) are the ones worth the "small-
+to-heavier" wiring. This is the explosion of possibility, and it fits the single-file, text-first
+architecture without a single new storage type.
+
+---
+
+## 3c. The picker: rich type set, no overwhelm
+
+A twenty-entry type list shown as a flat menu at column creation is exactly the barrage to avoid. The
+design keeps the richness reachable without ever confronting the user with all of it:
+
+1. **Never force a type at creation.** A new column is always plain **Text**, zero friction, the
+   default today. Type is an *optional enrichment* from the Column menu ("Format as..."), reached when
+   the user wants a view feature, never demanded up front. This inverts the Notion/Airtable "pick a
+   type first" model and matches the freeform philosophy: a role is a hint you add, not a schema you
+   satisfy.
+
+2. **Contextual promotion.** When the picker opens, it reads the column's current values and floats
+   the types that fit to the top. A column full of `2026-06-13`-shaped strings promotes **Date** as
+   the first option; a column of `#tags` promotes **Tags**; a column of numbers promotes **Number**
+   and **Currency**. The obvious conversion is the first thing you see, not buried at position nine.
+   (This reuses `parseDueDate` and the existing value sniffers, so "does this column look like dates"
+   is a pure check we already have.)
+
+3. **Grouped by family, collapsible.** The full list is the seven families above (Text, Number, Date,
+   Choice, Link/Media, Generative, Row-meta), each a small group header. The surface is seven headers,
+   not twenty rows; you expand the family you want. A search box filters by name for power users.
+
+4. **Applicability, not a wall.** A type whose values cannot coerce is de-emphasized (an "Image" type
+   over a column of integers is grayed with a "convert anyway" escape hatch), never hidden entirely,
+   so nothing is lost but the relevant choices lead. This respects the freeform philosophy (you can
+   always force it) while keeping the default view sane.
+
+The net effect: a beginner sees "Text" and never touches the picker; someone building a board opens
+the Column menu on their status column, sees **Select** promoted at the top of the Choice family
+because the values look like keywords, and turns it into lanes. The richness is deep but the entry
+point is one obvious click.
+
+---
+
 ## 4. The data model, made concrete
 
 A base gains two small pieces of optional state, both view config, neither touching `node.text`:
