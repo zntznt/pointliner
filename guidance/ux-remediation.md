@@ -33,8 +33,8 @@ This is the **fix list** that pairs with `ux-discipline.md`. The standard says w
 > A **five-lens design audit (July 2026)** (design tokens, interaction, accessibility, copy,
 > component consistency; every finding adversarially re-verified, 0 of 30 refuted) added
 > **UXP-71…100** (registered as 70…99 in #280, renumbered +1 after a collision with the
-> pre-existing UXP-70), tracked in their own section below; UXP-71/79/96 ✓ closed
-> (PR #281, batch V1), UXP-76 + the ten guideline additions ✓ shipped (batch D1).
+> pre-existing UXP-70), tracked in their own section below;
+> all thirty are ✓ closed (batches V1, D1, C1, V2, I1, V3, I2, July 2026).
 
 Each entry: the **problem**, the **rule** it violates, and the **target** (the conformant end-state the fix must reach). Verify the named symbol with grep before acting — some controls drift (per `accessibility.md`'s "verify before you label").
 
@@ -787,11 +787,11 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** `doCapture` returns early on empty text while the Capture button is enabled (it is only disabled when no inbox is set), so Enter or a click with an empty draft does nothing, silently.
 - **Target (trivial):** disable the button while the draft is empty, or flash a brief hint through the existing cap-confirm aria-live line.
 
-### UXP-84 ☐ GAP: Esc discards a typed capture draft, and skips the manager layer (P1-3 adjacent) 🟢
+### UXP-84 ✓ GAP: Esc discards a typed capture draft, and skips the manager layer (P1-3 adjacent) 🟢 (RESOLVED: batch I2, owner call 2026-07-01: keep the draft)
 - **Problem:** Esc in the capture input always calls `closeCapture()` even when the second-row inbox manager is open (one Esc collapses two layers, against the P1-3 one-layer-outward convention), and the next open wipes `captureDraft`, so a non-empty draft is lost with no warning. No guideline covers draft retention in transient input surfaces.
 - **Target (small, owner call on the retention behavior):** first Esc closes only the manager; preserve `captureDraft` across close/reopen within a session, clearing it only on successful capture. Guideline sentence: see below.
 
-### UXP-85 ☐ Gantt titles-column resize has no touch path (§7.5, CLAUDE.md touch invariant) 🟢
+### UXP-85 ✓ Gantt titles-column resize has no touch path (§7.5, CLAUDE.md touch invariant) 🟢 (RESOLVED: batch I2, owner call 2026-07-01: width toggle)
 - **Problem:** `@media(hover:none)` hides `.agg-names-resize`, the only affordance for resizing the titles column, and no menu or preset twin exists in the agenda bar, so touch users cannot adjust it at all. (The base column resize is conformant because the Column menu carries Width presets.)
 - **Target (small):** keep the separator visible on touch with a widened tap target and pointer-drag, or add a small width toggle (narrow/default/wide) to the agenda controls as the §7.5 twin.
 
@@ -851,7 +851,7 @@ the pre-existing UXP-70; PR #281 cites the old numbers (its 70/78/95 are 71/79/9
 - **Problem:** dismiss renders as `✕` (`#search-clear`, `#var-panel-close`, `#storage-warn-close`, saved-search chips), `×` (`.doc-tab-close`, `.cap-close`, `.guide-close`), and `fa-xmark` (via `setIcon`), with five divergent recipes including `.guide-close`'s `border-radius:50%` (outside the radius set). One concept, many faces.
 - **Target (small):** one dismiss glyph (`fa-xmark` through `setIcon`, `✕` fallback per the icon policy) and one shared `.close-btn` recipe (muted ink, `--fg` on hover, `--r-sm`); drop the 50% radius. Guideline sentence: see below.
 
-### UXP-98 ☐ GAP: the workspace-conflict dialog leads its footer with the danger button 🟡
+### UXP-98 ✓ GAP: the workspace-conflict dialog leads its footer with the danger button 🟡 (RESOLVED: batch I2, owner call 2026-07-01: reorder danger-last)
 - **Problem:** the conflict footer appends `Keep my version` (`io-btn danger`) first, while `confirmDialog` and every other builder place dismiss/neutral first and the committing (or danger) action last. A code comment ("Primary first") shows the inversion was deliberate, so the rule needs writing either way.
 - **Target (trivial, owner call):** reorder danger-last to match `confirmDialog`, or record the stacked-layout exception. Guideline sentence: see below.
 

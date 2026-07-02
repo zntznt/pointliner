@@ -7588,7 +7588,7 @@ let captureManage = false;   // is the destination picker (second line) expanded
 // the input so you can type immediately; the outline stays live below.
 function openCaptureDialog(slot) {   // name kept: still the single entry point for all callers
   const wasOpen = captureOpen;
-  if (!wasOpen) { captureDraft = ''; captureCount = 0; captureReturnFocus = document.activeElement; captureManage = false; }
+  if (!wasOpen) { captureCount = 0; captureReturnFocus = document.activeElement; captureManage = false; } // captureDraft survives close/reopen; cleared only on successful capture (§6, UXP-84)
   captureSlot = normalizeCaptureSlot(slot);
   captureOpen = true;
   document.getElementById('capture-strip').classList.add('on');
@@ -7698,7 +7698,7 @@ function capInputKeydown(e) {
     const d = +e.code.slice(5); captureTargetSlot(d === 0 ? 10 : d); return;
   }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCapture(); }
-  else if (e.key === 'Escape') { e.preventDefault(); closeCapture(); }
+  else if (e.key === 'Escape') { e.preventDefault(); if (captureManage) { captureManage = false; renderCaptureStrip(); } else closeCapture(); } // one layer out (P1-3); draft survives (§6, UXP-84)
   else if (e.key !== 'Tab') e.stopPropagation();   // don't leak edits to global shortcuts
 }
 
@@ -16764,12 +16764,12 @@ function openReconcileDialog(name) {
     ioCard.appendChild(msg);
 
     // Stacked footer (io-foot-stack): three full-width choices read as "pick one"
-    // and fit the 400px card where a single flex row would overflow. Primary first.
+    // and fit the 400px card where a single flex row would overflow. Danger last (§7.6).
     const foot = document.createElement('div'); foot.className = 'io-foot io-foot-stack';
     const mineBtn   = document.createElement('button'); mineBtn.className = 'io-btn danger'; mineBtn.textContent   = 'Keep my version';
     const theirsBtn = document.createElement('button'); theirsBtn.className = 'io-btn';      theirsBtn.textContent = 'Load the disk version';
     const copyBtn   = document.createElement('button'); copyBtn.className = 'io-btn';        copyBtn.textContent   = 'Save mine as a copy';
-    foot.append(mineBtn, theirsBtn, copyBtn); ioCard.appendChild(foot);
+    foot.append(theirsBtn, copyBtn, mineBtn); ioCard.appendChild(foot);
 
     function finish(result) { ioBack.removeEventListener('keydown', onKey); closeIo(); resolve(result); }
     copyBtn.addEventListener('click',   () => finish('copy'));
@@ -17986,6 +17986,16 @@ function renderAgenda() {
   overdueT.classList.add('ag-focus');
   overdueT.title = 'Focus on overdue items only';
   filters.append(doneT, runT, overdueT);
+  if (agendaView === 'timeline') {  // §7.5 twin for the titles-column drag (the separator is hidden on touch), UXP-85
+    const wName = ganttNamesW == null ? 'default' : (ganttNamesW <= 110 ? 'narrow' : 'wide');
+    const wT = mkAgToggle('Titles', ganttNamesW != null, () => {
+      ganttNamesW = ganttNamesW == null ? 110 : (ganttNamesW <= 110 ? 280 : null); // default -> narrow -> wide -> default
+      renderAgenda(); scheduleAutosave();
+    });
+    wT.title = 'Cycle the Timeline titles-column width (narrow, default, wide)';
+    wT.setAttribute('aria-label', 'Titles column width: ' + wName + '. Activate to cycle.');
+    filters.append(wT);
+  }
   controls.append(sw, filters);
 
   const listHost = document.createElement('div'); listHost.className = 'ag-list';
@@ -19185,7 +19195,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue items gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many items it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late items. Click any item to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Click any point to jump straight to it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
