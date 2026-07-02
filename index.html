@@ -108,6 +108,9 @@ button,[contenteditable],input{touch-action:manipulation}
   --sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);
   --sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);
   --sh-up:0 -4px 24px rgba(45,35,25,.10);
+  --row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);
+  --sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);
+  --hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff;
 }
 @media(prefers-color-scheme:dark){:root{
   color-scheme:dark;
@@ -118,6 +121,9 @@ button,[contenteditable],input{touch-action:manipulation}
   --sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);
   --sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);
   --sh-up:0 -6px 28px rgba(0,0,0,.5);
+  --row-hover:rgba(255,255,255,.04);--edit-row:color-mix(in srgb,var(--acc) 8%,transparent);
+  --sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);
+  --hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f;
 }}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:17px;line-height:var(--lh);min-height:100vh;padding-top:44px}
 ::selection{background:color-mix(in srgb,var(--acc) 22%,transparent)}
@@ -312,7 +318,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 /* node base */
 .node{position:relative}
 .node-row{display:flex;align-items:flex-start;padding:1px 0;border-radius:4px;transition:background .08s}
-.node-row:hover{background:rgba(0,0,0,.028)}
+.node-row:hover{background:var(--row-hover)}
 /* Touch swipe-to-indent: while swiping a row horizontally the content slides and a
    direction chip (→ indent / ← outdent) is revealed from the trailing edge. The chip
    goes solid accent once the swipe passes the commit threshold (.swipe-armed). */
@@ -323,7 +329,6 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .swipe-cue.swipe-in{right:6px}    /* indent: chip on the right, content slides right */
 .swipe-cue.swipe-out{left:6px}    /* outdent: chip on the left, content slides left */
 .node-row.swipe-armed .swipe-cue{opacity:1;background:var(--acc);color:var(--acc-fg)}
-@media(prefers-color-scheme:dark){.node-row:hover{background:rgba(255,255,255,.04)}}
 .search-ctx .node-row:hover{background:transparent}
 /* Hover-reveal dwell: point affordances appear only after the cursor RESTS ~160ms,
    so sweeping the mouse across points doesn't flash controls all over. The delay sits
@@ -356,12 +361,11 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
   .math-roll:hover .math-edit,.est-pill:hover .est-edit,.var-pill:hover .var-edit,
   .md-table-static:hover .mt-promote,.mt-rowh:hover::before{transition-delay:0s}
 }
-.node-row:has(.node-content[data-editing]){background:color-mix(in srgb,var(--acc) 5.5%,transparent)}
+.node-row:has(.node-content[data-editing]){background:var(--edit-row)}
 /* While editing an ordered-list point, the raw "N. " marker is revealed in the text
    (markdown-first, like "#" for a heading). Hide the computed gutter ordinal so the
    two numbers don't show at once; it returns on the rendered/display view. */
 .node-row:has(>.node-content[data-editing])>.ol-num{visibility:hidden}
-@media(prefers-color-scheme:dark){.node-row:has(.node-content[data-editing]){background:color-mix(in srgb,var(--acc) 8%,transparent)}}
 .collapse-btn{width:16px;height:26px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;color:var(--cb);font-size:9px;user-select:none;visibility:hidden;position:relative;z-index:2}
 .has-children>.node-row>.collapse-btn{visibility:visible}
 .collapse-btn:hover{color:var(--acc)}
@@ -430,8 +434,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-dl{margin:2px 0 2px 0}
 .md-dl dt{font-weight:600}
 .md-dl dd{margin:0 0 2px 1.2em;color:var(--muted)}
-.md-hl{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-radius:2px;padding:0 1px}
-@media(prefers-color-scheme:dark){.md-hl{background:color-mix(in srgb,#caa53d 42%,transparent)}}
+.md-hl{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .node-content sub,.node-content sup{font-size:.72em;line-height:0}
 /* ── interactive base (its table view) ── */
 .nt-base>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
@@ -452,8 +455,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell{font-variant-numeric:tabular-nums;padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
 .mt-cell:focus{box-shadow:inset 0 0 0 2px var(--ring)}
 .mt-cell:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
-.mt-cell.mt-selected{background:color-mix(in srgb,var(--acc) 18%,transparent)}
-@media(prefers-color-scheme:dark){.mt-cell.mt-selected{background:color-mix(in srgb,var(--acc) 22%,transparent)}}
+.mt-cell.mt-selected{background:var(--cell-sel)}
 .mt-headcell{font-weight:600;background:var(--cbg);border-bottom-width:2px}
 .nt-base .md-table{width:auto;min-width:min(380px,100%)}
 .md-table-host tr:hover>.mt-cell:not(:focus):not(.mt-selected){background:color-mix(in srgb,var(--fg) 3%,transparent)}
@@ -818,8 +820,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .collapsed>.children{display:none}
 
 /* search highlight */
-mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-radius:2px;padding:0 1px}
-@media(prefers-color-scheme:dark){mark{background:color-mix(in srgb,#caa53d 42%,transparent)}}
+mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
 .search-ctx{opacity:.5}
 .search-ctx .node-content{pointer-events:none}
 
@@ -908,7 +909,7 @@ mark{background:color-mix(in srgb,#e2c044 40%,transparent);color:inherit;border-
 .slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.07em}
 
 /* inline-insert dialog (links / images) */
-#io-back{position:fixed;inset:0;z-index:800;background:rgba(30,24,18,.38);display:none;align-items:flex-start;justify-content:center}
+#io-back{position:fixed;inset:0;z-index:800;background:var(--scrim);display:none;align-items:flex-start;justify-content:center}
 #io-back.on{display:flex;animation:io-fade .14s ease}
 @keyframes io-fade{from{opacity:0}to{opacity:1}}
 #io-card{margin-top:16vh;width:400px;max-width:calc(100vw - 32px);max-height:82vh;overflow-y:auto;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);padding:16px 17px 14px;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1);scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
@@ -1301,8 +1302,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .bullet[draggable=true]:active{cursor:grabbing}
 
 /* multi-select */
-.node-selected>.node-row{background:color-mix(in srgb,var(--acc) 10%,transparent);border-radius:4px}
-@media(prefers-color-scheme:dark){.node-selected>.node-row{background:color-mix(in srgb,var(--acc) 12%,transparent)}}
+.node-selected>.node-row{background:var(--sel);border-radius:4px}
 .node-cursor>.node-row{background:color-mix(in srgb,var(--acc) 4%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 20%,transparent);outline-offset:-1px;border-radius:4px}
 @keyframes bar-up{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 /* Cap to the viewport and wrap onto multiple centered rows, so the 13 controls never
@@ -4727,8 +4727,8 @@ function flashHint(msg) {
   // Re-apply neutral styling every call so a prior flashError (which reddened the shared
   // element) doesn't leave later hints red.
   el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;'
-    + 'background:var(--fg);color:var(--bg);font-size:12.5px;padding:7px 14px;border-radius:8px;'
-    + 'box-shadow:0 6px 24px rgba(0,0,0,.22);opacity:0;transition:opacity .15s;pointer-events:none';
+    + 'background:var(--fg);color:var(--bg);font-size:12.5px;padding:7px 14px;border-radius:var(--r-md);'
+    + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none';
   el.textContent = msg;
   announce(msg); // every toast also reaches assistive tech via the #a11y-live region
   requestAnimationFrame(() => { el.style.opacity = '1'; });
@@ -4745,8 +4745,8 @@ function flashError(msg) {
   let el = document.getElementById('flash-hint');
   if (!el) { flashHint(''); el = document.getElementById('flash-hint'); }
   el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:800;'
-    + 'background:var(--bad);color:var(--acc-fg);font-size:12.5px;padding:7px 14px;border-radius:8px;'
-    + 'box-shadow:0 6px 24px rgba(0,0,0,.22);opacity:0;transition:opacity .15s;pointer-events:none;max-width:calc(100vw - 32px)';
+    + 'background:var(--bad);color:var(--bad-fg);font-size:12.5px;padding:7px 14px;border-radius:var(--r-md);'
+    + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none;max-width:calc(100vw - 32px)';
   el.textContent = msg;
   announce(msg);
   requestAnimationFrame(() => { el.style.opacity = '1'; });
@@ -18847,8 +18847,8 @@ function buildAccentSwatches(dark) {
 function applyTheme() {
   const dark = forcedTheme === 'dark' || (forcedTheme === null && window.matchMedia('(prefers-color-scheme:dark)').matches);
   themeStyle.textContent = forcedTheme ? (forcedTheme === 'dark'
-    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);--sh-up:0 -6px 28px rgba(0,0,0,.5)}'
-    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10)}'
+    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);--sh-up:0 -6px 28px rgba(0,0,0,.5);--row-hover:rgba(255,255,255,.04);--edit-row:color-mix(in srgb,var(--acc) 8%,transparent);--sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);--hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f}'
+    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10);--row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);--sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);--hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff}'
   ) : '';
   document.documentElement.style.colorScheme = forcedTheme || '';
   applyAccentCSS(dark);
