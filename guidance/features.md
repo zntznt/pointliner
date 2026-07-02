@@ -383,7 +383,15 @@ Implemented:
   `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
   marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
   ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
-  grouping until real queries demand it). Pure
+  grouping until real queries demand it). **QX-6 added the link/tag presence family**:
+  `has:link` and `has:tag` are pure node reads (an unanchored `parseLinkToken`-shaped
+  test; the tag sigil rule over link-blanked text, so state keywords count);
+  `has:backlink` and `is:broken` read the doc-wide `collectLinks` index, threaded into
+  `termMatchesNode` as a lazy fifth param exactly like `seqs`/`vars` (only the two
+  branches that need it fall back to the cached `collectLinks()`; the workspace search
+  passes THIS doc's `collectLinks(root)` behind a `needsLinks` guard, the `needsCtx`
+  pattern). Backlink/broken are same-document (CF-4's workspace index is a different
+  surface). Pure
   cores: `parseSearchQuery` (string → terms), `termMatchesNode` /
   `queryMatchesNode` (terms × node → bool, seqs injectable),
   `searchHighlightNeedles` (what `<mark>` highlights — positive text + tag terms;
