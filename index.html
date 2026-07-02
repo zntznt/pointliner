@@ -1628,7 +1628,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh outline</span></div></div>
   <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Open an outline file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
   <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
-  <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save As…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
+  <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
   <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" id="workspace-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect a folder…</span><span class="cmd-desc" id="workspace-desc">Auto-save every document, switch between them, reopen later</span></div></div>
   <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open, and create documents in the folder</span></div></div>
   <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-minus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Stop auto-saving. Your documents stay on disk</span></div></div>
@@ -1659,7 +1659,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
 
   <div class="cmd-sep"></div>
-  <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
+  <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, Markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div></div>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -4568,7 +4568,7 @@ const INSERT_CMDS = [
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
-  { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
+  { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and child tasks. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
@@ -9950,13 +9950,13 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   if (isBase) {
     // Base copy ops lead the menu (mirroring the header ⋯ menu), before the shared actions.
     actions.unshift(
-      { sec:'Table', icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as markdown',
+      { sec:'Table', icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as Markdown',
         fn: () => {
           hideBpop();
           const content = document.querySelector(`.node-content[data-id="${nodeId}"]`);
           if (content) { enterEdit(content, node); content.focus(); }
         } },
-      { sec:'Table', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as markdown',
+      { sec:'Table', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
         fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as markdown'); hideBpop(); } },
       { sec:'Table', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with TBLFM',
         fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
@@ -14231,11 +14231,11 @@ function renderLinkMenu() {
     const ni = lpState.matches.length + (lpState.create ? 1 : 0);
     const item = document.createElement('div');
     item.className = 'lp-item lp-create lp-create-note' + (ni === lpState.activeIdx ? ' hi' : '');
-    item.textContent = `+ New note: "${lpState.createNote.title}"`;
+    item.textContent = `+ New document: "${lpState.createNote.title}"`;
     item.setAttribute('role', 'option');
     item.id = 'lp-opt-' + ni;
     item.setAttribute('aria-selected', String(ni === lpState.activeIdx));
-    item.setAttribute('aria-label', `Create a new note "${lpState.createNote.title}" and link to it`);
+    item.setAttribute('aria-label', `Create a new document "${lpState.createNote.title}" and link to it`);
     item.addEventListener('mouseenter', () => { lpState.activeIdx = ni; renderLinkMenu(); });
     item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = ni; lpApply(); });
     lpMenu.appendChild(item);
@@ -14305,7 +14305,7 @@ async function lpApply() {
   content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(content, triggerOffset + token.length); } catch(_) {}
   markDirty();
-  if (activeIdx === noteIdx) flashHint(`Created note "${createNote.title}"`);       // P4
+  if (activeIdx === noteIdx) flashHint(`Created document "${createNote.title}"`);       // P4
   else if (activeIdx === pointIdx) flashHint(`Created "${create.title}"`);           // P4
 }
 
@@ -15946,7 +15946,7 @@ async function writeH(h) {
     const w = await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); return true;
   }
   catch(e) {
-    if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the folder. Reconnect, or use Save As to keep your work.');
+    if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the folder. Reconnect, or use Save as to keep your work.');
     else flashError('Save failed: ' + e.message);
     return false;
   }
@@ -16526,7 +16526,7 @@ async function newWorkspaceDoc() {
     renderWorkspaceAffordance();
     refreshWorkspaceIndex();           // CF-1: a new doc joined the notebook
     flashHint('New document “' + name + '” in the folder');
-  } catch (e) { degradeWorkspace('Could not create the document. The folder may be unavailable. Reconnect, or use Save As to keep your work.'); }
+  } catch (e) { degradeWorkspace('Could not create the document. The folder may be unavailable. Reconnect, or use Save as to keep your work.'); }
 }
 
 // CF-5: create a new note (.opml) in the folder titled `title`, WITHOUT switching to it —
@@ -16567,7 +16567,7 @@ async function saveToWorkspaceDoc() {
     renderWorkspaceAffordance();
     refreshWorkspaceIndex();           // CF-1: a previously-detached doc joined the notebook
     flashHint('Added to the folder as “' + name + '”');
-  } catch (e) { degradeWorkspace('Could not save to the folder. It may be unavailable. Reconnect, or use Save As to keep your work.'); }
+  } catch (e) { degradeWorkspace('Could not save to the folder. It may be unavailable. Reconnect, or use Save as to keep your work.'); }
 }
 
 // Delete a doc from the folder (confirmed). If it was the current doc, fall through to the
@@ -16618,7 +16618,7 @@ function degradeWorkspace(msg) {
   workspaceFile = null; workspaceIndex = null;   // CF-1: lost folder access -> drop the cross-doc index
   stopWorkspaceWatch();                          // sync-safety: nothing to watch once degraded
   if (workspaceDir) { pendingDir = workspaceDir; workspaceDir = null; renderWorkspaceAffordance(); }
-  showWorkspaceWarn(msg || 'Lost access to the folder. Reconnect, or use Save As to keep your work.');
+  showWorkspaceWarn(msg || 'Lost access to the folder. Reconnect, or use Save as to keep your work.');
 }
 
 // sync-safety: record the current workspace file's on-disk lastModified as our
@@ -18269,7 +18269,7 @@ function fillAgendaDay(box, epochDay, items, mkItem, { repaint, expandable = tru
     more.textContent = '+' + hidden + ' more';
     if (expandable) {
       more.type = 'button';
-      more.setAttribute('aria-label', 'Show ' + hidden + ' more item' + (hidden !== 1 ? 's' : '') + ' for this day');
+      more.setAttribute('aria-label', 'Show ' + hidden + ' more point' + (hidden !== 1 ? 's' : '') + ' for this day');
       more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });
     } else { more.setAttribute('aria-hidden', 'true'); more.style.pointerEvents = 'none'; }
     box.appendChild(more);
@@ -18322,7 +18322,7 @@ function renderAgendaWeek(host, visible, totalDated) {
     if (earlier.length) {
       const col = document.createElement('div'); col.className = 'agw-col agw-earlier';
       const h = document.createElement('div'); h.className = 'agw-colhead'; h.textContent = 'Earlier'; h.setAttribute('aria-hidden','true'); col.appendChild(h);
-      col.setAttribute('role','group'); col.setAttribute('aria-label', 'Earlier, ' + earlier.length + ' item' + (earlier.length!==1?'s':''));
+      col.setAttribute('role','group'); col.setAttribute('aria-label', 'Earlier, ' + earlier.length + ' point' + (earlier.length!==1?'s':''));
       for (const it of earlier) col.appendChild(mkItem(it));
       grid.appendChild(col);
     }
@@ -19001,7 +19001,7 @@ const GUIDE = [
       { syn:'chip ✕',        desc:'forget a saved search' },
     ] },
   { id:'workspace-search', cat:'getting-around',
-    title:'Searching all your notes',
+    title:'Searching all your documents',
     body:"When several documents are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your documents but can't remember which one. Matches from other documents appear in a 'Found in other documents' list; click one to jump straight there.",
     examples:[] },
   { id:'hashtags', cat:'getting-around',
@@ -19057,7 +19057,7 @@ const GUIDE = [
   // ── Writing & formatting (guide) ──────────────────────────────────────────
   { id:'point-types', cat:'writing', covers:['ul','ol','h1','h2','h3','para','code','divider','quote','base'],
     title:'Point types',
-    body:"Give your outline real document structure. Add headings to divide a long note into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.",
+    body:"Give your outline real document structure. Add headings to divide a long document into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.",
     examples:[
       { syn:'# Heading',    desc:'heading (one to six # marks for smaller sizes)' },
       { syn:'> quote',      desc:'quote block' },
@@ -19148,7 +19148,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (the ▾ chip) to click a slot, add or remove inboxes inline. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (the ▾ chip) to click a slot, add or remove inboxes inline. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
@@ -19369,10 +19369,10 @@ const GUIDE = [
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across notes',
-    body:"Weave together a network of notes: link a project note to a person note, connect a meeting note to an action item in another file or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your notes, not just the one you're in.",
+    body:"Weave together a network of documents: link a project to a person page, connect a meeting document to an action item in another file or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your documents, not just the one you're in.",
     examples:[
       { syn:'[[…]]',                desc:'pick a point in another document' },
-      { syn:'+ New note',           desc:'make a new note and link to it at once' },
+      { syn:'+ New document',       desc:'make a new document and link to it at once' },
     ] },
 
   // ── Files & workspace (guide) ─────────────────────────────────────────────
@@ -19404,10 +19404,10 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"Share your outline with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file: it works offline, opens in any browser and keeps all the interactive features (dice, generators and calculations) live. All in the File menu.",
+    body:"Share your document with someone who doesn't have the app, post it as Markdown on a blog or in a README, or create a portable archive. The self-contained HTML option packs the entire app and your document into one file: it works offline, opens in any browser and keeps all the interactive features (dice, generators and calculations) live. All in the File menu.",
     examples:[
-      { syn:'File → Export Markdown',      desc:'a plain text snapshot' },
-      { syn:'File → Web page (HTML)',  desc:'a shareable interactive page' },
+      { syn:'File → Export a copy → Markdown', desc:'a plain text snapshot' },
+      { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable interactive page' },
     ] },
 ];
 

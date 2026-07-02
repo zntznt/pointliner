@@ -95,11 +95,11 @@ in once it is kept. Saved searches show as chips under the **Saved** heading whe
 has focus; click one to run it again, or the ✕ on a chip to forget it. Click the filled star to
 forget the one you are currently looking at.
 
-## Searching all your notes
+## Searching all your documents
 
 When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-notes)),
 search covers all of them at once, not just the one you are reading. Useful when you know something is
-in your notes but cannot remember which file. Matches from other notes appear in a **Found in other
+in your documents but cannot remember which file. Matches from other documents appear in a **Found in other
 notes** list; click one to jump straight there.
 
 ## Hashtags

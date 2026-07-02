@@ -23,7 +23,7 @@ so the `[[` picker finds the right point whichever name you reach for.
 ## Backlinks
 
 See the full web of what connects to an idea: not just what you linked *from* this point, but
-everything across your notes that links *to* it. Useful in a personal wiki or research notes when you
+everything across your documents that links *to* it. Useful in a personal wiki or research notes when you
 want to know what else depends on or references a concept.
 
 The backlinks panel also surfaces **mentions of the title that are not linked yet**, so you can
@@ -35,7 +35,7 @@ Weave together a network of notes: link a project note to a person note, connect
 action item in another file, or build a topic index that points to pages across your whole library.
 
 In a [connected folder](features.md#linking-and-connecting-notes) the `[[` picker searches **all**
-your notes, not just the one you are in, so a link can reach a point in any file.
+your documents, not just the one you are in, so a link can reach a point in any file.
 
 ---
 
