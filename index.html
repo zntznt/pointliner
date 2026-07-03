@@ -468,6 +468,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .bv-lanes{display:flex;gap:8px;overflow-x:auto;padding:4px 0 6px;align-items:flex-start;scrollbar-width:thin}
 .bv-lane{flex:0 0 210px;min-width:0;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:6px}
 .bv-lane-done{opacity:.75}
+.bv-lane-held .bv-lane-head{color:var(--muted)}/* UXP-161: a held (blocked) lane reads muted, not dimmed like done — the work isn't finished, it's waiting */
 .bv-lane-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .bv-lane-count{font-size:.78em;color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
 .bv-lane-none{font-size:.82em;color:var(--muted);font-weight:600}
@@ -823,6 +824,10 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .todo-state-waiting{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .todo-state-done{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
 .todo-state-isdone{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
+/* UXP-161: a HELD state (a custom sequence's blocked band, or the built-in WAITING) reads muted,
+   matching the agenda's .ag-waiting look, so "blocked, not mine to act on" is the same everywhere.
+   Declared after the color variants + isdone so it wins for any held keyword (design-language §4). */
+.todo-state-isheld{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
 /* sequence declaration pill ([[seq:KEY]]) */
 .seq-pill{display:inline-flex;align-items:center;gap:4px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,box-shadow .12s}
 .seq-pill:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -2208,8 +2213,11 @@ function boardLanes(model, groupBy, seqs, lastRow = (model.rows || []).length - 
     if (v) seq = sequenceForKeyword(v, seqs);
   }
   if (!seq) seq = seqs[0];
-  const lanes = seq.states.map((kw, i) => ({ kw, done: i >= seq.doneFrom, rows: [] }));
-  const other = { kw: null, done: false, rows: [] };
+  // UXP-161: a lane is `held` when its state sits in the [heldFrom, doneFrom) band (a custom
+  // sequence's blocked band, or the built-in WAITING) — structural, mirrors keywordIsHeld.
+  const hf = seq.heldFrom == null ? seq.doneFrom : seq.heldFrom;
+  const lanes = seq.states.map((kw, i) => ({ kw, done: i >= seq.doneFrom, held: i >= hf && i < seq.doneFrom, rows: [] }));
+  const other = { kw: null, done: false, held: false, rows: [] };
   for (let r = 1; r <= lastRow; r++) {
     const v = String(rows[r]?.[groupBy] || '').trim().toUpperCase();
     (lanes.find(l => l.kw === v) || other).rows.push(r);
@@ -3114,7 +3122,8 @@ function renderContentHTML(node) {
       const kw = keyword.toLowerCase();
       // done-states of ANY sequence get the muted "done" look (DONE keeps its own class)
       const doneCls = keywordIsDone(keyword) ? ' todo-state-isdone' : '';
-      const badge = `<span class="todo-state todo-state-${kw}${doneCls}" data-todo-state="${keyword}">${keyword}</span>`;
+      const heldCls = !doneCls && keywordIsHeld(keyword) ? ' todo-state-isheld' : '';   // UXP-161: held reads muted
+      const badge = `<span class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}">${keyword}</span>`;
       const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}">[#${priority}]</span>` : '';
       const bodyHtml = mdToHtml(body || '');
       // inject badges inside the first block-open tag so they flow inline with the text
@@ -5681,7 +5690,8 @@ function mtCellHtml(node, raw, c) {
       const kw = [...knownStates()].find(k => k.toLowerCase() === s.toLowerCase());
       if (kw) {
         const doneCls = keywordIsDone(kw) ? ' todo-state-isdone' : '';
-        return `<span class="todo-state todo-state-${escQ(kw.toLowerCase())}${doneCls}">${escHtml(kw)}</span>`;
+        const heldCls = !doneCls && keywordIsHeld(kw) ? ' todo-state-isheld' : '';   // UXP-161
+        return `<span class="todo-state todo-state-${escQ(kw.toLowerCase())}${doneCls}${heldCls}">${escHtml(kw)}</span>`;
       }
     } else if (role === 'date') {
       const d = parseDueDate(s);
@@ -6360,9 +6370,9 @@ function buildBoardWidget(node, model, readOnly) {
   for (const lane of lanes) {
     const label = lane.kw || 'No state';
     const chip = lane.kw
-      ? `<span class="todo-state todo-state-${escQ(lane.kw.toLowerCase())}${lane.done ? ' todo-state-isdone' : ''}">${escHtml(lane.kw)}</span>`
+      ? `<span class="todo-state todo-state-${escQ(lane.kw.toLowerCase())}${lane.done ? ' todo-state-isdone' : (lane.held ? ' todo-state-isheld' : '')}">${escHtml(lane.kw)}</span>`   // UXP-161
       : `<span class="bv-lane-none">No state</span>`;
-    h += `<div class="bv-lane${lane.done ? ' bv-lane-done' : ''}" data-kw="${escQ(lane.kw || '')}" role="group"`
+    h += `<div class="bv-lane${lane.done ? ' bv-lane-done' : (lane.held ? ' bv-lane-held' : '')}" data-kw="${escQ(lane.kw || '')}" role="group"`
       + ` aria-label="${escQ(label)}: ${lane.rows.length} card${lane.rows.length === 1 ? '' : 's'}">`
       + `<div class="bv-lane-head">${chip}<span class="bv-lane-count">${lane.rows.length}</span></div>`;
     for (const r of lane.rows) {
@@ -15161,7 +15171,11 @@ function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
     onSubmit: (v) => {
       const p = parseSequence(v.def);
       if (!p) return;
-      onResult({ name: v.name, states: p.states, doneFrom: p.doneFrom });
+      // UXP-160: forward heldFrom too (the dialog preview computes it but the old onSubmit dropped it,
+      // so a dialog-authored `A | B | C` stored heldFrom=undefined and its held band silently vanished).
+      // editSeq's Object.assign(sq, result) carries it, so this fixes create AND edit; editing down to
+      // one pipe re-derives heldFrom === doneFrom, clearing any stale held band.
+      onResult({ name: v.name, states: p.states, doneFrom: p.doneFrom, heldFrom: p.heldFrom });
     },
   });
 }
