@@ -312,7 +312,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:var(--r-xs)}
 .zoom-title:focus-visible{outline:2px solid color-mix(in srgb,var(--acc) 70%,transparent);outline-offset:1px}
-.zoom-title-base{cursor:default;white-space:normal;overflow-x:visible;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
+.zoom-title-base{cursor:default;white-space:normal;overflow-x:visible;overflow-y:visible;max-height:none;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
 
 /* node base */
 .node{position:relative}
@@ -465,7 +465,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-view-btn.on{color:var(--fg);background:var(--cbg);border-color:var(--bdr)}
 .mt-view-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
 /* board view (BV-1): lanes + cards, tokens only */
-.bv-lanes{display:flex;gap:8px;overflow-x:auto;padding:4px 0 6px;align-items:flex-start}
+.bv-lanes{display:flex;gap:8px;overflow-x:auto;padding:4px 0 6px;align-items:flex-start;scrollbar-width:thin}
 .bv-lane{flex:0 0 210px;min-width:0;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:6px}
 .bv-lane-done{opacity:.75}
 .bv-lane-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
@@ -503,6 +503,9 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .gv-card .md-img{display:block;width:100%;max-height:150px;object-fit:cover;border-radius:var(--r-sm);margin:2px 0 4px}
 /* role chips never wrap inside a narrow cell (FR-1) */
 .mt-cell .todo-state,.mt-cell .ag-chip{white-space:nowrap}
+/* Base-context date chips: lighter than the agenda's (no border box, tighter), so a
+   Date column reads at the same weight as a Status column instead of a bordered button. */
+.mt-cell .ag-chip,.bv-card .ag-chip,.gv-card .ag-chip,.cv-chip .ag-chip{border:none;padding:0 4px;gap:3px;background:color-mix(in srgb,currentColor 12%,transparent)}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
 .mt-cell{font-variant-numeric:tabular-nums;padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
