@@ -458,6 +458,28 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-qbase-expr{font-family:var(--mono);font-size:.92em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt-qbase-count{font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
 .mt-qbase-empty{font-size:.85em;color:var(--muted)}
+/* base view switcher (BV-1): text buttons in the reserved strip */
+.mt-base-views{display:flex;align-items:center;gap:2px;flex:1}
+.mt-view-btn{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
+.mt-view-btn:hover{color:var(--fg);background:var(--cbg)}
+.mt-view-btn.on{color:var(--fg);background:var(--cbg);border-color:var(--bdr)}
+.mt-view-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+/* board view (BV-1): lanes + cards, tokens only */
+.bv-lanes{display:flex;gap:8px;overflow-x:auto;padding:4px 0 6px;align-items:flex-start}
+.bv-lane{flex:0 0 210px;min-width:0;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:6px}
+.bv-lane-done{opacity:.75}
+.bv-lane-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.bv-lane-count{font-size:.78em;color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
+.bv-lane-none{font-size:.82em;color:var(--muted);font-weight:600}
+.bv-card{background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:6px 8px;margin-bottom:6px;cursor:pointer;transition:border-color .12s}
+.bv-card:last-child{margin-bottom:0}
+.bv-card:hover{border-color:var(--acc)}
+.bv-card:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.bv-card.bv-dragging{opacity:.5}
+.bv-lane.bv-dragover{border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--ring)}
+.bv-card-title{font-weight:600;margin-bottom:2px;overflow-wrap:anywhere}
+.bv-field{display:flex;gap:6px;font-size:.85em;align-items:baseline;margin-top:2px;min-width:0}
+.bv-k{color:var(--muted);font-size:.85em;flex-shrink:0}
 /* role chips never wrap inside a narrow cell (FR-1) */
 .mt-cell .todo-state,.mt-cell .ag-chip{white-space:nowrap}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
@@ -2146,6 +2168,30 @@ function sequenceForKeyword(keyword, seqs = allSequences()) {
   if (!keyword) return null;
   for (const sq of seqs) if (sq.states.includes(keyword)) return sq;
   return null;
+}
+
+// boardLanes(model, groupBy, seqs, lastRow) — the board view's pure lane model
+// (BV-1). Groups the data rows (1..lastRow, so a Calculate footer never becomes a
+// card) by the groupBy column's value: one lane per state of the OWNING sequence
+// (declared order, done-side lanes flagged), found from the first recognized value
+// in the column; rows whose value matches no state land in a trailing no-state
+// lane. Lane rows are row indices into model.rows. Pure.
+function boardLanes(model, groupBy, seqs, lastRow = (model.rows || []).length - 1) {
+  const rows = model.rows || [];
+  let seq = null;
+  for (let r = 1; r <= lastRow && !seq; r++) {
+    const v = String(rows[r]?.[groupBy] || '').trim().toUpperCase();
+    if (v) seq = sequenceForKeyword(v, seqs);
+  }
+  if (!seq) seq = seqs[0];
+  const lanes = seq.states.map((kw, i) => ({ kw, done: i >= seq.doneFrom, rows: [] }));
+  const other = { kw: null, done: false, rows: [] };
+  for (let r = 1; r <= lastRow; r++) {
+    const v = String(rows[r]?.[groupBy] || '').trim().toUpperCase();
+    (lanes.find(l => l.kw === v) || other).rows.push(r);
+  }
+  if (other.rows.length) lanes.push(other);
+  return { seq, lanes };
 }
 
 // Done-ness, generalized: the keyword sits at-or-right-of its sequence's done split.
@@ -4656,6 +4702,7 @@ function toOpml(r) {
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '', // query-base config (QP-2)
       n.colRole?.some(x => x != null) ? `_colrole="${ex(JSON.stringify(n.colRole))}"` : '', // column display roles (FR-1)
+      n.view             ? `_view="${ex(JSON.stringify(n.view))}"` : '', // base view config (BV-1)
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -4721,6 +4768,8 @@ function fromOpml(xml) {
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
     const colwAttr = el.getAttribute('_colw');
     if (colwAttr) { try { const a = JSON.parse(colwAttr); if (Array.isArray(a)) n.colW = a; } catch(_) {} }
+    const vwAttr = el.getAttribute('_view');
+    if (vwAttr) { try { const o = JSON.parse(vwAttr); if (o && o.kind === 'board' && Number.isInteger(o.groupBy)) n.view = o; } catch(_) {} }
     const crAttr = el.getAttribute('_colrole');
     if (crAttr) { try { const a = JSON.parse(crAttr); if (Array.isArray(a)) n.colRole = a; } catch(_) {} }
     const qbAttr = el.getAttribute('_qbase');
@@ -6145,8 +6194,183 @@ function mtFocusCell(node, r, c) {
   return true;
 }
 
+// ── base view system (BV-1) ─────────────────────────────────────────────────
+// node.view = { kind: 'board', groupBy: colIdx } (absent = table view, today's
+// behavior; _view OPML). The switcher lives in the reserved .mt-base-views strip,
+// the zone bases-direction §5 held for exactly this. Text-only buttons (no new
+// icons; a glyph missing from the FA subset paints blank).
+function mtViewSwitcherHtml(node) {
+  const kind = node.view?.kind === 'board' ? 'board' : 'table';
+  const btn = (k, label) =>
+    `<button type="button" class="mt-view-btn${kind === k ? ' on' : ''}" data-view="${k}" aria-pressed="${kind === k}">${label}</button>`;
+  return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}</div>`;
+}
+
+function mtSetView(node, kind) {
+  if (kind === 'board') {
+    const gi = (node.colRole || []).findIndex(r => r === 'status');
+    if (gi < 0) { flashHint('Mark a column as Status first (Column menu, Show as); its states become the lanes.'); return; }
+    node.view = { kind: 'board', groupBy: gi };
+  } else node.view = undefined;   // absent = table, so untouched bases serialize clean
+  markDirty(); refreshTable(node);
+}
+
+// The strip(s) above a base's grid or board: the query strip (query bases) and the
+// view switcher. Shared by both widgets so the chrome is identical across views.
+function mtBaseChromeHtml(node, model, readOnly) {
+  let h = '';
+  if (node.qbase) {
+    // Query base (QP-2 Phase A): the strip is the read-only grid's one affordance.
+    // It names the query, shows the live count, and opens the edit dialog (mousedown
+    // + preventDefault per the caret invariant, plus Enter/Space for keyboard).
+    const qm = model.qmeta || { total: 0, shown: 0, truncated: false };
+    const count = qm.truncated ? `${qm.shown} of ${qm.total}` : String(qm.total);
+    h += `<div class="mt-qbase-head" role="button" tabindex="0"`
+      + ` aria-label="Query base: ${escQ(node.qbase.expr)}. ${escQ(count)} matching point${qm.total === 1 ? '' : 's'}. Press Enter to edit the query and columns."`
+      + ` title="Edit query and columns">`
+      + `<span class="mt-qbase-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
+      + `<span class="mt-qbase-expr">${escHtml(node.qbase.expr)}</span>`
+      + (qm.total === 0 ? `<span class="mt-qbase-empty">no matches</span>` : '')
+      + `<span class="mt-qbase-count">${escHtml(count)}</span></div>`;
+  }
+  if (!readOnly || node.qbase)
+    h += '<div class="mt-baseheader">' + mtViewSwitcherHtml(node) + '</div>';
+  return h;
+}
+
+// Wire the shared base chrome (query strip + view switcher + the query base's
+// keyboard-reachable links). Runs for read-only widgets too, so it must precede
+// buildTableWidget's readOnly early return.
+function mtWireBaseChrome(host, node) {
+  if (node.qbase) {
+    // P3: a query base's links join the Tab order (renderLinkPill emits
+    // tabindex="-1" for the outline, where rows carry focus; here the links are
+    // the rows' only interactive element). Enter/Space follows, the UXP-53 pattern.
+    host.querySelectorAll('td .node-link, .bv-card .node-link').forEach(l => {
+      l.tabIndex = 0;
+      l.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          l.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        }
+      });
+    });
+  }
+  const qh = host.querySelector('.mt-qbase-head');
+  if (qh) {
+    qh.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); editQBase(node); });
+    qh.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editQBase(node); }
+    });
+  }
+  host.querySelectorAll('.mt-view-btn').forEach(b => {
+    b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); });
+    b.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); }
+    });
+  });
+}
+
+// Move one card (data row) to another lane: write the keyword into the groupBy
+// cell and recommit — the board is a view; the text stays the truth (§3a).
+function bvMoveCard(node, rowIdx, groupBy, kw) {
+  const m = mtModel(node);
+  if (!m.rows[rowIdx]) return;
+  m.rows[rowIdx][groupBy] = kw;
+  mtCommit(node, m);
+  refreshTable(node);
+}
+
+function showCardMenu(node, rowIdx, groupBy, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const m = mtModel(node);
+  const cur = String(m.rows[rowIdx]?.[groupBy] || '').trim().toUpperCase();
+  const { seq } = boardLanes(m, groupBy, allSequences(), mtLastDataRow(node, m));
+  addSection('Move to');
+  seq.states.forEach(kw => addItem(kw, { active: kw === cur, onApply: () => bvMoveCard(node, rowIdx, groupBy, kw) }));
+  mtOpenMenu(panel, anchorEl);
+}
+
+// The board view (BV-1): lanes are the owning sequence's states in declared order,
+// cards are the data rows. Authored bases move cards (drag on desktop, the card
+// menu everywhere); a query base's board is read-only rendering (base-views-vision
+// §0.4: drag on a query board needs the parked write-through).
+function buildBoardWidget(node, model, readOnly) {
+  const gb = node.view.groupBy;
+  const lastRow = mtLastDataRow(node, model);
+  const { lanes } = boardLanes(model, gb, allSequences(), lastRow);
+  const host = document.createElement('div');
+  host.className = 'md-table-host mt-board-host';
+  host.dataset.id = node.id;
+  let h = mtBaseChromeHtml(node, model, readOnly);
+  h += '<div class="bv-lanes">';
+  for (const lane of lanes) {
+    const label = lane.kw || 'No state';
+    const chip = lane.kw
+      ? `<span class="todo-state todo-state-${escQ(lane.kw.toLowerCase())}${lane.done ? ' todo-state-isdone' : ''}">${escHtml(lane.kw)}</span>`
+      : `<span class="bv-lane-none">No state</span>`;
+    h += `<div class="bv-lane${lane.done ? ' bv-lane-done' : ''}" data-kw="${escQ(lane.kw || '')}" role="group"`
+      + ` aria-label="${escQ(label)}: ${lane.rows.length} card${lane.rows.length === 1 ? '' : 's'}">`
+      + `<div class="bv-lane-head">${chip}<span class="bv-lane-count">${lane.rows.length}</span></div>`;
+    for (const r of lane.rows) {
+      const titleRaw = String(model.rows[r]?.[0] || '');
+      h += `<div class="bv-card" data-r="${r}" tabindex="0" role="button"${(!readOnly && !IS_TOUCH) ? ' draggable="true"' : ''}`
+        + ` aria-label="${escQ(stripMd(titleRaw) || 'card')}${readOnly ? '' : '. Press Enter to move it to another lane'}">`
+        + `<div class="bv-card-title">${mtCellHtml(node, titleRaw, 0)}</div>`;
+      for (let c = 1; c < model.aligns.length; c++) {
+        if (c === gb) continue;
+        const v = model.rows[r]?.[c];
+        if (!String(v || '').trim()) continue;
+        h += `<div class="bv-field"><span class="bv-k">${escHtml(String(model.rows[0]?.[c] || '').trim())}</span>${mtCellHtml(node, v, c)}</div>`;
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  host.innerHTML = h;
+  mtWireBaseChrome(host, node);
+  if (readOnly) return host;
+  // card moves: the menu is the universal door (click/tap, Enter/Space, Shift+F10);
+  // drag between lanes is the desktop enhancement on top of it.
+  host.querySelectorAll('.bv-card').forEach(card => {
+    const r = +card.dataset.r;
+    card.addEventListener('mousedown', e => {
+      if (e.target.closest('.node-link, a, .dice-roll, .mk-roll, .gr-roll, .math-roll, .var-pill')) return;
+      e.preventDefault(); e.stopPropagation();
+      showCardMenu(node, r, gb, card);
+    });
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ' || (e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') {
+        e.preventDefault(); e.stopPropagation();
+        showCardMenu(node, r, gb, card);
+      }
+    });
+    card.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', String(r));
+      e.dataTransfer.effectAllowed = 'move';
+      card.classList.add('bv-dragging');
+    });
+    card.addEventListener('dragend', () => card.classList.remove('bv-dragging'));
+  });
+  host.querySelectorAll('.bv-lane').forEach(lane => {
+    lane.addEventListener('dragover', e => { e.preventDefault(); lane.classList.add('bv-dragover'); });
+    lane.addEventListener('dragleave', () => lane.classList.remove('bv-dragover'));
+    lane.addEventListener('drop', e => {
+      e.preventDefault(); lane.classList.remove('bv-dragover');
+      const r = +e.dataTransfer.getData('text/plain');
+      const kw = lane.dataset.kw;
+      if (Number.isFinite(r) && kw) bvMoveCard(node, r, gb, kw);
+    });
+  });
+  return host;
+}
+
 function buildTableWidget(node, readOnly) {
   const model = mtModel(node);
+  if (node.view?.kind === 'board') return buildBoardWidget(node, model, readOnly || !!node.qbase);
   const nc = model.aligns.length;
   const aCls = a => a==='center'?' mt-a-center':a==='right'?' mt-a-right':'';
   const ro = readOnly ? '' : ' contenteditable="true"';
@@ -6177,22 +6401,7 @@ function buildTableWidget(node, readOnly) {
   // Base header bar (interactive only): a reserved strip atop the base. The left zone
   // (.mt-base-views) is held for a future view switcher; whole-base ops now live on the
   // base bullet's menu, so the bar is empty (and collapses to nothing) for now.
-  let h = '';
-  if (node.qbase) {
-    // Query base (QP-2 Phase A): the strip is the read-only grid's one affordance.
-    // It names the query, shows the live count, and opens the edit dialog (mousedown
-    // + preventDefault per the caret invariant, plus Enter/Space for keyboard).
-    const qm = model.qmeta || { total: 0, shown: 0, truncated: false };
-    const count = qm.truncated ? `${qm.shown} of ${qm.total}` : String(qm.total);
-    h += `<div class="mt-qbase-head" role="button" tabindex="0"`
-      + ` aria-label="Query base: ${escQ(node.qbase.expr)}. ${escQ(count)} matching point${qm.total === 1 ? '' : 's'}. Press Enter to edit the query and columns."`
-      + ` title="Edit query and columns">`
-      + `<span class="mt-qbase-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
-      + `<span class="mt-qbase-expr">${escHtml(node.qbase.expr)}</span>`
-      + (qm.total === 0 ? `<span class="mt-qbase-empty">no matches</span>` : '')
-      + `<span class="mt-qbase-count">${escHtml(count)}</span></div>`;
-  } else if (!readOnly)
-    h += '<div class="mt-baseheader"><div class="mt-base-views"></div></div>';
+  let h = mtBaseChromeHtml(node, model, readOnly);
   // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
   // the whole grid — a rowspan can't span the thead↔tbody boundary.
   // UXP-19: the interactive base is role="grid" — HTML-AAM then maps its tr/th/td to
@@ -6256,27 +6465,7 @@ function buildTableWidget(node, readOnly) {
   host.className = 'md-table-host';
   host.dataset.id = node.id;
   host.innerHTML = h;
-  if (node.qbase) {
-    // P3: the read-only grid's title links join the Tab order (renderLinkPill emits
-    // tabindex="-1" for the outline, where rows carry focus; here the links ARE the rows'
-    // only interactive element). Enter/Space follows, the UXP-53 dispatch pattern.
-    host.querySelectorAll('td .node-link').forEach(l => {
-      l.tabIndex = 0;
-      l.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          l.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-        }
-      });
-    });
-  }
-  const qh = host.querySelector('.mt-qbase-head');
-  if (qh) {
-    qh.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); editQBase(node); });
-    qh.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editQBase(node); }
-    });
-  }
+  mtWireBaseChrome(host, node);
   if (readOnly) return host;
 
   // cell editing: show raw text on focus, render markdown on blur

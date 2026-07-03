@@ -805,6 +805,15 @@ search string; renders matching points as links, capped +N more, recomputed each
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`
 door + typed `{query: expr}` promotion + `editQuery`; atomic in edit mode; `_query` OPML
 round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB) ·
+Base views + the board (BV-1: node.view={kind:'board',groupBy} + _view OPML, absent =
+table; the switcher fills the reserved .mt-base-views strip (text-only buttons, no new
+FA glyphs); buildTableWidget forks to buildBoardWidget; pure core boardLanes (owning-
+sequence lanes in declared order, done-side flagged, no-state lane, footer excluded);
+cards paint through mtCellHtml so roles/pills compose; bvMoveCard writes the keyword
+into the groupBy cell via mtCommit (text is truth); showCardMenu on the shared
+mt-colpanel is the universal move door (click/tap, Enter/Space, Shift+F10), drag is
+the desktop enhancement (off on touch); a query base's board is read-only per the
+parked write-through; board without a status column flashes the P4 hint) ·
 Column display roles (FR-1, the minimal typed-fields slice under the base-views-vision
 §0b thesis: node.colRole + _colrole OPML, index-aligned like colW through the column ops;
 mtCellHtml is the role-aware paint wrapper at every data-cell paint site — status ->
