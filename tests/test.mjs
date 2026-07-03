@@ -4953,6 +4953,21 @@ test('UXP-19: pills carry tabindex=-1 (programmatic/AT focus reach)', () => {
 test('UXP-19: pill-body keyboard activation (Enter/Space dispatch) is present', () => {
   assert.ok(_src.includes('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill'),
     'pill-body keyboard activation selector not found in index.html');
+  // UXP-176: the query pill joins the pill-body activation selector so a focused query pill opens
+  // editQuery on Enter/Space, like every peer pill (it was the one omitted).
+  assert.ok(_src.includes(',.est-pill,.query-pill'),
+    'query-pill missing from the pill-body keyboard activation selector (UXP-176)');
+});
+
+test('UXP-177: the TODO state/priority badge is keyboard-operable (a11y attrs + Enter/Space twin)', () => {
+  // the interactive inline badge carries the pill a11y kit
+  assert.ok(_src.includes('class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" tabindex="-1"'),
+    'inline todo-state badge missing role/tabindex (UXP-177)');
+  assert.ok(_src.includes('class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" tabindex="-1"'),
+    'todo-prio chip missing role/tabindex (UXP-177)');
+  // the Enter/Space keydown twin dispatches the badge's mousedown (→ showTodoPicker)
+  assert.ok(_src.includes("closest?.('.todo-state,.todo-prio')"),
+    'todo-badge keyboard activation branch missing (UXP-177)');
 });
 
 // ── UXP-25: ol ordinals from text not type (markdown-lazy numbering) ──────────
