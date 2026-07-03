@@ -1358,6 +1358,12 @@ dead-end states** that confirm a non-event without teaching the next step.
 - **Doors (P2):** the `@ Query` insert command (a dialog with a live match-count preview), typed `{query: expr}` promotion on exit (`queryParts`/`promoteBraceBody`), and edit via the pill's pencil or body-click (`editQuery`); a result link click navigates (reuses the `.node-link`/`followNodeLink` path). Atomic in edit mode (like seq). OPML round-trips via `_query`; pruned by `pruneQueries`.
 - **Pins:** `queryRows` (cross-tree match, host exclusion, empty query, cap+total, full-grammar compose) and `queryParts` (sniff, empty/keywordless rejection, classify→artifact). Live-verified: render, result navigation, OPML round-trip, self-reference exclusion, typed promotion, empty state.
 
+### BV-2 ✓ The cards view (SHIPPED 2026-07-02)
+- The reading view: rows as cards in a responsive grid (`buildCardsWidget`, `{kind:'cards'}` in
+  `node.view`, no config). Cards paint through `mtCellHtml` so roles/pills/images compose; the pill
+  click-gate widened to `.bv-card`/`.gv-card` so a per-cell grammar pill re-rolls IN a card (board
+  cards inherit the same fix). Read-only on authored and query bases alike; images paint as covers.
+
 ### BV-1 ✓ The board view + the view system (SHIPPED 2026-07-02)
 - The flagship view under the base-views-vision §0b thesis: lanes are the user's OWN sequence
   states in declared order (done-side lanes muted), cards are the rows painted through mtCellHtml

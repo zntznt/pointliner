@@ -480,6 +480,11 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .bv-card-title{font-weight:600;margin-bottom:2px;overflow-wrap:anywhere}
 .bv-field{display:flex;gap:6px;font-size:.85em;align-items:baseline;margin-top:2px;min-width:0}
 .bv-k{color:var(--muted);font-size:.85em;flex-shrink:0}
+/* cards view (BV-2): a responsive reading grid */
+.gv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;padding:4px 0 6px}
+.gv-card{background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 10px;min-width:0}
+.gv-card-title{font-weight:600;margin-bottom:4px;overflow-wrap:anywhere}
+.gv-card .md-img{display:block;width:100%;max-height:150px;object-fit:cover;border-radius:var(--r-sm);margin:2px 0 4px}
 /* role chips never wrap inside a narrow cell (FR-1) */
 .mt-cell .todo-state,.mt-cell .ag-chip{white-space:nowrap}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
@@ -4769,7 +4774,7 @@ function fromOpml(xml) {
     const colwAttr = el.getAttribute('_colw');
     if (colwAttr) { try { const a = JSON.parse(colwAttr); if (Array.isArray(a)) n.colW = a; } catch(_) {} }
     const vwAttr = el.getAttribute('_view');
-    if (vwAttr) { try { const o = JSON.parse(vwAttr); if (o && o.kind === 'board' && Number.isInteger(o.groupBy)) n.view = o; } catch(_) {} }
+    if (vwAttr) { try { const o = JSON.parse(vwAttr); if (o && ((o.kind === 'board' && Number.isInteger(o.groupBy)) || o.kind === 'cards')) n.view = o; } catch(_) {} }
     const crAttr = el.getAttribute('_colrole');
     if (crAttr) { try { const a = JSON.parse(crAttr); if (Array.isArray(a)) n.colRole = a; } catch(_) {} }
     const qbAttr = el.getAttribute('_qbase');
@@ -6200,10 +6205,10 @@ function mtFocusCell(node, r, c) {
 // the zone bases-direction §5 held for exactly this. Text-only buttons (no new
 // icons; a glyph missing from the FA subset paints blank).
 function mtViewSwitcherHtml(node) {
-  const kind = node.view?.kind === 'board' ? 'board' : 'table';
+  const kind = node.view?.kind || 'table';
   const btn = (k, label) =>
     `<button type="button" class="mt-view-btn${kind === k ? ' on' : ''}" data-view="${k}" aria-pressed="${kind === k}">${label}</button>`;
-  return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}</div>`;
+  return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}${btn('cards', 'Cards')}</div>`;
 }
 
 function mtSetView(node, kind) {
@@ -6211,6 +6216,8 @@ function mtSetView(node, kind) {
     const gi = (node.colRole || []).findIndex(r => r === 'status');
     if (gi < 0) { flashHint('Mark a column as Status first (Column menu, Show as); its states become the lanes.'); return; }
     node.view = { kind: 'board', groupBy: gi };
+  } else if (kind === 'cards') {
+    node.view = { kind: 'cards' };
   } else node.view = undefined;   // absent = table, so untouched bases serialize clean
   markDirty(); refreshTable(node);
 }
@@ -6246,7 +6253,7 @@ function mtWireBaseChrome(host, node) {
     // P3: a query base's links join the Tab order (renderLinkPill emits
     // tabindex="-1" for the outline, where rows carry focus; here the links are
     // the rows' only interactive element). Enter/Space follows, the UXP-53 pattern.
-    host.querySelectorAll('td .node-link, .bv-card .node-link').forEach(l => {
+    host.querySelectorAll('td .node-link, .bv-card .node-link, .gv-card .node-link').forEach(l => {
       l.tabIndex = 0;
       l.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -6368,9 +6375,40 @@ function buildBoardWidget(node, model, readOnly) {
   return host;
 }
 
+// The cards view (BV-2): a reading view. Every data row is a card in a responsive
+// grid; the first column is the card title, the rest its fields, all painted through
+// the role-aware cell renderer so chips, pills, and images compose (a cell holding an
+// image paints as the card's cover; a per-cell grammar pill makes a re-rollable deck
+// of generative cards). No group field, no editing gesture; links and pills inside
+// stay live through the base content handlers. Read-only by construction.
+function buildCardsWidget(node, model, readOnly) {
+  const lastRow = mtLastDataRow(node, model);
+  const host = document.createElement('div');
+  host.className = 'md-table-host mt-cards-host';
+  host.dataset.id = node.id;
+  let h = mtBaseChromeHtml(node, model, readOnly);
+  h += '<div class="gv-grid">';
+  for (let r = 1; r <= lastRow; r++) {
+    const titleRaw = String(model.rows[r]?.[0] || '');
+    h += `<div class="gv-card" role="group" aria-label="${escQ(stripMd(titleRaw) || 'card')}">`
+      + `<div class="gv-card-title">${mtCellHtml(node, titleRaw, 0)}</div>`;
+    for (let c = 1; c < model.aligns.length; c++) {
+      const v = model.rows[r]?.[c];
+      if (!String(v || '').trim()) continue;
+      h += `<div class="bv-field"><span class="bv-k">${escHtml(String(model.rows[0]?.[c] || '').trim())}</span>${mtCellHtml(node, v, c)}</div>`;
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  host.innerHTML = h;
+  mtWireBaseChrome(host, node);
+  return host;
+}
+
 function buildTableWidget(node, readOnly) {
   const model = mtModel(node);
   if (node.view?.kind === 'board') return buildBoardWidget(node, model, readOnly || !!node.qbase);
+  if (node.view?.kind === 'cards') return buildCardsWidget(node, model, readOnly || !!node.qbase);
   const nc = model.aligns.length;
   const aCls = a => a==='center'?' mt-a-center':a==='right'?' mt-a-right':'';
   const ro = readOnly ? '' : ' contenteditable="true"';
@@ -9171,7 +9209,7 @@ function attachContentEvents(content, node) {
       }
       // artifact pills inside rendered cells stay live (reroll in place / open editor)
       const pill = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill');
-      if (pill && e.target.closest('.mt-cell')) {
+      if (pill && e.target.closest('.mt-cell, .bv-card, .gv-card')) {
         e.preventDefault(); e.stopPropagation();
         mtPointerFocus = false; // focus was prevented — don't leave the flag armed
         handleCellPill(node, pill, e.target);

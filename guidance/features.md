@@ -383,7 +383,11 @@ Implemented:
   `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
   marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
   ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
-  grouping until real queries demand it). **BV-1 added the view system + the board**:
+  grouping until real queries demand it). **BV-2 added the cards view**: `{kind:'cards'}`
+  (no config), `buildCardsWidget` renders every data row as a card in a responsive grid
+  through `mtCellHtml`; the cell-pill click gate widened to `.bv-card`/`.gv-card` so
+  per-cell pills re-roll inside board and gallery cards; read-only by construction.
+  **BV-1 added the view system + the board**:
   `node.view = {kind:'board', groupBy}` (`_view` OPML, absent = table); the switcher
   (`mtViewSwitcherHtml`/`mtSetView`) fills the reserved `.mt-base-views` strip;
   `buildTableWidget` forks to `buildBoardWidget` on the view kind. The pure core

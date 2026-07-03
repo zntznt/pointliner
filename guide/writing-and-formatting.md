@@ -63,7 +63,10 @@ Once a column is marked **Status**, the base can show itself as a **board**: cli
 strip above the grid and each state becomes a lane, each row a card (the other columns show on the
 card, dates as chips). Click a card (or press `Enter` on it) to move it to another lane, or drag it
 with the mouse; the move writes the state back into the table, so switching back to **Table** shows
-the same data. A board sourced from a [query base](getting-around.md#query-bases) is read-only.
+the same data. A board sourced from a [query base](getting-around.md#query-bases) is read-only. **Cards** is the third
+view: every row becomes a card in a grid, with the first column as the title and images as covers.
+A column of `{pick | one | of these}` pills becomes a deck of generative cards, each re-rollable
+with a click.
 
 ## Footnotes, links, and images
 
