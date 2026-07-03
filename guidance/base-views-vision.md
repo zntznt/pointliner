@@ -1,11 +1,85 @@
 # Base views: the rich-visualization vision
 
-**Status: VISION / thinking doc, awaiting owner direction.** This reframes and enlarges the QP-2
-query-base proposal. It is not a build plan yet; it is the architecture argument for turning bases
-into a **view system** (table, kanban, gallery, calendar, list) under the single-file / no-backend /
-plain-text-truth constraints. Read alongside `bases-direction.md` (the locked doctrine, which already
-reserves the view-switcher strip and names views/typed-fields as deferred) and
+**Status: VISION / thinking doc, adversarially reviewed, SOUND-BUT-RESCOPE.** This reframes and
+enlarges the QP-2 query-base proposal. It is not a build plan yet; it is the architecture argument for
+turning bases into a **view system** (table, kanban, gallery, calendar, list) under the single-file /
+no-backend / plain-text-truth constraints. Read alongside `bases-direction.md` (the locked doctrine,
+which already reserves the view-switcher strip and names views/typed-fields as deferred) and
 `query-base-proposal.md` (QP-2, now understood as one axis of this larger picture).
+
+---
+
+## 0. Red-team corrections (read first, these bind the rest of the doc)
+
+A three-lens adversarial review (architecture / scope / product) attacked this doc against the actual
+code. The verdict: the core architecture is **sound**, but the doc overstated in four ways that would
+mislead a build decision. The corrections below **override** any looser phrasing later in the doc.
+
+**0.1 "A view is source-agnostic" is true for the row MODEL, not for cell CONTENT (the fatal fix).**
+The doc's headline claim (a view never asks where the rows came from) holds only at the row-model
+layer. It is FALSE at the cell-content layer: `mtInline(node, raw)` is node-scoped, it sets
+`cookieNode`, `renderVarMap = varMapAt(node)`, and the eight artifact render-globals from the *passed
+node*. So any `[[type:KEY]]` pill, a `{= words(self)}`, or a positional `{name}` inside a cell resolves
+against THAT node's sidecars. Correct for an authored base (its cells and sidecars co-own one node);
+WRONG for a query base, whose cell content is projected from foreign points and would resolve against
+the base host instead. **Binding rule:** a query base MUST pre-resolve foreign cell content to inert
+plain strings inside `queryTableRows` before it reaches `mtInline` (or rebind the globals per cell).
+The title-projection case is the common one and must be handled explicitly. The axes still multiply,
+but only after this pre-resolution step, which the doc's "for free" framing omitted.
+
+**0.2 Only static PAINT is free; INTERACTION on non-table views is net-new, mandatory cost.** The
+"free tier" (links, images, tags, pills render in a cell) is real for *read-only paint*. It is NOT
+true for interaction. The ~33 `mt*` edit/focus/keyboard handlers are bound to `<td data-r/data-c>`
+grid geometry (`focusin`/`input`/`focusout`, `mtSpliceCell`, cell-caret nav); none of it applies to a
+`<div>` card in kanban/gallery. So each non-table view must build its own edit/focus/keyboard/a11y
+layer from scratch, under the caret invariant (CLAUDE.md's most load-bearing rule) and P3
+reachability. The date/status cell editors are also net-new: `showTodoPicker` explicitly refuses
+`node.type === 'base'`, and `attachDateCalendar` is wired to dialog fields, not cells. Every "trivial"
+and "small" in the doc's cost table means *static paint + grouping*; the interaction layer is the real,
+non-optional cost.
+
+**0.3 A query base re-queries every render; gate it like search or it breaks the perf budget.**
+Producing a query base's rows runs `queryRows`, an UNCACHED full tree walk (O(total nodes); ~34ms at
+10k, ~230ms at 50k per `performance.md`), not one of the eight `_varsVer` doc-caches. Grouped as
+kanban/gallery it recomputes on every `render()`, un-debounced, unlike the 140ms-debounced search box.
+Left as-is this reintroduces the "eager reactive query layer" whose *absence* `performance.md` credits
+for beating Logseq/Roam. **Binding rule:** memoize the query-base row model by `_varsVer` (and cap
+it), so an unchanged query base does zero tree work on a plain re-render. Also: `buildTableWidget` has
+no internal virtualization, so even a few-hundred-card board pays a full DOM rebuild per render.
+
+**0.4 Query-sourced views RENDER for free but are READ-ONLY until QP-2 Phase C; write-through is
+re-fenced.** "Query bases get every view for free" means every view's *rendering*, not its editing. A
+query-sourced kanban paints for free but its defining gesture, drag-a-card-to-change-status, needs
+QP-2 Phase C: resolve `id -> foreign source node -> property` and mutate it. That is the most-deferred,
+fence-reopening-furthest piece, and it is a genuine footgun (a projection cell silently rewriting an
+offscreen point, no undo-locality, no visual signal, against the "a point owns its own text" model).
+It is NOT a settled cheap ingredient; it stays gated and is not part of any approval requested here.
+**Authored** kanban drag-to-move is fine (it commits into the base's own `node.text` via `mtCommit`),
+so authored boards ship fully without any foreign-node write; only query boards' drag waits for Phase C.
+
+**0.5 "Field roles" IS the deferred typed-fields item; naming it honestly.** The doc routes roles
+through the fence-reopen (so this is disclosed, not smuggled), but "a hint, not a type" undersells it.
+A status role that offers its known values and constrains the editor IS the `bases-direction.md` §4
+"typed fields" deferral (which names select by name), and its value-set needs a `knownStates`-style
+collected cache. Honest framing: **an opt-in per-column constraint (a small schema you choose), not a
+validated global type system, and not mandatory.** A column with no role stays a plain string, so the
+freeform philosophy holds, but this is a real deferred-item move, not a free hint.
+
+**0.6 The saved-views line is drawn by KIND, not count.** A view config persists only a lens plus a
+role-mapping (`kind` + the `*By` fields) as a sidecar. It NEVER persists a filter/sort predicate over
+rows, and there is NEVER a named, library-managed collection of views. The doctrine's deferred "saved
+views" is filters/sorts-as-data-operations plus a saved-view library; that stays out. Quantity is not
+the boundary (an earlier "or a small switchable set" hedge is withdrawn); the predicate/library line is.
+
+**0.7 The type catalogue (§3b) and the minimal role set (§7) are in tension; reconcile before
+building.** This doc carries both a ~20-type catalogue and a 6-role minimal fence. They are not the
+same commitment. Treat §3b as the *possibility space* (what a cell can render) and §7 as the *v1 fence*
+(what a first build ships). A build plan picks the minimal set; the catalogue is the map, not the
+manifest.
+
+The keystone insight (rich views require field roles) and the one solid technical leg (the `_view` /
+`_colrole` sidecars round-trip through OPML and the self-contained-HTML export, verified) survive the
+review intact and anchor the rescoped version.
 
 ---
 
@@ -348,16 +422,44 @@ is the group/cover/date, and that knowledge is a lightweight role. The single-fi
 block any of it; grouping and card layout are trivial client-side, and all new state fits the existing
 OPML-sidecar pattern.
 
-The honest first build is **field roles on authored bases** (useful on its own, the substrate for
-everything after), then **the view system with list + gallery**, then **kanban**, then **calendar**,
-with **query bases composing in** because a view is source-agnostic by construction.
+is **optional field roles**, because kanban/gallery/calendar are impossible without knowing which field
+is the group/cover/date, and that knowledge is a lightweight role. The single-file constraint does not
+block the RENDERING of any of it (see §0.2/§0.3 for the interaction and re-query costs that are real).
 
-Two decisions are yours before any of it:
-1. **Approve the enlarged direction** (base view system + minimal field roles), which reopens the
-   `bases-direction.md` §4 fence for the coupled views-plus-roles pair, restated with the boundaries in
-   §7 above.
-2. **Confirm the sequencing** (roles first, then views, then query-source), or redirect it.
+**The build-order question is now genuinely contested** (the review split on it, and it is your call):
 
-If the direction is right, the next artifact is a build proposal for step 1 (field roles), the same
-shape as the QP-2 proposal but scoped to the keystone. If you want a different shape (views before
-roles, kanban first as a vertical slice, query-source first), say so and I will re-sequence.
+- **Thin-slice first (the review's recommendation):** ship **QP-2 Phase A alone**, a read-only query
+  base, one pure `queryTableRows` core extending `queryRows`, rendered in today's table through the
+  single `mtModel` seam. No roles, no new views, no write-through. It stands alone, delivers the one
+  thing the solo-RPG/notes user actually asks for (a live outline-sourced table), moves the §4 fence by
+  exactly one clean item, and reopens nothing risky. The whole view-system edifice waits until a real
+  user asks for a board.
+- **Keystone first (this doc's original framing):** ship **field roles on authored bases**, because
+  roles are the substrate every rich view needs. Roles have an immediate in-table payoff (a status
+  cell offers its values, a date cell offers the picker) before any view, so it is not pure invisible
+  infrastructure, but it IS building toward a board nobody has asked for yet, and per §0.5 it moves a
+  bigger piece of the fence (typed fields) than the thin slice does.
+
+The keystone logic is sound (you genuinely must build roles before the first *view* payoff), which is
+an argument for MORE skepticism about the view system, not less: if kanban is the goal, a lot lands
+before anything visible.
+
+**The four decisions that are yours (the review could not settle them, and shouldn't):**
+1. **Build order:** thin-slice-first (QP-2 Phase A, read-only query table) or keystone-first (field
+   roles on authored bases). Recommendation leans thin-slice: it is the cheapest genuinely-wanted thing.
+2. **Is the view system the right endgame at all?** A Notion-grade kanban/gallery/calendar is database-
+   app parity; this app's differentiator is the generative/grammar/dice engine and freeform bases. The
+   vision reframes a near-blessed bounded feature (QP-2) UP into a multi-PR view system. Approving it
+   reopens the §4 fence for the coupled views+roles pair (two deferred items, plus a third partially),
+   a bigger move than QP-2's clean single-item reopen.
+3. **Is Phase C write-through a ceiling or a line?** Editing a query-base cell (or dragging a card)
+   that silently rewrites a different, possibly-offscreen point breaks "a point owns its own text,"
+   with no undo-locality or visual signal. It gates every interactive query-sourced view. Reach for it,
+   or never cross it.
+4. **Full 20-type catalogue (§3b) or the 6-role minimal fence (§7)?** These two halves of the doc are
+   in tension (§0.7). A build commits to one; the catalogue is the possibility map, not the manifest.
+
+If you pick thin-slice, the next artifact is the (already-written) QP-2 proposal, corrected for the
+§0.1 cell-content pre-resolution and the §0.3 re-query memoization. If you pick keystone, the next
+artifact is a field-roles build proposal scoped to the minimal set. Either way, the four fatal/serious
+corrections in §0 are prerequisites, not optional.
