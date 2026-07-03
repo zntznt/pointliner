@@ -2857,7 +2857,7 @@ function setAliasProp(node, csv) {
 // UXP-109: order org priorities A < B < C < … with "no priority" last. A→0, B→1, …, null→99.
 // Pure + Node-testable.
 function priorityRank(p) { return p ? (p.toUpperCase().charCodeAt(0) - 65) : 99; }
-function collectDueDates(rootNode = root) {
+function collectDueDates(rootNode = root, seqs = allSequences()) {
   const today = dueDateToday();
   const items = [];
   function walk(n, path) {
@@ -2870,6 +2870,11 @@ function collectDueDates(rootNode = root) {
       const started = start !== null && start <= today;
       const primary = due !== null ? due : start; // deadline drives display when present
       const { iso, label, state } = formatDueDate(primary);
+      // UXP-162: carry held-ness so a BLOCKED dated task reads waiting here too, not full-urgency.
+      // Structural (keywordIsHeld reads the sequence's held band), like the Actions row. Overdue-red
+      // is NOT suppressed (a blocked-but-past-deadline task is real trouble the planner wants loud).
+      const km = (n.text || '').match(LEAD_WORD_RE);
+      const keyword = km && sequenceForKeyword(km[1], seqs) ? km[1] : '';
       items.push({
         id: n.id,
         title: textForDisplay(n) || '(untitled)',
@@ -2878,6 +2883,8 @@ function collectDueDates(rootNode = root) {
         done: todoDoneFromText(n.text),
         runningDays: started ? today - start : null,
         priority: parseTodo(n.text).priority,   // UXP-109: 'A'|'B'|… or null, for agenda ordering
+        keyword,
+        waiting: !!keyword && keywordIsHeld(keyword, seqs),
         epochDay: primary, iso, label, state,
       });
     }
@@ -4904,7 +4911,7 @@ const BLOCK_CMDS = [
   { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas.', section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas. View it as a table, board, cards, or calendar.', section:'Blocks' },
   { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A grid whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
@@ -4958,7 +4965,7 @@ const INSERT_CMDS = [
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
-  { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage.', ex:'[/]  ·  [%]', section:'Insert' },
+  { id:'progress', icon:'◐',  fa:'fa-solid fa-circle-half-stroke', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
@@ -15459,7 +15466,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, sin, log, min, max, … · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop) · words(subtree). Full reference in the concept guide.',
+        hint: 'Functions: sqrt, sin, log, min, max, … · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -19730,10 +19737,13 @@ function mkAgChip(it, kind) {
   if (kind === 'run') {
     // started point: running duration + deadline (if any), deadline drives color.
     // agendaState collapses a done item's urgency to 'done', so it's never overdue-red.
-    chip.className = 'ag-chip ' + (it.due !== null || it.done ? agendaState(it) : 'none');
+    // UXP-162: a held (blocked) dated point ALSO gets the muted "Waiting" badge + .ag-waiting, but
+    // the urgency class stays (added, not replaced) so a blocked-overdue task still glows red.
+    chip.className = 'ag-chip ' + (it.due !== null || it.done ? agendaState(it) : 'none') + (it.waiting && !it.done ? ' ag-waiting' : '');
     const elapsed = it.runningDays === 0 ? 'today' : it.runningDays + 'd';
     const run = document.createElement('span'); run.className = 'ag-run'; run.textContent = '▶ ' + elapsed;
     chip.appendChild(run);
+    if (it.waiting && !it.done) { const w = document.createElement('span'); w.className = 'ag-badge'; w.textContent = 'Waiting'; chip.appendChild(w); }
     let deadlineTxt = '';
     if (it.due !== null) {
       const dlLabel = agendaLabel(it);
@@ -19741,7 +19751,7 @@ function mkAgChip(it, kind) {
       chip.appendChild(dl); deadlineTxt = ', due ' + dlLabel;
     }
     const runTxt = it.runningDays === 0 ? 'started today' : 'running ' + it.runningDays + 'd';
-    aria = it.title + ', ' + runTxt + deadlineTxt + pathStr;
+    aria = it.title + (it.waiting && !it.done ? ', waiting' : '') + ', ' + runTxt + deadlineTxt + pathStr;
   } else if (kind === 'action') {
     // UXP-112: an undated next-action. No date badge; a done one reads muted, and a priority
     // marker (if any) leads so the row surfaces the most urgent action first. UXP-129: a #WAITING
@@ -19757,11 +19767,14 @@ function mkAgChip(it, kind) {
     }
     aria = it.title + (it.waiting ? ', waiting' : '') + (it.priority ? ', priority ' + it.priority : '') + (it.done ? ', done' : '') + pathStr;
   } else {
-    // upcoming deadline (a done item collapses to 'done', never overdue-red)
-    chip.className = 'ag-chip ' + agendaState(it);
+    // upcoming deadline (a done item collapses to 'done', never overdue-red). UXP-162: a held dated
+    // point gets the muted "Waiting" badge + .ag-waiting added, but the urgency class stays so a
+    // blocked-overdue task still reads red (do NOT under-signal a blocked missed deadline).
+    chip.className = 'ag-chip ' + agendaState(it) + (it.waiting && !it.done ? ' ag-waiting' : '');
+    if (it.waiting && !it.done) { const w = document.createElement('span'); w.className = 'ag-badge'; w.textContent = 'Waiting'; chip.appendChild(w); }
     const badge = document.createElement('span'); badge.className = 'ag-badge deadline'; badge.textContent = agendaLabel(it);
     chip.appendChild(badge);
-    aria = it.title + ', due ' + agendaLabel(it) + pathStr;
+    aria = it.title + (it.waiting && !it.done ? ', waiting' : '') + ', due ' + agendaLabel(it) + pathStr;
   }
   const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
   chip.appendChild(titleEl);
@@ -20996,6 +21009,16 @@ const GUIDE = [
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
     ] },
+  // NOTE: no `covers:[]` here — the view switcher has no slash-command id, and the drift-guard
+  // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
+  { id:'base-views', cat:'writing',
+    title:'Base views',
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery), or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: open that column's menu and choose Show as (Status or Date). Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
+    examples:[
+      { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },
+      { syn:'Base → Calendar',desc:'place rows on a calendar by a date column' },
+      { syn:'Column menu → Show as', desc:'mark a column as Status or Date so Board / Calendar can use it' },
+    ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
     body:"Annotate a claim without cluttering the main text, link out to a source or a website, or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
@@ -21260,9 +21283,11 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across all the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max. You can also roll up the prose itself: words(subtree) counts every word beneath a point (a live writing target), and reading time is just words(subtree) / 200.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max. By default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point (a live writing target), and reading time is just words(subtree) / 200.",
     examples:[
-      { syn:'{= sum(cost)}',  desc:'total the cost of each child' },
+      { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
+      { syn:'{= sum(cost, subtree)}', desc:'total the cost of every descendant, all the way down' },
+      { syn:'{= sum(cost, 2)}', desc:'reach two levels down (children + grandchildren)' },
       { syn:'{= avg(score)}', desc:'average the scores' },
       { syn:'{= count(cost)}',desc:'how many children have a cost' },
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },

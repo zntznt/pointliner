@@ -152,6 +152,14 @@ The argument (`cost`, `score`) is a **property key**, not a value. To use it:
 1. Give each child point a property (bullet menu → **Add property**), e.g. `cost: 12`.
 2. On the parent, write `{= sum(cost)}`.
 
+By default a roll-up counts the **direct children**. Add a scope to reach deeper:
+
+```
+{= sum(cost, subtree)}   total every descendant, all the way down
+{= sum(cost, 2)}         reach two levels down (children + grandchildren)
+{= sum(cost, children)}  the direct children (same as no scope)
+```
+
 It recomputes **live** as you add, remove, or edit children, like a spreadsheet column total.
 You can combine aggregations with the rest of math: `{= sum(cost) / count(cost)}` is the average
 the long way; `{= sum(hours) * rate}` mixes a rollup with a variable.
@@ -169,8 +177,9 @@ of a property:
 ```
 
 So a heading can carry a live word total of everything under it, and reading time is just
-composition: `{= words(subtree) / 200}` (about 200 words a minute). Unlike the property rollups,
-`words(subtree)` recurses the full branch, not only direct children.
+composition: `{= words(subtree) / 200}` (about 200 words a minute). The `subtree` / `children` scope
+here is the same vocabulary the property rollups take, so `sum(cost, subtree)` and `words(subtree)`
+reach exactly as deep as each other.
 
 ---
 
