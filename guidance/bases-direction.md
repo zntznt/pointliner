@@ -67,9 +67,21 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   proposal is approved; the approved *direction* for them is `base-views-vision.md` §0b (views in
   service of the generative layer).
 
+- **Field roles, minimal + generative-first (FR-1) — moved above the line 2026-07-02 (owner call,
+  the base-views-vision §0b sequence).** An optional per-column DISPLAY role from a small closed
+  set: `status` (a known state keyword renders as its colored chip, sequence-aware), `date` (a
+  date-shaped value renders as an urgency chip), `number` (right-aligned, formatted). Honest per
+  base-views-vision §0.5: this IS the minimal slice of the "typed fields" deferral, scoped to
+  display hints over the untouched cell string (the §3a text-is-truth law; a non-conforming value
+  falls through to the plain render, never an error). Rides `node.colRole` + `_colrole`, index-
+  aligned like `colW`. **Still below the line:** editor affordances per role (the in-cell value
+  picker / calendar), image/title roles, and any validation. Views remain deferred until their own
+  proposal.
+
 **Named but DEFERRED (vision, not now — do not build on spec):**
 - Other **views** (cards, list, board).
-- **Typed fields** (number/date/select/checkbox as column *types*).
+- **Typed fields beyond the FR-1 display roles** (checkbox/select-with-editor as column *types*,
+  validation, per-role editors).
 - **Filters / sorts as data operations**, saved views.
 - **Relations / rollups** between bases.
 
