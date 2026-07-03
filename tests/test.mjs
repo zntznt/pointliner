@@ -8089,3 +8089,20 @@ test('boardLanes — lastRow excludes a Calculate footer; no recognized values f
   assert.deepEqual(r2.lanes.map(l => l.kw), ['TODO', 'DONE', null]);
   assert.deepEqual(r2.lanes[2].rows, [1, 2]);
 });
+
+// ── BV-3: calBaseItems, the calendar view's pure item model ──────────────────
+test('calBaseItems — valid dates become items, blank/invalid rows surface as undated', () => {
+  const model = { aligns: [null, null], rows: [
+    ['Task', 'Due'],
+    ['a', '2026-07-04'],
+    ['b', 'not a date'],
+    ['c', ''],
+    ['d', '2026-02-30'],       // impossible date: parseDueDate rejects it
+    ['e', 'today'],
+    ['total', ''],             // footer, excluded by lastRow
+  ] };
+  const r = host(c.calBaseItems(host(model), 1, 5));
+  assert.deepEqual(r.items.map(i => i.r), [1, 5]);
+  assert.equal(typeof r.items[0].epochDay, 'number');
+  assert.deepEqual(r.undated, [2, 3, 4]);   // invalid, blank, impossible all surface (P4)
+});

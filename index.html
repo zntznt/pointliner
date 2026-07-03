@@ -480,6 +480,22 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .bv-card-title{font-weight:600;margin-bottom:2px;overflow-wrap:anywhere}
 .bv-field{display:flex;gap:6px;font-size:.85em;align-items:baseline;margin-top:2px;min-width:0}
 .bv-k{color:var(--muted);font-size:.85em;flex-shrink:0}
+/* calendar view (BV-3): one compact month */
+.cv-nav{display:flex;align-items:center;gap:6px;padding:2px 0 6px}
+.cv-btn{font-family:var(--font);font-size:.82em;font-weight:600;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:1px 8px;cursor:pointer}
+.cv-btn:hover{color:var(--fg);background:var(--cbg)}
+.cv-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.cv-title{font-weight:600;font-size:.9em;min-width:130px;text-align:center}
+.cv-today{margin-left:auto}
+.cv-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.7em;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:0 0 2px;text-align:center}
+.cv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cv-cell{min-height:58px;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 4px;min-width:0}
+.cv-out{opacity:.45}
+.cv-today-cell{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.cv-dom{font-size:.72em;color:var(--muted);font-variant-numeric:tabular-nums}
+.cv-chip{font-size:.76em;line-height:1.35;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:0 4px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cv-more{font-size:.72em;color:var(--muted);margin-top:2px}
+.cv-undated{font-size:.8em;color:var(--muted);padding:4px 2px}
 /* cards view (BV-2): a responsive reading grid */
 .gv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;padding:4px 0 6px}
 .gv-card{background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 10px;min-width:0}
@@ -2197,6 +2213,23 @@ function boardLanes(model, groupBy, seqs, lastRow = (model.rows || []).length - 
   }
   if (other.rows.length) lanes.push(other);
   return { seq, lanes };
+}
+
+// calBaseItems(model, dateBy, lastRow) — the calendar view's pure item model
+// (BV-3). Parses each data row's dateBy cell through the strict parseDueDate;
+// rows with a valid date become {r, epochDay} items (agendaMonthCells consumes
+// them directly), rows with a blank or invalid value are returned in `undated`
+// so the widget can surface them (P4: an unparseable date never silently
+// vanishes from the calendar). Pure.
+function calBaseItems(model, dateBy, lastRow = (model.rows || []).length - 1) {
+  const items = [], undated = [];
+  for (let r = 1; r <= lastRow; r++) {
+    const v = String((model.rows[r] || [])[dateBy] || '').trim();
+    const d = v ? parseDueDate(v) : null;
+    if (d !== null) items.push({ r, epochDay: d });
+    else undated.push(r);
+  }
+  return { items, undated };
 }
 
 // Done-ness, generalized: the keyword sits at-or-right-of its sequence's done split.
@@ -4774,7 +4807,7 @@ function fromOpml(xml) {
     const colwAttr = el.getAttribute('_colw');
     if (colwAttr) { try { const a = JSON.parse(colwAttr); if (Array.isArray(a)) n.colW = a; } catch(_) {} }
     const vwAttr = el.getAttribute('_view');
-    if (vwAttr) { try { const o = JSON.parse(vwAttr); if (o && ((o.kind === 'board' && Number.isInteger(o.groupBy)) || o.kind === 'cards')) n.view = o; } catch(_) {} }
+    if (vwAttr) { try { const o = JSON.parse(vwAttr); if (o && ((o.kind === 'board' && Number.isInteger(o.groupBy)) || o.kind === 'cards' || (o.kind === 'calendar' && Number.isInteger(o.dateBy)))) n.view = o; } catch(_) {} }
     const crAttr = el.getAttribute('_colrole');
     if (crAttr) { try { const a = JSON.parse(crAttr); if (Array.isArray(a)) n.colRole = a; } catch(_) {} }
     const qbAttr = el.getAttribute('_qbase');
@@ -6208,7 +6241,7 @@ function mtViewSwitcherHtml(node) {
   const kind = node.view?.kind || 'table';
   const btn = (k, label) =>
     `<button type="button" class="mt-view-btn${kind === k ? ' on' : ''}" data-view="${k}" aria-pressed="${kind === k}">${label}</button>`;
-  return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}${btn('cards', 'Cards')}</div>`;
+  return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}${btn('cards', 'Cards')}${btn('calendar', 'Calendar')}</div>`;
 }
 
 function mtSetView(node, kind) {
@@ -6218,6 +6251,10 @@ function mtSetView(node, kind) {
     node.view = { kind: 'board', groupBy: gi };
   } else if (kind === 'cards') {
     node.view = { kind: 'cards' };
+  } else if (kind === 'calendar') {
+    const di = (node.colRole || []).findIndex(r => r === 'date');
+    if (di < 0) { flashHint('Mark a column as Date first (Column menu, Show as); its dates place the rows on the calendar.'); return; }
+    node.view = { kind: 'calendar', dateBy: di };
   } else node.view = undefined;   // absent = table, so untouched bases serialize clean
   markDirty(); refreshTable(node);
 }
@@ -6253,7 +6290,7 @@ function mtWireBaseChrome(host, node) {
     // P3: a query base's links join the Tab order (renderLinkPill emits
     // tabindex="-1" for the outline, where rows carry focus; here the links are
     // the rows' only interactive element). Enter/Space follows, the UXP-53 pattern.
-    host.querySelectorAll('td .node-link, .bv-card .node-link, .gv-card .node-link').forEach(l => {
+    host.querySelectorAll('td .node-link, .bv-card .node-link, .gv-card .node-link, .cv-chip .node-link').forEach(l => {
       l.tabIndex = 0;
       l.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -6405,10 +6442,62 @@ function buildCardsWidget(node, model, readOnly) {
   return host;
 }
 
+// The calendar view (BV-3): the FR-1 date column places each row on a month grid.
+// Reuses the agenda's pure cells model (agendaMonthCells over calendarMonthGrid);
+// the month anchor is session-only view state (like the agenda's own month). Rows
+// without a parseable date are surfaced in a strip, never silently dropped (P4).
+const _calMonthByNode = new Map();   // nodeId -> epochDay anchor (session-only)
+function buildCalendarWidget(node, model, readOnly) {
+  const di = node.view.dateBy;
+  const lastRow = mtLastDataRow(node, model);
+  const { items, undated } = calBaseItems(model, di, lastRow);
+  const anchor = _calMonthByNode.get(node.id) ?? dueDateToday();
+  const cells = agendaMonthCells(items, anchor);
+  const monthLabel = new Date(anchor * 86400000).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const host = document.createElement('div');
+  host.className = 'md-table-host mt-cal-host';
+  host.dataset.id = node.id;
+  let h = mtBaseChromeHtml(node, model, readOnly);
+  h += `<div class="cv-nav"><button type="button" class="cv-btn" data-nav="-1" aria-label="Previous month">\u2039</button>`
+    + `<span class="cv-title" aria-live="polite">${escHtml(monthLabel)}</span>`
+    + `<button type="button" class="cv-btn" data-nav="1" aria-label="Next month">\u203A</button>`
+    + `<button type="button" class="cv-btn cv-today" data-nav="0" aria-label="Jump to the current month">Today</button></div>`;
+  h += '<div class="cv-dow" aria-hidden="true">' + CAL_DOW.map(d => `<span>${d}</span>`).join('') + '</div>';
+  h += '<div class="cv-grid">';
+  for (const cell of cells) {
+    h += `<div class="cv-cell${cell.inMonth ? '' : ' cv-out'}${cell.isToday ? ' cv-today-cell' : ''}">`
+      + `<span class="cv-dom">${cell.dom}</span>`;
+    cell.items.slice(0, 3).forEach(it => {
+      h += `<div class="cv-chip">${mtCellHtml(node, String(model.rows[it.r]?.[0] || ''), 0)}</div>`;
+    });
+    if (cell.items.length > 3) h += `<div class="cv-more">+${cell.items.length - 3}</div>`;
+    h += '</div>';
+  }
+  h += '</div>';
+  if (undated.length)
+    h += `<div class="cv-undated">${undated.length} row${undated.length === 1 ? '' : 's'} without a date (shown in Table view)</div>`;
+  host.innerHTML = h;
+  mtWireBaseChrome(host, node);
+  host.querySelectorAll('.cv-btn').forEach(b => {
+    const go = () => {
+      const nav = +b.dataset.nav;
+      const cur = _calMonthByNode.get(node.id) ?? dueDateToday();
+      _calMonthByNode.set(node.id, nav === 0 ? dueDateToday() : addMonths(cur, nav));
+      refreshTable(node);
+    };
+    b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); go(); });
+    b.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); go(); }
+    });
+  });
+  return host;
+}
+
 function buildTableWidget(node, readOnly) {
   const model = mtModel(node);
   if (node.view?.kind === 'board') return buildBoardWidget(node, model, readOnly || !!node.qbase);
   if (node.view?.kind === 'cards') return buildCardsWidget(node, model, readOnly || !!node.qbase);
+  if (node.view?.kind === 'calendar') return buildCalendarWidget(node, model, readOnly || !!node.qbase);
   const nc = model.aligns.length;
   const aCls = a => a==='center'?' mt-a-center':a==='right'?' mt-a-right':'';
   const ro = readOnly ? '' : ' contenteditable="true"';
@@ -9209,7 +9298,7 @@ function attachContentEvents(content, node) {
       }
       // artifact pills inside rendered cells stay live (reroll in place / open editor)
       const pill = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill');
-      if (pill && e.target.closest('.mt-cell, .bv-card, .gv-card')) {
+      if (pill && e.target.closest('.mt-cell, .bv-card, .gv-card, .cv-chip')) {
         e.preventDefault(); e.stopPropagation();
         mtPointerFocus = false; // focus was prevented — don't leave the flag armed
         handleCellPill(node, pill, e.target);

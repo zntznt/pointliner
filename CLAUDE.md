@@ -805,6 +805,11 @@ search string; renders matching points as links, capped +N more, recomputed each
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`
 door + typed `{query: expr}` promotion + `editQuery`; atomic in edit mode; `_query` OPML
 round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB) ·
+Calendar view (BV-3: {kind:'calendar', dateBy} on the first date-role column, guarded
+with the P4 fix hint; pure calBaseItems (strict parseDueDate, invalid/blank rows
+surfaced as an undated strip, never dropped) feeds the agenda's agendaMonthCells;
+_calMonthByNode is the session-only month anchor; nav + Today; chips paint via
+mtCellHtml so query-base links navigate; pill/link gates include .cv-chip) ·
 Cards view (BV-2: {kind:'cards'}, buildCardsWidget, rows as cards in a responsive grid
 via mtCellHtml; the cell-pill gate widened to .bv-card/.gv-card so per-cell pills
 re-roll inside cards; read-only on authored + query bases; images paint as covers) ·
