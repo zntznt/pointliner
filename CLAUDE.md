@@ -805,6 +805,15 @@ search string; renders matching points as links, capped +N more, recomputed each
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`
 door + typed `{query: expr}` promotion + `editQuery`; atomic in edit mode; `_query` OPML
 round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB) ·
+Base inline collapse + row cap (BC: in the OUTLINE view a base can be collapsed
+(node.collapsed, reusing the outline field) or capped to N rows (node.baseRows +
+_baserows OPML). Pure core baseInlineView(collapsed, baseRows, total, isZoomed) ->
+{collapsed, shown, clipped, hidden}; when zoomed (focusedId === node.id) everything
+shows and the controls vanish. Collapsed = chrome + a .mt-base-more zoom-in footer;
+capped = table body clamped (Calculate footer kept) + a "zoom in for N more" footer.
+Controls in mtBaseChromeHtml's left cluster: a .col-chevron collapse toggle + a
+.mt-base-rows All/5/10/20 menu (showBaseRowsMenu); switcher hidden when collapsed;
+mtCollapsedHost gives all views the same collapsed strip) ·
 Calendar view (BV-3: {kind:'calendar', dateBy} on the first date-role column, guarded
 with the P4 fix hint; pure calBaseItems (strict parseDueDate, invalid/blank rows
 surfaced as an undated strip, never dropped) feeds the agenda's agendaMonthCells;

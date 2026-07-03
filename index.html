@@ -567,6 +567,20 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    (e.g. a view switcher in .mt-base-views). Empty for now — whole-base ops live on
    the base bullet's menu — so it collapses to nothing until something is added. */
 .mt-baseheader{display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* base outline controls (collapse + row cap) + the zoom-in footer (BC) */
+.mt-base-left{display:flex;align-items:center;gap:4px}
+.mt-base-collapse{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);cursor:pointer;font-size:.8em;flex-shrink:0}
+.mt-base-collapse:hover{color:var(--fg);background:var(--cbg)}
+.mt-base-collapse:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.mt-base-chev{font-size:.7em;transition:transform .18s ease}
+.mt-base-chev-open{transform:rotate(90deg)}
+.mt-base-rows{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap}
+.mt-base-rows:hover{color:var(--fg);background:var(--cbg)}
+.mt-base-rows:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.mt-base-more{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:2px;padding:6px 8px;font-size:.82em;font-weight:600;color:var(--muted);background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-md);cursor:pointer;user-select:none}
+.mt-base-more:hover{color:var(--fg);border-color:var(--acc)}
+.mt-base-more:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.mt-base-more i{font-size:.9em;color:color-mix(in srgb,var(--acc) 70%,var(--muted))}
 .mt-base-views{display:flex;align-items:center;gap:4px;flex:1}
 .mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:6px 10px 2px}
 .mt-col-section.mt-col-sep{border-top:1px solid var(--bdr);margin-top:4px;padding-top:6px}
@@ -1921,7 +1935,7 @@ function ensureDocId(root, gen) {
   return root.docId;
 }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [], query: [] };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [], query: [], baseRows: null };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -2241,6 +2255,21 @@ function calBaseItems(model, dateBy, lastRow = (model.rows || []).length - 1) {
     else undated.push(r);
   }
   return { items, undated };
+}
+
+// baseInlineView(collapsed, baseRows, totalDataRows, isZoomed) — the pure decision for
+// how much of a base to render in the OUTLINE (non-zoomed) view (collapse + row cap).
+// When the base IS the zoomed item, none of this applies (isZoomed): the whole grid
+// shows. Otherwise: a collapsed base shows no rows; an uncapped base (baseRows null or
+// <= 0) shows all; a capped base shows the first N data rows and flags `clipped` when
+// there are more, so the widget can offer a "zoom in for the rest" footer. Pure.
+const BASE_ROWS_DEFAULT = 8;   // a fresh base is uncapped; this is the cap a user's toggle applies
+function baseInlineView(collapsed, baseRows, totalDataRows, isZoomed) {
+  if (isZoomed) return { collapsed: false, shown: totalDataRows, clipped: false, hidden: 0 };
+  if (collapsed) return { collapsed: true, shown: 0, clipped: totalDataRows > 0, hidden: totalDataRows };
+  const cap = (Number.isFinite(baseRows) && baseRows > 0) ? baseRows : Infinity;
+  const shown = Math.min(totalDataRows, cap);
+  return { collapsed: false, shown, clipped: totalDataRows > shown, hidden: totalDataRows - shown };
 }
 
 // Done-ness, generalized: the keyword sits at-or-right-of its sequence's done split.
@@ -4753,6 +4782,7 @@ function toOpml(r) {
       n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '', // query-base config (QP-2)
       n.colRole?.some(x => x != null) ? `_colrole="${ex(JSON.stringify(n.colRole))}"` : '', // column display roles (FR-1)
       n.view             ? `_view="${ex(JSON.stringify(n.view))}"` : '', // base view config (BV-1)
+      (Number.isFinite(n.baseRows) && n.baseRows > 0) ? `_baserows="${n.baseRows}"` : '', // inline row cap
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -4818,6 +4848,8 @@ function fromOpml(xml) {
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
     const colwAttr = el.getAttribute('_colw');
     if (colwAttr) { try { const a = JSON.parse(colwAttr); if (Array.isArray(a)) n.colW = a; } catch(_) {} }
+    const brAttr = el.getAttribute('_baserows');
+    if (brAttr) { const v = parseInt(brAttr, 10); if (Number.isFinite(v) && v > 0) n.baseRows = v; }
     const vwAttr = el.getAttribute('_view');
     if (vwAttr) { try { const o = JSON.parse(vwAttr); if (o && ((o.kind === 'board' && Number.isInteger(o.groupBy)) || o.kind === 'cards' || (o.kind === 'calendar' && Number.isInteger(o.dateBy)))) n.view = o; } catch(_) {} }
     const crAttr = el.getAttribute('_colrole');
@@ -6290,8 +6322,25 @@ function mtBaseChromeHtml(node, model, readOnly) {
       + (qm.total === 0 ? `<span class="mt-qbase-empty">no matches</span>` : '')
       + `<span class="mt-qbase-count">${escHtml(count)}</span></div>`;
   }
-  if (!readOnly || node.qbase)
-    h += '<div class="mt-baseheader">' + mtViewSwitcherHtml(node) + '</div>';
+  // Left controls (outline view only, not when this base is the zoomed item): a collapse
+  // chevron and a rows-cap control. A collapsed base renders just this strip; a capped one
+  // shows the cap. Both are session/persisted view state, never touch node.text.
+  const zoomed = focusedId === node.id;
+  let left = '';
+  if (!zoomed) {
+    const collapsed = !!node.collapsed;
+    left += `<button type="button" class="mt-base-collapse" data-act="collapse" aria-expanded="${!collapsed}"`
+      + ` aria-label="${collapsed ? 'Expand this base' : 'Collapse this base'}" title="${collapsed ? 'Expand' : 'Collapse'}">`
+      + `<span class="col-chevron mt-base-chev${collapsed ? '' : ' mt-base-chev-open'}" aria-hidden="true">▶</span></button>`;
+    if (!collapsed) {
+      const capLabel = (Number.isFinite(node.baseRows) && node.baseRows > 0) ? `Rows: ${node.baseRows}` : 'Rows: all';
+      left += `<button type="button" class="mt-base-rows" data-act="rows"`
+        + ` aria-label="Set how many rows to show in the outline (currently ${escQ(capLabel.slice(6))})" title="Rows shown in the outline">${escHtml(capLabel)}</button>`;
+    }
+  }
+  const showSwitcher = (!readOnly || node.qbase) && !(node.collapsed && !zoomed);
+  if (left || showSwitcher)
+    h += `<div class="mt-baseheader"><div class="mt-base-left">${left}</div>${showSwitcher ? mtViewSwitcherHtml(node) : ''}</div>`;
   return h;
 }
 
@@ -6326,10 +6375,60 @@ function mtWireBaseChrome(host, node) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); }
     });
   });
+  // collapse chevron: toggle node.collapsed (reuses the outline collapse field), refresh.
+  const cb = host.querySelector('.mt-base-collapse');
+  if (cb) {
+    const toggle = () => { node.collapsed = !node.collapsed; markDirty(); refreshTable(node); mtHost(node.id)?.querySelector('.mt-base-collapse')?.focus(); };
+    cb.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); toggle(); });
+    cb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggle(); } });
+  }
+  // rows control: open the small cap menu (All / 5 / 10 / 20).
+  const rb = host.querySelector('.mt-base-rows');
+  if (rb) {
+    const open = () => showBaseRowsMenu(node, rb);
+    rb.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); open(); });
+    rb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); open(); } });
+  }
+  // "zoom in to see the rest" footer (collapsed or capped): zoom into the base.
+  const more = host.querySelector('.mt-base-more');
+  if (more) {
+    const zoom = () => zoomInto(node.id);
+    more.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); zoom(); });
+    more.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); zoom(); } });
+  }
+}
+
+// The rows-cap menu: All / 5 / 10 / 20, applied to node.baseRows (null = all). Reuses
+// the shared mt-colpanel menu chrome so it matches the Column/Row/card menus.
+function showBaseRowsMenu(node, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const cur = (Number.isFinite(node.baseRows) && node.baseRows > 0) ? node.baseRows : null;
+  const apply = v => { node.baseRows = v; markDirty(); refreshTable(node); };
+  addSection('Rows in the outline');
+  addItem('All', { active: cur == null, onApply: () => apply(null) });
+  [5, 10, 20].forEach(n => addItem(String(n), { active: cur === n, onApply: () => apply(n) }));
+  mtOpenMenu(panel, anchorEl);
 }
 
 // Move one card (data row) to another lane: write the keyword into the groupBy
 // cell and recommit — the board is a view; the text stays the truth (§3a).
+// If a base is collapsed in the outline view, every view renders just the chrome + a
+// collapsed footer (no grid/lanes/cards/month). Returns the host, or null to proceed.
+function mtCollapsedHost(node, model, readOnly, className) {
+  if (focusedId === node.id || !node.collapsed) return null;
+  const total = model.rows ? (model.rows.length - 1) : 0;
+  const host = document.createElement('div');
+  host.className = 'md-table-host mt-collapsed-host ' + className;
+  host.dataset.id = node.id;
+  host.innerHTML = mtBaseChromeHtml(node, model, readOnly)
+    + `<div class="mt-base-more" role="button" tabindex="0" aria-label="This base is collapsed. Press Enter to zoom in and see it.">`
+    + `<i class="fa-solid fa-table-cells" aria-hidden="true"></i> ${total} row${total === 1 ? '' : 's'} (collapsed)</div>`;
+  mtWireBaseChrome(host, node);
+  return host;
+}
+
 function bvMoveCard(node, rowIdx, groupBy, kw) {
   const m = mtModel(node);
   if (!m.rows[rowIdx]) return;
@@ -6359,6 +6458,7 @@ function showCardMenu(node, rowIdx, groupBy, anchorEl) {
 // menu everywhere); a query base's board is read-only rendering (base-views-vision
 // §0.4: drag on a query board needs the parked write-through).
 function buildBoardWidget(node, model, readOnly) {
+  const collapsed = mtCollapsedHost(node, model, readOnly, 'mt-board-host'); if (collapsed) return collapsed;
   const gb = node.view.groupBy;
   const lastRow = mtLastDataRow(node, model);
   const { lanes } = boardLanes(model, gb, allSequences(), lastRow);
@@ -6436,6 +6536,7 @@ function buildBoardWidget(node, model, readOnly) {
 // of generative cards). No group field, no editing gesture; links and pills inside
 // stay live through the base content handlers. Read-only by construction.
 function buildCardsWidget(node, model, readOnly) {
+  const collapsed = mtCollapsedHost(node, model, readOnly, 'mt-cards-host'); if (collapsed) return collapsed;
   const lastRow = mtLastDataRow(node, model);
   const host = document.createElement('div');
   host.className = 'md-table-host mt-cards-host';
@@ -6465,6 +6566,7 @@ function buildCardsWidget(node, model, readOnly) {
 // without a parseable date are surfaced in a strip, never silently dropped (P4).
 const _calMonthByNode = new Map();   // nodeId -> epochDay anchor (session-only)
 function buildCalendarWidget(node, model, readOnly) {
+  const collapsed = mtCollapsedHost(node, model, readOnly, 'mt-cal-host'); if (collapsed) return collapsed;
   const di = node.view.dateBy;
   const lastRow = mtLastDataRow(node, model);
   const { items, undated } = calBaseItems(model, di, lastRow);
@@ -6547,6 +6649,22 @@ function buildTableWidget(node, readOnly) {
   // (.mt-base-views) is held for a future view switcher; whole-base ops now live on the
   // base bullet's menu, so the bar is empty (and collapses to nothing) for now.
   let h = mtBaseChromeHtml(node, model, readOnly);
+  // Inline (outline) collapse + row cap. When this base is the zoomed item, everything
+  // shows; otherwise a collapsed base renders no grid and a capped one clamps the body.
+  const _zoomed = focusedId === node.id;
+  const _totalData = model.rows.length - 1 - (mtHasFooter(tblfmStr) ? 1 : 0);
+  const _iv = baseInlineView(node.collapsed, node.baseRows, _totalData, _zoomed);
+  if (_iv.collapsed) {
+    // Collapsed: just the chrome + a summary/expand footer, no table at all.
+    h += `<div class="mt-base-more" role="button" tabindex="0" aria-label="This base is collapsed. It has ${_totalData} row${_totalData === 1 ? '' : 's'}. Press Enter to zoom in and see it.">`
+      + `<i class="fa-solid fa-table-cells" aria-hidden="true"></i> ${_totalData} row${_totalData === 1 ? '' : 's'} (collapsed)</div>`;
+    const cHost = document.createElement('div');
+    cHost.className = 'md-table-host mt-collapsed-host';
+    cHost.dataset.id = node.id;
+    cHost.innerHTML = h;
+    mtWireBaseChrome(cHost, node);
+    return cHost;
+  }
   // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
   // the whole grid — a rowspan can't span the thead↔tbody boundary.
   // UXP-19: the interactive base is role="grid" — HTML-AAM then maps its tr/th/td to
@@ -6578,8 +6696,11 @@ function buildTableWidget(node, readOnly) {
     }
   }
   h += '</tr>';
+  const _lastShown = _iv.shown;   // number of DATA rows to render inline (header excluded)
   for (let r=1;r<model.rows.length;r++) {
     const isTotal = r === totalRowIdx;
+    // clamp: skip data rows past the inline cap, but always keep the footer total row
+    if (!isTotal && !_zoomed && r > _lastShown) continue;
     h += `<tr data-r="${r}"${isTotal ? ' class="mt-total-row"' : ''}>`;
     // The Calculate footer row is data-only (computed) and stays pinned last — no
     // reorder/menu handle; a plain inert stub keeps the column count aligned.
@@ -6605,6 +6726,9 @@ function buildTableWidget(node, readOnly) {
     h += '</tr>';
   }
   h += '</table></div>';
+  if (_iv.clipped)
+    h += `<div class="mt-base-more" role="button" tabindex="0" aria-label="${_iv.hidden} more row${_iv.hidden === 1 ? '' : 's'} not shown here. Press Enter to zoom in and see them all.">`
+      + `<i class="fa-solid fa-angles-down" aria-hidden="true"></i> Zoom in to see ${_iv.hidden} more row${_iv.hidden === 1 ? '' : 's'}</div>`;
 
   const host = document.createElement('div');
   host.className = 'md-table-host';

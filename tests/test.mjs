@@ -8135,3 +8135,20 @@ test('calBaseItems — valid dates become items, blank/invalid rows surface as u
   assert.equal(typeof r.items[0].epochDay, 'number');
   assert.deepEqual(r.undated, [2, 3, 4]);   // invalid, blank, impossible all surface (P4)
 });
+
+// ── base inline collapse + row cap (outline view) ─────────────────────────────
+test('baseInlineView — zoomed shows everything, ignoring collapse and cap', () => {
+  assert.deepEqual(host(c.baseInlineView(true, 3, 20, true)), { collapsed: false, shown: 20, clipped: false, hidden: 0 });
+  assert.deepEqual(host(c.baseInlineView(false, 5, 20, true)), { collapsed: false, shown: 20, clipped: false, hidden: 0 });
+});
+test('baseInlineView — collapsed shows no rows but flags clipped when there are rows', () => {
+  assert.deepEqual(host(c.baseInlineView(true, null, 12, false)), { collapsed: true, shown: 0, clipped: true, hidden: 12 });
+  assert.deepEqual(host(c.baseInlineView(true, null, 0, false)),  { collapsed: true, shown: 0, clipped: false, hidden: 0 });
+});
+test('baseInlineView — uncapped shows all; capped shows the first N and flags the remainder', () => {
+  assert.deepEqual(host(c.baseInlineView(false, null, 12, false)), { collapsed: false, shown: 12, clipped: false, hidden: 0 });
+  assert.deepEqual(host(c.baseInlineView(false, 0, 12, false)),    { collapsed: false, shown: 12, clipped: false, hidden: 0 });  // 0 = uncapped
+  assert.deepEqual(host(c.baseInlineView(false, 5, 12, false)),    { collapsed: false, shown: 5, clipped: true, hidden: 7 });
+  assert.deepEqual(host(c.baseInlineView(false, 5, 5, false)),     { collapsed: false, shown: 5, clipped: false, hidden: 0 });   // exactly at cap
+  assert.deepEqual(host(c.baseInlineView(false, 20, 12, false)),   { collapsed: false, shown: 12, clipped: false, hidden: 0 });  // cap > total
+});
