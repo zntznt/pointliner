@@ -78,8 +78,17 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   picker / calendar), image/title roles, and any validation. Views remain deferred until their own
   proposal.
 
+- **The view system + the board view (BV-1) — moved above the line 2026-07-02 (owner call, the
+  base-views-vision §0b sequence).** `node.view = {kind, groupBy}` (`_view` OPML; absent = table),
+  the switcher in the reserved `.mt-base-views` strip (the zone §5 held for exactly this), and the
+  **board**: lanes are the owning sequence's states in declared order (the FR-1 status column is the
+  group field), cards are the data rows painted through the role-aware cell renderer. Authored bases
+  move cards (the card menu everywhere, drag on desktop) by writing the keyword into the groupBy
+  cell (the §3a text-is-truth law); a query base's board renders read-only (write-through stays
+  parked, base-views-vision §0.4). **Still below the line:** cards/gallery/list/calendar views.
+
 **Named but DEFERRED (vision, not now — do not build on spec):**
-- Other **views** (cards, list, board).
+- Other **views** (cards/gallery, list, calendar).
 - **Typed fields beyond the FR-1 display roles** (checkbox/select-with-editor as column *types*,
   validation, per-role editors).
 - **Filters / sorts as data operations**, saved views.
