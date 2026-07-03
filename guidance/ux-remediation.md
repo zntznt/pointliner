@@ -1498,6 +1498,72 @@ base-view finding is coherence polish or discoverability copy.
 
 ---
 
+## Seven-persona design review (2026-07-03, FIFTH blind pass) — UXP-176…184
+
+A fifth fully BLIND re-audit run after Reviews 1-4 (UXP-102…175) all shipped: same seven-persona
+fleet, no knowledge that any prior review happened, told NOT to mine this ledger. **17 raw → 10
+survived adversarial verification, 7 refuted.** No highs on merit beyond one (the query-pill keyboard
+gap); the rest are medium/low a11y + token-drift alignments back to standards the app already obeys.
+The verify pass retracted several plausible findings (the formula-var "odd pill out" — it opens its
+editor by design like the math pill; the deck "silently recycles" — UXP-120 already announces it; an
+inline numeric stepper — a P1/P5 sigil-growth violation). **Recurring theme: two inline interactive
+chips (the query pill, the TODO state/priority badge) are the last elements left out of the P3 a11y
+sweep** that made hashtags, footnote refs, links, and every other pill focusable + named +
+Enter/Space-operable. Everything is a per-element alignment, nothing architectural.
+
+### UXP-176 ☐ The query pill is focusable but has NO keyboard activation (P3-2) 🟡  [Batch 1]
+- **Problem:** `renderQueryPill` emits `span.query-pill tabindex="-1"` with an aria-label promising editing, but the content-keydown pill-activation selector (`e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill,.est-pill')`) and the pencil selector both OMIT `.query-pill`/`.query-edit`, and `editQuery` has no keyboard call site. So a keyboard/AT user can focus the pill, is told it's editable, and can't open the editor by any key — the lone pill family breaking the §7.2 pill-activation invariant.
+- **Rule:** P3-2 (a focusable interactive element must be keyboard-operable) + P1/P5 (peer pills all activate via that list).
+- **Target:** add `.query-pill` to the pill-body `closest()` selector and `.query-edit` to the pencil selector in the content keydown handler, so a focused query pill dispatches its mousedown (→ `editQuery`) exactly like the mouse path. Keep the mousedown branch untouched (caret invariant) — this is the additive keyboard twin. Guard to the pill body so the result-row `.node-link` handling is unaffected. Pin the selector membership.
+
+### UXP-177 ☐ The TODO state/priority badge has zero a11y attributes + no keyboard twin (P3-1/P3-2) 🟡  [Batch 1]
+- **Problem:** the `.todo-state` (and `.todo-prio`) badges are click-to-open (`showTodoPicker` via `closest('.todo-state, .todo-prio')`, `.todo-state` has `cursor:pointer`), but the spans carry NO role/tabindex/aria-label/title and no keydown twin. They can't receive focus, so the generic Enter/Space activation never reaches them; a screen reader announces only the bare keyword. The last interactive inline chip left out of the P3 sweep (fallbacks exist — the bullet menu, Ctrl+Shift+S — so friction not a dead end).
+- **Rule:** P3-1/P3-2 (focusable + operable in place) + P1 (peer chips are all reachable).
+- **Target:** give the badge `role="button"`, `tabindex="-1"`, an aria-label ("State: TODO. Change state or priority" / "Priority A. Change state or priority"), and a title; add an Enter/Space keydown twin beside the mousedown (caret invariant) calling `showTodoPicker` on the focused badge, reusing the fn-ref/pill activation pattern. Also add `cursor:pointer` to `.todo-prio` (clickable but lacks it).
+
+### UXP-178 ☐ The query pill aria-label says "the pencil" but the whole body edits (P1/P5, copy) 🟢  [Batch 1]
+- **Problem:** `renderQueryPill`'s aria-label tail reads "…or the pencil to edit," but the click handler opens `editQuery` on any pill-body click that isn't a result link (the empty state even says "Click to edit"). The announced affordance (pencil) is narrower than the real one (whole body), and the pencil isn't a distinct keyboard control — it just re-triggers the whole-pill handler, so "the pencil to edit" misdirects AT users. Every sibling pill uses uniform "Click to edit" wording.
+- **Rule:** P1/P5 (an aria-label must match the real affordance; uniform pill wording).
+- **Target (copy only):** change the tail to "Click a result to jump, or click the pill to edit its search," matching the body-click + empty-state copy. Update the matching GUIDE body ("or the pencil to change the search") in the same pass.
+
+### UXP-179 ☐ Seven base-view controls draw focus as a 25%-alpha `--ring` ghost, not the solid accent outline (P5/P3, design-language §4) 🟡  [Batch 2]
+- **Problem:** `.mt-qbase-head`, `.mt-view-btn`, `.bv-card`, `.cv-btn`, `.mt-base-collapse`, `.mt-base-rows`, `.mt-base-more` all draw `:focus-visible` as `{outline:none;box-shadow:0 0 0 3px var(--ring)}` — a 25%-alpha glow with the solid outline suppressed. §4 is explicit: `:focus-visible` = a solid accent outline (glow is decoration only, "don't re-blur the focus indicator into a 20%-alpha ghost"). The rest of the app obeys at 40+ sites, including this component's OWN `.mt-cell`/`.mt-col-item`. The 25%-alpha ring over paper (~1.5:1) also fails the §3 non-text 3:1 floor (P3), and `outline:none` makes it vanish under forced-colors mode (a second P3 gap).
+- **Rule:** design-language §4 (the focus recipe) + P3 (contrast + forced-colors).
+- **Target:** replace the seven rules with the canonical `outline:2px solid var(--acc);outline-offset:1px` (keep the `--ring` box-shadow only as decorative glow, matching the pill rule). Fold the seven into ONE shared selector list so they can't drift again. CSS-only, caret untouched.
+
+### UXP-180 ☐ Base column drag-over fills the header with `--acc` but never pairs `--acc-fg` (design-language §3) 🟢  [Batch 2]
+- **Problem:** `.mt-colhead.mt-dragover{background:var(--acc)}` fills the `<th>` with raw `--acc`, but the cell's `.mt-name-pill` paints `--fg` ink, not `--acc-fg`. §3 makes the `background:var(--acc)` + `color:var(--acc-fg)` pairing a merge criterion (dark accents are pastels; dark `--fg` on dark `--acc` is under 4.5:1). Transient drop-target flash, hence low — but momentarily an editable title on a bare accent fill with unpaired ink. (The `.mt-rowh.mt-dragover` half is a non-finding — a text-less 10px grip.)
+- **Rule:** design-language §3 (the `--acc`/`--acc-fg` pairing).
+- **Target:** on `.mt-colhead.mt-dragover`, either set `color:var(--acc-fg)` (name pill inherits) OR switch to the non-fill drop cue already used at `.bv-lane.bv-dragover` (`box-shadow:inset 0 0 0 2px var(--ring)` / `border-color:var(--acc)`). Upholds a locked Decision.
+
+### UXP-181 ☐ `.cv-dow` day-of-week eyebrow tracks .05em, off the locked .07em (design-language §4) 🟢  [Batch 3]
+- **Problem:** the standalone 7-column "MON TUE WED" eyebrow renders as `.cv-dow`, `.cal-dow span`, and `.agc-dow span`; two track at the §4-locked `.07em`, but `.cv-dow` alone is `.05em`, so the base calendar-view header sits visibly tighter than the identical label elsewhere. (Verification dropped the originally-flagged `.agw-dow` — a compound "MON 3" Gantt column header, not the caps-eyebrow recipe.)
+- **Rule:** design-language §4 (one eyebrow recipe).
+- **Target:** change `.cv-dow` `letter-spacing` `.05em` → `.07em`. Single selector, pure token alignment.
+
+### UXP-182 ☐ The 'saving' concept-guide desc calls ⌘S "save a copy" (P5, copy) 🟢  [Batch 3]
+- **Problem:** the GUIDE `{id:'saving'}` example `desc:'save a copy to your computer'` is wrong for the FSA tier the guide treats as primary — with a bound `fileHandle`, ⌘S re-writes the same file in place (`writeH`→`createWritable`) and flashes "Saved …", not "a copy" (only `dlOpml` is a true copy). The same entry's `body` already states the accurate model, and the P4 flash distinguishes "Saved"/"Downloaded", so low — a P5 coherence gap with the body + flash.
+- **Rule:** P5 (the door copy should match the behavior + the body).
+- **Target:** split the model in the desc: "save to your file (or download a copy if your browser can't write to disk)," matching the body + flashes. No em dash.
+
+### UXP-183 ☐ No presence/absence axis for priority (`priority:none` / `has:priority`) (P2/P5-4) 🟢  [Batch 3]
+- **Problem:** `priority:` matches exactly one letter (`/^priority:([A-Za-z])$/i`), so there's no presence/absence axis — but the date + held dimensions are symmetric (`is:scheduled`/`is:unscheduled`, `is:held`). "What actionable work have I NOT prioritized?" has no clean operator; the `-priority:A -priority:B -priority:C` workaround also matches non-todos. Low (a niche axis with a clumsy workaround).
+- **Rule:** P2/P5-4 (a queryable dimension should expose both directions).
+- **Target:** add `priority:none` (a to-do with a state but no `[#A]`), optionally `has:priority`/`priority:any`, the one-regex-widen style of the existing `is:`/`has:` adds. Place the arm BEFORE the generic prop arm (like `priority:A`). Ground in `parseTodo` (seq-aware). Add the `#search-hint` + `?`-panel rows (P5-4). No new sigil.
+
+### UXP-184 ☐ A shuffle deck hides its position — no near-empty / cards-remaining cue (P2, solo) 🟢  [Batch 3]
+- **Problem:** a shuffle deck's value is draw-without-replacement, but the pill shows only the last card — no at-a-glance signal of how many remain or that the next draw recycles. UXP-120's `willReshuffle` flash + `announce()` covers the silent-recycle P4 case, so what remains is the persistent position cue.
+- **Rule:** P2 (a stateful pill's position should be glanceable).
+- **Target:** add a small `.gr-seq-last` visual whisper when `g.bag.length === 0` after a draw (next click recycles), mirroring `.gr-seq-end` for a spent `once` deck — decoration only, reusing the persisted `bag`. CAUTION: `g.bag` is lazily initialized (a fresh deck has `bag === undefined`, momentarily empty at each round boundary), so a naive `bag.length` count renders "0 of 6" on a pristine deck — derive as `bag == null ? items.length : bag.length` if a count is wanted. No new syntax.
+
+### Closing order (Review 5)
+
+1. **Batch 1 — the a11y-sweep finish (UXP-176, 177, 178).** The query-pill keyboard activation, the TODO-badge a11y attrs + keydown twin, the query-pill aria-label copy. The one theme worth doing first; all reuse the existing pill/fn-ref activation pattern + additive ARIA.
+2. **Batch 2 — base-view visual coherence (UXP-179, 180).** The seven focus-outline rules → the solid-accent recipe (fold into one selector), the column drag-over `--acc-fg` pairing. Pure CSS.
+3. **Batch 3 — small token + copy + search + solo (UXP-181, 182, 183, 184).** The `.cv-dow` tracking, the saving-desc reword, the `priority:none` operator, the shuffle-deck near-empty cue. A grab-bag of one-liners.
+
+---
+
 ## Enhancements (tracked, not defects)
 
 These are **not non-conformances** — the standard is satisfied — just nice-to-haves noted so they aren't lost.
