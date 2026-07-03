@@ -119,6 +119,20 @@ Type `@` and choose **Query**, or write it inline: `{query: is:todo | due:week}`
 `-` to exclude, `|` for OR). Click any result to jump to it, or the pencil to change the search. A
 long list shows the first ten with a `+N more`. The query never lists its own point.
 
+## Query bases
+
+When a list is not enough, turn the same live search into a **table**. A query base's rows are the
+points matching a search; its columns show whatever you pick per point: the clickable title, a
+property like `due` or `cost`, or a formula computed for each row (`= daysuntil(due)`,
+`= sum(cost)` to roll up a point's children). The grid updates itself as the document changes;
+nothing is stored, it is always a view of the live outline.
+
+Type `/` and choose **Query base**, then give it a search and one column per line (`title`, a
+property key, or `= formula`; put `Name:` in front to label a column). The strip above the grid
+shows the search and the live match count; click it (or press `Enter` on it) to change the query or
+columns. The grid itself is read-only: edit the matching points and the rows follow. Click any
+title to jump to that point.
+
 ## Searching all your documents
 
 When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-notes)),

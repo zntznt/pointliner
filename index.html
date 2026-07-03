@@ -449,6 +449,15 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .search-ctx .mt-promote,.node-link-mirror .mt-promote,.zoom-title .mt-promote{display:none}
 .md-table-host{padding:2px 0;max-width:none}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
+/* query base strip: the read-only grid's one affordance (edit query + columns).
+   Same --pill hue as the query pill so the two query surfaces read as one family. */
+.mt-qbase-head{--pill:#4a6b8a;display:flex;align-items:center;gap:6px;padding:4px 8px;margin-bottom:2px;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.85em;cursor:pointer;user-select:none}
+.mt-qbase-head:hover{border-color:color-mix(in srgb,var(--pill) 40%,var(--bdr))}
+.mt-qbase-head:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.mt-qbase-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));display:inline-flex;font-size:.9em}
+.mt-qbase-expr{font-family:var(--mono);font-size:.92em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mt-qbase-count{font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
+.mt-qbase-empty{font-size:.85em;color:var(--muted)}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
 .mt-cell{font-variant-numeric:tabular-nums;padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
@@ -1655,6 +1664,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><span>to-do priority, like <code>priority:a</code> or <code>priority:b</code></span></div>
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
+        <div class="sh-row"><kbd>/querybase</kbd><span>a live grid of matching points: title, properties, or a per-point formula as columns</span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -4642,6 +4652,7 @@ function toOpml(r) {
       n.note             ? `_note="${ex(n.note)}"` : '',
       n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
+      n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '', // query-base config (QP-2)
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -4707,6 +4718,8 @@ function fromOpml(xml) {
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
     const colwAttr = el.getAttribute('_colw');
     if (colwAttr) { try { const a = JSON.parse(colwAttr); if (Array.isArray(a)) n.colW = a; } catch(_) {} }
+    const qbAttr = el.getAttribute('_qbase');
+    if (qbAttr) { try { const o = JSON.parse(qbAttr); if (o && typeof o.expr === 'string' && Array.isArray(o.cols)) n.qbase = o; } catch(_) {} }
     // Legacy migration: convert old [[varref:KEY]] tokens to display-only [[var:KEY]] records
     const legacyVarrefs = el.getAttribute('_varrefs');
     if (legacyVarrefs) {
@@ -4756,6 +4769,7 @@ const BLOCK_CMDS = [
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas.', section:'Blocks' },
+  { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A grid whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
@@ -5556,7 +5570,28 @@ function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splic
 // recipe). Split text-pure (mtModelText) so the portable-copy serializers stay
 // DOM-free and unit-testable; mtModel is the node-taking convenience wrapper.
 function mtModelText(text) { return parseTable(stripTblfm(text)) || parseTable(starterTableText()); }
-function mtModel(node) { return mtModelText(node.text); }
+// ── query base (QP-2 Phase A) ───────────────────────────────────────────────
+// A base carrying node.qbase = { expr, cols:[{name, field}] } sources its rows from
+// a live search instead of node.text. Read-only in v1 (bases-direction §4): the
+// query + column projections are the config, the rows recompute from the document.
+// The synthesized model is memoized per generation + config, so an unchanged query
+// base does ZERO tree work on a plain re-render (base-views-vision §0.3 — this is
+// what keeps the no-eager-reactive-query-layer property performance.md relies on).
+const _qbaseCache = new Map(); // doc-cache — nodeId -> {ver, cfg, model}; cleared on doc swap (resetDocCaches)
+const QBASE_ROW_CAP = 100;
+function isQueryBase(node) { return node?.type === 'base' && !!node.qbase; }
+function qbaseModel(node) {
+  const cfg = JSON.stringify(node.qbase);
+  const hit = _qbaseCache.get(node.id);
+  if (hit && hit.ver === _varsVer && hit.cfg === cfg) return hit.model;
+  const q = queryTableRows(node.qbase.expr, node.qbase.cols, root, node.id, QBASE_ROW_CAP);
+  const model = { aligns: q.header.map(() => null),
+                  rows: [q.header, ...q.rows.map(r => r.cells)],
+                  qmeta: { total: q.total, shown: q.rows.length, truncated: q.truncated } };
+  _qbaseCache.set(node.id, { ver: _varsVer, cfg, model });
+  return model;
+}
+function mtModel(node) { return node.qbase ? qbaseModel(node) : mtModelText(node.text); }
 // Serialize the grid back to node.text, preserving the trailing #+TBLFM: recipe (Org
 // keeps formulas beside the table; cells hold the literal/computed values). Without
 // this, any cell edit would drop the formula line.
@@ -5568,6 +5603,7 @@ function mtCommit(node, model) {
 // Re-run the table's formulas, baking computed display values into the target cells of
 // node.text ('#ERR' on cycle/invalid). No-op (returns false) when there is no recipe.
 function mtRecompute(node) {
+  if (node.qbase) return false;   // a query base's model is computed, never written to text
   const tblfm = extractTblfm(node.text);
   if (!tblfm) return false;
   const model = mtModel(node);
@@ -5592,7 +5628,7 @@ function refreshTable(node) {
   mtRecompute(node); // computed cells reflect the latest source values
   const host = mtHost(node.id);
   if (!host) { render(); return; }
-  host.replaceWith(buildTableWidget(node));
+  host.replaceWith(buildTableWidget(node, isQueryBase(node)));
   scheduleReconcile();
 }
 
@@ -6085,7 +6121,20 @@ function buildTableWidget(node, readOnly) {
   // (.mt-base-views) is held for a future view switcher; whole-base ops now live on the
   // base bullet's menu, so the bar is empty (and collapses to nothing) for now.
   let h = '';
-  if (!readOnly)
+  if (node.qbase) {
+    // Query base (QP-2 Phase A): the strip is the read-only grid's one affordance.
+    // It names the query, shows the live count, and opens the edit dialog (mousedown
+    // + preventDefault per the caret invariant, plus Enter/Space for keyboard).
+    const qm = model.qmeta || { total: 0, shown: 0, truncated: false };
+    const count = qm.truncated ? `${qm.shown} of ${qm.total}` : String(qm.total);
+    h += `<div class="mt-qbase-head" role="button" tabindex="0"`
+      + ` aria-label="Query base: ${escQ(node.qbase.expr)}. ${escQ(count)} matching point${qm.total === 1 ? '' : 's'}. Press Enter to edit the query and columns."`
+      + ` title="Edit query and columns">`
+      + `<span class="mt-qbase-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
+      + `<span class="mt-qbase-expr">${escHtml(node.qbase.expr)}</span>`
+      + (qm.total === 0 ? `<span class="mt-qbase-empty">no matches</span>` : '')
+      + `<span class="mt-qbase-count">${escHtml(count)}</span></div>`;
+  } else if (!readOnly)
     h += '<div class="mt-baseheader"><div class="mt-base-views"></div></div>';
   // One flat <table> (no thead/tbody) so the add-column cell's rowspan can cross
   // the whole grid — a rowspan can't span the thead↔tbody boundary.
@@ -6150,6 +6199,27 @@ function buildTableWidget(node, readOnly) {
   host.className = 'md-table-host';
   host.dataset.id = node.id;
   host.innerHTML = h;
+  if (node.qbase) {
+    // P3: the read-only grid's title links join the Tab order (renderLinkPill emits
+    // tabindex="-1" for the outline, where rows carry focus; here the links ARE the rows'
+    // only interactive element). Enter/Space follows, the UXP-53 dispatch pattern.
+    host.querySelectorAll('td .node-link').forEach(l => {
+      l.tabIndex = 0;
+      l.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          l.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        }
+      });
+    });
+  }
+  const qh = host.querySelector('.mt-qbase-head');
+  if (qh) {
+    qh.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); editQBase(node); });
+    qh.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editQBase(node); }
+    });
+  }
   if (readOnly) return host;
 
   // cell editing: show raw text on focus, render markdown on blur
@@ -6586,7 +6656,7 @@ function renderRow(r) {
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
     // not as a separate button under the grid.
-    content.appendChild(buildTableWidget(node, !!opts.searchCtx));
+    content.appendChild(buildTableWidget(node, !!opts.searchCtx || isQueryBase(node)));
   } else {
     content.innerHTML = renderContentHTML(node);
   }
@@ -8629,6 +8699,63 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
   return { rows, total, truncated: total > rows.length };
 }
 
+// queryTableRows(expr, cols, rootNode, hostId, cap) — the query-base row engine
+// (QP-2 Phase A; bases-direction §4 above-the-line move, 2026-07-02). Same walk +
+// match as queryRows, but each matched point is PROJECTED into cells, one per
+// column. cols is [{name, field}] where field is:
+//   'title'    -> a plain [[#id]] link token (live title + navigation; a text-
+//                 reference token with NO sidecar, so it is safe inside a foreign
+//                 cell — the base-views-vision §0.1 rule)
+//   '<key>'    -> that property's raw value string
+//   '= expr'   -> evalMath over the ROW's point (own numeric props overlay the doc
+//                 vars, evalCheck-style; child rollups via expandAggExpr), resolved
+//                 HERE to an inert formatted string so nothing downstream consults
+//                 the host base's sidecars (§0.1). Errors surface as '#ERR' (P4).
+// Returns { header, rows: [{id, cells}], total, truncated }. Pure.
+function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
+  const colList = (cols || []).filter(c => c && typeof c.field === 'string' && c.field.trim());
+  const header = colList.map(c => (c.name || c.field).trim());
+  const terms = parseSearchQuery(expr || '');
+  if (!terms.length || !colList.length) return { header, rows: [], total: 0, truncated: false };
+  const seqs = allSequences(rootNode);
+  const vars = collectVars(rootNode);   // '=' columns need it regardless of the query
+  const needsLinks = terms.some(tm => (tm.kind === 'is' && tm.value === 'broken') || (tm.kind === 'has' && tm.value === 'backlink'));
+  const links = needsLinks ? collectLinks(rootNode) : undefined;
+  const project = (n, field) => {
+    const f = field.trim();
+    if (f === 'title') return `[[#${n.id}]]`;
+    if (f[0] === '=') {
+      const src = f.slice(1).trim();
+      const scope = Object.assign(Object.create(null), vars, nodePropVars(n));
+      // date-shaped props join the scope as epoch-day numbers (nodePropVars skips
+      // them since they are not numeric), so daysuntil(due) and due - today compute
+      for (const p of (n.props || [])) {
+        const k = (p.key || '').trim().toLowerCase();
+        if (!k || k in scope) continue;
+        const d = parseDueDate(String(p.val ?? ''));
+        if (d !== null) scope[k] = d;
+      }
+      const v = evalMath(expandAggExpr(src, n), scope);
+      return v === null ? '#ERR' : formatMathDisplay(v, src);
+    }
+    const key = f.toLowerCase();
+    const p = (n.props || []).find(x => (x.key || '').trim().toLowerCase() === key);
+    return p ? String(p.val ?? '') : '';
+  };
+  const rows = [];
+  let total = 0;
+  (function walk(node) {
+    for (const c of (node.children || [])) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+        total++;
+        if (rows.length < cap) rows.push({ id: c.id, cells: colList.map(col => project(c, col.field)) });
+      }
+      walk(c);
+    }
+  })(rootNode);
+  return { header, rows, total, truncated: total > rows.length };
+}
+
 // The strings worth <mark>ing for a parsed query: positive text terms plus
 // positive tags (as `#tag`, how they appear in the text). is: terms are
 // structural — nothing to highlight. Pure.
@@ -8787,6 +8914,15 @@ function attachContentEvents(content, node) {
   if (node.type === 'base') {
     content.addEventListener('mousedown', e => {
       if (content.dataset.editing) return;
+      // node links inside rendered cells navigate (the query base's title column, or
+      // any [[#id]] typed into a cell) — mirrors the outline handler's precedence:
+      // the link branch runs before the pill checks, so a pill inside a mirror zooms.
+      const lnk = e.target.closest?.('.node-link');
+      if (lnk) {
+        e.preventDefault(); e.stopPropagation();
+        followNodeLink(lnk);
+        return;
+      }
       // artifact pills inside rendered cells stay live (reroll in place / open editor)
       const pill = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill');
       if (pill && e.target.closest('.mt-cell')) {
@@ -8796,6 +8932,9 @@ function attachContentEvents(content, node) {
         return;
       }
       if (e.target.closest('.md-table-host')) return; // let the widget handle it
+      // a query base has no markdown to edit (its grid is computed); route the
+      // outside-the-widget click to the query editor instead of a blank raw edit
+      if (node.qbase) { e.preventDefault(); editQBase(node); return; }
       e.preventDefault();
       enterEdit(content, node);
       content.focus();
@@ -9451,7 +9590,7 @@ function exitEdit(content, node) {
       node.text = serializeTable(parsed) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
       mtRecompute(node); // bake computed values into the formula's target cells
       content.textContent = '';
-      content.appendChild(buildTableWidget(node, false));
+      content.appendChild(buildTableWidget(node, isQueryBase(node)));
     } else {
       // User removed the table structure — re-derive type and full re-render.
       const et = deriveTypeFromText(node.text);
@@ -10635,7 +10774,24 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
         : () => { deleteNode(nodeId); hideBpop(); },
       danger:true },
   ];
-  if (isBase) {
+  if (isBase && node.qbase) {
+    // Query base: the query is the source of truth, so 'Edit query' replaces the
+    // markdown/TBLFM ops; Copy as Markdown freezes the computed grid (titles baked in).
+    actions.unshift(
+      { sec:'Table', icon:{ fa:'fa-solid fa-magnifying-glass', fb:'\u{1F50D}' }, label:'Edit query',
+        fn: () => { hideBpop(); editQBase(node); } },
+      { sec:'Table', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
+        fn: () => {
+          const m = mtModel(node);
+          const md = serializeTable({ aligns: m.aligns, rows: m.rows })
+            .replace(/\[\[#([a-z0-9]+)\]\]/gi, (_, tid) => {
+              const tn = nodeById(tid);
+              return (tn && stripMd(textForDisplay(tn))) || '(untitled)';
+            });
+          copyTextToClipboard(md, 'Copied as markdown'); hideBpop();
+        } },
+    );
+  } else if (isBase) {
     // Base copy ops lead the menu (mirroring the header ⋯ menu), before the shared actions.
     actions.unshift(
       { sec:'Table', icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as Markdown',
@@ -14648,6 +14804,80 @@ function openQueryDialog({ title, submitLabel, expr = '', onResult }) {
   });
 }
 
+// parseQBaseCols(text) — one column per line: 'Name: field' or just 'field' (the
+// name defaults to the field). A field is 'title', a property key, or '= expr'.
+// The split is skipped when the left side contains '=', so a bare ternary formula
+// line ('= a > 2 ? 1 : 0') stays one field. Returns [{name, field}] or null. Pure.
+function parseQBaseCols(text) {
+  const out = [];
+  for (const line of String(text || '').split('\n')) {
+    const s = line.trim();
+    if (!s) continue;
+    const i = s.indexOf(':');
+    if (i > 0 && !s.slice(0, i).includes('=') && s.slice(i + 1).trim())
+      out.push({ name: s.slice(0, i).trim(), field: s.slice(i + 1).trim() });
+    else out.push({ name: s, field: s });
+  }
+  return out.length ? out : null;
+}
+
+function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: title', onResult }) {
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-magnifying-glass', fb: '\u{1F50D}' },
+    title, submitLabel,
+    fields: [
+      { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true,
+        preview: v => {
+          if (!v.trim()) return '<span class="io-preview-bad">Type a search, like is:todo or #project -is:done</span>';
+          const { total } = queryRows(v, root, null, 1);
+          return `<span class="io-preview-ok">${total} matching point${total === 1 ? '' : 's'} right now</span>`;
+        },
+        hint: 'Any search the box accepts. The rows update themselves as the document changes.' },
+      { key: 'cols', label: 'Columns (one per line)', type: 'textarea', value: colsText, required: true,
+        placeholder: 'Title: title\ndue\nCost: = sum(cost)',
+        preview: v => {
+          const cols = parseQBaseCols(v);
+          if (!cols) return '<span class="io-preview-bad">One column per line: title, a property key, or = a formula</span>';
+          return cols.map(cd => `<span class="todo-state">${escHtml(cd.name)}</span>`).join(' ');
+        },
+        hint: 'Each line is a column: "title" shows the point (clickable), a property key like due or cost shows that value, and "= formula" computes per point (rollups like sum(cost) work). Put "Name:" in front to label a column.' },
+    ],
+    validate: v => !!v.expr.trim() && !!parseQBaseCols(v.cols),
+    onSubmit: v => onResult(v.expr.trim(), parseQBaseCols(v.cols)),
+  });
+}
+
+function editQBase(node) {
+  if (!node?.qbase) return;
+  openQBaseDialog({
+    title: 'Edit query base', submitLabel: 'Save',
+    expr: node.qbase.expr,
+    colsText: node.qbase.cols.map(cd => (cd.name && cd.name !== cd.field) ? `${cd.name}: ${cd.field}` : cd.field).join('\n'),
+    onResult: (expr, cols) => { node.qbase = { expr, cols }; markDirty(); refreshTable(node); },
+  });
+}
+
+// Create a query base at a point, mirroring createBaseAt's non-destructive rule:
+// an empty point becomes the query base in place; a content-bearing point keeps
+// its text and the base lands as the next sibling.
+function qbaseCreateAt(nodeId, expr, cols) {
+  const node = nodeById(nodeId); if (!node) return;
+  if (activeContentId === nodeId)
+    document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`)?.blur();
+  pushUndo();
+  const cfg = { expr, cols };
+  if (!node.text.trim()) {
+    node.text = ''; node.type = 'base'; node.checked = false; node.qbase = cfg;
+    markDirty(); render(); focusNode(nodeId); return;
+  }
+  const parent = parentOf(nodeId); if (!parent) { markDirty(); render(); return; }
+  const idx = parent.children.findIndex(k => k.id === nodeId);
+  const base = mkNode('', 'base'); base.qbase = cfg;
+  parent.children.splice(idx + 1, 0, base);
+  nodeMap.set(base.id, base); parentMap.set(base.id, parent);
+  markDirty(); render(); focusNode(base.id);
+}
+
 function editQuery(node, key) {
   const q = node?.query?.find(x => x.key === key);
   if (!q) return;
@@ -15627,6 +15857,11 @@ function applyBlockCmd(id, nodeId, node, content) {
   // /base slash verb routes through the shared size picker; this direct path (e.g.
   // a future menu entry) uses the default size.
   if (id === 'base') { createBaseAt(nodeId, 3, 3); return; }
+  if (id === 'querybase') {
+    openQBaseDialog({ title: 'New query base', submitLabel: 'Create',
+      onResult: (expr, cols) => qbaseCreateAt(nodeId, expr, cols) });
+    return;
+  }
   // block type — swap prefix in node.text to match the new type. Converting away
   // from a to-do also strips its task marker / keyword (otherwise the node would
   // just derive back to 'todo' on the next edit).
@@ -16622,7 +16857,7 @@ function performMultiDrop(ids, targetId, position) {
 // would be served until the first keystroke (UXP-32). Call beside every
 // buildIndex(root, null) that swaps the tree. The invariant is pinned by the
 // "doc-cache invalidation" regression test in tests/test.mjs.
-function resetDocCaches() { _varsVer++; }
+function resetDocCaches() { _varsVer++; _qbaseCache.clear(); }
 
 // UXP-103: the persistence signals must all mean the SAME thing — "unsaved to a named disk
 // target," not "there is any unpersisted keystroke." In default (no-handle) mode autosave keeps
@@ -20294,6 +20529,14 @@ const GUIDE = [
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
+    ] },
+  { id:'querybase', cat:'todos', covers:['querybase'],
+    title:'Query bases',
+    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (rollups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, it is always a view of the live outline. Type / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. The grid is read-only; edit the matching points themselves and the rows follow.",
+    examples:[
+      { syn:'/querybase',            desc:'create one from the / menu' },
+      { syn:'is:todo | due:week',    desc:'any search works as the row source' },
+      { syn:'Cost: = sum(cost)',     desc:'a column computed per matching point' },
     ] },
   { id:'query', cat:'todos', covers:['query'],
     title:'Embedded queries',

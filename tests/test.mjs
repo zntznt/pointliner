@@ -7950,3 +7950,87 @@ test('QX-6 has:backlink and is:broken read the threaded collectLinks index', () 
   assert.equal(c.queryMatchesNode(q, B, SEQS, undefined, links), true);
   assert.equal(c.queryMatchesNode(q, C, SEQS, undefined, links), false);
 });
+
+// ── QP-2 Phase A: queryTableRows, the query-base row engine ──────────────────
+test('queryTableRows — projects title/property/formula per matched point', () => {
+  const root = { children: [
+    { id: 'aa111', text: '#TODO buy lumber', props: [{ key: 'cost', val: '40' }], children: [] },
+    { id: 'bb222', text: '#TODO hire crew', props: [{ key: 'cost', val: '100' }], children: [] },
+    { id: 'cc333', text: '#DONE paid deposit', props: [{ key: 'cost', val: '10' }], children: [] },
+  ] };
+  const cols = [{ name: 'Task', field: 'title' }, { name: 'Cost', field: 'cost' }, { name: 'Doubled', field: '= cost * 2' }];
+  const r = host(c.queryTableRows('is:todo', cols, root, null));
+  assert.deepEqual(r.header, ['Task', 'Cost', 'Doubled']);
+  assert.equal(r.total, 2);
+  assert.equal(r.truncated, false);
+  // title -> a plain [[#id]] link token (live title, no sidecar; the §0.1 rule)
+  assert.deepEqual(r.rows[0], { id: 'aa111', cells: ['[[#aa111]]', '40', '80'] });
+  assert.deepEqual(r.rows[1].cells, ['[[#bb222]]', '100', '200']);
+});
+
+test('queryTableRows — formula columns see the row point (rollups + own props), errors are #ERR', () => {
+  const root = { children: [
+    { id: 'pp111', text: '#TODO project', props: [{ key: 'rate', val: '2' }], children: [
+      { id: 'k1', text: 'part', props: [{ key: 'cost', val: '30' }], children: [] },
+      { id: 'k2', text: 'part', props: [{ key: 'cost', val: '12' }], children: [] },
+    ] },
+  ] };
+  const cols = [{ name: 'Total', field: '= sum(cost) * rate' }, { name: 'Bad', field: '= nosuchvar + 1' }];
+  const r = host(c.queryTableRows('is:todo', cols, root, null));
+  assert.deepEqual(r.rows[0].cells, ['84', '#ERR']);   // (30+12)*2; unknown ident fails visibly (P4)
+});
+
+test('queryTableRows — cap with true total, host exclusion, empty/invalid inputs', () => {
+  const kids = [];
+  for (let i = 0; i < 7; i++) kids.push({ id: 'n' + i, text: '#TODO item ' + i, children: [] });
+  const root = { children: kids };
+  const cols = [{ name: 'T', field: 'title' }];
+  const capped = host(c.queryTableRows('is:todo', cols, root, null, 5));
+  assert.equal(capped.rows.length, 5);
+  assert.equal(capped.total, 7);
+  assert.equal(capped.truncated, true);
+  const excl = host(c.queryTableRows('is:todo', cols, root, 'n0'));
+  assert.equal(excl.total, 6);
+  assert.equal(excl.rows.find(r => r.id === 'n0'), undefined);
+  // empty query or no columns -> empty result, never a crash
+  assert.deepEqual(host(c.queryTableRows('', cols, root, null)).rows, []);
+  assert.deepEqual(host(c.queryTableRows('is:todo', [], root, null)).rows, []);
+  // a missing property projects as an empty cell
+  const miss = host(c.queryTableRows('is:todo', [{ name: 'X', field: 'nope' }], root, null, 1));
+  assert.deepEqual(miss.rows[0].cells, ['']);
+});
+
+test('queryTableRows — the projected model serializes as a valid pipe table', () => {
+  const root = { children: [{ id: 'z9', text: '#TODO alpha | beta', props: [{ key: 'note', val: 'a|b' }], children: [] }] };
+  const cols = [{ name: 'Task', field: 'title' }, { name: 'Note', field: 'note' }];
+  const q = host(c.queryTableRows('is:todo', cols, root, null));
+  const model = { aligns: q.header.map(() => null), rows: [q.header, ...q.rows.map(r => r.cells)] };
+  const md = c.serializeTable(model);
+  const back = host(c.parseTable(md));       // round-trips: pipes in values are escaped
+  assert.deepEqual(back.rows[1], ['[[#z9]]', 'a|b']);
+});
+
+test('parseQBaseCols — Name: field lines, bare fields, formula colons survive', () => {
+  assert.deepEqual(host(c.parseQBaseCols('Title: title\ndue\nCost: = sum(cost)')), [
+    { name: 'Title', field: 'title' },
+    { name: 'due', field: 'due' },
+    { name: 'Cost', field: '= sum(cost)' },
+  ]);
+  // a bare formula line containing a ternary colon stays ONE field
+  assert.deepEqual(host(c.parseQBaseCols('= cost > 2 ? 1 : 0')), [
+    { name: '= cost > 2 ? 1 : 0', field: '= cost > 2 ? 1 : 0' },
+  ]);
+  assert.equal(c.parseQBaseCols(''), null);
+  assert.equal(c.parseQBaseCols('  \n  '), null);
+});
+
+test('queryTableRows — date props compute as epoch-days in formula columns', () => {
+  const root = { children: [
+    { id: 'd1', text: '#TODO ship it', props: [{ key: 'due', val: '2026-07-10' }], children: [] },
+  ] };
+  const r = host(c.queryTableRows('is:todo', [{ name: 'D', field: '= daysuntil(due)' }], root, null));
+  // daysuntil is relative to the real today, so pin the identity via date() instead
+  const r2 = host(c.queryTableRows('is:todo', [{ name: 'D', field: '= due - date(2026,7,1)' }], root, null));
+  assert.equal(r2.rows[0].cells[0], '9');           // 2026-07-10 minus 2026-07-01
+  assert.notEqual(r.rows[0].cells[0], '#ERR');      // daysuntil(due) resolves, whatever today is
+});
