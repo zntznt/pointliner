@@ -7646,6 +7646,20 @@ test('termMatchesNode — is:overdue spans due and start, and excludes done (UXP
   assert.equal(isOverdue({ text: '#TODO no dates' }), false);
 });
 
+test('termMatchesNode — is:held matches a point in its sequence\'s held band, seq-agnostic (UXP-171)', () => {
+  // SEQS: default To-do has heldFrom:2 (WAITING), plus a custom Flow with BLOCKED held
+  const SEQ2 = [
+    { key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], heldFrom: 2, doneFrom: 3 },
+    { key: 'flow', name: 'Flow', states: ['DOING', 'BLOCKED', 'SHIPPED'], heldFrom: 1, doneFrom: 2 },
+  ];
+  const isHeld = n => c.termMatchesNode({ kind: 'is', value: 'held' }, n, SEQ2);
+  assert.equal(isHeld({ text: '#WAITING built-in held' }), true);   // built-in held band
+  assert.equal(isHeld({ text: '#BLOCKED custom held' }), true);     // custom sequence's held band
+  assert.equal(isHeld({ text: '#TODO active' }), false);            // active
+  assert.equal(isHeld({ text: '#DONE finished' }), false);         // done, not held
+  assert.equal(isHeld({ text: 'no keyword here' }), false);        // no recognized state
+});
+
 // ── spaced key:value search (UXP-131) ────────────────────────────────────────
 test('parseSearchQuery — key:"spaced value" is ONE token, a contains prop filter', () => {
   const terms = host(c.parseSearchQuery('owner:"Jane Doe"'));

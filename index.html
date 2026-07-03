@@ -492,7 +492,8 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .cv-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.7em;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:0 0 2px;text-align:center}
 .cv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .cv-cell{min-height:58px;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 4px;min-width:0}
-.cv-out{opacity:.45}
+.cv-out{background:color-mix(in srgb,var(--cbg) 55%,var(--bg))}/* UXP-173: an other-month cell de-emphasizes by a recessed background (role), NOT by fading its point-title chips under the contrast floor (DL §3) */
+.cv-out .cv-dom{opacity:.6}/* the day number reads dimmer for out-of-month, but the chip titles stay full-contrast */
 .cv-today-cell{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
 .cv-dom{font-size:.72em;color:var(--muted);font-variant-numeric:tabular-nums}
 .cv-chip{font-size:.76em;line-height:1.35;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:0 4px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}/* UXP-167: --hbg so a calendar chip rises above its --cv-cell in dark mode (DL §3) */
@@ -1348,7 +1349,8 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agc-week{display:contents}
 .agc-cell{min-height:0;min-width:0;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default;overflow:hidden}
 .agc-cell:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
-.agc-cell.oom{opacity:.35}
+.agc-cell.oom{background:color-mix(in srgb,var(--fg) 1.5%,transparent)}/* UXP-173: recess an out-of-month cell by role (a fainter background), not by fading its point chips under the floor (DL §3) */
+.agc-cell.oom .agc-dom{opacity:.6}/* the day number dims for out-of-month; the item chips stay full-contrast */
 .agc-cell.today{background:color-mix(in srgb,var(--acc) 9%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
 .agc-cell.has-items{background:color-mix(in srgb,var(--fg) 6%,transparent)}
 /* An expanded day (clicked its +N) extends DOWN over the grid, overlaying the cells below
@@ -1719,12 +1721,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>is:failing</kbd><kbd>is:passing</kbd><span>points whose <code>check</code> constraint fails / passes (the lint filter)</span></div>
         <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
         <div class="sh-row"><kbd>is:overdue</kbd><span>past its deadline and not done (due, or start if no due)</span></div>
+        <div class="sh-row"><kbd>is:held</kbd><span>in its sequence's held band (blocked / waiting, e.g. #WAITING)</span></div>
         <div class="sh-row"><kbd>is:leaf</kbd><kbd>is:parent</kbd><kbd>is:collapsed</kbd><kbd>is:expanded</kbd><span>structure and fold state</span></div>
         <div class="sh-row"><kbd>is:pill</kbd><kbd>is:random</kbd><kbd>has:dice</kbd><span>carries a pill / a re-rollable one; <code>has:</code> also takes <code>math est grammar markov var seq</code></span></div>
         <div class="sh-row"><kbd>has:children</kbd><kbd>has:footnote</kbd><span>has sub-points / a footnote</span></div>
         <div class="sh-row"><kbd>has:link</kbd><kbd>has:backlink</kbd><kbd>is:broken</kbd><span>contains a link / is linked to (this document) / has a broken link</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
-        <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next 7 / 30 days (also <code>start:week</code>/<code>month</code>)</span></div>
+        <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next 7 / 30 days, not overdue (add <code>| due:overdue</code> for both)</span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
         <div class="sh-row"><kbd>a | b</kbd><span>either side matches (OR); spaces around the pipe, AND binds tighter</span></div>
@@ -3704,13 +3707,17 @@ function renderLinkPill(target, label) {
 function renderCrossLinkPill(docId, target, label) {
   if (docId === (root.docId || '')) return renderLinkPill(target, label);   // self → same-doc (incl. mirror)
   const title = workspaceIndex?.titles?.get(docId)?.get(target);
-  const capText = label || title || 'link';
+  // UXP-172: a broken cross-doc link (unreachable in a self-contained export, where no other doc is
+  // embedded) named itself "link" when it had no label and no resolvable title — a cluster of
+  // identical dead pills. Fall back to the DOC NAME instead: "in <doc>" reads as a real destination.
+  const docName = workspaceIndex?.nameByDocId?.get(docId);
+  const capText = label || title || (docName ? 'in ' + docName : 'another note');
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another document)')}">${cap}</span>`;
   }
-  const docName = workspaceIndex.nameByDocId?.get(docId) || 'another document';
-  return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docName)}" aria-label="${escQ(capText + ', link to a point in ' + docName)}">${cap}</span>`;
+  const docLabel = docName || 'another document';
+  return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docLabel)}" aria-label="${escQ(capText + ', link to a point in ' + docLabel)}">${cap}</span>`;
 }
 
 function mdInline(s) {
@@ -8986,7 +8993,7 @@ function parseSearchQuery(q) {
     if (tok === '|' && !neg) { terms.push({ kind: 'or' }); continue; }
     let t;
     if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)))            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
-    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|pill|random|leaf|parent|collapsed|expanded|broken)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|held|pill|random|leaf|parent|collapsed|expanded|broken)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -9095,6 +9102,10 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     // doc's allSequences(), so this is behavior-identical to the old gate; for workspace search
     // it is exact for each doc's own sequences.
     const km = (node.text || '').match(LEAD_WORD_RE);
+    // UXP-171: is:held — a point whose leading state sits in its sequence's HELD band (the built-in
+    // WAITING, or a custom BLOCKED). Structural (keywordIsHeld reads the held band), seq-agnostic, the
+    // analog of is:done. A point with no recognized state keyword is never held.
+    if (term.value === 'held') return !!(km && sequenceForKeyword(km[1], seqs)) && keywordIsHeld(km[1], seqs);
     const isTodo = (km && !!sequenceForKeyword(km[1], seqs)) || isTaskFirst(node.text);
     if (!isTodo) return false;
     const done = todoDoneFromText(node.text, seqs);
@@ -13714,7 +13725,11 @@ function renderGrammarPill(key, g) {
   // load-bearing); only the plate tints. A No is not an error, so it uses --muted, never --warn.
   // Gated on a CONTENT-SNIFF of the alternatives (isYesNoOracle), not a stored flag, so typed and
   // imported oracles tint like dialog-made ones. Non-oracle grammar is untouched.
-  const valence = isYesNoOracle(g) ? (/^yes\b/i.test(g.result) ? ' gr-yes' : /^no\b/i.test(g.result) ? ' gr-no' : '') : '';
+  // UXP-175: tint only the PLAIN Yes/No arms — a result with a comma ("Yes, but" = a complication,
+  // "No, but" = a hopeful negative) is a swing-oracle twist whose direction the leading word gets
+  // wrong, so leave it neutral rather than mislead. Plain arms never carry a comma, so nothing is lost.
+  const valence = isYesNoOracle(g) && !g.result.includes(',')
+    ? (/^yes\b/i.test(g.result) ? ' gr-yes' : /^no\b/i.test(g.result) ? ' gr-no' : '') : '';
   return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. Click to re-generate` : 'Click to re-generate'}"`
     + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. Click to re-generate">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
@@ -20916,6 +20931,7 @@ const GUIDE = [
       { syn:'is:failing / is:passing',desc:'points whose check constraint fails / passes (the lint filter)' },
       { syn:'is:scheduled / is:unscheduled', desc:'has a date / has no date' },
       { syn:'is:overdue',             desc:'past its deadline and not done (due, or start if no due)' },
+      { syn:'is:held',                desc:'in its sequence’s held band (blocked / waiting)' },
       { syn:'is:leaf / is:parent',    desc:'no sub-points / has sub-points' },
       { syn:'is:collapsed / is:expanded', desc:'folded / unfolded' },
       { syn:'is:pill / is:random',    desc:'carries a pill / a re-rollable one (dice, generator)' },
@@ -20929,7 +20945,7 @@ const GUIDE = [
       { syn:'var:name',               desc:'the point that declares a variable (var:strength)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
-      { syn:'due:week / due:month',   desc:'due within the next 7 / 30 days (also start:week/month)' },
+      { syn:'due:week / due:month',   desc:'due within the next 7 / 30 days, not overdue (add | due:overdue to include past-due)' },
       { syn:'start:<date',            desc:'started before date (YYYY-MM-DD or today±N)' },
     ] },
   { id:'saved-searches', cat:'getting-around',
