@@ -2648,6 +2648,21 @@ test('keywordIsHeld — structural held-band membership, not a WAITING string ma
   assert.equal(c.keywordIsHeld('B', plain), false);
 });
 
+test('openSeqDialog onSubmit forwards heldFrom, so a dialog-authored held band survives (UXP-160)', () => {
+  // the dialog builds its record from parseSequence(def); the onSubmit must carry heldFrom through.
+  // src-pin: the onSubmit object includes heldFrom (the regression was it being dropped).
+  assert.ok(_src.includes('heldFrom: p.heldFrom }'),
+    'openSeqDialog onSubmit must forward heldFrom (UXP-160 regression guard)');
+  // contract: the record the dialog produces from a 3-band def carries a live held band,
+  // and editing down to one pipe re-derives heldFrom === doneFrom (no stale held band).
+  const created = host(c.parseSequence('DOING | BLOCKED | SHIPPED'));
+  assert.equal(created.heldFrom, 1);
+  assert.equal(created.doneFrom, 2);
+  assert.equal(c.keywordIsHeld('BLOCKED', [created]), true);   // BLOCKED reads as held, the whole point
+  const edited = host(c.parseSequence('DOING | SHIPPED'));      // edited down to one pipe
+  assert.equal(edited.heldFrom, edited.doneFrom);              // no held band survives
+});
+
 test('parseSequence: invalid forms return null (callers branch on null)', () => {
   assert.equal(c.parseSequence('TODO DONE'), null);          // no pipe
   assert.equal(c.parseSequence('A | B | C | D'), null);      // three pipes (four bands) — too many
@@ -8074,6 +8089,20 @@ test('boardLanes — lanes follow the owning sequence order, done flags, no-stat
   assert.deepEqual(lanes.map(l => l.kw), ['PLANNED', 'ACTIVE', 'CLEARED', null]);
   assert.deepEqual(lanes.map(l => l.done), [false, false, true, false]);
   assert.deepEqual(lanes.map(l => l.rows), [[2], [1], [3], [4]]);
+  // a no-held sequence flags no held lanes
+  assert.deepEqual(lanes.map(l => l.held), [false, false, false, false]);
+});
+
+test('boardLanes — a held-band sequence flags its held lane (UXP-161)', () => {
+  const SEQ = [{ key: 'flow', name: 'Flow', states: ['BACKLOG', 'DOING', 'BLOCKED', 'SHIPPED'], heldFrom: 2, doneFrom: 3 }];
+  const model = { aligns: [null, null], rows: [
+    ['Task', 'State'],
+    ['a', 'DOING'], ['b', 'BLOCKED'], ['c', 'SHIPPED'],
+  ] };
+  const { lanes } = host(c.boardLanes(host(model), 1, SEQ));
+  assert.deepEqual(lanes.map(l => l.kw), ['BACKLOG', 'DOING', 'BLOCKED', 'SHIPPED']);
+  assert.deepEqual(lanes.map(l => l.held), [false, false, true, false]);   // only BLOCKED is held
+  assert.deepEqual(lanes.map(l => l.done), [false, false, false, true]);   // only SHIPPED is done
 });
 
 test('boardLanes — lastRow excludes a Calculate footer; no recognized values falls back to the default sequence', () => {
