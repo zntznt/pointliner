@@ -1459,35 +1459,34 @@ base-view finding is coherence polish or discoverability copy.
 - **Rule:** P2 (a control shouldn't advertise an action it will punt).
 - **Resolved (softened, conformant):** `mtViewSwitcherHtml` now dims (`.mt-view-btn-dim`, opacity .45) + `aria-disabled`s + `title`s Board when no `status` column exists and Calendar when no `date` column exists. The button is still clickable (the click fires the explaining flashHint — the catch stays), and no role is inferred (a role is a hint the user adds, not a schema — vision §3). Verified in-browser: with a status column, Board is enabled and Calendar is dimmed.
 
-### UXP-170 ☐ The estimate pill shares the width-resize glyph fa-left-right (design-language §1) 🟢  [Batch 5]
+### UXP-170 ☐ The estimate pill shares the width-resize glyph fa-left-right (design-language §1) 🟢  [Batch 5] (DEFERRED — github-egress-blocked glyph rebuild)
 - **Problem:** §1 records that `fa-left-right` was narrowed to "the horizontal-span concept only" when refile moved to `fa-arrow-right-arrow-left`, but estimate never got the same treatment — the width control and the uncertainty pill still share one glyph (5 est sites). A live contradiction of a locked Decision-corollary. Harm minimal (icon aria-hidden, labels correct), P5-drift.
 - **Rule:** design-language §1 (one glyph per concept).
 - **Target:** give estimate its own identity glyph (a wave/tilde/distribution mark matching the ∿/≈ fallbacks) and retire `fa-left-right` from all five est sites, the move refile got. Needs the FA subset rebuild (`tools/build-fa-subset.py`) — **github-egress-blocked in this sandbox**, so DEFER the glyph swap to a networked machine; the fallbacks keep it legible meanwhile.
 
-### UXP-171 ☐ No is:held / is:blocked search operator (P2, qx-search) 🟢  [Batch 5]
-- **Problem:** the is: family has is:overdue/failing/leaf/broken… but no is:held. A planner can only find blocked work by the exact keyword, which breaks with a custom held state. Verification tempered it: held-ness IS surfaced seq-agnostically in the agenda Waiting tier, and `#waiting`/`state:waiting` work per-keyword — what's absent is a SEQ-AGNOSTIC held filter in search (a convenience mirror), hence low.
+### UXP-171 ◐ No is:held / is:blocked search operator (P2, qx-search) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** the is: family had no seq-agnostic held filter, so blocked work could only be found by the exact keyword (breaks with a custom held state).
 - **Rule:** P2 (a structural axis the is: family should expose, like is:done).
-- **Target:** add `held` to the is: regex + a `termMatchesNode` branch reading the leading keyword via `keywordIsHeld(km[1], seqs)` — the structural analog of is:done. Not new syntax (a new is: value, like is:passing). Document in the ?-panel Search row + legend.
+- **Resolved:** added `held` to the is: regex + a `termMatchesNode` branch reading the leading keyword via `keywordIsHeld(km[1], seqs)` — the structural analog of is:done, seq-agnostic (matches the built-in WAITING and a custom BLOCKED alike). Not new syntax (a new is: value). Legend + `?`-panel + `guide/features.md` updated. Pinned. Verified in-browser: `is:held` matches #WAITING and #BLOCKED, not #TODO/#DONE.
 
-### UXP-172 ☐ Cross-document links render as dead "link"-captioned pills in a self-contained export (P4, base-views) 🟢  [Batch 5]
-- **Problem:** a self-contained HTML export embeds only the current doc, so a `[[docId#nodeId|label]]` cross-doc link can't resolve and renders `.node-link-broken`; the empty-label live-title form collapses `capText` to the literal "link" — a cluster of identical dead pills (the same-doc path shows the node id, never "link"). Broken NAVIGATION is sanctioned (a single-file snapshot can't reach another notebook); only the caption + the silent notice are open.
+### UXP-172 ◐ Cross-document links render as dead "link"-captioned pills in a self-contained export (P4, base-views) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** a broken cross-doc link with an empty label and no resolvable title collapsed `capText` to the literal "link" — a cluster of identical dead pills.
 - **Rule:** P4 (a dead pill should name itself, not read "link").
-- **Target (additive):** give `renderCrossLinkPill`'s broken fallback a doc-qualified caption instead of bare "link"; optionally one conditional line on the snapshot notice when the doc has cross-doc tokens. AVOID freezing the caption into `node.text` (toOpml serializes it live — mutating corrupts the open doc); operate only on the exported OPML string if at all.
+- **Resolved (additive):** `renderCrossLinkPill`'s caption fallback is now the DOC NAME ("in <doc>") when available, else "another note" — never bare "link". Nothing written to `node.text` (avoided the toOpml-live-serialization trap). Verified in-browser: a broken cross-doc pill with no label/index reads "another note", not "link".
 
-### UXP-173 ☐ Calendar out-of-month cells fade real point titles below the readable floor (design-language §3) 🟢  [Batch 5]
-- **Problem:** `.cv-out{opacity:.45}` fades the whole spillover cell including its `.cv-chip` point titles (already `.76em`), pushing content under the contrast floor (§3: de-emphasize by role, never by opacity fade). BUT verification: the identical (harsher .35) whole-cell fade already ships unflagged on the mature agenda calendar (`.agc-cell.oom`), so this is an accepted spillover idiom, not novel — low, and OOM cells are secondary context.
+### UXP-173 ◐ Calendar out-of-month cells fade real point titles below the readable floor (design-language §3) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** a whole-cell `opacity` fade on an out-of-month calendar cell dragged its point-title chips under the contrast floor (§3: de-emphasize by role, not by opacity fade).
 - **Rule:** design-language §3 (no fade under the floor).
-- **Target (if addressed, fix BOTH calendars for P5 coherence):** scope the fade to the day-number role (`.cv-out .cv-dom` / `.agc-cell.oom .agc-dom` → `color:var(--muted)`), leave the item chips at `--fg`.
+- **Resolved (both calendars for P5 coherence):** replaced the whole-cell `opacity` on `.cv-out` and `.agc-cell.oom` with a recessed cell BACKGROUND (de-emphasis by role) + a `.6` opacity on just the day number (`.cv-dom`/`.agc-dom`). The point-title chips stay full-contrast `--fg`. Verified in-browser: cell opacity 1 (recessed bg), day number .6, chip color `--fg`.
 
-### UXP-174 ⊘ due:week / due:month are forward-only (exclude overdue) (DECISION — recorded, likely no-change) 🟢
-- **Problem:** `due:week` matches `[today, today+7]`, excluding overdue; the agenda Week view gathers overdue into an "Earlier" column, so the two surfaces treat "this week" differently.
-- **Why NOT a straight fix:** verification — these are deliberately different tools. The agenda is a fixed view; search operators are composable atoms, and `due:week | due:overdue` (QX-5 OR) reproduces the Week slice. An unbounded-below window would DESTROY that composability and overlap due:overdue. The ?-panel copy ("due within the next 7/30 days") is already literally accurate.
-- **If anything (owner call):** an OPTIONAL one-line clarity note that due:week is forward-only and pairs with `| due:overdue`, in the ?-panel row or concept guide. Weak enough to be a legitimate "no change."
+### UXP-174 ◐ due:week / due:month are forward-only (exclude overdue) (DECISION — kept forward-only, added a clarity note) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Decision:** kept `due:week`/`due:month` forward-only (the composable-atom behavior is correct — an unbounded window would break `due:week | due:overdue` and overlap due:overdue).
+- **Resolved:** took only the optional clarity touch — the legend + `?`-panel rows now read "due within the next 7 / 30 days, not overdue (add `| due:overdue` to include past-due)", so the forward-only behavior is stated at the door. No behavior change.
 
-### UXP-175 ☐ Swing-oracle "but" results tint by Yes/No prefix only (experience, older surface) 🟢  [Batch 5]
-- **Problem:** for the swing oracle (`Yes, and | Yes | Yes, but | No, but | No | No, and`), "No, but" (a hopeful negative) gets the muted gr-no plate and "Yes, but" (a complication) gets the positive gr-yes plate — the tint points the wrong way on the two spicier draws the swing oracle exists to produce. The code comment concedes the tint is a whisper on full-contrast ink, so a minor rough edge.
+### UXP-175 ◐ Swing-oracle "but" results tint by Yes/No prefix only (experience, older surface) 🟢  [Batch 5] (RESOLVED pending merge)
+- **Problem:** "Yes, but" (a complication) got the positive plate and "No, but" (a hopeful negative) got the muted plate — the tint pointed the wrong way on the two spicier swing draws.
 - **Rule:** experience/P5 (the whisper shouldn't mislead).
-- **Target (decision, not drift):** either skip the tint when `g.result` contains a comma (tint only the plain Yes/No arms — harmless since plain arms carry no comma), or keep as-is and record the decision. Do NOT invent a third tint or a "but" sigil.
+- **Resolved:** `renderGrammarPill` now skips the valence tint when `g.result` contains a comma, so only the PLAIN Yes/No arms tint (they never carry a comma) and the "…, but"/"…, and" twists stay neutral rather than mislead. No third tint, no new sigil. Verified in-browser: plain Yes/No tint, "Yes, but"/"No, but" don't.
 
 ### Closing order (Review 4)
 
