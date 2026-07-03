@@ -112,6 +112,8 @@ Turn the outline into a lightweight planner.
   ([tables](writing-and-formatting.md#tables))
 - **Calendar view.** A base with a Date column shows its rows on a month grid, undated rows
   counted below, never lost. ([tables](writing-and-formatting.md#tables))
+- **Collapse and cap a base.** In the outline, collapse a base to one line or cap how many rows it
+  shows (5/10/20/all); a "zoom in for more" line reveals the rest. ([tables](writing-and-formatting.md#tables))
 
 ## Linking and connecting notes
 

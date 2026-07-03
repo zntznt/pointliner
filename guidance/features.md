@@ -383,7 +383,17 @@ Implemented:
   `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
   marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
   ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
-  grouping until real queries demand it). **BV-3 added the calendar view**:
+  grouping until real queries demand it). **BC added inline collapse + a row cap**:
+  a base can be collapsed (reuses `node.collapsed`) or capped (`node.baseRows`, `_baserows`
+  OPML) in the OUTLINE view only. Pure core `baseInlineView(collapsed, baseRows,
+  totalDataRows, isZoomed)` returns `{collapsed, shown, clipped, hidden}`: when the base is
+  the zoomed item (`focusedId === node.id`) everything shows; a collapsed base renders just
+  the chrome + a `.mt-base-more` zoom-in footer; a capped one clamps the table body (footer
+  total row always kept) and adds the "zoom in for N more" footer. Controls live in
+  `mtBaseChromeHtml`'s left cluster (a `.col-chevron` collapse toggle + a `.mt-base-rows`
+  All/5/10/20 menu via `showBaseRowsMenu`), hidden when zoomed; the switcher is also hidden
+  when collapsed. `mtCollapsedHost` gives board/cards/calendar the same collapsed strip.
+  **BV-3 added the calendar view**:
   `{kind:'calendar', dateBy}` (first date-role column, guarded); pure `calBaseItems`
   (strict parseDueDate, undated rows surfaced, never dropped) feeding the agenda's
   `agendaMonthCells`; `_calMonthByNode` session anchor; nav/Today buttons; chips via

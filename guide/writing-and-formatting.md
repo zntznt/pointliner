@@ -63,7 +63,13 @@ Once a column is marked **Status**, the base can show itself as a **board**: cli
 strip above the grid and each state becomes a lane, each row a card (the other columns show on the
 card, dates as chips). Click a card (or press `Enter` on it) to move it to another lane, or drag it
 with the mouse; the move writes the state back into the table, so switching back to **Table** shows
-the same data. A board sourced from a [query base](getting-around.md#query-bases) is read-only. **Cards** is the third
+the same data. A board sourced from a [query base](getting-around.md#query-bases) is read-only.
+
+In the outline (when you are not zoomed into it), a base can be **collapsed** to a single line
+with the chevron in its header strip, and its **row count capped** (the **Rows** control: All, 5,
+10, or 20) so a long base does not stretch the page. When rows are hidden, a **Zoom in to see N
+more** line appears at the bottom; click it (or zoom into the base) to see everything. Collapse and
+the cap only apply in the outline; a zoomed-in base always shows in full. **Cards** is the third
 view: every row becomes a card in a grid, with the first column as the title and images as covers.
 A column of `{pick | one | of these}` pills becomes a deck of generative cards, each re-rollable
 with a click. With a **Date** column, the **Calendar** view places each row on a month
