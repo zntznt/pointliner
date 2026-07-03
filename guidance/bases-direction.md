@@ -87,8 +87,14 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   cell (the §3a text-is-truth law); a query base's board renders read-only (write-through stays
   parked, base-views-vision §0.4). **Still below the line:** cards/gallery/list/calendar views.
 
+- **The cards view (BV-2) — moved above the line 2026-07-02 (owner call).** A reading view:
+  every data row is a card in a responsive grid, first column the title, the rest its fields,
+  painted through the role-aware cell renderer so chips, pills, and images compose (a per-cell
+  grammar pill makes a re-rollable generative deck; an image paints as the cover). No group field,
+  no editing gesture; read-only by construction on both authored and query bases.
+
 **Named but DEFERRED (vision, not now — do not build on spec):**
-- Other **views** (cards/gallery, list, calendar).
+- Other **views** (list, calendar).
 - **Typed fields beyond the FR-1 display roles** (checkbox/select-with-editor as column *types*,
   validation, per-role editors).
 - **Filters / sorts as data operations**, saved views.

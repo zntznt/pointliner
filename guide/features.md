@@ -107,6 +107,9 @@ Turn the outline into a lightweight planner.
 - **Board view.** Show any base with a Status column as a kanban board: your sequence's states
   become the lanes, rows become cards, and moving a card writes the state back into the table.
   ([tables](writing-and-formatting.md#tables))
+- **Cards view.** Show any base as a responsive card grid: rows become cards, images become
+  covers, and per-cell generator pills make a re-rollable deck.
+  ([tables](writing-and-formatting.md#tables))
 
 ## Linking and connecting notes
 

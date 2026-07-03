@@ -805,6 +805,9 @@ search string; renders matching points as links, capped +N more, recomputed each
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`
 door + typed `{query: expr}` promotion + `editQuery`; atomic in edit mode; `_query` OPML
 round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB) ·
+Cards view (BV-2: {kind:'cards'}, buildCardsWidget, rows as cards in a responsive grid
+via mtCellHtml; the cell-pill gate widened to .bv-card/.gv-card so per-cell pills
+re-roll inside cards; read-only on authored + query bases; images paint as covers) ·
 Base views + the board (BV-1: node.view={kind:'board',groupBy} + _view OPML, absent =
 table; the switcher fills the reserved .mt-base-views strip (text-only buttons, no new
 FA glyphs); buildTableWidget forks to buildBoardWidget; pure core boardLanes (owning-
