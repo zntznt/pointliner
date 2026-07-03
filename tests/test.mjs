@@ -7120,6 +7120,22 @@ test('tab switch persists the outgoing folder-backed doc before adopting the new
   // newWorkspaceDoc gets the same flush-not-discard treatment for a folder-backed doc.
   const nw = _src.slice(_src.indexOf('async function newWorkspaceDoc'), _src.indexOf('async function newWorkspaceDoc') + 700);
   assert.ok(nw.includes('safeWriteOpml(workspaceDir, fileName'), 'newWorkspaceDoc must flush the outgoing folder doc');
+  // UXP-165: adoptDoc resets the snapshot throttle on a doc swap so the new doc gets a fresh window.
+  const ad2 = _src.slice(_src.indexOf('function adoptDoc'), _src.indexOf('function adoptDoc') + 1400);
+  assert.ok(ad2.includes('_lastSnapshotAt = 0'), 'adoptDoc must reset the snapshot throttle on doc swap (UXP-165)');
+});
+
+test('Restore earlier version is doc-scoped: only the current document\'s snapshot (UXP-165, src pins)', () => {
+  // the shared gate parses the prev snapshot and compares its root.docId to the live root.docId,
+  // so a snapshot rolled while editing another doc is neither offered nor applied.
+  const gate = _src.slice(_src.indexOf('function earlierVersionForCurrentDoc'), _src.indexOf('function earlierVersionForCurrentDoc') + 700);
+  assert.ok(gate.includes('d.root.docId') && gate.includes('root.docId'), 'the gate must compare snapshot docId to the live doc');
+  assert.ok(gate.includes('!== root.docId') || gate.includes('=== root.docId'), 'the gate must guard on a docId MATCH');
+  // both hasEarlierVersion and restoreEarlierVersion route through the one gate (no second raw read).
+  assert.ok(_src.includes('function hasEarlierVersion() { return earlierVersionForCurrentDoc() !== null; }'),
+    'hasEarlierVersion must delegate to the doc-scoped gate');
+  const rest = _src.slice(_src.indexOf('async function restoreEarlierVersion'), _src.indexOf('async function restoreEarlierVersion') + 500);
+  assert.ok(rest.includes('earlierVersionForCurrentDoc()'), 'restore must apply only the current doc\'s snapshot');
 });
 
 // flashError was referenced by ~10 catch blocks but never defined — an error path threw a

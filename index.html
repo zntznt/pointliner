@@ -17584,6 +17584,11 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   // doc's last edits never reached disk. Callers that need the outgoing doc persisted must
   // flush BEFORE calling adoptDoc (switchWorkspaceDoc does). This just prevents a misfire.
   clearTimeout(autosaveTimer);
+  // UXP-165: reset the snapshot throttle on a doc swap so the NEW doc gets its own snapshot window
+  // promptly (rather than inheriting the outgoing doc's cooling timer). The docId gate on restore is
+  // what prevents a cross-doc restore; this just makes each doc's rolling snapshot timely. (Declared
+  // with the autosave block below; adoptDoc only ever runs post-boot, so it's initialized by then.)
+  _lastSnapshotAt = 0;
   // UXP-126: adopting any real doc (an open/new/reopened/swapped one) means the first-run Examples
   // are done — stop suppressing autosave and drop the banner. The examples adoption itself sets
   // _adoptingExamples so it doesn't clear its own flag.
@@ -22063,29 +22068,38 @@ function applyAutosaveData(data) {
   return true;
 }
 
-// UXP-147: is there a rolling pre-overwrite snapshot to restore? (a valid prev slot, distinct doc)
-function hasEarlierVersion() {
+// UXP-147/165: is there a rolling pre-overwrite snapshot to restore FOR THE CURRENT DOCUMENT? The
+// snapshot's own root.docId is its identity, so a snapshot rolled while editing doc A is not offered
+// (or applied) while doc B is open — restoring across documents would hand back the wrong doc and,
+// worse, a later Ctrl+S could write A's content into B's file. Returns the parsed snapshot data when
+// it matches, else null (used by both hasEarlierVersion and restoreEarlierVersion, one parse each).
+function earlierVersionForCurrentDoc() {
   try {
     const raw = localStorage.getItem(AUTOSAVE_PREV_KEY);
-    if (!raw) return false;
+    if (!raw) return null;
     const d = JSON.parse(raw);
-    return !!(d && d.root);
-  } catch (_) { return false; }
+    if (!d || !d.root) return null;
+    // Only offer a snapshot whose docId matches the live doc. A legacy snapshot with no docId (from
+    // before this stamp) is treated as non-matching — safer to skip than to risk a cross-doc restore.
+    if (!d.root.docId || d.root.docId !== root.docId) return null;
+    return d;
+  } catch (_) { return null; }
 }
+function hasEarlierVersion() { return earlierVersionForCurrentDoc() !== null; }
 
 // UXP-147: swap the live doc for the pre-overwrite snapshot, behind the same confirm New/Open use so
 // it never silently discards work. The current state stays in AUTOSAVE_KEY, so a restore is itself
 // undoable by restoring again (the snapshot write on the next autosave keeps them distinct). Returns
 // true if a version was restored.
 async function restoreEarlierVersion() {
-  if (!hasEarlierVersion()) { flashHint('No earlier version to restore'); return false; }
+  const data = earlierVersionForCurrentDoc();   // UXP-165: only this document's snapshot
+  if (!data) { flashHint('No earlier version to restore'); return false; }
   if (unsavedToDisk() && !await openConfirmDialog({
     title: 'Restore earlier version?',
     message: 'This replaces the current document with the last auto-saved snapshot. Changes not saved to a file will be replaced.',
     confirmLabel: 'Restore', cancelLabel: 'Keep current',
   })) return false;
   try {
-    const data = JSON.parse(localStorage.getItem(AUTOSAVE_PREV_KEY));
     if (!applyAutosaveData(data)) { flashHint('Could not read the earlier version'); return false; }
     markDirty();                 // the restored state differs from disk; let it re-autosave (and re-snapshot)
     render();
