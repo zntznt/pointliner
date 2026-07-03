@@ -52,6 +52,13 @@ For a table you can **click into and edit cell by cell** (or add formulas), type
 Static tables can also carry a spreadsheet formula line; see
 [table formulas](computing-numbers.md#table-formulas-briefly).
 
+A base column can also be given a **display role** from its Column menu (**Show as**): a **Status**
+column renders known state keywords as colored chips (including states from your own
+[sequences](tasks-and-organizing.md#sequences), so `PLANNED ACTIVE | CLEARED` becomes chips with the
+done side muted), a **Date** column shows each date as a color-coded urgency chip, and a **Number**
+column right-aligns and formats. The cell text stays plain (edit it and you see the raw value); the
+role only changes how it is shown, and a value that does not fit its role just renders as text.
+
 ## Footnotes, links, and images
 
 Annotate a claim without cluttering the main text, link out to a source, or embed an image.

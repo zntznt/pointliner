@@ -1358,6 +1358,15 @@ dead-end states** that confirm a non-event without teaching the next step.
 - **Doors (P2):** the `@ Query` insert command (a dialog with a live match-count preview), typed `{query: expr}` promotion on exit (`queryParts`/`promoteBraceBody`), and edit via the pill's pencil or body-click (`editQuery`); a result link click navigates (reuses the `.node-link`/`followNodeLink` path). Atomic in edit mode (like seq). OPML round-trips via `_query`; pruned by `pruneQueries`.
 - **Pins:** `queryRows` (cross-tree match, host exclusion, empty query, cap+total, full-grammar compose) and `queryParts` (sniff, empty/keywordless rejection, classify→artifact). Live-verified: render, result navigation, OPML round-trip, self-reference exclusion, typed promotion, empty state.
 
+### FR-1 ✓ Field roles, display-first (SHIPPED 2026-07-02): status/date/number column roles
+- The keystone slice under the base-views-vision §0b thesis, generative-first: `status` reuses the
+  sequence machinery (a custom state set becomes colored chips in a column, the future kanban's
+  lanes), `date` reuses the urgency chips, `number` the math formatting. Display hints only over
+  the untouched cell string; editors and further roles stay below the line (bases-direction §4).
+- Mechanism: `node.colRole` (index-aligned like `colW`, `_colrole` OPML), the paint wrapper
+  `mtCellHtml(node, raw, c)` swapped in at every data-cell paint site, a "Show as" section in the
+  Column menu, and the three column ops keeping the array aligned.
+
 ### QP-2 ✓ Bases as queries: Phase A SHIPPED (owner sign-off 2026-07-02, thin-slice-first under the base-views-vision §0b mission thesis; read-only query base, pure core queryTableRows, memoized qbaseModel, /querybase door; Phases B/C remain below the line)
 - **What:** the base-form sibling of QP-1. A base whose rows are not hand-entered but produced by a query over the document, with each column projecting one field of the matched points, rendered in the base's tabular form. Reuses the `queryRows` lineage for the row set; the base layer supplies the columns/display.
 - **Full design:** `guidance/query-base-proposal.md` (the sign-off artifact). Key findings: a base's rows are serialized pipe-table markdown in `node.text`, not child nodes, so a query base's foreign-node rows invert cell ownership; the clean seam is feeding `buildTableWidget` a computed model in place of `mtModel(node)`. Proposed as three phases (A read-only MVP via a new pure `queryTableRows` core, B cap + live identity, C optional write-through), recommended as a MODE of the existing base, not a new type.
