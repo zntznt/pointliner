@@ -1439,25 +1439,25 @@ base-view finding is coherence polish or discoverability copy.
 - **Rule:** P1 (a restore/save must not cross documents).
 - **Resolved:** the snapshot's own `root.docId` (already embedded in the rolled autosave payload) is its identity. A new shared gate `earlierVersionForCurrentDoc()` parses the prev slot and returns it ONLY when `d.root.docId === root.docId` (a legacy snapshot with no docId is treated as non-matching — safer to skip). Both `hasEarlierVersion` and `restoreEarlierVersion` route through it, so a cross-doc snapshot is neither offered nor applied. `adoptDoc` also resets `_lastSnapshotAt = 0` on a doc swap so each doc gets a fresh snapshot window. No new storage key. 2 pins (the doc-scope gate + the adoptDoc reset). Verified in-browser: same-doc offers the snapshot; cross-doc and no-docId legacy do NOT.
 
-### UXP-166 ☐ The base view switcher's active button ignores the app's active-toggle tint (P1/P5, design-language §4) 🟢  [Batch 4]
-- **Problem:** `.mt-view-btn.on` uses a neutral gray (`color:var(--fg);background:var(--cbg);border-color:var(--bdr)`), but §4 fixes ONE active-toggle grammar (16% accent mix + accent ink + 35% accent border) used app-wide — including the base's OWN `.mt-align-bar button.on` one strip below. So within a single base widget two active-toggle languages. `.doc-tab.active` and `.guide-nav-btn.active` already wear the accent recipe, refuting any "segmented controls differ" defense.
+### UXP-166 ◐ The base view switcher's active button ignores the app's active-toggle tint (P1/P5, design-language §4) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** `.mt-view-btn.on` used a neutral gray while §4 fixes one active-toggle recipe (accent mix + accent ink + accent border), so the switcher and the base's own alignment bar spoke two languages.
 - **Rule:** design-language §4 (one active-toggle recipe).
-- **Target:** replace the `.mt-view-btn.on` body with the standard recipe, copied verbatim from the adjacent `.mt-align-bar button.on`.
+- **Resolved:** `.mt-view-btn.on` now uses the standard recipe (`color-mix(--acc 16%)` bg, `--acc` ink, `color-mix(--acc 35%)` border), matching `.mt-align-bar button.on`. Verified in-browser: the active button computes to `--acc` tint + ink.
 
-### UXP-167 ☐ Board/calendar cards read as recessed wells in dark mode (design-language §3) 🟢  [Batch 4]
-- **Problem:** `.bv-card`/`.cv-chip` use `background:var(--bg)` inside a `--cbg` lane/cell. In dark mode `--cbg` is LIGHTER than `--bg`, so a card is darker than its container — the recessed inversion §3 names as the regression to watch ("elevation in dark mode = lighter than the canvas"). A kanban card is a raised, draggable object read recessed. Light mode is fine; the card keeps a border + focus ring, so whisper-level.
+### UXP-167 ◐ Board/calendar cards read as recessed wells in dark mode (design-language §3) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** `.bv-card`/`.cv-chip` used `--bg` inside a `--cbg` lane/cell; in dark mode `--cbg` is lighter than `--bg`, so a card read recessed (the inversion §3 warns against).
 - **Rule:** design-language §3 (dark-mode elevation).
-- **Target:** give the cards `--hbg` (the brighter elevation token), lanes/cells stay `--cbg`. Be honest: dark-mode `--hbg` vs `--cbg` is only a ~1.2-luminance delta, so the "rise" stays carried by the border, but the inversion is gone; light mode separates cleanly. Re-run the §6 both-modes screenshot on board + calendar.
+- **Resolved:** the cards now use `--hbg` (the elevation token); lanes/cells stay `--cbg`. Verified in-browser exactly as the target predicted: DARK mode closes the gross recession (card was lum 25 vs lane 36 → now lum 35 vs 36, essentially level, the border carries the rise); LIGHT mode separates cleanly (hbg 250 vs cbg 233, a clean +17). `--hbg` is the sanctioned elevation token, so this is conformant even though dark mode's own token ladder is tight.
 
-### UXP-168 ☐ Duplicate `.mt-base-views` CSS rule with conflicting gap (maintainability) 🟢  [Batch 4]
-- **Problem:** `.mt-base-views` is declared twice (`gap:2px` in the BV-1 switcher block, `gap:4px` in a reserved-strip stub); source order makes the stub win, so the switcher-block gap is dead. Nothing renders wrong, but it's a maintenance trap, and the stub comment still says "Empty for now" though the switcher landed there.
+### UXP-168 ◐ Duplicate `.mt-base-views` CSS rule with conflicting gap (maintainability) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** `.mt-base-views` was declared twice with conflicting gaps; the stub won by source order, so the documented switcher-block rule was dead.
 - **Rule:** predictability/maintainability (a dead same-specificity rule).
-- **Target:** delete one declaration, keep a single `.mt-base-views` rule in the switcher block; drop the stale stub + correct the "Empty for now" comment.
+- **Resolved:** deleted the duplicate (kept the single canonical rule in the BV-1 switcher block, `gap:2px`) and corrected the "Empty for now" base-header comment (the switcher landed there). One `.mt-base-views` declaration remains (confirmed by grep).
 
-### UXP-169 ☐ Board/Calendar switcher buttons advertise a task they punt (P2, base-views) 🟢  [Batch 4]
-- **Problem:** the switcher always renders all four buttons, but Board/Calendar refuse (a flashHint) until a column carries a Status/Date role. Verification: the flash-and-bail IS the sanctioned model (base-views-vision.md §3 locks "a role is a hint you add, not a schema you satisfy"). So do NOT auto-infer/pick roles (that would contradict a locked Decision) and do NOT reach into the deferred per-role-editor.
+### UXP-169 ◐ Board/Calendar switcher buttons advertise a task they punt (P2, base-views) 🟢  [Batch 4] (RESOLVED pending merge)
+- **Problem:** the switcher always rendered all four buttons, but Board/Calendar punted (a flashHint) until a Status/Date column role existed.
 - **Rule:** P2 (a control shouldn't advertise an action it will punt).
-- **Target (reframed, conformant):** soften the affordance — dim / `aria-disabled` Board and Calendar until an eligible column exists, so the control stops advertising a task it punts. Keep the flashHint as the catch.
+- **Resolved (softened, conformant):** `mtViewSwitcherHtml` now dims (`.mt-view-btn-dim`, opacity .45) + `aria-disabled`s + `title`s Board when no `status` column exists and Calendar when no `date` column exists. The button is still clickable (the click fires the explaining flashHint — the catch stays), and no role is inferred (a role is a hint the user adds, not a schema — vision §3). Verified in-browser: with a status column, Board is enabled and Calendar is dimmed.
 
 ### UXP-170 ☐ The estimate pill shares the width-resize glyph fa-left-right (design-language §1) 🟢  [Batch 5]
 - **Problem:** §1 records that `fa-left-right` was narrowed to "the horizontal-span concept only" when refile moved to `fa-arrow-right-arrow-left`, but estimate never got the same treatment — the width control and the uncertainty pill still share one glyph (5 est sites). A live contradiction of a locked Decision-corollary. Harm minimal (icon aria-hidden, labels correct), P5-drift.

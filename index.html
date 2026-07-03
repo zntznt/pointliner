@@ -462,8 +462,9 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-base-views{display:flex;align-items:center;gap:2px;flex:1}
 .mt-view-btn{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 .mt-view-btn:hover{color:var(--fg);background:var(--cbg)}
-.mt-view-btn.on{color:var(--fg);background:var(--cbg);border-color:var(--bdr)}
+.mt-view-btn.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}/* UXP-166: the one active-toggle recipe (DL §4), matching .mt-align-bar button.on one strip below */
 .mt-view-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.mt-view-btn-dim{opacity:.45}/* UXP-169: Board/Calendar with no eligible column — dimmed so it stops advertising a view it punts; still clickable (the click flashHints how to enable it) */
 /* board view (BV-1): lanes + cards, tokens only */
 .bv-lanes{display:flex;gap:8px;overflow-x:auto;padding:4px 0 6px;align-items:flex-start;scrollbar-width:thin}
 .bv-lane{flex:0 0 210px;min-width:0;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:6px}
@@ -472,7 +473,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .bv-lane-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .bv-lane-count{font-size:.78em;color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
 .bv-lane-none{font-size:.82em;color:var(--muted);font-weight:600}
-.bv-card{background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:6px 8px;margin-bottom:6px;cursor:pointer;transition:border-color .12s}
+.bv-card{background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:6px 8px;margin-bottom:6px;cursor:pointer;transition:border-color .12s}/* UXP-167: --hbg (brighter sheet) so a card rises above its --cbg lane in dark mode, not recessed (DL §3) */
 .bv-card:last-child{margin-bottom:0}
 .bv-card:hover{border-color:var(--acc)}
 .bv-card:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
@@ -494,7 +495,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .cv-out{opacity:.45}
 .cv-today-cell{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
 .cv-dom{font-size:.72em;color:var(--muted);font-variant-numeric:tabular-nums}
-.cv-chip{font-size:.76em;line-height:1.35;background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:0 4px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cv-chip{font-size:.76em;line-height:1.35;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:0 4px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}/* UXP-167: --hbg so a calendar chip rises above its --cv-cell in dark mode (DL §3) */
 .cv-more{font-size:.72em;color:var(--muted);margin-top:2px}
 .cv-undated{font-size:.8em;color:var(--muted);padding:4px 2px}
 /* cards view (BV-2): a responsive reading grid */
@@ -563,9 +564,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* column operations panel (the consolidated home for all column ops) */
 #mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:var(--sh-1);outline:none}
 #mt-colpanel.on{display:block}
-/* base header bar: a reserved strip atop the base for future whole-base controls
-   (e.g. a view switcher in .mt-base-views). Empty for now — whole-base ops live on
-   the base bullet's menu — so it collapses to nothing until something is added. */
+/* base header bar: a strip atop the base for whole-base controls. It now carries the BV-1 view
+   switcher (Table/Board/Cards/Calendar) in .mt-base-views; other whole-base ops live on the base
+   bullet's menu. Collapses to nothing on a table-only base with no switcher yet. */
 .mt-baseheader{display:flex;align-items:center;justify-content:space-between;gap:8px}
 /* base outline controls (collapse + row cap) + the zoom-in footer (BC) */
 .mt-base-left{display:flex;align-items:center;gap:4px}
@@ -581,7 +582,8 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-base-more:hover{color:var(--fg);border-color:var(--acc)}
 .mt-base-more:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
 .mt-base-more i{font-size:.9em;color:color-mix(in srgb,var(--acc) 70%,var(--muted))}
-.mt-base-views{display:flex;align-items:center;gap:4px;flex:1}
+/* UXP-168: the duplicate .mt-base-views (gap:4px) that once lived here is gone — the single canonical
+   rule is in the BV-1 switcher block above (gap:2px). */
 .mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:6px 10px 2px}
 .mt-col-section.mt-col-sep{border-top:1px solid var(--bdr);margin-top:4px;padding-top:6px}
 .mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;gap:12px;outline:none}
@@ -6291,8 +6293,18 @@ function mtFocusCell(node, r, c) {
 // icons; a glyph missing from the FA subset paints blank).
 function mtViewSwitcherHtml(node) {
   const kind = node.view?.kind || 'table';
-  const btn = (k, label) =>
-    `<button type="button" class="mt-view-btn${kind === k ? ' on' : ''}" data-view="${k}" aria-pressed="${kind === k}">${label}</button>`;
+  // UXP-169: Board needs a Status column, Calendar a Date column (mtSetView flashHints the catch).
+  // Dim + aria-disabled the button until an eligible column exists, so the control stops advertising
+  // a view it will punt. The click still works (it fires the explaining flashHint), so this softens
+  // the affordance without inferring a role — a role is a hint the user adds, not a schema (vision §3).
+  const roles = node.colRole || [];
+  const ready = { board: roles.includes('status'), calendar: roles.includes('date') };
+  const btn = (k, label) => {
+    const dimmed = (k === 'board' || k === 'calendar') && !ready[k];
+    const need = k === 'board' ? 'Mark a column as Status to use Board' : 'Mark a column as Date to use Calendar';
+    return `<button type="button" class="mt-view-btn${kind === k ? ' on' : ''}${dimmed ? ' mt-view-btn-dim' : ''}"`
+      + ` data-view="${k}" aria-pressed="${kind === k}"${dimmed ? ` aria-disabled="true" title="${need}"` : ''}>${label}</button>`;
+  };
   return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}${btn('cards', 'Cards')}${btn('calendar', 'Calendar')}</div>`;
 }
 
