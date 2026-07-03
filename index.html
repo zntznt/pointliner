@@ -871,7 +871,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .query-more{padding:2px 10px 2px 22px;font-size:.82em;color:var(--muted);font-style:normal}
 .query-empty{display:block;padding:5px 10px;font-size:.86em;color:var(--muted)}
 .query-pill.query-bad{border-style:dashed;color:var(--del);cursor:default}
-.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 5px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback so out-of-range letters ([#D]+, org A-E importers) still read as a priority chip; the a/b/c variants override with their bad/warn/info hues */
+.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 5px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;cursor:pointer;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback for out-of-range letters; the a/b/c variants override. UXP-177: cursor:pointer — it's clickable (opens the state/priority picker) like .todo-state */
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .todo-prio-c{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
@@ -3164,8 +3164,12 @@ function renderContentHTML(node) {
       // done-states of ANY sequence get the muted "done" look (DONE keeps its own class)
       const doneCls = keywordIsDone(keyword) ? ' todo-state-isdone' : '';
       const heldCls = !doneCls && keywordIsHeld(keyword) ? ' todo-state-isheld' : '';   // UXP-161: held reads muted
-      const badge = `<span class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}">${keyword}</span>`;
-      const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}">[#${priority}]</span>` : '';
+      // UXP-177: the badge is a real click-to-open control (→ showTodoPicker), so it carries the pill
+      // a11y kit — role/tabindex/name/title — and gets an Enter/Space keydown twin in the content
+      // handler (beside its mousedown, caret invariant). tabindex="-1" = programmatic/AT focus, as
+      // every peer inline chip uses.
+      const badge = `<span class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" tabindex="-1" aria-label="State: ${keyword}. Change state or priority" title="Change state or priority">${keyword}</span>`;
+      const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" tabindex="-1" aria-label="Priority ${priority}. Change state or priority" title="Change state or priority">[#${priority}]</span>` : '';
       const bodyHtml = mdToHtml(body || '');
       // inject badges inside the first block-open tag so they flow inline with the text
       const m = bodyHtml.match(/^(<(?:p|li|h[1-6]|blockquote|div)[^>]*>)/);
@@ -10391,10 +10395,14 @@ function onKeyDown(e, id, content) {
     // footnote ref (UXP-55): Enter/Space reveals + highlights its footnote (hover's keyboard twin)
     const fnref = e.target.closest?.('.fn-ref');
     if (fnref) { e.preventDefault(); activateFnRef(fnref.dataset.key, id); return; }
+    // UXP-177: TODO state / priority badge — Enter/Space opens the state/priority picker, the
+    // keyboard twin of its mousedown (→ showTodoPicker). Guard to the focused badge itself.
+    const tbadge = e.target.closest?.('.todo-state,.todo-prio');
+    if (tbadge && e.target === tbadge) { e.preventDefault(); tbadge.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); return; }
     // Pill-body activation (UXP-19, same dispatch pattern): Enter/Space on a focused
     // pill (tabindex="-1" — programmatic/AT focus, not in the Tab order) re-rolls or
     // opens its editor exactly as a click would, via the content's pill-handler block.
-    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill,.est-pill');
+    const pillBody = e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill,.est-pill,.query-pill');
     if (pillBody && e.target === pillBody) {
       e.preventDefault();
       const k = pillBody.dataset.key;
@@ -15297,7 +15305,7 @@ function renderQueryPill(key, q) {
     body = `<span class="query-rows">${items}${more}</span>`;
   }
   return `<span class="query-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
-    + ` aria-label="Query ${escQ(expr)}: ${total} matching point${total === 1 ? '' : 's'}. Click a result to jump, or the pencil to edit.">`
+    + ` aria-label="Query ${escQ(expr)}: ${total} matching point${total === 1 ? '' : 's'}. Click a result to jump, or click the pill to edit its search.">`
     + head + body + `</span>`;
 }
 
@@ -21115,7 +21123,7 @@ const GUIDE = [
     ] },
   { id:'query', cat:'todos', covers:['query'],
     title:'Embedded queries',
-    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project, or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or the pencil to change the search. Long lists cap with a +N more.",
+    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project, or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more.",
     examples:[
       { syn:'{query: is:todo}',        desc:'every open task, live' },
       { syn:'{query: #idea -is:done}', desc:'combine any search operators' },
