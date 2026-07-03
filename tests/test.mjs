@@ -6010,6 +6010,22 @@ test('collectDueDates — done flag is derived from the node text', () => {
   assert.equal(items.find(i => i.title === 'finished').done, true);
 });
 
+test('collectDueDates — carries structural held-ness for a dated point (UXP-162)', () => {
+  const SEQ = [
+    { key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], heldFrom: 2, doneFrom: 3 },
+    { key: 'flow', name: 'Flow', states: ['DOING', 'BLOCKED', 'SHIPPED'], heldFrom: 1, doneFrom: 2 },
+  ];
+  const r = c.mkRoot();
+  const blocked = c.mkNode('#BLOCKED waiting on API'); blocked.props = [{ key: 'due', val: 'today' }];
+  const doing   = c.mkNode('#DOING build it');         doing.props   = [{ key: 'due', val: 'today' }];
+  const waiting = c.mkNode('#WAITING built-in held');  waiting.props = [{ key: 'due', val: 'today' }];
+  r.children.push(blocked, doing, waiting);
+  const items = host(c.collectDueDates(r, SEQ));
+  assert.equal(items.find(i => i.title.includes('waiting on API')).waiting, true);   // custom held
+  assert.equal(items.find(i => i.title.includes('build it')).waiting, false);        // active
+  assert.equal(items.find(i => i.title.includes('built-in')).waiting, true);         // built-in WAITING
+});
+
 test('parseSearchQuery / termMatchesNode — start: operator mirrors due:', () => {
   const q = host(c.parseSearchQuery('start:today'));
   assert.equal(q[0].kind, 'start');
