@@ -83,6 +83,34 @@ review intact and anchor the rescoped version.
 
 ---
 
+## 0b. The mission thesis (owner-set, 2026-07-02): views in service of the generative layer
+
+The owner's framing, recorded verbatim in spirit: the self-imposed mission is to take on all
+outliners and prove a personal one could exist; **the generative layer is the "mine" part made
+manifest**. The app creates things the others won't or haven't because they aren't its author.
+
+That gives every view a sharper acceptance test than "does Notion have this":
+
+> **A view earns its place only where it composes with the generative/computational layer,
+> because that composition is the thing only this app can do.**
+
+Concretely: a plain kanban of plain text cells is database-app parity, exactly the scope-creep the
+§4 fence exists to stop. A kanban whose lanes are the user's own **sequences** and whose cards carry
+`{= }` rollups and estimate sparklines; a gallery whose card subtitle is a **grammar roll**; a query
+base that computes over matched points with the same engine that rolls the dice: those cannot exist
+in any other outliner, because no other outliner has the engine. The board is the frame; the mine
+part is what renders inside the cells.
+
+Two downstream consequences bind the rest of this doc:
+- **Type-role priority is generative-first.** The roles that unlock composition (status/sequence for
+  lanes, date for calendar, the computed/formula and pill-bearing columns) come before the parity
+  types (currency, rating stars). Build the ones that make the mine part visible.
+- **QP-2 Phase C (write-through) is a line, not a ceiling, for now.** It is about editing, not
+  generating, advances the mission little, and carries the known footgun (§0.4). It stays unbuilt
+  until a real need argues otherwise.
+
+---
+
 ## 1. The reframing: two orthogonal axes, not one feature
 
 The QP-2 proposal framed "bases as queries" as the next step. That was aiming too small. The real
@@ -444,7 +472,16 @@ The keystone logic is sound (you genuinely must build roles before the first *vi
 an argument for MORE skepticism about the view system, not less: if kanban is the goal, a lot lands
 before anything visible.
 
-**The four decisions that are yours (the review could not settle them, and shouldn't):**
+**The four decisions, now TAKEN (owner call, 2026-07-02, under the §0b mission thesis):**
+1. **Build order: thin-slice first.** QP-2 Phase A (the read-only query base) ships first; it is the
+   shortest path to the first place the generative layer shows up in a base view, and it proves the
+   seam before roles/kanban investment.
+2. **The direction is approved, reframed.** Not "add Notion views" but §0b: a base view system in
+   service of the generative layer, each view justified by composition with the engine.
+3. **Phase C write-through stays a line** (see §0b), revisited only on demonstrated need.
+4. **The catalogue is the possibility map; the build set is minimal and generative-first.**
+
+*(The original open framing of these four, kept for the record:)*
 1. **Build order:** thin-slice-first (QP-2 Phase A, read-only query table) or keystone-first (field
    roles on authored bases). Recommendation leans thin-slice: it is the cheapest genuinely-wanted thing.
 2. **Is the view system the right endgame at all?** A Notion-grade kanban/gallery/calendar is database-
