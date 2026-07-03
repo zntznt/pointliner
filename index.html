@@ -458,6 +458,8 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-qbase-expr{font-family:var(--mono);font-size:.92em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt-qbase-count{font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
 .mt-qbase-empty{font-size:.85em;color:var(--muted)}
+/* role chips never wrap inside a narrow cell (FR-1) */
+.mt-cell .todo-state,.mt-cell .ag-chip{white-space:nowrap}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
 .mt-cell{font-variant-numeric:tabular-nums;padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
@@ -4653,6 +4655,7 @@ function toOpml(r) {
       n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
       n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '', // query-base config (QP-2)
+      n.colRole?.some(x => x != null) ? `_colrole="${ex(JSON.stringify(n.colRole))}"` : '', // column display roles (FR-1)
       `_id="${ex(n.id)}"`,
     ].filter(Boolean).join(' ');
     if (!n.children.length) return `${pad}<outline ${attrs}/>`;
@@ -4718,6 +4721,8 @@ function fromOpml(xml) {
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
     const colwAttr = el.getAttribute('_colw');
     if (colwAttr) { try { const a = JSON.parse(colwAttr); if (Array.isArray(a)) n.colW = a; } catch(_) {} }
+    const crAttr = el.getAttribute('_colrole');
+    if (crAttr) { try { const a = JSON.parse(crAttr); if (Array.isArray(a)) n.colRole = a; } catch(_) {} }
     const qbAttr = el.getAttribute('_qbase');
     if (qbAttr) { try { const o = JSON.parse(qbAttr); if (o && typeof o.expr === 'string' && Array.isArray(o.cols)) n.qbase = o; } catch(_) {} }
     // Legacy migration: convert old [[varref:KEY]] tokens to display-only [[var:KEY]] records
@@ -5561,7 +5566,7 @@ function mtSpliceCell(nodeId, r, c, start, end, str) {
   m.rows[r][c] = cur.slice(0, a) + str + cur.slice(b);
   mtCommit(node, m);
   const cell = mtHost(nodeId)?.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
-  if (cell && cell !== document.activeElement) cell.innerHTML = mtInline(node, m.rows[r][c]);
+  if (cell && cell !== document.activeElement) cell.innerHTML = mtCellHtml(node, m.rows[r][c], c);
   if (mtRecompute(node)) mtPatchCells(node);
   scheduleReconcile();
 }
@@ -5569,6 +5574,39 @@ function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splic
 // Parse a base's stored text into its {aligns, rows} grid model (sans the #+TBLFM
 // recipe). Split text-pure (mtModelText) so the portable-copy serializers stay
 // DOM-free and unit-testable; mtModel is the node-taking convenience wrapper.
+// mtCellHtml(node, raw, c) — the role-aware data-cell paint (FR-1, field roles).
+// A column role is a DISPLAY hint over the untouched cell string (base-views-vision
+// §3a: the text is the truth; the role only shapes the paint). Editing always shows
+// the raw string; a value that does not conform to its role falls through to the
+// plain render, never an error:
+//   status -> a known state keyword renders as its colored chip (sequence-aware,
+//             done-side states get the muted done styling — the future kanban lanes)
+//   date   -> a date-shaped value renders as the agenda's urgency chip
+//   number -> a numeric value renders through the math formatter
+function mtCellHtml(node, raw, c) {
+  const role = node.colRole && node.colRole[c];
+  const s = String(raw || '').trim();
+  if (role && s) {
+    if (role === 'status') {
+      const kw = [...knownStates()].find(k => k.toLowerCase() === s.toLowerCase());
+      if (kw) {
+        const doneCls = keywordIsDone(kw) ? ' todo-state-isdone' : '';
+        return `<span class="todo-state todo-state-${escQ(kw.toLowerCase())}${doneCls}">${escHtml(kw)}</span>`;
+      }
+    } else if (role === 'date') {
+      const d = parseDueDate(s);
+      if (d !== null) {
+        const f = formatDueDate(d);
+        return `<span class="ag-chip ${escQ(f.state)}" title="${escQ(formatEpochDays(d))}">${escHtml(f.label)}</span>`;
+      }
+    } else if (role === 'number') {
+      const n = Number(s);
+      if (Number.isFinite(n)) return escHtml(formatMathResult(n));
+    }
+  }
+  return mtInline(node, raw);
+}
+
 function mtModelText(text) { return parseTable(stripTblfm(text)) || parseTable(starterTableText()); }
 // ── query base (QP-2 Phase A) ───────────────────────────────────────────────
 // A base carrying node.qbase = { expr, cols:[{name, field}] } sources its rows from
@@ -5620,7 +5658,7 @@ function mtPatchCells(node, exceptCell) {
   host.querySelectorAll('.mt-cell').forEach(cell => {
     if (cell === exceptCell) return;
     if (cell === document.activeElement && !cell.classList.contains('mt-computed')) return;
-    cell.innerHTML = mtInline(node, m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '');
+    cell.innerHTML = mtCellHtml(node, m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '', +cell.dataset.c);
   });
 }
 
@@ -5815,8 +5853,20 @@ function mtInsertCol(node, colIdx, side) {
   m.aligns.splice(at, 0, null);
   m.rows.forEach(r => r.splice(at, 0, ''));
   if (node.colW) node.colW.splice(at, 0, null); // keep widths aligned to columns
+  if (node.colRole) node.colRole.splice(at, 0, null); // roles stay aligned too (FR-1)
   mtCommit(node, m); refreshTable(node);
 }
+// Set/clear a column's display role (FR-1). Lazily sized like colW; an all-null
+// array drops back to undefined so untouched bases serialize clean.
+function mtSetColRole(node, colIdx, role) {
+  const nc = mtModel(node).aligns.length;
+  const arr = node.colRole || Array(nc).fill(null);
+  while (arr.length < nc) arr.push(null);
+  arr[colIdx] = role;
+  node.colRole = arr.every(x => x == null) ? undefined : arr;
+  markDirty(); refreshTable(node);
+}
+
 function mtMoveCol(node, colIdx, dir) {
   const m = mtModel(node);
   const to = colIdx + dir;
@@ -5824,6 +5874,7 @@ function mtMoveCol(node, colIdx, dir) {
   mtMoveItem(m.aligns, colIdx, to);
   m.rows.forEach(r => mtMoveItem(r, colIdx, to));
   if (node.colW) mtMoveItem(node.colW, colIdx, to);
+  if (node.colRole) mtMoveItem(node.colRole, colIdx, to);
   mtCommit(node, m); refreshTable(node);
 }
 function mtDeleteCol(node, colIdx) {
@@ -5832,6 +5883,7 @@ function mtDeleteCol(node, colIdx) {
   m.aligns.splice(colIdx, 1);
   m.rows.forEach(r => r.splice(colIdx, 1));
   if (node.colW) node.colW.splice(colIdx, 1);
+  if (node.colRole) { node.colRole.splice(colIdx, 1); if (node.colRole.every(x => x == null)) node.colRole = undefined; }
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
 // Set (or clear, with w=null) a column's pinned width and re-render the grid.
@@ -5987,6 +6039,11 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
     addItem('Cell formula…', { active: tblfmGetAssign(tblfm, cellLhs) != null,
       onApply: () => requestAnimationFrame(() => openFormulaDialog(node, cellLhs, 'Cell', { r: rowIdx, c: colIdx })) });
   }
+
+  addSection('Show as', true);
+  const curRole = (node.colRole && node.colRole[colIdx]) || null;
+  [[null, 'Plain text'], ['status', 'Status'], ['date', 'Date'], ['number', 'Number']]
+    .forEach(([role, label]) => addItem(label, { active: curRole === role, onApply: () => mtSetColRole(node, colIdx, role) }));
 
   addSection('Alignment', true);
   [['left','Left'],['center','Center'],['right','Right']]
@@ -6188,7 +6245,7 @@ function buildTableWidget(node, readOnly) {
         // computed cell (so all the edit guards skip it) but blank and Σ-less.
         h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
-        h += `<td class="mt-cell${aCls(model.aligns[c])}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':ro}>${mtInline(node, model.rows[r][c]||'')}</td>`;
+        h += `<td class="mt-cell${aCls(model.aligns[c])}${(node.colRole?.[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':ro}>${mtCellHtml(node, model.rows[r][c]||'', c)}</td>`;
       }
     }
     h += '</tr>';
@@ -6256,7 +6313,7 @@ function buildTableWidget(node, readOnly) {
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
     mtCommit(node, m);
-    cell.innerHTML = mtInline(node, raw);
+    cell.innerHTML = mtCellHtml(node, raw, +cell.dataset.c);
     forceIncludeId = null;
     // P4: a spreadsheet-style `=…` formula typed into a cell is dead text here — bases
     // compute via the Column menu's Calculate/Formula (#+TBLFM:), not cell formulas.

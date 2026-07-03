@@ -8034,3 +8034,24 @@ test('queryTableRows — date props compute as epoch-days in formula columns', (
   assert.equal(r2.rows[0].cells[0], '9');           // 2026-07-10 minus 2026-07-01
   assert.notEqual(r.rows[0].cells[0], '#ERR');      // daysuntil(due) resolves, whatever today is
 });
+
+// ── FR-1: field roles, the role-aware cell paint ─────────────────────────────
+test('mtCellHtml — status/date/number roles shape the paint; non-conforming values fall through', () => {
+  const node = { colRole: ['status', 'date', 'number', null], dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
+  // status: a built-in state keyword renders as its chip; DONE gets the muted done styling
+  assert.match(c.mtCellHtml(node, 'TODO', 0), /todo-state todo-state-todo/);
+  assert.match(c.mtCellHtml(node, 'DONE', 0), /todo-state-isdone/);
+  // a non-state word in a status column falls through to the plain render (P4: never an error)
+  assert.doesNotMatch(c.mtCellHtml(node, 'banana', 0), /todo-state/);
+  // date: an ISO value renders as an urgency chip with the ISO in the title
+  assert.match(c.mtCellHtml(node, '2199-01-01', 1), /ag-chip/);
+  assert.match(c.mtCellHtml(node, '2199-01-01', 1), /2199-01-01/);
+  assert.doesNotMatch(c.mtCellHtml(node, 'not a date', 1), /ag-chip/);
+  // number: formatted; a word falls through
+  assert.equal(c.mtCellHtml(node, '42.0', 2), '42');
+  assert.doesNotMatch(c.mtCellHtml(node, 'n/a', 2), /42/);
+  // no role, and a node with no colRole at all: plain render
+  assert.doesNotMatch(c.mtCellHtml(node, 'TODO', 3), /todo-state/);
+  const bare = { dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
+  assert.doesNotMatch(c.mtCellHtml(bare, 'TODO', 0), /todo-state/);
+});

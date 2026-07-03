@@ -383,7 +383,17 @@ Implemented:
   `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
   marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
   ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
-  grouping until real queries demand it). **QP-2 Phase A added the query base** (the
+  grouping until real queries demand it). **FR-1 added column display roles** (the
+  minimal typed-fields slice, bases-direction §4): `node.colRole` (index-aligned like
+  `colW` through the three column ops, `_colrole` OPML, all-null drops to undefined);
+  the paint wrapper `mtCellHtml(node, raw, c)` swapped in at every data-cell paint site
+  branches on the role: `status` matches the value against `knownStates()` (sequence-
+  aware, `keywordIsDone` drives the muted done styling), `date` parses via
+  `parseDueDate` and renders the `formatDueDate` urgency chip, `number` formats through
+  `formatMathResult` and auto-right-aligns when no explicit alignment is set. Display
+  hints only: the cell string is untouched, edit shows raw, a non-conforming value falls
+  through to the plain render. Door: the Column menu's "Show as" section
+  (`mtSetColRole`). **QP-2 Phase A added the query base** (the
   bases-direction §4 above-the-line move): a base carrying `node.qbase = {expr, cols}`
   (`_qbase` OPML) sources its rows from the live search instead of `node.text`. The pure
   core `queryTableRows(expr, cols, rootNode, hostId, cap)` walks + matches like

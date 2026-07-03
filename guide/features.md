@@ -101,6 +101,9 @@ Turn the outline into a lightweight planner.
 - **Query bases.** Turn a live search into a table: rows are the matching points, columns show the
   title, a property, or a formula computed per point (`= daysuntil(due)`, `= sum(cost)`), always in
   sync with the outline. ([query bases](getting-around.md#query-bases))
+- **Column display roles.** Mark a base column as Status, Date, or Number (Column menu, Show as):
+  state keywords become colored chips (your own sequences included), dates become urgency chips,
+  numbers align and format. ([tables](writing-and-formatting.md#tables))
 
 ## Linking and connecting notes
 

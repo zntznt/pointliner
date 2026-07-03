@@ -805,6 +805,14 @@ search string; renders matching points as links, capped +N more, recomputed each
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`
 door + typed `{query: expr}` promotion + `editQuery`; atomic in edit mode; `_query` OPML
 round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB) ·
+Column display roles (FR-1, the minimal typed-fields slice under the base-views-vision
+§0b thesis: node.colRole + _colrole OPML, index-aligned like colW through the column ops;
+mtCellHtml is the role-aware paint wrapper at every data-cell paint site — status ->
+knownStates/keywordIsDone chips (custom sequences included, the future kanban lanes),
+date -> parseDueDate + formatDueDate urgency chips, number -> formatMathResult +
+auto-right-align; display hints only, cell text untouched, raw on edit, non-conforming
+values fall through; Column menu "Show as" door via mtSetColRole; editors and further
+roles stay below the line) ·
 Query bases (QP-2 Phase A, the bases-direction §4 above-the-line move under the
 base-views-vision §0b mission thesis: a base whose ROWS are a live search. node.qbase =
 {expr, cols:[{name,field}]} (_qbase OPML); pure core queryTableRows projects each match
