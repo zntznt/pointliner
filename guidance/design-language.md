@@ -185,7 +185,9 @@ two shapes, two meanings, shared vertical metrics (`.72em/600/.06em`, `padding:1
   22% into the border** — identity at whisper level, never candy. Family hues: dice
   `#9a3b2e`, markov/seq `#3d6280`, grammar `#4a7a4d` (roll tables render as grammar pills
   since the rolltable collapse; the old table hue `#5b3a6e` is retired), math `#8a5300`,
-  var `#2a7f74`, est `#5a4a8a`. A new artifact family picks a distinct hue here in the same PR.
+  var `#2a7f74`, est `#5a4a8a`, query `#4a6b8a` (the query pill QP-1 and the query-base strip;
+  a muted info-blue, distinct from the markov/seq slate `#3d6280`). A new artifact family picks a
+  distinct hue here in the same PR.
 - **One box per pill** — no bordered/filled boxes nested inside (the dice breakdown is
   flat muted text). Typography differentiates internals.
 - **The `--ring` glow means focus, not hover.** Pill hover = accent border + 6% tint;
