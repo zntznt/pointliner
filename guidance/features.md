@@ -383,7 +383,21 @@ Implemented:
   `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
   marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
   ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
-  grouping until real queries demand it). **QX-6 added the link/tag presence family**:
+  grouping until real queries demand it). **QP-2 Phase A added the query base** (the
+  bases-direction §4 above-the-line move): a base carrying `node.qbase = {expr, cols}`
+  (`_qbase` OPML) sources its rows from the live search instead of `node.text`. The pure
+  core `queryTableRows(expr, cols, rootNode, hostId, cap)` walks + matches like
+  `queryRows` and PROJECTS each match into cells: `title` becomes a plain `[[#id]]` link
+  token (no sidecar, so safe in a foreign cell, base-views-vision §0.1), a property key
+  becomes its raw value, and `= expr` is resolved per row (own numeric props overlay the
+  doc vars evalCheck-style, date props join as epoch-days, child rollups via
+  `expandAggExpr`) to an inert string; errors surface as `#ERR`. `mtModel(node)` forks to
+  the memoized `qbaseModel` (`_qbaseCache`, generation + config keyed, §0.3: an unchanged
+  query base does zero tree work per render; capped at `QBASE_ROW_CAP`), so
+  `buildTableWidget` renders it read-only through the one seam. Doors: `/querybase`
+  (dialog with live count + column preview), the strip above the grid, and the base
+  bullet menu's Edit query + frozen Copy as Markdown. `mtRecompute` and the raw-markdown
+  edit path are guarded off. **QX-6 added the link/tag presence family**:
   `has:link` and `has:tag` are pure node reads (an unanchored `parseLinkToken`-shaped
   test; the tag sigil rule over link-blanked text, so state keywords count);
   `has:backlink` and `is:broken` read the doc-wide `collectLinks` index, threaded into

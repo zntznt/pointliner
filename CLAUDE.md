@@ -805,6 +805,19 @@ search string; renders matching points as links, capped +N more, recomputed each
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`
 door + typed `{query: expr}` promotion + `editQuery`; atomic in edit mode; `_query` OPML
 round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB) ·
+Query bases (QP-2 Phase A, the bases-direction §4 above-the-line move under the
+base-views-vision §0b mission thesis: a base whose ROWS are a live search. node.qbase =
+{expr, cols:[{name,field}]} (_qbase OPML); pure core queryTableRows projects each match
+into cells (title -> a sidecar-free [[#id]] link token per §0.1; a prop key -> its raw
+value; '= expr' -> per-row evalMath with own-props + date-props-as-epoch-days overlay +
+expandAggExpr rollups, resolved to inert strings, errors visible as #ERR); mtModel forks
+to the memoized qbaseModel (_qbaseCache, generation+config keyed per §0.3, QBASE_ROW_CAP)
+so buildTableWidget renders it through its readOnly path (zero edit surface). The strip
+above the grid is the one affordance (query + live count, click/Enter opens the editor);
+/querybase door; base bullet menu swaps in Edit query + frozen Copy as Markdown;
+mtRecompute + raw-markdown edit guarded off; title links join the Tab order in-grid.
+Read-only in v1: write-through (Phase C) and the uncapped/live-identity pass (Phase B)
+stay below the line) ·
 Self-contained HTML export (C1: File menu → **Self-contained HTML** — `exportSelfContainedHtml` clones the page, empties the rendered DOM, and inlines the outline as OPML in the `#pl-embedded-doc` `<script type="application/xml">` data-island via the pure core `embedOpmlIntoHtml` / `extractEmbeddedOpml`; opening the file re-runs the app and `restoreEmbeddedDoc` hydrates from the island — winning over local autosave — into **display mode** with a one-time snapshot notice; the data-island is empty in the app shell, so the live editor is untouched; see the "Export — self-contained HTML" section above).
 Details: `guidance/features.md`
 

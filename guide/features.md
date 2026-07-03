@@ -98,6 +98,9 @@ Turn the outline into a lightweight planner.
 - **Embedded queries.** Drop `{query: is:todo | due:week}` into a point for a live, self-updating
   list of matching points; reuses every search operator, click a result to jump.
   ([embedded queries](getting-around.md#embedded-queries))
+- **Query bases.** Turn a live search into a table: rows are the matching points, columns show the
+  title, a property, or a formula computed per point (`= daysuntil(due)`, `= sum(cost)`), always in
+  sync with the outline. ([query bases](getting-around.md#query-bases))
 
 ## Linking and connecting notes
 
