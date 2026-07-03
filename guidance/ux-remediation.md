@@ -1396,6 +1396,109 @@ dead-end states** that confirm a non-event without teaching the next step.
 - **Not a DB:** still a rendering of the live outline, not a stored/persisted view model. The saved-views database layer stays out of scope; the fence moves by exactly one item.
 - **Depends on:** reopening the `guidance/bases-direction.md` §4 scope fence (owner call), the first sanctioned move above its line.
 
+## Seven-persona design review (2026-07-02, FOURTH pass — weighted to the newest surfaces) — UXP-160…175
+
+A fourth pass run after Reviews 1-3 (UXP-102…159) + the QX search family + the base-views/query-pill
+system all shipped. Same seven-persona fleet, told to WEIGHT attention on the newer additions (base
+views, the held band UXP-158, rollup depth UXP-159, QX search, the review-3 fixes) while still seeing
+everything. **27 raw → 25 survived adversarial verification, 24 of them on the newer surfaces** (the
+weighting worked). One HIGH (a regression in my own UXP-158), a few mediums, the rest low. The verify
+pass reframed several fixes off hard-rule violations (an auto-role base-view inference that contradicts
+a locked Decision; a `due:week` unbounded window that would break QX-5 composability) and corrected
+persona misreads (the `.ag-waiting` class is inert on a bare `.todo-state` span — needs a real
+`.todo-state-held` rule). The base-views system produced NO correctness/interaction bug — every
+base-view finding is coherence polish or discoverability copy.
+
+### UXP-160 ☐ The @sequence dialog silently drops the held band (P4/P1, REGRESSION in UXP-158) 🔴  [Batch 1]
+- **Problem:** the dialog `openSeqDialog` onSubmit calls `onResult({ name, states, doneFrom })` — it computes `p.heldFrom` in its live preview but OMITS it on submit, so a dialog-authored `DOING | BLOCKED | SHIPPED` stores `heldFrom === undefined`; `keywordIsHeld` bails and BLOCKED reads as a live action, not held. The typed `{seq …}` path is correct; the DIALOG (the primary discoverable door) is broken. `editSeq`'s `Object.assign(sq, result)` compounds it (a stale `heldFrom` survives an edit down to `A | C`). Four personas caught this independently — highest-consensus finding.
+- **Rule:** P4 (the second pipe vanishes silently) + P1/P5 (two doors, different data).
+- **Target:** forward `heldFrom` in the onSubmit (`onResult({ name: v.name, states: p.states, doneFrom: p.doneFrom, heldFrom: p.heldFrom })`), mirroring `seqDeclParts`. Fixes create + edit (editSeq routes through the same object). Pin an `A | B | C` dialog-def round-trip test. This is a regression I shipped in UXP-158 (I verified the typed path + record shape but not the dialog create path in-browser) — do FIRST.
+
+### UXP-161 ☐ A custom held state has no chip color (renders identical to active) (P5/design-language §4) 🟡  [Batch 1]
+- **Problem:** the inline badge (`renderContentHTML`), the board lane chip (`buildBoardWidget`), and the base status cell (`mtCellHtml`) all branch only on `keywordIsDone`, never `keywordIsHeld`. A custom held keyword (BLOCKED) becomes `.todo-state-blocked` (no CSS rule) → falls through to the base accent tint, identical to an active TODO. The built-in WAITING happens to differ (its own warn rule), so this bites CUSTOM held states — the two-pipe advanced path.
+- **Rule:** design-language §4 (a state's look must be the same wherever it appears; the agenda already has `.ag-waiting`).
+- **Target:** compute `keywordIsHeld(kw)` alongside `keywordIsDone(kw)` at the three sites and append a `todo-state-isheld` class. Add ONE new CSS rule `.todo-state-isheld{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}` declared AFTER the color variants (so it wins like `.todo-state-isdone`). CAUTION (SoloRPG verification): do NOT reuse `.ag-waiting` — it needs the `.ag-chip`/`.ag-badge` structure a bare `.todo-state` span lacks. Also add a `held` flag to `boardLanes` (`i >= heldFrom && i < doneFrom`) + a `bv-lane-held` muted lane-head treatment. Reuses the done-class pattern; no new token.
+
+### UXP-162 ☐ Held-ness honored in the Actions row but ignored by every DATED agenda surface (P1/P5) 🟡  [Batch 2]
+- **Problem:** `collectActions` sets `waiting: keywordIsHeld(...)` (undated Actions row → muted badge, middle tier), but `collectDueDates` (List Due/Running, Timeline Gantt, Calendar) never computes it, so a BLOCKED task WITH a due date paints full urgency via `agendaState()` and can glow overdue-red like a live point. "Held" means de-emphasized in one agenda surface, full urgency in the others.
+- **Rule:** P1/P5 (the held concept must read consistently).
+- **Target:** carry `waiting: keywordIsHeld(keyword, seqs)` onto `collectDueDates` items + a muted "Waiting" badge / `ag-waiting` treatment on the dated chips, mirroring the action row. Structural (`heldFrom..doneFrom`), not a hardcoded string. **Do NOT suppress overdue-red on a blocked-but-past-deadline point** (verification): a met deadline collapsing is justified, but a blocked overdue task is real trouble the planner wants loud — hiding it is a P4 under-signal.
+
+### UXP-163 ☐ Rollup depth scope (UXP-159) has no front door (P2/P5-4) 🟡  [Batch 2]
+- **Problem:** UXP-159 gave every child-scoped rollup an optional depth arg (`sum(cost, subtree)`, `sum(cost, 2)`, `[/subtree]`, `[/2]`, `words(2)`), but none of the doors teach it: the math hint stops at `sum(prop)`; @progress says only "direct sub-points"; the GUIDE 'rollups' shows only bare `sum(cost)`; `subtree` appears only inside `words(subtree)` (a different call shape). By P5-4 (undocumented typeable syntax is a defect) + P2. Degrades safely (bad scope → #ERR), so no P4 wrong-depth hazard.
+- **Rule:** P2 / P5-4 (every typeable capability needs a door).
+- **Target:** three copy touches, no syntax change: (1) @progress desc — note `[/subtree]`/`[/2]` count deeper; (2) GUIDE 'rollups' — add `{= sum(cost, subtree)}` / `{= sum(cost, 2)}` rows; (3) math hint — a restrained append. Also tighten the loose in-app GUIDE 'rollups' body (which implies subtree-by-default) with a "direct children by default" clarifier. `guide/computing-numbers.md` is already accurate (contrasts direct vs `words(subtree)`), so touch only the "reach direct children only" phrasing if it now under-describes.
+
+### UXP-164 ☐ Base views (Table/Board/Cards/Calendar) have no concept-guide entry (P2) 🟡  [Batch 2]
+- **Problem:** the base VIEW switcher (BV-1 board, BV-2 cards, BV-3 calendar) is the biggest new surface, but no GUIDE entry or copy says the views exist. The only discovery path is creating a base and spotting the button strip; Board/Calendar also silently require a Status/Date column role first (the `mtSetView` flashHints ARE a working P4 catch, so this is a proactive-discovery gap, not a dead end). Query bases got a full GUIDE entry; the view switcher on every authored base got none.
+- **Rule:** P2 (a Guided-floor door for a shipped capability).
+- **Target:** add a GUIDE entry (a base-adjacent cat; NO `covers:[]` token — the switcher has no command id and adding one breaks the drift-guard subset assertion) covering the four views + the Column-menu "Show as" step; extend the /base slash desc ("view it as a table, board, cards, or calendar"). Pure copy.
+
+### UXP-165 ☐ "Restore earlier version" snapshot is a single global slot, not doc-scoped (P1, review3) 🟡  [Batch 3]
+- **Problem:** the UXP-147 pre-overwrite snapshot lives in one `AUTOSAVE_PREV_KEY`, rolled purely on a 5-min timer, with no doc identity and no reset on doc swap (`adoptDoc` leaves `_lastSnapshotAt` untouched). Edit doc A, switch to B; the next autosave for B rolls A's outgoing payload into prev-key; a user in B who clicks "Restore earlier version" is handed A. Worse, `applyAutosaveData` overwrites `fileName` from the snapshot while `fileHandle` stays bound to B — a later Ctrl+S writes A's content into B's file (a real P1 tail). Needs a specific confluence (multi-doc + timer + Restore chosen), hence medium. The code's own comment ("a valid prev slot, distinct doc") shows doc-scoping was intended.
+- **Rule:** P1 (a restore/save must not cross documents).
+- **Target:** stamp the snapshot with `root.docId` when rolling; `hasEarlierVersion`/`restoreEarlierVersion` offer/apply only on docId match (else "no earlier version"); reset `_lastSnapshotAt = 0` in `adoptDoc`. Pin the doc-scope guard.
+
+### UXP-166 ☐ The base view switcher's active button ignores the app's active-toggle tint (P1/P5, design-language §4) 🟢  [Batch 4]
+- **Problem:** `.mt-view-btn.on` uses a neutral gray (`color:var(--fg);background:var(--cbg);border-color:var(--bdr)`), but §4 fixes ONE active-toggle grammar (16% accent mix + accent ink + 35% accent border) used app-wide — including the base's OWN `.mt-align-bar button.on` one strip below. So within a single base widget two active-toggle languages. `.doc-tab.active` and `.guide-nav-btn.active` already wear the accent recipe, refuting any "segmented controls differ" defense.
+- **Rule:** design-language §4 (one active-toggle recipe).
+- **Target:** replace the `.mt-view-btn.on` body with the standard recipe, copied verbatim from the adjacent `.mt-align-bar button.on`.
+
+### UXP-167 ☐ Board/calendar cards read as recessed wells in dark mode (design-language §3) 🟢  [Batch 4]
+- **Problem:** `.bv-card`/`.cv-chip` use `background:var(--bg)` inside a `--cbg` lane/cell. In dark mode `--cbg` is LIGHTER than `--bg`, so a card is darker than its container — the recessed inversion §3 names as the regression to watch ("elevation in dark mode = lighter than the canvas"). A kanban card is a raised, draggable object read recessed. Light mode is fine; the card keeps a border + focus ring, so whisper-level.
+- **Rule:** design-language §3 (dark-mode elevation).
+- **Target:** give the cards `--hbg` (the brighter elevation token), lanes/cells stay `--cbg`. Be honest: dark-mode `--hbg` vs `--cbg` is only a ~1.2-luminance delta, so the "rise" stays carried by the border, but the inversion is gone; light mode separates cleanly. Re-run the §6 both-modes screenshot on board + calendar.
+
+### UXP-168 ☐ Duplicate `.mt-base-views` CSS rule with conflicting gap (maintainability) 🟢  [Batch 4]
+- **Problem:** `.mt-base-views` is declared twice (`gap:2px` in the BV-1 switcher block, `gap:4px` in a reserved-strip stub); source order makes the stub win, so the switcher-block gap is dead. Nothing renders wrong, but it's a maintenance trap, and the stub comment still says "Empty for now" though the switcher landed there.
+- **Rule:** predictability/maintainability (a dead same-specificity rule).
+- **Target:** delete one declaration, keep a single `.mt-base-views` rule in the switcher block; drop the stale stub + correct the "Empty for now" comment.
+
+### UXP-169 ☐ Board/Calendar switcher buttons advertise a task they punt (P2, base-views) 🟢  [Batch 4]
+- **Problem:** the switcher always renders all four buttons, but Board/Calendar refuse (a flashHint) until a column carries a Status/Date role. Verification: the flash-and-bail IS the sanctioned model (base-views-vision.md §3 locks "a role is a hint you add, not a schema you satisfy"). So do NOT auto-infer/pick roles (that would contradict a locked Decision) and do NOT reach into the deferred per-role-editor.
+- **Rule:** P2 (a control shouldn't advertise an action it will punt).
+- **Target (reframed, conformant):** soften the affordance — dim / `aria-disabled` Board and Calendar until an eligible column exists, so the control stops advertising a task it punts. Keep the flashHint as the catch.
+
+### UXP-170 ☐ The estimate pill shares the width-resize glyph fa-left-right (design-language §1) 🟢  [Batch 5]
+- **Problem:** §1 records that `fa-left-right` was narrowed to "the horizontal-span concept only" when refile moved to `fa-arrow-right-arrow-left`, but estimate never got the same treatment — the width control and the uncertainty pill still share one glyph (5 est sites). A live contradiction of a locked Decision-corollary. Harm minimal (icon aria-hidden, labels correct), P5-drift.
+- **Rule:** design-language §1 (one glyph per concept).
+- **Target:** give estimate its own identity glyph (a wave/tilde/distribution mark matching the ∿/≈ fallbacks) and retire `fa-left-right` from all five est sites, the move refile got. Needs the FA subset rebuild (`tools/build-fa-subset.py`) — **github-egress-blocked in this sandbox**, so DEFER the glyph swap to a networked machine; the fallbacks keep it legible meanwhile.
+
+### UXP-171 ☐ No is:held / is:blocked search operator (P2, qx-search) 🟢  [Batch 5]
+- **Problem:** the is: family has is:overdue/failing/leaf/broken… but no is:held. A planner can only find blocked work by the exact keyword, which breaks with a custom held state. Verification tempered it: held-ness IS surfaced seq-agnostically in the agenda Waiting tier, and `#waiting`/`state:waiting` work per-keyword — what's absent is a SEQ-AGNOSTIC held filter in search (a convenience mirror), hence low.
+- **Rule:** P2 (a structural axis the is: family should expose, like is:done).
+- **Target:** add `held` to the is: regex + a `termMatchesNode` branch reading the leading keyword via `keywordIsHeld(km[1], seqs)` — the structural analog of is:done. Not new syntax (a new is: value, like is:passing). Document in the ?-panel Search row + legend.
+
+### UXP-172 ☐ Cross-document links render as dead "link"-captioned pills in a self-contained export (P4, base-views) 🟢  [Batch 5]
+- **Problem:** a self-contained HTML export embeds only the current doc, so a `[[docId#nodeId|label]]` cross-doc link can't resolve and renders `.node-link-broken`; the empty-label live-title form collapses `capText` to the literal "link" — a cluster of identical dead pills (the same-doc path shows the node id, never "link"). Broken NAVIGATION is sanctioned (a single-file snapshot can't reach another notebook); only the caption + the silent notice are open.
+- **Rule:** P4 (a dead pill should name itself, not read "link").
+- **Target (additive):** give `renderCrossLinkPill`'s broken fallback a doc-qualified caption instead of bare "link"; optionally one conditional line on the snapshot notice when the doc has cross-doc tokens. AVOID freezing the caption into `node.text` (toOpml serializes it live — mutating corrupts the open doc); operate only on the exported OPML string if at all.
+
+### UXP-173 ☐ Calendar out-of-month cells fade real point titles below the readable floor (design-language §3) 🟢  [Batch 5]
+- **Problem:** `.cv-out{opacity:.45}` fades the whole spillover cell including its `.cv-chip` point titles (already `.76em`), pushing content under the contrast floor (§3: de-emphasize by role, never by opacity fade). BUT verification: the identical (harsher .35) whole-cell fade already ships unflagged on the mature agenda calendar (`.agc-cell.oom`), so this is an accepted spillover idiom, not novel — low, and OOM cells are secondary context.
+- **Rule:** design-language §3 (no fade under the floor).
+- **Target (if addressed, fix BOTH calendars for P5 coherence):** scope the fade to the day-number role (`.cv-out .cv-dom` / `.agc-cell.oom .agc-dom` → `color:var(--muted)`), leave the item chips at `--fg`.
+
+### UXP-174 ⊘ due:week / due:month are forward-only (exclude overdue) (DECISION — recorded, likely no-change) 🟢
+- **Problem:** `due:week` matches `[today, today+7]`, excluding overdue; the agenda Week view gathers overdue into an "Earlier" column, so the two surfaces treat "this week" differently.
+- **Why NOT a straight fix:** verification — these are deliberately different tools. The agenda is a fixed view; search operators are composable atoms, and `due:week | due:overdue` (QX-5 OR) reproduces the Week slice. An unbounded-below window would DESTROY that composability and overlap due:overdue. The ?-panel copy ("due within the next 7/30 days") is already literally accurate.
+- **If anything (owner call):** an OPTIONAL one-line clarity note that due:week is forward-only and pairs with `| due:overdue`, in the ?-panel row or concept guide. Weak enough to be a legitimate "no change."
+
+### UXP-175 ☐ Swing-oracle "but" results tint by Yes/No prefix only (experience, older surface) 🟢  [Batch 5]
+- **Problem:** for the swing oracle (`Yes, and | Yes | Yes, but | No, but | No | No, and`), "No, but" (a hopeful negative) gets the muted gr-no plate and "Yes, but" (a complication) gets the positive gr-yes plate — the tint points the wrong way on the two spicier draws the swing oracle exists to produce. The code comment concedes the tint is a whisper on full-contrast ink, so a minor rough edge.
+- **Rule:** experience/P5 (the whisper shouldn't mislead).
+- **Target (decision, not drift):** either skip the tint when `g.result` contains a comma (tint only the plain Yes/No arms — harmless since plain arms carry no comma), or keep as-is and record the decision. Do NOT invent a third tint or a "but" sigil.
+
+### Closing order (Review 4)
+
+1. **Batch 1 — the held-band regression + its visual echo (UXP-160, 161).** The 🔴 dialog `heldFrom` drop (my UXP-158 regression — do FIRST) + the `.todo-state-isheld` chip/board color. Both fix the marquee feature through its real doors.
+2. **Batch 2 — held-band reach + discoverability (UXP-162, 163, 164).** Held on dated agenda chips, the rollup-depth doors, the base-views GUIDE entry. Mostly copy + one small agenda thread.
+3. **Batch 3 — the durability P1 (UXP-165).** Doc-scope the Restore-earlier-version snapshot. Alone (a data-safety fix warranting focused review).
+4. **Batch 4 — base-view CSS coherence (UXP-166, 167, 168, 169).** The active-toggle tint, dark-mode card elevation, the duplicate rule, the switcher affordance. Pure CSS/markup on the newest surface.
+5. **Batch 5 — small copy/search/experience (UXP-170 defer, 171, 172, 173, 174 decision, 175).** The estimate glyph (github-blocked, defer), is:held, the cross-doc caption, the calendar OOM fade, the due:week note (decision), the swing tint.
+
+---
+
 ## Enhancements (tracked, not defects)
 
 These are **not non-conformances** — the standard is satisfied — just nice-to-haves noted so they aren't lost.
