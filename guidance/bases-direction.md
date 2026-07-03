@@ -57,6 +57,15 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
 - A **base header bar** (whole-base operations).
 - **Freeform, user-defined columns** (the Column menu / Calculate work from UXP-3 carries over).
 - The conversions in §6.
+- **Query-sourced rows (QP-2 Phase A) — moved above the line 2026-07-02 (owner call).** A base whose
+  rows come from a search over the outline, **read-only in v1**: the query and column projections are
+  the base's config; the rows recompute from the live document (memoized per generation, capped). Full
+  design + the red-team corrections it must honor: `query-base-proposal.md` and
+  `base-views-vision.md` §0. This move is ONE item: the saved-views database layer (filter/sort
+  predicates persisted as data operations, named view libraries) and cell write-through to foreign
+  points remain BELOW the line. Views + typed fields also remain deferred here until their own build
+  proposal is approved; the approved *direction* for them is `base-views-vision.md` §0b (views in
+  service of the generative layer).
 
 **Named but DEFERRED (vision, not now — do not build on spec):**
 - Other **views** (cards, list, board).
