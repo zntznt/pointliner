@@ -1358,6 +1358,16 @@ dead-end states** that confirm a non-event without teaching the next step.
 - **Doors (P2):** the `@ Query` insert command (a dialog with a live match-count preview), typed `{query: expr}` promotion on exit (`queryParts`/`promoteBraceBody`), and edit via the pill's pencil or body-click (`editQuery`); a result link click navigates (reuses the `.node-link`/`followNodeLink` path). Atomic in edit mode (like seq). OPML round-trips via `_query`; pruned by `pruneQueries`.
 - **Pins:** `queryRows` (cross-tree match, host exclusion, empty query, cap+total, full-grammar compose) and `queryParts` (sniff, empty/keywordless rejection, classify→artifact). Live-verified: render, result navigation, OPML round-trip, self-reference exclusion, typed promotion, empty state.
 
+### BV-1 ✓ The board view + the view system (SHIPPED 2026-07-02)
+- The flagship view under the base-views-vision §0b thesis: lanes are the user's OWN sequence
+  states in declared order (done-side lanes muted), cards are the rows painted through mtCellHtml
+  (urgency chips, formatted numbers, pills). Pure core `boardLanes` (owning-sequence detection,
+  no-state lane, footer exclusion); `node.view` + `_view` OPML; the switcher fills the reserved
+  `.mt-base-views` strip. Card moves write the keyword into the groupBy cell via mtCommit (text is
+  truth); the card menu (click/tap, Enter/Space, Shift+F10, reusing mtMenuBuilder) is the universal
+  door with drag as the desktop enhancement; a query base's board is read-only per §0.4. Board
+  without a status column flashes the P4 hint naming the fix.
+
 ### FR-1 ✓ Field roles, display-first (SHIPPED 2026-07-02): status/date/number column roles
 - The keystone slice under the base-views-vision §0b thesis, generative-first: `status` reuses the
   sequence machinery (a custom state set becomes colored chips in a column, the future kanban's

@@ -59,6 +59,12 @@ done side muted), a **Date** column shows each date as a color-coded urgency chi
 column right-aligns and formats. The cell text stays plain (edit it and you see the raw value); the
 role only changes how it is shown, and a value that does not fit its role just renders as text.
 
+Once a column is marked **Status**, the base can show itself as a **board**: click **Board** in the
+strip above the grid and each state becomes a lane, each row a card (the other columns show on the
+card, dates as chips). Click a card (or press `Enter` on it) to move it to another lane, or drag it
+with the mouse; the move writes the state back into the table, so switching back to **Table** shows
+the same data. A board sourced from a [query base](getting-around.md#query-bases) is read-only.
+
 ## Footnotes, links, and images
 
 Annotate a claim without cluttering the main text, link out to a source, or embed an image.

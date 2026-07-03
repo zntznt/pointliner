@@ -383,7 +383,21 @@ Implemented:
   `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
   marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
   ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
-  grouping until real queries demand it). **FR-1 added column display roles** (the
+  grouping until real queries demand it). **BV-1 added the view system + the board**:
+  `node.view = {kind:'board', groupBy}` (`_view` OPML, absent = table); the switcher
+  (`mtViewSwitcherHtml`/`mtSetView`) fills the reserved `.mt-base-views` strip;
+  `buildTableWidget` forks to `buildBoardWidget` on the view kind. The pure core
+  `boardLanes(model, groupBy, seqs, lastRow)` groups data rows by the groupBy column:
+  lanes are the OWNING sequence's states in declared order (found from the first
+  recognized value; done-side lanes flagged; unrecognized values in a trailing
+  no-state lane; the lastRow bound keeps a Calculate footer from becoming a card).
+  Cards paint titles + non-group columns through `mtCellHtml` (roles compose).
+  `bvMoveCard` writes the keyword into the groupBy cell and recommits (text is
+  truth); `showCardMenu` (mtMenuBuilder on the shared panel) is the universal move
+  door (click/tap, Enter/Space, Shift+F10) with dragstart/drop as the desktop
+  enhancement (draggable off on touch); a query base's board renders read-only.
+  `mtBaseChromeHtml`/`mtWireBaseChrome` share the strip + switcher chrome across
+  both widgets. **FR-1 added column display roles** (the
   minimal typed-fields slice, bases-direction §4): `node.colRole` (index-aligned like
   `colW` through the three column ops, `_colrole` OPML, all-null drops to undefined);
   the paint wrapper `mtCellHtml(node, raw, c)` swapped in at every data-cell paint site

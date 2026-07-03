@@ -8055,3 +8055,37 @@ test('mtCellHtml — status/date/number roles shape the paint; non-conforming va
   const bare = { dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
   assert.doesNotMatch(c.mtCellHtml(bare, 'TODO', 0), /todo-state/);
 });
+
+// ── BV-1: boardLanes, the board view's pure lane model ───────────────────────
+test('boardLanes — lanes follow the owning sequence order, done flags, no-state lane', () => {
+  const SEQS2 = [
+    { key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3 },
+    { key: 'q1', name: 'Quests', states: ['PLANNED', 'ACTIVE', 'CLEARED'], doneFrom: 2 },
+  ];
+  const model = { aligns: [null, null], rows: [
+    ['Quest', 'State'],
+    ['slay the wyrm', 'ACTIVE'],
+    ['clear the mine', 'planned'],          // case-insensitive matching
+    ['escort the bard', 'CLEARED'],
+    ['mystery job', 'banana'],              // unrecognized -> no-state lane
+  ] };
+  const { seq, lanes } = host(c.boardLanes(host(model), 1, SEQS2));
+  assert.equal(seq.name, 'Quests');          // owning sequence found from the first recognized value
+  assert.deepEqual(lanes.map(l => l.kw), ['PLANNED', 'ACTIVE', 'CLEARED', null]);
+  assert.deepEqual(lanes.map(l => l.done), [false, false, true, false]);
+  assert.deepEqual(lanes.map(l => l.rows), [[2], [1], [3], [4]]);
+});
+
+test('boardLanes — lastRow excludes a Calculate footer; no recognized values falls back to the default sequence', () => {
+  const SEQS2 = [{ key: 'default', name: 'To-do', states: ['TODO', 'DONE'], doneFrom: 1 }];
+  const model = { aligns: [null, null], rows: [
+    ['T', 'S'], ['a', 'TODO'], ['b', 'DONE'], ['total', ''],   // last row = footer
+  ] };
+  const { lanes } = host(c.boardLanes(host(model), 1, SEQS2, 2));
+  assert.deepEqual(lanes.map(l => l.rows), [[1], [2]]);         // footer row 3 never becomes a card
+  // a column with no recognized state anywhere: default sequence lanes, everything in no-state
+  const blank = { aligns: [null, null], rows: [['T', 'S'], ['a', 'x'], ['b', '']] };
+  const r2 = host(c.boardLanes(host(blank), 1, SEQS2));
+  assert.deepEqual(r2.lanes.map(l => l.kw), ['TODO', 'DONE', null]);
+  assert.deepEqual(r2.lanes[2].rows, [1, 2]);
+});
