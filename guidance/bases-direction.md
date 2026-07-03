@@ -93,8 +93,14 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   grammar pill makes a re-rollable generative deck; an image paints as the cover). No group field,
   no editing gesture; read-only by construction on both authored and query bases.
 
+- **The calendar view (BV-3) — moved above the line 2026-07-02 (owner call).** The FR-1 date
+  column places each row on a compact month grid (the agenda's pure `agendaMonthCells` reused;
+  month anchor is session-only view state). Rows without a parseable date surface in a visible
+  strip, never silently dropped (P4, the red-team §0 correction honored). Read-only; chips paint
+  through the role-aware renderer so a query base's title links navigate.
+
 **Named but DEFERRED (vision, not now — do not build on spec):**
-- Other **views** (list, calendar).
+- The **list** view (weak value over the outline itself; build on demand, not on spec).
 - **Typed fields beyond the FR-1 display roles** (checkbox/select-with-editor as column *types*,
   validation, per-role editors).
 - **Filters / sorts as data operations**, saved views.

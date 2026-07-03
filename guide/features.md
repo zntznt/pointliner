@@ -110,6 +110,8 @@ Turn the outline into a lightweight planner.
 - **Cards view.** Show any base as a responsive card grid: rows become cards, images become
   covers, and per-cell generator pills make a re-rollable deck.
   ([tables](writing-and-formatting.md#tables))
+- **Calendar view.** A base with a Date column shows its rows on a month grid, undated rows
+  counted below, never lost. ([tables](writing-and-formatting.md#tables))
 
 ## Linking and connecting notes
 

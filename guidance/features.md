@@ -383,7 +383,11 @@ Implemented:
   `OR`** (a standalone spaced `|`, the app's own alternation glyph): a `{kind:'or'}`
   marker in the flat term list, clause split inside `queryMatchesNode` (clauses of
   ANDed terms, any-clause-matches; empty clauses dropped, never auto-true; no
-  grouping until real queries demand it). **BV-2 added the cards view**: `{kind:'cards'}`
+  grouping until real queries demand it). **BV-3 added the calendar view**:
+  `{kind:'calendar', dateBy}` (first date-role column, guarded); pure `calBaseItems`
+  (strict parseDueDate, undated rows surfaced, never dropped) feeding the agenda's
+  `agendaMonthCells`; `_calMonthByNode` session anchor; nav/Today buttons; chips via
+  `mtCellHtml`. **BV-2 added the cards view**: `{kind:'cards'}`
   (no config), `buildCardsWidget` renders every data row as a card in a responsive grid
   through `mtCellHtml`; the cell-pill click gate widened to `.bv-card`/`.gv-card` so
   per-cell pills re-roll inside board and gallery cards; read-only by construction.

@@ -66,7 +66,9 @@ with the mouse; the move writes the state back into the table, so switching back
 the same data. A board sourced from a [query base](getting-around.md#query-bases) is read-only. **Cards** is the third
 view: every row becomes a card in a grid, with the first column as the title and images as covers.
 A column of `{pick | one | of these}` pills becomes a deck of generative cards, each re-rollable
-with a click.
+with a click. With a **Date** column, the **Calendar** view places each row on a month
+grid; rows without a date are counted below it, and the month arrows plus **Today** move you
+around.
 
 ## Footnotes, links, and images
 
