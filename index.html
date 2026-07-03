@@ -6323,9 +6323,13 @@ function mtWireBaseChrome(host, node) {
 function bvMoveCard(node, rowIdx, groupBy, kw) {
   const m = mtModel(node);
   if (!m.rows[rowIdx]) return;
+  const title = stripMd(String(m.rows[rowIdx][0] || '')) || 'Card';
   m.rows[rowIdx][groupBy] = kw;
   mtCommit(node, m);
-  refreshTable(node);
+  refreshTable(node);   // rebuilds the widget, so focus + announce must be restored after
+  const card = mtHost(node.id)?.querySelector(`.bv-card[data-r="${rowIdx}"]`);
+  if (card) card.focus();
+  announce(`${title} moved to ${kw}`);
 }
 
 function showCardMenu(node, rowIdx, groupBy, anchorEl) {
@@ -6486,7 +6490,8 @@ function buildCalendarWidget(node, model, readOnly) {
       const nav = +b.dataset.nav;
       const cur = _calMonthByNode.get(node.id) ?? dueDateToday();
       _calMonthByNode.set(node.id, nav === 0 ? dueDateToday() : addMonths(cur, nav));
-      refreshTable(node);
+      refreshTable(node);   // rebuilds the widget: restore focus to the same nav control
+      mtHost(node.id)?.querySelector(`.cv-btn[data-nav="${nav}"]`)?.focus();
     };
     b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); go(); });
     b.addEventListener('keydown', e => {
