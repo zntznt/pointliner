@@ -2308,6 +2308,20 @@ function boardLanes(model, groupBy, seqs, lastRow = (model.rows || []).length - 
   return { seq, lanes };
 }
 
+// LEAN FLOOR phase 3: the next lane keyword for a keyboard board-card move. `states` is the sequence's
+// ordered lanes (boardLanes().seq.states); `current` is the card's state (case-insensitive; '' / not-
+// found = the no-state lane, which sits before the first state). Moving CLAMPS at the edges (a board
+// move shouldn't wrap DONE back to the first lane). Returns the destination keyword, or null when
+// already at the edge in that direction (the caller no-ops + flashes). Pure, Node-testable.
+function nextLaneKw(states, current, dir) {
+  if (!states || !states.length) return null;
+  const cur = String(current || '').trim().toUpperCase();
+  const i = states.findIndex(s => s.toUpperCase() === cur);   // -1 = the no-state lane (index "before 0")
+  const to = i + dir;
+  if (to < 0 || to > states.length - 1) return null;          // already at an edge → no move
+  return states[to];
+}
+
 // calBaseItems(model, dateBy, lastRow) — the calendar view's pure item model
 // (BV-3). Parses each data row's dateBy cell through the strict parseDueDate;
 // rows with a valid date become {r, epochDay} items (agendaMonthCells consumes
@@ -6691,6 +6705,20 @@ function buildBoardWidget(node, model, readOnly) {
       if (e.key === 'Enter' || e.key === ' ' || (e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') {
         e.preventDefault(); e.stopPropagation();
         showCardMenu(node, r, gb, card);
+        return;
+      }
+      // LEAN FLOOR phase 3: Alt+Left/Right moves this card to the prev/next lane (the keyboard twin of
+      // the card menu's "Move to" / the desktop drag). Same Alt+Arrow=move convention as the base cell
+      // column/row move. bvMoveCard writes the target keyword into the groupBy cell + re-focuses the
+      // card; nextLaneKw clamps at the first/last lane (no wrap), and an edge move flashes rather than
+      // silently doing nothing. Read-only (query) boards have no move — the menu isn't wired there.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault(); e.stopPropagation();
+        const m = mtModel(node);
+        const { seq } = boardLanes(m, gb, allSequences(), mtLastDataRow(node, m));
+        const next = nextLaneKw(seq.states, m.rows[r]?.[gb], e.key === 'ArrowRight' ? 1 : -1);
+        if (next == null) { flashHint(e.key === 'ArrowRight' ? 'Already in the last lane.' : 'Already in the first lane.'); return; }
+        bvMoveCard(node, r, gb, next);
       }
     });
     card.addEventListener('dragstart', e => {
@@ -21715,11 +21743,11 @@ const GUIDE = [
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
   { id:'base-views', cat:'writing',
     title:'Base views',
-    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery), or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: open that column's menu and choose Show as (Status or Date). Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery), or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },
-      { syn:'Base → Calendar',desc:'place rows on a calendar by a date column' },
-      { syn:'Column menu → Show as', desc:'mark a column as Status or Date so Board / Calendar can use it' },
+      { syn:'Alt + R',        desc:'mark a column Status or Date (so Board / Calendar can use it)' },
+      { syn:'Alt + ← / →',    desc:'move the focused board card to the previous or next lane' },
     ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',

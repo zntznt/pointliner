@@ -8520,6 +8520,25 @@ test('boardLanes — lastRow excludes a Calculate footer; no recognized values f
   assert.deepEqual(r2.lanes[2].rows, [1, 2]);
 });
 
+// ── LEAN FLOOR phase 3: nextLaneKw (keyboard board-card move) ──
+test('nextLaneKw — clamps at both edges, no-state advances to the first lane, case-insensitive', () => {
+  const S = ['TODO', 'NEXT', 'WAITING', 'DONE'];
+  assert.equal(c.nextLaneKw(S, 'TODO', 1), 'NEXT');
+  assert.equal(c.nextLaneKw(S, 'WAITING', 1), 'DONE');
+  assert.equal(c.nextLaneKw(S, 'DONE', 1), null, 'clamps at the last lane (no wrap)');
+  assert.equal(c.nextLaneKw(S, 'TODO', -1), null, 'clamps at the first lane (no wrap)');
+  assert.equal(c.nextLaneKw(S, '', 1), 'TODO', 'a no-state card advances into the first lane');
+  assert.equal(c.nextLaneKw(S, '', -1), null, 'a no-state card has nowhere before the first lane');
+  assert.equal(c.nextLaneKw(S, 'todo', 1), 'NEXT', 'the current state is matched case-insensitively');
+  assert.equal(c.nextLaneKw([], 'x', 1), null, 'no states → null');
+});
+
+test('LEAN-FLOOR p3: the Alt+Left/Right board-card-move wiring is present (card keydown is DOM-bound)', () => {
+  assert.ok(_src.includes("(e.key === 'ArrowLeft' || e.key === 'ArrowRight')") && _src.includes('nextLaneKw(seq.states'), 'the Alt+Arrow card-move branch is missing');
+  assert.ok(_src.includes('bvMoveCard(node, r, gb, next)'), 'the move must go through bvMoveCard');
+  assert.ok(_src.includes("flashHint('Already in the last lane.')") || _src.includes('Already in the last lane'), 'an edge move must flash (P4), not silently no-op');
+});
+
 // ── BV-3: calBaseItems, the calendar view's pure item model ──────────────────
 test('calBaseItems — valid dates become items, blank/invalid rows surface as undated', () => {
   const model = { aligns: [null, null], rows: [

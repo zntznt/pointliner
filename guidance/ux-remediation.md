@@ -1774,6 +1774,19 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   core's set/order/wrap/unknown cases + the Alt+R src-pin with its P4 flash).
 - **Still open in phase 3:** column/row INSERT + DELETE by key, the **board-card move** by modifier-arrow,
   column-resize step. Each a focused follow-up on the base-cell-keydown seam.
+
+### LF-3c ◐ Phase 3: board-card move by keyboard (Alt+Left/Right) (RESOLVED pending merge)
+- **Completes the Board keyboard story LF-3b opened.** With a card focused, **Alt+Left/Right moves it to
+  the previous / next lane** — the keyboard twin of the card menu's "Move to" (and the desktop drag), which
+  were mouse/menu-only. Wired into the existing card keydown (beside the Shift+F10 menu). Reuses `bvMoveCard`
+  (writes the target keyword into the groupBy cell, re-renders, re-focuses the card, announces).
+- Pure core `nextLaneKw(states, current, dir)`: the next lane keyword over `boardLanes().seq.states`,
+  CLAMPING at both edges (a board move shouldn't wrap DONE back to the first lane); a no-state card
+  advances into the first lane; case-insensitive; null at an edge → the caller flashes ("Already in the
+  first/last lane", P4). Now that LF-3b (Alt+R role-cycle) unblocks ENTERING Board, this makes it fully
+  keyboard-operable end to end. Concept-guide `base-views` entry updated. 865 tests (+2 pins: the
+  clamp/no-state/case cases + the Alt+Arrow card-move src-pin with its P4 flash).
+- **Still open in phase 3:** column/row INSERT + DELETE by key, column-resize step.
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
