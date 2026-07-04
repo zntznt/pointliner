@@ -20823,6 +20823,11 @@ function applyTheme() {
     'Theme: ' + (forcedTheme === 'light' ? 'Light' : forcedTheme === 'dark' ? 'Dark' : 'System');
 }
 applyTheme();
+// UXP-101: on System (forcedTheme === null), an OS theme flip re-runs applyTheme so the JS-computed
+// accent tokens (--acc, --acc-fg, --ring, …) follow the flip live, instead of keeping the previous
+// theme's values until a reload. The CSS media-query home already flips instantly; this keeps the
+// accent-derived tokens (applyAccentCSS) in step (DL §3, "native controls follow the active theme").
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change', () => { if (forcedTheme === null) applyTheme(); });
 // tri-state cycle: System → Light → Dark → System. The menu stays open so the
 // cycle is one spot to click repeatedly; outside-click still dismisses.
 document.getElementById('btn-theme').addEventListener('click', () => {

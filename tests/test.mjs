@@ -7376,6 +7376,15 @@ test('drift guard: dual-home token parity (design-language §3)', () => {
     'in the applyTheme strings but missing from the :root light home');
 });
 
+test('UXP-101: a live prefers-color-scheme change re-applies the theme on System', () => {
+  // the accent-derived tokens (applyAccentCSS) must follow an OS theme flip live, not go stale
+  // until reload. One subscription beside the boot applyTheme(), gated on forcedTheme === null.
+  assert.ok(RAW_HTML.includes("matchMedia('(prefers-color-scheme:dark)').addEventListener('change'"),
+    'no live prefers-color-scheme listener (UXP-101)');
+  assert.ok(/addEventListener\('change', \(\) => \{ if \(forcedTheme === null\) applyTheme\(\); \}\)/.test(RAW_HTML),
+    'the listener must re-run applyTheme only on System (forcedTheme === null)');
+});
+
 test('drift guard: border radii come from the token set (design-language §4)', () => {
   // Sanctioned literals: 2px inline marks (.md-hl/mark), 4px keycaps + badges
   // (the documented --r-xs+1) and scrollbar thumbs, 50% the accent-swatch disc,
