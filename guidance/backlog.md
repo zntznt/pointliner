@@ -42,11 +42,14 @@ effort/risk** (V/E/R = High/Medium/Low):
    raw value, worst ratio** — a deliberate cross-cutting investment, not a quick win.
 
 **🟡 Situational**
-3. **Cross-document unlinked references (view-only)** — V:M · E:L-M · R:M. Cheaper than first judged:
-   WS-1's index already retains every doc's full tree, so the text is *there*. Ship **view-only**
-   (surface "mentioned in N other notes," click to navigate; **no** cross-doc auto-Link write — that
-   write-into-an-unopened-file is the risky part). The real drag is **noise** across a vault; the
-   min-length/word-boundary floor decides useful-vs-clutter.
+3. ✓ **Cross-document unlinked references (view-only)** — V:M · E:L-M · R:M. **Delivered 2026-07-03.**
+   The backlinks panel gains an "Unlinked references in other notes" section: mentions of the focused
+   point's title/aliases in OTHER folder documents that aren't linked yet, click to open that document.
+   Shipped **view-only** as decided (no cross-doc auto-Link write — the risky write-into-an-unopened-file
+   path). Reuses WS-1's retained per-doc trees (`workspaceIndex.roots`) + the SAME name-matcher as the
+   same-doc scan (factored into `unlinkedNameRegex`, so no noise-floor drift). Pure core
+   `collectCrossUnlinkedRefs(target, ownDocId, wsIndex)`, Node-tested. The `UNLINKED_MIN_LEN`/word-boundary
+   floor (inherited from same-doc) is the noise gate.
 4. ✓ **Workspace "broken links" report** — V:L-M · E:L · R:L. **Delivered 2026-07-03.** File menu →
    Broken links opens an io-card report of every dangling link, same-doc AND cross-doc (the first
    consumer of the built-but-unread `workspaceIndex.outgoing`), each row jumping to the source point.

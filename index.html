@@ -13830,6 +13830,19 @@ const UNLINKED_MIN_LEN = 3;
 // (UNLINKED_MIN_LEN) is applied per name, so a short title with a long alias still
 // matches on the alias. Pure over rootNode (pass explicit root for tests; omit for
 // live document).
+// The shared name-matcher behind BOTH the same-doc and cross-doc unlinked-reference scans: build a
+// word-boundary regex over the target's display title + aliases (>= UNLINKED_MIN_LEN chars), matched
+// against a source's displayText(forMatch) so markdown/pills/link+footnote tokens never trip a false
+// ref. Returns null when the target has no matchable name (so the caller skips the scan). Factored out
+// (backlog #3) so the cross-doc scan reuses the exact same-doc matching rules — no drift between them.
+function unlinkedNameRegex(target) {
+  const names = [displayText(target, { forMatch: true }), ...aliasesOf(target)]
+    .map(s => (s || '').trim()).filter((s, i, a) => s.length >= UNLINKED_MIN_LEN && a.indexOf(s) === i);
+  if (!names.length) return null;
+  const alt = names.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return new RegExp(`(?<![a-zA-Z0-9])(?:${alt})(?![a-zA-Z0-9])`, 'i');
+}
+
 function collectUnlinkedRefs(targetId, rootNode) {
   if (rootNode === undefined) rootNode = root;
   let target = null;
@@ -13839,16 +13852,8 @@ function collectUnlinkedRefs(targetId, rootNode) {
     for (const c of n.children || []) find(c);
   })(rootNode);
   if (!target) return [];
-  // Match the target's names as they READ (display text), so a `**Roadmap**` title
-  // matches the word "Roadmap" rendered in a source — not the asterisks. The title
-  // resolves through displayText (match mode: pills frozen, syntax stripped); aliases
-  // are already plain.
-  const titleDisp = displayText(target, { forMatch: true });
-  const names = [titleDisp, ...aliasesOf(target)]
-    .map(s => (s || '').trim()).filter((s, i, a) => s.length >= UNLINKED_MIN_LEN && a.indexOf(s) === i);
-  if (!names.length) return [];
-  const alt = names.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const re = new RegExp(`(?<![a-zA-Z0-9])(?:${alt})(?![a-zA-Z0-9])`, 'i');
+  const re = unlinkedNameRegex(target);
+  if (!re) return [];
   const linkers = new Set(collectLinks(rootNode).backlinks[targetId] || []);
   const out = [];
   (function walk(n) {
@@ -13862,6 +13867,38 @@ function collectUnlinkedRefs(targetId, rootNode) {
     }
     for (const c of n.children || []) walk(c);
   })(rootNode);
+  return out;
+}
+
+// Cross-document unlinked references (backlog #3, view-only): the same name-scan as collectUnlinkedRefs
+// but across EVERY OTHER doc's retained tree in the workspace index (wsIndex.roots), so "who mentions
+// this point by name, in the whole folder, without linking it?" Pure: target is the live node, ownDocId
+// its doc, wsIndex the workspace index ({ roots: Map(docId->root), nameByDocId, backlinks }). Excludes a
+// source that ALREADY cross-links to the target (wsIndex.backlinks) so a linked mention never double-lists.
+// Deliberately NO auto-link write (the risky write-into-an-unopened-file the backlog fenced off) — a row
+// only navigates. Returns [{ docId, docName, nodeId, title }] sorted by doc then title.
+function collectCrossUnlinkedRefs(target, ownDocId, wsIndex) {
+  if (!target || !wsIndex || !wsIndex.roots) return [];
+  const re = unlinkedNameRegex(target);
+  if (!re) return [];
+  // sources that already cross-link to this target (dstDocId#dstNodeId) — skip them
+  const already = new Set();
+  const bl = wsIndex.backlinks && wsIndex.backlinks.get(ownDocId + '#' + target.id);
+  for (const s of bl || []) already.add(s.srcDocId + '#' + s.srcNodeId);
+  const out = [];
+  for (const [docId, docRoot] of wsIndex.roots) {
+    if (docId === ownDocId) continue;                                  // same-doc is collectUnlinkedRefs' job
+    const docName = (wsIndex.nameByDocId && wsIndex.nameByDocId.get(docId)) || null;
+    (function walk(n) {
+      // varMap:{} — a foreign-doc node must NOT resolve its pills against the LIVE doc's vars
+      // (varMapAt reads the current doc); name-matching only needs the prose, so pass an empty map.
+      if (!already.has(docId + '#' + n.id) && re.test(displayText(n, { forMatch: true, varMap: {} }))) {
+        out.push({ docId, docName, nodeId: n.id, title: displayText(n, { varMap: {} }) || '(untitled)' });
+      }
+      for (const c of n.children || []) walk(c);
+    })(docRoot);
+  }
+  out.sort((a, b) => (a.docName || '').localeCompare(b.docName || '') || a.title.localeCompare(b.title));
   return out;
 }
 
@@ -19586,11 +19623,14 @@ function showBlPanel(nodeId) {
   const unlinked = collectUnlinkedRefs(nodeId);
   // CF-4: inbound links from OTHER workspace docs (same-doc sources come from collectLinks).
   const cross = (workspaceDir && workspaceIndex) ? workspaceBacklinks(root.docId, nodeId, workspaceIndex) : [];
-  if (!sources.length && !unlinked.length && !cross.length) { hideBlPanel(); return; }
+  // backlog #3: unlinked mentions of this point in OTHER folder docs (view-only, no auto-link).
+  const crossUnlinked = (workspaceDir && workspaceIndex) ? collectCrossUnlinkedRefs(nodeById(nodeId), root.docId, workspaceIndex) : [];
+  if (!sources.length && !unlinked.length && !cross.length && !crossUnlinked.length) { hideBlPanel(); return false; }
   blNodeId = nodeId;
-  renderBlPanel(sources, unlinked, cross);
+  renderBlPanel(sources, unlinked, cross, crossUnlinked);
   document.getElementById('bl-panel').classList.add('on');
   syncBlPanelBottom();
+  return true;
 }
 
 function hideBlPanel() {
@@ -19600,9 +19640,10 @@ function hideBlPanel() {
   syncBlPanelBottom();
 }
 
-function renderBlPanel(sources, unlinked, cross) {
+function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   unlinked = unlinked || [];
   cross = cross || [];
+  crossUnlinked = crossUnlinked || [];
   const inner = document.getElementById('bl-list');
   const hd = document.getElementById('bl-panel-hd');
   const total = sources.length + cross.length;   // "Linked from" is all inbound links (CF-4)
@@ -19697,14 +19738,41 @@ function renderBlPanel(sources, unlinked, cross) {
     row.appendChild(btn);
     inner.appendChild(row);
   });
+
+  // backlog #3: unlinked mentions of this point in OTHER folder documents. View-only — a row
+  // navigates (followLinkTarget switches the doc), with NO "Link" button, since linking would write
+  // into an unopened file (the risky path the backlog fenced off). Marked with its source doc, like
+  // the cross-doc backlink rows above.
+  if (!crossUnlinked.length) return;
+  const xsub = document.createElement('div');
+  xsub.className = 'bl-subhd';
+  xsub.textContent = `Unlinked references in other notes · ${crossUnlinked.length}`;
+  inner.appendChild(xsub);
+  crossUnlinked.forEach(({ docId, docName, nodeId, title }) => {
+    const row = document.createElement('div');
+    row.className = 'bl-item bl-unlinked bl-cross';
+    const label = document.createElement('span');
+    label.className = 'bl-unlinked-label';
+    label.textContent = title;
+    const hint = document.createElement('span');
+    hint.className = 'bl-doc-hint';
+    hint.textContent = ` · ${docName || 'another document'}`;
+    label.appendChild(hint);
+    label.setAttribute('role', 'link');
+    label.setAttribute('tabindex', '0');
+    label.setAttribute('aria-label', `Open "${title}" in ${docName || 'another document'}`);
+    const go = () => { hideBlPanel(); followLinkTarget(docId, nodeId); };
+    label.addEventListener('click', go);
+    label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    row.appendChild(label);
+    inner.appendChild(row);
+  });
 }
 
 function updateBlPanel(nodeId) {
-  const idx = collectLinks();
-  const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
-  const unlinked = collectUnlinkedRefs(nodeId);
-  const cross = (workspaceDir && workspaceIndex) ? workspaceBacklinks(root.docId, nodeId, workspaceIndex) : [];
-  if (sources.length || unlinked.length || cross.length) showBlPanel(nodeId); else hideBlPanel();
+  // showBlPanel does the full gather (incl. the cross-doc unlinked scan) and returns whether it had
+  // anything to show — so we don't duplicate the folder-wide walk here just to decide show-vs-hide.
+  showBlPanel(nodeId);
 }
 
 // Keep the panel docked above the software keyboard on mobile. Crucially the
@@ -21649,10 +21717,11 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your notes that links to it. Useful in a personal wiki or research notes when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your notes that links to it. Useful in a personal wiki or research notes when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
     examples:[
-      { syn:'Linked from',          desc:'points that link here' },
+      { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
       { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
+      { syn:'…in other notes',      desc:'mentions in your other folder documents; click to open' },
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across notes',
