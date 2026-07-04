@@ -126,7 +126,7 @@ button,[contenteditable],input{touch-action:manipulation}
   --sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);
   --hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f;
 }}
-body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:17px;line-height:var(--lh);min-height:100vh;padding-top:44px}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:1.0625rem;line-height:var(--lh);min-height:100vh;padding-top:44px}/* UXP-191: rem, not 17px — 1.0625rem == 17px at the default 16px root but now honors the browser's font-size preference (P3-3, the primary low-vision control) that a bare px silently overrode. The whole em cascade (h1.md-h 2em, the body.zoomed step-downs, fitZoomTitle's px measure) rides on this unchanged. ponytail: measure stays max-width:720px (a cap that collapses to viewport, never breaks; re-clamp to ch if large-font CPL drift is judged worth it) */
 ::selection{background:color-mix(in srgb,var(--acc) 22%,transparent)}
 html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 
