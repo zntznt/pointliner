@@ -7376,6 +7376,16 @@ test('drift guard: dual-home token parity (design-language §3)', () => {
     'in the applyTheme strings but missing from the :root light home');
 });
 
+test('UXP-191: the base font is rem, not px, so the browser font-size preference is honored (P3-3)', () => {
+  // a bare px root silently overrides the user's browser default-font-size setting (the primary
+  // low-vision control). rem inherits it. pin the intent so a future edit can't regress to px.
+  // the base rule is the bare `body{...}` (not .guide-entry-body, not body.zoomed)
+  const bodyRule = CSS_TEXT.match(/[^-\w]body\{[^}]*\bfont-size:([^;]+);/);
+  assert.ok(bodyRule, 'base body font-size rule not found');
+  // 1.0625rem == 17px at the default 16px root (byte-identical default) but honors the browser pref
+  assert.equal(bodyRule[1].trim(), '1.0625rem', `base font must be rem, got "${bodyRule[1]}"`);
+});
+
 test('UXP-101: a live prefers-color-scheme change re-applies the theme on System', () => {
   // the accent-derived tokens (applyAccentCSS) must follow an OS theme flip live, not go stale
   // until reload. One subscription beside the boot applyTheme(), gated on forcedTheme === null.

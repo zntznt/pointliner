@@ -1613,6 +1613,34 @@ batch closes it.
 
 ---
 
+## Standard-interrogation review (2026-07-03, SEVENTH pass — audits the RULEBOOK, not conformance)
+
+A deliberately DIFFERENT seventh pass: after six conformance passes converged to hygiene, this one
+inverts the question — are the LOCKED standards themselves right for real users, or optimized into a
+local maximum? Five lenses (Notion/Obsidian defector, a11y realist, deep solo-RPG user, data-longevity
+skeptic, product strategist) each challenged a specific locked decision from a real user's reality; a
+steelman stage defended each rule as hard as possible. **24 challenges → 2 reconsider, 15 tension, 7
+reaffirm, 0 strawman.** The soul held (offline-first, single-file, no-dependency, no-backend, closed
+syntax, warm-paper ceiling all reaffirmed). Two genuine miscalibrations survived, BOTH hitting the
+founding solo-RPG user. Findings are owner DECISIONS, not defects — most of this file's UXP items are
+conformance fixes; these are strategic. Full memo in the session; the two actionable heads below.
+
+### UXP-191 ◐ The px-locked base font silently ignores the browser font-size preference (P3-3) 🟡 (RESOLVED pending merge)
+- **Problem:** `body{font-size:17px}` was a bare px root (zero rem font-sizes in the file), so a low-vision user's browser default-font-size setting — the primary, most-discoverable low-vision control, honored on virtually every text site — was silently overridden. The app honors `prefers-color-scheme` + `prefers-reduced-motion` but not this one signal, for the exact population a11y serves. Neither honored nor declared out of scope: silently broken.
+- **Rule vs. reality:** P3-3 is a MUST (honor the user's system/browser signals). Not a taste call — an internal inconsistency with the app's own ethos, fixable at zero identity cost (no backend/dep/syntax/redesign).
+- **Resolved:** `17px` → `1.0625rem` (== 17px at the default 16px root, byte-identical for default users; scales with the browser preference for everyone else). The whole em cascade rides it unchanged (h1.md-h `2em`, the `body.zoomed` step-downs, `fitZoomTitle`'s px measure). Pinned (base font must be rem). Verified: no `html{font-size}` override exists (so rem tracks the browser root), and the arithmetic gives 17px @16-root / 25.5px @24-root. **ponytail deferral:** the `max-width:720px` measure stays px — it's a cap that collapses to viewport (never breaks), only doesn't grow; re-clamp to `ch` only if large-font CPL drift is judged worth it.
+
+### DECISION-191b ☐ No generator picks a random point from a live subtree (`{roll: query}`) — needs owner sign-off 🟡 [design brief]
+- **The locked boundary:** every generative source (`{a|b}`, a named rule, a `{shuffle:}` deck) draws from LITERAL text authored in the rule/deck body; no reference form resolves to live tree content. backlog Tier 3 records it: "no `{thread}`-style generator that picks a random point under a parent … not expressible with the current engine."
+- **Whom it costs (the founding user):** a solo GM keeps a live outline of open threads / NPCs and needs "advance a random open thread" / "a random NPC reacts." The dice engine — Pointliner's original reason to exist — can't see those points, so the GM must hand-copy every thread title into a `{shuffle: …}` deck body and re-edit it on every change. The living outline is invisible to the generator.
+- **Why the boundary is not a wall:** the "grammar never reads the tree" premise is already false in shipped code — `{= sum(subtree)}` / `{= words(subtree)}` resolve by reading the render node's live descendants (`cookieNode`), and the `[[#id|]]` mirror transcludes another node's live content (CLAUDE.md's "one deliberate re-entrance"). Tree-reads-into-inline is an existing, controlled doorway crossed twice with sign-off. So this is an UNSCOPED design, not a forbidden one.
+- **The design (for owner sign-off — NOT to build blind):** a new `resolveBrace` branch `{roll: <search-query>}` reusing the `parseSearchQuery` vocabulary (`{roll: is:todo under here}`) — NO new sigil, the P5-preferred "new brace branch, not a new delimiter". Rides the two existing tree-reading precedents. **Open decisions the owner must make:** (1) scope grammar — which subtree? whole doc? by `#tag` / `is:todo`? anchor on the render node like the rollups, or take an explicit scope? (2) the pick-consistency question a random pick over a live set reopens (deterministic rollups don't have it) — re-picked on every reference, memoized per render, or per click? Anchor the answer on the existing item-field pick-variable model (`w = {roll: …}` then `{w}` is stable). (3) the freeze/re-roll gesture (dice model: freeze on render, re-roll on click). Persistent-variable workaround does NOT cover this (can't declare a var over "whatever's under this parent now"). This is the memo's hardest push: the cost lands on the founding user and the fix violates no identity constraint. **Blocked on: owner decision (1)-(3), then build.**
+
+### Reaffirmed (probed hard, the locked decision is RIGHT — do not revisit without cause)
+No relation/rollup engine between bases · "one authoring language, never a new sigil" (P5) · the ~2em display ceiling + warm-paper-ink palette · no informational text < 11px · state-modulated odds via `{= expr}` weights · no render-time mutation (self-advancing counters) · seed-not-samples / data-not-code / plain-JSON-in-plain-XML. These are the product's soul and each earns its keep; the memo has the per-item steelman.
+
+---
+
 ## Enhancements (tracked, not defects)
 
 These are **not non-conformances** — the standard is satisfied — just nice-to-haves noted so they aren't lost.
