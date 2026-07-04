@@ -1613,6 +1613,21 @@ batch closes it.
 
 ---
 
+## Adversarial robustness pass (2026-07-03, EIGHTH — attacks the MACHINE, not the design)
+
+A red-team fleet (5 attackers: grammar/dice/math fuzzer, OPML/persistence corruptor, XSS/injection, edit-mode/save-race, search/date/table) whose job was to CRASH / CORRUPT / LEAK, not critique. Every finding required a reproduction, not an opinion. **20 raw attacks → 6 reproduced, 13 surfaces HELD, 1 refuted.** The app held up well — `ex()` escaping, `withFoldedActive`, `parseDueDate`'s ISO clamp, the null-return contract, and the depth/cycle guards all repelled their attacks. The 6 real breaks share ONE root cause: **the interactive creation paths clamp/escape, but the load-from-OPML path trusts the sidecar JSON** (the correct threat model for a file-opening local-first app). All 6 fixed in one PR (in-file guards, no dep/syntax/backend). 833 tests (+5 hardening pins).
+
+- **HARD-1 ◐ `{Nx:}` repeat bomb (DATA-LOSS).** `{99x:{99x:{99x:{99x:a}}}}` (33 chars) multiplied WIDTH inside one depth increment → 192MB/OOM, and re-detonated on every reopen (persists in `node.text`), so a saved/shared doc became permanently un-openable. FIX: a `ctx.emitted` output budget (`GRAMMAR_OUTPUT_CAP` 100k) in `expandTemplate` (the one chokepoint) + a break in the repeat loop → returns the `…` marker. Verified: the bomb caps at ~40k in 10ms; `{3x: x}` → `x x x` unaffected.
+- **HARD-2 ◐ markov `steps` unclamped on load (CRASH).** `makeMarkovRoll` clamps to 500 but only at the dialog; `expandRule`/`rerollMarkov` ran `walkMarkov` with a loaded `steps:1e9` → OOM. FIX: clamp inside `walkMarkov` (the single consumer), same 500 bound. Verified: `steps:1e9` → 501-element path.
+- **HARD-3 ◐ over-long `#tag` regex crash (CRASH).** A ~32k `#tag` compiled to a `new RegExp` past V8's program limit → `SyntaxError` mid-`render()`; a persisted query pill threw on every render (doc won't display). FIX: cap the `#` arm at 512 in `parseSearchQuery` → falls through to a text term (only `termMatchesNode` builds a regex from tag text; `mdInline`/`collectTags` use a fixed pattern). Verified: 40k `#tag` → text term.
+- **HARD-4 ◐ dice-label XSS (INJECTION).** `diceBreakdownHTML` built the label from `p.count`/`sides`/`target` with NO `escHtml` (while the roll faces beside it WERE escaped); a hostile `_dice` `count:"<img onerror=…>"` fired on open (a shared HTML opens in display mode, `restoreEmbeddedDoc` wins). Not reachable by typed `{2d6}` (parseDice coerces to int) — only via loaded sidecar JSON. FIX: `escHtml` the label in both the pool and plain arms. Verified: raw `<img>` gone, `&lt;img` escaped.
+- **HARD-5 ◐ `dlOpml` silent-fail save (DEGRADATION).** A `toOpml` throw (deep-tree overflow) on the download path (Firefox/Safari) failed with zero feedback, unlike the FSA path. No data lost (autosave holds), but a Save that silently no-ops. FIX: try/catch → `flashError`, mirroring `writeH`.
+- **HARD-6 ◐ `parseDueDate` relative-arm overflow (DEGRADATION).** `today+1e11` was unbounded (the ISO arm clamps 1900-2200) → a garbage epoch → `NaN-NaN-NaN` chip. FIX: bound the relative result to the same epoch-day window → null. Verified: `today+1e11` → null; `today+5` finite.
+
+**HELD (attacked hard, did not break):** the grammar/dice/math null-return contract (`999999d999999`→null, self-grammar `↻`, deep recursion caught internally), `ex()` OPML/data-island escaping (a literal `</script>` never emits raw), every structured-attribute JSON parse (try/catch→`[]`, whitelist-filtered, "drop the bad keep the good"), `fromOpml` + persistence (malformed XML → clean Error every caller catches, quota → `autosaveDisabled`, folder write atomic temp+move), edit-mode serialize (`withFoldedActive` wraps every root serialize; `render()` refolds before wiping), search/date/table edges (`parseDueDate` rejects Feb 30, `computeTable` → visible `#ERR`, no wrong all-match).
+
+---
+
 ## Standard-interrogation review (2026-07-03, SEVENTH pass — audits the RULEBOOK, not conformance)
 
 A deliberately DIFFERENT seventh pass: after six conformance passes converged to hygiene, this one

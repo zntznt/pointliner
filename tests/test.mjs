@@ -8310,3 +8310,45 @@ test('baseInlineView — uncapped shows all; capped shows the first N and flags 
   assert.deepEqual(host(c.baseInlineView(false, 5, 5, false)),     { collapsed: false, shown: 5, clipped: false, hidden: 0 });   // exactly at cap
   assert.deepEqual(host(c.baseInlineView(false, 20, 12, false)),   { collapsed: false, shown: 12, clipped: false, hidden: 0 });  // cap > total
 });
+
+// ── adversarial-hardening pass: fuzz/injection guards (see guidance/ux-remediation.md) ──────────
+test('HARD-1: {Nx:} nesting is budget-capped, not an OOM bomb (data-loss guard)', () => {
+  // {99x:{99x:{99x:{99x:a}}}} multiplied to 192MB/OOM and re-detonated on every reopen. The
+  // ctx.emitted output budget in expandTemplate + the repeat-loop break truncate to ~100k with a … marker.
+  const t0 = Date.now();
+  const out = c.runGrammar('origin: {99x:{99x:{99x:{99x:a}}}}', 'origin', {}, {});
+  assert.ok(Date.now() - t0 < 2000, 'the bomb must resolve fast (budget-capped), not hang');
+  assert.ok(out.length < 200000, `output must be capped, got ${out.length}`);
+  assert.ok(out.includes('…'), 'a truncated expansion shows the … marker');
+  // a normal repeat is unaffected
+  assert.equal(c.runGrammar('origin: {3x: x}', 'origin', {}, {}), 'x x x');
+});
+
+test('HARD-2: walkMarkov clamps steps at its single consumer (crash-on-load guard)', () => {
+  // a loaded _markov record carries an unclamped steps; walkMarkov now clamps (was OOM at steps:1e9).
+  const parsed = c.parseMarkov('a -> a');
+  assert.ok(c.walkMarkov(parsed, 'a', 1000000000).length <= 501, 'steps clamped to <=500');
+  assert.ok(c.walkMarkov(parsed, 'a', 3).length <= 4, 'a small steps is unaffected');
+});
+
+test('HARD-3: an over-long #tag parses as text, never reaching new RegExp (crash guard)', () => {
+  // a ~32k #tag compiled to a regex exceeding V8s program limit → SyntaxError mid-render(). Capped at 512.
+  assert.equal(c.parseSearchQuery('#' + 'a'.repeat(40000))[0].kind, 'text', 'over-long #tag → text term');
+  assert.equal(c.parseSearchQuery('#thread/torn')[0].kind, 'tag', 'a normal #tag still parses as a tag');
+});
+
+test('HARD-4: the dice pill label escapes hostile _dice fields (XSS guard)', () => {
+  // a loaded _dice part can carry any count/sides/target; parseDice never runs on it. The label must
+  // be escHtml-escaped like the roll faces beside it, or an <img onerror> count injects live HTML.
+  const d = { parts: [{ kind: 'dice', sign: 1, count: '<img src=x onerror=alert(1)>', sides: 6, rolls: [1] }], total: 1 };
+  const html = c.diceBreakdownHTML(d);
+  assert.ok(!html.includes('<img src=x onerror'), 'raw HTML must not reach the pill');
+  assert.ok(html.includes('&lt;img'), 'the hostile value is escaped');
+});
+
+test('HARD-6: parseDueDate bounds the today±N relative arm like the ISO arm (degradation guard)', () => {
+  // today+1e11 made a garbage epoch → NaN-NaN-NaN chip. Now null, matching the ISO 1900-2200 clamp.
+  assert.equal(c.parseDueDate('today+100000000000'), null, 'an overflow relative date → null');
+  assert.equal(c.parseDueDate('today-100000000000'), null, 'and the negative direction');
+  assert.ok(Number.isFinite(c.parseDueDate('today+5')), 'a normal relative date still resolves');
+});
