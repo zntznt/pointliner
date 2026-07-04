@@ -8655,3 +8655,16 @@ test('LEAN-FLOOR p2: the verbosity dial + blind-render wiring is present', () =>
   assert.ok(_src.includes("data.verbosity === 'lean'"), 'the autosave restore of verbosity is missing');
   assert.ok(/JSON\.stringify\(\{ root,[^}]*\bverbosity\b/.test(_src), 'verbosity is not persisted in the autosave payload');
 });
+
+// ── LEAN FLOOR phase 3: Alt+Arrow moves a base column/row (keyboard, no menu; DOM-bound → src-pinned) ──
+test('LEAN-FLOOR p3: the Alt+Arrow column/row move wiring is present in the cell keydown', () => {
+  // Alt+Arrow must move the focused column (left/right) or row (up/down) via the existing mtMoveCol/
+  // mtMoveRow, then re-focus the moved cell. Bounds are guarded (header row 0 / footer / edges).
+  assert.ok(_src.includes('mtMoveCol(node, c, -1); mtFocusCell(node, r, c - 1)'), 'Alt+Left column-move-left wiring missing');
+  assert.ok(_src.includes('mtMoveCol(node, c, 1);  mtFocusCell(node, r, c + 1)'), 'Alt+Right column-move-right wiring missing');
+  assert.ok(_src.includes('mtMoveRow(node, r, -1); mtFocusCell(node, r - 1, c)'), 'Alt+Up row-move-up wiring missing');
+  assert.ok(_src.includes('mtMoveRow(node, r, 1); mtFocusCell(node, r + 1, c)'), 'Alt+Down row-move-down wiring missing');
+  // the guard: Alt+Up only when r > 1 (row 0 is the header, never movable), Alt+Down only below the last data row
+  assert.ok(_src.includes("e.key === 'ArrowUp' && r > 1"), 'Alt+Up must protect the header row (r > 1)');
+  assert.ok(_src.includes('r < mtLastDataRow(node, m)'), 'Alt+Down must stop above the footer');
+});

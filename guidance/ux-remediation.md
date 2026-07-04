@@ -1749,6 +1749,19 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   it stays atomic" comment at `editQuery` corrected. 860 tests (+2 pins). The unfold cluster is now
   complete (seq + query); only `est` rollup edit remains (a separate lossy-trap gap, out of scope).
 
+### LF-3 ◐ Phase 3 (start): base column/row MOVE goes keyboard-only (Alt+Arrow) (RESOLVED pending merge)
+- **The table/base structural residue starts here.** In an interactive base, **Alt+Arrow now MOVES the
+  focused column (left/right) or row (up/down)** — a menu-free keyboard twin of the column panel's Move,
+  which was mouse/menu-only. Same `Alt+Arrow = move` convention as the outline (P1). Wired into the base
+  cell keydown, before the plain-arrow cell-nav branch; re-focuses the moved cell so a chain of moves
+  works. Guards: the header (row 0) never moves (`Alt+Up` only `r > 1`), `Alt+Down` stops above the
+  footer (`mtLastDataRow`), and an edge move is a no-op (never falls through to caret nav). Reuses the
+  existing `mtMoveCol`/`mtMoveRow` (which already move `colW`/`colRole` in lockstep + re-render).
+- Concept-guide `tables` entry updated (arrow = nav, Alt+arrow = move). 861 tests (+1 src-pin: the four
+  move wirings + the header/footer guards; the mtMove* cores are DOM-bound, already mouse-tested).
+- **Still open in the class (follow-ups):** column/row INSERT + DELETE by key (the panel's other ops),
+  a keyed **column-role cycle** (Show as: Status/Date/Number/Plain — gates Board/Calendar entry), the
+  **board-card move** by modifier-arrow, and column-resize step. Each a focused addition on this seam.
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
