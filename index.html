@@ -2756,7 +2756,13 @@ function parseDueDate(val) {
   if (s === 'today')    return dueDateToday();
   if (s === 'tomorrow') return dueDateToday() + 1;
   const rel = s.match(/^today([+-]\d+)$/);
-  if (rel) return dueDateToday() + parseInt(rel[1], 10);
+  if (rel) {
+    const e = dueDateToday() + parseInt(rel[1], 10);
+    // bound to the same 1900-2200 window the ISO arm enforces — an unbounded today+1e11 makes a
+    // garbage epoch that renders NaN-NaN-NaN in the chip/agenda. (Adversarial pass, blast: degradation.)
+    // ~ epoch-days for 1900-01-01 and 2200-12-31 (day 0 = 1970-01-01).
+    return (e < -25600 || e > 84100) ? null : e;
+  }
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) {
     const y = +iso[1], mo = +iso[2], d = +iso[3];
@@ -4001,7 +4007,11 @@ function diceBreakdownHTML(d) {
       // is tinted a hit (--acc) or dimmed a miss (reuse .dice-dropped).
       if (p.success) {
         const SYM = { '>=': '≥', '<=': '≤', '>': '>', '<': '<', '=': '=' };
-        const label = `${p.count}d${sides}${SYM[p.success.op] || p.success.op}${p.success.target}`;
+        // escHtml: p.count/sides/target come from the _dice sidecar JSON, which a hostile OPML /
+        // shared-HTML can author freely (parseDice coerces to ints, but a loaded record bypasses it).
+        // Match the escHtml already applied to the roll faces below so a `<img onerror>` count can't
+        // inject live HTML into the pill on open. (Adversarial pass, blast: injection.)
+        const label = escHtml(`${p.count}d${sides}${SYM[p.success.op] || p.success.op}${p.success.target}`);
         // hits is nested parallel to rolls: one chain per die, one bool per face.
         // Each face is its own pool die — including exploded faces — so mark them
         // individually and keep the → arrow between faces of an exploded chain.
@@ -4017,10 +4027,12 @@ function diceBreakdownHTML(d) {
         }).join('');
         return `${ops}<span class="dice-grp">${label}<span class="dice-rolls">${rollsHtml}</span></span>`;
       }
-      let label = `${p.count}d${sides}`;
+      // escHtml: same hostile-_dice XSS surface as the pool label above — escape the assembled
+      // formula so a crafted count/sides/reroll/keep field can't inject HTML on open.
+      let label = escHtml(`${p.count}d${sides}`);
       if (p.exploding) label += '!';
-      if (p.reroll !== undefined) label += `r${p.reroll}`;
-      if (p.keepMode && p.keepCount !== undefined) label += `${p.keepMode}${p.keepCount}`;
+      if (p.reroll !== undefined) label += `r${escHtml(String(p.reroll))}`;
+      if (p.keepMode && p.keepCount !== undefined) label += `${escHtml(String(p.keepMode))}${escHtml(String(p.keepCount))}`;
       const kept = p.kept || p.rolls.map(() => true);
       const rerolledFrom = p.rerolledFrom || p.rolls.map(() => null);
       const rollsHtml = p.rolls.map((raw, ri) => {
@@ -4130,9 +4142,14 @@ function weightedPick(targets) {
 // Walk `steps` transitions from `start`; stops early at a state with no outgoing
 // transitions (terminal/absorbing). Returns the visited state path.
 function walkMarkov(parsed, start, steps) {
+  // Clamp steps HERE, the single consumer, not only at the dialog (makeMarkovRoll) — a loaded
+  // _markov record carries an unclamped `steps`, and expandRule / rerollMarkov call walkMarkov with
+  // it raw, so a crafted steps:1e9 would loop a billion times → OOM on open. Same 500 bound as the
+  // dialog. (Adversarial pass, blast: crash-on-load.)
+  const n = Math.max(0, Math.min(500, (steps | 0) || 0));
   const path = [start];
   let cur = start;
-  for (let i = 0; i < steps; i++) {
+  for (let i = 0; i < n; i++) {
     const targets = parsed.trans[cur];
     if (!targets || !targets.length) break;
     const next = weightedPick(targets);
@@ -9009,7 +9026,11 @@ function parseSearchQuery(q) {
     // a|b, a negated -|, and a quoted "|" all stay literal text (the escape hatch).
     if (tok === '|' && !neg) { terms.push({ kind: 'or' }); continue; }
     let t;
-    if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)))            terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
+    if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)) && t[1].length <= 512) terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
+    // a >512-char "#tag" (never a real hashtag) falls through to a text term, so termMatchesNode
+    // never feeds it to `new RegExp('...#'+value+'...')` — a ~32k tag exceeds V8's regex program
+    // limit and throws mid-render(). (Adversarial pass, blast: crash.) The `else if` chain below
+    // catches the fall-through; an over-long token becomes a plain text search, which is harmless.
     else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|held|pill|random|leaf|parent|collapsed|expanded|broken)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
@@ -12886,9 +12907,18 @@ function pickWeightedAlt(alts, vars = {}) {
 }
 
 // Replace every {...} in a template via resolveBrace, recursively.
+// Adversarial pass, blast: data-loss. A running output budget on the ctx catches the {Nx:} repeat
+// bomb — {99x:{99x:{99x:{99x:a}}}} multiplies WIDTH inside a single depth increment, so expandRule's
+// depth>200 / cycle (↻) guards never fire, and it OOM-crashes the tab (and re-detonates on every
+// reopen, since the text persists). expandTemplate is the one chokepoint every character flows
+// through, so budgeting HERE covers repeat, deep recursion, and any future blowup at one point. Past
+// the cap, expansion stops and returns the existing `…` truncation marker (mirrors the ↻/… hatches).
+const GRAMMAR_OUTPUT_CAP = 100000;   // chars — a legit expansion is tiny; this only trips a bomb
 function expandTemplate(tpl, ctx) {
+  if (ctx && ctx.emitted === undefined) ctx.emitted = 0;   // seed the shared budget on first entry
   let out = '', i = 0;
   while (i < tpl.length) {
+    if (ctx && ctx.emitted + out.length > GRAMMAR_OUTPUT_CAP) return out + '…';   // budget blown → truncate
     if (tpl[i] === '{') {
       const j = matchBrace(tpl, i);
       if (j < 0) { out += tpl[i++]; continue; }
@@ -12896,6 +12926,7 @@ function expandTemplate(tpl, ctx) {
       i = j + 1;
     } else out += tpl[i++];
   }
+  if (ctx) ctx.emitted += out.length;   // account this frame's output against the shared budget
   return out;
 }
 
@@ -13169,7 +13200,13 @@ function resolveBrace(body, ctx) {
     // rules re-pick), joined by a single space. Nested {…} braces in the template
     // are each re-expanded by expandTemplate, so {3x: {2d6}} rolls three times.
     const out = [];
-    for (let i = 0; i < rp.n; i++) out.push(expandTemplate(rp.template, ctx));
+    // stop the fan-out the moment the shared output budget is blown, so a nested {Nx:{Nx:…}} bomb
+    // can't keep multiplying after the cap is hit (the per-frame check in expandTemplate catches the
+    // depth; this catches the width). (Adversarial pass, blast: data-loss.)
+    for (let i = 0; i < rp.n; i++) {
+      if (ctx && ctx.emitted !== undefined && ctx.emitted > GRAMMAR_OUTPUT_CAP) { out.push('…'); break; }
+      out.push(expandTemplate(rp.template, ctx));
+    }
     return out.join(' ').trim();
   }
   const alts = splitTopLevel(body, '|');
@@ -17847,11 +17884,19 @@ async function saveAsFile() {
   } else dlOpml();
 }
 function dlOpml() {
-  const blob = new Blob([withFoldedActive(() => toOpml(root))],{type:'text/x-opml'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href=url; a.download=(fileName==='unsaved'?'outline':fileName.replace(/\.opml$/i,''))+'.opml';
-  a.click(); URL.revokeObjectURL(url); markClean(); flashHint('Downloaded “' + a.download + '”');
+  // try/catch mirrors writeH: a serialize failure (e.g. toOpml stack-overflow on a ~3000-deep tree)
+  // must flash the error, not fail the download silently with no feedback. (Adversarial pass, blast:
+  // degradation.) The localStorage autosave backstop still holds the doc, so this is a lost SAVE, not
+  // lost data — but the user must be told, like the FSA path already does.
+  try {
+    const blob = new Blob([withFoldedActive(() => toOpml(root))],{type:'text/x-opml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=(fileName==='unsaved'?'outline':fileName.replace(/\.opml$/i,''))+'.opml';
+    a.click(); URL.revokeObjectURL(url); markClean(); flashHint('Downloaded “' + a.download + '”');
+  } catch (e) {
+    flashError('Could not save: ' + (e && e.message ? e.message : e));
+  }
 }
 async function writeH(h) {
   try {
