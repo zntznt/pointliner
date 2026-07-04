@@ -2881,6 +2881,20 @@ test('LEAN FLOOR: a seq token unfolds in edit mode and refolds losslessly (no di
   assert.equal(node.text, 'process ' + tok, 'an untouched seq refolds to its original token (lossless)');
 });
 
+test('artifactToShorthand — a query pill unfolds to its {query: expr} source (LEAN FLOOR: edit inline)', () => {
+  assert.equal(c.artifactToShorthand('query', { key: 'k', expr: 'is:todo | due:week' }), '{query: is:todo | due:week}');
+  assert.equal(c.artifactToShorthand('query', { key: 'k' }), null);   // no expr → nothing to unfold
+});
+test('LEAN FLOOR: a query token unfolds in edit mode and refolds losslessly (no dialog to edit)', () => {
+  const node = { id: 'n', text: '', query: [], seq: [], dice: [], math: [], vars: [], grammar: [], est: [], markov: [], children: [] };
+  const tok = c.promoteBraceBody(node, 'query: is:todo | due:week');
+  node.text = 'tasks ' + tok;
+  c.unfoldArtifacts(node);                                    // enter edit → the token becomes {query: …} text
+  assert.match(node.text, /^tasks \{query: is:todo \| due:week\}$/, 'query unfolds to editable {query: …} source');
+  c.refoldArtifacts(node);                                    // leave edit untouched → back to the exact token
+  assert.equal(node.text, 'tasks ' + tok, 'an untouched query refolds to its original token (lossless)');
+});
+
 test('sequenceForKeyword: first-match across default + declared; default wins collisions', () => {
   const seqs = [DEFAULT_SEQ, FLOW, { key: 'q2', name: 'Clash', states: ['DONE', 'DOING2'], doneFrom: 1 }];
   assert.equal(c.sequenceForKeyword('DOING', seqs).name, 'Flow');
