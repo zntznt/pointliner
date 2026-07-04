@@ -6873,6 +6873,59 @@ test('parseDateSlash — only the FIRST colon splits key from value', () => {
   assert.deepEqual(host(c.parseDateSlash('due:a:b')), { key: 'due', raw: 'a:b' });
 });
 
+// ── LEAN FLOOR phase 1: the promoting inline-stub property path ──────────────────
+test('propDeclParts — {prop KEY: VALUE} sniffs a property declaration; reserved keys excluded', () => {
+  assert.equal(c.propDeclParts('prop owner: zeo').key, 'owner');
+  assert.equal(c.propDeclParts('prop owner: zeo').val, 'zeo');
+  assert.equal(c.propDeclParts('prop status: in progress').val, 'in progress');   // value may have spaces
+  assert.equal(c.propDeclParts('prop empty:').val, '');                            // empty value clears the key
+  assert.equal(c.propDeclParts('prop nokey'), null);                               // no colon → not a decl
+  assert.equal(c.propDeclParts('proper: x'), null);                                // must be the exact `prop ` keyword
+  // reserved keys route through their own writers, never the generic bag
+  assert.equal(c.propDeclParts('prop due: friday'), null);
+  assert.equal(c.propDeclParts('prop check: x>0'), null);
+  assert.equal(c.propDeclParts('prop aliases: a, b'), null);
+});
+
+test('setProp — adds/replaces/clears an arbitrary key, case-insensitive on the key', () => {
+  const n = { props: [] };
+  c.setProp(n, 'owner', 'zeo');
+  assert.deepEqual(host(n.props), [{ key: 'owner', val: 'zeo' }]);
+  c.setProp(n, 'Owner', 'ada');                       // case-insensitive replace, keeps the new label
+  assert.equal(n.props.length, 1);
+  assert.equal(n.props[0].val, 'ada');
+  c.setProp(n, 'owner', '');                          // empty value clears
+  assert.equal(n.props.length, 0);
+  c.setProp(n, '', 'x');                              // empty key is a no-op
+  assert.equal(n.props.length, 0);
+});
+
+test('parsePropSlash — /prop:key=value (or key:value) one-shot; incomplete → null (falls to stub)', () => {
+  assert.deepEqual(host(c.parsePropSlash('prop:owner=zeo')), { key: 'owner', val: 'zeo' });
+  assert.deepEqual(host(c.parsePropSlash('prop:owner:zeo')), { key: 'owner', val: 'zeo' });   // colon form too
+  assert.equal(c.parsePropSlash('prop:owner'), null);         // key only, no separator → not a one-shot (falls to the stub)
+  assert.equal(c.parsePropSlash('prop:'), null);              // no key → null
+  assert.equal(c.parsePropSlash('due:friday'), null);         // a different verb is not a prop slash
+});
+
+test('LEAN-FLOOR: {prop …} promotes to node.props via promoteBraceBody, leaving no inline token', () => {
+  // the whole point of the sidecar stub: it writes the chip and CONSUMES the brace (no [[…]] token).
+  const node = { text: '', props: [] };
+  const tok = c.promoteBraceBody(node, 'prop owner: zeo');
+  assert.equal(tok, '', 'a {prop …} promotes to nothing inline (a chip, not a pill)');
+  assert.deepEqual(host(node.props), [{ key: 'owner', val: 'zeo' }]);
+  // classifyBraceBody reads it as a valid artifact (grammar-styled while editing, not a typo)
+  assert.equal(c.classifyBraceBody('prop owner: zeo', {}, {}), 'artifact');
+});
+
+test('LEAN-FLOOR: the /prop verb + bare-stub DOM wiring is present (slashApply is DOM-bound)', () => {
+  assert.ok(_src.includes("SLASH_ARG_VERBS = /^(due|start|check|alias|template|prop)$/"), '/prop not in the arg-verb gate');
+  assert.ok(_src.includes("const stub = '{prop : }'"), 'the bare-/prop fill-in stub is missing');
+  assert.ok(_src.includes('parsePropSlash(query)'), 'the /prop:key=value one-shot branch is missing');
+  // the promotion loop counts a consumed-no-token ('') as promoted, not "keep the brace"
+  assert.ok(_src.includes('if (token != null)'), 'the promotion loop must treat an empty-string return as consumed');
+});
+
 // ── parseSlashQuery: the per-verb ":value" gate for the /-command bridge ─────────
 // The arm is /-only and limited to SLASH_ARG_VERBS (due/start/check/alias/template);
 // a colon after any other verb — or after any @-insert — stays plain node text (P1).

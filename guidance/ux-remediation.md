@@ -1613,6 +1613,36 @@ batch closes it.
 
 ---
 
+## Lean floor (verbosity dial #2) — the keyboard-only, zero-dialog floor (2026-07-03)
+
+**The spec (owner-defined):** Pointliner must be FULLY operable by keyboard with ZERO dialogs/menus/
+submenus appearing. `/` and `@` work but render nothing; a qualifying command writes an INLINE STUB
+with the caret on the blank (the dialog is the higher-verbosity affordance, not the floor); hover/
+selection never spawns a submenu; everything stays clickable; the TOP BAR is exempt (always visible).
+
+**Readiness audit (4-auditor fleet, 2026-07-03):** 96 capabilities → **57 already floor-ready, 39 gaps**
+(22 dialog-only, 13 partial, 2 hover, 2 mouse). One recurring shape: argument/name-taking commands and
+table/base structural ops have no inline twin, so their only completion path is a spawned surface. The
+fix is a SYSTEMATIC PASS, not a rework — two proven templates already exist (the `SLASH_ARG_VERBS`
+typed-arg bridge, the `promoteBraceBody` shorthand promoter). Phases: (1) the promoting-inline-stub
+framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) the dial itself.
+
+### LF-1 ◐ Phase 1: the promoting inline-stub framework, proven on `/prop` (RESOLVED pending merge)
+- **What:** the reusable keyboard-inline path for a SIDECAR-backed verb (properties have no inline text
+  form, so a bare `key:▮` can't sit in the point). A bare `/prop` writes the stub `{prop ▮: }` (caret on
+  the key blank); you fill it; on exit `promoteBraceBody`'s new `propDeclParts` branch writes `node.props`
+  and CONSUMES the brace (returns `''` — a chip, not a pill). `/prop:owner=zeo` is the one-shot direct
+  write (`parsePropSlash`). No dialog; the Property editor is the higher-verbosity door.
+- **Built:** pure cores `propDeclParts` (sniff `{prop k: v}`, reserved date/check/alias keys excluded),
+  `setProp` (add/replace/clear), `parsePropSlash` (one-shot); the `promoteBraceBody` branch + the
+  promotion-loop tweak (`if (token != null)` so `''` counts as consumed, not "keep the brace");
+  `classifyBraceBody` recognition; `prop` in `SLASH_ARG_VERBS` + the `/prop` verb + slashApply stub/
+  one-shot branches; concept-guide `properties` entry updated. 848 tests (+5 pins). This is the pattern
+  the follow-on stub verbs (bare `/due`, `/refile`, `/base`, `/savetemplate`, `/note`, the bulk verbs)
+  each register onto — a few lines each.
+
+---
+
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
 
 A focused single-target pass on the one break both prior waves explicitly LEFT for a third wave: the deep-tree recursion at the ingestion boundary. Confirmed real (a 12000-deep tree overflows toOpml/collectVars/collectRules/render at ~1500 levels), then fixed at the gate. Not a full fleet — the target was already named; this confirmed + closed it.
