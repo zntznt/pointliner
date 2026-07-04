@@ -1886,8 +1886,28 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   teaching-text strip incl. the tooltip sweep + the link-title/Section-label over-strip guards).
 - **The verbosity dial is now the full 3-position control the vision (ux.md) sketched — Guided / Standard /
   Lean — matching the dial table (with the honest toolbar-invariant deviation per the user's floor spec).**
----
 
+### EX-1 ◐ The first-run Examples document: a flat 10-line demo → a nested, progressive tour (RESOLVED pending merge)
+- **Problem.** `FIRST_RUN_EXAMPLES` was a FLAT list of ~10 top-level points surfacing only ~6 features
+  (dice, pick, math, sum-aggregation, estimate, to-do). It neither showed Pointliner's breadth nor gave
+  the user a structure to build from.
+- **Rebuilt (at the user's direction) as ONE nested tree** rooted under `# Welcome to Pointliner`, staged
+  in three depth tiers (`## Basics` / `## Intermediate` / `## Advanced`) chosen via AskUserQuestion
+  ("Progressive, 3 depth tiers"), each tier subject-grouped so the outline is readable AND a starting
+  skeleton the user edits in place. Basics: write/format/to-dos, dice/pick, math. Intermediate:
+  properties, dates+agenda, tags, search operators, links+backlinks. Advanced: named rules/tables, decks
+  + cycles, the yes/no oracle, child aggregation (sum/avg over `{prop cost:}` children), inline variables
+  (`{level := 3}` → `{= level*8}`), estimates, a lint `check`, bases/board, and a "Make it yours"
+  (templates/refile/the verbosity dial). Max nesting depth 5; the Tip point teaches Tab/Shift+Tab so the
+  nesting itself is a lesson.
+- **Every `{…}` is a LIVE pill (32 total, 0 dead).** Verified BEFORE shipping: each brace body runs through
+  `classifyBraceBody` (with the doc's own named rules + vars in context) and returns a real artifact class;
+  the named-rule points (`weather:`/`reward:`) parse via `parseRules` so `{weather}`/`{reward}` resolve
+  doc-wide; a promote+aggregate check confirms the `{prop cost:}` children feed `{= sum(cost)}` = 14. The
+  OPML nesting is well-formed (balanced `<outline>` open/close, depth returns to 0). No test pins the
+  content string, so no pin churn; the existing UXP-126/148 mechanism (first-run adopt + File-menu re-entry)
+  is untouched. Browser down this session → the live-pill claim rests on the pure-core classify + parse
+  checks, not a rendered screenshot; a smoke test should open the examples (File menu) and click a few pills.
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
 
 A focused single-target pass on the one break both prior waves explicitly LEFT for a third wave: the deep-tree recursion at the ingestion boundary. Confirmed real (a 12000-deep tree overflows toOpml/collectVars/collectRules/render at ~1500 levels), then fixed at the gate. Not a full fleet — the target was already named; this confirmed + closed it.

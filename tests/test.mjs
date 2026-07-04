@@ -8757,3 +8757,34 @@ test('LEAN-FLOOR p3: the Alt+,/. column-resize step wiring is present (DOM-bound
   assert.ok(_src.includes('getBoundingClientRect().width'), 'the resize must measure the rendered width when the column is unpinned');
   assert.ok(_src.includes("flashHint('Column width: "), 'the resize must flash the new width (P4, no menu)');
 });
+
+// ── EX-1: the first-run Examples document — well-formed nesting + every {…} is a LIVE pill ──
+test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes to a live pill', () => {
+  const m = _src.match(/const FIRST_RUN_EXAMPLES = `([\s\S]*?)`;/);
+  assert.ok(m, 'FIRST_RUN_EXAMPLES template literal not found');
+  const opml = m[1].replaceAll('\\`', '`');
+  // 1. well-formed <outline> nesting: depth never goes negative and returns to 0
+  let depth = 0, ok = true;
+  for (const tok of opml.matchAll(/<outline\b[^>]*?(\/?)>|<\/outline>/g)) {
+    if (tok[0] === '</outline>') { depth--; if (depth < 0) { ok = false; break; } }
+    else if (tok[1] !== '/') depth++;
+  }
+  assert.ok(ok && depth === 0, `the Examples OPML nesting is not balanced (final depth ${depth})`);
+  // 2. it IS nested (not the old flat list): some point sits at least 3 deep
+  assert.ok(opml.includes('    <outline'), 'the Examples doc must be nested, not a flat top-level list');
+  // 3. every {…} body classifies as a real artifact (0 dead text) — seed the doc's own rules + vars
+  const texts = [...opml.matchAll(/text="([^"]*)"/g)].map(s => s[1]
+    .replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', String.fromCharCode(34)).replaceAll('&amp;', '&'));
+  // named rules the doc declares (a `name: a | b` point) register via parseRules → callable as {name}
+  const rules = {};
+  for (const t of texts) { const r = c.parseRules(t); if (r && r.rules) for (const k of Object.keys(r.rules)) rules[k] = 1; }
+  const vars = { level: 3, cost: 0 };
+  let total = 0; const dead = [];
+  for (const t of texts) for (const mm of t.matchAll(/\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/g)) {
+    total++;
+    let cl; try { cl = c.classifyBraceBody(mm[1], rules, vars); } catch (_) { cl = 'THREW'; }
+    if (!cl || ['text', 'typo', 'invalid', 'THREW'].includes(cl)) dead.push(mm[1]);
+  }
+  assert.ok(total >= 20, `the Examples doc should showcase many pills (found ${total})`);
+  assert.equal(dead.length, 0, `every {…} in the Examples doc must be a live pill; dead: ${JSON.stringify(dead)}`);
+});
