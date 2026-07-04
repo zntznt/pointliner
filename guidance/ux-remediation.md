@@ -1654,6 +1654,22 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   open in the class: bare `/due` + `/note` (need their own date/note promote stub), `/refile` (needs
   title→id resolution), the bulk multi-select verbs — each a focused follow-up.
 
+### LF-1c ◐ Phase 1c: named-sequence pills edit inline (unfold), no dialog (RESOLVED pending merge)
+- **What:** a named `[[seq:key]]` sequence pill now UNFOLDS to its `{seq Name: active | held? | done}`
+  source in edit mode (like dice/math/est), so it's edited keyboard-only instead of via the seq
+  dialog — closing an "edit is dialog-only" gap. The dialog (`.seq-edit` pencil) stays the
+  higher-verbosity door. **Verified LOSSLESS:** unfold → refold returns the byte-exact token; the
+  re-serialized form is identical (`seqDefString` re-emits states+bands, name via `seqDeclParts`); the
+  held band survives; a mid-edit save re-folds to the token (`foldedTextForSave`), never raw `{seq …}`.
+  Safe because a seq carries NO draw state (unlike a deck) and is callable by NAME not key.
+- **Built:** `seq` added to `artifactToShorthand` + the three lockstep unfold regexes
+  (`unfoldedPrefixLen`/`foldedOffsetFor`/`unfoldArtifacts`). Two prior pins that asserted the old
+  atomic behavior were rewritten to the new unfold behavior + the lossless round-trip (the
+  "intentional behavior change → update the pin in the same commit" rule). 850 tests.
+- **NOT done here:** `query` unfold — a query pill is `display:block` (a multi-line widget), so
+  unfolding to inline `{query:}` mid-line is a meaningfully different caret/visual change; left for a
+  separate focused look. `est` rollup edit is a known separate lossy-trap gap (out of scope).
+
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
