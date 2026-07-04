@@ -1801,10 +1801,22 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   not a floor gap to force. Chord order in the base cell keydown: move (Alt+Arrow), role (Alt+R), insert
   (Alt+Shift+Arrow), then plain-arrow nav.
 - Concept-guide `tables` entry updated. 866 tests (+1 src-pin: the four insert wirings, the header guard,
-  the P4 flashes, and the Shift+Arrow-excludes-Alt collision fix). **Phase 3 structural ops now: MOVE +
-  ROLE + CARD-MOVE + INSERT all keyboard-only; DELETE is the documented menu ceiling; only the
-  column-resize FINE step (a pixel drag) remains — the coarse widths are already keyboard-reachable via
-  the Width menu.**
+  the P4 flashes, and the Shift+Arrow-excludes-Alt collision fix).
+
+### LF-3e ◐ Phase 3: base column-resize step by keyboard (Alt+, / Alt+.) — PHASE 3 COMPLETE (RESOLVED pending merge)
+- **The last phase-3 structural gap.** `Alt+,` narrows / `Alt+.` widens the focused column (the `<`/`>`
+  keys) — the keyboard twin of the fine resize DRAG (the coarse Narrow/Medium/Wide/Fit already had a
+  Width menu). Base width = the pinned `colW`, or the MEASURED rendered header width when the column is
+  auto (so the first press feels natural, not a jump). Flashes the new width (P4, no menu) + re-focuses.
+- Pure core `stepColW(base, dir)` over `COL_W_STEP` (24px): clamps `[MIN_COL_W 56, MAX_COL_W 900]`,
+  returns null at an edge (caller flashes "at its widest/narrowest"). Reuses `mtSetColWidth`. 868 tests
+  (+2 pins: the step/clamp/edge/NaN cases + the Alt+,/. src-pin with the rendered-width measure + flash).
+- **PHASE 3 IS NOW COMPLETE.** The base cell keyboard grammar: Alt+Arrow = move, Alt+Shift+Arrow =
+  insert, Alt+R = role cycle, Alt+,/. = resize; board-card Alt+←/→ = lane move. The one documented
+  CEILING is DELETE (stays the Shift+F10 menu, `danger:true` — a destructive op shouldn't have a bare
+  chord). The whole LEAN FLOOR effort (LF-1..LF-3) is now essentially done: authoring verbs, pill unfold
+  (seq+query), the lean MODE toggle (LF-2), and the table/base structural ops all keyboard-only; the
+  remaining open item is phase 2b (helper-hiding gated on isLean(), which builds on the LF-2 toggle).
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)

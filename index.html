@@ -5829,6 +5829,19 @@ function clampColW(w) {
   return Math.max(MIN_COL_W, Math.min(MAX_COL_W, w));
 }
 
+// LEAN FLOOR phase 3: the keyed column-resize step — the keyboard twin of the fine resize DRAG (the
+// coarse Narrow/Medium/Wide/Fit already have a Width menu). Given a base width (the pinned colW, or the
+// measured rendered width when the column is auto/unpinned) and a direction, step by COL_W_STEP and
+// clamp to [MIN_COL_W, MAX_COL_W]. Returns null (no change) when a step would leave it unchanged at an
+// edge, so the caller can flash. Pure, Node-testable.
+const COL_W_STEP = 24;
+function stepColW(base, dir) {
+  const b = Math.round(+base);
+  if (!Number.isFinite(b)) return null;
+  const next = clampColW(b + dir * COL_W_STEP);
+  return next === Math.max(MIN_COL_W, Math.min(MAX_COL_W, b)) ? null : next;   // already at the edge → no change
+}
+
 function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${id}"]`); }
 // Cell-scope mdInline: set the node's artifact sidecars as the render context so
 // [[type:key]] tokens inside cells resolve to live pills (mirrors renderContentHTML;
@@ -7151,6 +7164,23 @@ function buildTableWidget(node, readOnly) {
       if (r > 0 && e.key === 'ArrowUp')   { mtInsertRow(node, r, 'above'); mtFocusCell(node, r, c);     flashHint('Row inserted.'); return; }
       if (r > 0 && e.key === 'ArrowDown') { mtInsertRow(node, r, 'below'); mtFocusCell(node, r + 1, c); flashHint('Row inserted.'); return; }
       return;   // header row +Up/Down, or any other case → no-op (don't fall through)
+    }
+    // LEAN FLOOR phase 3: Alt+, / Alt+. steps the focused COLUMN narrower / wider (the < / > keys) — the
+    // keyboard twin of the fine resize DRAG (the coarse Narrow/Medium/Wide/Fit live in the Width menu).
+    // Base = the pinned width, or the measured rendered width when the column is auto (so the first press
+    // feels natural). stepColW clamps [MIN,MAX] and returns null at an edge → flash. Re-focus the cell.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === ',' || e.key === '.' || e.key === '<' || e.key === '>')) {
+      e.preventDefault();
+      const r = +cell.dataset.r, c = +cell.dataset.c;
+      const pinned = node.colW && node.colW[c];
+      const base = pinned != null ? pinned : (host.querySelector(`th[data-c="${c}"]`)?.getBoundingClientRect().width || 160);
+      const wider = (e.key === '.' || e.key === '>');
+      const next = stepColW(base, wider ? 1 : -1);
+      if (next == null) { flashHint(wider ? 'Column is at its widest.' : 'Column is at its narrowest.'); return; }
+      mtSetColWidth(node, c, next);
+      mtFocusCell(node, r, c);
+      flashHint('Column width: ' + next + 'px');
+      return;
     }
     if (e.key.startsWith('Arrow') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       const r = +cell.dataset.r, c = +cell.dataset.c;
@@ -21745,12 +21775,13 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, and Alt+R cycles a column's role (Plain, Status, Date, Number); the column menu (or Shift+F10 on a cell) has delete and the rest.",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets, and the rest.",
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
       { syn:'Alt + ← / →',                      desc:'move the focused column; Alt+↑/↓ moves the row' },
       { syn:'Alt + Shift + arrow',              desc:'insert a column (←/→) or row (↑/↓) on that side' },
+      { syn:'Alt + , / .',                      desc:'narrow or widen the focused column' },
       { syn:'Alt + R',                          desc:'cycle the column role (Status/Date power Board and Calendar)' },
     ] },
   // NOTE: no `covers:[]` here — the view switcher has no slash-command id, and the drift-guard
