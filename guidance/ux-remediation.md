@@ -1699,6 +1699,22 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   note:** the live blind-menu flow is DOM-bound + the browser was unavailable this session, so it is
   src-pinned, not smoke-tested live — worth a manual smoke as a merge gate (see the PR).
 
+### LF-1e ◐ Phase 1e: /refile goes keyboard-only (title→id resolution) (RESOLVED pending merge)
+- **The last high-value authoring verb.** `/refile:TITLE` moves this point's subtree under the matching
+  point inline (no picker); `/refile:top` lifts it to the top level; a bare `/refile` opens the tree
+  picker (higher-verbosity door). An unmatched title flashes P4 ("No point named X"), never a silent
+  no-op. `refileNodeTo`'s self/descendant guards mean a bad target can't corrupt the tree.
+- **The design surface was title→id resolution** (the audit's flagged blocker). Pure core
+  `resolveRefileTarget(title, moveId, rootNode)`: `top`/`top level` → root; an EXACT title/alias match
+  (case-insensitive) wins over a partial (contains); else the first contains-match in document order.
+  Critically it **excludes the moved point's whole subtree** (a single `walkFrom` pass with a `drop`
+  flag), so a decoy with the same name UNDER the moved point can't resolve — otherwise the target would
+  resolve then no-op. Reuses `nodeNames` (title + aliases) like the link picker.
+- `refile` in `SLASH_ARG_VERBS`; concept-guide `refile` entry updated + covered; the arg-verb src-pin
+  made membership-based so it stops churning per verb. 856 tests (+2 pins: the resolver's exact/partial/
+  top/decoy-exclusion/null cases, and the `/refile` src-pin). Open in the class: the bulk multi-select
+  verbs, `query` unfold.
+
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)

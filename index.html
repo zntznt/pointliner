@@ -2902,7 +2902,7 @@ function setDateProp(node, key, val) {
 // and `start` set a date; `check`/`alias` set a reserved property; `template` stamps.
 // The arm is `/`-only: `@`-insertions are already typeable as `{…}` / markdown at the
 // caret, so an `@verb:value` colon-arg would just duplicate the brace grammar.
-const SLASH_ARG_VERBS = /^(due|start|check|alias|template|prop|base|savetemplate)$/;
+const SLASH_ARG_VERBS = /^(due|start|check|alias|template|prop|base|savetemplate|refile)$/;
 
 // parseSlashQuery(rawQuery, trigger) — pure, Node-testable. Splits a captured slash
 // query (original case, e.g. "check:sum(cost) <= budget") into its parts and applies
@@ -5067,6 +5067,7 @@ const BLOCK_CMDS = [
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
   { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
   { id:'note',    icon:'≡',    fa:'fa-solid fa-pen',           label:'Note',       desc:'Add a plain-text note under this point for context that does not belong on the line. Opens the note editor right below the point, no dialog.', ex:'/note', section:'Organize' },
+  { id:'refile',  icon:'⇄',    fa:'fa-solid fa-arrow-right-arrow-left', label:'Refile', desc:'Move this point and its children under another point. Type /refile:title to move it there directly (or /refile:top to lift it out), or /refile to pick from a tree.', ex:'/refile:Inbox · /refile:top', section:'Organize' },
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
 ];
 
@@ -8415,6 +8416,40 @@ function treeRows(rootNode, opts) {
 
 // Move moveId's subtree under targetId (becomes targetId's last child). targetId ===
 // root.id refiles to the top level. Guards self + own-descendant (would orphan the tree).
+// LEAN FLOOR: resolve a /refile:TITLE query to a target point id, so a subtree can be refiled
+// keyboard-only (no picker dialog). Pure, Node-testable. Rules, in order: the literal "top" / "top
+// level" → root (lift out of all nesting); an EXACT title/alias match (case-insensitive) wins over a
+// partial; else the FIRST contains-match in document order. Excludes the moved point (you can't refile
+// into yourself; refileNodeTo's isDescOf guard also blocks a descendant target). Returns a target id,
+// or null when nothing matches (the caller flashes why — never a silent no-op).
+function resolveRefileTarget(title, moveId, rootNode = root) {
+  const q = String(title || '').trim().toLowerCase();
+  if (!q) return null;
+  if (q === 'top' || q === 'top level') return rootNode.id;
+  // skip the moved point AND its whole subtree (you can't refile into yourself) so a match is always a
+  // REAL target — otherwise a name that only exists under the moved point would resolve, then no-op.
+  const excluded = new Set([moveId]);
+  (function walkFrom(n, drop) {
+    for (const c of (n.children || [])) {
+      const d = drop || c.id === moveId;   // once we're inside the moved subtree, drop everything under it
+      if (d) excluded.add(c.id);
+      walkFrom(c, d);
+    }
+  })(rootNode, false);
+  let exact = null, partial = null;
+  (function walk(n) {
+    for (const c of (n.children || [])) {
+      if (!excluded.has(c.id)) {
+        const names = nodeNames(c).map(s => s.toLowerCase());
+        if (exact == null && names.some(nm => nm === q)) exact = c.id;
+        if (partial == null && names.some(nm => nm.includes(q))) partial = c.id;
+      }
+      walk(c);
+    }
+  })(rootNode);
+  return exact || partial;
+}
+
 function refileNodeTo(moveId, targetId) {
   if (moveId === targetId || isDescOf(moveId, targetId)) return;
   const node = nodeById(moveId);
@@ -12020,6 +12055,21 @@ function slashApply() {
       return;
     }
     openSaveTemplateDialog(nodeId);
+    return;
+  }
+  // LEAN FLOOR: /refile:TITLE moves this point's subtree under the matching point inline (no picker);
+  // /refile:top lifts it to the top level. An unmatched title flashes why (P4), never a silent no-op.
+  // refileNodeTo carries the self/descendant guards, so a bad target can't corrupt the tree. Bare
+  // /refile opens the tree picker (the higher-verbosity door). The flash names where it landed.
+  if (trigger !== '@' && cmd.id === 'refile') {
+    const title = (rawArg || '').trim();
+    if (title) {
+      const targetId = resolveRefileTarget(title, nodeId);
+      if (!targetId) { flashHint('No point named “' + title + '” to refile under.'); return; }
+      refileNodeTo(nodeId, targetId);
+      return;
+    }
+    openRefileDialog(nodeId);
     return;
   }
   if (trigger === '@' && cmd.id === 'table') {
@@ -21515,14 +21565,13 @@ const GUIDE = [
       { syn:'#',            desc:"opens a menu of tags you've used, with counts" },
       { syn:'click a tag',  desc:'filter to every point that shares it' },
     ] },
-  { id:'refile', cat:'getting-around',
+  { id:'refile', cat:'getting-around', covers:['refile'],
     title:'Refile a point',
-    body:"Move a point and everything under it to a new home far across the outline: drop a stray idea into the right project, tuck a finished item under an archive or pull a buried note up to the top. Open the point's menu and choose Refile to browse the whole outline as a searchable tree: type to filter to a destination, walk it with the arrow keys, then press Enter to move the point there as the chosen parent's last child. Pick Top level to lift it out of all nesting. It's the searchable alternative to dragging or indenting one step at a time.",
+    body:"Move a point and everything under it to a new home far across the outline: drop a stray idea into the right project, tuck a finished item under an archive or pull a buried note up to the top. Type /refile:name to move it under the point with that title (or /refile:top to lift it out of all nesting), or /refile on its own to browse the whole outline as a searchable tree: type to filter, walk it with the arrow keys, then press Enter to move the point there as the chosen parent's last child. It's the searchable alternative to dragging or indenting one step at a time.",
     examples:[
-      { syn:'Menu → Refile…',   desc:'open the destination picker' },
-      { syn:'type to search',   desc:'filter the tree to a destination' },
-      { syn:'↑ / ↓ then Enter', desc:'choose a point and move it there' },
-      { syn:'Top level',        desc:'lift it out of all nesting' },
+      { syn:'/refile:Archive',  desc:'move it under the Archive point, inline' },
+      { syn:'/refile:top',      desc:'lift it out of all nesting' },
+      { syn:'/refile',          desc:'open the searchable destination tree' },
     ] },
   { id:'multi-select', cat:'getting-around',
     title:'Selecting many points',
