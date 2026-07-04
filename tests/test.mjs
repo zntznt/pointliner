@@ -8788,3 +8788,17 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
   assert.ok(total >= 20, `the Examples doc should showcase many pills (found ${total})`);
   assert.equal(dead.length, 0, `every {…} in the Examples doc must be a live pill; dead: ${JSON.stringify(dead)}`);
 });
+
+// ── openExamples MUST insert non-destructively (never adoptDoc/replace the user's document) ──
+test('openExamples: inserts the Welcome tour into the current doc, does NOT overwrite it', () => {
+  const fn = _src.match(/function openExamples\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(fn, 'openExamples not found');
+  const body = fn[0];
+  // it APPENDS a fresh-id clone to the live document
+  assert.ok(body.includes('deepCloneNodeNewIds(welcome)'), 'openExamples must clone the welcome subtree with fresh ids');
+  assert.ok(body.includes('root.children.push(clone)'), 'openExamples must APPEND the tour, not replace the document');
+  assert.ok(body.includes('pushUndo()'), 'the insert must be undo-able');
+  // it must NOT replace the document (the old data-loss path) and needs no discard-confirm anymore
+  assert.ok(!body.includes('adoptDoc('), 'openExamples must NOT adoptDoc (that overwrote the user document)');
+  assert.ok(!/Discard unsaved/i.test(body), 'the destructive discard confirm should be gone (the insert is non-destructive)');
+});
