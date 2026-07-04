@@ -3780,6 +3780,38 @@ test('collectUnlinkedRefs: a title that only collides with markdown syntax does 
   assert.equal(out.length, 0, 'markdown syntax characters are never matchable text');
 });
 
+// ── collectCrossUnlinkedRefs (backlog #3): unlinked mentions across OTHER folder docs ──
+test('collectCrossUnlinkedRefs: finds mentions in other docs, skips own doc + already-linkers + non-matches', () => {
+  // target lives in docA. docB mentions it in prose (unlinked); docC already cross-links it; docA is
+  // skipped (that's collectUnlinkedRefs' job).
+  const target = c.mkNode('Roadmap'); target.id = 'rm';
+  const docA = c.mkRoot(); docA.docId = 'docA'; docA.children.push(target, c.mkNode('the Roadmap again')); // own-doc: must NOT appear
+  const bMention = c.mkNode('see the Roadmap for details'); bMention.id = 'bm';
+  const bNo = c.mkNode('nothing relevant'); bNo.id = 'bn';
+  const docB = c.mkRoot(); docB.docId = 'docB'; docB.children.push(bMention, bNo);
+  const cLinker = c.mkNode('[[docA#rm|the plan]] and Roadmap mentioned too'); cLinker.id = 'cl'; // already links → excluded
+  const docC = c.mkRoot(); docC.docId = 'docC'; docC.children.push(cLinker);
+  const wsIndex = {
+    roots: new Map([['docA', docA], ['docB', docB], ['docC', docC]]),
+    nameByDocId: new Map([['docA', 'a.opml'], ['docB', 'b.opml'], ['docC', 'c.opml']]),
+    backlinks: new Map([['docA#rm', [{ srcDocId: 'docC', srcNodeId: 'cl' }]]]),   // docC/cl already links docA/rm
+  };
+  const out = c.collectCrossUnlinkedRefs(target, 'docA', wsIndex);
+  assert.equal(out.length, 1, 'only docB unlinked mention (not own doc, not the linker, not the non-match)');
+  assert.equal(out[0].nodeId, 'bm');
+  assert.equal(out[0].docId, 'docB');
+  assert.equal(out[0].docName, 'b.opml');
+});
+
+test('collectCrossUnlinkedRefs: no workspace / no roots / short title → empty, no throw', () => {
+  const t = c.mkNode('Roadmap'); t.id = 'rm';
+  assert.equal(c.collectCrossUnlinkedRefs(t, 'docA', null).length, 0);
+  assert.equal(c.collectCrossUnlinkedRefs(t, 'docA', { roots: new Map() }).length, 0);
+  const shortT = c.mkNode('Hi'); shortT.id = 'h';   // below UNLINKED_MIN_LEN (3) → no matchable name
+  const docB = c.mkRoot(); docB.docId = 'docB'; docB.children.push(c.mkNode('Hi there Hi'));
+  assert.equal(c.collectCrossUnlinkedRefs(shortT, 'docA', { roots: new Map([['docB', docB]]), nameByDocId: new Map(), backlinks: new Map() }).length, 0);
+});
+
 test('displayText: resolves markdown to shown text (default) and strips link tokens (forMatch)', () => {
   const root2 = c.mkRoot();
   const other = c.mkNode('Other'); other.id = 'oth';

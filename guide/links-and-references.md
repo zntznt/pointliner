@@ -29,6 +29,13 @@ want to know what else depends on or references a concept.
 The backlinks panel also surfaces **mentions of the title that are not linked yet**, so you can
 connect them with one click.
 
+In a [connected folder](files-and-export.md#working-with-a-folder-of-documents) the panel adds an
+**Unlinked references in other notes** section: places in your *other* documents that mention this
+point by name without linking it, so you can spot where a topic is discussed but not yet connected.
+These are view-only (click a row to open that document); the one-click Link button is for same-document
+mentions only, since linking a mention in another file would mean writing into a document you do not
+have open.
+
 ## Links across notes
 
 Weave together a network of notes: link a project note to a person note, connect a meeting note to an
