@@ -54,6 +54,8 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
   ([decks](generating-text.md#draw-without-repeating-decks))
 - **Markov chains and a yes/no oracle** for organic sequences and solo-play decisions.
   ([Markov](generating-text.md#markov-chains) · [oracle](generating-text.md#yesno-oracle))
+- **Roll on your own outline.** `{roll: is:todo}` picks a random point from your live outline (the points below it, or a `#tag` anywhere), so a random open thread or NPC gets chosen from what you already wrote.
+  ([roll on your outline](generating-text.md#roll-on-your-own-outline))
 
 ## Computing with numbers
 

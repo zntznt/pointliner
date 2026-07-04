@@ -285,6 +285,37 @@ from anywhere.
 
 ---
 
+## Roll on your own outline
+
+Every generator so far draws from a list you typed. `{roll: SEARCH}` draws from your **live
+outline** instead: it picks one random point matching a search, so you can roll on the notes you
+already keep.
+
+Keep a list of open threads, NPCs, or ideas as ordinary points, then roll:
+
+```
+Open threads
+  The letter is unsigned
+  Someone is following me
+  The well ran dry
+Advance one: {roll: is:todo}
+```
+
+The search is a normal search string (words, `#tag`, `is:todo`, `key:value`). By default `{roll:}`
+picks from the points **under the one you write it in**, so place it under the list it should choose
+from. A `#tag` search reaches wherever that tag lives, not just the subtree. It rolls fresh each time
+the page draws.
+
+To keep one result steady (and re-roll it on click, like a dice pill), name it with `:=`:
+
+```
+Tonight's contact: {who := {roll: #npc}}
+{who} knows something about the letter.
+```
+
+Now `{who}` is the same NPC everywhere it appears; click it to draw a new one. This reuses the
+variable system, so there is no new syntax to learn.
+
 ## Yes/no oracle
 
 For solo play and quick decisions: the **`@` → Oracle (yes/no)** door builds a weighted Yes/No

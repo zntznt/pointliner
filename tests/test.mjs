@@ -309,6 +309,67 @@ test('resolveBrace — an unresolvable condition fails visibly (P4), never silen
   assert.equal(c.resolveBrace('hp > 0: a | b', { rules: {}, vars: {}, depth: 0, stack: [] }), '{hp > 0?}');
 });
 
+// ── {roll: query} — pick a random point from the live outline (the tree-reference generator) ──
+test('rollParts — sniffs the reserved roll: keyword, keeps the query tail verbatim', () => {
+  // assert on .expr (not the whole object) — cores run in a vm realm, so deepEqual trips on the
+  // cross-realm Object.prototype even for structurally identical objects.
+  assert.equal(c.rollParts('roll: is:todo').expr, 'is:todo');
+  assert.equal(c.rollParts('roll:#thread/torn').expr, '#thread/torn');  // query has its own : and /
+  assert.equal(c.rollParts('roll:'), null);        // no query → not a roll
+  assert.equal(c.rollParts('shuffle: a|b'), null);  // a different keyword is not roll:
+  assert.equal(c.rollParts('color'), null);         // a bare rule name is not roll:
+});
+
+test('pickFromQuery — picks one matching point title from the tree, uncapped + fair', () => {
+  const kid = (id, text) => ({ id, text, children: [], props: [], seq: [] });
+  const rootNode = { id: 'r', text: '', children: [
+    kid('a', '#TODO chase the letter'),
+    kid('b', 'just a note'),
+    kid('c', '#TODO find the key'),
+    kid('d', '#DONE closed thread'),
+  ] };
+  // is:todo matches a + c (2 open todos), not the note, not the done one
+  c.setRandom(() => 0);   // floor(0 * 2) = index 0
+  try { assert.equal(c.pickFromQuery('is:todo', rootNode, null), 'chase the letter'); }
+  finally { c.resetRandom(); }
+  c.setRandom(() => 0.99);  // floor(0.99 * 2) = index 1
+  try { assert.equal(c.pickFromQuery('is:todo', rootNode, null), 'find the key'); }
+  finally { c.resetRandom(); }
+  // no match → '' (a visible empty, never a throw)
+  assert.equal(c.pickFromQuery('is:todo #nonexistent', rootNode, null), '');
+  // the host point is excluded from its own roll (so {roll:} on a point can't pick itself)
+  c.setRandom(() => 0);
+  try { assert.equal(c.pickFromQuery('is:todo', rootNode, 'a'), 'find the key'); }  // 'a' excluded → only c
+  finally { c.resetRandom(); }
+});
+
+test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
+  // resolveBrace's roll branch reads the module cookieNode/root globals to scope the pick — those
+  // are lexical `let`s not reachable from the vm sandbox (same as the {= sum(subtree)} aggregation
+  // branch, which is likewise core-tested via aggregateChildren, not through resolveBrace). So the
+  // PICK logic is proven by the pickFromQuery pins above; here we pin only what IS reachable: the
+  // branch is dispatched (not swallowed by condParts) and fails to a visible P4 marker on no match,
+  // never a throw or silent blank. In production cookieNode is the live render node (set by
+  // renderContentHTML), so this resolves to a picked title; the empty-doc sandbox has no match.
+  const marker = c.resolveBrace('roll: is:todo', { rules: {}, vars: {}, depth: 0, stack: [] });
+  assert.equal(marker, '{roll: is:todo?}');   // dispatched to the roll branch, P4 marker on empty
+  // a query's `:` must not mis-dispatch to the conditional branch (which would give a {cond?} marker)
+  assert.ok(!marker.includes('cond'), 'roll: must be sniffed before condParts');
+});
+
+test('{roll:} promotes to an anonymous grammar pill (rides the grammar machinery)', () => {
+  // typing {roll: is:todo} builds an anonymous [[grammar:key]] pill wrapping `origin: {roll: …}`,
+  // so freeze / click-reroll / unfold / OPML round-trip all reuse the grammar path — no new sidecar.
+  const node = { text: '', grammar: [] };
+  const tok = c.promoteBraceBody(node, 'roll: is:todo');
+  assert.match(tok, /^\[\[grammar:/, 'a {roll:} promotes to a grammar pill');
+  assert.equal(node.grammar.length, 1);
+  assert.equal(node.grammar[0].def, 'origin: {roll: is:todo}');
+  assert.equal(node.grammar[0].anon, true, 'the synthetic origin rule is anon (not a doc-wide callable)');
+  // classifyBraceBody agrees it is a valid artifact (edit-mode grammar styling, not a typo marker)
+  assert.equal(c.classifyBraceBody('roll: is:todo', {}, {}), 'artifact');
+});
+
 test('runGrammar — a braced conditional inside a rule resolves against document vars', () => {
   assert.equal(c.runGrammar('origin: The {danger > 3: dragon stirs | meadow is calm}.', 'origin', {}, { danger: 5 }), 'The dragon stirs.');
   assert.equal(c.runGrammar('origin: The {danger > 3: dragon stirs | meadow is calm}.', 'origin', {}, { danger: 1 }), 'The meadow is calm.');
