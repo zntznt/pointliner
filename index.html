@@ -4866,6 +4866,22 @@ function ex(s){
     .replace(/\n/g,'&#10;').replace(/\t/g,'&#9;').replace(/\r/g,'&#13;');
 }
 
+// WAVE-3 HARD-11: max ingestion nesting. Well beyond any real document (deep outlines are a handful
+// of levels), well under the ~1500-deep point where the recursive walkers (toOpml/collectVars/render)
+// overflow. A file past this is corrupt or hostile, not a document to load half of.
+const MAX_OPML_DEPTH = 1000;
+// ITERATIVE depth check (a stack, so it can't itself overflow on the deep tree it's testing) — the
+// defensive twin of the po() clamp for the autosave-restore path, which sets root from a raw JSON
+// blob and bypasses fromOpml. Returns true if any branch is deeper than MAX_OPML_DEPTH.
+function treeDepthExceeds(node, max = MAX_OPML_DEPTH) {
+  const stack = [[node, 1]];
+  while (stack.length) {
+    const [n, d] = stack.pop();
+    if (d > max) return true;
+    for (const c of (n && n.children) || []) stack.push([c, d + 1]);
+  }
+  return false;
+}
 function fromOpml(xml) {
   const doc = new DOMParser().parseFromString(xml,'application/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid OPML');
@@ -4876,7 +4892,13 @@ function fromOpml(xml) {
   // a duplicate to a fresh uid() so the index stays 1:1. No-op for a clean doc.
   const seenIds = new Set();
   const freshId = (raw) => { let id = raw || uid(); if (seenIds.has(id)) id = uid(); seenIds.add(id); return id; };
-  function po(el) {
+  function po(el, depth = 0) {
+    // WAVE-3 HARD-11 (crash): clamp ingestion nesting. A tree deeper than ~1500 levels overflows the
+    // recursive tree-walkers downstream (toOpml / collectVars / collectRules / render), so a
+    // pathological or hostile OPML/HTML would load into memory and then crash on the next serialize
+    // or render — and re-crash on every reopen. A real document is never this deep; reject at import
+    // (callers already catch fromOpml throws and flashError), so the deep tree never enters memory.
+    if (depth > MAX_OPML_DEPTH) throw new Error('Document nesting is too deep (over ' + MAX_OPML_DEPTH + ' levels)');
     const raw = el.getAttribute('_type') || 'ul';
     const n = {
       id: freshId(el.getAttribute('_id')),
@@ -4902,7 +4924,7 @@ function fromOpml(xml) {
       seq:       (() => { try { return JSON.parse(el.getAttribute('_seq')       || '[]'); } catch(_) { return []; } })(),
       query:     (() => { try { const q = JSON.parse(el.getAttribute('_query')  || '[]'); return Array.isArray(q) ? q : []; } catch(_) { return []; } })(),
       props:     (() => { try { const p = JSON.parse(el.getAttribute('_props')  || '[]'); return Array.isArray(p) ? p : []; } catch(_) { return []; } })(),
-      children: Array.from(el.children).filter(c=>c.tagName==='outline').map(po),
+      children: Array.from(el.children).filter(c=>c.tagName==='outline').map(c=>po(c, depth + 1)),
     };
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
     const colwAttr = el.getAttribute('_colw');
@@ -22237,6 +22259,10 @@ let loadedFromEmbed = false;
 // synchronous localStorage boot restore and the async OPFS boot reconcile.
 function applyAutosaveData(data) {
   if (!data || !data.root) return false;
+  // WAVE-3 HARD-11: the autosave restore sets root from a raw JSON tree, bypassing fromOpml's depth
+  // clamp — a tampered localStorage with a pathologically deep tree would overflow the first render/
+  // serialize. Reject it (the caller falls back to the Examples doc), so a corrupt blob can't brick boot.
+  if (treeDepthExceeds(data.root)) return false;
   root = data.root;
   migrateNodePrefixes(root);
   buildIndex(root, null); resetDocCaches();

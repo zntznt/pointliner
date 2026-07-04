@@ -8386,3 +8386,18 @@ test('HARD-10: the atomic-write temp name is per-write-unique (degradation)', ()
   assert.ok(_src.includes('let _wsTmpSeq = 0'), 'the per-write temp counter is missing');
   assert.notEqual(c.tmpWriteName('x.opml'), c.tmpWriteName('x.opml'), 'two calls must differ');
 });
+
+// ── adversarial-hardening WAVE 3: ingestion depth clamp (HARD-11) ──────────────────────────────
+test('HARD-11: treeDepthExceeds catches a pathologically deep tree without itself overflowing', () => {
+  // a >1500-deep tree overflows toOpml/collectVars/render. The clamp rejects at import (po throws)
+  // and the autosave-restore twin (treeDepthExceeds) rejects a tampered raw JSON tree. The checker is
+  // ITERATIVE (a stack), so it survives the very depth it is testing.
+  const deep = (n) => { const root = { id:'r', text:'', children:[] }; let cur = root; for (let i=0;i<n;i++){ const k = { id:'n'+i, text:'x', children:[] }; cur.children.push(k); cur = k; } return root; };
+  assert.equal(c.treeDepthExceeds(deep(12000)), true, 'a 12000-deep tree is rejected');
+  assert.equal(c.treeDepthExceeds(deep(50)), false, 'a normal-depth tree passes');
+  assert.equal(c.treeDepthExceeds({ id:'r', text:'', children:[] }), false, 'a single node passes');
+  // the po() import clamp + the constant are src-pinned (fromOpml is DOM-bound, not harvestable)
+  assert.ok(_src.includes('const MAX_OPML_DEPTH = 1000'), 'the depth cap constant is missing');
+  assert.ok(_src.includes('function po(el, depth = 0)'), 'po() is not depth-parameterized');
+  assert.ok(_src.includes('if (treeDepthExceeds(data.root)) return false'), 'the autosave-restore depth guard is missing');
+});
