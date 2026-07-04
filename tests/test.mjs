@@ -8576,3 +8576,19 @@ test('HARD-11: treeDepthExceeds catches a pathologically deep tree without itsel
   assert.ok(_src.includes('function po(el, depth = 0)'), 'po() is not depth-parameterized');
   assert.ok(_src.includes('if (treeDepthExceeds(data.root)) return false'), 'the autosave-restore depth guard is missing');
 });
+
+// ── LEAN FLOOR phase 2: the blind-render verbosity dial (DOM/state-bound; src-pinned) ──
+test('LEAN-FLOOR p2: the verbosity dial + blind-render wiring is present', () => {
+  // the dial state + the lean helper
+  assert.ok(_src.includes("let verbosity = 'guided'"), 'the verbosity setting is missing');
+  assert.ok(_src.includes("function isLean() { return verbosity === 'lean'; }"), 'isLean() is missing');
+  // "menu open" is decoupled from the visible .on class, so keys route while blind
+  assert.ok(_src.includes('function isSlashMenuOpen() { return slashState != null; }'), 'isSlashMenuOpen must key off slashState, not the .on class');
+  // checkSlash keeps slashState live but renders nothing in lean mode
+  assert.ok(_src.includes('if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }'), 'the blind-render guard in checkSlash is missing');
+  // the toggle + its doors (shortcut + File-menu row) + persistence
+  assert.ok(_src.includes('function toggleVerbosity()'), 'toggleVerbosity is missing');
+  assert.ok(_src.includes("(e.key==='.' || e.key==='>')") && _src.includes('toggleVerbosity()'), 'the Ctrl+Shift+. shortcut is missing');
+  assert.ok(_src.includes("data.verbosity === 'lean'"), 'the autosave restore of verbosity is missing');
+  assert.ok(/JSON\.stringify\(\{ root,[^}]*\bverbosity\b/.test(_src), 'verbosity is not persisted in the autosave payload');
+});

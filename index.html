@@ -1807,6 +1807,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Examples</span><span class="cmd-desc">Open the sample document to explore what pills can do</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
+  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Lean mode</span><span class="cmd-desc">Hide menus and helpers, keep everything keyboard-operable</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -1898,6 +1899,13 @@ let root      = mkRoot();
 let focusedId = null;
 let showDone  = false;
 let showNotes = true;   // global notes visibility (the header toggle); hidden notes leave a .note-ind mark
+// LEAN FLOOR phase 2: the verbosity dial. 'guided' (default) renders every helper; 'lean' is the
+// keyboard-only floor — the / and @ menus stay fully functional (slashState + keydown routing live)
+// but render NOTHING, so a command is typed blind and Enter/arrows still work. Persisted in the
+// autosave payload alongside showNotes/forcedTheme. (Other lean behaviors — hiding hover pencils,
+// tooltips — layer on later; this PR is the load-bearing blind-menu core.)
+let verbosity = 'guided';
+function isLean() { return verbosity === 'lean'; }
 let searchQuery = '';
 let searchQueryLC = '';        // lowercased once, reused per node during a search
 let searchTerms = [];          // parseSearchQuery(searchQuery) — parsed once per applySearch
@@ -11816,7 +11824,10 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
 
 const slashMenu = document.getElementById('slash-menu');
 let slashState = null;
-function isSlashMenuOpen() { return slashMenu.classList.contains('on'); }
+// "open" = slashState exists, NOT the visible .on class — so in lean mode (where the panel never
+// renders / never gets .on) the keydown routing (arrows/Enter/Esc) still fires. The panel's own
+// visibility is a separate concern (positionSlashMenu adds .on only when not lean).
+function isSlashMenuOpen() { return slashState != null; }
 slashMenu.addEventListener('mousedown', e => e.preventDefault());
 
 // "/" opens the point-level menu, "@" opens the inline-insert menu.
@@ -11849,8 +11860,11 @@ function checkSlash(content, nodeId) {
   let activeIdx = 0;
   if (hasArg) { const i = matches.findIndex(c => c.id === matchWord); if (i >= 0) activeIdx = i; }
   slashState = { nodeId, content, slashOffset, query, rawArg, activeIdx, matches, trigger };
-  renderSlashMenu();
-  positionSlashMenu(content, slashOffset);
+  // LEAN FLOOR: in lean mode the menu is logically open (slashState set → keydown routing + slashApply
+  // work) but renders NOTHING — type the command blind, Enter fires it. In guided mode, render + place
+  // the panel as usual. Either way slashState is live, so the blind path and the visible path share the
+  // exact same apply logic.
+  if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }
 }
 
 // Footer content for the / and @ menus: a one-line description plus, when the
@@ -21017,6 +21031,7 @@ function updateFmStatus() {
 const fmtKey = k => (typeof IS_MAC !== 'undefined' && IS_MAC) ? '⌘' + k : 'Ctrl+' + k;
 function openFileMenu() {
   armChromeReturn();
+  syncVerbosityLabel();   // LEAN FLOOR p2: the row offers the OTHER mode, reflecting current state
   // platform-correct shortcut chips (⌘K on Mac, Ctrl+K elsewhere)
   const keySave = document.getElementById('key-save');
   if (keySave) keySave.textContent = fmtKey('S');
@@ -21091,6 +21106,13 @@ document.getElementById('btn-new').addEventListener('click', () => { newFile(); 
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
+document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
+// the File-menu row label reflects the CURRENT mode: it offers the OTHER mode (so it reads "Lean
+// mode" while guided, "Guided mode" while lean). Refreshed whenever the menu opens.
+function syncVerbosityLabel() {
+  const el = document.getElementById('verbosity-label');
+  if (el) el.textContent = isLean() ? 'Guided mode' : 'Lean mode';
+}
 document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
 // Inline rename: the menu-header filename edits IN PLACE (no dialog). Click or Enter
 // turns it into an editable field; Enter or blur commits, Escape cancels. Single-file
@@ -21361,6 +21383,15 @@ document.getElementById('btn-notes').addEventListener('click', () => {
   scheduleAutosave();
   render();
 });
+// LEAN FLOOR phase 2: flip the verbosity dial (guided ↔ lean) + persist + flash. In lean the / and @
+// menus render nothing (still keyboard-operable). Reachable via the File menu (discoverable) and a
+// shortcut. render() so any verbosity-gated chrome updates immediately.
+function toggleVerbosity() {
+  verbosity = isLean() ? 'guided' : 'lean';
+  scheduleAutosave();
+  render();
+  flashHint(isLean() ? 'Lean mode: menus stay keyboard-operable but hidden.' : 'Guided mode: menus and helpers shown.');
+}
 document.getElementById('btn-capture').addEventListener('click', () => toggleCapture());
 document.getElementById('capture-strip').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeCapture(); }
@@ -22169,6 +22200,7 @@ document.addEventListener('keydown', e => {
   }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
+  if (ctrl && e.shiftKey && (e.key==='.' || e.key==='>')) { e.preventDefault(); toggleVerbosity(); return; }   // LEAN FLOOR: guided ↔ lean
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
   if (ctrl && e.shiftKey && (e.key==='I' || e.key==='i')) { e.preventDefault(); toggleCapture(); return; }   // I = Inbox: toggle the capture strip (default slot)
   // ⌘/Ctrl+Shift+1..0 → capture to inbox N (0 = inbox 10). Opens the dialog targeting that
@@ -22505,7 +22537,7 @@ function scheduleAutosave() {
   if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
     if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
@@ -22533,7 +22565,7 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 // is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
 // avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
 function writeLocalAutosave(payload) {
-  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
+  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
   try {
     // UXP-147: roll the OUTGOING value into the prev-snapshot slot before overwriting it, throttled
     // so the snapshot trails by ~SNAPSHOT_EVERY_MS. Skipped past the soft limit (two big copies would
@@ -22609,6 +22641,7 @@ function applyAutosaveData(data) {
     btn.setAttribute('aria-pressed', String(showDone));   // UXP-153: stable name; aria-pressed carries state
   }
   if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
+  if (data.verbosity === 'lean' || data.verbosity === 'guided') verbosity = data.verbosity;   // LEAN FLOOR p2
   // New: a single active view. Migrate the legacy additive agendaBars (timeline/calendar
   // could both be open) into the one-at-a-time model: timeline wins, else calendar→month.
   if (data.agendaView === 'week' || data.agendaView === 'month' || data.agendaView === 'timeline' || data.agendaView === '') {

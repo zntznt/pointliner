@@ -1683,6 +1683,22 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
 - 853 tests (+4 pins: `dateDeclParts`, the validated `{date}` promotion, the `/due` stub + `/note`
   src-pins). Still open in the class: `/refile` (title→id resolution), the bulk multi-select verbs.
 
+### LF-2 ◐ Phase 2: the verbosity dial + blind-render for / and @ (RESOLVED pending merge)
+- **The global lean switch, at last** — a `verbosity` setting ('guided' default | 'lean'), persisted in
+  the autosave payload. In LEAN, the `/` and `@` menus stay fully keyboard-operable but render NOTHING:
+  `checkSlash` still builds `slashState` (so Enter/arrows/Esc route and `slashApply` fires) but skips
+  `renderSlashMenu`/`positionSlashMenu`. The load-bearing decouple: `isSlashMenuOpen()` now keys off
+  `slashState != null`, not the visible `.on` class, so the keydown routing works while blind.
+- **Doors:** `toggleVerbosity()` via `Ctrl/⌘+Shift+.` and a File-menu row ("Lean mode" / "Guided mode",
+  the label offers the OTHER mode via `syncVerbosityLabel` on menu open). The top bar is exempt (always
+  visible) per the floor spec — the dial only silences the `/`+`@` render here.
+- 854 tests (+1 src-pin block: the dial state, the `isSlashMenuOpen` decouple, the `checkSlash`
+  blind-render guard, the toggle/shortcut/persistence). **NOT done here** (follow-ups): the other lean
+  behaviors the `ux.md` dial table lists — hiding hover pencils / tooltips / empty-state hints, minimal
+  toolbar — layer on top of this switch; this PR is the load-bearing blind-menu core. **Verification
+  note:** the live blind-menu flow is DOM-bound + the browser was unavailable this session, so it is
+  src-pinned, not smoke-tested live — worth a manual smoke as a merge gate (see the PR).
+
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
