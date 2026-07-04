@@ -1789,6 +1789,29 @@ import assert2 from 'node:assert/strict';
     const text = 'plain text no state';
     assert.equal(cycleTodoPriority(text, 1), text);
   });
+
+  // LEAN FLOOR: the bulk verb applies a cycle mutator over a node list (Ctrl/⌘+Shift+S/P on a selection)
+  test('applyTodoCycleToNodes: cycles state on every node, counts only real changes, refreshes checked', () => {
+    const nodes = [
+      { text: 'first',        checked: false },   // → #TODO
+      { text: '#DONE done',   checked: true  },   // → cleared (wraps), checked false
+      { text: 'plain para',   checked: false },   // → #TODO
+    ];
+    const changed = c.applyTodoCycleToNodes(nodes, t => c.cycleTodoState(t, 1));
+    assert.equal(changed, 3, 'all three changed');
+    assert.ok(nodes[0].text.startsWith('#TODO'));
+    assert.ok(!parseTodo(nodes[1].text).keyword, 'a #DONE wraps to cleared');
+    assert.equal(nodes[1].checked, false, 'the derived checked cache is refreshed');
+    // a no-op mutator changes nothing and counts 0
+    const zero = c.applyTodoCycleToNodes([{ text: 'x', checked: false }], t => t);
+    assert.equal(zero, 0, 'an identity mutator counts no change');
+  });
+
+  test('LEAN FLOOR: the bulk state/priority shortcut wiring is present (keydown is DOM-bound)', () => {
+    assert.ok(_src.includes("bulkCycleTodo('state', 1)") && _src.includes("bulkCycleTodo('priority', 1)"), 'the bulk cycle handlers are missing');
+    // gated on a selection AND not editing (so it never collides with the single-node in-edit chord)
+    assert.ok(_src.includes("(e.key==='s' || e.key==='S') && selectedIds.size > 0 && activeContentId == null"), 'the bulk-state shortcut must gate on a selection + not-editing');
+  });
 }
 
 // ───────────────────────────────────────────────────────────────────────────

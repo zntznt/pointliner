@@ -187,7 +187,7 @@ export function loadCores() {
     'tblfmGetAssign', 'tblfmSetAssign',
     'mtModelText', 'baseFrozenMarkdown', 'baseRecipeMarkdown',
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
-    'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo',
+    'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores

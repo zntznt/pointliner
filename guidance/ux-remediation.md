@@ -1715,6 +1715,25 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   top/decoy-exclusion/null cases, and the `/refile` src-pin). Open in the class: the bulk multi-select
   verbs, `query` unfold.
 
+### LF-1f ◐ Phase 1f: bulk to-do state/priority go keyboard-only (RESOLVED — the enumerable half; ceiling documented)
+- **The finding refined:** the bulk multi-select verbs looked like a single gap, but there is a hard
+  architectural split. **Entering text-edit (where you'd type `/`) CLEARS the selection** (`enterEdit`
+  → `clearSelection`), so an inline `/due` over a selection is IMPOSSIBLE — a free-value bulk verb has
+  no edit caret to type into once a selection is active. So the floor can only reach the ENUMERABLE
+  bulk verbs (a fixed value set → a keystroke), not the free-value ones (date/prop/refile).
+- **Built (the enumerable half):** `Ctrl/⌘+Shift+S` / `+P` on a SELECTION now cycle every selected
+  point's to-do state / priority with NO picker — the SAME chords as the single-node cycle, extended to
+  the selection when not editing (`activeContentId == null`), so no collision. Pure core
+  `applyTodoCycleToNodes(nodes, mutator)` (loops a text-mutator, counts real changes, refreshes the
+  `checked` cache); `bulkCycleTodo` wraps it with one undo + a render + a P4 flash when nothing changed.
+  Reuses `cycleTodoState`/`cycleTodoPriority`. Shortcut-reference labels updated (this point OR the
+  selection). 858 tests (+2 pins).
+- **The documented CEILING (honest):** the FREE-VALUE bulk verbs — bulk date, arbitrary property, bulk
+  refile — KEEP their action-bar modal (`nsb-dates`/`nsb-props`/`nsb-refile` → a dialog), because a
+  free value needs a type target and `enterEdit` clears the selection, so there is no no-modal path
+  without redefining the selection model (a much larger, riskier change, deliberately not forced). The
+  action-bar buttons are `<button>`s (keyboard-reachable); only the value-entry modal is the ceiling.
+
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
