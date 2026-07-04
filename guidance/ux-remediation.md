@@ -1908,6 +1908,27 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   content string, so no pin churn; the existing UXP-126/148 mechanism (first-run adopt + File-menu re-entry)
   is untouched. Browser down this session → the live-pill claim rests on the pure-core classify + parse
   checks, not a rendered screenshot; a smoke test should open the examples (File menu) and click a few pills.
+
+### EX-2 ◐ The Examples File-menu row OVERWROTE the current document; make it INSERT (data-loss bug) (RESOLVED pending merge)
+- **Problem (user-reported, serious).** The File-menu "Examples" row (UXP-148's `openExamples`) ran
+  `adoptDoc(fromOpml(FIRST_RUN_EXAMPLES))` — it REPLACED the whole live document with the examples. The
+  only guard was an `unsavedToDisk()` "Discard?" confirm, so a doc already saved (or workspace-autosaved)
+  was swapped away with no warning, and even the confirm made "Examples" a data-loss gamble. UXP-148 built
+  a real feature (re-entry to the live examples) on a destructive mechanism.
+- **Rule:** P4 / no-silent-data-loss. A menu item named "Examples" must never cost you your document.
+- **Resolved (non-destructive INSERT).** `openExamples` now parses the examples, takes its single
+  `# Welcome` root subtree, `deepCloneNodeNewIds` it (fresh ids, no collision), `pushUndo()`, and APPENDS
+  it to `root.children` (a new top-level point), then `buildIndex`/`markDirty`/`render`/`focusNode` and a
+  flash naming the count + "Delete it when you are done." No `adoptDoc`, no discard confirm, no examples
+  flags (it's a normal edit to the user's own doc, so autosave runs). The row relabelled "Add the Welcome
+  tour" / "Insert the examples into this document to explore what pills can do". The FIRST-RUN path
+  (`maybeShowFirstRun`, examples-as-the-empty-doc + the Start-blank banner) is unchanged — only the menu
+  re-entry inserts. Mirrors the `stampTemplate` insert model. Pinned: `openExamples` appends a fresh-id
+  clone, is undo-able, and contains NO `adoptDoc`/discard-confirm (the guard against reverting to the
+  destructive path). Browser down → the insert is src-pinned + `deepCloneNodeNewIds` (fresh ids, deep
+  props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
+  removes just the tour.
+
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
 
 A focused single-target pass on the one break both prior waves explicitly LEFT for a third wave: the deep-tree recursion at the ingestion boundary. Confirmed real (a 12000-deep tree overflows toOpml/collectVars/collectRules/render at ~1500 levels), then fixed at the gate. Not a full fleet — the target was already named; this confirmed + closed it.
