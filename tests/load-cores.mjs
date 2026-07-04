@@ -218,7 +218,7 @@ export function loadCores() {
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
-    'propDeclParts','setProp','parsePropSlash','parseBaseSlash',   // LEAN FLOOR: inline-stub prop path + /base:RxC
+    'propDeclParts','setProp','parsePropSlash','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC
     'splitForSibling', 'mergeUpText',
     'flatRowStep',
   ];
