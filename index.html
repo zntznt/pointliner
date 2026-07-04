@@ -1806,6 +1806,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, Markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Examples</span><span class="cmd-desc">Open the sample document to explore what pills can do</span></div></div>
+  <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -8187,6 +8188,71 @@ async function openWorkspaceSwitcher() {
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick[aria-current]') || ioCard.querySelector('.tpl-pick') || newBtn).focus(); });
 }
 
+// Broken-links report (backlog #4): a maintenance view of every dangling link — same-doc AND, when a
+// folder is connected, cross-doc — the first consumer of the pure collectBrokenLinks. Mirrors the
+// openWorkspaceSwitcher io-card list idiom (same .tpl-* rows + keyboard nav). A row navigates to the
+// SOURCE point (where the broken link lives, so you can fix it): zoomInto same-doc, followLinkTarget
+// cross-doc (which switches the file first). Clean report → a reassuring empty state, not a dead panel.
+function showBrokenLinksReport() {
+  const titleOf = (id) => { const n = nodeById(id); return n ? pickerTitle(n) : ''; };
+  const rows = collectBrokenLinks(collectLinks(), titleOf, workspaceIndex, root.docId);
+
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, { fa: 'fa-solid fa-triangle-exclamation', fb: '⚠' });
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Broken links';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const sub = document.createElement('p');
+  sub.style.cssText = 'font-size:12px;color:var(--muted);margin:-2px 0 12px;line-height:1.5';
+  sub.textContent = rows.length
+    ? `${rows.length} link${rows.length === 1 ? '' : 's'} point at a missing target. Click one to jump to the point that holds it.`
+    : (workspaceIndex ? 'No broken links in this document or across the folder.' : 'No broken links in this document.');
+  ioCard.appendChild(sub);
+
+  if (rows.length) {
+    const list = document.createElement('div'); list.className = 'tpl-list';
+    rows.forEach(r => {
+      const row = document.createElement('div'); row.className = 'tpl-row';
+      const pick = document.createElement('button'); pick.className = 'tpl-pick'; pick.type = 'button';
+      const nm = document.createElement('span'); nm.className = 'tpl-name';
+      nm.textContent = r.srcTitle;
+      const tag = document.createElement('span'); tag.className = 'tpl-count';
+      // the target id is opaque; the cross-doc name is the useful locator, so show it when we have it
+      tag.textContent = r.scope === 'cross' ? ('in ' + (r.dstDocName || 'another note')) : 'missing';
+      pick.append(nm, tag);
+      const where = r.scope === 'cross' ? (r.dstDocName ? ' in ' + r.dstDocName : ' in another note') : '';
+      pick.setAttribute('aria-label', `Broken link in “${r.srcTitle}” pointing to a missing target${where}. Jump to the source point.`);
+      pick.addEventListener('click', () => {
+        closeIo();
+        if (r.scope === 'cross') followLinkTarget(root.docId, r.srcId);   // source is in THIS doc; just zoom to it
+        else zoomInto(r.srcId);
+      });
+      row.append(pick);
+      list.appendChild(row);
+    });
+    list.addEventListener('keydown', e => {
+      const picks = [...list.querySelectorAll('.tpl-pick')];
+      const i = picks.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); picks[Math.min(i + 1, picks.length - 1)]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); picks[Math.max(i - 1, 0)]?.focus(); }
+    });
+    ioCard.appendChild(list);
+  }
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', closeIo);
+  foot.append(closeBtn); ioCard.appendChild(foot);
+  ioCancel = closeIo;
+
+  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Broken links report');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
+}
+
 // Stamp a fresh copy of a saved template as a new point. Replaces the invoking
 // point when it's empty and childless (typed /template on a blank line); otherwise
 // inserts as the next sibling. Mirrors createBaseAt's blur-before-mutate discipline.
@@ -13536,6 +13602,42 @@ function collectLinks(rootNode) {
   const result = { outgoing, backlinks, broken };
   if (useCache) { _linksCacheVer = _varsVer; _linksCached = result; }
   return result;
+}
+
+// Broken-links report (backlog #4). Pure: enumerate every link whose target is missing, same-doc AND
+// cross-doc, from data already computed elsewhere — collectLinks().{outgoing,broken} for same-doc, and
+// the (built-but-until-now-unread) workspaceIndex.outgoing for cross-doc. Returns a flat list of
+// { scope:'same'|'cross', srcId, srcTitle, target, dstDocId, dstDocName, label } sorted by source
+// title, one entry per broken occurrence. Args are plain data so it's Node-testable:
+//   links      = collectLinks() result ({ outgoing, broken })
+//   titleOf    = (nodeId) => title string  (same-doc titles)
+//   wsIndex    = workspaceIndex or null    ({ titles: Map(docId->Map(nodeId->title)), nameByDocId })
+//   ownDocId   = the current doc's docId (skip its own entries in the cross-doc pass — same-doc covers them)
+function collectBrokenLinks(links, titleOf, wsIndex, ownDocId) {
+  const out = [];
+  const brokenSet = new Set((links && links.broken) || []);
+  // same-doc: an outgoing link whose target isn't a live node id
+  for (const srcId of Object.keys((links && links.outgoing) || {})) {
+    for (const l of links.outgoing[srcId]) {
+      if (brokenSet.has(l.target)) {
+        out.push({ scope: 'same', srcId, srcTitle: titleOf(srcId) || '(untitled)', target: l.target, dstDocId: null, dstDocName: null, label: l.label || '' });
+      }
+    }
+  }
+  // cross-doc: iterate the workspace outgoing list; broken = the dst doc or dst node is absent from titles
+  if (wsIndex && Array.isArray(wsIndex.outgoing)) {
+    for (const e of wsIndex.outgoing) {
+      if (e.srcDocId !== ownDocId) continue;                       // only THIS doc's outgoing cross-links (the one in memory)
+      const dstTitles = wsIndex.titles && wsIndex.titles.get(e.dstDocId);
+      const present = dstTitles && dstTitles.has(e.dstNodeId);
+      if (!present) {
+        const dstDocName = (wsIndex.nameByDocId && wsIndex.nameByDocId.get(e.dstDocId)) || null;
+        out.push({ scope: 'cross', srcId: e.srcNodeId, srcTitle: titleOf(e.srcNodeId) || '(untitled)', target: e.dstNodeId, dstDocId: e.dstDocId, dstDocName, label: e.label || '' });
+      }
+    }
+  }
+  out.sort((a, b) => a.srcTitle.localeCompare(b.srcTitle) || a.target.localeCompare(b.target));
+  return out;
 }
 
 // ── cross-document link index (CF-1: the workspace-wide link/backlink foundation) ──
@@ -20768,6 +20870,7 @@ document.addEventListener('click', closeFileMenu);
 document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
+document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
 // Inline rename: the menu-header filename edits IN PLACE (no dialog). Click or Enter
 // turns it into an editable field; Enter or blur commits, Escape cancels. Single-file
@@ -21557,6 +21660,12 @@ const GUIDE = [
     examples:[
       { syn:'[[…]]',                desc:'pick a point in another document' },
       { syn:'+ New document',       desc:'make a new document and link to it at once' },
+    ] },
+  { id:'broken-links', cat:'links',
+    title:'Find broken links',
+    body:"When you delete or rename the point a link pointed at, the link goes stale and shows with a dashed underline. To round them all up, open the File menu and choose Broken links. It lists every link whose target point or note is gone, in this document and, when a folder is connected, across the whole folder. Click one to jump to the point that holds the broken link so you can fix or remove it.",
+    examples:[
+      { syn:'File → Broken links',  desc:'list every dangling link, click to jump to its source' },
     ] },
 
   // ── Files & workspace (guide) ─────────────────────────────────────────────

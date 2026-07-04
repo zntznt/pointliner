@@ -37,6 +37,18 @@ action item in another file, or build a topic index that points to pages across 
 In a [connected folder](features.md#linking-and-connecting-notes) the `[[` picker searches **all**
 your documents, not just the one you are in, so a link can reach a point in any file.
 
+## Find broken links
+
+When you delete or rename the point a link pointed at, the link goes stale: it renders with a dashed
+underline instead of a solid one. A single stale link is easy to spot, but across a growing document
+or a whole folder they are easy to lose track of.
+
+Open the **File menu** and choose **Broken links** to round them all up. It lists every link whose
+target point or document is gone, both in the document you are in and, when a folder is connected,
+across the whole folder. Each row names the point that holds the broken link; click it to jump
+straight there so you can fix the target or remove the link. A clean document says so, rather than
+showing an empty list.
+
 ---
 
 **Next:** [Getting around](getting-around.md), [Tasks and organizing](tasks-and-organizing.md), or
