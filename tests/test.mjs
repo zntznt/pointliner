@@ -8667,23 +8667,26 @@ test('DIAL: the 3-tier state machine + cycle + persistence is present', () => {
   assert.ok(_src.includes("function isLean() { return verbosity === 'lean'; }"), 'isLean() is missing');
   assert.ok(_src.includes("function isGuided() { return verbosity === 'guided'; }"), 'isGuided() is missing');
   assert.ok(_src.includes("function isStandardOrLean() { return verbosity !== 'guided'; }"), 'isStandardOrLean() (the teaching-text-off tiers) is missing');
-  // the toggle CYCLES through the tiers (not a binary flip)
-  assert.ok(_src.includes('VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + 1) % VERBOSITY_TIERS.length]'), 'toggleVerbosity must CYCLE the 3 tiers, not flip 2');
-  assert.ok(_src.includes("(e.key==='.' || e.key==='>')") && _src.includes('toggleVerbosity()'), 'the Ctrl+Shift+. cycle shortcut is missing');
+  // the toggle CYCLES through the tiers with a direction (forward + reverse), not a binary flip
+  assert.ok(_src.includes('VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + dir + n) % n]'), 'toggleVerbosity must CYCLE the 3 tiers by a direction, not flip 2');
+  assert.ok(_src.includes("(e.key==='.' || e.key==='>')") && _src.includes('toggleVerbosity(1)'), 'the Ctrl+Shift+. forward cycle is missing');
+  assert.ok(_src.includes("(e.key===',' || e.key==='<')") && _src.includes('toggleVerbosity(-1)'), 'the Ctrl+Shift+, reverse cycle (toward more guidance) is missing');
   // persistence: any of the 3 tiers restores + re-syncs the body class
   assert.ok(_src.includes('VERBOSITY_TIERS.includes(data.verbosity)'), 'the autosave restore must accept any of the 3 tiers');
   assert.ok(/JSON\.stringify\(\{ root,[^}]*\bverbosity\b/.test(_src), 'verbosity is not persisted in the autosave payload');
 });
 
-test('DIAL: LEAN is the keyboard canvas — blind menus + hidden pencils (only lean, not standard)', () => {
-  // menus render nothing in LEAN only (standard keeps them); slashState stays live so keys route blind
+test('DIAL: LEAN is the keyboard canvas — blind menu shows a one-line match tip, pencils hidden (lean only)', () => {
+  // the / @ menu renders nothing in LEAN, but a one-line status tip names the current match (not a menu)
   assert.ok(_src.includes('function isSlashMenuOpen() { return slashState != null; }'), 'isSlashMenuOpen must key off slashState, not the .on class');
   assert.ok(_src.includes('if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }'), 'the blind-render guard (lean only) is missing');
-  // the body carries one v-<tier> class + keeps the legacy .lean-mode class for the LF-2b pencil CSS
+  assert.ok(_src.includes('else renderLeanSlashTip();'), 'lean must render the one-line match tip instead of nothing (panel-review blocker fix)');
+  assert.ok(_src.includes('function renderLeanSlashTip()') && _src.includes('announce(`${cmd.label}'), 'the lean tip must name the current match AND announce it to AT');
+  // the body carries one v-<tier> class; the pencil CSS keys on body.v-lean directly (no legacy lean-mode)
   assert.ok(_src.includes("VERBOSITY_TIERS.forEach(t => b.toggle('v-' + t, verbosity === t))"), 'syncVerbosityClass must set a v-<tier> class per tier');
-  assert.ok(_src.includes("b.toggle('lean-mode', isLean())"), 'the lean-mode class (LEAN only) must still drive the pencil-suppress CSS');
-  assert.ok(_src.includes('body.lean-mode .dice-roll:hover .dice-edit'), 'lean must suppress the pencil hover-reveal');
-  assert.ok(_src.includes('body.lean-mode .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean must still reveal a pencil on keyboard focus (P3)');
+  assert.ok(!_src.includes("b.toggle('lean-mode'"), 'the legacy lean-mode class must be retired (dual source of truth)');
+  assert.ok(_src.includes('body.v-lean .dice-roll:hover .dice-edit'), 'lean must suppress the pencil hover-reveal via body.v-lean');
+  assert.ok(_src.includes('body.v-lean .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean must still reveal a pencil on keyboard focus (P3)');
 });
 
 test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {

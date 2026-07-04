@@ -167,17 +167,19 @@ rest of the table controls.
 ## Quiet the guidance: the verbosity dial
 
 Pointliner starts chatty, with hints, tooltips, and menus that teach you the syntax. Once you know the
-commands, you can turn the explaining down and keep just the app. Press `Ctrl/Cmd+Shift+.` (or open the
-File menu and use the verbosity row) to cycle through three levels:
+commands, you can turn the explaining down and keep just the app. Press `Ctrl/Cmd+Shift+.` to move to a
+quieter level and `Ctrl/Cmd+Shift+,` to move back toward more guidance (or open the File menu and use the
+verbosity row, which shows the current level as a dot track). Three levels cycle:
 
 - **Guided** (the default): everything is shown, empty-point hints, the search cheatsheet, pill tooltips,
   and the full `/` and `@` menus.
 - **Standard:** the beginner teaching text is off (no empty-point hints, no search cheatsheet, no pill
   tooltips), but the menus still open and the edit pencils still appear on hover. This is the "I know the
   commands, stop explaining, keep the conveniences" level.
-- **Lean:** the keyboard canvas. The `/` and `@` menus render nothing (you type the command blind, and
-  the keys still work), and the edit pencils are hidden. Everything is still clickable and fully
-  keyboard-operable, and the top toolbar never changes.
+- **Lean:** the keyboard canvas. The `/` and `@` menus stop popping up; instead a small one-line tip shows
+  the command your typing has matched, so you press `Enter` to insert it without a full menu. The edit
+  pencils are hidden until you focus a pill. Everything is still clickable and fully keyboard-operable, and
+  the top toolbar never changes.
 
 Nothing is ever removed, only quieted, so you can move down as you get comfortable and back up any time.
 Your choice is remembered with the document.

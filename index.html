@@ -363,24 +363,24 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    them on pointer-hover, so pill-dense lines are calmer. These are all :hover rules, so they're already
    mouse-only — on touch there's no hover and the @media(hover:none) block above keeps the pencils shown
    (touch has no floor). This is a hover-overlay suppression, never display:none on a control. */
-body.lean-mode .dice-roll:hover .dice-edit,
-body.lean-mode .mk-roll:hover .mk-edit,
-body.lean-mode .gr-roll:hover .gr-edit,
-body.lean-mode .math-roll:hover .math-edit,
-body.lean-mode .seq-pill:hover .seq-edit,
-body.lean-mode .est-pill:hover .est-edit,
-body.lean-mode .var-pill:hover .var-edit,
-body.lean-mode .query-pill:hover .query-edit,
-body.lean-mode .md-table-static:hover .mt-promote{opacity:0}
-body.lean-mode .dice-edit:focus-visible,
-body.lean-mode .mk-edit:focus-visible,
-body.lean-mode .gr-edit:focus-visible,
-body.lean-mode .math-edit:focus-visible,
-body.lean-mode .seq-edit:focus-visible,
-body.lean-mode .est-edit:focus-visible,
-body.lean-mode .var-edit:focus-visible,
-body.lean-mode .query-edit:focus-visible,
-body.lean-mode .mt-promote:focus-visible{opacity:1}   /* keyboard focus still reveals (P3) */
+body.v-lean .dice-roll:hover .dice-edit,
+body.v-lean .mk-roll:hover .mk-edit,
+body.v-lean .gr-roll:hover .gr-edit,
+body.v-lean .math-roll:hover .math-edit,
+body.v-lean .seq-pill:hover .seq-edit,
+body.v-lean .est-pill:hover .est-edit,
+body.v-lean .var-pill:hover .var-edit,
+body.v-lean .query-pill:hover .query-edit,
+body.v-lean .md-table-static:hover .mt-promote{opacity:0}
+body.v-lean .dice-edit:focus-visible,
+body.v-lean .mk-edit:focus-visible,
+body.v-lean .gr-edit:focus-visible,
+body.v-lean .math-edit:focus-visible,
+body.v-lean .seq-edit:focus-visible,
+body.v-lean .est-edit:focus-visible,
+body.v-lean .var-edit:focus-visible,
+body.v-lean .query-edit:focus-visible,
+body.v-lean .mt-promote:focus-visible{opacity:1}   /* keyboard focus still reveals (P3) */
 @media(prefers-reduced-motion:reduce){
   .node-row:hover,.bullet:hover .bullet-dot,.bullet-base:hover .bullet-base-ic,
   .nt-divider>.node-row>.bullet:hover .bullet-dot,.nt-ol>.node-row>.bullet:hover .bullet-dot,
@@ -1030,6 +1030,13 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #slash-menu-list::-webkit-scrollbar-thumb{background:var(--cb);border-radius:4px}
 #slash-menu-list::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 #slash-menu .cmd-desc{display:none}
+/* Lean-mode slash tip: a single-line, non-interactive status readout of the current match (not a menu).
+   Small, muted, positioned at the caret like the menu; shows nothing until a match exists. */
+#lean-slash-tip{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);
+  border-radius:var(--r-md);box-shadow:var(--sh-1);padding:3px 9px;font-size:12px;color:var(--muted);
+  max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+#lean-slash-tip.on{display:block}
+#lean-slash-tip b{color:var(--fg);font-weight:600}
 /* shared grid size picker (swapped into the slash-menu popup by /base and @table) */
 #slash-menu.sp-mode{width:auto}
 #size-picker{padding:10px 11px}
@@ -1835,7 +1842,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
-  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Switch to Standard</span><span class="cmd-desc" id="verbosity-desc">Now Guided: everything shown. Next: Standard (hides beginner hints).</span></div><span class="cmd-key">⌘⇧.</span></div>
+  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -1850,6 +1857,10 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="mt-colpanel" role="menu" aria-label="Column options"></div>
 <!-- slash menu -->
 <div id="slash-menu"></div>
+<!-- Lean mode: the / @ menu renders nothing, but this one-line tip names the match Enter will insert
+     (a status readout, not a menu/submenu) so a Lean user is not typing fully blind. AT hears it via
+     the #a11y-live region. -->
+<div id="lean-slash-tip" role="status"></div>
 <div id="lp-menu" role="listbox" aria-label="Points to link"></div>
 <div id="brace-menu" role="listbox" aria-label="Callable names"></div>
 <div id="tag-menu" role="listbox" aria-label="Tags"></div>
@@ -11007,8 +11018,8 @@ function onKeyDown(e, id, content) {
   else if (e.key==='ArrowDown' && e.altKey)  { e.preventDefault(); moveNode(id, 1); }
   // Collapse/expand on Ctrl/⌘+. / , (UXP-5) — frees Ctrl+Arrow for the native
   // caret-to-document-edge, which the old binding clobbered.
-  else if (e.key==='.' && ctrl) { e.preventDefault(); setCollapsed(id,true); }
-  else if (e.key===',' && ctrl) { e.preventDefault(); setCollapsed(id,false); }
+  else if (e.key==='.' && ctrl && !e.shiftKey) { e.preventDefault(); setCollapsed(id,true); }   // +Shift is the verbosity dial (forward)
+  else if (e.key===',' && ctrl && !e.shiftKey) { e.preventDefault(); setCollapsed(id,false); }   // +Shift is the verbosity dial (reverse)
   else if (e.key==='ArrowUp'   && !e.altKey && !ctrl && !e.shiftKey) {
     if (isAtFirstLine(content)) { e.preventDefault(); navigateToPrev(id); }
   }
@@ -12082,6 +12093,7 @@ function checkSlash(content, nodeId) {
   // the panel as usual. Either way slashState is live, so the blind path and the visible path share the
   // exact same apply logic.
   if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }
+  else renderLeanSlashTip();   // lean: no menu, but a one-line status tip of the current match (+ AT announce)
 }
 
 // Footer content for the / and @ menus: a one-line description plus, when the
@@ -12173,11 +12185,59 @@ function positionSlashMenu(content, slashOffset) {
   });
 }
 
+// LEAN MODE: the / @ menu renders nothing, but a fully-blind menu is a trap (panel review, 5/6 lenses:
+// AT gets no announced option, power-users get no confirmation before Enter). So in lean we show a tiny
+// one-line STATUS readout of the match Enter will insert (not a menu/submenu — no list, no navigation
+// chrome, pointer-events off), positioned at the caret, and ALSO push it to #a11y-live so AT speaks it.
+const leanSlashTip = document.getElementById('lean-slash-tip');
+function renderLeanSlashTip() {
+  if (!slashState || !leanSlashTip) return;
+  const { matches, activeIdx, content, slashOffset, trigger } = slashState;
+  const cmd = matches[activeIdx];
+  if (!cmd) { leanSlashTip.classList.remove('on'); return; }
+  const pos = activeIdx + 1, total = matches.length;
+  leanSlashTip.innerHTML = `<b>${escHtml(cmd.label)}</b>${total > 1 ? ` <span>${pos}/${total}</span>` : ''} <span>↵ insert</span>`;
+  leanSlashTip.classList.add('on');
+  // position at the caret, reusing the same range walk as positionSlashMenu (via a shared placement)
+  placeAtCaret(leanSlashTip, content, slashOffset);
+  announce(`${cmd.label}${total > 1 ? `, ${pos} of ${total}` : ''}. Enter to insert.`);
+}
+// shared caret-anchored placement for a fixed-position element (menu + lean tip use it)
+function placeAtCaret(el, content, slashOffset) {
+  let rem = slashOffset, targetNode = null, targetRawOff = 0;
+  (function walk(node) {
+    if (targetNode) return;
+    if (node.nodeType === 3) {
+      const raw = node.nodeValue; let logical = 0;
+      for (let i = 0; i < raw.length; i++) {
+        if (raw[i] !== '​') { if (logical === rem) { targetNode = node; targetRawOff = i; return; } logical++; }
+      }
+      rem -= logical; return;
+    }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) { rem -= node.dataset.token.length; return; }
+    if (node.nodeName === 'BR') { rem -= 1; return; }
+    for (const c of node.childNodes) walk(c);
+  })(content);
+  if (!targetNode) { el.style.left = '0'; el.style.top = '0'; return; }
+  const range = document.createRange();
+  range.setStart(targetNode, targetRawOff);
+  range.setEnd(targetNode, Math.min(targetRawOff + 1, targetNode.length));
+  const rect = range.getBoundingClientRect();
+  el.style.left = rect.left + 'px';
+  el.style.top = (rect.bottom + 4) + 'px';
+  requestAnimationFrame(() => {
+    const mr = el.getBoundingClientRect();
+    if (mr.right > window.innerWidth - 8) el.style.left = (window.innerWidth - mr.width - 8) + 'px';
+    if (mr.bottom > window.innerHeight - 8) el.style.top = (rect.top - mr.height - 4) + 'px';
+  });
+}
+
 function slashMove(dir) {
   if (!slashState) return;
   const n = slashState.matches.length;
   slashState.activeIdx = (slashState.activeIdx + dir + n) % n;
-  renderSlashMenu();
+  if (isLean()) renderLeanSlashTip(); else renderSlashMenu();
 }
 
 function slashApply() {
@@ -16497,7 +16557,7 @@ function announce(msg) {
   requestAnimationFrame(() => { el.textContent = msg; });
 }
 
-function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); slashState = null; }
+function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); leanSlashTip?.classList.remove('on'); slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
 // Always on (UXP-4: a built capability with no front door is non-conformant; the
@@ -21350,16 +21410,21 @@ document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { cl
 document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
 // the File-menu row is a CYCLE button (guided → standard → lean → …): the label names where the next
 // press lands + the desc names the current tier, so the user always sees both. Refreshed on menu open.
-const VERBOSITY_NEXT_LABEL = { guided: 'Switch to Standard', standard: 'Switch to Lean', lean: 'Switch to Guided' };
+// The File-menu row is a self-explaining 3-stop indicator: the label names the CURRENT tier + a
+// position dot-track (●○○ / ○●○ / ○○●) so it reads as a dial with a known position (panel review: tiers
+// are defined by absence, so an at-rest tell is the fix for "which tier am I in?"); the desc says what
+// the next press does. A capitalized tier name for the label.
+const VERBOSITY_DOTS = { guided: '●○○', standard: '○●○', lean: '○○●' };
 const VERBOSITY_CUR_DESC = {
-  guided:   'Now Guided: everything shown. Next: Standard (hides beginner hints).',
-  standard: 'Now Standard: hints and tooltips off, menus and pencils on. Next: Lean.',
-  lean:     'Now Lean: menus and helpers hidden but keyboard-operable. Next: Guided.',
+  guided:   'Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.',
+  standard: 'Now Standard: those three teaching aids are off, but the menus and edit pencils stay. Next: Lean.',
+  lean:     'Now Lean: the / and @ menus show only the match you type, and pencils appear on focus. Next: Guided.',
 };
 function syncVerbosityLabel() {
   const el = document.getElementById('verbosity-label');
   const dsc = document.getElementById('verbosity-desc');
-  if (el) el.textContent = VERBOSITY_NEXT_LABEL[verbosity];
+  const name = verbosity[0].toUpperCase() + verbosity.slice(1);
+  if (el) el.textContent = `Verbosity: ${name} ${VERBOSITY_DOTS[verbosity]}`;
   if (dsc) dsc.textContent = VERBOSITY_CUR_DESC[verbosity];
 }
 document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
@@ -21634,21 +21699,22 @@ document.getElementById('btn-notes').addEventListener('click', () => {
 });
 // The verbosity dial: cycle guided → standard → lean → guided, + persist + flash. Reachable via the
 // File menu (discoverable) and ⌘⇧. render() so any verbosity-gated chrome updates immediately.
-// The body carries exactly one `v-<tier>` class (plus the legacy `lean-mode` class for the LF-2b pencil
-// CSS, so that rule keeps working unchanged). Each tier's strips: guided = all on; standard = teaching
-// text off (hints/legend/tooltips) but menus + hover pencils on; lean = also blind menus + hide pencils.
+// The body carries exactly one `v-<tier>` class; the pencil-suppress CSS keys on `body.v-lean` directly
+// (the old separate `lean-mode` class was a dual source of truth, retired per the panel review). Each
+// tier's strips: guided = all on; standard = teaching text off (hints/legend/tooltips) but menus + hover
+// pencils on; lean = also blind menus (a one-line match tip instead) + hide pencils.
 const VERBOSITY_FLASH = {
-  guided:   'Guided: menus, hints, and tooltips all shown.',
-  standard: 'Standard: the beginner hints and tooltips are off, menus and pencils stay.',
-  lean:     'Lean: menus and helpers stay keyboard-operable but hidden.',
+  guided:   'Guided: point hints, pill tooltips, and the search cheatsheet shown. ⌘⇧. to quiet them.',
+  standard: 'Standard: those three teaching aids off; menus and edit pencils stay. ⌘⇧. for Lean.',
+  lean:     'Lean: the / and @ menus show only what you type; pencils appear on focus. ⌘⇧. cycles.',
 };
 function syncVerbosityClass() {
   const b = document.body.classList;
-  VERBOSITY_TIERS.forEach(t => b.toggle('v-' + t, verbosity === t));
-  b.toggle('lean-mode', isLean());   // keep the LF-2b pencil-suppress rule working (it keys on .lean-mode)
+  VERBOSITY_TIERS.forEach(t => b.toggle('v-' + t, verbosity === t));   // the pencil-suppress CSS keys on body.v-lean directly (no separate lean-mode class)
 }
-function toggleVerbosity() {
-  verbosity = VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + 1) % VERBOSITY_TIERS.length];
+function toggleVerbosity(dir = 1) {
+  const n = VERBOSITY_TIERS.length;
+  verbosity = VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + dir + n) % n];   // dir +1 forward (quieter), -1 reverse (more guidance)
   syncVerbosityClass();
   scheduleAutosave();
   render();
@@ -22465,7 +22531,8 @@ document.addEventListener('keydown', e => {
   }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
-  if (ctrl && e.shiftKey && (e.key==='.' || e.key==='>')) { e.preventDefault(); toggleVerbosity(); return; }   // DIAL: cycle guided → standard → lean
+  if (ctrl && e.shiftKey && (e.key==='.' || e.key==='>')) { e.preventDefault(); toggleVerbosity(1); return; }    // DIAL: forward, guided → standard → lean
+  if (ctrl && e.shiftKey && (e.key===',' || e.key==='<')) { e.preventDefault(); toggleVerbosity(-1); return; }   // DIAL: reverse, toward MORE guidance (panel review: escape the one-way ratchet)
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
   if (ctrl && e.shiftKey && (e.key==='I' || e.key==='i')) { e.preventDefault(); toggleCapture(); return; }   // I = Inbox: toggle the capture strip (default slot)
   // ⌘/Ctrl+Shift+1..0 → capture to inbox N (0 = inbox 10). Opens the dialog targeting that

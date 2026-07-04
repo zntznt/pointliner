@@ -1929,6 +1929,37 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### DIAL-R ◐ Verbosity dial panel review: fix the blind-menu blocker + polish (RESOLVED pending merge)
+- **A 6-lens design panel** (newcomer, power-user, a11y, consistency, discoverability, scope; 36 findings)
+  reviewed the 3-position dial. Verdict: fundamentally well-built, scope discipline a model, 9 praise
+  findings; ONE blocker + a few cheap polish items. Acted on the blocker + the highest-value polish; left
+  the marginal ones the panel itself flagged as not-worth-it (e.g. rebalancing the tiers, per-helper
+  dismissal, an FA icon swap that needs a network-blocked subset rebuild).
+- **BLOCKER — the blind Lean menu (5/6 lenses converged; a11y: a screen-reader trap; power-user: no
+  confirmation before Enter; newcomer: blank screen).** In Lean the / @ menu rendered NOTHING. Fixed:
+  `renderLeanSlashTip()` shows a one-line STATUS readout of the current match (`<b>Dice</b> 1/6 ↵ insert`)
+  at the caret (a `#lean-slash-tip` `role=status`, not a menu/submenu — no list, pointer-events off) AND
+  `announce()`s it to `#a11y-live` so AT speaks it. Follows arrow-nav (`slashMove` updates it) + hides on
+  close. Reuses a shared `placeAtCaret` (factored out of `positionSlashMenu`). Floor-respecting: no
+  dialog/submenu, top bar untouched.
+- **COPY (3 lenses) — flash + CUR_DESC rewritten** to name the real trio Standard/Lean strip (point
+  hints, pill tooltips, AND the search cheatsheet — the last was never named yet is the only teacher of
+  search syntax), split Lean's two distinct behaviors (menu → match tip; pencils → focus-reveal), one
+  stable vocabulary, and append `⌘⇧.` to every flash.
+- **RATCHET (2 lenses) — reverse cycle.** `⌘⇧,` (the `,`/`<` key) now cycles toward MORE guidance
+  (`toggleVerbosity(-1)`), so a lost user isn't forced to loop forward through every tier to get help back.
+  The collapse handlers (`Ctrl+.`/`Ctrl+,`) gained `!e.shiftKey` guards so the dial keys don't double-fire.
+- **AT-REST TELL (2 lenses) — the File-menu row** now reads `Verbosity: Guided ●○○` (current tier + a
+  3-stop dot track) so it's legibly a dial with a position, not a 2-way toggle. (The `fa-feather` icon
+  swap the panel also suggested needs an FA subset rebuild = network-blocked; deferred, the `≈` fallback
+  reads acceptably as "levels".)
+- **CLEANUP — retired the legacy `lean-mode` body class** (dual source of truth with `v-lean`); the
+  pencil-suppress CSS now keys on `body.v-lean` directly.
+- 872 tests (2 dial pins rewritten for the new reality: the directional cycle + reverse shortcut; the
+  lean match-tip + AT announce; `v-lean`-drives-CSS + no-lean-mode guard). Self-checked the reverse cycle
+  wrap + dot track. Browser down → the lean tip's live behavior is src-pinned; a smoke test should enter
+  Lean, type `/di`, and confirm the one-line "Dice" tip appears + is announced.
+
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
 
 A focused single-target pass on the one break both prior waves explicitly LEFT for a third wave: the deep-tree recursion at the ingestion boundary. Confirmed real (a 12000-deep tree overflows toOpml/collectVars/collectRules/render at ~1500 levels), then fixed at the gate. Not a full fleet — the target was already named; this confirmed + closed it.
