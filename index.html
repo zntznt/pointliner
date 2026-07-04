@@ -157,7 +157,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    (the .fn-ref metrics, but muted ink — accent would read as a link-jump) */
 .note-ind{color:var(--muted);font-size:.72em;vertical-align:super;cursor:pointer;line-height:0;margin-left:.35em;user-select:none}
 .note-ind:hover{color:var(--fg)}
-.note-ind:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
+.note-ind:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 /* outline level control (segmented) */
 #level-ctl{display:flex;border:1px solid var(--bdr);background:var(--cbg);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;padding:2px;gap:1px;height:28px;align-items:stretch}
 /* shared segmented-control button skin — toolbar #level-ctl and the file-menu #fm-levels mirror */
@@ -433,7 +433,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-dl{margin:2px 0 2px 0}
 .md-dl dt{font-weight:600}
 .md-dl dd{margin:0 0 2px 1.2em;color:var(--muted)}
-.md-hl{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
+.md-hl{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .node-content sub,.node-content sup{font-size:.72em;line-height:0}
 /* ── interactive base (its table view) ── */
 .nt-base>.node-row>.node-content:not([data-editing]){padding:2px 0;cursor:default}
@@ -762,7 +762,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* footnotes */
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
-.fn-ref:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px;border-radius:2px}
+.fn-ref:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 #fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
 #fn-panel.on{transform:translateY(0)}
 .fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
@@ -869,7 +869,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .query-more{padding:2px 10px 2px 22px;font-size:.82em;color:var(--muted);font-style:normal}
 .query-empty{display:block;padding:5px 10px;font-size:.86em;color:var(--muted)}
 .query-pill.query-bad{border-style:dashed;color:var(--del);cursor:default}
-.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 5px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;cursor:pointer;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback for out-of-range letters; the a/b/c variants override. UXP-177: cursor:pointer — it's clickable (opens the state/priority picker) like .todo-state */
+.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;cursor:pointer;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback for out-of-range letters; the a/b/c variants override. UXP-177: cursor:pointer — it's clickable (opens the state/priority picker) like .todo-state */
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .todo-prio-c{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
@@ -925,7 +925,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .collapsed>.children{display:none}
 
 /* search highlight */
-mark{background:var(--hl);color:inherit;border-radius:2px;padding:0 1px}
+mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .search-ctx{opacity:.5}
 .search-ctx .node-content{pointer-events:none}
 
@@ -1263,7 +1263,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agg-name-row{height:23px;display:flex;align-items:center;font-size:11px;color:var(--fg);overflow:hidden;white-space:nowrap;cursor:pointer;flex-shrink:0;gap:4px}
 .agg-name-row span{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .agg-name-row:hover{color:var(--acc)}
-.agg-name-row:focus-visible{outline:2px solid var(--acc);outline-offset:-1px;border-radius:2px}
+.agg-name-row:focus-visible{outline:2px solid var(--acc);outline-offset:-1px;border-radius:var(--r-xs)}/* UXP-187: --r-xs, matching the sibling inline-mark focus rings */
 .agg-name-row.done{text-decoration:line-through;color:var(--muted)}
 .agg-chart-col{flex:1 1 auto;min-width:0;position:relative}
 .agg-chart-col::after{content:'';position:absolute;right:0;top:0;bottom:0;width:24px;background:linear-gradient(to right,transparent,var(--hbg));pointer-events:none;z-index:4;opacity:0;transition:opacity .15s}
@@ -1273,10 +1273,10 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agg-axis{position:relative;height:15px;margin-bottom:2px}
 .agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:3px}
 .agg-today{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 65%,transparent);z-index:2}
-.agg-today-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--acc);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}/* UXP-154: eyebrow recipe */
+.agg-today-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--acc);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:var(--r-xs)}/* UXP-154: eyebrow recipe; UXP-187: --r-xs radius */
 /* hover slice — muted twin of the today line, follows the cursor's day (display:none until placed) */
 .agg-hover{position:absolute;top:0;bottom:0;width:1px;background:color-mix(in srgb,var(--muted) 55%,transparent);z-index:1;display:none;pointer-events:none}
-.agg-hover-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:2px}/* UXP-154: eyebrow recipe */
+.agg-hover-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:var(--r-xs)}/* UXP-154: eyebrow recipe; UXP-187: --r-xs radius */
 .agg-row{position:relative;height:23px}
 .agg-bar{position:absolute;top:50%;transform:translateY(-50%);height:15px;border-radius:var(--r-sm);border:1px solid;box-sizing:border-box;cursor:pointer;min-width:6px;z-index:3}
 .agg-bar.overdue{background:color-mix(in srgb,var(--bad) 18%,transparent);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
@@ -1534,11 +1534,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 }
 
 /* ── node links ── */
-.node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
+.node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:var(--r-xs);padding:0 1px}
 .node-link:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-.node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:2px;padding:0 1px}
+.node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:var(--r-xs);padding:0 1px}
 /* mirror: inline accent underline, no box — flows with the line like a caption link */
-.node-link-mirror{display:inline;color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:2px;padding:0 1px}
+.node-link-mirror{display:inline;color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:var(--r-xs);padding:0 1px}
 /* cross-doc link (CF-2): same as a same-doc link plus a muted trailing arrow so a jump to another note reads distinctly */
 .node-link-cross::after{content:"\2197";font-size:.78em;color:var(--muted);margin-left:1px;vertical-align:baseline}
 /* ── backlinks panel ── */
@@ -1767,7 +1767,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   </div>
 
   <div class="fm-group">File</div>
-  <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh outline</span></div></div>
+  <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh document</span></div></div>
   <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Open an outline file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
   <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
@@ -9015,8 +9015,10 @@ function parseSearchQuery(q) {
     else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });
     // UXP-109: priority:A filters org priorities (a settable-but-unqueryable dimension). A single
     // letter, case-insensitive, stored uppercase like the [#A] marker. UXP-183: also priority:none
-    // (a to-do with a state but NO [#A]) and priority:any / has:priority (a to-do WITH one), the
-    // presence/absence axis mirroring is:scheduled/is:unscheduled. Placed before the generic prop arm.
+    // (a to-do with a state but NO [#A]) and priority:any (a to-do WITH one), the presence/absence
+    // axis mirroring is:scheduled/is:unscheduled. Placed before the generic prop arm. (UXP-190: there
+    // is NO has:priority synonym — has:priority would fall through to the property scan, matching a
+    // point with a property literally keyed "priority", not a [#A] marker.)
     else if ((t = tok.match(/^priority:(none|any)$/i))) terms.push({ neg, kind: 'priority', value: t[1].toLowerCase() });
     else if ((t = tok.match(/^priority:([A-Za-z])$/i))) terms.push({ neg, kind: 'priority', value: t[1].toUpperCase() });
     // QX-3: var:NAME finds the point that DECLARES variable NAME (not reference pills).
@@ -21389,11 +21391,12 @@ const GUIDE = [
   // ── Files & workspace (guide) ─────────────────────────────────────────────
   { id:'saving', cat:'files',
     title:'Saving your work',
-    body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step.",
+    body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step. If auto-save has overwritten something you wanted back, open the File menu and choose Restore earlier version to roll back to the last auto-saved snapshot.",
     examples:[
       { syn:`${MOD}+S`,              desc:'save to your file (or download a copy if your browser can’t write to disk)' },
       { syn:`${MOD}+O`,              desc:'open a saved file' },
       { syn:'File → Connect folder', desc:'auto-save into a folder (Chromium only)' },
+      { syn:'File → Restore earlier version', desc:'roll back to the last auto-saved snapshot' },
     ] },
   { id:'workspace-documents', cat:'files',
     title:'Working with a folder of notes',
@@ -21924,8 +21927,8 @@ function showReopenFileBanner(name) {
 // blank outline" button; dismissing keeps the examples visible to read.
 function showExamplesBanner() {
   _warnAction = 'startblank';
-  storageWarnBtn.textContent = 'Start a blank outline';
-  storageWarnMsg.textContent = 'These are live examples to explore. Click any pill, or start your own outline.';
+  storageWarnBtn.textContent = 'Start a blank outline';   // UXP-185: button label stays (ux-discipline §L81)
+  storageWarnMsg.textContent = 'These are live examples to explore. Click any pill, or start your own document.';
   storageWarn.classList.add('soft');
   storageWarn.classList.add('on');
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
@@ -22192,7 +22195,7 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
 </outline>
 <outline text="An uncertain estimate: {5 to 10}"/>
 <outline text="- [ ] A to-do you can check"/>
-<outline text="When you are ready, open the File menu and choose Start a blank outline, or just start typing here."/>
+<outline text="When you are ready, open the File menu and choose New, or just start typing here."/>
 </body></opml>`;
 let _showingExamples = false;
 let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
@@ -22200,7 +22203,7 @@ function startBlankOutline() {
   _showingExamples = false;
   hideExamplesBanner();
   adoptDoc(mkRoot());
-  flashHint('New blank outline');
+  flashHint('New blank document');   // UXP-185: document, not the banned document-sense "outline"
 }
 function maybeShowFirstRun() {
   // Fresh boot = nothing restored synchronously (no autosave) and not a snapshot. A STORED
