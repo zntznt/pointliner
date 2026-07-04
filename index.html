@@ -228,12 +228,11 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   min-width:max-content;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted);pointer-events:none}
 #search-wrap:focus-within #search-hint{display:block}
-/* LEAN FLOOR: the search legend TEACHES the query operators (is:done, #tag, "phrase") via the .sh-row
-   cheatsheet rows. Lean strips ONLY those rows (ux.md dial table: inline hints/legends "hidden" in Lean);
-   the operators still work, the cheatsheet just doesn't pop. #sh-saved (saved searches) + #sh-workspace
-   (cross-doc matches) stay — they're user data + controls, not helpers. So the panel still opens for those;
-   it's only bare of the legend when there's no saved/cross-doc content. */
-body.lean-mode #search-hint .sh-row{display:none}
+/* DIAL: the search legend TEACHES the query operators (is:done, #tag, "phrase") via the .sh-row cheatsheet
+   rows. Standard AND Lean strip those rows (teaching text off once you know the commands); Guided keeps
+   them. The operators still work, the cheatsheet just doesn't pop. #sh-saved (saved searches) + #sh-workspace
+   (cross-doc matches) stay — they're user data + controls, not helpers. So the panel still opens for those. */
+body:not(.v-guided) #search-hint .sh-row{display:none}
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap}
 .sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.sc-panel kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
 .sh-row code{font-family:var(--mono);font-size:10px}
@@ -1836,7 +1835,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Examples</span><span class="cmd-desc">Open the sample document to explore what pills can do</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
-  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Lean mode</span><span class="cmd-desc">Hide menus and helpers, keep everything keyboard-operable</span></div><span class="cmd-key">⌘⇧.</span></div>
+  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Switch to Standard</span><span class="cmd-desc" id="verbosity-desc">Now Guided: everything shown. Next: Standard (hides beginner hints).</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -1928,13 +1927,19 @@ let root      = mkRoot();
 let focusedId = null;
 let showDone  = false;
 let showNotes = true;   // global notes visibility (the header toggle); hidden notes leave a .note-ind mark
-// LEAN FLOOR phase 2: the verbosity dial. 'guided' (default) renders every helper; 'lean' is the
-// keyboard-only floor — the / and @ menus stay fully functional (slashState + keydown routing live)
-// but render NOTHING, so a command is typed blind and Enter/arrows still work. Persisted in the
-// autosave payload alongside showNotes/forcedTheme. (Other lean behaviors — hiding hover pencils,
-// tooltips — layer on later; this PR is the load-bearing blind-menu core.)
+// The verbosity dial — a 3-POSITION control (guided → standard → lean), cycled by ⌘⇧. / the File-menu
+// row. Tiers strip progressively more guidance (ux.md dial table), never features:
+//   guided (default): everything shown — the teaching layer is on (hints, search legend, tooltips).
+//   standard: "I know the commands, stop explaining, keep the conveniences" — the teaching TEXT is off
+//     (empty-state hints, search legend, pill tooltips) but the / @ menus render + pencils reveal on hover.
+//   lean: the keyboard canvas — ALSO blinds the / @ menus (typed blind, keydown still routes) + hides the
+//     hover pencils. The top bar is invariant in all tiers (user spec: the toolbar never changes).
+// Persisted in the autosave payload. The body carries a `v-<tier>` class so CSS can target each tier.
+const VERBOSITY_TIERS = ['guided', 'standard', 'lean'];
 let verbosity = 'guided';
 function isLean() { return verbosity === 'lean'; }
+function isGuided() { return verbosity === 'guided'; }
+function isStandardOrLean() { return verbosity !== 'guided'; }   // the tiers that strip the teaching text
 let searchQuery = '';
 let searchQueryLC = '';        // lowercased once, reused per node during a search
 let searchTerms = [];          // parseSearchQuery(searchQuery) — parsed once per applySearch
@@ -5722,6 +5727,14 @@ function renderWindow(force) {
 
   vTop.style.height = (e >= s ? rowTops[s] : 0) + 'px';
   vBot.style.height = (e >= 0 ? totalHeight - rowTops[e + 1] : 0) + 'px';
+  // DIAL: Standard + Lean strip the pill "Click to re-roll/edit" tooltips (teaching text off once you know
+  // the pills; ux.md dial table, Pill tooltips → minimal). Scoped to the PILL classes only — a link's title
+  // (line ~3864 cross-doc = the target doc name; an external link = the URL) is FUNCTIONAL, not a helper, so
+  // it's left. Each pill keeps its aria-label twin, so nothing accessible is lost — only the redundant native
+  // hover-tooltip goes. One central post-render sweep (title lives in the HTML string; no single chokepoint).
+  if (isStandardOrLean()) {
+    vlist.querySelectorAll('.node-content .dice-roll[title], .node-content .mk-roll[title], .node-content .gr-roll[title], .node-content .math-roll[title], .node-content .seq-pill[title], .node-content .est-pill[title], .node-content .var-pill[title], .node-content [class$="-edit"][title]').forEach(el => el.removeAttribute('title'));
+  }
   reconcileHeights();
 }
 
@@ -7480,8 +7493,8 @@ function renderRow(r) {
   // LEAN FLOOR: the entry-point + para hints TEACH the syntax (/ @ [[, Enter/Shift+Enter). In lean mode
   // the user is past that, so they strip to a bare '…' (ux.md dial table: empty-state hints "hidden" in
   // Lean). The 'Section label…' placeholder stays — it NAMES what the field is, a label, not a helper.
-  const paraHint = isLean() ? '…' : 'Prose block. Enter = line break · ⇧+Enter = new point';
-  const entryHint = isLean() ? '' : 'Type / for blocks, @ to insert, or just write';
+  const paraHint = isStandardOrLean() ? '…' : 'Prose block. Enter = line break · ⇧+Enter = new point';
+  const entryHint = isStandardOrLean() ? '' : 'Type / for blocks, @ to insert, or just write';
   content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? paraHint : (isEntryPoint ? entryHint : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
@@ -21335,11 +21348,19 @@ document.getElementById('btn-open').addEventListener('click', () => { openFile()
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
-// the File-menu row label reflects the CURRENT mode: it offers the OTHER mode (so it reads "Lean
-// mode" while guided, "Guided mode" while lean). Refreshed whenever the menu opens.
+// the File-menu row is a CYCLE button (guided → standard → lean → …): the label names where the next
+// press lands + the desc names the current tier, so the user always sees both. Refreshed on menu open.
+const VERBOSITY_NEXT_LABEL = { guided: 'Switch to Standard', standard: 'Switch to Lean', lean: 'Switch to Guided' };
+const VERBOSITY_CUR_DESC = {
+  guided:   'Now Guided: everything shown. Next: Standard (hides beginner hints).',
+  standard: 'Now Standard: hints and tooltips off, menus and pencils on. Next: Lean.',
+  lean:     'Now Lean: menus and helpers hidden but keyboard-operable. Next: Guided.',
+};
 function syncVerbosityLabel() {
   const el = document.getElementById('verbosity-label');
-  if (el) el.textContent = isLean() ? 'Guided mode' : 'Lean mode';
+  const dsc = document.getElementById('verbosity-desc');
+  if (el) el.textContent = VERBOSITY_NEXT_LABEL[verbosity];
+  if (dsc) dsc.textContent = VERBOSITY_CUR_DESC[verbosity];
 }
 document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
 // Inline rename: the menu-header filename edits IN PLACE (no dialog). Click or Enter
@@ -21611,20 +21632,27 @@ document.getElementById('btn-notes').addEventListener('click', () => {
   scheduleAutosave();
   render();
 });
-// LEAN FLOOR phase 2: flip the verbosity dial (guided ↔ lean) + persist + flash. In lean the / and @
-// menus render nothing (still keyboard-operable). Reachable via the File menu (discoverable) and a
-// shortcut. render() so any verbosity-gated chrome updates immediately.
-// LEAN FLOOR phase 2b: lean mode is also VISUALLY lean. One body class drives the CSS that suppresses
-// the hover-reveal helpers (pill pencils, the convert-to-base prompt, row grips) — the affordances stay
-// keyboard-operable (this is display:none on a hover overlay, not on the control), the app just stops
-// showing them at rest. Touch keeps them (the @media(hover:none) block wins), since touch has no floor.
-function syncLeanClass() { document.body.classList.toggle('lean-mode', isLean()); }
+// The verbosity dial: cycle guided → standard → lean → guided, + persist + flash. Reachable via the
+// File menu (discoverable) and ⌘⇧. render() so any verbosity-gated chrome updates immediately.
+// The body carries exactly one `v-<tier>` class (plus the legacy `lean-mode` class for the LF-2b pencil
+// CSS, so that rule keeps working unchanged). Each tier's strips: guided = all on; standard = teaching
+// text off (hints/legend/tooltips) but menus + hover pencils on; lean = also blind menus + hide pencils.
+const VERBOSITY_FLASH = {
+  guided:   'Guided: menus, hints, and tooltips all shown.',
+  standard: 'Standard: the beginner hints and tooltips are off, menus and pencils stay.',
+  lean:     'Lean: menus and helpers stay keyboard-operable but hidden.',
+};
+function syncVerbosityClass() {
+  const b = document.body.classList;
+  VERBOSITY_TIERS.forEach(t => b.toggle('v-' + t, verbosity === t));
+  b.toggle('lean-mode', isLean());   // keep the LF-2b pencil-suppress rule working (it keys on .lean-mode)
+}
 function toggleVerbosity() {
-  verbosity = isLean() ? 'guided' : 'lean';
-  syncLeanClass();
+  verbosity = VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + 1) % VERBOSITY_TIERS.length];
+  syncVerbosityClass();
   scheduleAutosave();
   render();
-  flashHint(isLean() ? 'Lean mode: menus and helpers stay keyboard-operable but hidden.' : 'Guided mode: menus and helpers shown.');
+  flashHint(VERBOSITY_FLASH[verbosity]);
 }
 document.getElementById('btn-capture').addEventListener('click', () => toggleCapture());
 document.getElementById('capture-strip').addEventListener('keydown', e => {
@@ -22437,7 +22465,7 @@ document.addEventListener('keydown', e => {
   }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
-  if (ctrl && e.shiftKey && (e.key==='.' || e.key==='>')) { e.preventDefault(); toggleVerbosity(); return; }   // LEAN FLOOR: guided ↔ lean
+  if (ctrl && e.shiftKey && (e.key==='.' || e.key==='>')) { e.preventDefault(); toggleVerbosity(); return; }   // DIAL: cycle guided → standard → lean
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
   if (ctrl && e.shiftKey && (e.key==='I' || e.key==='i')) { e.preventDefault(); toggleCapture(); return; }   // I = Inbox: toggle the capture strip (default slot)
   // ⌘/Ctrl+Shift+1..0 → capture to inbox N (0 = inbox 10). Opens the dialog targeting that
@@ -22884,7 +22912,7 @@ function applyAutosaveData(data) {
     btn.setAttribute('aria-pressed', String(showDone));   // UXP-153: stable name; aria-pressed carries state
   }
   if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
-  if (data.verbosity === 'lean' || data.verbosity === 'guided') { verbosity = data.verbosity; syncLeanClass(); }   // LEAN FLOOR p2 (+2b: sync the visual-lean body class)
+  if (VERBOSITY_TIERS.includes(data.verbosity)) { verbosity = data.verbosity; syncVerbosityClass(); }   // the 3-position dial: restore the saved tier + sync the body class
   // New: a single active view. Migrate the legacy additive agendaBars (timeline/calendar
   // could both be open) into the one-at-a-time model: timeline wins, else calendar→month.
   if (data.agendaView === 'week' || data.agendaView === 'month' || data.agendaView === 'timeline' || data.agendaView === '') {

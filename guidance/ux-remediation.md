@@ -1856,10 +1856,36 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   poor ratio. Recorded as a conscious skip, not an oversight.
 - CSS + a JS placeholder gate, no pure core. 870 tests (+1 src-pin: both hint gates, the legend-row rule,
   the saved-searches-survive guard, and the Section-label-survives guard).
-- **The lean floor is now genuinely complete AS A TWO-POSITION DIAL (Guided/Lean).** The ux.md middle
-  STANDARD tier stays deferred BY THE VISION ITSELF (data-gated: build it "only once real usage reveals
-  which helpers are noise vs guardrails"). A future 3-position control is that tier's work, not a bug in
-  this one.
+- **The lean floor is now genuinely complete AS A TWO-POSITION DIAL (Guided/Lean).** [SUPERSEDED by LF-2d:
+  the 3-position control shipped — the STANDARD tier is now built, at the user's explicit direction.]
+
+### LF-2d ◐ The 3-POSITION verbosity control: guided → standard → lean (RESOLVED pending merge)
+- **The objective, at the user's direction.** LF-2c shipped a 2-position dial and noted the ux.md middle
+  STANDARD tier was vision-deferred; the user reversed that ("push 3 position control, that's the
+  objective"). Built the full 3-tier control. `verbosity ∈ {guided, standard, lean}` over
+  `VERBOSITY_TIERS`; `⌘⇧.` + the File-menu row now CYCLE (not flip); the body carries one `v-<tier>` class.
+- **What STANDARD strips (the design, chosen "fuller Standard, new strips" via AskUserQuestion).** Against
+  the real code the ux.md table's Standard column mostly collapsed into Guided (the slash menu is already
+  label-only in every tier; pencils already hover-only outside lean), so a thin Standard would be ~95%
+  Guided. Instead Standard = **"I know the commands, stop explaining, keep the conveniences"**: the
+  teaching TEXT is off (empty-state hints, search legend, AND pill `title=` tooltips — the new strip) but
+  the / @ menus render + pencils reveal on hover. Lean then ALSO blinds the menus + hides the pencils.
+  Clean progression: guided = all on → standard = teaching text off → lean = keyboard canvas.
+  - The hint + legend gates moved from `isLean()` to `isStandardOrLean()` (strip in both).
+  - **New: pill-tooltip strip** — a central post-render sweep removes `title=` from the pill classes when
+    `isStandardOrLean()`. SCOPED to pills: a link's `title` (cross-doc = the target doc name; external =
+    the URL) is FUNCTIONAL info, not a helper, so it's left. Each pill keeps its `aria-label` twin, so P3
+    is intact (only the redundant native tooltip goes).
+  - **Toolbar still invariant** across all 3 tiers (ux.md says "minimal" for Lean, but the user's lean
+    spec overrides: the top bar never changes). Recorded, not stripped.
+- **The dial DISCOVERABILITY:** the File-menu row is now a cycle button — the label names the NEXT tier
+  ("Switch to Standard/Lean/Guided"), the desc names the CURRENT tier + what's next, and each cycle flashes
+  the tier's effect (VERBOSITY_FLASH). So the user always sees where they are + where the next press lands.
+- CSS + state-machine + a scoped post-render sweep, no pure core. 870 tests (the 3 dial pins rewritten for
+  the 3-tier reality: the cycle + predicates + persistence; lean-only blind-menu/pencils; standard+lean
+  teaching-text strip incl. the tooltip sweep + the link-title/Section-label over-strip guards).
+- **The verbosity dial is now the full 3-position control the vision (ux.md) sketched — Guided / Standard /
+  Lean — matching the dial table (with the honest toolbar-invariant deviation per the user's floor spec).**
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)

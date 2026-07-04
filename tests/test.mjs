@@ -8659,41 +8659,45 @@ test('HARD-11: treeDepthExceeds catches a pathologically deep tree without itsel
   assert.ok(_src.includes('if (treeDepthExceeds(data.root)) return false'), 'the autosave-restore depth guard is missing');
 });
 
-// ── LEAN FLOOR phase 2: the blind-render verbosity dial (DOM/state-bound; src-pinned) ──
-test('LEAN-FLOOR p2: the verbosity dial + blind-render wiring is present', () => {
-  // the dial state + the lean helper
-  assert.ok(_src.includes("let verbosity = 'guided'"), 'the verbosity setting is missing');
+// ── THE 3-POSITION VERBOSITY DIAL: guided → standard → lean (DOM/state-bound; src-pinned) ──
+test('DIAL: the 3-tier state machine + cycle + persistence is present', () => {
+  // the 3-value state + the tier order + both predicates
+  assert.ok(_src.includes("const VERBOSITY_TIERS = ['guided', 'standard', 'lean']"), 'the 3-tier order is missing');
+  assert.ok(_src.includes("let verbosity = 'guided'"), 'the verbosity setting is missing (default guided)');
   assert.ok(_src.includes("function isLean() { return verbosity === 'lean'; }"), 'isLean() is missing');
-  // "menu open" is decoupled from the visible .on class, so keys route while blind
-  assert.ok(_src.includes('function isSlashMenuOpen() { return slashState != null; }'), 'isSlashMenuOpen must key off slashState, not the .on class');
-  // checkSlash keeps slashState live but renders nothing in lean mode
-  assert.ok(_src.includes('if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }'), 'the blind-render guard in checkSlash is missing');
-  // the toggle + its doors (shortcut + File-menu row) + persistence
-  assert.ok(_src.includes('function toggleVerbosity()'), 'toggleVerbosity is missing');
-  assert.ok(_src.includes("(e.key==='.' || e.key==='>')") && _src.includes('toggleVerbosity()'), 'the Ctrl+Shift+. shortcut is missing');
-  assert.ok(_src.includes("data.verbosity === 'lean'"), 'the autosave restore of verbosity is missing');
+  assert.ok(_src.includes("function isGuided() { return verbosity === 'guided'; }"), 'isGuided() is missing');
+  assert.ok(_src.includes("function isStandardOrLean() { return verbosity !== 'guided'; }"), 'isStandardOrLean() (the teaching-text-off tiers) is missing');
+  // the toggle CYCLES through the tiers (not a binary flip)
+  assert.ok(_src.includes('VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + 1) % VERBOSITY_TIERS.length]'), 'toggleVerbosity must CYCLE the 3 tiers, not flip 2');
+  assert.ok(_src.includes("(e.key==='.' || e.key==='>')") && _src.includes('toggleVerbosity()'), 'the Ctrl+Shift+. cycle shortcut is missing');
+  // persistence: any of the 3 tiers restores + re-syncs the body class
+  assert.ok(_src.includes('VERBOSITY_TIERS.includes(data.verbosity)'), 'the autosave restore must accept any of the 3 tiers');
   assert.ok(/JSON\.stringify\(\{ root,[^}]*\bverbosity\b/.test(_src), 'verbosity is not persisted in the autosave payload');
 });
 
-test('LEAN FLOOR 2b: lean mode is VISUALLY lean via the body.lean-mode class (helpers hidden at rest)', () => {
-  // the class-sync helper + it's called from both the toggle and the restore path
-  assert.ok(_src.includes("classList.toggle('lean-mode', isLean())"), 'syncLeanClass must toggle body.lean-mode on isLean()');
-  assert.ok(/function toggleVerbosity\(\)\s*\{[^}]*syncLeanClass\(\)/.test(_src), 'toggleVerbosity must call syncLeanClass');
-  assert.ok(_src.includes('verbosity = data.verbosity; syncLeanClass();'), 'the autosave restore must sync the lean class');
-  // the CSS: lean hides the hover-reveal pencils but keyboard focus still reveals them (P3, additive)
-  assert.ok(_src.includes('body.lean-mode .dice-roll:hover .dice-edit'), 'lean-mode must suppress the pencil hover-reveal');
-  assert.ok(_src.includes('body.lean-mode .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean-mode must still reveal a pencil on keyboard focus (P3)');
+test('DIAL: LEAN is the keyboard canvas — blind menus + hidden pencils (only lean, not standard)', () => {
+  // menus render nothing in LEAN only (standard keeps them); slashState stays live so keys route blind
+  assert.ok(_src.includes('function isSlashMenuOpen() { return slashState != null; }'), 'isSlashMenuOpen must key off slashState, not the .on class');
+  assert.ok(_src.includes('if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }'), 'the blind-render guard (lean only) is missing');
+  // the body carries one v-<tier> class + keeps the legacy .lean-mode class for the LF-2b pencil CSS
+  assert.ok(_src.includes("VERBOSITY_TIERS.forEach(t => b.toggle('v-' + t, verbosity === t))"), 'syncVerbosityClass must set a v-<tier> class per tier');
+  assert.ok(_src.includes("b.toggle('lean-mode', isLean())"), 'the lean-mode class (LEAN only) must still drive the pencil-suppress CSS');
+  assert.ok(_src.includes('body.lean-mode .dice-roll:hover .dice-edit'), 'lean must suppress the pencil hover-reveal');
+  assert.ok(_src.includes('body.lean-mode .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean must still reveal a pencil on keyboard focus (P3)');
 });
 
-test('LEAN FLOOR 2c: lean strips the remaining teaching helpers (empty-state hints + search legend)', () => {
-  // 1. the entry-point + para placeholder hints go bare in lean (they TEACH / @ [[ and Enter/Shift+Enter)
-  assert.ok(_src.includes("const entryHint = isLean() ? '' :"), 'the entry-point hint must strip in lean');
-  assert.ok(_src.includes("const paraHint = isLean() ? '…' :"), 'the para keyboard-hint must strip in lean');
-  // 2. the search legend rows strip in lean, but saved searches / cross-doc matches (data + controls) stay
-  assert.ok(_src.includes('body.lean-mode #search-hint .sh-row{display:none}'), 'lean must hide the search legend rows');
-  assert.ok(!/body\.lean-mode\s+#sh-saved/.test(_src) && !/body\.lean-mode\s+#search-hint\s*\{/.test(_src), 'lean must NOT hide saved searches / the whole panel — only the .sh-row legend');
-  // 3. the 'Section label…' placeholder is a LABEL not a helper — it stays in lean (guard against over-stripping)
-  assert.ok(_src.includes("isDivider ? 'Section label…' : node.type === 'para' ? paraHint"), 'the Section label placeholder must survive lean (it names the field, not a helper)');
+test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {
+  // 1. empty-state hints strip in standard AND lean (isStandardOrLean), not just lean
+  assert.ok(_src.includes("const entryHint = isStandardOrLean() ? '' :"), 'the entry-point hint must strip in standard + lean');
+  assert.ok(_src.includes("const paraHint = isStandardOrLean() ? '…' :"), 'the para keyboard-hint must strip in standard + lean');
+  // 2. the search legend rows strip whenever NOT guided; saved searches / cross-doc matches (data) stay
+  assert.ok(_src.includes('body:not(.v-guided) #search-hint .sh-row{display:none}'), 'the legend rows must strip in standard + lean (body:not(.v-guided))');
+  assert.ok(!/body:not\(\.v-guided\)\s+#sh-saved/.test(_src), 'must NOT hide saved searches — only the .sh-row legend');
+  // 3. pill tooltips (title=) strip in standard + lean via the post-render sweep; scoped to PILL classes
+  assert.ok(_src.includes('if (isStandardOrLean()) {') && _src.includes("[class$=\"-edit\"][title]"), 'the pill-tooltip strip sweep is missing');
+  assert.ok(_src.includes('.node-content .dice-roll[title]'), 'the tooltip sweep must target the pill classes');
+  // 4. the 'Section label…' placeholder is a LABEL not a helper — it survives every tier (over-strip guard)
+  assert.ok(_src.includes("isDivider ? 'Section label…' : node.type === 'para' ? paraHint"), 'the Section label placeholder must survive (it names the field, not a helper)');
 });
 
 // ── LEAN FLOOR phase 3: Alt+Arrow moves a base column/row (keyboard, no menu; DOM-bound → src-pinned) ──
