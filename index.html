@@ -6153,6 +6153,17 @@ function mtInsertCol(node, colIdx, side) {
 }
 // Set/clear a column's display role (FR-1). Lazily sized like colW; an all-null
 // array drops back to undefined so untouched bases serialize clean.
+// LEAN FLOOR phase 3: the column-role cycle order — the same set + order as the "Show as" menu
+// (Plain → Status → Date → Number → Plain). null is Plain. Pure, Node-testable. `dir` +1 forward,
+// -1 back; wraps. Used by the keyboard role-cycle so a column can be marked Status/Date (which gates
+// Board / Calendar entry) without the column menu.
+const COL_ROLE_CYCLE = [null, 'status', 'date', 'number'];
+function cycleColRole(current, dir = 1) {
+  const i = COL_ROLE_CYCLE.indexOf(current || null);
+  const at = i < 0 ? 0 : i;
+  return COL_ROLE_CYCLE[(at + dir + COL_ROLE_CYCLE.length) % COL_ROLE_CYCLE.length];
+}
+
 function mtSetColRole(node, colIdx, role) {
   const nc = mtModel(node).aligns.length;
   const arr = node.colRole || Array(nc).fill(null);
@@ -7086,6 +7097,19 @@ function buildTableWidget(node, readOnly) {
       if (e.key === 'ArrowUp' && r > 1)                         { e.preventDefault(); mtMoveRow(node, r, -1); mtFocusCell(node, r - 1, c); return; }
       if (e.key === 'ArrowDown' && r > 0 && r < mtLastDataRow(node, m)) { e.preventDefault(); mtMoveRow(node, r, 1); mtFocusCell(node, r + 1, c); return; }
       return;   // an out-of-range Alt+Arrow is a no-op (don't fall through to caret nav)
+    }
+    // LEAN FLOOR phase 3: Alt+R cycles the focused COLUMN's display role (Plain → Status → Date →
+    // Number → …), the menu-free twin of the column panel's "Show as". Status/Date are what gate Board
+    // / Calendar entry, so this is the keyboard door into those views. Flash the new role (P4 — no menu
+    // to show it) + re-focus the same cell so a chain of Alt+R works. Shift+Alt+R cycles backward.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
+      e.preventDefault();
+      const r = +cell.dataset.r, c = +cell.dataset.c;
+      const next = cycleColRole(node.colRole?.[c] || null, e.shiftKey ? -1 : 1);
+      mtSetColRole(node, c, next);
+      mtFocusCell(node, r, c);
+      flashHint('Column shown as: ' + (next ? next[0].toUpperCase() + next.slice(1) : 'Plain text'));
+      return;
     }
     if (e.key.startsWith('Arrow') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       const r = +cell.dataset.r, c = +cell.dataset.c;
@@ -21680,11 +21704,12 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, and Alt with an arrow moves the whole column (left/right) or row (up/down); the column menu (or Shift+F10 on a cell) has the rest.",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), and Alt+R cycles a column's role (Plain, Status, Date, Number); the column menu (or Shift+F10 on a cell) has the rest.",
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
       { syn:'Alt + ← / →',                      desc:'move the focused column; Alt+↑/↓ moves the row' },
+      { syn:'Alt + R',                          desc:'cycle the column role (Status/Date power Board and Calendar)' },
     ] },
   // NOTE: no `covers:[]` here — the view switcher has no slash-command id, and the drift-guard
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.

@@ -8668,3 +8668,19 @@ test('LEAN-FLOOR p3: the Alt+Arrow column/row move wiring is present in the cell
   assert.ok(_src.includes("e.key === 'ArrowUp' && r > 1"), 'Alt+Up must protect the header row (r > 1)');
   assert.ok(_src.includes('r < mtLastDataRow(node, m)'), 'Alt+Down must stop above the footer');
 });
+
+test('cycleColRole — the same set + order as the Show-as menu, wrapping both ways', () => {
+  // Plain (null) → Status → Date → Number → Plain
+  assert.equal(c.cycleColRole(null, 1), 'status');
+  assert.equal(c.cycleColRole('status', 1), 'date');
+  assert.equal(c.cycleColRole('date', 1), 'number');
+  assert.equal(c.cycleColRole('number', 1), null);       // wraps to Plain
+  assert.equal(c.cycleColRole(null, -1), 'number');       // backward wraps
+  assert.equal(c.cycleColRole('bogus', 1), 'status');     // an unknown role starts the cycle
+});
+
+test('LEAN-FLOOR p3: the Alt+R column-role-cycle wiring is present (DOM-bound keydown)', () => {
+  assert.ok(_src.includes("(e.key === 'r' || e.key === 'R')"), 'the Alt+R role-cycle branch is missing');
+  assert.ok(_src.includes('cycleColRole(node.colRole?.[c] || null, e.shiftKey ? -1 : 1)'), 'Alt+R must cycle via cycleColRole (Shift = backward)');
+  assert.ok(_src.includes("flashHint('Column shown as: "), 'the role-cycle must flash the new role (P4, no menu)');
+});
