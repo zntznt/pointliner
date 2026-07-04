@@ -1577,39 +1577,39 @@ em dash. Two themes: a small cluster of §1 vocabulary drift ("outline" used for
 few off-token literals splitting otherwise-unified visual families. This is a hygiene pass, one small
 batch closes it.
 
-### UXP-185 ☐ First-run copy names a File-menu item that doesn't exist + uses "outline" for the document (§1, P1/P5) 🟢  [Batch 1]
+### UXP-185 ◐ First-run copy names a File-menu item that doesn't exist + uses "outline" for the document (§1, P1/P5) 🟢  [Batch 1] (RESOLVED pending merge)
 - **Problem:** the Examples doc's closing point ("open the File menu and choose Start a blank outline") names a control that reads "New" in single-file mode (`#btn-new`), and "Start a blank outline"/"New blank outline"/"start your own outline" use the banned document-sense of "outline" (§1 permits only "outliner" the app, "the outline" the tree). Copy inconsistency + a vocab slip, not a dead end (the banner button works).
 - **Rule:** §1 vocabulary (no document-as-outline) + P1 (name the real control).
 - **Target:** rewrite the closing point to name the real control + offer the immediate path ("open the File menu and choose New, or just start typing here"); change the toast/banner document-sense "outline" wording to "document". Sites: `showExamplesBanner` (`storageWarnBtn`/`storageWarnMsg`), `startBlankOutline` (`flashHint`), the `FIRST_RUN_EXAMPLES` closing `<outline>`. Keep the banner BUTTON label ("Start a blank outline") — it's prescribed by ux-discipline.md L81; if that string changes, update the doc in the same PR.
 
-### UXP-186 ☐ Static `#new-desc` default "Start a fresh outline" uses the banned document-as-outline wording (§1, source hygiene) 🟢  [Batch 1]
+### UXP-186 ◐ Static `#new-desc` default "Start a fresh outline" uses the banned document-as-outline wording (§1, source hygiene) 🟢  [Batch 1] (RESOLVED pending merge)
 - **Problem:** the `#btn-new` row's static markup default is "Start a fresh outline" (banned §1 wording). Verification correction: this is NOT user-visible — `#file-menu` is `display:none` and `openFileMenu`→`applyFileModeLabels` rewrites it to "Start a fresh document" synchronously before paint. So source hygiene / defense-in-depth, not a live defect.
 - **Rule:** §1 vocabulary (the two homes should agree, so a refactor can't leak the banned word).
 - **Target:** change the static markup default `Start a fresh outline` → `Start a fresh document`.
 
-### UXP-187 ☐ Eleven inline-text marks hardcode `border-radius:2px`, off the §4 radius token set (design-language §4) 🟢  [Batch 1]
+### UXP-187 ◐ Eleven inline-text marks hardcode `border-radius:2px`, off the §4 radius token set (design-language §4) 🟢  [Batch 1] (RESOLVED pending merge)
 - **Problem:** `.md-hl`, `mark`, `.node-link`, `.node-link-broken`, `.node-link-mirror`, `.fn-ref:focus-visible`, `.note-ind:focus-visible`, `.agg-today-lbl`, `.agg-hover-lbl` (and kin) hardcode `border-radius:2px`, which is not in the §4 ladder (`--r-xs:3px`/`--r-sm:6px`/…). §4 says inline marks use `--r-xs` and "new radii come from this set". Sub-perceptual at `padding:0 1px`; the value is drift-prevention + family coherence (sibling `.logo`/`.crumb` already use `--r-xs`).
 - **Rule:** design-language §4 (the radius ladder; no bare literals).
 - **Target:** replace `border-radius:2px` on these inline marks with `var(--r-xs)`. (If 3px is judged to over-round a one-line highlight, add a named inline-mark radius to the §4 set instead of a bare literal — but the token swap is the clean default.) Leave the `.bullet-base-ic>i` 1px hairline (legitimately sub-token).
 
-### UXP-188 ☐ `.todo-prio` padding (1px 5px) differs from `.todo-state` (1px 6px), splitting the shared chip recipe (design-language §4) 🟢  [Batch 1]
+### UXP-188 ◐ `.todo-prio` padding (1px 5px) differs from `.todo-state` (1px 6px), splitting the shared chip recipe (design-language §4) 🟢  [Batch 1] (RESOLVED pending merge)
 - **Problem:** §4's status-chip recipe is `padding:1px 6px`; `.todo-state` honors it but `.todo-prio` is `1px 5px`. Since `#TODO [#A]` renders the two chips shoulder-to-shoulder, the 1px inset delta is comparable at one eye fixation. Sub-perceptual, but an unexplained deviation reads as an oversight (the app's precedent, e.g. `.collapse-count`'s UXP-154 micro-context comment, is to justify a deviation).
 - **Rule:** design-language §4 (one chip recipe).
 - **Target:** change `.todo-prio` padding `1px 5px` → `1px 6px` to match `.todo-state` + the recipe.
 
-### UXP-189 ☐ The "Restore earlier version" recovery net is absent from the concept guide (P2, CLAUDE.md guide contract) 🟢  [Batch 1]
+### UXP-189 ◐ The "Restore earlier version" recovery net is absent from the concept guide (P2, CLAUDE.md guide contract) 🟢  [Batch 1] (RESOLVED pending merge)
 - **Problem:** the docId-scoped rolling snapshot (UXP-147/165), restorable via the File-menu "Restore earlier version" row, is undocumented in the concept guide. `id:'saving'` says "you don't need to think about saving"; `id:'export'` frames OPML as "archive and restore"; neither names the one-click rollback. `#btn-restore` is `display:none` until `hasEarlierVersion()`, so a user browsing before any snapshot exists can't discover it, and the guide (the discoverability floor) never teaches it — a bullet/menu-only feature CLAUDE.md's contract says must be "documented by hand".
 - **Rule:** P2 (a shipped recovery feature needs a Guided-floor door).
 - **Target:** add one AP-style sentence to the `id:'saving'` GUIDE body ("If auto-save has overwritten something you wanted back, open the File menu and choose Restore earlier version to roll back to the last auto-saved snapshot") and optionally an examples row. No code change. No em dash.
 
-### UXP-190 ☐ A code comment claims a `has:priority` search synonym that does not exist (maintainer trap) 🟢  [Batch 1]
+### UXP-190 ◐ A code comment claims a `has:priority` search synonym that does not exist (maintainer trap) 🟢  [Batch 1] (RESOLVED pending merge)
 - **Problem:** the `parseSearchQuery` priority-arm comment asserts `has:priority` is a wired synonym for `priority:any`. It is NOT — `has:priority` mints a generic `{kind:'has', value:'priority'}` term that falls through to the property scan (matches a point with a property literally keyed "priority", never a `[#A]` marker). Maintainer-facing only (no shipped copy is wrong; comments are copy-standard-exempt), but it could seed a bug if someone edits the code to match the comment.
 - **Rule:** accuracy (a comment must not describe behavior that doesn't ship).
 - **Target:** correct the comment to describe only what ships — `priority:none` and `priority:any` — and drop the `has:priority` claim. (Actually adding `has:priority` would need a reserved `has` arm + three doors; per the mature-app bar, the comment fix is the clean action.)
 
 ### Closing order (Review 6)
 
-1. **Batch 1 — the whole hygiene pass (UXP-185, 186, 187, 188, 189, 190).** All six are low-severity one-liners (three copy/vocab, two off-token CSS, one comment, one guide sentence). No mediums or highs to sequence. One small PR closes the sixth review.
+1. **Batch 1 — the whole hygiene pass (UXP-185, 186, 187, 188, 189, 190). RESOLVED (all ◐, one PR).** Fixed: the first-run/menu document-sense "outline" → "document" and the closing point → "choose New" (185/186, the banner BUTTON label kept per L81); nine inline-mark radii `2px` → `var(--r-xs)` plus `.agg-name-row` for consistency (187, leaving `#drop-line`'s 2px bar); `.todo-prio` padding `1px 5px` → `1px 6px` (188); a "Restore earlier version" sentence + examples row in the `id:'saving'` GUIDE (189); the stale `has:priority` comment corrected (190). 823 tests pass (incl. the CSS drift guards); confirmed by grep-diff (pure static token/copy swaps, no dynamic behavior).
 
 ---
 
