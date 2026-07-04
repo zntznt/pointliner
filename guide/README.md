@@ -87,6 +87,8 @@ The rest of this page is the friendly introduction to how pills behave.
 > common pill forms on one screen. For the full feature reference with examples, open the
 > **Concept guide** (the "Concept guide ›" button at the bottom of that panel, also in the
 > File menu). This guide is the *learn-it*; the `?` panel and Concept guide are the *look-it-up*.
+> When the hints start to feel like noise, `Ctrl/Cmd+Shift+.` dials the app down through
+> [Guided, Standard, and Lean](getting-around.md#quiet-the-guidance-the-verbosity-dial).
 
 ---
 

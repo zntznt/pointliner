@@ -76,6 +76,21 @@ with a click. With a **Date** column, the **Calendar** view places each row on a
 grid; rows without a date are counted below it, and the month arrows plus **Today** move you
 around.
 
+**In a base you can do all of this from the keyboard.** Click into any cell, then:
+
+- Arrow keys **move between cells**.
+- `Alt` with an arrow **moves the whole column or row**: `Alt+Left` / `Alt+Right` slides the column,
+  `Alt+Up` / `Alt+Down` slides the row (the header stays put).
+- `Alt+Shift` with an arrow **inserts** a column or row on the side the arrow points (`Alt+Shift+Right`
+  adds a column to the right, `Alt+Shift+Down` a row below).
+- `Alt+R` **cycles the column role** (Plain, Status, Date, Number), the keyboard path to the **Show as**
+  roles above.
+- `Alt+,` and `Alt+.` (the `<` and `>` keys) **narrow and widen** the focused column.
+- On a **board**, focus a card and press `Alt+Left` / `Alt+Right` to move it between lanes.
+
+Deleting a column or row stays in the column menu (open it with `Shift+F10` on a cell), so a stray
+keystroke never destroys data.
+
 ## Footnotes, links, and images
 
 Annotate a claim without cluttering the main text, link out to a source, or embed an image.
@@ -92,9 +107,10 @@ or a few sentences of background. The note sits below the point as a quiet plain
 to edit in place. Press `Enter` for a line break, `Esc` or click away to save, and clearing all the
 text removes it.
 
-Open a point's menu and choose **Add note** (or **Edit note** if it already has one). Notes are
-searched along with the rest of your outline, and you can hide them all with the **notes button** in
-the header; a small mark stays on each noted point so you can click to peek.
+Open a point's menu and choose **Add note** (or **Edit note** if it already has one), or type `/note`
+to start or open the note without leaving the keyboard. Notes are searched along with the rest of your
+outline, and you can hide them all with the **notes button** in the header; a small mark stays on each
+noted point so you can click to peek.
 
 ---
 

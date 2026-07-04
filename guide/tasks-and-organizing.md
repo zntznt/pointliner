@@ -18,7 +18,9 @@ Turn any point into a task two ways:
   `#todo` is a [tag](getting-around.md#hashtags) that filters by status rather than a badge.
 
 The easiest path is **`/todo`**, which writes the status for you. Click the colored badge to change
-the status or set a **priority** (`A`, `B`, or `C`). Press `Enter` on a task and the next point is a
+the status or set a **priority** (`A`, `B`, or `C`), or from the keyboard press `Ctrl/Cmd+Shift+S` to
+cycle the state and `Ctrl/Cmd+Shift+P` to cycle the priority (the same chords work across a whole
+[selection](getting-around.md#selecting-many-points)). Press `Enter` on a task and the next point is a
 task too, so running off a list is fast.
 
 ## Custom workflows
@@ -58,7 +60,9 @@ Tag a point with structured facts (an owner, a status, a cost, a category) so yo
 total by them later. Each property is a **key and a value**, shown as a small pill below the point.
 
 Open a point's menu and choose **Add property** to open the editor; type a key and a value, then
-**Save**. Click any property pill to edit it again. Search by them with
+**Save**. Click any property pill to edit it again. Keyboard-first: type `/prop:owner=zeo` to set a
+property inline with no dialog, or bare `/prop` to drop a fill-in-the-blank `{prop key: value}` stub
+with the cursor waiting on the blank. Search by them with
 [`has:key`](getting-around.md#searching-and-filtering) to find every point that has a property, or
 `key:value` to match an exact one. Child properties feed the [roll-up
 totals](computing-numbers.md#roll-a-number-up-your-outline-aggregation).
@@ -69,8 +73,10 @@ Stop rebuilding the same structure from scratch every time. Save a meeting-notes
 review layout, a bug-report checklist, or any subtree you use repeatedly, then stamp a fresh copy in
 one step.
 
-Save a template from any point's menu, then stamp one with **`/template:name`** (inline, straight to
-that template) or **`/template`** on its own to pick from a list.
+Save a template from any point's menu, or keyboard-first with `/savetemplate:weekly review` to save
+the current subtree under that name without leaving the keyboard. Then stamp one with
+**`/template:name`** (inline, straight to that template) or **`/template`** on its own to pick from a
+list.
 
 ## Capture and quick inbox
 
