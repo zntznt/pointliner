@@ -6924,6 +6924,31 @@ test('LEAN-FLOOR: {prop …} promotes to node.props via promoteBraceBody, leavin
   assert.equal(c.classifyBraceBody('prop owner: zeo', {}, {}), 'artifact');
 });
 
+test('dateDeclParts — {date due|start: VALUE} sniffs a date stub; non-date keys rejected', () => {
+  assert.deepEqual(host(c.dateDeclParts('date due: tomorrow')), { key: 'due', val: 'tomorrow' });
+  assert.deepEqual(host(c.dateDeclParts('date start: 2026-07-04')), { key: 'start', val: '2026-07-04' });
+  assert.equal(c.dateDeclParts('date foo: x'), null);      // only due/start
+  assert.equal(c.dateDeclParts('prop due: x'), null);      // not the date keyword
+});
+
+test('LEAN-FLOOR: {date due: VALUE} promotes to the date prop (valid), clears (empty), or stays literal (invalid)', () => {
+  // valid → setDateProp writes it, brace consumed
+  const n = { text: '', props: [] };
+  assert.equal(c.promoteBraceBody(n, 'date due: 2026-07-04'), '');
+  assert.deepEqual(host(n.props), [{ key: 'due', val: '2026-07-04' }]);
+  // empty → clears
+  assert.equal(c.promoteBraceBody(n, 'date due:'), '');
+  assert.equal(n.props.length, 0);
+  // invalid date → stays literal (null), never silently promoted to nothing
+  assert.equal(c.promoteBraceBody({ text: '', props: [] }, 'date due: notaday'), null);
+  assert.equal(c.classifyBraceBody('date due: tomorrow', {}, {}), 'artifact');
+});
+
+test('LEAN-FLOOR: the /due bare-stub and /note DOM wiring is present (slashApply is DOM-bound)', () => {
+  assert.ok(_src.includes("applyInlineInsertion(nodeId, slashOffset, '{date due: }')"), 'bare /due must write the {date due: } stub, not open the dialog');
+  assert.ok(_src.includes("cmd.id === 'note'") && _src.includes('openNoteEditor(nodeId)'), 'the /note verb must open the inline note editor');
+});
+
 test('LEAN-FLOOR: the /prop verb + bare-stub DOM wiring is present (slashApply is DOM-bound)', () => {
   assert.ok(/SLASH_ARG_VERBS = \/\^\(due\|start\|check\|alias\|template\|prop\|base\|savetemplate\)\$\//.test(_src), 'the arg-verb gate is missing a lean-floor verb');
   assert.ok(_src.includes("const stub = '{prop : }'"), 'the bare-/prop fill-in stub is missing');

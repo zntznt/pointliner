@@ -2202,6 +2202,17 @@ function propDeclParts(body) {
   return { key, val: m[2].trim() };
 }
 
+// LEAN FLOOR: the date twin of propDeclParts — {date due: VALUE} / {date start: VALUE}, the promoting
+// stub for the sidecar DATE props. Kept a separate form (not folded into {prop}) so dates keep their
+// own validated writer (setDateProp + parseDueDate) rather than landing in the generic bag. Returns
+// { key:'due'|'start', val } or null. The value is validated at promote time, not here (an empty value
+// clears the date). Pure, Node-testable.
+function dateDeclParts(body) {
+  const m = /^date\s+(due|start)\s*:(.*)$/is.exec((body || '').trim());
+  if (!m) return null;
+  return { key: m[1].toLowerCase(), val: m[2].trim() };
+}
+
 // Pure: set (or replace) an arbitrary property key on a node, mirroring setAliasProp/setDateProp. An
 // empty value clears the key. Case-insensitive key match (properties are keyed by their lowercased
 // name elsewhere). Node-testable.
@@ -5043,10 +5054,11 @@ const BLOCK_CMDS = [
   { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A grid whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-clone',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
-  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
+  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due to fill in the blanks. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
   { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
+  { id:'note',    icon:'≡',    fa:'fa-solid fa-pen',           label:'Note',       desc:'Add a plain-text note under this point for context that does not belong on the line. Opens the note editor right below the point, no dialog.', ex:'/note', section:'Organize' },
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
 ];
 
@@ -10137,6 +10149,7 @@ function classifyBraceBody(body, rules, vars) {
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
   if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
   if (propDeclParts(body)) return 'artifact';                          // {prop owner: zeo} (LEAN FLOOR)
+  if (dateDeclParts(body)) return 'artifact';                          // {date due: friday} (LEAN FLOOR)
   if (queryParts(body)) return 'artifact';                             // {query: is:todo}
   if (rollParts(body)) return 'artifact';                              // {roll: is:todo} — pick a random matching point
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
@@ -12040,7 +12053,14 @@ function slashApply() {
       flashHint('Set ' + ds.key + ' to ' + formatDueDate(parseDueDate(ds.raw)).label + '.');
       return;
     }
-    openDueDateDialog(nodeId);
+    // LEAN FLOOR: bare /due writes the fill-in-the-blank stub {date due: ▮} (caret on the value blank);
+    // type the date, exit promotes it to the due chip via setDateProp. The Schedule dialog stays as the
+    // higher-verbosity door (the bullet menu / a date-chip click). Use {date start: …} for a start date.
+    applyInlineInsertion(nodeId, slashOffset, '{date due: }');
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.node-content[data-id="${nodeId}"]`);
+      if (el) try { setCaretByOffset(el, slashOffset + '{date due: '.length); } catch (_) {}   // caret on the value blank
+    });
     return;
   }
   if (trigger !== '@' && cmd.id === 'check') {
@@ -12095,6 +12115,15 @@ function slashApply() {
   }
   if (trigger !== '@' && cmd.id === 'journal') {
     openJournalEntry();
+    return;
+  }
+  // LEAN FLOOR: /note creates (if absent) and focuses the inline note editor below the point — the
+  // keyboard door that the note previously lacked (only the bullet menu could create one). No dialog.
+  if (trigger !== '@' && cmd.id === 'note') {
+    // leave the point's text edit first so the note editor takes focus cleanly (openNoteEditor renders)
+    const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (ed) ed.blur();
+    openNoteEditor(nodeId);
     return;
   }
   if (trigger === '@') insertInlineArtifact(cmd.id, nodeId, content);
@@ -14503,6 +14532,15 @@ function promoteBraceBody(node, body) {
   // promotes it here. An empty value clears the key (setProp). No dialog.
   const pd = propDeclParts(body);
   if (pd) { setProp(node, pd.key, pd.val); return ''; }
+  // LEAN FLOOR: {date due: VALUE} / {date start: VALUE} → the sidecar date, via setDateProp (validated).
+  // An empty value clears it; an invalid date leaves the brace literal (the escape hatch) so a typo isn't
+  // silently promoted to nothing. Consumes the brace on success (a date renders as a chip, not a pill).
+  const dd = dateDeclParts(body);
+  if (dd) {
+    if (!dd.val) { setDateProp(node, dd.key, ''); return ''; }        // empty → clear
+    if (parseDueDate(dd.val) === null) return null;                    // invalid → stays literal {date …}
+    setDateProp(node, dd.key, dd.val); return '';
+  }
   // typed query pill: {query: is:todo | due:week} → a live [[query:KEY]] embedded search.
   const qp = queryParts(body);
   if (qp) {
@@ -21536,11 +21574,11 @@ const GUIDE = [
       { syn:'@ → Footnote',       desc:'add the footnote text' },
       { syn:'[text](url)',       desc:'link (type it, or @ → Link)' },
     ] },
-  { id:'notes', cat:'writing',
+  { id:'notes', cat:'writing', covers:['note'],
     title:'Per-point notes',
-    body:"Tuck a bit of context under any point without cluttering the line: a source, a note-to-self, a caption or a few sentences of background. The note sits below the point as a quiet plain-text block you click to edit in place; press Enter for a line break and Esc or click away to save, and clearing all the text removes it. Open a point's menu and choose Add note, or Edit note if it already has one. Notes are searched along with the rest of your outline and you can hide them all with the notes button in the header. A small mark stays on each noted point so you can click to peek.",
+    body:"Tuck a bit of context under any point without cluttering the line: a source, a note-to-self, a caption or a few sentences of background. The note sits below the point as a quiet plain-text block you click to edit in place; press Enter for a line break and Esc or click away to save, and clearing all the text removes it. Type /note to start (or open) a note right there, or use a point's menu. Notes are searched along with the rest of your outline and you can hide them all with the notes button in the header. A small mark stays on each noted point so you can click to peek.",
     examples:[
-      { syn:'Menu → Add note',  desc:'start a note under this point' },
+      { syn:'/note',            desc:'start or open a note under this point' },
       { syn:'Menu → Edit note', desc:'open an existing note to change it' },
       { syn:'is:note',          desc:'filter search to points that have a note' },
       { syn:'Notes button',     desc:'hide or show every note at once' },
