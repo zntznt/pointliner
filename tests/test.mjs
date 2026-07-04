@@ -8685,6 +8685,17 @@ test('LEAN FLOOR 2b: lean mode is VISUALLY lean via the body.lean-mode class (he
   assert.ok(_src.includes('body.lean-mode .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean-mode must still reveal a pencil on keyboard focus (P3)');
 });
 
+test('LEAN FLOOR 2c: lean strips the remaining teaching helpers (empty-state hints + search legend)', () => {
+  // 1. the entry-point + para placeholder hints go bare in lean (they TEACH / @ [[ and Enter/Shift+Enter)
+  assert.ok(_src.includes("const entryHint = isLean() ? '' :"), 'the entry-point hint must strip in lean');
+  assert.ok(_src.includes("const paraHint = isLean() ? '…' :"), 'the para keyboard-hint must strip in lean');
+  // 2. the search legend rows strip in lean, but saved searches / cross-doc matches (data + controls) stay
+  assert.ok(_src.includes('body.lean-mode #search-hint .sh-row{display:none}'), 'lean must hide the search legend rows');
+  assert.ok(!/body\.lean-mode\s+#sh-saved/.test(_src) && !/body\.lean-mode\s+#search-hint\s*\{/.test(_src), 'lean must NOT hide saved searches / the whole panel — only the .sh-row legend');
+  // 3. the 'Section label…' placeholder is a LABEL not a helper — it stays in lean (guard against over-stripping)
+  assert.ok(_src.includes("isDivider ? 'Section label…' : node.type === 'para' ? paraHint"), 'the Section label placeholder must survive lean (it names the field, not a helper)');
+});
+
 // ── LEAN FLOOR phase 3: Alt+Arrow moves a base column/row (keyboard, no menu; DOM-bound → src-pinned) ──
 test('LEAN-FLOOR p3: the Alt+Arrow column/row move wiring is present in the cell keydown', () => {
   // Alt+Arrow must move the focused column (left/right) or row (up/down) via the existing mtMoveCol/

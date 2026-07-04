@@ -228,6 +228,12 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   min-width:max-content;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted);pointer-events:none}
 #search-wrap:focus-within #search-hint{display:block}
+/* LEAN FLOOR: the search legend TEACHES the query operators (is:done, #tag, "phrase") via the .sh-row
+   cheatsheet rows. Lean strips ONLY those rows (ux.md dial table: inline hints/legends "hidden" in Lean);
+   the operators still work, the cheatsheet just doesn't pop. #sh-saved (saved searches) + #sh-workspace
+   (cross-doc matches) stay — they're user data + controls, not helpers. So the panel still opens for those;
+   it's only bare of the legend when there's no saved/cross-doc content. */
+body.lean-mode #search-hint .sh-row{display:none}
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap}
 .sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.sc-panel kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
 .sh-row code{font-family:var(--mono);font-size:10px}
@@ -7471,7 +7477,12 @@ function renderRow(r) {
   // structural entry points a newcomer lands on (top level + a parent's first child); deeper
   // empties stay unlabeled so an experienced user isn't nagged on every new point.
   const isEntryPoint = depth === 0 || (parent && parent.children[0] === node);
-  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? 'Prose block. Enter = line break · ⇧+Enter = new point' : (isEntryPoint ? 'Type / for blocks, @ to insert, or just write' : '');
+  // LEAN FLOOR: the entry-point + para hints TEACH the syntax (/ @ [[, Enter/Shift+Enter). In lean mode
+  // the user is past that, so they strip to a bare '…' (ux.md dial table: empty-state hints "hidden" in
+  // Lean). The 'Section label…' placeholder stays — it NAMES what the field is, a label, not a helper.
+  const paraHint = isLean() ? '…' : 'Prose block. Enter = line break · ⇧+Enter = new point';
+  const entryHint = isLean() ? '' : 'Type / for blocks, @ to insert, or just write';
+  content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? paraHint : (isEntryPoint ? entryHint : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
     // not as a separate button under the grid.
