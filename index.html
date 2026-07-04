@@ -2860,6 +2860,16 @@ function parsePropSlash(query) {
   return { key, val };
 }
 
+// parseBaseSlash(query) — pure. LEAN FLOOR: /base:RxC (e.g. /base:3x4) → { rows, cols } clamped to a
+// sane grid, so a base can be created keyboard-only without the size picker. Returns null when there's
+// no valid RxC (a bare /base defaults to 3x3 directly). Node-testable.
+function parseBaseSlash(query) {
+  const m = String(query || '').match(/^base:\s*(\d+)\s*[x×]\s*(\d+)\s*$/i);
+  if (!m) return null;
+  const rows = Math.max(1, Math.min(50, +m[1])), cols = Math.max(1, Math.min(20, +m[2]));
+  return { rows, cols };
+}
+
 // Set (or, with a falsy val, leave untouched) one date property on a node, replacing
 // any existing same-key prop. Shared by the Schedule dialog and the /due:val slash path.
 function setDateProp(node, key, val) {
@@ -2873,7 +2883,7 @@ function setDateProp(node, key, val) {
 // and `start` set a date; `check`/`alias` set a reserved property; `template` stamps.
 // The arm is `/`-only: `@`-insertions are already typeable as `{…}` / markdown at the
 // caret, so an `@verb:value` colon-arg would just duplicate the brace grammar.
-const SLASH_ARG_VERBS = /^(due|start|check|alias|template|prop)$/;
+const SLASH_ARG_VERBS = /^(due|start|check|alias|template|prop|base|savetemplate)$/;
 
 // parseSlashQuery(rawQuery, trigger) — pure, Node-testable. Splits a captured slash
 // query (original case, e.g. "check:sum(cost) <= budget") into its parts and applies
@@ -5029,9 +5039,10 @@ const BLOCK_CMDS = [
   { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas. View it as a table, board, cards, or calendar.', section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
   { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A grid whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-clone',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
+  { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-clone',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
@@ -11948,7 +11959,10 @@ function slashApply() {
   // /base and @table both open the SHARED grid size picker (swapped into this same
   // popup) before creating anything; the confirm callback does the actual work.
   if (trigger !== '@' && cmd.id === 'base') {
-    openSizePicker(content, slashOffset, (rows, cols) => createBaseAt(nodeId, rows, cols));
+    // LEAN FLOOR: /base:3x4 creates that grid inline (no picker); a bare /base defaults to 3x3
+    // directly. The size picker stays the higher-verbosity door (via @table, which keeps it).
+    const bs = parseBaseSlash(query);
+    createBaseAt(nodeId, bs ? bs.rows : 3, bs ? bs.cols : 3);
     return;
   }
   // /template opens the template picker (a dialog), which stamps the chosen subtree
@@ -11963,6 +11977,22 @@ function slashApply() {
       return;
     }
     openTemplatePicker(nodeId);
+    return;
+  }
+  // LEAN FLOOR: /savetemplate:NAME snapshots this point's subtree as a named template inline (no
+  // dialog); a bare /savetemplate opens the name dialog (the higher-verbosity door). Mirrors the
+  // openSaveTemplateDialog write (deep-clone with fresh ids + upsertTemplate).
+  if (trigger !== '@' && cmd.id === 'savetemplate') {
+    const name = (rawArg || '').trim();
+    if (name) {
+      const cur = nodeById(nodeId); if (!cur) return;
+      pushUndo();
+      root.templates = upsertTemplate(root.templates, name, deepCloneNodeNewIds(cur));
+      markDirty();
+      flashHint('Saved template “' + name + '”.');
+      return;
+    }
+    openSaveTemplateDialog(nodeId);
     return;
   }
   if (trigger === '@' && cmd.id === 'table') {
@@ -21560,13 +21590,13 @@ const GUIDE = [
       { syn:'{query: #idea -is:done}', desc:'combine any search operators' },
       { syn:'@ then Query',            desc:'insert one from the menu' },
     ] },
-  { id:'templates', cat:'todos', covers:['template'],
+  { id:'templates', cat:'todos', covers:['template','savetemplate'],
     title:'Templates',
-    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /template:name to stamp a saved template directly, or /template on its own to pick from a list. Save a template from any point's menu.",
+    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /savetemplate:name to save this point and its children as a template, then /template:name to stamp a copy directly, or /template on its own to pick from a list. You can also save from any point's menu.",
     examples:[
+      { syn:'/savetemplate:weekly review',       desc:'save this subtree as a template inline' },
       { syn:'/template:weekly review',           desc:'stamp that template inline' },
       { syn:'/template',                         desc:'pick and drop in a saved template' },
-      { syn:'Menu → Save as template',           desc:'save this point as a template' },
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
