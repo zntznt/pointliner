@@ -353,6 +353,29 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
   .dice-roll .dice-edit,.mk-roll .mk-edit,.gr-roll .gr-edit,
   .math-roll .math-edit,.est-pill .est-edit,.var-pill .var-edit,.seq-pill .seq-edit,.query-pill .query-edit{opacity:.55}
 }
+/* LEAN FLOOR phase 2b: lean mode hides the hover-reveal helpers at rest. The pencils stay in the DOM
+   and keyboard-operable (focus still reveals them via :focus-visible below); lean just stops painting
+   them on pointer-hover, so pill-dense lines are calmer. These are all :hover rules, so they're already
+   mouse-only — on touch there's no hover and the @media(hover:none) block above keeps the pencils shown
+   (touch has no floor). This is a hover-overlay suppression, never display:none on a control. */
+body.lean-mode .dice-roll:hover .dice-edit,
+body.lean-mode .mk-roll:hover .mk-edit,
+body.lean-mode .gr-roll:hover .gr-edit,
+body.lean-mode .math-roll:hover .math-edit,
+body.lean-mode .seq-pill:hover .seq-edit,
+body.lean-mode .est-pill:hover .est-edit,
+body.lean-mode .var-pill:hover .var-edit,
+body.lean-mode .query-pill:hover .query-edit,
+body.lean-mode .md-table-static:hover .mt-promote{opacity:0}
+body.lean-mode .dice-edit:focus-visible,
+body.lean-mode .mk-edit:focus-visible,
+body.lean-mode .gr-edit:focus-visible,
+body.lean-mode .math-edit:focus-visible,
+body.lean-mode .seq-edit:focus-visible,
+body.lean-mode .est-edit:focus-visible,
+body.lean-mode .var-edit:focus-visible,
+body.lean-mode .query-edit:focus-visible,
+body.lean-mode .mt-promote:focus-visible{opacity:1}   /* keyboard focus still reveals (P3) */
 @media(prefers-reduced-motion:reduce){
   .node-row:hover,.bullet:hover .bullet-dot,.bullet-base:hover .bullet-base-ic,
   .nt-divider>.node-row>.bullet:hover .bullet-dot,.nt-ol>.node-row>.bullet:hover .bullet-dot,
@@ -21580,11 +21603,17 @@ document.getElementById('btn-notes').addEventListener('click', () => {
 // LEAN FLOOR phase 2: flip the verbosity dial (guided ↔ lean) + persist + flash. In lean the / and @
 // menus render nothing (still keyboard-operable). Reachable via the File menu (discoverable) and a
 // shortcut. render() so any verbosity-gated chrome updates immediately.
+// LEAN FLOOR phase 2b: lean mode is also VISUALLY lean. One body class drives the CSS that suppresses
+// the hover-reveal helpers (pill pencils, the convert-to-base prompt, row grips) — the affordances stay
+// keyboard-operable (this is display:none on a hover overlay, not on the control), the app just stops
+// showing them at rest. Touch keeps them (the @media(hover:none) block wins), since touch has no floor.
+function syncLeanClass() { document.body.classList.toggle('lean-mode', isLean()); }
 function toggleVerbosity() {
   verbosity = isLean() ? 'guided' : 'lean';
+  syncLeanClass();
   scheduleAutosave();
   render();
-  flashHint(isLean() ? 'Lean mode: menus stay keyboard-operable but hidden.' : 'Guided mode: menus and helpers shown.');
+  flashHint(isLean() ? 'Lean mode: menus and helpers stay keyboard-operable but hidden.' : 'Guided mode: menus and helpers shown.');
 }
 document.getElementById('btn-capture').addEventListener('click', () => toggleCapture());
 document.getElementById('capture-strip').addEventListener('keydown', e => {
@@ -22844,7 +22873,7 @@ function applyAutosaveData(data) {
     btn.setAttribute('aria-pressed', String(showDone));   // UXP-153: stable name; aria-pressed carries state
   }
   if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
-  if (data.verbosity === 'lean' || data.verbosity === 'guided') verbosity = data.verbosity;   // LEAN FLOOR p2
+  if (data.verbosity === 'lean' || data.verbosity === 'guided') { verbosity = data.verbosity; syncLeanClass(); }   // LEAN FLOOR p2 (+2b: sync the visual-lean body class)
   // New: a single active view. Migrate the legacy additive agendaBars (timeline/calendar
   // could both be open) into the one-at-a-time model: timeline wins, else calendar→month.
   if (data.agendaView === 'week' || data.agendaView === 'month' || data.agendaView === 'timeline' || data.agendaView === '') {
