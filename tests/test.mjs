@@ -2840,16 +2840,22 @@ test('promoteBraceBody — {seq Name: …} builds a named [[seq:KEY]] record, re
   assert.equal(c.keywordIsDone('SHIPPED', all), true);
   assert.equal(c.keywordIsDone('BACKLOG', all), false);
 });
-test('artifactToShorthand — a seq pill is ATOMIC (named config never unfolds)', () => {
-  // a sequence is named doc-wide config the unfolded text can't carry → stays a pill
-  assert.equal(c.artifactToShorthand('seq', { key: 'k', name: 'Flow', states: ['A', 'B'], doneFrom: 1 }), null);
+test('artifactToShorthand — a seq pill unfolds to its {seq Name: …} source (LEAN FLOOR: edit inline)', () => {
+  // a sequence now unfolds so it can be edited keyboard-only. It round-trips LOSSLESSLY: seqDefString
+  // re-emits the states/bands, the name comes back via seqDeclParts. No draw state to lose.
+  assert.equal(c.artifactToShorthand('seq', { key: 'k', name: 'Flow', states: ['A', 'B'], doneFrom: 1 }), '{seq Flow: A | B}');
+  // held band survives too (UXP-158): active | held | done
+  assert.equal(c.artifactToShorthand('seq', { key: 'k', name: 'Kanban', states: ['A', 'B', 'C', 'D'], heldFrom: 2, doneFrom: 3 }), '{seq Kanban: A B | C | D}');
+  assert.equal(c.artifactToShorthand('seq', { key: 'k' }), null);   // a malformed record (no name/states) doesn't unfold
 });
-test('typed seq — the token stays atomic in edit mode (does not unfold)', () => {
+test('LEAN FLOOR: a seq token unfolds in edit mode and refolds losslessly (no dialog to edit)', () => {
   const node = { id: 'n', text: '', seq: [], dice: [], math: [], vars: [], grammar: [], est: [], markov: [], children: [] };
   const tok = c.promoteBraceBody(node, 'seq Flow: BACKLOG DOING | SHIPPED');
   node.text = 'process ' + tok;
-  c.unfoldArtifacts(node);                          // enter edit
-  assert.equal(node.text, 'process ' + tok);        // unchanged — seq is NOT in the unfold set
+  c.unfoldArtifacts(node);                                    // enter edit → the token becomes {seq …} text
+  assert.match(node.text, /^process \{seq Flow: BACKLOG DOING \| SHIPPED\}$/, 'seq unfolds to editable {seq …} source');
+  c.refoldArtifacts(node);                                    // leave edit untouched → back to the exact token
+  assert.equal(node.text, 'process ' + tok, 'an untouched seq refolds to its original token (lossless)');
 });
 
 test('sequenceForKeyword: first-match across default + declared; default wins collisions', () => {

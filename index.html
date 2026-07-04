@@ -14636,6 +14636,13 @@ function artifactToShorthand(type, rec) {
   if (type === 'dice') return rec.expr ? `{${rec.expr}}` : null;
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
   if (type === 'est')  return rec.expr ? `{${rec.expr}}` : null;
+  if (type === 'seq') {
+    // LEAN FLOOR: a named sequence unfolds to its {seq Name: active | held? | done} source so it can
+    // be EDITED inline (keyboard-only, no dialog) — it round-trips LOSSLESSLY: the states+bands come
+    // back via seqDefString, the name via seqDeclParts on re-promote. A seq carries no draw state
+    // (unlike a deck), and it's callable by NAME not key, so a fresh key on re-promote is harmless.
+    return (rec.name && rec.states) ? `{seq ${rec.name}: ${seqDefString(rec)}}` : null;
+  }
   if (type === 'markov') {
     // Only a TYPED (anonymous) markov unfolds to {markov: a→b, b→c}; a NAMED / dialog
     // chain stays atomic (its name is doc-wide config the text can't carry on unfold).
@@ -14674,7 +14681,7 @@ function artifactToShorthand(type, rec) {
 // Length `prefix` would have after unfoldArtifacts rewrites its inline-able tokens
 // to {…} source — lets caret math translate folded offsets into unfolded ones.
 function unfoldedPrefixLen(node, prefix) {
-  const RE = /\[\[(dice|math|var|grammar|est|markov):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est|markov|seq):([a-z0-9]+)\]\]/gi;
   let len = 0, last = 0, m;
   RE.lastIndex = 0;
   while ((m = RE.exec(prefix)) !== null) {
@@ -14694,7 +14701,7 @@ function unfoldedPrefixLen(node, prefix) {
 // a caret can sit inside editable {…} text but a splice must never land inside a
 // token. Pure; offsets are monotonic, so [start,end) ranges stay ordered.
 function foldedOffsetFor(node, offset) {
-  const RE = /\[\[(dice|math|var|grammar|est|markov):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est|markov|seq):([a-z0-9]+)\]\]/gi;
   const text = node.text;
   let u = 0, last = 0, m;
   while ((m = RE.exec(text)) !== null) {
@@ -14720,7 +14727,7 @@ const _unfoldData = new WeakMap(); // node → [{sh, token}]
 // so the user can edit it as text. Records are left in their sidecars untouched.
 function unfoldArtifacts(node) {
   const list = [];
-  const TOKEN_RE = /\[\[(dice|math|var|grammar|est|markov):([a-z0-9]+)\]\]/gi;
+  const TOKEN_RE = /\[\[(dice|math|var|grammar|est|markov|seq):([a-z0-9]+)\]\]/gi;
   node.text = node.text.replace(TOKEN_RE, (full, type, key) => {
     const arr = node[type === 'var' ? 'vars' : type];
     const sh = artifactToShorthand(type, arr?.find(r => r.key === key));
