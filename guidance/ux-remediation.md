@@ -1666,9 +1666,9 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   (`unfoldedPrefixLen`/`foldedOffsetFor`/`unfoldArtifacts`). Two prior pins that asserted the old
   atomic behavior were rewritten to the new unfold behavior + the lossless round-trip (the
   "intentional behavior change → update the pin in the same commit" rule). 850 tests.
-- **NOT done here:** `query` unfold — a query pill is `display:block` (a multi-line widget), so
-  unfolding to inline `{query:}` mid-line is a meaningfully different caret/visual change; left for a
-  separate focused look. `est` rollup edit is a known separate lossy-trap gap (out of scope).
+- **NOT done here:** `query` unfold — deferred at the time (a query pill is `display:block`); DONE in
+  LF-1g below (the block-ness turned out to be display-only). `est` rollup edit is a known separate
+  lossy-trap gap (out of scope).
 
 ### LF-1d ◐ Phase 1d: bare /due + /note go keyboard-only (RESOLVED pending merge)
 - **bare `/due`** now writes the fill-in stub `{date due: ▮}` (caret on the value blank) instead of
@@ -1733,6 +1733,21 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   free value needs a type target and `enterEdit` clears the selection, so there is no no-modal path
   without redefining the selection model (a much larger, riskier change, deliberately not forced). The
   action-bar buttons are `<button>`s (keyboard-reachable); only the value-entry modal is the ceiling.
+
+### LF-1g ◐ Phase 1g: query pills edit inline (unfold), no dialog (RESOLVED pending merge)
+- **The deferred half of LF-1c, now done.** A `[[query:key]]` pill unfolds to its `{query: expr}` source
+  in edit mode (like dice/math/est/seq), so it's edited keyboard-only instead of via `editQuery`'s
+  dialog. The dialog (the `.query-edit` pencil) stays the higher-verbosity door.
+- **Why the earlier caution was over-cautious:** a query pill IS `display:block` (a multi-line widget),
+  but that is a DISPLAY-mode CSS concern. `unfoldArtifacts` rewrites the token to `{query: …}` TEXT
+  *before* `editModeHTML`/any render runs, so the block-ness never enters the caret machinery — the
+  edit path just sees plain text of that length, no different from `{seq …}`. Verified LOSSLESS: a
+  query record is JUST `{key, expr}`, `queryParts` re-promotes the expr verbatim, the key is a private
+  sidecar handle nothing references; unfold→refold returns the byte-exact token, and `foldedTextForSave`
+  re-folds a mid-edit query so a save never persists raw `{query: …}`.
+- `query` added to `artifactToShorthand` + the three lockstep unfold regexes; the stale "in edit mode
+  it stays atomic" comment at `editQuery` corrected. 860 tests (+2 pins). The unfold cluster is now
+  complete (seq + query); only `est` rollup edit remains (a separate lossy-trap gap, out of scope).
 
 ---
 

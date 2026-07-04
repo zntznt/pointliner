@@ -14772,6 +14772,14 @@ function artifactToShorthand(type, rec) {
     // (unlike a deck), and it's callable by NAME not key, so a fresh key on re-promote is harmless.
     return (rec.name && rec.states) ? `{seq ${rec.name}: ${seqDefString(rec)}}` : null;
   }
+  if (type === 'query') {
+    // LEAN FLOOR: a query pill unfolds to its {query: expr} source so it can be EDITED inline (no
+    // dialog). Trivially lossless — a query record is JUST { key, expr }, and queryParts re-promotes
+    // the expr verbatim; the key is a private sidecar handle nothing references, so a fresh key on
+    // re-promote is harmless. The block-level render is a DISPLAY-mode concern; unfold rewrites the
+    // token to {query: …} TEXT before editModeHTML runs, so the caret machinery just sees plain text.
+    return rec.expr ? `{query: ${rec.expr}}` : null;
+  }
   if (type === 'markov') {
     // Only a TYPED (anonymous) markov unfolds to {markov: a→b, b→c}; a NAMED / dialog
     // chain stays atomic (its name is doc-wide config the text can't carry on unfold).
@@ -14810,7 +14818,7 @@ function artifactToShorthand(type, rec) {
 // Length `prefix` would have after unfoldArtifacts rewrites its inline-able tokens
 // to {…} source — lets caret math translate folded offsets into unfolded ones.
 function unfoldedPrefixLen(node, prefix) {
-  const RE = /\[\[(dice|math|var|grammar|est|markov|seq):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   let len = 0, last = 0, m;
   RE.lastIndex = 0;
   while ((m = RE.exec(prefix)) !== null) {
@@ -14830,7 +14838,7 @@ function unfoldedPrefixLen(node, prefix) {
 // a caret can sit inside editable {…} text but a splice must never land inside a
 // token. Pure; offsets are monotonic, so [start,end) ranges stay ordered.
 function foldedOffsetFor(node, offset) {
-  const RE = /\[\[(dice|math|var|grammar|est|markov|seq):([a-z0-9]+)\]\]/gi;
+  const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   const text = node.text;
   let u = 0, last = 0, m;
   while ((m = RE.exec(text)) !== null) {
@@ -14856,7 +14864,7 @@ const _unfoldData = new WeakMap(); // node → [{sh, token}]
 // so the user can edit it as text. Records are left in their sidecars untouched.
 function unfoldArtifacts(node) {
   const list = [];
-  const TOKEN_RE = /\[\[(dice|math|var|grammar|est|markov|seq):([a-z0-9]+)\]\]/gi;
+  const TOKEN_RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   node.text = node.text.replace(TOKEN_RE, (full, type, key) => {
     const arr = node[type === 'var' ? 'vars' : type];
     const sh = artifactToShorthand(type, arr?.find(r => r.key === key));
@@ -15995,7 +16003,8 @@ function editQuery(node, key) {
     onResult: expr => {
       q.expr = expr;
       markDirty();
-      // repaint the host point so the new results show; in edit mode it stays atomic.
+      // repaint the host point so the new results show; in edit mode it unfolds to {query: expr} text
+      // (LEAN FLOOR: query is now inline-editable), reflecting the just-saved expr.
       const content = document.querySelector(`.node-content[data-id="${CSS.escape(node.id)}"]`);
       if (content) content.innerHTML = content.dataset.editing ? editModeHTML(node) : renderContentHTML(node);
       else render();
