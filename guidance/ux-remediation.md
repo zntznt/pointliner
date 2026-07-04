@@ -1762,6 +1762,18 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
 - **Still open in the class (follow-ups):** column/row INSERT + DELETE by key (the panel's other ops),
   a keyed **column-role cycle** (Show as: Status/Date/Number/Plain — gates Board/Calendar entry), the
   **board-card move** by modifier-arrow, and column-resize step. Each a focused addition on this seam.
+
+### LF-3b ◐ Phase 3: base column-role cycle by keyboard (Alt+R) (RESOLVED pending merge)
+- **Alt+R cycles the focused COLUMN's display role** — Plain → Status → Date → Number → Plain (Shift+Alt+R
+  backward) — the menu-free twin of the column panel's "Show as". This is the keyboard DOOR INTO Board and
+  Calendar views: both need a column marked Status / Date, and that was column-menu-only. Flashes the new
+  role (P4 — no menu to show it) and re-focuses the cell so a chain of Alt+R works.
+- Pure core `cycleColRole(current, dir)` over `COL_ROLE_CYCLE` (`[null,'status','date','number']` — the
+  exact set + order of the Show-as menu); wraps both ways; an unknown role starts the cycle. Reuses the
+  existing `mtSetColRole` write. Concept-guide `tables` entry updated. 863 tests (+2 pins: the cycle
+  core's set/order/wrap/unknown cases + the Alt+R src-pin with its P4 flash).
+- **Still open in phase 3:** column/row INSERT + DELETE by key, the **board-card move** by modifier-arrow,
+  column-resize step. Each a focused follow-up on the base-cell-keydown seam.
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
