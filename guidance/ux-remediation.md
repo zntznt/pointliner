@@ -1831,11 +1831,35 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   keyboard-operable but hidden."
 - CSS + a one-line class toggle, no pure core. 869 tests (+1 src-pin: the class-sync helper, both call
   sites, the hover-suppress rule, and the focus-visible-still-reveals P3 guard).
-- **LEAN FLOOR IS NOW COMPLETE (LF-1 through LF-3 + LF-2b).** The floor: keyboard-usable with no
-  dialogs/submenus/subwindows at the lowest verbosity, everything still clickable, the top bar unchanged
-  — authoring verbs, pill unfold, the table/base structural grammar, the lean MODE toggle, AND the
-  visual helper-hiding. The two honest ceilings remain documented (free-value bulk verbs need a modal;
-  DELETE stays the menu). Nothing in the lean-floor backlog is open.
+- **CORRECTION (see LF-2c below):** LF-2b was over-claimed as "LEAN FLOOR COMPLETE". It shipped Lean's
+  two BIGGEST strips (menus + hover pencils) but NOT all of the ux.md dial-table's Lean column — the
+  empty-state hints + search legend still rendered in lean. That residue is closed in LF-2c. The core
+  FLOOR (keyboard-usable, no dialogs, top bar unchanged) was and is done; "the dial matches its spec" is
+  what LF-2c finishes.
+
+### LF-2c ◐ Phase 2c: lean strips the remaining teaching helpers (empty-state hints + search legend) (RESOLVED pending merge)
+- **What LF-2b missed.** A user challenge ("the verbosity dial is still not implemented, or is it?")
+  surfaced that `isLean()` only gated the / @ menus (LF-2) + the hover pencils (LF-2b), but the ux.md
+  dial table lists MORE helpers stripped in Lean that still rendered: the empty-state teaching hints and
+  the focus-shown search legend. LF-2c closes that so Lean strips what the spec says it should.
+- **Empty-state hints:** the entry-point placeholder (`Type / for blocks, @ to insert…`) and the para
+  keyboard-hint (`Enter = line break…`) TEACH the syntax; in lean they go bare (`''` / `'…'`). The
+  `Section label…` divider placeholder STAYS — it names the field (a label), not a helper.
+- **Search legend:** the `.sh-row` cheatsheet rows (`is:done`, `#tag`, `"phrase"`) strip via a
+  `body.lean-mode #search-hint .sh-row{display:none}` rule; `#sh-saved` (saved searches) + `#sh-workspace`
+  (cross-doc matches) STAY — they're user data + controls, not helpers (the over-stripping guard is pinned).
+- **The ux.md TOOLBAR row is DELIBERATELY NOT stripped.** The vision table says Toolbar → "minimal" in
+  Lean, but the user's own lean spec overrides it: "never does the top bar or its toggleables disappear
+  or alter their behaviour." User intent beats the older vision doc; the top bar is invariant in lean.
+- **Pill tooltips (`title=`) NOT gated** (ponytail): they're hover-hold-only, ~zero at-rest clutter, and
+  the table says "minimal" not "hidden" for Lean; gating 10 render sites for an already-inert helper is a
+  poor ratio. Recorded as a conscious skip, not an oversight.
+- CSS + a JS placeholder gate, no pure core. 870 tests (+1 src-pin: both hint gates, the legend-row rule,
+  the saved-searches-survive guard, and the Section-label-survives guard).
+- **The lean floor is now genuinely complete AS A TWO-POSITION DIAL (Guided/Lean).** The ux.md middle
+  STANDARD tier stays deferred BY THE VISION ITSELF (data-gated: build it "only once real usage reveals
+  which helpers are noise vs guardrails"). A future 3-position control is that tier's work, not a bug in
+  this one.
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
