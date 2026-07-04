@@ -8703,3 +8703,14 @@ test('LEAN-FLOOR p3: the Alt+R column-role-cycle wiring is present (DOM-bound ke
   assert.ok(_src.includes('cycleColRole(node.colRole?.[c] || null, e.shiftKey ? -1 : 1)'), 'Alt+R must cycle via cycleColRole (Shift = backward)');
   assert.ok(_src.includes("flashHint('Column shown as: "), 'the role-cycle must flash the new role (P4, no menu)');
 });
+
+test('LEAN-FLOOR p3: the Alt+Shift+Arrow column/row INSERT wiring is present (DOM-bound keydown)', () => {
+  assert.ok(_src.includes('e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.startsWith'), 'the Alt+Shift+Arrow insert branch is missing');
+  assert.ok(_src.includes("mtInsertCol(node, c, 'left')") && _src.includes("mtInsertCol(node, c, 'right')"), 'Alt+Shift+Left/Right must insert a column');
+  assert.ok(_src.includes("mtInsertRow(node, r, 'above')") && _src.includes("mtInsertRow(node, r, 'below')"), 'Alt+Shift+Up/Down must insert a row');
+  assert.ok(_src.includes("flashHint('Column inserted.')") && _src.includes("flashHint('Row inserted.')"), 'an insert must flash (P4, no menu)');
+  // the header-row guard: a row insert only fires on a data row (r > 0)
+  assert.ok(_src.includes("r > 0 && e.key === 'ArrowUp'") && _src.includes("r > 0 && e.key === 'ArrowDown'"), 'a row insert must skip the header row');
+  // the collision fix: the Shift+Arrow cell-selection guard now excludes Alt so Alt+Shift+Arrow reaches insert
+  assert.ok(_src.includes("e.shiftKey && !e.altKey && (e.key.startsWith('Arrow')"), 'Shift+Arrow selection must exclude Alt (so Alt+Shift+Arrow is insert, not selection)');
+});
