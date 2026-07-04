@@ -193,7 +193,7 @@ export function loadCores() {
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates',
-    'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody',
+    'classifyBraceBody','braceTypeLabel','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ',                // const-arrow escapers (reached via the const pass)
@@ -218,6 +218,7 @@ export function loadCores() {
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
+    'propDeclParts','setProp','parsePropSlash',   // LEAN FLOOR phase 1: the promoting inline-stub prop path
     'splitForSibling', 'mergeUpText',
     'flatRowStep',
   ];

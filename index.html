@@ -2182,6 +2182,36 @@ function rollParts(body) {
   return { expr };
 }
 
+// LEAN FLOOR phase 1 — the promoting inline stub for a SIDECAR-backed verb. propDeclParts(body) sniffs
+// a typed property declaration `{prop KEY: VALUE}` (reserved `prop` keyword, a key, a top-level `:`,
+// then the value), mirroring seqDeclParts. Returns { key, val } or null. Pure, Node-testable. Unlike a
+// pill form it does NOT leave a [[…]] token — the property renders as a chip from node.props, so its
+// promoteBraceBody branch WRITES the sidecar and consumes the brace (returns '' = "promoted, no token").
+// This is the reusable pattern: any sidecar verb gets a floor-ready keyboard path by (a) a bare /verb
+// writing the `{prop ▮: }` stub with the caret on the blank, (b) this sniff promoting it on exit.
+const PROP_KEY_RE = /^[^:{}][^:{}]*$/;                  // a key: anything but the reserved `:` / braces
+function propDeclParts(body) {
+  const m = /^prop\s+([^:]+?)\s*:(.*)$/is.exec((body || '').trim());   // "prop <key>: <value>"
+  if (!m) return null;
+  const key = m[1].trim();
+  if (!key || !PROP_KEY_RE.test(key)) return null;
+  // a date/check/alias key routes through its own reserved writer, not the generic prop bag — so a
+  // {prop due: friday} can't shadow the Schedule dialog's DATE_KEYS handling. Keep those out.
+  const lk = key.toLowerCase();
+  if (DATE_KEYS.has(lk) || lk === CHECK_KEY || lk === ALIAS_KEY) return null;
+  return { key, val: m[2].trim() };
+}
+
+// Pure: set (or replace) an arbitrary property key on a node, mirroring setAliasProp/setDateProp. An
+// empty value clears the key. Case-insensitive key match (properties are keyed by their lowercased
+// name elsewhere). Node-testable.
+function setProp(node, key, val) {
+  const k = String(key || '').trim();
+  if (!k) return;
+  const others = (node.props || []).filter(p => (p.key || '').trim().toLowerCase() !== k.toLowerCase());
+  node.props = String(val || '').trim() ? [...others, { key: k, val: String(val).trim() }] : others;
+}
+
 // Pure P4 advisory for the @sequence dialog (C5). parseSequence tokenizes states on
 // whitespace, so a multi-word phrase like "IN PROGRESS" SILENTLY becomes two states
 // (IN, PROGRESS). We can't read intent, so we surface the split: when a side carries
@@ -2817,6 +2847,19 @@ function parseDateSlash(query) {
   return { key: m[1].toLowerCase(), raw };
 }
 
+// parsePropSlash(query) — pure. The /prop:key=value (or key:value) one-shot inline bridge. The slash
+// query arrives as "prop:REST"; REST is "key=value" or "key:value". Returns { key, val } or null when
+// there's no value (a bare /prop falls through to writing the fill-in-the-blank stub). Node-testable.
+function parsePropSlash(query) {
+  const m = String(query || '').match(/^prop:(.+)$/i);
+  if (!m) return null;
+  const kv = m[1].match(/^([^=:]+)[=:](.*)$/);          // key = value | key : value
+  if (!kv) return null;
+  const key = kv[1].trim(), val = kv[2].trim();
+  if (!key) return null;
+  return { key, val };
+}
+
 // Set (or, with a falsy val, leave untouched) one date property on a node, replacing
 // any existing same-key prop. Shared by the Schedule dialog and the /due:val slash path.
 function setDateProp(node, key, val) {
@@ -2830,7 +2873,7 @@ function setDateProp(node, key, val) {
 // and `start` set a date; `check`/`alias` set a reserved property; `template` stamps.
 // The arm is `/`-only: `@`-insertions are already typeable as `{…}` / markdown at the
 // caret, so an `@verb:value` colon-arg would just duplicate the brace grammar.
-const SLASH_ARG_VERBS = /^(due|start|check|alias|template)$/;
+const SLASH_ARG_VERBS = /^(due|start|check|alias|template|prop)$/;
 
 // parseSlashQuery(rawQuery, trigger) — pure, Node-testable. Splits a captured slash
 // query (original case, e.g. "check:sum(cost) <= budget") into its parts and applies
@@ -4992,6 +5035,7 @@ const BLOCK_CMDS = [
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or /due for the dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-circle-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
+  { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
 ];
 
@@ -10081,6 +10125,7 @@ function classifyBraceBody(body, rules, vars) {
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
   if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
+  if (propDeclParts(body)) return 'artifact';                          // {prop owner: zeo} (LEAN FLOOR)
   if (queryParts(body)) return 'artifact';                             // {query: is:todo}
   if (rollParts(body)) return 'artifact';                              // {roll: is:todo} — pick a random matching point
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
@@ -11993,6 +12038,29 @@ function slashApply() {
       return;
     }
     openAliasDialog(nodeId);
+    return;
+  }
+  if (trigger !== '@' && cmd.id === 'prop') {
+    // LEAN FLOOR: /prop:key=value writes the property inline (no dialog); a BARE /prop writes the
+    // fill-in-the-blank stub `{prop : }` with the caret parked on the KEY blank — type key, then the
+    // value, and it promotes to a chip on exit (promoteBraceBody's propDecl branch). The full Property
+    // editor stays as the higher-verbosity door (the bullet menu / a prop-chip click).
+    const ps = parsePropSlash(query);
+    if (ps) {
+      const cur = nodeById(nodeId); if (!cur) return;
+      pushUndo(); setProp(cur, ps.key, ps.val); markDirty(); render();
+      flashHint(ps.val ? `Set ${ps.key} to ${ps.val}.` : `Cleared ${ps.key}.`);
+      return;
+    }
+    // bare /prop → the promoting inline stub. Insert `{prop : }` at the trigger and park the caret on
+    // the key blank (right after "{prop ", 6 chars in). applyInlineInsertion re-enters edit mode and
+    // parks the caret after the string, so re-place it on the blank in the next frame.
+    const stub = '{prop : }';
+    applyInlineInsertion(nodeId, slashOffset, stub);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.node-content[data-id="${nodeId}"]`);
+      if (el) try { setCaretByOffset(el, slashOffset + 6); } catch (_) {}   // "{prop " = 6 chars → the key blank
+    });
     return;
   }
   if (trigger !== '@' && cmd.id === 'journal') {
@@ -14399,6 +14467,12 @@ function promoteBraceBody(node, body) {
     (node.seq ||= []).push(rec);
     return `[[seq:${rec.key}]]`;
   }
+  // LEAN FLOOR: {prop KEY: VALUE} writes an arbitrary property to the sidecar and CONSUMES the brace
+  // (returns '' — the property shows as a chip below the point, so it leaves no inline token). This is
+  // the keyboard-inline path for properties: /prop writes the `{prop ▮: }` stub, you fill it, exit
+  // promotes it here. An empty value clears the key (setProp). No dialog.
+  const pd = propDeclParts(body);
+  if (pd) { setProp(node, pd.key, pd.val); return ''; }
   // typed query pill: {query: is:todo | due:week} → a live [[query:KEY]] embedded search.
   const qp = queryParts(body);
   if (qp) {
@@ -14482,7 +14556,10 @@ function promoteInlineShorthand(node) {
       const j = matchBrace(text, i);
       if (j > i) {
         const token = promoteBraceBody(node, text.slice(i + 1, j));
-        if (token) { out += token; i = j + 1; changed = true; continue; }
+        // token: a [[…]] pill token, OR '' for a sidecar write that leaves no inline trace ({prop …}
+        // → a chip, not a pill), OR null = not promotable (keep the brace as literal text). So the
+        // guard is "promoted at all" (!= null), not "truthy" — '' must count as consumed.
+        if (token != null) { out += token; i = j + 1; changed = true; continue; }
       }
     }
     out += text[i++];
@@ -21451,12 +21528,12 @@ const GUIDE = [
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },
       { syn:'@ → Sequence', desc:'declare one with a form' },
     ] },
-  { id:'properties', cat:'todos',
+  { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
-    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Open a point's menu and choose Add property to open the editor, type a key and a value, then Save. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.",
+    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Type /prop:owner=zeo to set one inline, or /prop to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.",
     examples:[
-      { syn:'Menu → Add property', desc:'open the key:value editor' },
-      { syn:'owner:zeo',           desc:'a property pill below the point' },
+      { syn:'/prop:owner=zeo',     desc:'set a property inline, no dialog' },
+      { syn:'/prop',               desc:'write the fill-in-the-blank stub' },
       { syn:'has:owner',           desc:'find points that have a property' },
       { syn:'owner:zeo',           desc:'match an exact value in search' },
     ] },
