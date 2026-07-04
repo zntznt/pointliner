@@ -1787,6 +1787,24 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   keyboard-operable end to end. Concept-guide `base-views` entry updated. 865 tests (+2 pins: the
   clamp/no-state/case cases + the Alt+Arrow card-move src-pin with its P4 flash).
 - **Still open in phase 3:** column/row INSERT + DELETE by key, column-resize step.
+
+### LF-3d ◐ Phase 3: base column/row INSERT by keyboard (Alt+Shift+Arrow) (RESOLVED — insert; delete is the ceiling)
+- **Alt+Shift+Arrow INSERTS a column (←/→ = left/right of the focused cell) or a row (↑/↓ = above/below)**
+  — the menu-free twin of the column panel's Insert (mouse/menu-only). The arrow gives axis + side;
+  re-focuses so the new empty cell is ready to type; flashes to confirm (P4, no menu). A row insert on the
+  header (r===0) is skipped; `mtInsert*` are footer-aware (a row never lands after the Calculate footer).
+  Reuses `mtInsertCol`/`mtInsertRow`. **Collision fix:** the Shift+Arrow cell-SELECTION guard now excludes
+  `altKey`, so Alt+Shift+Arrow reaches the insert branch instead of being swallowed as selection.
+- **The documented CEILING (honest):** column/row **DELETE stays the menu path** (reachable keyboard-only
+  via Shift+F10 → the panel's "Delete column"/"Delete row", both `danger:true`). Delete is destructive, so
+  a bare keyboard chord is a slip hazard; the deliberate menu confirm is the right higher-verbosity door,
+  not a floor gap to force. Chord order in the base cell keydown: move (Alt+Arrow), role (Alt+R), insert
+  (Alt+Shift+Arrow), then plain-arrow nav.
+- Concept-guide `tables` entry updated. 866 tests (+1 src-pin: the four insert wirings, the header guard,
+  the P4 flashes, and the Shift+Arrow-excludes-Alt collision fix). **Phase 3 structural ops now: MOVE +
+  ROLE + CARD-MOVE + INSERT all keyboard-only; DELETE is the documented menu ceiling; only the
+  column-resize FINE step (a pixel drag) remains — the coarse widths are already keyboard-reachable via
+  the Width menu.**
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)

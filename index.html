@@ -7112,7 +7112,7 @@ function buildTableWidget(node, readOnly) {
     }
     // intentional selection keys: lift the nav-selection flag so the toolbar may show
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { mtNavSel = null; return; }
-    if (e.shiftKey && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) { mtNavSel = null; return; }
+    if (e.shiftKey && !e.altKey && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) { mtNavSel = null; return; }   // Alt+Shift+Arrow is the insert chord (below), not cell-selection
     // LEAN FLOOR phase 3: Alt+Arrow MOVES the focused column (left/right) or row (up/down) — a
     // menu-free keyboard twin of the column-panel's Move (the structural op was mouse/menu-only). Same
     // Alt+Arrow=move convention as the outline. The mtMove* fns guard bounds + re-render; re-focus the
@@ -7138,6 +7138,19 @@ function buildTableWidget(node, readOnly) {
       mtFocusCell(node, r, c);
       flashHint('Column shown as: ' + (next ? next[0].toUpperCase() + next.slice(1) : 'Plain text'));
       return;
+    }
+    // LEAN FLOOR phase 3: Alt+Shift+Arrow INSERTS a column (←/→ = left/right of this cell) or a row
+    // (↑/↓ = above/below), the menu-free twin of the column panel's Insert (mouse/menu-only). The arrow
+    // gives axis + side. Re-focus so the new empty cell is ready to type; flash to confirm (P4, no menu).
+    // A row insert on the header (r===0) is skipped (rows go around DATA rows); mtInsert* are footer-aware.
+    if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const r = +cell.dataset.r, c = +cell.dataset.c;
+      if (e.key === 'ArrowLeft')  { mtInsertCol(node, c, 'left');  mtFocusCell(node, r, c);     flashHint('Column inserted.'); return; }
+      if (e.key === 'ArrowRight') { mtInsertCol(node, c, 'right'); mtFocusCell(node, r, c + 1); flashHint('Column inserted.'); return; }
+      if (r > 0 && e.key === 'ArrowUp')   { mtInsertRow(node, r, 'above'); mtFocusCell(node, r, c);     flashHint('Row inserted.'); return; }
+      if (r > 0 && e.key === 'ArrowDown') { mtInsertRow(node, r, 'below'); mtFocusCell(node, r + 1, c); flashHint('Row inserted.'); return; }
+      return;   // header row +Up/Down, or any other case → no-op (don't fall through)
     }
     if (e.key.startsWith('Arrow') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       const r = +cell.dataset.r, c = +cell.dataset.c;
@@ -21732,11 +21745,12 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), and Alt+R cycles a column's role (Plain, Status, Date, Number); the column menu (or Shift+F10 on a cell) has the rest.",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, and Alt+R cycles a column's role (Plain, Status, Date, Number); the column menu (or Shift+F10 on a cell) has delete and the rest.",
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
       { syn:'Alt + ← / →',                      desc:'move the focused column; Alt+↑/↓ moves the row' },
+      { syn:'Alt + Shift + arrow',              desc:'insert a column (←/→) or row (↑/↓) on that side' },
       { syn:'Alt + R',                          desc:'cycle the column role (Status/Date power Board and Calendar)' },
     ] },
   // NOTE: no `covers:[]` here — the view switcher has no slash-command id, and the drift-guard
