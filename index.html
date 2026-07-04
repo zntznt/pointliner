@@ -11232,6 +11232,33 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', () =
 function selectedNodes() {
   return flatRows.filter(r => selectedIds.has(r.node.id)).map(r => r.node);
 }
+
+// LEAN FLOOR: apply a to-do text-mutator (cycleTodoState / cycleTodoPriority) to every node in a list,
+// in place. Pure over the nodes + mutator, so it's Node-testable. Returns the count actually changed
+// (a mutator is a no-op on a non-todo, or when it produces identical text), so the caller can flash /
+// skip an empty apply. Each node's `checked` derived cache is refreshed. No DOM.
+function applyTodoCycleToNodes(nodes, mutator) {
+  let changed = 0;
+  for (const n of nodes) {
+    const next = mutator(n.text);
+    if (next !== n.text) { n.text = next; n.checked = todoDoneFromText(next); changed++; }
+  }
+  return changed;
+}
+
+// The keyboard bulk verb: cycle every SELECTED point's to-do state (or priority) with no picker/modal —
+// the floor path for the enumerable bulk verb (a free-value verb like a date can't go here, since there
+// is no edit caret to type into once a selection is active). One undo for the whole batch; renders once.
+function bulkCycleTodo(which, dir = 1) {
+  const nodes = selectedNodes();
+  if (!nodes.length) return;
+  const mutator = which === 'priority' ? (t => cycleTodoPriority(t, dir)) : (t => cycleTodoState(t, dir));
+  pushUndo();
+  const n = applyTodoCycleToNodes(nodes, mutator);
+  if (!n) { flashHint(which === 'priority' ? 'No to-do points in the selection to prioritize.' : 'Cycled no points (selection has no to-dos).'); return; }
+  markDirty(); render();
+  announce(`${which === 'priority' ? 'Priority' : 'State'} cycled on ${n} point${n === 1 ? '' : 's'}`);
+}
 document.getElementById('nsb-state').addEventListener('click', () => {
   const t = selectedNodes(); if (!t.length) return;
   showTodoPicker(null, document.getElementById('nsb-state'), t);
@@ -21481,8 +21508,8 @@ const GUIDE = [
   { id:'edit-capn',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+1–0`],         essLabel:'Capture to inbox 1–10 (empty slot adopts the current point)' },
   { id:'edit-setinbox',essential:true, essSection:'Edit', keys:[`${MOD}+Alt+1–0`],       essLabel:'Set current point as inbox 1–10' },
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Toggle task on current line' },
-  { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state' },
-  { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority' },
+  { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state (this point, or the whole selection)' },
+  { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority (this point, or the whole selection)' },
   { id:'edit-dup',     essential:true, essSection:'Edit', keys:[`${MOD}+D`],             essLabel:'Duplicate point' },
   { id:'edit-delpt',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+⌫`],           essLabel:'Delete point' },
 
@@ -22347,6 +22374,12 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     if (e.shiftKey) outdentSelected(); else indentSelected();
   }
+  // LEAN FLOOR: bulk cycle to-do state / priority across the SELECTION, no picker. Same chords as the
+  // single-node cycle (Ctrl/⌘+Shift+S / +P), extended to a selection when not editing — the enumerable
+  // bulk verb reaches the floor here. (Free-value bulk verbs — date, arbitrary prop — keep the
+  // action-bar modal, since a value needs a type target and entering edit clears the selection.)
+  if (ctrl && e.shiftKey && (e.key==='s' || e.key==='S') && selectedIds.size > 0 && activeContentId == null) { e.preventDefault(); bulkCycleTodo('state', 1); return; }
+  if (ctrl && e.shiftKey && (e.key==='p' || e.key==='P') && selectedIds.size > 0 && activeContentId == null) { e.preventDefault(); bulkCycleTodo('priority', 1); return; }
   // Arrow row-nav and Shift+Arrow range selection in non-editing state (UXP-57)
   if ((e.key==='ArrowDown' || e.key==='ArrowUp') && activeContentId == null && !ctrl && !e.altKey) {
     const ae = document.activeElement;
