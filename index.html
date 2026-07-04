@@ -489,7 +489,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .cv-btn:hover{color:var(--fg);background:var(--cbg)}
 .cv-title{font-weight:600;font-size:.9em;min-width:130px;text-align:center}
 .cv-today{margin-left:auto}
-.cv-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.7em;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:0 0 2px;text-align:center}
+.cv-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.7em;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:0 0 2px;text-align:center}/* UXP-181: .07em, matching the .cal-dow/.agc-dow eyebrows (DL §4) */
 .cv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .cv-cell{min-height:58px;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 4px;min-width:0}
 .cv-out{background:color-mix(in srgb,var(--cbg) 55%,var(--bg))}/* UXP-173: an other-month cell de-emphasizes by a recessed background (role), NOT by fading its point-title chips under the contrast floor (DL §3) */
@@ -672,6 +672,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-result.gr-yes{background:color-mix(in srgb,var(--ok) 16%,transparent);border-radius:var(--r-xs);padding:0 4px}/* UXP-140: oracle Yes, a faint positive plate; ink stays --fg */
 .gr-result.gr-no{background:color-mix(in srgb,var(--muted) 16%,transparent);border-radius:var(--r-xs);padding:0 4px}/* UXP-140: oracle No, a muted plate (a No is not an error, so not --warn) */
 .gr-seq-end .gr-result{color:var(--muted);font-weight:400}
+.gr-seq-last .gr-ico{color:var(--acc)}/* UXP-184: a shuffle deck's last card before it recycles — a whisper on the deck icon; the result ink is unchanged */
 .gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .gr-roll:hover .gr-edit{opacity:.6}
 .gr-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
@@ -1731,7 +1732,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code>; quote a spaced value: <code>area:"Home Reno"</code></span></div>
         <div class="sh-row"><kbd>key:&gt;N</kbd><kbd>key:&lt;=N</kbd><span>numeric property compare, like <code>cost:&gt;100</code> or <code>score:&lt;=3.5</code></span></div>
         <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
-        <div class="sh-row"><kbd>priority:A</kbd><span>to-do priority, like <code>priority:a</code> or <code>priority:b</code></span></div>
+        <div class="sh-row"><kbd>priority:A</kbd><kbd>priority:none</kbd><span>to-do priority (<code>priority:a</code>/<code>b</code>); <code>none</code> = unprioritized, <code>any</code> = has one</span></div>
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
         <div class="sh-row"><kbd>/querybase</kbd><span>a live grid of matching points: title, properties, or a per-point formula as columns</span></div>
       </div>
@@ -9013,8 +9014,10 @@ function parseSearchQuery(q) {
     }
     else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });
     // UXP-109: priority:A filters org priorities (a settable-but-unqueryable dimension). A single
-    // letter, case-insensitive, stored uppercase like the [#A] marker. Placed before the generic
-    // prop arm so `priority` is not read as a free-form key:value property lookup.
+    // letter, case-insensitive, stored uppercase like the [#A] marker. UXP-183: also priority:none
+    // (a to-do with a state but NO [#A]) and priority:any / has:priority (a to-do WITH one), the
+    // presence/absence axis mirroring is:scheduled/is:unscheduled. Placed before the generic prop arm.
+    else if ((t = tok.match(/^priority:(none|any)$/i))) terms.push({ neg, kind: 'priority', value: t[1].toLowerCase() });
     else if ((t = tok.match(/^priority:([A-Za-z])$/i))) terms.push({ neg, kind: 'priority', value: t[1].toUpperCase() });
     // QX-3: var:NAME finds the point that DECLARES variable NAME (not reference pills).
     // Before the generic prop arm (like priority:) so `var` is not a free-form key:value.
@@ -9129,7 +9132,13 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     // set from the same seqs termMatchesNode was handed, so search and the live doc agree.
     const states = new Set();
     for (const sq of seqs) for (const st of sq.states) states.add(st);
-    return (parseTodo(node.text || '', states).priority || '') === term.value;
+    const td = parseTodo(node.text || '', states);
+    const isTodo = !!td.keyword || isTaskFirst(node.text || '');   // a recognized state or a task line
+    // UXP-183: none = a to-do without a priority; any = a to-do WITH one. Both gate on to-do-ness so
+    // a bare non-todo line never matches (priority is a todo dimension).
+    if (term.value === 'none') return isTodo && !td.priority;
+    if (term.value === 'any')  return isTodo && !!td.priority;
+    return (td.priority || '') === term.value;
   }
   if (term.kind === 'has') {
     // QX-1: reserved has: words read the node's own arrays BEFORE the property
@@ -13694,10 +13703,17 @@ function renderSeqGenPill(key, g) {
   // UXP-138: a spent deck no longer invites a click (the click is a dead event, guarded in
   // rerollGrammar). UXP-150: its title/aria point at the reset door (the .gr-edit pencil), so the
   // terminal state teaches recovery the way the delete/cut toasts teach undo.
+  // UXP-184: a shuffle deck whose bag emptied after this draw will RESHUFFLE on the next click — a
+  // glanceable "last card" whisper (.gr-seq-last), since the pill otherwise shows only the last card
+  // with no cards-remaining cue. Guard the lazy bag: undefined = a pristine deck (never drawn), so
+  // only a real Array of length 0 after a non-empty draw is the recycle boundary.
+  const willRecycle = g.mode === 'shuffle' && Array.isArray(g.bag) && g.bag.length === 0 && g.result !== '';
   const verb = ended ? '' : (g.mode === 'shuffle' ? 'draw the next' : 'advance');
-  const cta = ended ? 'Spent. Edit to reset' : ('Click to ' + verb);
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}). ${cta}"`
-    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}. ${cta}">`
+  const cta = ended ? 'Spent. Edit to reset'
+    : willRecycle ? 'Last card. Click to reshuffle and draw'
+    : ('Click to ' + verb);
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}). ${cta}"`
+    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -20948,7 +20964,7 @@ const GUIDE = [
       { syn:'key:>N / key:<=N',       desc:'numeric property compare (cost:>100, score:<=3.5)' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
       { syn:'var:name',               desc:'the point that declares a variable (var:strength)' },
-      { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b)' },
+      { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b); priority:none = unprioritized, priority:any = has one' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
       { syn:'due:week / due:month',   desc:'due within the next 7 / 30 days, not overdue (add | due:overdue to include past-due)' },
       { syn:'start:<date',            desc:'started before date (YYYY-MM-DD or today±N)' },
@@ -21370,7 +21386,7 @@ const GUIDE = [
     title:'Saving your work',
     body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step.",
     examples:[
-      { syn:`${MOD}+S`,              desc:'save a copy to your computer' },
+      { syn:`${MOD}+S`,              desc:'save to your file (or download a copy if your browser can’t write to disk)' },
       { syn:`${MOD}+O`,              desc:'open a saved file' },
       { syn:'File → Connect folder', desc:'auto-save into a folder (Chromium only)' },
     ] },

@@ -1536,25 +1536,25 @@ Enter/Space-operable. Everything is a per-element alignment, nothing architectur
 - **Rule:** design-language §3 (the `--acc`/`--acc-fg` pairing).
 - **Resolved:** switched to the non-fill drop cue already used at `.bv-lane.bv-dragover` — `border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--ring)`. The header keeps its `--cbg` background, so the title never sits on an unpaired accent fill. Verified in-browser: bg is `--cbg`, border `--acc`, inset ring.
 
-### UXP-181 ☐ `.cv-dow` day-of-week eyebrow tracks .05em, off the locked .07em (design-language §4) 🟢  [Batch 3]
-- **Problem:** the standalone 7-column "MON TUE WED" eyebrow renders as `.cv-dow`, `.cal-dow span`, and `.agc-dow span`; two track at the §4-locked `.07em`, but `.cv-dow` alone is `.05em`, so the base calendar-view header sits visibly tighter than the identical label elsewhere. (Verification dropped the originally-flagged `.agw-dow` — a compound "MON 3" Gantt column header, not the caps-eyebrow recipe.)
+### UXP-181 ◐ `.cv-dow` day-of-week eyebrow tracks .05em, off the locked .07em (design-language §4) 🟢  [Batch 3] (RESOLVED pending merge)
+- **Problem:** `.cv-dow` tracked `.05em` while its `.cal-dow`/`.agc-dow` eyebrow siblings track the §4-locked `.07em`.
 - **Rule:** design-language §4 (one eyebrow recipe).
-- **Target:** change `.cv-dow` `letter-spacing` `.05em` → `.07em`. Single selector, pure token alignment.
+- **Resolved:** `.cv-dow` `letter-spacing` `.05em` → `.07em`. Verified in-browser (computes to 0.833px = .07em). Single-selector token alignment.
 
-### UXP-182 ☐ The 'saving' concept-guide desc calls ⌘S "save a copy" (P5, copy) 🟢  [Batch 3]
-- **Problem:** the GUIDE `{id:'saving'}` example `desc:'save a copy to your computer'` is wrong for the FSA tier the guide treats as primary — with a bound `fileHandle`, ⌘S re-writes the same file in place (`writeH`→`createWritable`) and flashes "Saved …", not "a copy" (only `dlOpml` is a true copy). The same entry's `body` already states the accurate model, and the P4 flash distinguishes "Saved"/"Downloaded", so low — a P5 coherence gap with the body + flash.
+### UXP-182 ◐ The 'saving' concept-guide desc calls ⌘S "save a copy" (P5, copy) 🟢  [Batch 3] (RESOLVED pending merge)
+- **Problem:** the GUIDE 'saving' `desc:'save a copy to your computer'` was wrong for the FSA tier (⌘S re-writes the same file in place, flashes "Saved", not a copy).
 - **Rule:** P5 (the door copy should match the behavior + the body).
-- **Target:** split the model in the desc: "save to your file (or download a copy if your browser can't write to disk)," matching the body + flashes. No em dash.
+- **Resolved:** the desc now reads "save to your file (or download a copy if your browser can’t write to disk)," matching the body + the Saved/Downloaded flashes.
 
-### UXP-183 ☐ No presence/absence axis for priority (`priority:none` / `has:priority`) (P2/P5-4) 🟢  [Batch 3]
-- **Problem:** `priority:` matches exactly one letter (`/^priority:([A-Za-z])$/i`), so there's no presence/absence axis — but the date + held dimensions are symmetric (`is:scheduled`/`is:unscheduled`, `is:held`). "What actionable work have I NOT prioritized?" has no clean operator; the `-priority:A -priority:B -priority:C` workaround also matches non-todos. Low (a niche axis with a clumsy workaround).
+### UXP-183 ◐ No presence/absence axis for priority (`priority:none` / `priority:any`) (P2/P5-4) 🟢  [Batch 3] (RESOLVED pending merge)
+- **Problem:** `priority:` matched exactly one letter, so there was no presence/absence axis (unlike is:scheduled/is:unscheduled).
 - **Rule:** P2/P5-4 (a queryable dimension should expose both directions).
-- **Target:** add `priority:none` (a to-do with a state but no `[#A]`), optionally `has:priority`/`priority:any`, the one-regex-widen style of the existing `is:`/`has:` adds. Place the arm BEFORE the generic prop arm (like `priority:A`). Ground in `parseTodo` (seq-aware). Add the `#search-hint` + `?`-panel rows (P5-4). No new sigil.
+- **Resolved:** added `priority:none` (a to-do without a `[#A]`) and `priority:any` (a to-do with one) — a parse arm before the generic prop arm, matched in `termMatchesNode` via `parseTodo` (todo-gated, seq-aware, so a non-todo line matches neither). Chose `priority:any` over `has:priority` to stay in the priority family (no `has:` arm, no collision with a user property literally keyed `priority`). Legend + `?`-panel rows added. Pinned. Verified in-browser: `priority:none` matches the unprioritized todo, `priority:any` the prioritized one, the plain note neither.
 
-### UXP-184 ☐ A shuffle deck hides its position — no near-empty / cards-remaining cue (P2, solo) 🟢  [Batch 3]
-- **Problem:** a shuffle deck's value is draw-without-replacement, but the pill shows only the last card — no at-a-glance signal of how many remain or that the next draw recycles. UXP-120's `willReshuffle` flash + `announce()` covers the silent-recycle P4 case, so what remains is the persistent position cue.
+### UXP-184 ◐ A shuffle deck hides its position — no near-empty / cards-remaining cue (P2, solo) 🟢  [Batch 3] (RESOLVED pending merge)
+- **Problem:** a shuffle deck showed only the last card, with no glanceable signal that the next draw recycles.
 - **Rule:** P2 (a stateful pill's position should be glanceable).
-- **Target:** add a small `.gr-seq-last` visual whisper when `g.bag.length === 0` after a draw (next click recycles), mirroring `.gr-seq-end` for a spent `once` deck — decoration only, reusing the persisted `bag`. CAUTION: `g.bag` is lazily initialized (a fresh deck has `bag === undefined`, momentarily empty at each round boundary), so a naive `bag.length` count renders "0 of 6" on a pristine deck — derive as `bag == null ? items.length : bag.length` if a count is wanted. No new syntax.
+- **Resolved:** `renderSeqGenPill` now adds a `.gr-seq-last` whisper (the deck icon tints `--acc`; the result ink is unchanged) + a "Last card. Click to reshuffle and draw" title/aria when a shuffle deck's bag emptied after a draw (`Array.isArray(g.bag) && g.bag.length === 0 && g.result !== ''`). The guard respects the lazy bag — a pristine/never-drawn deck (`bag === undefined`) is NOT flagged (verified). Verified in-browser: near-empty flags, pristine + mid-deck don't.
 
 ### Closing order (Review 5)
 

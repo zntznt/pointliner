@@ -7510,6 +7510,23 @@ test('termMatchesNode — priority:A matches a #TODO [#A] point, not [#B] or a p
   assert.equal(pri('#TODO no priority here', 'A'), false);
 });
 
+test('priority:none / priority:any — the presence axis, todo-gated (UXP-183)', () => {
+  assert.deepEqual(host(c.parseSearchQuery('priority:none'))[0], { neg: false, kind: 'priority', value: 'none' });
+  assert.deepEqual(host(c.parseSearchQuery('priority:any'))[0],  { neg: false, kind: 'priority', value: 'any' });
+  const m = (text, val) => c.termMatchesNode({ kind: 'priority', value: val }, { text }, SEQS);
+  // none = a to-do WITHOUT a priority
+  assert.equal(m('#TODO unprioritized', 'none'), true);
+  assert.equal(m('#TODO [#A] has one', 'none'), false);
+  // any = a to-do WITH a priority
+  assert.equal(m('#TODO [#B] has one', 'any'), true);
+  assert.equal(m('#NEXT no priority', 'any'), false);
+  // both are TODO-gated: a plain non-todo line matches neither (priority is a todo dimension)
+  assert.equal(m('just a plain note', 'none'), false);
+  assert.equal(m('just a plain note', 'any'), false);
+  // a bare task line with no priority counts as none (actionable, unprioritized)
+  assert.equal(m('- [ ] a task', 'none'), true);
+});
+
 test('collectDueDates — carries priority and sorts higher priority first within a day', () => {
   const day = '2099-01-15';
   const root = { children: [
