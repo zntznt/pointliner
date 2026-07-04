@@ -891,10 +891,10 @@ Kept as the cross-reference:
 
 ### Post-audit findings (July 2026)
 
-### UXP-101 ☐ No live `prefers-color-scheme` listener: an OS theme flip leaves accent tokens stale (DL §3) 🟡
-- **Problem:** `applyTheme`/`applyAccentCSS` run at boot and on the in-app theme button, but nothing subscribes to `matchMedia('(prefers-color-scheme:dark)')` changes. With the theme on System, flipping the OS theme live updates the CSS media-query home instantly while the JS-computed accent tokens (`--acc`, `--acc-fg`, `--ring`, `--bullet-h`, `--qbdr`) keep their previous-theme values until a reload or a theme-button touch: the light indigo and white `--acc-fg` ink persist into dark, degrading contrast on every accent surface app-wide (found during the capture designer pass, PR #290; not capture-specific).
+### UXP-101 ◐ No live `prefers-color-scheme` listener: an OS theme flip leaves accent tokens stale (DL §3) 🟡 (RESOLVED pending merge)
+- **Problem:** nothing subscribed to `matchMedia('(prefers-color-scheme:dark)')` changes, so on System an OS theme flip left the JS-computed accent tokens (`--acc`, `--acc-fg`, `--ring`, …) at their previous-theme values until a reload, degrading contrast app-wide.
 - **Rule:** DL §3, the dual-home invariant's runtime spirit ("native controls must always follow the active theme").
-- **Target (trivial):** one subscription beside the boot `applyTheme()` call: `matchMedia('(prefers-color-scheme:dark)').addEventListener('change', () => { if (forcedTheme === null) applyTheme(); })`; `applyTheme` already recomputes `dark` and re-runs `applyAccentCSS`/`buildAccentSwatches`. Verify with the §6 forced-theme discipline plus a live-flip check (emulate colorScheme change without reload).
+- **Resolved:** added one subscription beside the boot `applyTheme()`: `matchMedia('(prefers-color-scheme:dark)').addEventListener('change', () => { if (forcedTheme === null) applyTheme(); })`. On System, an OS flip re-runs `applyTheme` (which recomputes `dark` and re-runs `applyAccentCSS`), so the accent tokens follow live; a forced theme is untouched. Pinned. Verified in-browser via a live-flip (matchMedia intercept): the accent swaps `#4338ca` (light) ↔ `#a5b4fc` (dark) on flip, no reload.
 
 ---
 
