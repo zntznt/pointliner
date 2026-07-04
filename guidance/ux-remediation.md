@@ -1817,6 +1817,25 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   chord). The whole LEAN FLOOR effort (LF-1..LF-3) is now essentially done: authoring verbs, pill unfold
   (seq+query), the lean MODE toggle (LF-2), and the table/base structural ops all keyboard-only; the
   remaining open item is phase 2b (helper-hiding gated on isLean(), which builds on the LF-2 toggle).
+
+### LF-2b ◐ Phase 2b: lean mode is VISUALLY lean (hide the hover-reveal helpers) — LEAN FLOOR COMPLETE (RESOLVED pending merge)
+- **The last piece. Lean mode now hides the visual helpers, not just the / and @ menus.** A single
+  `body.lean-mode` class (toggled by `syncLeanClass()` from `toggleVerbosity` + the autosave restore)
+  drives CSS that suppresses the hover-reveal pill pencils (dice/markov/grammar/math/seq/est/var/query
+  edit buttons) + the static-table "Convert to base" prompt, so pill-dense lines stay calm at rest.
+- **Additive + touch-safe (P3):** the pencils stay in the DOM and keyboard-operable — a `:focus-visible`
+  rule STILL reveals a focused pencil in lean mode, so keyboard/AT users lose nothing. The suppressed
+  rules are all `:hover` (mouse-only by nature); touch has no hover and the `@media(hover:none)` block
+  keeps the pencils visible there (touch has no floor). This is opacity-on-a-hover-overlay, never
+  `display:none` on a control. The flash copy now truthfully says "menus and helpers stay
+  keyboard-operable but hidden."
+- CSS + a one-line class toggle, no pure core. 869 tests (+1 src-pin: the class-sync helper, both call
+  sites, the hover-suppress rule, and the focus-visible-still-reveals P3 guard).
+- **LEAN FLOOR IS NOW COMPLETE (LF-1 through LF-3 + LF-2b).** The floor: keyboard-usable with no
+  dialogs/submenus/subwindows at the lowest verbosity, everything still clickable, the top bar unchanged
+  — authoring verbs, pill unfold, the table/base structural grammar, the lean MODE toggle, AND the
+  visual helper-hiding. The two honest ceilings remain documented (free-value bulk verbs need a modal;
+  DELETE stays the menu). Nothing in the lean-floor backlog is open.
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)

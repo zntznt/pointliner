@@ -8675,6 +8675,16 @@ test('LEAN-FLOOR p2: the verbosity dial + blind-render wiring is present', () =>
   assert.ok(/JSON\.stringify\(\{ root,[^}]*\bverbosity\b/.test(_src), 'verbosity is not persisted in the autosave payload');
 });
 
+test('LEAN FLOOR 2b: lean mode is VISUALLY lean via the body.lean-mode class (helpers hidden at rest)', () => {
+  // the class-sync helper + it's called from both the toggle and the restore path
+  assert.ok(_src.includes("classList.toggle('lean-mode', isLean())"), 'syncLeanClass must toggle body.lean-mode on isLean()');
+  assert.ok(/function toggleVerbosity\(\)\s*\{[^}]*syncLeanClass\(\)/.test(_src), 'toggleVerbosity must call syncLeanClass');
+  assert.ok(_src.includes('verbosity = data.verbosity; syncLeanClass();'), 'the autosave restore must sync the lean class');
+  // the CSS: lean hides the hover-reveal pencils but keyboard focus still reveals them (P3, additive)
+  assert.ok(_src.includes('body.lean-mode .dice-roll:hover .dice-edit'), 'lean-mode must suppress the pencil hover-reveal');
+  assert.ok(_src.includes('body.lean-mode .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean-mode must still reveal a pencil on keyboard focus (P3)');
+});
+
 // ── LEAN FLOOR phase 3: Alt+Arrow moves a base column/row (keyboard, no menu; DOM-bound → src-pinned) ──
 test('LEAN-FLOOR p3: the Alt+Arrow column/row move wiring is present in the cell keydown', () => {
   // Alt+Arrow must move the focused column (left/right) or row (up/down) via the existing mtMoveCol/
