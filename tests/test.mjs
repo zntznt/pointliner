@@ -6950,11 +6950,37 @@ test('LEAN-FLOOR: the /due bare-stub and /note DOM wiring is present (slashApply
 });
 
 test('LEAN-FLOOR: the /prop verb + bare-stub DOM wiring is present (slashApply is DOM-bound)', () => {
-  assert.ok(/SLASH_ARG_VERBS = \/\^\(due\|start\|check\|alias\|template\|prop\|base\|savetemplate\)\$\//.test(_src), 'the arg-verb gate is missing a lean-floor verb');
+  // assert the lean-floor verbs are in the arg-verb gate (membership, not the exact string, so adding
+  // a verb later doesn't churn this pin)
+  const gate = _src.match(/SLASH_ARG_VERBS = \/\^\(([^)]+)\)\$\//);
+  assert.ok(gate, 'SLASH_ARG_VERBS gate not found');
+  for (const v of ['prop', 'base', 'savetemplate', 'refile']) assert.ok(gate[1].split('|').includes(v), `${v} missing from the arg-verb gate`);
   assert.ok(_src.includes("const stub = '{prop : }'"), 'the bare-/prop fill-in stub is missing');
   assert.ok(_src.includes('parsePropSlash(query)'), 'the /prop:key=value one-shot branch is missing');
   // the promotion loop counts a consumed-no-token ('') as promoted, not "keep the brace"
   assert.ok(_src.includes('if (token != null)'), 'the promotion loop must treat an empty-string return as consumed');
+});
+
+test('resolveRefileTarget — exact > partial, top → root, excludes the moved subtree, null on no match', () => {
+  const mk = (id, text, kids = []) => ({ id, text, props: [], children: kids });
+  const root = c.mkRoot();
+  root.children = [
+    mk('inbox', 'Inbox'),
+    mk('proj', 'Project', [mk('task', 'Task')]),
+    mk('moving', 'Moving', [mk('decoy', 'Inbox')]),   // a decoy "Inbox" UNDER the moved point
+  ];
+  assert.equal(c.resolveRefileTarget('Inbox', 'moving', root), 'inbox', 'exact match wins, and the in-subtree decoy is excluded');
+  assert.equal(c.resolveRefileTarget('proj', 'moving', root), 'proj', 'a partial (contains) match resolves');
+  assert.equal(c.resolveRefileTarget('top', 'moving', root), root.id, 'top → the root (lift out)');
+  assert.equal(c.resolveRefileTarget('top level', 'moving', root), root.id);
+  assert.equal(c.resolveRefileTarget('nope', 'moving', root), null, 'no match → null (caller flashes why)');
+  assert.equal(c.resolveRefileTarget('', 'moving', root), null, 'empty query → null');
+});
+
+test('LEAN-FLOOR: the /refile slashApply wiring is present (DOM-bound)', () => {
+  assert.ok(_src.includes('resolveRefileTarget(title, nodeId)'), 'the /refile:title resolve branch is missing');
+  assert.ok(_src.includes("flashHint('No point named "), 'the unmatched-title P4 flash is missing');
+  assert.ok(_src.includes('openRefileDialog(nodeId)'), 'bare /refile must open the tree picker');
 });
 
 test('parseBaseSlash — /base:RxC → clamped {rows, cols}; bare/garbage → null', () => {

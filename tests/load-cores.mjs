@@ -213,7 +213,7 @@ export function loadCores() {
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
-    'pickerTitle','treeRows','selectionRoots',
+    'pickerTitle','treeRows','selectionRoots','resolveRefileTarget',   // LEAN FLOOR: /refile:title resolution
     'dueDateToday','parseDueDate','formatDueDate','collectDueDates','collectActions','priorityRank','oracleSwingBody',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
