@@ -1734,6 +1734,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><kbd>priority:none</kbd><span>to-do priority (<code>priority:a</code>/<code>b</code>); <code>none</code> = unprioritized, <code>any</code> = has one</span></div>
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
+        <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from the points below this one (rolls on your live outline)</span></div>
         <div class="sh-row"><kbd>/querybase</kbd><span>a live grid of matching points: title, properties, or a per-point formula as columns</span></div>
       </div>
     </div>
@@ -2165,6 +2166,20 @@ function queryParts(body) {
   return { expr };
 }
 function queryKey() { return 'qy' + Math.random().toString(36).slice(2, 9); }
+
+// {roll: <search-query>} — the generative sniff twin of queryParts: a reserved `roll:` keyword
+// (like seqParts' mode: / markovParts' markov:) whose tail is a verbatim search string (a query
+// legitimately contains `:` and `|`, so keep the tail whole, like queryParts). Picks one matching
+// point live at render time (pickFromQuery). Not a pill/sidecar — pure inline expansion resolved in
+// resolveBrace, re-rolled each render; wrap in a pick var ({npc := {roll: is:npc}}) for a stable,
+// click-re-rollable value (the existing rollPickSource / rerollPickVar freeze machinery).
+function rollParts(body) {
+  const m = /^roll\s*:(.*)$/is.exec((body || '').trim());
+  if (!m) return null;
+  const expr = m[1].trim();
+  if (!expr) return null;                              // {roll:} with no query → not a roll
+  return { expr };
+}
 
 // Pure P4 advisory for the @sequence dialog (C5). parseSequence tokenizes states on
 // whitespace, so a multi-word phrase like "IN PROGRESS" SILENTLY becomes two states
@@ -9256,6 +9271,34 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
   return { rows, total, truncated: total > rows.length };
 }
 
+// {roll: <search-query>} — pick ONE random point matching the query, returned as its title
+// text (the generative twin of the queryRows link list). Reuses the same pure walk + match, but
+// collects ALL matches (uncapped, so the pick is fair, not biased to the first QUERY_ROW_CAP) and
+// picks one via Math.random (the engine's RNG, seedable in tests). Scope is whatever rootNode it's
+// handed — resolveBrace passes cookieNode (the current point's subtree) so `{roll: is:todo}` is
+// local; a `#tag` in the query still reaches wherever that tag lives within scope. Pure + node-based
+// (no DOM), so Node-testable like queryRows. Returns '' on no match (a visible empty, never a throw).
+function pickFromQuery(expr, rootNode, hostId) {
+  const terms = parseSearchQuery(expr || '');
+  if (!terms.length) return '';
+  const seqs = allSequences(rootNode);
+  const needsCtx = terms.some(t => t.kind === 'is');
+  const vars = needsCtx ? collectVars(rootNode) : undefined;
+  const needsLinks = terms.some(t => (t.kind === 'is' && t.value === 'broken') || (t.kind === 'has' && t.value === 'backlink'));
+  const links = needsLinks ? collectLinks(rootNode) : undefined;
+  const hits = [];
+  (function walk(n) {
+    for (const c of (n.children || [])) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+        hits.push(stripMd(textForDisplay(c)) || '(untitled)');
+      }
+      walk(c);
+    }
+  })(rootNode);
+  if (!hits.length) return '';
+  return hits[Math.floor(Math.random() * hits.length)];
+}
+
 // queryTableRows(expr, cols, rootNode, hostId, cap) — the query-base row engine
 // (QP-2 Phase A; bases-direction §4 above-the-line move, 2026-07-02). Same walk +
 // match as queryRows, but each matched point is PROJECTED into cells, one per
@@ -9916,6 +9959,7 @@ function classifyBraceBody(body, rules, vars) {
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
   if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
   if (queryParts(body)) return 'artifact';                             // {query: is:todo}
+  if (rollParts(body)) return 'artifact';                              // {roll: is:todo} — pick a random matching point
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
@@ -13062,6 +13106,16 @@ function resolveBrace(body, ctx) {
   if ((q === '"' || q === "'") && body.length >= 2 && body[body.length - 1] === q) {
     return expandTemplate(body.slice(1, -1), ctx);
   }
+  // {roll: <search-query>} — pick a random point matching the query from the current point's
+  // subtree (cookieNode; a #tag query reaches wherever that tag lives). The generative reader of
+  // the LIVE outline: it rolls on your actual points, not literal typed text. Keyword-sniffed first
+  // (before condParts) so a query's `:` never mis-parses as a conditional. No match → visible empty
+  // marker (P4). Consistency across repeated references rides a pick var, like {shuffle:} in a rule.
+  const rlp = rollParts(body);
+  if (rlp) {
+    const picked = pickFromQuery(rlp.expr, cookieNode || root, cookieNode ? cookieNode.id : null);
+    return picked || `{roll: ${rlp.expr}?}`;
+  }
   const cp = condParts(body);
   if (cp) {
     const v = evalMath(cp.cond, ctx.vars);
@@ -14127,6 +14181,16 @@ function promoteBraceBody(node, body) {
     const rec = { key: queryKey(), expr: qp.expr };
     (node.query ||= []).push(rec);
     return `[[query:${rec.key}]]`;
+  }
+  // {roll: <query>} → an anonymous grammar wrapping `origin: {roll: …}`, so it rides the grammar
+  // machinery exactly like inline alternation: resolveBrace's roll branch resolves it (picking a
+  // random matching point from the render node's subtree), it freezes like any grammar pill, and
+  // re-rolls on click via rerollGrammar. No new pill/sidecar/reroll fn — the generative reader of
+  // the live outline is just a grammar rule that reads the tree. The `roll:` keyword is sniffed
+  // before alternation (its query carries a top-level `|` for OR-clauses).
+  if (rollParts(body)) {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // text modifier: {beast.cap} / {var.s} → an anonymous grammar wrapped `origin:
   // {ref.mod}`, so unfold/refold/prune/export all reuse the grammar machinery (the
@@ -21223,6 +21287,14 @@ const GUIDE = [
       { syn:'{sword|gem 5}',          desc:'weighted: gem 5x as likely as sword' },
       { syn:'a {2d6} gold purse',     desc:'mix in a dice roll' },
       { syn:'{= 1 + 1} apples',       desc:'mix in a calculation' },
+    ] },
+  { id:'roll-query', cat:'generators',
+    title:'Roll on your own outline',
+    body:"Pick a random point from your live outline instead of a typed list. Keep a list of open plot threads, NPCs, or ideas as ordinary points, then let one get chosen at random: great for solo tabletop play (advance a random thread, a random NPC reacts) or any \"surprise me from what I already wrote\" moment. Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}.",
+    examples:[
+      { syn:'{roll: is:todo}',          desc:'a random open thread from the points below' },
+      { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
+      { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
     ] },
   { id:'gen-rules', cat:'generators',
     title:'Building generators',
