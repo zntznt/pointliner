@@ -8714,3 +8714,21 @@ test('LEAN-FLOOR p3: the Alt+Shift+Arrow column/row INSERT wiring is present (DO
   // the collision fix: the Shift+Arrow cell-selection guard now excludes Alt so Alt+Shift+Arrow reaches insert
   assert.ok(_src.includes("e.shiftKey && !e.altKey && (e.key.startsWith('Arrow')"), 'Shift+Arrow selection must exclude Alt (so Alt+Shift+Arrow is insert, not selection)');
 });
+
+test('stepColW — steps by COL_W_STEP, clamps [MIN,MAX], null at an edge', () => {
+  assert.equal(c.stepColW(160, 1), 184);
+  assert.equal(c.stepColW(160, -1), 136);
+  assert.equal(c.stepColW(900, 1), null, 'at the max → no change');
+  assert.equal(c.stepColW(56, -1), null, 'at the min → no change');
+  assert.equal(c.stepColW(890, 1), 900, 'a near-max step clamps to the max');
+  assert.equal(c.stepColW(60, -1), 56, 'a near-min step clamps to the min');
+  assert.equal(c.stepColW(NaN, 1), null, 'a non-numeric base → null');
+});
+
+test('LEAN-FLOOR p3: the Alt+,/. column-resize step wiring is present (DOM-bound keydown)', () => {
+  assert.ok(_src.includes("(e.key === ',' || e.key === '.' || e.key === '<' || e.key === '>')"), 'the Alt+,/. resize branch is missing');
+  assert.ok(_src.includes('stepColW(base, wider ? 1 : -1)'), 'the resize must step via stepColW');
+  // base = the pinned width, else the measured rendered header width (so the first press feels natural)
+  assert.ok(_src.includes('getBoundingClientRect().width'), 'the resize must measure the rendered width when the column is unpinned');
+  assert.ok(_src.includes("flashHint('Column width: "), 'the resize must flash the new width (P4, no menu)');
+});
