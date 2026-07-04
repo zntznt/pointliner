@@ -47,8 +47,11 @@ effort/risk** (V/E/R = High/Medium/Low):
    (surface "mentioned in N other notes," click to navigate; **no** cross-doc auto-Link write — that
    write-into-an-unopened-file is the risky part). The real drag is **noise** across a vault; the
    min-length/word-boundary floor decides useful-vs-clutter.
-4. **Workspace "broken links" report** — V:L-M · E:L · R:L. The cross-doc index already computes broken
-   targets; a small maintenance view surfaces cross-file links whose target note/point is gone.
+4. ✓ **Workspace "broken links" report** — V:L-M · E:L · R:L. **Delivered 2026-07-03.** File menu →
+   Broken links opens an io-card report of every dangling link, same-doc AND cross-doc (the first
+   consumer of the built-but-unread `workspaceIndex.outgoing`), each row jumping to the source point.
+   Pure core `collectBrokenLinks(links, titleOf, wsIndex, ownDocId)` (Node-tested); concept-guide entry
+   `broken-links` + `guide/` docs. E:L held: mostly wiring the already-computed broken data into a panel.
 5. **Tag inheritance + `OR`** — V:L-M · E:L-M · R:L. The only remaining "tag power" (tags-as-index
    already works: clicking `#tag` runs a workspace-wide search). Minor; do only when a real query
    demands `OR`.

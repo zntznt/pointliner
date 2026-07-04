@@ -1603,6 +1603,51 @@ import assert2 from 'node:assert/strict';
     assert2.deepEqual(host2(idx.broken), ['deadbeef']);
   });
 
+  // ── broken-links report (backlog #4): same-doc + cross-doc enumeration ──
+  ltest('collectBrokenLinks — same-doc: one entry per broken occurrence, with the source title', () => {
+    const a = mk2('Source A'); a.text = `Source A see [[#ghost|gone]] and [[#alive|ok]]`;
+    const b = mk2('alive');
+    const alive = b.id;
+    a.text = `Source A see [[#ghost|gone]] and [[#${alive}|ok]]`;
+    const root = c2.mkRoot(); root.children.push(a, b);
+    const links = c2.collectLinks(root);
+    const titleOf = (id) => (id === a.id ? 'Source A' : id === alive ? 'alive' : '');
+    const rep = c2.collectBrokenLinks(links, titleOf, null, root.docId);
+    assert2.equal(rep.length, 1, 'only the ghost link is broken');
+    assert2.equal(rep[0].scope, 'same');
+    assert2.equal(rep[0].target, 'ghost');
+    assert2.equal(rep[0].srcTitle, 'Source A');
+    assert2.equal(rep[0].label, 'gone');
+  });
+
+  ltest('collectBrokenLinks — cross-doc: a link to a missing dst node/doc is flagged, present is not', () => {
+    // no same-doc links; drive purely off a synthetic workspaceIndex
+    const links = { outgoing: {}, broken: [] };
+    const wsIndex = {
+      titles: new Map([['docB', new Map([['present', 'Present Node']])]]),   // docB has 'present', not 'missing'; docC absent
+      nameByDocId: new Map([['docB', 'notes-b.opml']]),
+      outgoing: [
+        { srcDocId: 'docA', srcNodeId: 's1', dstDocId: 'docB', dstNodeId: 'missing', label: 'dangling' },  // node gone → broken
+        { srcDocId: 'docA', srcNodeId: 's2', dstDocId: 'docB', dstNodeId: 'present', label: 'fine' },       // present → NOT broken
+        { srcDocId: 'docA', srcNodeId: 's3', dstDocId: 'docC', dstNodeId: 'x',       label: 'nodoc' },      // whole doc gone → broken
+        { srcDocId: 'other', srcNodeId: 'z', dstDocId: 'docB', dstNodeId: 'missing', label: 'notme' },      // not our doc → skipped
+      ],
+    };
+    const titleOf = (id) => ({ s1: 'One', s2: 'Two', s3: 'Three' }[id] || '');
+    const rep = c2.collectBrokenLinks(links, titleOf, wsIndex, 'docA');
+    const targets = host2(rep.map(r => r.target)).sort();   // host2: cores run in a vm realm, so deepEqual on the raw array trips on the cross-realm prototype
+    assert2.deepEqual(targets, ['missing', 'x'], 'the two broken cross-doc targets, not the present one nor the other doc');
+    const missing = rep.find(r => r.target === 'missing');
+    assert2.equal(missing.scope, 'cross');
+    assert2.equal(missing.dstDocName, 'notes-b.opml');
+    assert2.equal(rep.find(r => r.target === 'x').dstDocName, null, 'a missing doc has no name');
+  });
+
+  ltest('collectBrokenLinks — no links, no workspace: empty report, no throw', () => {
+    assert2.equal(c2.collectBrokenLinks({ outgoing: {}, broken: [] }, () => '', null, 'd').length, 0);
+    assert2.equal(c2.collectBrokenLinks(null, () => '', null, 'd').length, 0);
+  });
+
   ltest('collectLinks — duplicate links: outgoing keeps both, backlink dedupes the source', () => {
     const a = mk2(''), b = mk2('B');
     a.text = `[[#${b.id}|one]] and again [[#${b.id}|two]]`;

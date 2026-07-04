@@ -161,7 +161,7 @@ export function loadCores() {
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts',
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'fieldParts',
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
-    'collectVars', 'collectRules', 'collectLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
+    'collectVars', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'collectUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'parseLinkToken', 'buildWorkspaceIndex',   // CF-1: cross-doc link index pure cores
     'linkText',                                 // render link tokens to legible plain text (breadcrumb/backlinks)
