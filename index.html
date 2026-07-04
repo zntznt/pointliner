@@ -4778,14 +4778,16 @@ function renderStaticTable(block, l0, l1) {
   const ranged = Number.isInteger(l0) && Number.isInteger(l1);
   let h = `<div class="md-table-static"${ranged ? ` data-l0="${l0}" data-l1="${l1}"` : ''}>`;
   if (ranged) h += '<button class="mt-promote" contenteditable="false" title="Convert to base" aria-label="Convert to base"><i class="fa-solid fa-table-cells"></i> base</button>';
+  // WAVE-2 HARD-9: a computed #ERR cell renders as plain text, not a live #ERR hashtag (see mtInline).
+  const cellMd = (raw) => /^#ERR\b/.test(String(raw || '').trim()) ? escHtml(raw) : mdInline(raw || '');
   h += '<div class="mt-scroll"><table class="md-table"><tr class="mt-headrow">';
   for (let c = 0; c < nc; c++)
-    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${mdInline((rows[0] && rows[0][c]) || '')}</th>`;
+    h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${cCls('0,' + c)}">${cellMd(rows[0] && rows[0][c])}</th>`;
   h += '</tr>';
   for (let r = 1; r < rows.length; r++) {
     h += '<tr>';
     for (let c = 0; c < nc; c++)
-      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${mdInline((rows[r] && rows[r][c]) || '')}</td>`;
+      h += `<td class="mt-cell${aCls(model.aligns[c])}${cCls(r + ',' + c)}">${cellMd(rows[r] && rows[r][c])}</td>`;
     h += '</tr>';
   }
   return h + '</table></div></div>';
@@ -4867,10 +4869,17 @@ function ex(s){
 function fromOpml(xml) {
   const doc = new DOMParser().parseFromString(xml,'application/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid OPML');
+  // WAVE-2 HARD-8 (desync): dedup _id at ingestion. A hand-edited / concatenated / buggy-exporter
+  // OPML can carry two outlines with the same _id; buildIndex's nodeMap.set is last-wins, so one id
+  // resolves to a single node while render() paints two rows — a ghost row you can see but whose
+  // clicks/edits/drops resolve to the OTHER node, then autosave persists the corrupted tree. Reassign
+  // a duplicate to a fresh uid() so the index stays 1:1. No-op for a clean doc.
+  const seenIds = new Set();
+  const freshId = (raw) => { let id = raw || uid(); if (seenIds.has(id)) id = uid(); seenIds.add(id); return id; };
   function po(el) {
     const raw = el.getAttribute('_type') || 'ul';
     const n = {
-      id: el.getAttribute('_id') || uid(),
+      id: freshId(el.getAttribute('_id')),
       text: el.getAttribute('text') || '',
       note: el.getAttribute('_note') || '',
       type: raw === 'text' ? 'ul' : raw,
@@ -5712,6 +5721,11 @@ function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${i
 // [[type:key]] tokens inside cells resolve to live pills (mirrors renderContentHTML;
 // safe only because mdInline is synchronous).
 function mtInline(node, raw) {
+  // WAVE-2 HARD-9 (degradation): a computed cell showing computeTable's #ERR marker must NOT run
+  // through mdInline's hashtag pass, or `#ERR (loops on itself)` becomes a live #ERR hashtag pill
+  // that filters the whole doc on click (and mtRecompute would bake it into node.text → the tag
+  // picker). Escape-only so the marker reads as plain text. Keeps the #ERR return contract intact.
+  if (/^#ERR\b/.test(String(raw || '').trim())) return escHtml(raw);
   diceRenderList    = node.dice    || null;
   markovRenderList  = node.markov  || null;
   mathRenderList    = node.math    || null;
@@ -11129,6 +11143,18 @@ function applyInlineFormat(fmt) {
   if (!selected) return;
   const anchorEl = range.commonAncestorContainer.nodeType === 1
     ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+  // WAVE-2 HARD-7 (data-loss): a selection that CROSSES an atomic pill (a contenteditable=false
+  // [data-token] span — named grammar/markov/seq/query/declaring-var) would be deleted whole by
+  // execCommand/applyInlineReplace, dropping the token from node.text; the orphaned sidecar is then
+  // pruned on blur, cascade-breaking every OTHER point that referenced that doc-wide artifact.
+  // Silent (the user meant to format text). No-op with a hint instead. Inline-able pills (dice/math/
+  // anon grammar) unfold to editable {…} and are safe. The host is the content or the base cell.
+  const host = anchorEl?.closest?.('.node-content, .mt-cell');
+  if (host) {
+    for (const tok of host.querySelectorAll('[data-token]')) {
+      if (range.intersectsNode(tok)) { flashHint('Select text on one side of a pill to format it'); hideSelTb(); return; }
+    }
+  }
   const cell = anchorEl?.closest?.('.mt-cell');
   const cnt = anchorEl?.closest?.('.node-content');
   // Link needs a URL — collect it in the dialog rather than wrapping inline.
@@ -18079,13 +18105,19 @@ function reconcileAction({ diskModified, knownModified, dirty }) {
 
 // Pure: the temp filename for an atomic write. We write here, then move() over the
 // real name, so a sync tool or a crash can never observe a half-written target.
-// A fixed `.tmp.opml` suffix (not the live `.opml`) so a stray temp is never listed
-// as a document by workspaceDocList's `.opml$` filter would — it ends `.tmp.opml`,
-// which still matches `.opml$`; so the suffix is `.<base>.pltmp` to stay OUT of the
-// doc list. ponytail: one fixed temp per file (serialized by _wsWriting), not a
-// per-write unique name — the coalescing lock already prevents concurrent temps.
+// A `.pltmp` suffix (not the live `.opml`) so a stray temp is never listed as a document by
+// workspaceDocList's `.opml$` filter. WAVE-2 HARD-10: a per-write unique suffix — the `_wsWriting`
+// coalescing lock does NOT cover switchWorkspaceDoc's pre-swap flush (it bypasses the lock and writes
+// directly), so a switch racing the in-flight autosave CAN produce two concurrent writers on one
+// file; a unique temp keeps them off each other's temp so neither move() throws a false save error.
+// WAVE-2 HARD-10 (degradation): make the temp name per-write-unique so a switchWorkspaceDoc pre-swap
+// flush that races the in-flight autosave (both writing the same doc) cannot collide on one fixed
+// `.NAME.pltmp` — the collision made one move() throw, popping a spurious "could not save" prompt and
+// a false degradeWorkspace(). A monotonic suffix keeps each writer on its own temp; move() is still
+// atomic over the real target. No data was ever at risk; this removes the false alarm.
+let _wsTmpSeq = 0;
 function tmpWriteName(name) {
-  return '.' + String(name).replace(/\.opml$/i, '') + '.pltmp';
+  return '.' + String(name).replace(/\.opml$/i, '') + '.' + (_wsTmpSeq++) + '.pltmp';
 }
 
 // ── IndexedDB handle store ────────────────────────────────────────────────────

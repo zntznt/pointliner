@@ -7224,9 +7224,14 @@ test('flashError is defined (error toasts no longer throw)', () => {
 });
 
 // ── sync-safety: tmpWriteName (atomic-write temp filename) ────────────────────
-test('tmpWriteName — produces a hidden .pltmp sibling, not a .opml', () => {
-  assert.equal(c.tmpWriteName('notes.opml'), '.notes.pltmp');
-  assert.equal(c.tmpWriteName('Daily Log.opml'), '.Daily Log.pltmp');
+test('tmpWriteName — produces a hidden per-write .pltmp sibling, not a .opml (HARD-10)', () => {
+  // WAVE-2 HARD-10: the temp name is now per-write-unique (a monotonic suffix) so two racing writers
+  // on one file can't collide on a fixed temp. Shape: starts '.', ends '.pltmp', carries the base.
+  const t1 = c.tmpWriteName('notes.opml');
+  assert.match(t1, /^\.notes\.\d+\.pltmp$/, `hidden .pltmp sibling of the base, got "${t1}"`);
+  assert.ok(!/\.opml$/i.test(t1), 'never ends in .opml (would be doc-listed)');
+  assert.notEqual(c.tmpWriteName('notes.opml'), t1, 'each call is unique (no fixed-temp collision)');
+  assert.match(c.tmpWriteName('Daily Log.opml'), /^\.Daily Log\.\d+\.pltmp$/);
 });
 // ── file-name display / normalize ────────────────────────────────────────────
 test('displayName — strips .opml and maps the unsaved sentinel', () => {
@@ -8351,4 +8356,33 @@ test('HARD-6: parseDueDate bounds the today±N relative arm like the ISO arm (de
   assert.equal(c.parseDueDate('today+100000000000'), null, 'an overflow relative date → null');
   assert.equal(c.parseDueDate('today-100000000000'), null, 'and the negative direction');
   assert.ok(Number.isFinite(c.parseDueDate('today+5')), 'a normal relative date still resolves');
+});
+
+// ── adversarial-hardening WAVE 2: DOM-bound guards (src-pinned; fromOpml/mtInline are DOM-only) ──
+test('HARD-7: applyInlineFormat guards against a selection crossing an atomic pill (data-loss)', () => {
+  // formatting across a [data-token] pill would delete it + orphan its doc-wide sidecar. The guard
+  // no-ops with a hint. src-pinned because applyInlineFormat is DOM-bound (not harvestable).
+  assert.ok(_src.includes('intersectsNode(tok)'), 'the pill-intersection guard is missing');
+  assert.ok(_src.includes('Select text on one side of a pill to format it'), 'the guard hint is missing');
+});
+
+test('HARD-8: fromOpml dedups a duplicate _id at ingestion (desync)', () => {
+  // a duplicate _id collapses buildIndex's Map → a ghost row whose edits/drops misdirect. The seenIds
+  // dedup reassigns a fresh uid(). src-pinned because fromOpml is DOM-bound (DOMParser).
+  assert.ok(_src.includes('const seenIds = new Set()'), 'the _id dedup set is missing');
+  assert.ok(_src.includes('id: freshId(el.getAttribute'), 'the id assignment does not route through freshId');
+});
+
+test('HARD-9: the #ERR computed-cell marker is escaped, not rendered as a hashtag (degradation)', () => {
+  // #ERR through mdInline becomes a live #ERR hashtag filter. Both cell paths short-circuit it.
+  const guard = /^#ERR\b/;   // the exact predicate the guard uses
+  assert.ok(guard.test('#ERR (loops on itself)'), 'the marker matches the guard');
+  assert.ok(!guard.test('#todo item'), 'a real hashtag does not match');
+  assert.ok(_src.includes("/^#ERR\\b/.test(String(raw || '').trim()) ? escHtml(raw)"), 'the mtInline #ERR guard is missing');
+  assert.ok(_src.includes('const cellMd = (raw)'), 'the static-table #ERR guard is missing');
+});
+
+test('HARD-10: the atomic-write temp name is per-write-unique (degradation)', () => {
+  assert.ok(_src.includes('let _wsTmpSeq = 0'), 'the per-write temp counter is missing');
+  assert.notEqual(c.tmpWriteName('x.opml'), c.tmpWriteName('x.opml'), 'two calls must differ');
 });
