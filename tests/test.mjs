@@ -6919,11 +6919,25 @@ test('LEAN-FLOOR: {prop …} promotes to node.props via promoteBraceBody, leavin
 });
 
 test('LEAN-FLOOR: the /prop verb + bare-stub DOM wiring is present (slashApply is DOM-bound)', () => {
-  assert.ok(_src.includes("SLASH_ARG_VERBS = /^(due|start|check|alias|template|prop)$/"), '/prop not in the arg-verb gate');
+  assert.ok(/SLASH_ARG_VERBS = \/\^\(due\|start\|check\|alias\|template\|prop\|base\|savetemplate\)\$\//.test(_src), 'the arg-verb gate is missing a lean-floor verb');
   assert.ok(_src.includes("const stub = '{prop : }'"), 'the bare-/prop fill-in stub is missing');
   assert.ok(_src.includes('parsePropSlash(query)'), 'the /prop:key=value one-shot branch is missing');
   // the promotion loop counts a consumed-no-token ('') as promoted, not "keep the brace"
   assert.ok(_src.includes('if (token != null)'), 'the promotion loop must treat an empty-string return as consumed');
+});
+
+test('parseBaseSlash — /base:RxC → clamped {rows, cols}; bare/garbage → null', () => {
+  assert.deepEqual(host(c.parseBaseSlash('base:3x4')), { rows: 3, cols: 4 });
+  assert.deepEqual(host(c.parseBaseSlash('base:2×5')), { rows: 2, cols: 5 });     // unicode × too
+  assert.deepEqual(host(c.parseBaseSlash('base:99x99')), { rows: 50, cols: 20 }); // clamped to a sane grid
+  assert.equal(c.parseBaseSlash('base'), null);                                    // bare → default 3x3 (slashApply)
+  assert.equal(c.parseBaseSlash('base:abc'), null);                                // not RxC → null
+});
+
+test('LEAN-FLOOR: /base and /savetemplate slashApply wiring is present (DOM-bound)', () => {
+  assert.ok(_src.includes('const bs = parseBaseSlash(query)'), 'the /base:RxC branch is missing');
+  assert.ok(_src.includes('createBaseAt(nodeId, bs ? bs.rows : 3, bs ? bs.cols : 3)'), 'bare /base must default to 3x3, no picker');
+  assert.ok(_src.includes('upsertTemplate(root.templates, name, deepCloneNodeNewIds(cur))'), 'the /savetemplate:name inline save is missing');
 });
 
 // ── parseSlashQuery: the per-verb ":value" gate for the /-command bridge ─────────

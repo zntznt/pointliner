@@ -1641,6 +1641,19 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   the follow-on stub verbs (bare `/due`, `/refile`, `/base`, `/savetemplate`, `/note`, the bulk verbs)
   each register onto — a few lines each.
 
+### LF-1b ◐ Phase 1b: the first follow-on stub verbs — /base, /savetemplate (RESOLVED pending merge)
+- **`/base`:** bare `/base` now creates a 3x3 grid directly (was: always the size picker); `/base:3x4`
+  creates that size inline (`parseBaseSlash`, clamped 1-50 x 1-20, unicode × accepted). The size picker
+  stays the higher-verbosity door via `@table`. Reuses `createBaseAt`.
+- **`/savetemplate`:** a NEW verb — `/savetemplate:name` snapshots this point's subtree as a named
+  template inline (deep-clone + `upsertTemplate`, the openSaveTemplateDialog write); bare
+  `/savetemplate` opens the name dialog. This closes the "save a template is dialog-only" gap
+  (stamping was already floor-ready via `/template:name`).
+- Both in `SLASH_ARG_VERBS`; concept-guide `templates` entry updated + `savetemplate` covered. 850
+  tests (+3 pins). No promotion machinery needed here (both are direct writes), unlike `/prop`. Still
+  open in the class: bare `/due` + `/note` (need their own date/note promote stub), `/refile` (needs
+  title→id resolution), the bulk multi-select verbs — each a focused follow-up.
+
 ---
 
 ## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
