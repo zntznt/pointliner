@@ -175,7 +175,7 @@ export function loadCores() {
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
     'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
-    'reconcileAction', 'tmpWriteName',          // sync-safety: folder-backed write reconciliation
+    'reconcileAction', 'tmpWriteName', 'treeDepthExceeds',   // sync-safety + WAVE-3 ingestion depth clamp
     'displayName', 'toFileName',                // file-name display/normalize
 
     'embedOpmlIntoHtml', 'extractEmbeddedOpml',

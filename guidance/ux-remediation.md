@@ -1613,6 +1613,14 @@ batch closes it.
 
 ---
 
+## Adversarial robustness pass WAVE 3 (2026-07-03, TENTH — the ingestion-depth target waves 1+2 deferred)
+
+A focused single-target pass on the one break both prior waves explicitly LEFT for a third wave: the deep-tree recursion at the ingestion boundary. Confirmed real (a 12000-deep tree overflows toOpml/collectVars/collectRules/render at ~1500 levels), then fixed at the gate. Not a full fleet — the target was already named; this confirmed + closed it.
+
+- **HARD-11 ◐ a pathologically deep tree overflows the recursive walkers on load/serialize (CRASH).** A hostile/corrupt OPML or self-contained HTML nested past ~1500 levels loads into memory via `fromOpml` (its `po()` and the downstream `toOpml`/`collectVars`/`collectRules`/`render` are recursive), then throws `RangeError: Maximum call stack size exceeded` on the first serialize or render — and re-crashes on every reopen. A real document is a handful of levels deep. FIX: (1) `po(el, depth)` throws past `MAX_OPML_DEPTH` (1000, well under the overflow point, well over any real doc), so the deep tree never enters memory — callers already catch `fromOpml` throws and `flashError('Could not open: …')`; (2) the defensive twin `treeDepthExceeds` (an ITERATIVE stack-based check, so it can't itself overflow) guards `applyAutosaveData`, which sets `root` from a raw JSON blob and bypasses `fromOpml` — a tampered-localStorage deep tree is rejected (falls back to Examples) instead of bricking boot. Verified: a 12000-deep tree is rejected, a 50-deep passes, the checker survives the depth it tests.
+
+---
+
 ## Adversarial robustness pass WAVE 2 (2026-07-03, NINTH — fresh surfaces the first wave didn't own)
 
 A second red-team fleet aimed at surfaces wave 1 never touched (interactive DOM/structural ops, cross-doc workspace, markdown/table compute, ingestion, caret/undo), with the wave-1 fixes + held surfaces declared OUT of scope. **8 raw → 4 reproduced, 3 held, 1 refuted.** The interactive structural surface held cleanly (the `isDescOf` drop guard, `render()`'s self-commit, unique-id gen, the `\x00` placeholder sentinel), but it found a worse bug than any in wave 1: a NORMAL gesture that silently destroys data. All 4 fixed in one PR (pure guards).
