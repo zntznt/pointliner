@@ -116,6 +116,9 @@ Turn the outline into a lightweight planner.
   counted below, never lost. ([tables](writing-and-formatting.md#tables))
 - **Collapse and cap a base.** In the outline, collapse a base to one line or cap how many rows it
   shows (5/10/20/all); a "zoom in for more" line reveals the rest. ([tables](writing-and-formatting.md#tables))
+- **A base from the keyboard.** Move a column or row with `Alt`+arrow, insert with `Alt+Shift`+arrow,
+  cycle a column role with `Alt+R`, resize with `Alt+,` / `Alt+.`, and move a board card between lanes
+  with `Alt+Left` / `Alt+Right`. ([tables](writing-and-formatting.md#tables))
 
 ## Linking and connecting notes
 
@@ -146,6 +149,10 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.
+- **Verbosity dial.** `Ctrl/Cmd+Shift+.` cycles Guided (all hints shown), Standard (beginner hints and
+  tooltips off, menus and pencils kept), and Lean (the keyboard canvas: menus and pencils hidden, still
+  fully keyboard-operable). Turn the explaining down as you get comfortable.
+  ([the dial](getting-around.md#quiet-the-guidance-the-verbosity-dial))
 
 ---
 

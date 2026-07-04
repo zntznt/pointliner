@@ -55,6 +55,8 @@ appears at the bottom showing how many points are selected, with a button
 for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into, and Delete.
 From the keyboard, `Ctrl/Cmd+C` copies, `Ctrl/Cmd+X` cuts, and `Ctrl/Cmd+V` pastes the points;
 `Tab` / `Shift+Tab` indent or outdent the selection; `Delete` removes it and `Esc` clears it.
+`Ctrl/Cmd+Shift+S` cycles the to-do state and `Ctrl/Cmd+Shift+P` cycles the priority across every
+selected point at once (the same two chords cycle a single point while you are editing it).
 
 ## Refile a point
 
@@ -65,6 +67,10 @@ Open the point's menu and choose **Refile** to browse the whole outline as a sea
 filter to a destination, walk it with the arrow keys, then press `Enter` to move the point there as
 the chosen parent's last child. Pick **Top level** to lift it out of all nesting. It is the
 searchable alternative to dragging or indenting one step at a time.
+
+Keyboard-first: type `/refile` for the searchable tree, or name the destination directly with
+`/refile:Archive` to move the point under the point called "Archive" without opening anything.
+`/refile:top` lifts it out of all nesting.
 
 ---
 
@@ -127,8 +133,8 @@ property like `due` or `cost`, or a formula computed for each row (`= daysuntil(
 `= sum(cost)` to roll up a point's children). The grid updates itself as the document changes;
 nothing is stored, it is always a view of the live outline.
 
-Type `/` and choose **Query base**, then give it a search and one column per line (`title`, a
-property key, or `= formula`; put `Name:` in front to label a column). The strip above the grid
+Type `/` and choose **Query base** (or `/querybase`), then give it a search and one column per line
+(`title`, a property key, or `= formula`; put `Name:` in front to label a column). The strip above the grid
 shows the search and the live match count; click it (or press `Enter` on it) to change the query or
 columns. The grid itself is read-only: edit the matching points and the rows follow. Click any
 title to jump to that point.
@@ -153,6 +159,28 @@ As you type `#`, a menu lists tags you have already used with a **count** of how
 each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press `Enter`, or keep
 typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every
 point that shares it.
+
+Working inside an interactive base entirely from the keyboard (moving, inserting, and resizing columns
+and rows) is covered on the [writing and formatting](writing-and-formatting.md#tables) page with the
+rest of the table controls.
+
+## Quiet the guidance: the verbosity dial
+
+Pointliner starts chatty, with hints, tooltips, and menus that teach you the syntax. Once you know the
+commands, you can turn the explaining down and keep just the app. Press `Ctrl/Cmd+Shift+.` (or open the
+File menu and use the verbosity row) to cycle through three levels:
+
+- **Guided** (the default): everything is shown, empty-point hints, the search cheatsheet, pill tooltips,
+  and the full `/` and `@` menus.
+- **Standard:** the beginner teaching text is off (no empty-point hints, no search cheatsheet, no pill
+  tooltips), but the menus still open and the edit pencils still appear on hover. This is the "I know the
+  commands, stop explaining, keep the conveniences" level.
+- **Lean:** the keyboard canvas. The `/` and `@` menus render nothing (you type the command blind, and
+  the keys still work), and the edit pencils are hidden. Everything is still clickable and fully
+  keyboard-operable, and the top toolbar never changes.
+
+Nothing is ever removed, only quieted, so you can move down as you get comfortable and back up any time.
+Your choice is remembered with the document.
 
 ---
 
