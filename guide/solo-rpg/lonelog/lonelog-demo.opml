@@ -31,7 +31,7 @@
         <outline text="Click a {2d6} pill to re-roll it. Notice the prose lines never change, only the rolls do, and only when you click." _id="llg00051"/>
         <outline text="Click the bullet of a Scene line to fold the whole scene closed. A long campaign becomes a stack of scene headers." _id="llg00052"/>
         <outline text="Click a #thread/torn-letter tag to pull up every beat that touches that thread across the whole journal." _id="llg00053"/>
-        <outline text="Full guide: solorpg-guides/lonelog/lonelog.md in the Pointliner repo." _id="llg00054"/>
+        <outline text="See lonelog.md (next to this file) for the full walkthrough." _id="llg00054"/>
       </outline>
     </outline>
   </body>

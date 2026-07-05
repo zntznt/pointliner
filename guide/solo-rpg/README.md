@@ -29,6 +29,14 @@ The demo files use plain `{…}` source text, so when you open one the dice roll
 
 ## Examples
 
+**New here? Start with [Lonelog](lonelog/lonelog.md)** for the simplest solo loop (roll, ask, write),
+then [Oracle play](oracle-play/oracle-play.md) for the engine underneath it. Those two are the
+on-ramp. After that the cases stand alone, so read whichever fits what you are running:
+
+- **The loop (start here):** Lonelog, Oracle play.
+- **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log.
+- **Computing (let the numbers run themselves):** Living character sheet, Campaign clocks and threads.
+
 | Case | What it shows | Guide | Demo |
 |---|---|---|---|
 | **Lonelog notation** | A compact, system-agnostic session-log style, adapted to Pointliner's outline + live dice | [lonelog/lonelog.md](lonelog/lonelog.md) | [lonelog/lonelog-demo.opml](lonelog/lonelog-demo.opml) |
