@@ -37,7 +37,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 - **Tools (beat the blank page):** Generators, Session prep.
 - **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log.
 - **Computing (let the numbers run themselves):** Living character sheet, Campaign clocks and threads.
-- **A full system:** Ironsworn and Cairn (their rules wired into pills, adapted from their open licences).
+- **A full system:** Ironsworn, Cairn, and Maze Rats (their rules wired into pills, adapted from their open licences).
 
 | Case | What it shows | Guide | Demo |
 |---|---|---|---|
@@ -51,6 +51,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 | **Campaign clocks and threads** | Progress-cookie clocks that fill as you check segments, threads that tick on a date and surface in the agenda, and a live query pulling every open thread | [campaign-clocks/campaign-clocks.md](campaign-clocks/campaign-clocks.md) | [campaign-clocks/campaign-clocks-demo.opml](campaign-clocks/campaign-clocks-demo.opml) |
 | **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks, and oracles, with the SRD's moves and tables dropped into the pill structure (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
 | **Cairn in Pointliner** | A rules-light OSR system in pills: 3d6 attributes as variables, d20 roll-under saves, a slot inventory with an overload check, HP-then-Strength damage, and the game's tables (CC BY-SA 4.0, Yochai Gal) | [cairn/cairn.md](cairn/cairn.md) | [cairn/cairn-demo.opml](cairn/cairn-demo.opml) |
+| **Maze Rats in Pointliner** | A table-driven OSR generator in pills: 2d6 saves off modifier variables, and the game's many random tables as one-click picks, including its two-list improvised-spell trick (CC BY 4.0, Ben Milton) | [maze-rats/maze-rats.md](maze-rats/maze-rats.md) | [maze-rats/maze-rats-demo.opml](maze-rats/maze-rats-demo.opml) |
 
 Each is one nested branch you can open, poke at, and rebuild into your own.
 
@@ -87,6 +88,8 @@ licence's terms and with its attribution:
   (<https://creativecommons.org/licenses/by-sa/4.0/>). Because Cairn is **ShareAlike**, the
   adapted Cairn material in that example is itself licensed CC BY-SA 4.0 (this is separate from
   Pointliner's MIT app licence, which covers the code, not the game content).
+- The **Maze Rats** example adapts **Maze Rats** by **Ben Milton**, used under **CC BY 4.0**
+  (<https://creativecommons.org/licenses/by/4.0/>).
 
 Each carries the required attribution, notes that changes were made, and uses the game's name
 descriptively (no logo or artwork). Please support the creators whose work these examples point to.
