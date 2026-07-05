@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Playing Ironsworn in Pointliner</title></head><body>
+<outline text="# Playing Ironsworn in Pointliner">
+  <outline text="Ironsworn's system wired into Pointliner pills: action rolls, momentum, progress tracks, and oracles, all live in one file. See ironsworn.md for the walkthrough. The dice and tracking pills are complete; the SRD move text and oracle entries drop into the marked slots. Every pill here is live, click one to run it."/>
+  <outline text="Adapted from the Ironsworn System Reference Document by Shawn Tomkin, used under CC BY 4.0 (creativecommons.org/licenses/by/4.0). Changes made: the moves and oracle tables are restructured into outline points and pills. Ironsworn is named descriptively; no logo or art is reproduced.">
+    <outline text="Paste move text and oracle entries from your copy of the Ironsworn SRD into the marked slots below; the pills around them are already wired."/>
+  </outline>
+  <outline text="## The action roll">
+    <outline text="Roll the action die and stat, then two challenge dice. Beat both = strong hit, one = weak hit, neither = miss. Edit the +2 to your stat plus any adds."/>
+    <outline text="Action die + stat: {1d6+2}"/>
+    <outline text="Challenge dice (rolled together): {2x: {1d10}}"/>
+    <outline text="Or roll the challenge dice one at a time: {1d10} and {1d10}"/>
+    <outline text="Put a stat in a variable so every roll reads it: {edge := 2}"/>
+    <outline text="Face danger with Edge: {1d6} + {edge} against {1d10} and {1d10}. Change edge above and every roll that reads it updates."/>
+  </outline>
+  <outline text="## Momentum">
+    <outline text="Momentum is the swing resource. Track it here and edit as it rises and falls; burn it by reading this value against the challenge dice you rolled."/>
+    <outline text="Current momentum: {momentum := 2}"/>
+  </outline>
+  <outline text="## Progress tracks">
+    <outline text="A vow, journey, or fight is a progress cookie over ten boxes. Check boxes as you advance; when it is time, count the filled boxes and roll the challenge dice against that number.">
+      <outline text="Swear an iron vow: reach the drowned tower [/]">
+        <outline text="- [ ] box"/>
+        <outline text="- [ ] box"/>
+        <outline text="- [x] box"/>
+        <outline text="- [x] box"/>
+        <outline text="- [ ] box"/>
+      </outline>
+      <outline text="Progress move when ready: roll {1d10} and {1d10} against the number of filled boxes above."/>
+    </outline>
+  </outline>
+  <outline text="## Oracles">
+    <outline text="An oracle table is a weighted pick. Define each as a named rule on its own line, then call it by name anywhere. Replace the placeholder options with the SRD's entries, separated by | bars."/>
+    <outline text="action_oracle: (paste SRD Action entries here) | strike | avenge | uncover | defend"/>
+    <outline text="theme_oracle: (paste SRD Theme entries here) | risk | fortune | secret | shelter"/>
+    <outline text="Action plus Theme spark (two words): {action_oracle} {theme_oracle}"/>
+    <outline text="Ask yes or no at even odds: {Yes 1 | No 1}. For other likelihoods, set the weights to the SRD odds (a likely question might be {Yes 3 | No 1})."/>
+  </outline>
+  <outline text="## Moves">
+    <outline text="Each move is its own point: the SRD trigger and strong/weak/miss outcomes sit in the point, with an action-roll pill ready beneath it. Play a move by reading its trigger, rolling, and reading the outcome for your result.">
+      <outline text="Face Danger (SLOT: paste this move's trigger and strong/weak/miss text from the SRD)">
+        <outline text="Roll: {1d6} + {edge} against {1d10} and {1d10}"/>
+      </outline>
+      <outline text="Secure an Advantage (SLOT: paste this move's text from the SRD)">
+        <outline text="Roll: {1d6+2} against {1d10} and {1d10}"/>
+      </outline>
+    </outline>
+  </outline>
+  <outline text="## Run it yourself">
+    <outline text="Click the action and challenge pills to roll a move. Check a progress box, then roll against the track when it fills. Click an oracle pill for a result once you have pasted the SRD entries. Edit momentum and edge as they change. Add the moves and oracles you use most, and it is your Ironsworn table."/>
+  </outline>
+</outline>
+</body></opml>

@@ -37,6 +37,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 - **Tools (beat the blank page):** Generators, Session prep.
 - **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log.
 - **Computing (let the numbers run themselves):** Living character sheet, Campaign clocks and threads.
+- **A full system:** Ironsworn (its rules wired into pills, adapted from the open SRD).
 
 | Case | What it shows | Guide | Demo |
 |---|---|---|---|
@@ -48,6 +49,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 | **Hex-crawl travel log** | A map that IS the outline: nested regions and hexes, a self-reshuffling terrain deck, dice encounters, and supplies totaled up each region | [hex-crawl/hex-crawl.md](hex-crawl/hex-crawl.md) | [hex-crawl/hex-crawl-demo.opml](hex-crawl/hex-crawl-demo.opml) |
 | **Living character sheet** | Stats as variables that feed derived numbers, an inventory that totals its own weight, and an encumbrance check that flips red when overloaded | [character-sheet/character-sheet.md](character-sheet/character-sheet.md) | [character-sheet/character-sheet-demo.opml](character-sheet/character-sheet-demo.opml) |
 | **Campaign clocks and threads** | Progress-cookie clocks that fill as you check segments, threads that tick on a date and surface in the agenda, and a live query pulling every open thread | [campaign-clocks/campaign-clocks.md](campaign-clocks/campaign-clocks.md) | [campaign-clocks/campaign-clocks-demo.opml](campaign-clocks/campaign-clocks-demo.opml) |
+| **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks, and oracles, with the SRD's moves and tables dropped into the pill structure (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
 
 Each is one nested branch you can open, poke at, and rebuild into your own.
 
@@ -71,8 +73,15 @@ you want the document to do more than sit there.
 ## Credits and licensing of referenced systems
 
 Some examples adapt existing community notations and oracle styles. Where they do, the
-source and its author are credited in that example's guide, and only the functional idea
-is adapted, the original text and specifications are linked, not reproduced. Please
-support the creators whose work these examples point to.
+source and its author are credited in that example's guide. For systems that are **not**
+openly licensed, only the functional idea is adapted, and the original text and
+specifications are linked, not reproduced (this is how the Lonelog example works).
+
+For a system released under an **open licence**, the example may reproduce more, within that
+licence's terms and with its attribution. The **Ironsworn** example adapts the Ironsworn
+System Reference Document by **Shawn Tomkin**, used under **CC BY 4.0**
+(<https://creativecommons.org/licenses/by/4.0/>); its guide and demo carry the required
+attribution, note that changes were made, and use the game's name descriptively (no logo or
+artwork). Please support the creators whose work these examples point to.
 
 Pointliner itself is MIT licensed (see [LICENSE](../../LICENSE)).
