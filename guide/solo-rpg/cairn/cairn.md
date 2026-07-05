@@ -1,0 +1,131 @@
+# Playing Cairn in Pointliner
+
+*Part of the [solo-RPG guides](../README.md).*
+
+**Demo file:** [cairn-demo.opml](cairn-demo.opml) (open it in Pointliner via File, Open)
+
+Cairn is a rules-light OSR adventure game by Yochai Gal, built for the classic loop of careful
+dungeon exploration, risky saves, and hard-won treasure. Its rules are released free under an open
+Creative Commons licence, which is what lets this guide adapt the system into Pointliner's outline
+and live pills: your saves, damage, inventory, and the game's many little tables all roll and compute
+in the same file you keep your journal in.
+
+Cairn has no built-in oracle (it expects a referee), so on your own you pair it with an oracle: the
+[Oracle play](../oracle-play/oracle-play.md) case gives you a yes/no oracle and a meaning table in
+original wording, and this guide focuses on Cairn's own character, exploration, and combat mechanics.
+
+If you are new to Cairn, read the free rules first; this assumes you know the game and want it
+running in Pointliner.
+
+> **Attribution and licence (CC BY-SA 4.0).**
+> This guide and its demo adapt material from **Cairn** by **Yochai Gal**, used under the
+> **Creative Commons Attribution-ShareAlike 4.0 International licence** (CC BY-SA 4.0):
+> <https://creativecommons.org/licenses/by-sa/4.0/>. **Changes have been made** (the tables and
+> procedures are restructured into Pointliner outline points and `{…}` pills). Because Cairn is
+> ShareAlike, **the adapted Cairn material in this guide and demo is likewise licensed CC BY-SA
+> 4.0** (this is separate from Pointliner's own MIT licence, which covers the app, not this game
+> content). "Cairn" is used descriptively to name the game; no logo or artwork is reproduced.
+
+---
+
+## A character in three rolls
+
+A Cairn character is fast to make: roll three attributes, hit points, and starting gear, then pick a
+background. The attributes are **Strength, Dexterity, and Willpower**, each rolled on `3d6`:
+
+```
+STR: {3d6}    DEX: {3d6}    WIL: {3d6}
+Hit Protection: {1d6}
+```
+
+Put each attribute in a **variable** so the rest of the sheet reads it:
+
+```
+{str := 10}
+{dex := 12}
+{wil := 9}
+```
+
+Now any roll can reference them. Cairn resolves risk with a **save**: roll `1d20` and succeed if you
+roll **equal to or under** the relevant attribute. So a Strength save is "roll `{1d20}`, success if it
+is at or under `str`." You read the die against the variable; there is no target number to look up.
+
+## Saves (the core of play)
+
+Everything risky is a save: dodging a trap, resisting fear, forcing a door. One line does it:
+
+```
+Strength save: {1d20} (success if at or under str, which is {str})
+```
+
+Click the die, compare it to the value shown, and narrate the result. Change a stat in one place and
+every save that reads it updates. For a quick reference you can keep all three saves as sibling
+points, one per attribute, and roll whichever the situation calls for.
+
+## Inventory and encumbrance
+
+Cairn's inventory is a **slot system**: you carry a fixed number of slots, and being over your limit
+slows you and imposes penalties. Pointliner's child-property rollup plus a check models it exactly:
+each item carries a `slots` property, the pack totals them, and a check flags an overload.
+
+```
+Pack  (with a check: sum(slots) <= 10)
+  {= sum(slots)} slots used
+  Sword {prop slots: 1}
+  Torches, three {prop slots: 1}
+  Rope, 50ft {prop slots: 1}
+  Rations {prop slots: 1}
+```
+
+The `{= sum(slots)}` rollup totals the items; add a **check** of `sum(slots) <= 10` on the Pack point
+(from its bullet menu, "Add check", or `/check`) and its chip goes red the moment you are overloaded.
+This is the same machinery as the [character sheet](../character-sheet/character-sheet.md) case, tuned
+to Cairn's slots.
+
+## Damage, armour, and the death spiral
+
+Damage in Cairn hits **Hit Protection** first (luck and stamina); when that runs out, the rest comes
+off **Strength**, and low Strength means Strength saves to avoid dying. Track HP and STR as variables
+and subtract by editing them, with the damage roll as a pill:
+
+```
+Goblin hits you for {1d6} damage. Subtract armour, take the rest off HP, then off STR.
+Blade: {1d8}    Club: {1d6}    Bow: {1d6}
+```
+
+When Strength drops, make a Strength save (`{1d20}` at or under `str`) to see whether you hold on. The
+whole spiral is just dice pills read against the two variables.
+
+## The game's tables
+
+Cairn leans on **tables**: reactions, oracles of the dungeon's mood, character backgrounds, bonds,
+omens, weather, and the referee tools in the SRD. Each table is a weighted pick in Pointliner, one
+pill you click. The SRD's entries drop straight into the alternation:
+
+```
+Reaction (2d6-ish table): {SRD REACTION ENTRIES GO HERE, separated by | bars}
+Dungeon omen: {SRD OMEN ENTRIES GO HERE, separated by | bars}
+```
+
+Define each as a **named rule** on its own point (`reaction: hostile | wary | ...`) and call it by
+name anywhere, so one table serves the whole document. For a table rolled on `2d6` with weighted
+results, use weights in the alternation to match the SRD's distribution.
+
+> **This is where the SRD content lands.** The demo ships table entries taken from the Cairn SRD under
+> CC BY-SA 4.0 (attributed above). If you are building from a fresh copy of the SRD, paste each
+> table's entries into its rule, and the pills around them are already wired. Remember that reproduced
+> Cairn tables carry the ShareAlike terms.
+
+## Run it yourself
+
+- **Make a character:** roll the three `{3d6}` attributes and `{1d6}` HP, set the variables, pick a
+  background.
+- **Take a risk:** roll `{1d20}` for a save and read it against the attribute variable.
+- **Carry your gear:** add items with a `slots` property; watch the Pack check go red when overloaded.
+- **Fight:** roll the weapon die, take damage off HP then STR, and save when Strength runs low.
+- **Ask the room:** click a table pill (once you have pasted the SRD entries) for a reaction or omen.
+
+Everything is one offline file you own. Change the stats, restock the pack, add the tables you use
+most, and it becomes your Cairn character.
+
+**Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

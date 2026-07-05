@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Playing Cairn in Pointliner</title></head><body>
+<outline text="# Playing Cairn in Pointliner">
+  <outline text="Cairn's system wired into Pointliner pills: saves, damage, slot inventory, and the game's tables, all live in one file. Cairn has no built-in oracle, so pair it with the Oracle play case for yes/no questions. See cairn.md for the walkthrough. The dice and inventory pills are complete; the SRD table entries drop into the marked slots. Every pill here is live, click one to run it."/>
+  <outline text="Adapted from Cairn by Yochai Gal, used under CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0). Changes made: the tables and procedures are restructured into outline points and pills. Because Cairn is ShareAlike, the adapted Cairn material here is likewise CC BY-SA 4.0 (separate from Pointliner's MIT app licence). Cairn is named descriptively; no logo or art is reproduced.">
+    <outline text="Paste table entries from your copy of the Cairn SRD into the marked slots below; the pills around them are already wired. Reproduced Cairn tables carry the ShareAlike terms."/>
+  </outline>
+  <outline text="## A character in three rolls">
+    <outline text="Roll three attributes on 3d6 and Hit Protection on 1d6, then set the variables so the rest of the sheet reads them."/>
+    <outline text="STR: {3d6}   DEX: {3d6}   WIL: {3d6}"/>
+    <outline text="Hit Protection: {1d6}"/>
+    <outline text="Set your rolled attributes here: {str := 10}, {dex := 12}, {wil := 9}."/>
+  </outline>
+  <outline text="## Saves">
+    <outline text="Everything risky is a save: roll 1d20 and succeed if it is at or under the attribute. Change a stat above and every save that reads it updates.">
+      <outline text="Strength save: {1d20} (success if at or under str, which is {str})"/>
+      <outline text="Dexterity save: {1d20} (success if at or under dex, which is {dex})"/>
+      <outline text="Willpower save: {1d20} (success if at or under wil, which is {wil})"/>
+    </outline>
+  </outline>
+  <outline text="## Inventory and encumbrance">
+    <outline text="Cairn's inventory is a slot system. Each item carries a slots property, the pack totals them, and a check flags an overload. Add the check from the Pack point's bullet menu (Add check) or with /check.">
+      <outline text="Pack (has a check: sum(slots) under or equal 10)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]">
+        <outline text="Slots used: {= sum(slots)}"/>
+        <outline text="Sword {prop slots: 1}"/>
+        <outline text="Torches, three {prop slots: 1}"/>
+        <outline text="Rope, fifty feet {prop slots: 1}"/>
+        <outline text="Rations {prop slots: 1}"/>
+      </outline>
+    </outline>
+  </outline>
+  <outline text="## Damage">
+    <outline text="Damage hits Hit Protection first, then Strength; low Strength means Strength saves to avoid dying. Roll the weapon die, take armour off, then read the rest against your HP and STR.">
+      <outline text="Blade: {1d8}   Club: {1d6}   Bow: {1d6}"/>
+      <outline text="A monster hits you for {1d6}. Subtract armour, take the rest off HP, then off STR."/>
+      <outline text="When Strength runs low, save to hold on: {1d20} at or under str ({str})."/>
+    </outline>
+  </outline>
+  <outline text="## The game's tables">
+    <outline text="Each table is a weighted pick. Define one as a named rule on its own line, then call it by name anywhere. Replace the placeholder options with the SRD's entries, separated by bars; use weights to match a 2d6 table's distribution."/>
+    <outline text="reaction: (paste SRD Reaction entries here) | hostile | wary | neutral | curious | helpful"/>
+    <outline text="omen: (paste SRD Omen entries here) | a cold draft | distant scratching | a fresh corpse | scratched warnings"/>
+    <outline text="Ask the room: reaction is {reaction}; an omen in the dark is {omen}."/>
+  </outline>
+  <outline text="## Run it yourself">
+    <outline text="Roll the three {3d6} attributes and {1d6} HP, then set the variables. Roll {1d20} for a save and read it against the attribute. Add items with a slots property and watch the Pack check go red when overloaded. Roll a weapon die, take damage off HP then STR, and save when Strength runs low. Add the tables you use most, and it is your Cairn character."/>
+  </outline>
+</outline>
+</body></opml>
