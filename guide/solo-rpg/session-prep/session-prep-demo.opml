@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>Session prep and the blank page (Pointliner demo)</title></head>
+  <body>
+    <outline text="# Session prep and the blank page" _id="prep0001">
+      <outline text="How to start a solo session and capture ideas mid-play without breaking flow. This case is mostly about three built-in doors you click rather than type: TEMPLATES (stamp a fresh session), CAPTURE (log a mid-play idea without leaving your place), and JOURNAL mode (today's dated entry). The few {…} pills here are live, click one to run it. See session-prep.md for the walkthrough." _id="prep0002"/>
+      <outline text="## The blank page problem" _id="prep0010">
+        <outline text="A solo session starts by staring at nothing. What is the scene? What is unresolved? What might interrupt me? Two habits fix the blank page: keep a fixed session structure you stamp fresh each time (a TEMPLATE), and keep one place to dump ideas so a stray thought never derails the current scene (a CAPTURE inbox that feeds an inbox point)." _id="prep0011"/>
+      </outline>
+      <outline text="## A Session template (the thing you stamp)" _id="prep0020">
+        <outline text="This subtree is the shape of one session. Save a subtree like this as a template from its bullet menu (Save as template), or with /savetemplate:session, and it lives on the document. At the start of each play session you stamp a fresh copy with /template:session (or bare /template to pick from a list). Below is the template filled in as an example so you can see what a stamped session looks like." _id="prep0021"/>
+        <outline text="Session 2026-07-04" _id="prep0030">
+          <outline text="Scene seeds (where could we open?): a knock at the door, a debt comes due, the map is wrong." _id="prep0031"/>
+          <outline text="Threads to chase (what is still open from last time): the torn letter, the merchant's back room, who paid the informant." _id="prep0032"/>
+          <outline text="Oracle on hand (is it so?): {Yes 6 | No 6}. Click to ask, click again to re-ask." _id="prep0033"/>
+          <outline text="Session-start event (draw one to open the scene): {shuffle: complication | ally appears | clock ticks | quiet}. A deck, so it draws each once before it reshuffles." _id="prep0034"/>
+          <outline text="Random event roll (mid-session, when the fiction stalls): {2d6}. On a 10 or more, something intrudes." _id="prep0035"/>
+        </outline>
+      </outline>
+      <outline text="## Capture: a mid-play inbox" _id="prep0040">
+        <outline text="The toolbar inbox button opens a Capture dialog that overlays wherever you are, it never navigates you off the current scene. Each capture appends one point to a designated inbox. Mark any point as the inbox from its bullet menu (Set as inbox), then mid-scene, when an idea strikes, capture it and keep playing. Refile it into its scene later (bullet menu Refile, or /refile:TITLE). This point is the inbox for the demo." _id="prep0041">
+          <outline text="Captured: the merchant's cousin runs the ferry, could be the informant." _id="prep0042"/>
+          <outline text="Captured: name for the abbey on the ridge, the Ashfast." _id="prep0043"/>
+          <outline text="Captured: a clock for the flood, three segments." _id="prep0044"/>
+        </outline>
+      </outline>
+      <outline text="## Journal mode: today's play entry" _id="prep0050">
+        <outline text="The toolbar journal button (or the /journal verb, or the journal block command) opens today's entry. It finds or creates a Journal home point and a dated day node under it (YYYY-MM-DD), so each play session is one dated entry. This is the built-in version of what the Lonelog case does by hand: instead of typing a date header yourself, one button lands you in today's node ready to write. Below is a Journal home with today already opened." _id="prep0051"/>
+        <outline text="Journal" _id="prep0060">
+          <outline text="2026-07-04" _id="prep0061">
+            <outline text="&gt; I open on a knock at the door, the debt come to collect. Oracle, is the collector alone? {Yes 6 | No 6}." _id="prep0062"/>
+            <outline text="=&gt; Two of them at the door. I stall and reach for the ledger. Random event to see if the scene turns: {2d6}." _id="prep0063"/>
+            <outline text="=&gt; Idea mid-scene, captured to the inbox so I can keep the beat moving, refile it after: the cousin on the ferry." _id="prep0064"/>
+          </outline>
+        </outline>
+      </outline>
+      <outline text="## How to run it" _id="prep0070">
+        <outline text="Stamp a session: save the Session subtree above as a template (its bullet menu, Save as template), then run /template:session on an empty point to drop a fresh copy in. A new session structure in one command, no blank page." _id="prep0071"/>
+        <outline text="Set the inbox and capture: open a point's bullet menu and pick Set as inbox (try the Capture inbox point above). Then click the toolbar inbox button, type an idea, press Enter. It lands as a child of the inbox and the dialog stays open for the next one, you never leave your scene." _id="prep0072"/>
+        <outline text="Open today's entry: click the toolbar journal button (or type /journal). It jumps you to today's dated node under the Journal home, creating both if they do not exist yet. One dated entry per session, built in." _id="prep0073"/>
+        <outline text="Refile a capture: on a captured point, open the bullet menu and pick Refile (or type /refile:TITLE), then choose the scene it belongs under. The idea moves out of the inbox and into the fiction where it lives." _id="prep0074"/>
+        <outline text="Run a pill: click {Yes 6 | No 6} to ask the oracle, {shuffle: complication | ally appears | clock ticks | quiet} to draw a session-start event, or {2d6} for a random event roll. Each freezes its result, click again to re-run." _id="prep0075"/>
+      </outline>
+    </outline>
+  </body>
+</opml>
