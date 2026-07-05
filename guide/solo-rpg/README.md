@@ -34,6 +34,7 @@ then [Oracle play](oracle-play/oracle-play.md) for the engine underneath it. Tho
 on-ramp. After that the cases stand alone, so read whichever fits what you are running:
 
 - **The loop (start here):** Lonelog, Oracle play.
+- **Tools (beat the blank page):** Generators, Session prep.
 - **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log.
 - **Computing (let the numbers run themselves):** Living character sheet, Campaign clocks and threads.
 
@@ -41,6 +42,8 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 |---|---|---|---|
 | **Lonelog notation** | A compact, system-agnostic session-log style, adapted to Pointliner's outline + live dice | [lonelog/lonelog.md](lonelog/lonelog.md) | [lonelog/lonelog-demo.opml](lonelog/lonelog-demo.opml) |
 | **Oracle-driven scene play** | The engine under the journal: a swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck | [oracle-play/oracle-play.md](oracle-play/oracle-play.md) | [oracle-play/oracle-play-demo.opml](oracle-play/oracle-play-demo.opml) |
+| **Generators (names, places, loot)** | Pointliner's grammar engine as a content generator: a Markov name chain, a rule-based place generator with text modifiers, and a weighted loot table with a hierarchical item | [generators/generators.md](generators/generators.md) | [generators/generators-demo.opml](generators/generators-demo.opml) |
+| **Session prep and quick capture** | Beat the blank page: stamp a session from a template, capture a mid-play idea to the inbox without leaving the scene, and keep today's entry with journal mode | [session-prep/session-prep.md](session-prep/session-prep.md) | [session-prep/session-prep-demo.opml](session-prep/session-prep-demo.opml) |
 | **NPC and faction tracker** | The cast as an interactive base you flip to a faction board, plus linking scene beats to the people in them | [npc-faction/npc-faction.md](npc-faction/npc-faction.md) | [npc-faction/npc-faction-demo.opml](npc-faction/npc-faction-demo.opml) |
 | **Hex-crawl travel log** | A map that IS the outline: nested regions and hexes, a self-reshuffling terrain deck, dice encounters, and supplies totaled up each region | [hex-crawl/hex-crawl.md](hex-crawl/hex-crawl.md) | [hex-crawl/hex-crawl-demo.opml](hex-crawl/hex-crawl-demo.opml) |
 | **Living character sheet** | Stats as variables that feed derived numbers, an inventory that totals its own weight, and an encumbrance check that flips red when overloaded | [character-sheet/character-sheet.md](character-sheet/character-sheet.md) | [character-sheet/character-sheet-demo.opml](character-sheet/character-sheet-demo.opml) |
