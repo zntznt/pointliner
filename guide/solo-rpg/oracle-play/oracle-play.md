@@ -1,5 +1,9 @@
 # Oracle-driven scene play
 
+*Part of the [solo-RPG guides](../README.md).*
+
+**Demo file:** [oracle-play-demo.opml](oracle-play-demo.opml) (open it in Pointliner via File, Open)
+
 The Lonelog example shows the *journal*: how a played scene reads on the page. This one shows
 the *engine* underneath it, the loop most solo-RPG systems share:
 
@@ -111,3 +115,5 @@ A single played beat, start to finish:
 5. If interrupted, pull `{shuffle: …threads…}` to see which thread barges in.
 
 The demo has all five pieces wired so you can click through the loop.
+
+**Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

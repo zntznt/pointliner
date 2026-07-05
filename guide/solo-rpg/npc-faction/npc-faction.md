@@ -60,3 +60,5 @@ so the mechanical and the fictional stay in the same log, the same as the journa
 
 The whole roster is one branch of one document. Delete the parts you do not want, rename the
 factions to yours, and it is your campaign's tracker.
+
+**Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).
