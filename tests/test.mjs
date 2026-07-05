@@ -8785,8 +8785,13 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
   let total = 0; const dead = [];
   for (const t of texts) for (const mm of t.matchAll(/\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/g)) {
     total++;
+    // an illustrative placeholder in prose ("Every {…} pill is live", "Type inside {curly-braces}") is
+    // MEANT to render as literal text, not a pill — whitelist those; everything else that classifies as
+    // literal/text/typo/invalid is a DEAD would-be pill (e.g. {prop check:…} does NOT promote — it must
+    // ride the _props check attr instead). 'literal' MUST be in this set or a dead pill slips through.
+    if (/^(…|curly-brace|curly braces?)$/i.test(mm[1].trim())) continue;
     let cl; try { cl = c.classifyBraceBody(mm[1], rules, vars); } catch (_) { cl = 'THREW'; }
-    if (!cl || ['text', 'typo', 'invalid', 'THREW'].includes(cl)) dead.push(mm[1]);
+    if (!cl || ['text', 'typo', 'invalid', 'literal', 'THREW'].includes(cl)) dead.push(mm[1]);
   }
   assert.ok(total >= 20, `the Examples doc should showcase many pills (found ${total})`);
   assert.equal(dead.length, 0, `every {…} in the Examples doc must be a live pill; dead: ${JSON.stringify(dead)}`);

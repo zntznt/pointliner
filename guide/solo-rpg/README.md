@@ -33,8 +33,12 @@ The demo files use plain `{…}` source text, so when you open one the dice roll
 |---|---|---|---|
 | **Lonelog notation** | A compact, system-agnostic session-log style, adapted to Pointliner's outline + live dice | [lonelog/lonelog.md](lonelog/lonelog.md) | [lonelog/lonelog-demo.opml](lonelog/lonelog-demo.opml) |
 | **Oracle-driven scene play** | The engine under the journal: a swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck | [oracle-play/oracle-play.md](oracle-play/oracle-play.md) | [oracle-play/oracle-play-demo.opml](oracle-play/oracle-play-demo.opml) |
+| **NPC and faction tracker** | The cast as an interactive base you flip to a faction board, plus linking scene beats to the people in them | [npc-faction/npc-faction.md](npc-faction/npc-faction.md) | [npc-faction/npc-faction-demo.opml](npc-faction/npc-faction-demo.opml) |
+| **Hex-crawl travel log** | A map that IS the outline: nested regions and hexes, a self-reshuffling terrain deck, dice encounters, and supplies totaled up each region | [hex-crawl/hex-crawl.md](hex-crawl/hex-crawl.md) | [hex-crawl/hex-crawl-demo.opml](hex-crawl/hex-crawl-demo.opml) |
+| **Living character sheet** | Stats as variables that feed derived numbers, an inventory that totals its own weight, and an encumbrance check that flips red when overloaded | [character-sheet/character-sheet.md](character-sheet/character-sheet.md) | [character-sheet/character-sheet-demo.opml](character-sheet/character-sheet-demo.opml) |
+| **Campaign clocks and threads** | Progress-cookie clocks that fill as you check segments, threads that tick on a date and surface in the agenda, and a live query pulling every open thread | [campaign-clocks/campaign-clocks.md](campaign-clocks/campaign-clocks.md) | [campaign-clocks/campaign-clocks-demo.opml](campaign-clocks/campaign-clocks-demo.opml) |
 
-More to come: an NPC and faction tracker, a hex-crawl log. Each will land here as a guide plus a demo.
+Each is one nested branch you can open, poke at, and rebuild into your own.
 
 ---
 
