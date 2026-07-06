@@ -92,8 +92,9 @@ Capture is a **toolbar strip**, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (o
 outline stays fully visible and usable underneath, so you insert without interrupting your work.
 `Ctrl/Cmd+Shift+1` through `0` open it targeting **inbox 1 through 10**. If a numbered slot has no
 inbox yet and a point is selected, that point **becomes** that inbox. While the strip is open the same
-keys switch the destination (they move the selector, they do not reopen it); open the destination
-chooser (the **▾** chip) to click a slot, or add and remove inboxes inline. **Reorder** the inbox chips
+keys switch the destination (they move the selector, they do not reopen it). Click the **pencil** on the
+destination to open the inbox manager (pick a slot, add and remove inboxes inline), and click the
+destination **name** itself to zoom into that inbox point. **Reorder** the inbox chips
 to change which number each one answers to: drag a chip, or focus one and press `Alt+Left` / `Alt+Right`.
 `Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1 through 10; a point's menu adds or removes
 an inbox slot too. The strip stays open after each capture with a running count, so you can empty your

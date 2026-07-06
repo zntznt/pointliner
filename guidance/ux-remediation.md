@@ -1929,6 +1929,23 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### INBOX-2 ◐ Split the capture destination: name zooms into the inbox, a pencil opens the manager (user-requested) (RESOLVED pending merge)
+- **Request.** The main-strip destination `.cap-dest-btn` was ONE button that did one thing (toggle the
+  manager). The user wanted (a) an explicit PENCIL to open the manager (matching the pill-pencil
+  affordance), and (b) the destination NAME/pill to be clickable to ZOOM into the inbox point (navigate
+  to where captures land).
+- **Built.** The dest is now a two-part control: a `.cap-dest-name-btn` (slot number + name → `zoomInto`
+  the inbox point on click; when no inbox is set it opens the manager to choose one) + a `.cap-dest-edit`
+  pencil (the same subsetted `fa-pen` glyph as `.dice-edit`; carries the `aria-expanded` state; toggles
+  `captureManage`, the second strip). The `.cap-dest-btn` becomes a bordered `<div>` wrapping the two;
+  the pencil is `flex-shrink:0` with a left divider like `.cap-chip-rm`, so a long name truncates the
+  name button, never squishing the pencil (the same class of fix as INBOX-1's ✕). Focus-visible + the
+  touch tap-target overlays retargeted from the old single button to the two children.
+- Concept-guide `capture` entry + `guide/tasks-and-organizing.md` updated (pencil opens the manager,
+  name zooms). 877 tests (+1 src-pin: the two-button split, name→zoomInto, pencil→toggle-manager + its
+  aria-expanded, the unset-fallback, and the shrink-proof pencil glyph). Browser down → src-pinned; a
+  smoke test should click the destination name (zooms to the inbox) and the pencil (opens the manager).
+
 ### INBOX-1 ◐ Can't delete an inbox with a long label; can't reorder inboxes (P2/P4, user-reported) (RESOLVED pending merge)
 - **Two problems in the capture strip's inbox chips.** (1) DELETE: `.cap-chip-rm` (the ✕) had no
   `flex-shrink:0`, so a long point label (which `crumbLabel` puts in `.cap-chip-pick`) squished the ✕'s
