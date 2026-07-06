@@ -1929,6 +1929,25 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### INBOX-4 ◐ The ✕-hidden bug's ACTUAL root cause: global button{flex-shrink:0} (browser-verified) (RESOLVED pending merge)
+- **INBOX-1 and INBOX-3 both mis-diagnosed this.** After two "fixes" (`.cap-chip-rm{flex-shrink:0}`,
+  then `.cap-chip{min-width:0}`) the ✕ STILL vanished on a long inbox label (user screenshot). I stopped
+  guessing and opened the deployed page with the browser tools + measured computed styles. Finding: the
+  chip WAS clamping to 230px and the ✕ WAS positioned, but `getComputedStyle('.cap-chip-pick').flexShrink`
+  was `0` — the name button inherits the **global `button{flex-shrink:0}`** rule. So the label refused to
+  shrink, its `min-width:0` + `text-overflow:ellipsis` never fired, and it pushed the ✕ out of the
+  `overflow:hidden` chip (clipped = invisible). The prior two fixes were real but addressed the wrong
+  element; neither could work while the label itself would not shrink.
+- **Fix (browser-verified live before AND after).** `.cap-chip-pick{flex-shrink:1}` overrides the global
+  rule → the label truncates with an ellipsis and the ✕ sits inside the chip. `.cap-dest-name-btn` had the
+  identical latent bug (same global rule) → same `flex-shrink:1`. Confirmed in-page: chip stays 230px, ✕
+  visible + inside, ellipsis fires; main-strip pencil stays inside its dest box.
+- 878 tests. The chip pin was STRENGTHENED to assert `.cap-chip-pick{flex-shrink:1}` +
+  `.cap-dest-name-btn{flex-shrink:1}` + that the global `button{flex-shrink:0}` it overrides still exists
+  (the previous pins asserted the wrong properties and gave false confidence — that's why the bug survived
+  two PRs). **Lesson: for a "sizing looks wrong" CSS bug, read the COMPUTED style in a browser before
+  editing; a source grep can't see an inherited global rule.**
+
 ### INBOX-3 ◐ Oversized inbox chip still hid the ✕; manager chips didn't navigate (user-reported, follow-up) (RESOLVED pending merge)
 - **Two reports after INBOX-1/2.** (1) The ✕ STILL vanished on a long-labelled inbox chip: INBOX-1's
   `flex-shrink:0` on `.cap-chip-rm` was necessary but not sufficient. The real cause is that `.cap-chip`

@@ -8891,8 +8891,13 @@ test('inbox manager chip: three segments (badge selects, name zooms), and the ch
   assert.ok(/badge\.addEventListener\('click', \(\) => \{ captureSlot = slot/.test(_src), 'the badge must select this inbox as the capture target');
   assert.ok(/pick\.addEventListener\('click', \(\) => \{ zoomInto\(n\.id\)/.test(_src), 'the chip name must zoom into that inbox point');
   assert.ok(_src.includes('chip.append(badge, pick, rm)'), 'the chip order must be badge | name | remove');
-  // the overflow fix: the CHIP itself needs min-width:0 (a flex item defaults to min-width:auto and would
-  // otherwise refuse to shrink below its content, overflowing max-width and pushing the ✕ out of view)
-  assert.ok(/\.cap-chip\{[^}]*min-width:0/.test(_src), 'the chip must be min-width:0 so a long name cannot hide the ✕');
+  // The overflow fix, browser-verified root cause: a global `button{flex-shrink:0}` makes the name button
+  // (.cap-chip-pick) refuse to shrink, so its min-width:0 + text-overflow:ellipsis never fire and it pushes
+  // the ✕ out of the overflow:hidden chip. The label MUST override with flex-shrink:1; the ✕ stays :0.
+  assert.ok(/\.cap-chip-pick\{[^}]*flex-shrink:1/.test(_src), 'the name button must flex-shrink:1 to override the global button{flex-shrink:0}, or the ✕ hides on long labels');
+  assert.ok(/\.cap-dest-name-btn\{[^}]*flex-shrink:1/.test(_src), 'the main-strip destination name must also flex-shrink:1 (same root cause)');
+  assert.ok(/\.cap-chip\{[^}]*min-width:0/.test(_src), 'the chip must be min-width:0');
   assert.ok(/\.cap-chip-rm\{[^}]*flex-shrink:0/.test(_src), 'the ✕ must stay flex-shrink:0');
+  // guard the root cause exists so the override stays meaningful
+  assert.ok(/button\{[^}]*flex-shrink:0/.test(_src), 'the global button{flex-shrink:0} is what the pick must override');
 });
