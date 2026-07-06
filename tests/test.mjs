@@ -8883,3 +8883,16 @@ test('capture dest: the name-button zooms into the inbox; the pencil opens the m
   // the pencil uses the same subsetted pencil glyph as the pill edit-pencils, and stays shrink-proof
   assert.ok(_src.includes('<i class="fa-solid fa-pen" aria-hidden="true"></i>') && /\.cap-dest-edit\{[^}]*flex-shrink:0/.test(_src), 'pencil glyph / shrink-proof missing');
 });
+
+// ── Inbox manager chips: badge selects the target, name zooms into the point; long name never hides ✕ ──
+test('inbox manager chip: three segments (badge selects, name zooms), and the chip can shrink', () => {
+  // the chip now has a badge (select) + name (zoom) + remove, not one select-only button
+  assert.ok(_src.includes("className = 'cap-chip-badge'"), 'the slot badge (select target) is missing');
+  assert.ok(/badge\.addEventListener\('click', \(\) => \{ captureSlot = slot/.test(_src), 'the badge must select this inbox as the capture target');
+  assert.ok(/pick\.addEventListener\('click', \(\) => \{ zoomInto\(n\.id\)/.test(_src), 'the chip name must zoom into that inbox point');
+  assert.ok(_src.includes('chip.append(badge, pick, rm)'), 'the chip order must be badge | name | remove');
+  // the overflow fix: the CHIP itself needs min-width:0 (a flex item defaults to min-width:auto and would
+  // otherwise refuse to shrink below its content, overflowing max-width and pushing the ✕ out of view)
+  assert.ok(/\.cap-chip\{[^}]*min-width:0/.test(_src), 'the chip must be min-width:0 so a long name cannot hide the ✕');
+  assert.ok(/\.cap-chip-rm\{[^}]*flex-shrink:0/.test(_src), 'the ✕ must stay flex-shrink:0');
+});

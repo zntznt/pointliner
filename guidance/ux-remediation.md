@@ -1929,6 +1929,26 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### INBOX-3 ◐ Oversized inbox chip still hid the ✕; manager chips didn't navigate (user-reported, follow-up) (RESOLVED pending merge)
+- **Two reports after INBOX-1/2.** (1) The ✕ STILL vanished on a long-labelled inbox chip: INBOX-1's
+  `flex-shrink:0` on `.cap-chip-rm` was necessary but not sufficient. The real cause is that `.cap-chip`
+  is a flex ITEM in `.cap-mgr` with no `min-width` → defaults to `min-width:auto`, which refuses to
+  shrink the chip below its content's intrinsic width, so a long name overflowed `max-width:230px` and
+  pushed the ✕ out. Fixed by adding `min-width:0` to `.cap-chip` itself (the chip must be allowed to
+  shrink; the name segment then truncates as designed). Two-level flex bug: BOTH the shrinkable child AND
+  the chip-as-item needed the min-width:0 escape from auto. (2) Clicking a MANAGER chip only selected it
+  as the capture target, it never navigated to that inbox's point ("each has a location that isn't
+  necessarily the same place").
+- **Built (chosen "name zooms, keep select separate" via AskUserQuestion).** Each manager chip is now
+  three segments, mirroring the main-strip destination: a `.cap-chip-badge` (the slot number → SELECTS it
+  as the capture target), the `.cap-chip-pick` NAME (→ `zoomInto` that inbox's point), and the ✕. Focus
+  rings, touch tap-target overlays, and the touch corner-rounding retargeted for the new badge|name|✕
+  order (the badge carries the left rounding).
+- Concept-guide `capture` + `guide/tasks-and-organizing.md` updated. 878 tests (+1 pin: the three-segment
+  split, badge→select, name→zoomInto, chip `min-width:0` + ✕ `flex-shrink:0`). Browser down → src-pinned;
+  a smoke test should give an inbox a long name (the ✕ stays visible + deletes) and click a chip's name
+  (zooms to its point) vs its badge (targets it).
+
 ### INBOX-2 ◐ Split the capture destination: name zooms into the inbox, a pencil opens the manager (user-requested) (RESOLVED pending merge)
 - **Request.** The main-strip destination `.cap-dest-btn` was ONE button that did one thing (toggle the
   manager). The user wanted (a) an explicit PENCIL to open the manager (matching the pill-pencil
