@@ -1929,6 +1929,26 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### ESC-1 ◐ Backtick code spans did not escape pill promotion (P1, escape hatch) (RESOLVED pending merge)
+- **Problem (user-reported).** Inline `` `code` `` is the universal "render this literally" convention,
+  and `mdInline` already stashes it at render time, so a `` `{2d6}` `` *displays* as literal code. BUT
+  `promoteInlineShorthand` scans `node.text` for `{` blindly on exitEdit (BEFORE any render) and mutates
+  the source of truth, so it promoted `{2d6}` inside backticks to a `[[dice:KEY]]` token anyway, leaving
+  the backticks wrapping a pill. There was no working way to type a literal `{2d6}` to write ABOUT the
+  syntax (e.g. inside Pointliner-about-Pointliner notes). Two layers (render vs. promote) disagreed on
+  what "inside code" meant, and promote (which runs first + mutates) won.
+- **Fixed.** Pure `codeSpanRanges(text)` (finds inline `` ` `` spans, same regex as mdInline's `code`
+  stash) + `inCodeSpan(ranges, i)`. Wired into every brace scanner so promote / mid-edit styling /
+  display / the `{` picker all agree: a `{…}` inside a code span stays literal. Sites: `promoteInline
+  Shorthand` (exit + load-time via `promoteLoadedShorthand`, which reuses it), `highlightGrammarText`
+  (mid-edit `.gr-src` styling), and `checkBraceTrigger` (the rule-completion menu no longer opens inside
+  code). Per-brace precision: `` `{a|b}` `` stays literal while a real `{2d6}` on the same line still
+  promotes.
+- 874 tests (+2 pins: `codeSpanRanges`/`inCodeSpan` find spans + match mdInline's regex; `` `{2d6}` ``
+  survives promote verbatim while a bare one still promotes, mixed case included). Guide updated
+  (`writing-and-formatting.md`: code marks also keep pills literal). Browser down → the live typing flow
+  is pure-core-pinned; a smoke test should type `` `{2d6}` ``, click away, and confirm it stays text.
+
 ### DIAL-R ◐ Verbosity dial panel review: fix the blind-menu blocker + polish (RESOLVED pending merge)
 - **A 6-lens design panel** (newcomer, power-user, a11y, consistency, discoverability, scope; 36 findings)
   reviewed the 3-position dial. Verdict: fundamentally well-built, scope discipline a model, 9 praise

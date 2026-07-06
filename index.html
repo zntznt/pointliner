@@ -10439,9 +10439,10 @@ function braceTypeLabel(body, rules, vars) {
 function highlightGrammarText(str, unfoldedSet) {
   let out = '', run = '', i = 0;
   const rules = collectRules(), vars = collectVars();
+  const codeSpans = codeSpanRanges(str);   // a `{2d6}` inside inline code is literal, not grammar-styled (matches promote)
   const flush = () => { if (run) { out += escHtml(run); run = ''; } };
   while (i < str.length) {
-    if (str[i] === '{') {
+    if (str[i] === '{' && !inCodeSpan(codeSpans, i)) {
       const j = matchBrace(str, i);
       if (j > i) {
         const brace = str.slice(i, j + 1);
@@ -13389,6 +13390,24 @@ function matchBrace(str, open) {
   return -1;
 }
 
+// Inline backtick code spans are the escape hatch: `{2d6}` should stay LITERAL, not promote to a pill.
+// mdInline already stashes `code` at render time, but promotion mutates node.text on exitEdit BEFORE any
+// render, so the promoter must skip braces inside a code span itself or the backticks end up wrapping a
+// pill. codeSpanRanges finds each span's [start, end] (inclusive of the backticks), matching mdInline's
+// same-line `code` regex (/`([^`\n]+)`/g), so promotion and render agree on what "inside code" means.
+// Pure. inCodeSpan(ranges, i) tests whether offset i falls inside any span.
+function codeSpanRanges(text) {
+  const ranges = [];
+  const re = /`([^`\n]+)`/g;
+  let m;
+  while ((m = re.exec(text)) !== null) ranges.push([m.index, m.index + m[0].length - 1]);
+  return ranges;
+}
+function inCodeSpan(ranges, i) {
+  for (const [s, e] of ranges) if (i >= s && i <= e) return true;
+  return false;
+}
+
 // One alternative "template 2" → {template, weight}; trailing integer = weight.
 // Parse one alternation alt → { template, weight } or { template, weightExpr }.
 // The trailing weight is a bare integer (`b 2`) OR a `{= expr}` brace (`b {= str}`
@@ -14924,9 +14943,10 @@ function promoteBraceBody(node, body) {
 function promoteInlineShorthand(node) {
   const text = node.text;
   if (text.indexOf('{') < 0) return false;
+  const codeSpans = codeSpanRanges(text);   // a `{2d6}` inside inline code stays literal (the escape hatch)
   let out = '', i = 0, changed = false;
   while (i < text.length) {
-    if (text[i] === '{') {
+    if (text[i] === '{' && !inCodeSpan(codeSpans, i)) {
       const j = matchBrace(text, i);
       if (j > i) {
         const token = promoteBraceBody(node, text.slice(i + 1, j));
@@ -16847,6 +16867,8 @@ function checkBraceTrigger(content, nodeId) {
     else if (before[i] === '{') { if (depth === 0) { braceStart = i; break; } depth--; }
   }
   if (braceStart < 0) { hideBraceMenu(); return; }
+  // escape hatch: inside inline `code`, a `{` is literal, so don't offer the rule-completion menu there
+  if (inCodeSpan(codeSpanRanges(before), braceStart)) { hideBraceMenu(); return; }
   const inner = before.slice(braceStart + 1);
   // Bare identifier prefix (or empty) only — not math (=…), dice, or alternation
   if (inner !== '' && !/^[a-z_]\w*$/i.test(inner)) { hideBraceMenu(); return; }
