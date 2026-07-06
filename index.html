@@ -1113,10 +1113,17 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #btn-capture.active,#btn-journal.active{color:var(--acc)}
 .cap-row{display:flex;align-items:center;gap:5px;min-width:0}
 /* destination selector: [▾ N · name] — click to open the in-strip manager */
-.cap-dest-btn{flex:0 0 auto;max-width:230px;height:22px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;min-width:94px;cursor:pointer;white-space:nowrap;overflow:hidden} /* min-width matches the journal date chip so the stacked chip column aligns */
-.cap-dest-btn:hover{color:var(--fg);border-color:var(--muted)}
-.cap-dest-btn.open{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
+/* the destination is now a two-part control: a name button (zoom to inbox) + a pencil (open the manager).
+   The .cap-dest-btn div keeps the bordered box; the two children are bare buttons that share the height. */
+.cap-dest-btn{flex:0 0 auto;max-width:230px;height:22px;display:inline-flex;align-items:stretch;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);min-width:94px;overflow:hidden} /* min-width matches the journal date chip so the stacked chip column aligns */
+.cap-dest-btn:hover{border-color:var(--muted)}
+.cap-dest-btn.open{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.cap-dest-btn.open .cap-dest-edit{color:var(--acc)}
 .cap-dest-btn.unset{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 38%,transparent)}  /* the semantic tint recipe, warn-routed (same mix as .ag-toggle.ag-focus.on) */
+.cap-dest-name-btn{display:inline-flex;align-items:center;gap:5px;font:inherit;color:inherit;background:none;border:none;padding:2px 4px 2px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;min-width:0}
+.cap-dest-name-btn:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}
+.cap-dest-edit{flex-shrink:0;display:inline-flex;align-items:center;font-size:11px;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 7px;cursor:pointer}  /* pencil to open the manager; left-divider + shrink-proof like .cap-chip-rm */
+.cap-dest-edit:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}
 .cap-dest-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cap-slot-n{display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;border-radius:var(--r-xs);background:color-mix(in srgb,var(--muted) 22%,transparent);color:var(--fg);font-family:var(--mono);font-size:10px;font-weight:700;flex-shrink:0} /* 14px fits inside the 11px/1.4 chip content box, so badge chips and the Add chip share one height */
 /* the input grows with content; single-row default */
@@ -1146,7 +1153,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 /* plain .ag-toggle chip (DL §4 docked-strip grammar); dashed borders are the broken-pill language, not an affordance */
 .cap-add{height:22px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 .cap-add:hover{color:var(--fg);border-color:var(--muted)}
-.cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-btn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-name-btn:focus-visible,.cap-dest-edit:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
 .cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:100%;box-sizing:border-box}
 .cal-open>.cal,.cal-open .cal{display:block}
@@ -1696,8 +1703,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      The 16px input stops iOS focus-zoom. Pick/remove overlays extend away from each
      other so the destructive ✕ never wins ambiguous taps. */
   .cap-input{min-height:38px;font-size:16px}
-  .cap-chip-rm,.cap-chip-pick,.cap-add,.cap-dest-btn,.cap-go{position:relative}
-  .cap-add::after,.cap-dest-btn::after,.cap-go::after{content:'';position:absolute;inset:-8px -2px}
+  .cap-chip-rm,.cap-chip-pick,.cap-add,.cap-dest-name-btn,.cap-dest-edit,.cap-go{position:relative}
+  .cap-add::after,.cap-dest-name-btn::after,.cap-dest-edit::after,.cap-go::after{content:'';position:absolute;inset:-8px -2px}
   /* the chip's overflow:hidden (corner rounding) would clip the overlays; on touch the
      chip overflows and the children carry the rounding themselves */
   .cap-chip{overflow:visible}
@@ -9027,11 +9034,25 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   // ── row 1: destination · input · capture ──
   const row = document.createElement('div'); row.className = 'cap-row';
 
-  const dest = document.createElement('button'); dest.type = 'button'; dest.className = 'cap-dest-btn' + (captureManage ? ' open' : '') + (inbox ? '' : ' unset');
-  dest.setAttribute('aria-expanded', String(captureManage));
-  dest.setAttribute('aria-label', 'Capture destination: ' + (inbox ? `inbox ${captureSlot === 10 ? '0' : captureSlot}, ${crumbLabel(inbox)}` : 'not set') + '. Click to change.');
-  dest.innerHTML = `<span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${inbox ? escHtml(crumbLabel(inbox)) : 'set an inbox…'}</span>`;
-  dest.addEventListener('click', () => { captureManage = !captureManage; renderCaptureStrip(); });
+  // Destination: a two-part control. The NAME (with its slot number) zooms into the inbox point when
+  // clicked (navigate to where captures land); the PENCIL opens the manager (second strip) to change,
+  // add, remove, or reorder inboxes. When no inbox is set, the whole thing opens the manager to set one.
+  const dest = document.createElement('div'); dest.className = 'cap-dest-btn' + (captureManage ? ' open' : '') + (inbox ? '' : ' unset');
+  const name = document.createElement('button'); name.type = 'button'; name.className = 'cap-dest-name-btn';
+  name.innerHTML = `<span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${inbox ? escHtml(crumbLabel(inbox)) : 'set an inbox…'}</span>`;
+  if (inbox) {
+    name.setAttribute('aria-label', `Capture destination: inbox ${captureSlot === 10 ? '0' : captureSlot}, ${crumbLabel(inbox)}. Click to zoom into it.`);
+    name.addEventListener('click', () => { zoomInto(inbox.id); });   // navigate to where captures land
+  } else {
+    name.setAttribute('aria-label', 'No inbox set. Click to choose one.');
+    name.addEventListener('click', () => { captureManage = true; renderCaptureStrip(); });
+  }
+  const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'cap-dest-edit';
+  edit.setAttribute('aria-expanded', String(captureManage));
+  edit.setAttribute('aria-label', 'Manage inboxes: change, add, remove, or reorder');
+  edit.innerHTML = '<i class="fa-solid fa-pen" aria-hidden="true"></i>';   // same subsetted pencil glyph as the pill edit-pencils (.dice-edit)
+  edit.addEventListener('click', () => { captureManage = !captureManage; renderCaptureStrip(); });
+  dest.append(name, edit);
 
   const input = document.createElement('textarea');
   input.id = 'cap-input'; input.className = 'cap-input'; input.rows = 1; input.value = captureDraft;
@@ -22074,7 +22095,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (click the destination chip) to pick a slot, add or remove inboxes inline. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the pencil on the destination) to pick a slot, add or remove inboxes inline; clicking the destination name itself zooms into that inbox point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },

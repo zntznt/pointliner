@@ -8867,3 +8867,19 @@ test('inbox chips: reorder wiring (drag + Alt+Arrow) is present; the ✕ keeps i
   // the long-label delete fix: the remove ✕ keeps its width, the label truncates
   assert.ok(/\.cap-chip-rm\{[^}]*flex-shrink:0/.test(_src), 'the ✕ must be flex-shrink:0 so a long label cannot squish it');
 });
+
+// ── Capture strip destination: name zooms into the inbox, a pencil opens the manager ──
+test('capture dest: the name-button zooms into the inbox; the pencil opens the manager', () => {
+  // the destination is now a two-part control (a name button + a pencil), not one button
+  assert.ok(_src.includes("className = 'cap-dest-name-btn'"), 'the zoomable name button is missing');
+  assert.ok(_src.includes("className = 'cap-dest-edit'"), 'the pencil (manage) button is missing');
+  // clicking the name zooms into the inbox point (navigate to where captures land)
+  assert.ok(_src.includes('zoomInto(inbox.id)'), 'the name must zoom into the inbox point');
+  // the pencil toggles the manager (second strip); it carries the aria-expanded state
+  assert.ok(/edit\.addEventListener\('click', \(\) => \{ captureManage = !captureManage/.test(_src), 'the pencil must toggle the inbox manager');
+  assert.ok(_src.includes("edit.setAttribute('aria-expanded'"), 'the pencil carries aria-expanded for the manager');
+  // when no inbox is set, the name opens the manager to choose one (nothing to zoom into)
+  assert.ok(/name\.addEventListener\('click', \(\) => \{ captureManage = true/.test(_src), 'with no inbox, the name opens the manager to set one');
+  // the pencil uses the same subsetted pencil glyph as the pill edit-pencils, and stays shrink-proof
+  assert.ok(_src.includes('<i class="fa-solid fa-pen" aria-hidden="true"></i>') && /\.cap-dest-edit\{[^}]*flex-shrink:0/.test(_src), 'pencil glyph / shrink-proof missing');
+});
