@@ -278,7 +278,7 @@ body:not(.v-guided) #search-hint .sh-row{display:none}
 /* breadcrumb */
 /* document tabs strip — mirrors the breadcrumb-row chrome (border-top + --hbg) */
 #doc-tabs{display:none;align-items:center;gap:4px;padding:4px 12px;border-top:1px solid var(--bdr);background:var(--hbg);overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
-.doc-tab{display:inline-flex;align-items:center;gap:6px;height:28px;box-sizing:border-box;padding:0 6px 0 10px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
+.doc-tab{display:inline-flex;align-items:center;gap:6px;height:22px;box-sizing:border-box;padding:0 6px 0 10px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;white-space:nowrap;flex:0 0 auto}/* 22px = the docked-strip control height (design-language §4: every control in a strip row shares one 22px height) */
 .doc-tab:hover{background:color-mix(in srgb,var(--acc) 6%,transparent);color:var(--fg)}
 .doc-tab.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .doc-tab:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -289,7 +289,7 @@ body:not(.v-guided) #search-hint .sh-row{display:none}
 #toolbar-row.dirty .doc-tab.active .doc-tab-dot{display:inline-block}
 .doc-tab-close{width:16px;height:16px;font-size:12px;opacity:.6}
 .doc-tab-close:hover,.doc-tab-close:focus-visible{opacity:1}
-.doc-tab-add{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;box-sizing:border-box;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);cursor:pointer;flex:0 0 auto;font-size:14px;line-height:1}
+.doc-tab-add{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;box-sizing:border-box;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);cursor:pointer;flex:0 0 auto;font-size:13px;line-height:1}/* 22px square to match the strip control height */
 .doc-tab-add:hover{background:color-mix(in srgb,var(--acc) 6%,transparent);color:var(--fg)}
 .doc-tab-add:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 #breadcrumb-row{display:none;padding:5px 16px;border-top:1px solid var(--bdr);font-size:12px;flex-wrap:wrap;align-items:center;gap:4px;background:var(--hbg)}
@@ -1365,8 +1365,8 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agc-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;padding:2px 0 6px}
 .agc-monthnav{grid-column:2;display:flex;align-items:center;justify-content:center;gap:10px}
 .agc-today{grid-column:3;justify-self:end}
-.agc-title{font-size:15px;font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums;text-align:center;min-width:11ch}
-.agc-nav{flex:0 0 auto;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--bdr-ui);background:transparent;color:var(--fg);cursor:pointer;border-radius:var(--r-sm);font-size:16px;line-height:1;user-select:none}
+.agc-title{font-size:13px;font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums;text-align:center;min-width:11ch}/* 13px: a compact title that fits the 22px switcher row (was 15px, oversized for the strip band) */
+.agc-nav{flex:0 0 auto;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--bdr-ui);background:transparent;color:var(--fg);cursor:pointer;border-radius:var(--r-sm);font-size:13px;line-height:1;user-select:none}/* 22px square + 13px glyph = the strip control size (was 28px/16px, taller than every other strip chip) */
 .agc-nav:hover{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 60%,transparent);background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .agc-nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .agc-today{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:3px 10px;cursor:pointer;line-height:1.4;font-family:inherit}
@@ -1385,7 +1385,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agc-month-prev:focus-visible,.agc-month-next:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-sm)}
 .agc-month-prev *,.agc-month-next *{cursor:pointer}
 .agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
-.agc-dow span{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);text-align:center;padding:2px 0}
+.agc-dow span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);text-align:center;padding:2px 0}/* 11px = the small-label floor (design-language §176: no informational text below 11px); keeps the caps-eyebrow role */
 /* The month grid sizes to the WINDOW, not to the number of tasks: a fixed height split into
    6 equal rows × 7 equal columns, so every day box is the same size. Cells clip their content
    (the +N-more expander reveals overflow); the grid itself never grows past this box. */
@@ -1402,7 +1402,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
    growing this cell with align-self:start + z-index overlays siblings WITHOUT pushing them;
    it scrolls internally so it never clips. */
 .agc-cell.agd-expanded{align-self:start;z-index:6;height:auto;max-height:min(52vh,360px);overflow-y:auto;box-shadow:var(--sh-2);border:1px solid var(--acc);background:var(--hbg)}
-.agc-dom{font-size:10px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding:0 1px;flex-shrink:0}
+.agc-dom{font-size:11px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2;align-self:flex-end;padding:0 1px;flex-shrink:0}/* 11px = the info-text floor (design-language §176), day numbers are informational */
 .agc-cell.today .agc-dom{color:var(--acc);font-weight:700;background:color-mix(in srgb,var(--acc) 18%,transparent);border-radius:var(--r-xs);padding:0 4px}
 .agc-item{font-size:11px;line-height:1.3;padding:0 4px;border-radius:var(--r-xs);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid;color:var(--fg);flex-shrink:0}
 .agc-item:hover{opacity:.82}
