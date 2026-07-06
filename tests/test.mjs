@@ -8909,3 +8909,17 @@ test('strip pill type scale: .cap-chip and .cap-chip-badge are on the 11px strip
   assert.ok(/\.cap-chip-badge\{[^}]*font-size:11px/.test(_src), 'the badge must be font-size:11px, not font:inherit (which resets to 17px)');
   assert.ok(!/\.cap-chip-badge\{[^}]*font:inherit/.test(_src), 'the badge must NOT use font:inherit (it reset the size to the 17px body)');
 });
+
+// ── Workspace tabs + agenda switchers match the 22px strip height + the 11px info-text floor ──
+test('switcher chips: doc-tabs + agenda nav are 22px (strip height); date text clears the 11px floor', () => {
+  // design-language §4: every control in a docked strip row shares one 22px height
+  assert.ok(/\.doc-tab\{[^}]*height:22px/.test(_src), 'doc-tab must be 22px (the strip control height), not 28px');
+  assert.ok(/\.doc-tab-add\{[^}]*width:22px;height:22px/.test(_src), 'doc-tab-add must be a 22px square');
+  assert.ok(/\.agc-nav\{[^}]*width:22px;height:22px/.test(_src), 'the agenda nav arrows must be 22px, not 28px');
+  // §176: no informational text below 11px — the day numbers + weekday labels were 10px
+  assert.ok(/\.agc-dom\{[^}]*font-size:11px/.test(_src), 'day numbers must be >= 11px (was 10px, under the info-text floor)');
+  assert.ok(/\.agc-dow span\{[^}]*font-size:11px/.test(_src), 'weekday labels must be >= 11px (was 10px)');
+  // the nav glyph + title drop to a compact 13px that fits the 22px row (were 16px/15px, oversized)
+  assert.ok(/\.agc-nav\{[^}]*font-size:13px/.test(_src), 'the nav glyph must be 13px to fit the 22px row (was 16px)');
+  assert.ok(/\.agc-title\{[^}]*font-size:13px/.test(_src), 'the month title must be 13px to fit the strip band (was 15px)');
+});

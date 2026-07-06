@@ -1929,6 +1929,26 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### STRIP-2 ◐ Workspace tabs + agenda date switchers: height + text-scale mismatch vs the strip band (user-reported) (RESOLVED pending merge)
+- **User caught a real visual-consistency bug my a11y audit missed.** The prior pass judged these families
+  against the tap-target FLOOR (and found them fine on touch), but the user's actual complaint was that the
+  workspace doc tabs and the agenda date/month switchers are **visibly TALLER than every other pill in the
+  strip band**, and the calendar text sizes are ad-hoc. Browser-measured: `.doc-tab`/`.doc-tab-add`/
+  `.agc-nav` were **28px** vs the **22px** strip baseline (`.cap-chip`/`.ag-toggle`), a design-language §4
+  violation ("every control in a docked-strip row shares one 22px height"). And the date text was 16/17/15/
+  10px with no coherent scale.
+- **Fixed (browser-verified before + after).** Heights: `.doc-tab` 28→22, `.doc-tab-add` 28→22 square,
+  `.agc-nav` 28→22 square (all now === the 22px strip baseline). Text: `.agc-nav` glyph 16→13px + `.agc-title`
+  15→13px (compact chrome that fits the 22px row); `.agc-dom` day numbers 10→11px + `.agc-dow` weekday
+  eyebrows 10→11px (design-language §176: no informational text below 11px, the eyebrow caps/tracking role
+  kept). Confirmed the calendar cells don't overflow with the 11px numbers, and the whole switcher row now
+  aligns to 22px. `.agc-today` (already 11px/600) and the contrast/radii/focus/aria (all passing) untouched.
+- **Lesson (compounding the STRIP-1 one):** an accessibility audit is not a visual-consistency audit. The
+  first pass measured the a11y floor and declared "conformant"; it never compared the chip HEIGHTS to the
+  sibling strip pills, which is the design-language §4 requirement the user actually saw violated. Measure
+  the right property for the right standard.
+- 880 tests (+1 drift-guard pin: the 22px heights + the 11px text floor + the compact 13px title/nav).
+
 ### STRIP-1 ◐ Conformance audit of the capture + journal strip pills (browser-measured) (RESOLVED pending merge)
 - **A full conformance pass** on the docked-strip pill vocabulary (the `.cap-*` family shared by the
   capture and journal strips, per design-language §4 "docked strips share one grammar"), measured live in
