@@ -93,10 +93,11 @@ outline stays fully visible and usable underneath, so you insert without interru
 `Ctrl/Cmd+Shift+1` through `0` open it targeting **inbox 1 through 10**. If a numbered slot has no
 inbox yet and a point is selected, that point **becomes** that inbox. While the strip is open the same
 keys switch the destination (they move the selector, they do not reopen it); open the destination
-chooser (the **▾** chip) to click a slot, or add and remove inboxes inline. `Ctrl/Cmd+Alt+1` through
-`0` sets the current point as inbox 1 through 10; a point's menu adds or removes an inbox slot too. The
-strip stays open after each capture with a running count, so you can empty your head in one sitting.
-`Enter` captures; `Shift+Enter` adds a line break; `Esc` closes.
+chooser (the **▾** chip) to click a slot, or add and remove inboxes inline. **Reorder** the inbox chips
+to change which number each one answers to: drag a chip, or focus one and press `Alt+Left` / `Alt+Right`.
+`Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1 through 10; a point's menu adds or removes
+an inbox slot too. The strip stays open after each capture with a running count, so you can empty your
+head in one sitting. `Enter` captures; `Shift+Enter` adds a line break; `Esc` closes.
 
 ## Nicknames (aliases)
 
