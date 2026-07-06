@@ -1137,23 +1137,25 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
 .cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:6px 0 1px;/* chips centered in the band BELOW the hairline: 6px under it, 1px + the strip 5px bottom padding beneath */border-top:1px solid var(--bdr)} /* solid hairline: the .ag-pane secondary-bar language; dashed is the broken-pill voice */
-.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;height:22px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
+.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;min-width:0;height:22px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}/* min-width:0: a flex item defaults to min-width:auto (won't shrink below content), so without this a long label overflows max-width and pushes the ✕ out of view */
 /* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
 .cap-chip:hover{border-color:var(--muted)}
 .cap-chip[draggable=true]{cursor:grab}
 .cap-chip.cap-chip-drag{opacity:.5;cursor:grabbing}
 .cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-chip.cur .cap-chip-pick{color:var(--acc)}
-.cap-chip-pick{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:none;padding:2px 4px 2px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.cap-chip-pick:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}  /* the .close-btn neutral segment hover; also keeps the generic button:hover --bdr wash out of the .cur tint */
+/* a chip is three segments: badge (select target) | name (zoom to point) | ✕ (remove). Only the name grows/truncates. */
+.cap-chip-badge{flex-shrink:0;display:inline-flex;align-items:center;font:inherit;background:none;border:none;padding:0 4px 0 6px;cursor:pointer}  /* select this inbox as the capture target */
+.cap-chip-pick{display:inline-flex;align-items:center;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:2px 4px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}  /* the name: zoom to the inbox point; it is the one segment that truncates */
+.cap-chip-pick:hover,.cap-chip-badge:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}  /* the .close-btn neutral segment hover; also keeps the generic button:hover --bdr wash out of the .cur tint */
 .cap-chip.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
-.cap-chip-rm{font-size:12px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 6px;cursor:pointer;flex-shrink:0}/* keep the ✕ tap target intact when the label is long; the label (min-width:0 + ellipsis) truncates instead of squishing the remove button */
-.cap-chip>.cap-chip-pick+.cap-chip-pick{border-left:1px solid var(--bdr-ui)} /* multi-segment chips (the journal date) divide internally like pick|remove */
+.cap-chip.cur .cap-chip-pick{color:var(--acc)}
+.cap-chip-rm{font-size:12px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 6px;cursor:pointer;flex-shrink:0}/* keep the ✕ tap target intact when the label is long; the name (min-width:0 + ellipsis) truncates instead of squishing the remove button */
 .cap-chip-rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
 /* plain .ag-toggle chip (DL §4 docked-strip grammar); dashed borders are the broken-pill language, not an affordance */
 .cap-add{height:22px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 .cap-add:hover{color:var(--fg);border-color:var(--muted)}
-.cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-name-btn:focus-visible,.cap-dest-edit:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cap-chip-badge:focus-visible,.cap-chip-pick:focus-visible,.cap-chip-rm:focus-visible,.cap-add:focus-visible,.cap-dest-name-btn:focus-visible,.cap-dest-edit:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── inline date-picker calendar (Schedule dialog + date properties) ── */
 .cal{display:none;margin-top:8px;border:1px solid var(--bdr);border-radius:var(--r-md);background:var(--bg);padding:8px;width:100%;box-sizing:border-box}
 .cal-open>.cal,.cal-open .cal{display:block}
@@ -1703,13 +1705,15 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      The 16px input stops iOS focus-zoom. Pick/remove overlays extend away from each
      other so the destructive ✕ never wins ambiguous taps. */
   .cap-input{min-height:38px;font-size:16px}
-  .cap-chip-rm,.cap-chip-pick,.cap-add,.cap-dest-name-btn,.cap-dest-edit,.cap-go{position:relative}
+  .cap-chip-rm,.cap-chip-pick,.cap-chip-badge,.cap-add,.cap-dest-name-btn,.cap-dest-edit,.cap-go{position:relative}
   .cap-add::after,.cap-dest-name-btn::after,.cap-dest-edit::after,.cap-go::after{content:'';position:absolute;inset:-8px -2px}
   /* the chip's overflow:hidden (corner rounding) would clip the overlays; on touch the
      chip overflows and the children carry the rounding themselves */
   .cap-chip{overflow:visible}
-  .cap-chip-pick{border-radius:calc(var(--r-sm) - 1px) 0 0 calc(var(--r-sm) - 1px)}
-  .cap-chip-pick::after{content:'';position:absolute;inset:-8px 0 -8px -4px}
+  /* chip order is now badge | name | ✕: the badge carries the left rounding, the ✕ the right */
+  .cap-chip-badge{border-radius:calc(var(--r-sm) - 1px) 0 0 calc(var(--r-sm) - 1px)}
+  .cap-chip-badge::after{content:'';position:absolute;inset:-8px 0 -8px -4px}
+  .cap-chip-pick::after{content:'';position:absolute;inset:-8px 0}
   .cap-chip-rm{border-radius:0 calc(var(--r-sm) - 1px) calc(var(--r-sm) - 1px) 0}
   .cap-chip-rm::after{content:'';position:absolute;inset:-8px -4px -8px 0}
   .fn-key{padding:6px 11px}
@@ -9101,11 +9105,18 @@ function buildCaptureManager() {
     const n = nodeById(id); if (!n) return;
     const slot = i + 1;
     const chip = document.createElement('div'); chip.className = 'cap-chip' + (slot === captureSlot ? ' cur' : '');
+    // A chip is now three parts, mirroring the main-strip destination: the SLOT BADGE selects this inbox
+    // as the capture target, the NAME zooms into that inbox's point (each points at a distinct location),
+    // and the ✕ removes it. (Before, one button did select-only and there was no way to jump to a point.)
+    const badge = document.createElement('button'); badge.type = 'button'; badge.className = 'cap-chip-badge' + (slot === captureSlot ? ' cur' : '');
+    badge.innerHTML = `<span class="cap-slot-n">${slot === 10 ? '0' : slot}</span>`;
+    badge.setAttribute('aria-pressed', String(slot === captureSlot));
+    badge.setAttribute('aria-label', `Capture to inbox ${slot}: ${crumbLabel(n)}`);
+    badge.addEventListener('click', () => { captureSlot = slot; captureManage = false; renderCaptureStrip(); });
     const pick = document.createElement('button'); pick.type = 'button'; pick.className = 'cap-chip-pick';
-    pick.innerHTML = `<span class="cap-slot-n">${slot === 10 ? '0' : slot}</span> ${escHtml(crumbLabel(n))}`;
-    pick.setAttribute('aria-pressed', String(slot === captureSlot));
-    pick.setAttribute('aria-label', `Capture to inbox ${slot}: ${crumbLabel(n)}`);
-    pick.addEventListener('click', () => { captureSlot = slot; captureManage = false; renderCaptureStrip(); });
+    pick.innerHTML = escHtml(crumbLabel(n));
+    pick.setAttribute('aria-label', `Zoom into inbox ${slot}: ${crumbLabel(n)}`);
+    pick.addEventListener('click', () => { zoomInto(n.id); });   // go to that inbox's point (each inbox is a distinct location)
     const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'cap-chip-rm'; rm.textContent = '✕';  // one glyph per concept: chip removes match .sh-chip-x
     rm.setAttribute('aria-label', `Remove inbox ${slot}: ${crumbLabel(n)}`);
     rm.addEventListener('click', () => {
@@ -9137,7 +9148,7 @@ function buildCaptureManager() {
         if (to >= 1 && to <= nInboxes) { moveInboxSlot(slot, to); captureSlot = to; renderCaptureStrip(); announce(`Inbox moved to slot ${to === 10 ? '0' : to}`); }
       }
     });
-    chip.append(pick, rm); mgr.appendChild(chip);
+    chip.append(badge, pick, rm); mgr.appendChild(chip);
   });
   if (slots.filter(Boolean).length < MAX_INBOXES) {
     const add = document.createElement('button'); add.type = 'button'; add.className = 'cap-add';
@@ -22095,7 +22106,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the pencil on the destination) to pick a slot, add or remove inboxes inline; clicking the destination name itself zooms into that inbox point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the pencil on the destination) to pick a slot, add or remove inboxes inline; clicking the destination name itself zooms into that inbox point. In the manager, each chip's number badge selects it as the target and its name zooms into that inbox's point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },

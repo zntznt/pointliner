@@ -93,8 +93,10 @@ outline stays fully visible and usable underneath, so you insert without interru
 `Ctrl/Cmd+Shift+1` through `0` open it targeting **inbox 1 through 10**. If a numbered slot has no
 inbox yet and a point is selected, that point **becomes** that inbox. While the strip is open the same
 keys switch the destination (they move the selector, they do not reopen it). Click the **pencil** on the
-destination to open the inbox manager (pick a slot, add and remove inboxes inline), and click the
-destination **name** itself to zoom into that inbox point. **Reorder** the inbox chips
+destination to open the inbox manager, and click the destination **name** itself to zoom into that inbox
+point. In the manager, each inbox chip works the same way: click its **number badge** to make it the
+capture target, or click its **name** to zoom into that inbox's point (each inbox is a different place).
+**Reorder** the inbox chips
 to change which number each one answers to: drag a chip, or focus one and press `Alt+Left` / `Alt+Right`.
 `Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1 through 10; a point's menu adds or removes
 an inbox slot too. The strip stays open after each capture with a running count, so you can empty your
