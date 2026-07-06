@@ -26,6 +26,11 @@ work on **any line of any point**, including headings and quotes.
 ~~strikethrough~~               ++underline++
 ```
 
+**Code marks also keep pills literal.** Anything inside backticks stays plain text, so if you want to
+*write about* a pill, for example a note that says "type `` `{2d6}` `` to roll dice", wrap it in
+backticks and it shows the literal `{2d6}` instead of turning into a rolled pill. Without the
+backticks, a `{2d6}` you type becomes a live pill when you click away; with them, it stays as text.
+
 ## Emoji
 
 Type a colon to drop in an emoji. As you type `:` and the start of a name (`:fire`, `:tada`,

@@ -8810,3 +8810,34 @@ test('openExamples: inserts the Welcome tour into the current doc, does NOT over
   assert.ok(!body.includes('adoptDoc('), 'openExamples must NOT adoptDoc (that overwrote the user document)');
   assert.ok(!/Discard unsaved/i.test(body), 'the destructive discard confirm should be gone (the insert is non-destructive)');
 });
+
+// ── Backtick code spans are the promotion escape hatch: `{2d6}` stays literal, not a pill ──
+test('codeSpanRanges / inCodeSpan: find inline `code` spans (matches mdInline\'s regex)', () => {
+  const t = 'type `{2d6}` and `{a|b}` but not {real}';
+  const r = c.codeSpanRanges(t);
+  assert.equal(r.length, 2, 'two backtick spans');
+  // the first { (inside `{2d6}`) is in a code span; the { of {real} is not
+  const firstBrace = t.indexOf('{');            // inside `{2d6}`
+  const lastBrace = t.lastIndexOf('{real}');    // the real one
+  assert.ok(c.inCodeSpan(r, firstBrace), 'a brace inside `code` is detected');
+  assert.ok(!c.inCodeSpan(r, lastBrace), 'a brace outside code is not');
+  assert.equal(c.codeSpanRanges('no code here').length, 0, 'no spans when there are no backticks');
+  assert.equal(c.codeSpanRanges('`unclosed').length, 0, 'an unclosed backtick is not a span');
+});
+
+test('promoteInlineShorthand: a {…} inside inline `code` stays LITERAL (the escape hatch)', () => {
+  const mk = () => ({ text: '', dice: [], math: [], vars: [], grammar: [], est: [], markov: [], seq: [], query: [], children: [] });
+  // bare braces still promote
+  let n = mk(); n.text = 'roll {2d6}';
+  c.promoteInlineShorthand(n);
+  assert.match(n.text, /\[\[dice:[a-z0-9]+\]\]/, 'a bare {2d6} still promotes');
+  // backtick-wrapped braces DO NOT promote — the backticks and the literal {2d6} survive verbatim
+  n = mk(); n.text = 'docs: type `{2d6}` to roll';
+  const changed = c.promoteInlineShorthand(n);
+  assert.equal(n.text, 'docs: type `{2d6}` to roll', 'a `{2d6}` inside code stays literal');
+  assert.equal(changed, false, 'nothing changed, so promote reports no change');
+  // mixed: the coded one stays, the real one promotes — per-brace precision
+  n = mk(); n.text = '`{a|b}` and real {2d6}';
+  c.promoteInlineShorthand(n);
+  assert.ok(n.text.startsWith('`{a|b}` and real [[dice:'), 'the coded brace stays, the real one promotes');
+});
