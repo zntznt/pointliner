@@ -8841,3 +8841,29 @@ test('promoteInlineShorthand: a {…} inside inline `code` stays LITERAL (the es
   c.promoteInlineShorthand(n);
   assert.ok(n.text.startsWith('`{a|b}` and real [[dice:'), 'the coded brace stays, the real one promotes');
 });
+
+// ── Inbox reorder (change which capture # an inbox answers to) + the long-label delete fix ──
+test('reorderInboxList: moves a slot, no-ops on same/out-of-range, trims trailing nulls', () => {
+  const L = ['a', 'b', 'c', 'd'];
+  assert.deepEqual(host(c.reorderInboxList(L, 1, 3)), ['b', 'c', 'a', 'd'], 'slot 1 -> 3');
+  assert.deepEqual(host(c.reorderInboxList(L, 4, 1)), ['d', 'a', 'b', 'c'], 'slot 4 -> 1');
+  assert.deepEqual(host(c.reorderInboxList(L, 2, 2)), ['a', 'b', 'c', 'd'], 'same slot is a no-op');
+  assert.deepEqual(host(c.reorderInboxList(L, 5, 1)), ['a', 'b', 'c', 'd'], 'out-of-range from is a no-op');
+  assert.deepEqual(host(c.reorderInboxList(L, 0, 2)), ['a', 'b', 'c', 'd'], 'slot 0 is invalid (1-based)');
+  // trailing nulls trimmed to keep the persisted list tight (the setInboxSlot invariant)
+  assert.deepEqual(host(c.reorderInboxList(['a', 'b', null], 3, 1)), [null, 'a', 'b'], 'a trailing null moves + tail is trimmed');
+  assert.notEqual(c.reorderInboxList(L, 1, 3), L, 'operates on a copy, does not mutate the input');
+});
+
+test('inbox chips: reorder wiring (drag + Alt+Arrow) is present; the ✕ keeps its tap target', () => {
+  // the pure mover + the DOM wrapper both exist
+  assert.ok(_src.includes('function reorderInboxList('), 'the pure reorder core is missing');
+  assert.ok(_src.includes('function moveInboxSlot('), 'the moveInboxSlot wrapper is missing');
+  // desktop drag on the chip (gated off touch, since HTML5 drag never fires there)
+  assert.ok(_src.includes('if (!IS_TOUCH) {') && _src.includes('chip.draggable = true'), 'the desktop drag is missing / not touch-gated');
+  assert.ok(_src.includes("moveInboxSlot(from, slot)"), 'the drop must reorder via moveInboxSlot');
+  // keyboard + touch/a11y fallback: Alt+Left/Right moves the slot (the app-wide Alt+Arrow=move grammar)
+  assert.ok(_src.includes("(e.key === 'ArrowLeft' || e.key === 'ArrowRight')") && _src.includes('moveInboxSlot(slot, to)'), 'the Alt+Arrow reorder fallback is missing');
+  // the long-label delete fix: the remove ✕ keeps its width, the label truncates
+  assert.ok(/\.cap-chip-rm\{[^}]*flex-shrink:0/.test(_src), 'the ✕ must be flex-shrink:0 so a long label cannot squish it');
+});

@@ -1133,12 +1133,14 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cap-chip{display:inline-flex;align-items:stretch;max-width:230px;height:22px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}
 /* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
 .cap-chip:hover{border-color:var(--muted)}
+.cap-chip[draggable=true]{cursor:grab}
+.cap-chip.cap-chip-drag{opacity:.5;cursor:grabbing}
 .cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-chip.cur .cap-chip-pick{color:var(--acc)}
 .cap-chip-pick{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:none;padding:2px 4px 2px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .cap-chip-pick:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}  /* the .close-btn neutral segment hover; also keeps the generic button:hover --bdr wash out of the .cur tint */
 .cap-chip.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
-.cap-chip-rm{font-size:12px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 6px;cursor:pointer}
+.cap-chip-rm{font-size:12px;line-height:1;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 6px;cursor:pointer;flex-shrink:0}/* keep the ✕ tap target intact when the label is long; the label (min-width:0 + ellipsis) truncates instead of squishing the remove button */
 .cap-chip>.cap-chip-pick+.cap-chip-pick{border-left:1px solid var(--bdr-ui)} /* multi-segment chips (the journal date) divide internally like pick|remove */
 .cap-chip-rm:hover{color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
 /* plain .ag-toggle chip (DL §4 docked-strip grammar); dashed borders are the broken-pill language, not an affordance */
@@ -8929,6 +8931,26 @@ function removeInboxSlot(slot) {
   root.inboxes.splice(slot - 1, 1);
   markDirty();
 }
+// Reorder the inbox list so a chip's SLOT NUMBER (which capture key it answers to) changes: pull the id
+// out of `from` and reinsert at `to` (1-based slots). Pure over the list so it's Node-testable; the
+// caller pushUndo()s + markDirty()s. Trailing nulls are trimmed to keep the persisted list tight, the
+// same invariant setInboxSlot maintains.
+function reorderInboxList(list, from, to) {
+  const arr = (list || []).slice();
+  if (from < 1 || from > arr.length || to < 1 || to > arr.length || from === to) return arr;
+  const [id] = arr.splice(from - 1, 1);
+  arr.splice(to - 1, 0, id);
+  while (arr.length && !arr[arr.length - 1]) arr.pop();
+  return arr;
+}
+function moveInboxSlot(from, to) {
+  if (!root.inboxes) return;
+  const next = reorderInboxList(root.inboxes, from, to);
+  if (next.length === root.inboxes.length && next.every((x, i) => x === root.inboxes[i])) return; // no-op
+  pushUndo();
+  root.inboxes = next;
+  markDirty();
+}
 
 // Capture lives in a TOOLBAR STRIP (like the agenda), not a modal — you can insert without
 // interrupting the main view (it stays live and undimmed below). Toggled by btn-capture and
@@ -9070,6 +9092,29 @@ function buildCaptureManager() {
       flashHint(`Removed inbox ${slot === 10 ? '0' : slot}`); // P4 confirm, matching the bullet-menu path (UXP-82)
       if (captureSlot > (root.inboxes || []).length) captureSlot = Math.max(1, (root.inboxes || []).findIndex(Boolean) + 1);
       renderCaptureStrip();
+    });
+    // Reorder to change which capture key (#) an inbox answers to: drag on desktop, Alt+Left/Right on a
+    // focused chip everywhere (the app-wide Alt+Arrow=move grammar; the keyboard path is the touch + a11y
+    // fallback, since HTML5 drag never fires on touch). A move re-renders + keeps focus/announces the slot.
+    const nInboxes = slots.filter(Boolean).length;
+    pick.setAttribute('aria-description', `Slot ${slot} of ${nInboxes}. Alt+Left or Alt+Right to reorder.`);
+    if (!IS_TOUCH) {
+      chip.draggable = true;
+      chip.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', String(slot)); e.dataTransfer.effectAllowed = 'move'; chip.classList.add('cap-chip-drag'); });
+      chip.addEventListener('dragend', () => chip.classList.remove('cap-chip-drag'));
+      chip.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+      chip.addEventListener('drop', e => {
+        e.preventDefault();
+        const from = +e.dataTransfer.getData('text/plain');
+        if (from && from !== slot) { moveInboxSlot(from, slot); captureSlot = slot; renderCaptureStrip(); }
+      });
+    }
+    pick.addEventListener('keydown', e => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        const to = e.key === 'ArrowLeft' ? slot - 1 : slot + 1;
+        if (to >= 1 && to <= nInboxes) { moveInboxSlot(slot, to); captureSlot = to; renderCaptureStrip(); announce(`Inbox moved to slot ${to === 10 ? '0' : to}`); }
+      }
     });
     chip.append(pick, rm); mgr.appendChild(chip);
   });
@@ -22029,7 +22074,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (click the destination chip) to pick a slot, add or remove inboxes inline. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the destination chooser (click the destination chip) to pick a slot, add or remove inboxes inline. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },

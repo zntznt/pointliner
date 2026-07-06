@@ -1929,6 +1929,25 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### INBOX-1 ◐ Can't delete an inbox with a long label; can't reorder inboxes (P2/P4, user-reported) (RESOLVED pending merge)
+- **Two problems in the capture strip's inbox chips.** (1) DELETE: `.cap-chip-rm` (the ✕) had no
+  `flex-shrink:0`, so a long point label (which `crumbLabel` puts in `.cap-chip-pick`) squished the ✕'s
+  clickable width, and on touch (`.cap-chip{overflow:visible}`) the label could overflow and cover it,
+  so the inbox couldn't be removed. Fixed with one line: `.cap-chip-rm{flex-shrink:0}`, the label (which
+  already has `min-width:0` + `text-overflow:ellipsis`) truncates instead. (2) REORDER: no way to change
+  which capture # (slot) an inbox answers to; the chips were fixed in `root.inboxes` order.
+- **Reorder built.** Pure `reorderInboxList(list, from, to)` (splice-out + reinsert, 1-based, trims
+  trailing nulls like `setInboxSlot`) + a `moveInboxSlot` DOM wrapper (pushUndo + markDirty). Wired two
+  ways per the hover-with-touch-fallback rule: HTML5 drag on the chip (desktop, `!IS_TOUCH`, with a
+  `.cap-chip-drag` opacity cue) AND `Alt+Left`/`Alt+Right` on a focused chip (the app-wide
+  `Alt+Arrow=move` grammar; this is the touch + a11y path since HTML5 drag never fires on touch). A move
+  keeps the moved inbox selected (`captureSlot = to`), re-renders, and announces the new slot.
+- Documented in the concept-guide `capture` entry + `guide/tasks-and-organizing.md`. 876 tests (+2 pins:
+  `reorderInboxList` move/no-op/out-of-range/null-trim/immutability; the drag + Alt+Arrow wiring + the
+  `flex-shrink:0` delete fix). Browser down → the drag/keyboard flow is pure-core + src-pinned; a smoke
+  test should give an inbox a long name, confirm the ✕ still deletes it, and drag / Alt+Arrow a chip to
+  reorder.
+
 ### ESC-1 ◐ Backtick code spans did not escape pill promotion (P1, escape hatch) (RESOLVED pending merge)
 - **Problem (user-reported).** Inline `` `code` `` is the universal "render this literally" convention,
   and `mdInline` already stashes it at render time, so a `` `{2d6}` `` *displays* as literal code. BUT
