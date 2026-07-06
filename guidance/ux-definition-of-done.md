@@ -76,7 +76,7 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Focus-visible** on every new focus stop; **reduced-motion** respected for any new animation. *(P3-3)*
 - [ ] **Not color-alone** — any new state/error also carries text or icon. *(P3-4)*
 - [ ] **Off-focus changes announced** via the `aria-live` region (reroll, error, async result, a filter's match count). *(P3-5, `accessibility.md` guardrail 4)*
-- [ ] **~44px tap targets** under `@media(hover:none)` for every new tappable control; padding or an overlay may extend past the visual box. *(`accessibility.md` guardrail 5)*
+- [ ] **Tap targets clear WCAG 2.2 (24px), aim for the 36–38px strip idiom** under `@media(hover:none)` for every new tappable control; padding or an invisible `::after` overlay (the docked-strip `inset:-8px` recipe) may extend past the visual box. *(`accessibility.md` guardrail 5, reconciled 2026-07-06)*
 - [ ] **Deferred items still labeled** — if it's a pill or outline row, it carries an accurate `aria-label` even though `tabindex`/`role=tree` are sequenced later. *(P3-6 interim)*
 - [ ] **ARIA set per-row at render time**, not via a global post-pass. *(virtual-list invariant)*
 

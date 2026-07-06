@@ -1137,7 +1137,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cap-go:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* row 2 — in-strip destination manager: chips (pick + remove) and Add */
 .cap-mgr{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:6px 0 1px;/* chips centered in the band BELOW the hairline: 6px under it, 1px + the strip 5px bottom padding beneath */border-top:1px solid var(--bdr)} /* solid hairline: the .ag-pane secondary-bar language; dashed is the broken-pill voice */
-.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;min-width:0;height:22px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}/* min-width:0: a flex item defaults to min-width:auto (won't shrink below content), so without this a long label overflows max-width and pushes the ✕ out of view */
+.cap-chip{display:inline-flex;align-items:stretch;max-width:230px;min-width:0;height:22px;font-size:11px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);overflow:hidden;background:transparent}/* font-size:11px = the docked-strip chip scale (matches .ag-toggle); without it the chip + badge inherit the 17px body size (design-language §4) *//* min-width:0: a flex item defaults to min-width:auto (won't shrink below content), so without this a long label overflows max-width and pushes the ✕ out of view */
 /* the .ag-toggle hover recipe split across the compound chip: border on the box, ink on the segment; .cur below wins, so the active chip doesn't hover-react (same as .ag-toggle.on) */
 .cap-chip:hover{border-color:var(--muted)}
 .cap-chip[draggable=true]{cursor:grab}
@@ -1145,7 +1145,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cap-chip.cur{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-chip.cur .cap-chip-pick{color:var(--acc)}
 /* a chip is three segments: badge (select target) | name (zoom to point) | ✕ (remove). Only the name grows/truncates. */
-.cap-chip-badge{flex-shrink:0;display:inline-flex;align-items:center;font:inherit;background:none;border:none;padding:0 4px 0 6px;cursor:pointer}  /* select this inbox as the capture target */
+.cap-chip-badge{flex-shrink:0;display:inline-flex;align-items:center;font-size:11px;line-height:1.4;background:none;border:none;padding:0 4px 0 6px;cursor:pointer}  /* select this inbox as the capture target. font-size:11px (not font:inherit, which reset to the 17px body size) keeps it on the strip scale */
 .cap-chip-pick{display:inline-flex;align-items:center;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:2px 4px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-shrink:1}  /* the name: zoom to the inbox point; it is the one segment that truncates. flex-shrink:1 OVERRIDES the global button{flex-shrink:0} — without it the label refuses to shrink, the ellipsis never fires, and it pushes the ✕ out of the (overflow:hidden) chip. The real root cause, browser-verified. */
 .cap-chip-pick:hover,.cap-chip-badge:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}  /* the .close-btn neutral segment hover; also keeps the generic button:hover --bdr wash out of the .cur tint */
 .cap-chip.cur .cap-slot-n{background:var(--acc);color:var(--acc-fg)}
