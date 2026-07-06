@@ -40,8 +40,16 @@ as the work ships.
    outline without moving focus must write a short result summary (e.g. a match
    count) to `#a11y-live`.
 5. **Tap-target floor.** Under `@media(hover:none)`, every tappable control must
-   present at least a ~44px hit area; the visual box may stay smaller as long as
-   padding or an overlay extends the target.
+   present a hit area that **clears WCAG 2.2 §2.5.8 (24×24px minimum)**, and the app
+   targets **~36–38px** for it via padding or an invisible `::after` overlay past the
+   visual box (the docked-strip idiom: a 20–22px chip with an `inset:-8px` overlay =
+   36–38px). The visual box may stay smaller as long as the overlay extends the target.
+   *(Reconciled 2026-07-06: the guardrail previously said "~44px", but every docked-strip
+   chip in the app, capture/journal `.cap-*`, agenda `.ag-toggle`/`.ag-chip`, search
+   `.sh-chip`, has consistently used the 36–38px overlay idiom, which passes WCAG 2.2. The
+   doc, not the code, had drifted to an aspirational number nothing honored. If a future
+   control genuinely needs a bigger target, deepen its overlay inset; the floor is
+   "clears 24px, aim for the 36–38px strip idiom", not a hard 44.)*
 
 ## Phase 0 — Accessible names (quick wins, zero risk)
 

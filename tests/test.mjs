@@ -8901,3 +8901,11 @@ test('inbox manager chip: three segments (badge selects, name zooms), and the ch
   // guard the root cause exists so the override stays meaningful
   assert.ok(/button\{[^}]*flex-shrink:0/.test(_src), 'the global button{flex-shrink:0} is what the pick must override');
 });
+
+// ── Strip chip type scale: chip + badge must be 11px (docked-strip scale), not the 17px body size ──
+test('strip pill type scale: .cap-chip and .cap-chip-badge are on the 11px strip scale', () => {
+  // design-language §4: docked-strip chips are 11px; without an explicit size they inherit the 17px body
+  assert.ok(/\.cap-chip\{[^}]*font-size:11px/.test(_src), 'the chip must declare font-size:11px (the strip scale), not inherit 17px');
+  assert.ok(/\.cap-chip-badge\{[^}]*font-size:11px/.test(_src), 'the badge must be font-size:11px, not font:inherit (which resets to 17px)');
+  assert.ok(!/\.cap-chip-badge\{[^}]*font:inherit/.test(_src), 'the badge must NOT use font:inherit (it reset the size to the 17px body)');
+});

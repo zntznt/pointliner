@@ -1929,6 +1929,29 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### STRIP-1 ◐ Conformance audit of the capture + journal strip pills (browser-measured) (RESOLVED pending merge)
+- **A full conformance pass** on the docked-strip pill vocabulary (the `.cap-*` family shared by the
+  capture and journal strips, per design-language §4 "docked strips share one grammar"), measured live in
+  a browser against all three standards (design-language, ux-discipline, ux-definition-of-done). **Verdict:
+  basically conformant, ship-worthy.** PASS on contrast (all ≥ 4.5 vs the 4.5 floor), radius tokens
+  (`--r-sm`/`--r-xs`), focus-visible on every segment, one-glyph-per-concept (✕/pencil/+/slot), ARIA +
+  accessible names, vocabulary ("point"/"inbox", correctly NOT "pill" since these are toolbar chips not
+  inline artifacts), P4 feedback (every action flashes/announces), and cross-strip + cross-app consistency
+  with `.ag-toggle`/`.sh-chip`. Two findings worth acting on:
+- **F1 (type-scale, FIXED).** `.cap-chip` inherited the 17px body size and `.cap-chip-badge` used
+  `font:inherit` (which reset to 17px, line-height 26.35px) instead of the 11px docked-strip scale. Latent
+  (masked by the 10px slot-n being the only visible text) but a §4 violation + a trap for the next edit.
+  Fixed to `font-size:11px` (line-height 15.4px, matches `.ag-toggle`), browser-verified. Drift-guard pinned.
+- **F2 (tap targets, STANDARD RECONCILED).** The strip's touch hit-areas are 36–38px (a 20–22px chip +
+  the `::after inset:-8px` overlay). This PASSES WCAG 2.2 §2.5.8 (24px) but missed the guardrail's written
+  "~44px". Browser-measured that this is STRIP-WIDE (`.ag-toggle`/`.ag-chip`/`.sh-chip` all use the same
+  36–38px idiom) → the CODE is internally consistent and the DOC drifted to an aspirational number nothing
+  honored. Chosen fix (owner call): reconcile the standard, not touch every strip. `accessibility.md`
+  guardrail 5 + the DoD now state the real floor ("clears WCAG 2.2 24px, aim for the 36–38px overlay
+  idiom"), so code and spec agree. The strip pills conform as-is.
+- 879 tests (+1 type-scale drift-guard pin). Browser-verified F1 fix + F2 measurement; no browser-down
+  caveat.
+
 ### INBOX-4 ◐ The ✕-hidden bug's ACTUAL root cause: global button{flex-shrink:0} (browser-verified) (RESOLVED pending merge)
 - **INBOX-1 and INBOX-3 both mis-diagnosed this.** After two "fixes" (`.cap-chip-rm{flex-shrink:0}`,
   then `.cap-chip{min-width:0}`) the ✕ STILL vanished on a long inbox label (user screenshot). I stopped
