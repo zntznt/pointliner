@@ -1929,6 +1929,27 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### MENU-1 ◐ Base/board menu operability: flip clamp + card-opener event contract (Fixes #415 #417) (RESOLVED pending merge)
+- **The fleet triage's board/base operability pair: two majors on the newest surfaces, shippable
+  regardless of how the #416 mega-menu decision lands.** Both browser-verified live on the fixed file
+  (localhost, real base + board rendered from an injected doc).
+- **#415 (major): a tall Column/Row/Card menu opened from a mid-screen anchor rendered its head at
+  negative y.** `mtOpenMenu`'s flip was `top = anchor.top - height` with no top clamp, so with the
+  ~970px Column panel the Calculate/Formula sections (the head of the menu) sat above the viewport,
+  unreachable by mouse and focus-invisible. Fixed: the flip now picks the side with more room, CLAMPS
+  the panel on-screen via an inline `max-height`, and hands the overflow to the panel's own scrollbar;
+  each open resets the previous clamp first. Verified: anchor at y 465-498 in a 709px viewport gives
+  panel top 8px, max-height 455px, bottom edge at the anchor, scrollbar live (was top -47px).
+- **#417 (major): the board card's move menu opened on `mousedown`, but the document-level closer
+  listens on `click`** so the SAME gesture's click bubbled to document and closed the menu it had just
+  opened. Mouse saw a flicker; touch (where drag is off) had **no working move door at all**, the LF-3c
+  claim. Fixed: `showCardMenu` moved to a `click` listener with `stopPropagation` (the exact contract
+  the header-cell opener already honors: "a click that reaches document is always outside"); `mousedown`
+  keeps only the caret-invariant `preventDefault`. Verified: mousedown alone opens nothing, the full
+  down/up/click gesture leaves the menu OPEN with the lane targets, an outside click still closes it.
+- 883 tests (+2 src-pins: the clamp exists and resets per open; the card opener and the document closer
+  agree on `click`, with `mousedown` pinned to never call `showCardMenu`).
+
 ### FR-1 ◐ First-run bundle: four fleet findings on the boot path (Fixes #401 #402 #403 #404) (RESOLVED pending merge)
 - **The design-review fleet's worst cluster: the first frame a new user sees shipped with three stacked
   majors** (no prior sweep ever booted fresh). All four fixed in one pass, browser-verified on a real

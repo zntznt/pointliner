@@ -6421,13 +6421,28 @@ function mtMenuBuilder(panel) {
 function mtOpenMenu(panel, anchorEl) {
   mtPanelReturn = document.activeElement;
   const rect = anchorEl.getBoundingClientRect();
+  panel.style.maxHeight = '';   // reset a previous open's clamp so the CSS 72vh default applies first
   panel.style.left = rect.left + 'px';
   panel.style.top  = (rect.bottom + 2) + 'px';
   panel.classList.add('on');
   requestAnimationFrame(() => {
     const pr = panel.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
-    if (pr.bottom > window.innerHeight - 8) panel.style.top  = (rect.top - pr.height - 2) + 'px';
+    if (pr.bottom > window.innerHeight - 8) {
+      // The panel overflows below. Flip to whichever side has more room and CLAMP it on-screen,
+      // handing the overflow to the panel's own scrollbar. The old flip (top = anchor.top - height)
+      // had no top clamp, so a tall menu from a mid-screen anchor rendered its head at negative y:
+      // the Calculate/Formula sections were unreachable by mouse and focus-invisible (issue #415).
+      const spaceAbove = rect.top - 10;                              // 8px viewport margin + 2px gap
+      const spaceBelow = window.innerHeight - rect.bottom - 10;
+      if (spaceAbove > spaceBelow) {
+        const h = Math.min(pr.height, spaceAbove);
+        panel.style.maxHeight = h + 'px';
+        panel.style.top = (rect.top - h - 2) + 'px';                 // bottom edge stays at the anchor
+      } else {
+        panel.style.maxHeight = spaceBelow + 'px';                   // stay below, clamped to the room
+      }
+    }
     (panel.querySelector('.mt-col-item.on:not(.mt-col-disabled)') || panel.querySelector('.mt-col-item:not(.mt-col-disabled)'))?.focus();
   });
 }
@@ -6830,9 +6845,18 @@ function buildBoardWidget(node, model, readOnly) {
   // drag between lanes is the desktop enhancement on top of it.
   host.querySelectorAll('.bv-card').forEach(card => {
     const r = +card.dataset.r;
+    // Open on CLICK with stopPropagation, matching the header opener's contract with the document-level
+    // closer ("a click that reaches document is always outside the panel"). Opening on mousedown let the
+    // same gesture's click bubble to document and close the menu it had just opened: mouse saw a flicker,
+    // and TOUCH had no working move door at all since drag is off there (issue #417, the LF-3c claim).
+    // mousedown keeps only the caret-invariant preventDefault (focus must not leave an active edit).
     card.addEventListener('mousedown', e => {
       if (e.target.closest('.node-link, a, .dice-roll, .mk-roll, .gr-roll, .math-roll, .var-pill')) return;
       e.preventDefault(); e.stopPropagation();
+    });
+    card.addEventListener('click', e => {
+      if (e.target.closest('.node-link, a, .dice-roll, .mk-roll, .gr-roll, .math-roll, .var-pill')) return;
+      e.stopPropagation();
       showCardMenu(node, r, gb, card);
     });
     card.addEventListener('keydown', e => {

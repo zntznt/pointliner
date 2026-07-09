@@ -8940,3 +8940,27 @@ test('shadowedDeclKeys: a sole declaration with no references is LIVE, not shado
   // different names never interact
   assert.equal(c.shadowedDeclKeys([D('x', 'a'), D('y', 'b')]).size, 0, 'different names are independent ranges');
 });
+
+// ── Base/board menu operability (#415/#417): flip clamp + opener/closer event contract ──
+test('mtOpenMenu: a flipped panel is clamped on-screen with its own scrollbar (#415)', () => {
+  // the old flip (top = anchor.top - height) had no top clamp: a tall Column menu from a
+  // mid-screen anchor rendered its head at negative y, so Calculate/Formula were unreachable
+  assert.ok(_src.includes("panel.style.maxHeight = '';"), 'each open must reset the previous clamp before measuring');
+  assert.ok(_src.includes('const spaceAbove = rect.top - 10;'), 'the flip must measure the room above the anchor');
+  assert.ok(_src.includes("panel.style.maxHeight = h + 'px';"), 'the flipped panel must be height-clamped, not just repositioned');
+});
+
+test('board card opener and the document closer agree on the click event (#417)', () => {
+  // the closer assumes "a click that reaches document is outside the panel"; opening on
+  // mousedown let the same gesture's click bubble to document and close the just-opened
+  // menu (mouse flicker), and left touch with no move door at all (drag is off on touch)
+  const wire = _src.slice(_src.indexOf("host.querySelectorAll('.bv-card').forEach"));
+  const down = wire.slice(wire.indexOf("card.addEventListener('mousedown'"), wire.indexOf("card.addEventListener('click'"));
+  assert.ok(down.length > 0, 'the card must keep its mousedown listener (the caret-invariant preventDefault)');
+  assert.ok(!down.includes('showCardMenu'), 'mousedown must NOT open the menu (the flicker/touch bug)');
+  const clickBody = wire.slice(wire.indexOf("card.addEventListener('click'"));
+  const body = clickBody.slice(0, clickBody.indexOf('});'));
+  assert.ok(body.includes('showCardMenu('), 'the click listener is the one that opens the menu');
+  assert.ok(body.includes('e.stopPropagation()'), 'the opener must stop propagation so the document closer never sees the opening click');
+  assert.ok(/document\.addEventListener\('click', e => \{[^]{0,300}hideColPanel\(\)/.test(_src), 'the document-level closer must listen on click, matching the opener');
+});
