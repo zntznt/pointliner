@@ -219,7 +219,7 @@ export function loadCores() {
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
     'propDeclParts','setProp','parsePropSlash','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC
-    'splitForSibling', 'mergeUpText',
+    'splitForSibling', 'inFence', 'mergeUpText',
     'flatRowStep',
   ];
   // Two-pass lookup. `function foo(){}` declarations land on the context global, so

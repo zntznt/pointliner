@@ -6725,9 +6725,9 @@ test('caret-split wiring: insertSiblingAfter has the caret-aware path', () => {
   // half is empty (classic empty-continuation append).
   assert.ok(_src.includes('cloneArtifactSidecars'), 'cloneArtifactSidecars missing');
   assert.ok(_src.includes('focusNodeAtOffset'), 'focusNodeAtOffset missing');
-  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1200}foldedOffsetFor\(srcNode, off\)/,
+  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1700}foldedOffsetFor\(srcNode, off\)/,
     'insertSiblingAfter must translate the caret via foldedOffsetFor');
-  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1400}splitForSibling\(srcNode\.text, foff, cont\)/,
+  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1900}splitForSibling\(srcNode\.text, foff, cont\)/,
     'insertSiblingAfter must split on the folded text at the translated offset');
 });
 
@@ -8992,4 +8992,47 @@ test('docked stack failsafe: #toolbar clamps to the viewport and the agenda pane
   assert.ok(/#toolbar > \*\{flex-shrink:0\}/.test(_src), 'every strip keeps its height by default');
   assert.ok(/#agenda-strip\.on\{[^}]*overflow-y:auto/.test(_src), 'the agenda strip is the designated scrolling region');
   assert.ok(/#agenda-strip\.on\{[^}]*min-height:0/.test(_src), 'min-height:0 lets the flex item actually shrink below its content');
+});
+
+// ── inFence (#405): Enter never splits a fenced code block into two broken halves ──
+test('inFence: strictly-inside offsets are fenced; the region edges split into valid halves (#405)', () => {
+  const T = '```\nline one\nline two\n```';
+  assert.equal(c.inFence(T, 12), true, 'end of an interior code line is inside the fence');
+  assert.equal(c.inFence(T, 17), true, 'mid interior line is inside');
+  assert.equal(c.inFence(T, 2), true, 'splitting the opening ``` line itself breaks the fence');
+  assert.equal(c.inFence(T, 24), true, 'splitting the closing ``` line itself breaks the fence');
+  assert.equal(c.inFence(T, 0), false, 'exactly before the opener: both halves stay valid');
+  assert.equal(c.inFence(T, T.length), false, 'exactly after the closer: both halves stay valid');
+  const P = 'intro\n```\ncode\n```\ntail';
+  assert.equal(c.inFence(P, 3), false, 'prose before the fence splits freely');
+  assert.equal(c.inFence(P, P.length - 2), false, 'prose after the fence splits freely');
+  assert.equal(c.inFence(P, 12), true, 'the fenced middle is protected');
+  assert.equal(c.inFence('```\ncode', 6), true, 'an unclosed opener protects to end-of-text');
+  assert.equal(c.inFence('```\ncode', 0), false, 'before an unclosed opener still splits freely');
+  assert.equal(c.inFence('no fences at all', 8), false, 'no fence, no veto');
+});
+
+test('Enter split wiring: the caret-split arm consults inFence and falls through to the eject (#405)', () => {
+  assert.ok(_src.includes('&& !inFence(buf, off)'), 'insertSiblingAfter must veto the split mid-fence (falls through to the advertised eject)');
+});
+
+// ── Esc ladder (#406): one press resolves exactly one rung ──
+test('Esc while editing in a zoom carries the edit across zoomOut (#406)', () => {
+  assert.ok(/const off = getCaretOffset\(content\);\s*zoomOut\(\);\s*focusNodeAtOffset\(id, off\);/.test(_src),
+    'the zoom rung must preserve the interrupted edit (id + caret) across the re-render; the NEXT Esc blurs');
+});
+
+// ── {date due: } lockstep (#407): classify says what promote will do, and the decline flashes ──
+test('classifyBraceBody: an unparseable date value is invalid LIVE, matching the literal-on-exit promote (#407)', () => {
+  assert.equal(c.classifyBraceBody('date due: garbage', {}, {}), 'invalid', 'unparseable value: say so while editing (gr-bad), not after');
+  assert.equal(c.classifyBraceBody('date due: today', {}, {}), 'artifact', 'a parseable keyword date promotes');
+  assert.equal(c.classifyBraceBody('date start: today+3', {}, {}), 'artifact', 'relative dates promote');
+  assert.equal(c.classifyBraceBody('date due: 2026-07-10', {}, {}), 'artifact', 'ISO dates promote');
+  assert.equal(c.classifyBraceBody('date due: 2026-02-30', {}, {}), 'invalid', 'an impossible calendar date is invalid');
+  assert.equal(c.classifyBraceBody('date due:', {}, {}), 'artifact', 'an empty value is the valid clear-the-date form');
+});
+
+test('promoteBraceBody: the invalid-date decline flashes the shared message (#407)', () => {
+  assert.ok(_src.includes("flashHint('Not a valid date: ' + dd.val + '. ' + DATE_FORMS_HINT)"),
+    'the exit decline must give the same P4 feedback as the /due:value twin');
 });
