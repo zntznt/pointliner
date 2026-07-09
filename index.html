@@ -1656,7 +1656,10 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     content:'';position:absolute;top:50%;left:0;transform:translateY(-50%);
     width:44px;height:44px}
   /* table row handle: wider tap target on touch, always show the grip cue */
-  .mt-rowh{width:22px}
+  /* min-width, not just width: in an over-constrained table, auto layout treats a
+     length on an EMPTY cell as a soft preference and crushes the handle to ~2px;
+     min-width is the hard floor it honors (the host pans the overflow). */
+  .mt-rowh{width:22px;min-width:22px}
   .mt-rowh::before{opacity:.5}
   /* name-pill header: keep a comfortable tap height (tap around the pill = Column menu) */
   .mt-colhead{padding-top:5px;padding-bottom:5px}
@@ -1691,6 +1694,22 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .node-content{touch-action:pan-y pinch-zoom}
   .node-content[data-editing]{touch-action:manipulation}
   .bullet{touch-action:none}
+  /* A base pans, it does not swipe-indent: pan-y inside a base's content would block the
+     board's horizontal lane scroll and a wide table's pan, so restore full pan freedom
+     there (swipe-to-indent is not attached on bases; the bullet drag still moves them).
+     Wide grids already pan inside the .mt-scroll wrapper; pan-y was what blocked it. */
+  .nt-base>.node-row>.node-content{touch-action:manipulation}
+  /* the base header strip: collapse + Rows + four view buttons exceed a phone's width */
+  .mt-baseheader,.mt-base-views{flex-wrap:wrap}
+  /* calendar view chrome: the agenda's .cal-nav touch rule doesn't reach the base view's
+     own controls; the chips are the tap-to-zoom door and get a real tap height */
+  .cv-btn{min-width:32px;min-height:32px}
+  .cv-chip{padding:3px 4px}
+  /* the shared column/rows menu rows match the .cmd-item touch idiom */
+  .mt-col-item{padding:10px}
+  /* breadcrumbs are the zoom-out door on touch */
+  .crumb{padding:6px}
+  .acc-swatch{width:28px;height:28px}
   /* The bullet is the app's most important touch target (long-press menu, drag-to-nest,
      tap-to-zoom) at ~22px visible width. An invisible overlay lifts the HIT AREA to the
      44px floor without moving the gutter (guardrail 5's overlay path, like .cap-add).
@@ -10343,7 +10362,9 @@ function attachContentEvents(content, node) {
   // Touch: swipe the row horizontally to indent (right) / outdent (left). This is the
   // reliable alternative to dragging the bullet, which is fiddly on a phone (the finger
   // occludes the drop target and one gesture has to disambiguate tap/hold/drag/scroll).
-  if (IS_TOUCH && node.type !== 'divider') attachSwipeIndent(content, node);
+  // No swipe-indent on a base: its widget needs horizontal pans for itself (board lanes,
+  // a wide grid) — a half-working indent gesture on top would fight the pan every time.
+  if (IS_TOUCH && node.type !== 'divider' && node.type !== 'base') attachSwipeIndent(content, node);
 }
 
 // Swipe-to-indent for touch (single point). Bound on the row content; active only in
