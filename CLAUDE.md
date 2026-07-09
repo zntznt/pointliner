@@ -965,6 +965,17 @@ scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
   *lower* count than that as a likely stale base and **STOP** to investigate. (The number only grows,
   so it drifts upward over time — it's a floor, not an exact match. Trust the runner's reported total,
   not a `grep -c 'test('`, which over-counts.)
+- **Parallel review fleets file GitHub Issues, never tree writes.** When several agents review/evaluate
+  in parallel (design panels, conformance audits, bug hunts), they MUST be read-only on the repo and
+  report each finding as a GitHub Issue (`gh issue create`, label `agent-review`, one issue per finding
+  with the evidence + a suggested fix). Rationale: parallel writers competing for the branch/worktree —
+  or even just appending to the same ledger file — burn time and tokens on merge conflicts; issues are
+  append-only by construction, so N reviewers need zero coordination. **Issues are the INBOX, the ledger
+  is the RECORD:** atomicity matters at *fix* time, not *find* time. The (serial) fixer works the issue
+  queue on normal per-task branches; each fix PR closes its issue (`Fixes #N`) and writes the
+  `guidance/ux-remediation.md` entry citing that issue number in the same commit — the durable,
+  test-enforceable record still lands in-repo. A finding judged *not* worth fixing is closed with a
+  one-line reason (and recorded in the ledger only if it's a recurring temptation worth documenting).
 - Tests live in `tests/`. `tests/load-cores.mjs` harvests the pure functions out of
   `index.html` via a Node `vm` sandbox (no build step, no edits to `index.html`); it
   exposes deterministic-RNG helpers (`seedSequence`/`setRandom`/`resetRandom`).
