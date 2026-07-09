@@ -1447,6 +1447,10 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 #storage-warn button:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
 #storage-warn-close{opacity:.8;font-size:13px;flex-shrink:0;user-select:none;color:inherit;font-family:inherit} /* banner ink stays inherited on the tinted warn surface */
 #storage-warn-close:hover{opacity:1}
+/* Phone width: the no-wrap shrink-to-fit flex row would squeeze the message to one
+   word per line beside the fixed-width buttons. Span the viewport (minus the 12px
+   gutters), give the message the full first row, and wrap the buttons below it. */
+@media(max-width:560px){#storage-warn{flex-wrap:wrap;width:calc(100vw - 24px)}#storage-warn-msg{flex-basis:100%}}
 
 /* drag and drop */
 .dragging{opacity:.3}
@@ -1677,6 +1681,21 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* left-gutter controls */
   .collapse-btn{width:24px;height:30px;font-size:11px}
   .bullet{height:30px;padding:0 7px;gap:6px}
+  /* Gesture arbitration (the touch-jank fix): touch-action must be set BEFORE a gesture
+     starts — the browser is otherwise free to claim any pan as a scroll and pointercancel
+     the app's gesture mid-flight (the mid-drag style.touchAction set was a spec no-op).
+     Row content keeps native vertical scroll + pinch but hands horizontal pans to
+     swipe-to-indent; while editing it reverts to manipulation (selection, caret drags).
+     The bullet is a dedicated handle (long-press menu + drag-to-nest): it claims every
+     gesture, like any mobile list's drag grip. */
+  .node-content{touch-action:pan-y pinch-zoom}
+  .node-content[data-editing]{touch-action:manipulation}
+  .bullet{touch-action:none}
+  /* The bullet is the app's most important touch target (long-press menu, drag-to-nest,
+     tap-to-zoom) at ~22px visible width. An invisible overlay lifts the HIT AREA to the
+     44px floor without moving the gutter (guardrail 5's overlay path, like .cap-add).
+     Horizontal growth stays modest so it never steals collapse-chevron or text taps. */
+  .bullet::after{content:'';position:absolute;inset:-7px -5px}
   /* Touch has no hover, so the bullet's press-hold menu + drag-to-nest are invisible.
      A faint always-on ring makes the dot read as an interactive control (more than a
      decorative dot), hinting it's pressable. Single-tap still zooms; the ring is the
@@ -1685,7 +1704,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* dimmed-dot block types (headings/quote/code/para/divider) keep their muted look:
      no ring where the dot itself is faded or hidden. */
   .nt-h1>.node-row .bullet-dot,.nt-h2>.node-row .bullet-dot,.nt-h3>.node-row .bullet-dot,.nt-h4>.node-row .bullet-dot,.nt-h5>.node-row .bullet-dot,.nt-h6>.node-row .bullet-dot,.nt-quote>.node-row .bullet-dot,.nt-code>.node-row .bullet-dot,.nt-para>.node-row .bullet-dot,.nt-divider>.node-row .bullet-dot{box-shadow:none}
-  .md-task-check{width:20px;height:20px}
+  .md-task-check{width:24px;height:24px}
+  /* base header strip: the view switcher / Rows / collapse controls are desktop-compact
+     (~20px); give them a real tap height on touch (the checkbox 24px floor, comfortably) */
+  .mt-view-btn,.mt-base-rows{padding:8px 10px}
+  .mt-base-collapse{width:34px;height:34px}
+  .mt-base-more{padding:11px 8px}
   .nt-ol>.node-row>.bullet .bullet-dot,.nt-divider>.node-row>.bullet .bullet-dot{opacity:.45}
   .md-task{gap:.6em}
   /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
@@ -11425,12 +11449,23 @@ function editBarMove(fn) {
   // render()+focusNode re-enter the point; refresh disabled states next frame.
   requestAnimationFrame(updateEditBar);
 }
-// mousedown/touchstart + preventDefault: act WITHOUT blurring the contenteditable (the caret
+// mousedown/pointerdown + preventDefault: act WITHOUT blurring the contenteditable (the caret
 // invariant — a click would blur first, exit edit, and hide the bar before the move ran).
+// The ACTION runs on pointerup gated on movement slop, not on finger-down: a scroll that
+// starts on a bar button must never fire it, and lifting off the button cancels (the
+// standard mobile button contract).
 function ebBtn(elId, fn) {
   const el = document.getElementById(elId);
+  let px = 0, py = 0, armed = false;
   el.addEventListener('mousedown', e => { e.preventDefault(); });
-  el.addEventListener('pointerdown', e => { e.preventDefault(); fn(); });
+  el.addEventListener('pointerdown', e => { e.preventDefault(); px = e.clientX; py = e.clientY; armed = true; });
+  el.addEventListener('pointerup', e => {
+    if (!armed) return;
+    armed = false;
+    if (Math.hypot(e.clientX - px, e.clientY - py) > 12) return;   // a scroll/drag, not a tap
+    fn();
+  });
+  el.addEventListener('pointercancel', () => { armed = false; });
 }
 // UXP-105: the touch insert door. Inline pills (dice/grammar/var/math/link) were reachable on
 // touch only by typing '@' on the soft keyboard. This button types a real '@' at the caret via
@@ -11449,8 +11484,7 @@ ebBtn('eb-outdent', () => editBarMove(outdentNode));
 ebBtn('eb-indent',  () => editBarMove(indentNode));
 ebBtn('eb-up',   () => editBarMove(id => moveNode(id, -1)));
 ebBtn('eb-down', () => editBarMove(id => moveNode(id,  1)));
-document.getElementById('eb-done').addEventListener('pointerdown', e => {
-  e.preventDefault();
+ebBtn('eb-done', () => {
   const id = editBarTargetId();
   document.querySelector(`.node-content[data-id="${id}"][data-editing]`)?.blur();
   updateEditBar();
@@ -11467,7 +11501,14 @@ document.addEventListener('focusout', e => {
     setTimeout(updateEditBar, 60);
   }
 });
-if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (editBar.classList.contains('on')) positionEditBar(); });
+// Both events matter: 'resize' fires when the keyboard opens/closes, but scrolling with
+// the keyboard up changes visualViewport.offsetTop via 'scroll' only — without it the bar
+// drifts away from the keyboard mid-scroll.
+if (window.visualViewport) {
+  const track = () => { if (editBar.classList.contains('on')) positionEditBar(); };
+  window.visualViewport.addEventListener('resize', track);
+  window.visualViewport.addEventListener('scroll', track);
+}
 
 // Bulk edit a multi-selection the same way the bullet popup edits one point: the
 // per-point dialogs/pickers take an optional targets[] list and apply to all of them.
@@ -18140,7 +18181,6 @@ function attachBulletTouchGestures(bullet, node) {
   const endDrag = (commit, clientX, clientY) => {
     if (!dragging) return;
     dragging = false;
-    bullet.style.touchAction = '';
     document.querySelector(`.node[data-id="${node.id}"]`)?.classList.remove('dragging');
     const info = commit ? dropAt(clientX, clientY) : null;
     dragDropInfo = null; dragId = null;
@@ -18177,7 +18217,7 @@ function attachBulletTouchGestures(bullet, node) {
       cancelTimer();
       dragging = true;
       bulletLongPressed = true;              // the trailing click must not also zoom
-      bullet.style.touchAction = 'none';     // stop the browser scrolling mid-drag
+      // (scroll can't steal the drag: .bullet carries touch-action:none in the hover:none CSS)
       try { bullet.setPointerCapture(e.pointerId); } catch (_) {}
       if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
       dragId = node.id;
@@ -22898,7 +22938,7 @@ function showReopenFileBanner(name) {
 function showExamplesBanner() {
   _warnAction = 'startblank';
   storageWarnBtn.textContent = 'Start a blank outline';   // UXP-185: button label stays (ux-discipline §L81)
-  storageWarnMsg.textContent = 'These are live examples to explore. Click any pill, or start your own document.';
+  storageWarnMsg.textContent = `These are live examples to explore. ${IS_TOUCH ? 'Tap' : 'Click'} any pill, or start your own document.`;
   storageWarn.classList.add('soft');
   storageWarn.classList.add('on');
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
@@ -23353,7 +23393,9 @@ requestAnimationFrame(() => {
     return;
   }
   // Otherwise focus the first node so the user can start typing immediately.
-  if (flatRows.length > 0) focusNode(flatRows[0].node.id);
+  // Desktop only: on touch, focusing a contenteditable pops the soft keyboard over
+  // half the screen before the user has seen the document. They tap when ready.
+  if (flatRows.length > 0 && !IS_TOUCH) focusNode(flatRows[0].node.id);
 });
 
 // Reopen on load (Phase 1, steps 3–5a): if a workspace folder was connected in a previous
