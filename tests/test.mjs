@@ -9036,3 +9036,40 @@ test('promoteBraceBody: the invalid-date decline flashes the shared message (#40
   assert.ok(_src.includes("flashHint('Not a valid date: ' + dd.val + '. ' + DATE_FORMS_HINT)"),
     'the exit decline must give the same P4 feedback as the /due:value twin');
 });
+
+// ── Inventory drift guards (#393/#408): the closed set must certify truthfully ──
+// The section 2 syntax inventory is the load-bearing artifact of P5: reviewers diff the source
+// against it. It drifted four times in three weeks because nothing enforced it. These pins make
+// shipping a brace sniff, an is: keyword, or an arg-verb without recording it a CI failure.
+const _uxd = readFileSync(new URL('../guidance/ux-discipline.md', import.meta.url), 'utf8');
+const _inv = _uxd.slice(_uxd.indexOf('Syntax inventory — the closed set'), _uxd.indexOf('## 3. Keyboard grammar'));
+
+test('inventory drift guard: every brace sniff in code has its token in the section 2 inventory (#393)', () => {
+  // sniff function in index.html → the syntax token the inventory must carry for it
+  const SNIFFS = {
+    condParts: '{cond:', seqParts: '{shuffle', markovParts: '{markov:', seqDeclParts: '{seq ',
+    repeatParts: '{Nx:', propDeclParts: '{prop ', dateDeclParts: '{date due:',
+    queryParts: '{query:', rollParts: '{roll:', parseVarDecl: ':=', estParts: 'lo to hi',
+  };
+  for (const [fn, token] of Object.entries(SNIFFS)) {
+    assert.ok(_src.includes(`function ${fn}`), `sniff ${fn} vanished from index.html — update this guard with the rename`);
+    assert.ok(_inv.includes(token), `the inventory must record the ${fn} form (missing token: ${token}) — a typeable syntax not in the closed set is a P5-4 defect`);
+  }
+});
+
+test('inventory drift guard: the is: whitelist in parseSearchQuery matches the section 2 row (#408)', () => {
+  const m = _src.match(/\^is:\(([a-z|]+)\)\$/);
+  assert.ok(m, 'could not find the is: whitelist regex in parseSearchQuery — update this guard with the new shape');
+  for (const kw of m[1].split('|')) {
+    assert.ok(_inv.includes('`' + kw + '`'), `is:${kw} shipped in code but is missing from the section 2 Search-query row`);
+  }
+});
+
+test('inventory drift guard: every SLASH_ARG_VERBS member is listed in the section 3 row (#409)', () => {
+  const m = _src.match(/const SLASH_ARG_VERBS = \/\^\(([a-z|]+)\)\$\//);
+  assert.ok(m, 'could not find SLASH_ARG_VERBS in index.html — update this guard with the new shape');
+  const row = _uxd.slice(_uxd.indexOf('`/verb:value`'), _uxd.indexOf('*(Retired:'));
+  for (const verb of m[1].split('|')) {
+    assert.ok(row.includes('`' + verb + '`'), `arg-verb /${verb}: shipped in SLASH_ARG_VERBS but missing from the section 3 row`);
+  }
+});
