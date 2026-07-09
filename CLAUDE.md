@@ -107,6 +107,14 @@ are out of scope — not deferred, out.
   reordering is done via the popup's Move up/down). `IND` (indent step) is a `let`
   recomputed from viewport width in the `resize` handler. Any new mouse-only
   interaction must ship a touch path the same way.
+  **Two touch-path rules that bite:** (1) a pointer-event gesture MUST have its
+  `touch-action` set in CSS *before* the gesture starts (`.node-content` is
+  `pan-y pinch-zoom` for swipe-to-indent, `.bullet` is `none` for long-press/drag)
+  — without it the browser claims the pan as a scroll and `pointercancel`s the
+  gesture mid-flight, and setting `style.touchAction` mid-gesture is a spec no-op;
+  (2) a touch button acts on **pointerup gated on movement slop** (see `ebBtn`),
+  never on pointerdown — an action that fires on finger-down also fires when the
+  user meant to scroll.
 - **Stateful randomness lives on the grammar record (resolved).** Decks/bags (draw
   without replacement) and ordered sequences are `{shuffle|cycle|once|stopping: a|b|c}`
   pills — a **grammar record** carrying `mode`/`items` + draw state (`pos` for
