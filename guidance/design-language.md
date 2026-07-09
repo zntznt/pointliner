@@ -60,7 +60,11 @@ always `fa-clone`, journal always `fa-book`, and so on — the door, the pill, a
 keyboard action must not disagree (e.g. a deck's pill-action once showed `fa-shuffle` while
 its pill showed `fa-clone`). Conversely, one glyph must not carry two unrelated meanings
 (`fa-left-right` was width **and** estimate **and** refile; refile moved to
-`fa-arrow-right-arrow-left`, leaving `fa-left-right` for the horizontal-span concept only),
+`fa-arrow-right-arrow-left`, leaving `fa-left-right` for the horizontal-span concept only;
+likewise 2026-07-09, #412/#413: **template is `fa-stamp`** — stamp-a-copy — leaving
+`fa-clone` deck-only; **progress is `fa-bars-progress`**, leaving `fa-circle-half-stroke`
+theme-only; and the **Check verb is `fa-clipboard-check`** — a pass/fail assertion —
+leaving the square-check family to the To-do/DONE task pair),
 and visually near-identical glyphs (the `fa-circle-*` family, `fa-clone`/`fa-copy`, the
 check family) must not cluster in the *same* menu where a user picks between them. When
 these conflict, favor the concept's identity glyph and give the newcomer its own — a
