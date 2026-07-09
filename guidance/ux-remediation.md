@@ -1853,7 +1853,10 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   or alter their behaviour." User intent beats the older vision doc; the top bar is invariant in lean.
 - **Pill tooltips (`title=`) NOT gated** (ponytail): they're hover-hold-only, ~zero at-rest clutter, and
   the table says "minimal" not "hidden" for Lean; gating 10 render sites for an already-inert helper is a
-  poor ratio. Recorded as a conscious skip, not an oversight.
+  poor ratio. Recorded as a conscious skip, not an oversight. **SUPERSEDED by LF-2d** (adjudicated
+  2026-07-09 closing #394 point 5): LF-2d's single post-render `isStandardOrLean()` sweep shipped the
+  strip without the 10-site gating this note feared, and Standard's "stop explaining" charter covers a
+  "Click to re-roll" tooltip; the `aria-label` twin keeps the accessible name. LF-2d governs.
 - CSS + a JS placeholder gate, no pure core. 870 tests (+1 src-pin: both hint gates, the legend-row rule,
   the saved-searches-survive guard, and the Section-label-survives guard).
 - **The lean floor is now genuinely complete AS A TWO-POSITION DIAL (Guided/Lean).** [SUPERSEDED by LF-2d:
@@ -1928,6 +1931,37 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   destructive path). Browser down → the insert is src-pinned + `deepCloneNodeNewIds` (fresh ids, deep
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
+
+### DOC-1 ◐ Doc-truth pass: inventory rot, keyboard-grammar lag, dial-doc reversal + drift guards (Fixes #393 #408 #409 #394) (RESOLVED pending merge)
+- **The fleet's doc-truth cluster: the binding standards had drifted from shipped code in both
+  directions, and nothing enforced them.** One pass over ux-discipline.md §2/§3/§7.1a, ux.md, the
+  `?` panel registry, plus three CI drift guards so the rot can't silently return.
+- **#393/#408 (major): the closed syntax inventory certified wrongly.** §2's Search-query row said
+  "AND-only; OR deferred; no `state:` operator" while QX-5 OR, `state:`, `priority:`, `var:`,
+  `key:>N`, `due:week/month` and the `has:` family all shipped sanctioned; the Grammar-engine row
+  omitted four shipped brace sub-forms (`{query:}`, `{roll:}`, `{prop}`, `{date due|start:}`); the
+  Dates row described a retired 2×2 agenda. All rewritten to shipped reality with ledger citations.
+  **Charter adjudication (#393 A): the brace overload is BLESSED and recorded** — the Owns column
+  now reads "generative, computed, and **declared-config** inline content", naming the `{prop}`/
+  `{date}` cluster a recorded widening (overloading the one brace beats minting a sigil, P5-1).
+- **#409 (major): §3 keyboard grammar lagged four shipped chords** (verbosity dial fwd/rev, ⌘D
+  duplicate, ⌘⇧⌫ delete point, ⌘⇧V variables panel — rows added), quoted a stale five-verb
+  `SLASH_ARG_VERBS` set in two places (now the nine-verb membership formulation, regex
+  authoritative), missed the LF-1f selection extension on the ⌘⇧S/⌘⇧P rows (noted), and the `?`
+  panel taught every chord except the dial (GUIDE row added: "Verbosity dial: quieter / more
+  guidance").
+- **#394 (minor): ux.md still recorded the dial the app does NOT ship.** The Decision section
+  claimed Standard was deferred-until-data (LF-2d shipped it by owner direction); the dial table
+  contradicted the shipped strips on four rows. Rewritten to the shipped 3-tier reality: Standard
+  strips the three teaching aids, Lean adds the caret-tip menu + focus-revealed pencils, modal
+  chips are NOT tier-gated (that cell was never built), the toolbar is invariant by owner spec.
+  **Tooltip adjudication (#394 point 5): LF-2d governs** — the LF-2c "conscious skip" note is
+  marked superseded in place; the `isStandardOrLean()` sweep stands.
+- **Enforcement (#393 B): three drift guards added to CI** — (1) every brace sniff function in
+  index.html must have its syntax token in the §2 inventory; (2) the `is:` whitelist regex in
+  `parseSearchQuery` must match the §2 row keyword-for-keyword; (3) every `SLASH_ARG_VERBS` member
+  must appear in the §3 row. Shipping syntax without recording it now fails the suite.
+- 894 tests (+3 drift guards). Doc-only except one GUIDE registry row (the dial chord entry).
 
 ### KBD-1 ◐ Editing-keyboard majors: fence split, Esc double-rung, silent date decline (Fixes #405 #406 #407) (RESOLVED pending merge)
 - **The fleet triage's editing-keyboard batch: three majors on ordinary keystrokes.**

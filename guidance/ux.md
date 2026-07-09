@@ -20,16 +20,19 @@ evolving.
   features:** build the bare interaction first, then add its helper as a separate, verbosity-gated
   layer — so the whole app stays lean-compatible as it grows.
 
-## Decision (current)
-**Ship two poles first; defer the middle.**
-- **Guided (default):** maximally beginner-friendly — all overlays on.
-- **Lean:** the ultra-lean, keyboard/shortcut-first canvas — all overlays off, clickable widgets
-  intact.
-- **Standard (middle tier): deferred.** Introduce it only once real usage reveals which helpers
-  are *noise* vs. useful *guardrails* — that's the data the middle tier should be built from,
-  rather than guessed at now.
-- Because of the lean-first principle, building Guided + Lean now costs nothing extra later: the
-  middle tier is just a different subset of the same overlays.
+## Decision (current — updated 2026-07-09, closing #394)
+**The 3-position dial SHIPPED (LF-2/LF-2c/LF-2d): Guided → Standard → Lean.** This supersedes the
+earlier "ship two poles first; defer the middle until usage data" decision recorded here: the owner
+directed the middle tier built now, with Standard's contents chosen by a design question ("I know
+the commands; stop explaining; keep the conveniences"), not usage data. The reversal is deliberate
+and this doc no longer argues the deferred position — the ledger (LF-2d) carries the reasoning.
+- **Guided (default):** all teaching aids on — point hints, pill tooltips, the search cheatsheet.
+- **Standard:** those three teaching aids off; menus (full descriptions) and edit pencils stay.
+- **Lean:** the `/` and `@` menus collapse to a one-line caret tip of the current match
+  (`renderLeanSlashTip` — blind typing plus confirmation, not label-only rows); edit pencils hide
+  until keyboard focus (still clickable, P3); everything Standard strips stays stripped.
+- The chord is `Ctrl/⌘+Shift+.` forward / `Ctrl/⌘+Shift+,` reverse (the reverse escapes the
+  one-way ratchet); each step flashes what changed (P4).
 
 ## Documentation — the floor under the dial
 Turning guidance *off* is only safe if nothing is ever truly hidden. So a **complete reference is
@@ -57,15 +60,24 @@ One setting controls helper rendering. Tiers are defined by **what they strip**,
 label — so "intermediate" has concrete meaning: *"I know the commands; stop explaining; keep the
 conveniences."*
 
+This table records the SHIPPED strips (updated 2026-07-09 to match the code, #394):
+
 | Helper | Guided (default) | Standard | Lean |
 |---|---|---|---|
-| Empty-state hints (`type / …`) | shown | off | off |
-| `/` `@` menu items | label + description + example | label + example | label only |
-| Modal chips (e.g. dice dialog) | full set, labeled | essential only | hidden |
-| Inline bullet affordances (edit pencils, ¶ / markdown reveal, hover hints) | visible | on hover | hidden (still clickable) |
-| Pill tooltips | on | on | minimal |
-| Toolbar | full | full | collapsible / minimal |
-| Examples doc on first run | offered | no | no |
+| Empty-state / entry hints (`type / …`, the paragraph hint) | shown | off | off |
+| Search cheatsheet (the focus-shown legend rows) | shown | off | off |
+| Pill tooltips (`title=`; each keeps its `aria-label` twin) | on | **stripped** (LF-2d supersedes the LF-2c skip — see note below) | stripped |
+| `/` `@` menu items | label + description + example | same (menus are conveniences, not teaching text) | **no menu** — a one-line caret tip of the current match (`renderLeanSlashTip`) |
+| Inline pill edit pencils | visible on hover | visible on hover | hidden until keyboard focus (still clickable) |
+| Modal chips (e.g. dice dialog) | full set | full set | full set — **not tier-gated** (the old "essential only / hidden" cells were never built) |
+| Toolbar | invariant | invariant | invariant — **explicit owner spec** (LF-2c/LF-2d); the old "collapsible / minimal" cell is retired |
+| Examples doc on first run | offered | offered | offered — first-run predates the dial and is not gated on it; the File-menu re-entry is tier-independent |
+
+**Pill-tooltip adjudication (#394 point 5):** LF-2c recorded stripping tooltips as a conscious
+skip ("hover-hold-only, ~zero at-rest clutter"); LF-2d then shipped the strip for Standard+Lean.
+**LF-2d governs** — the shipped `isStandardOrLean()` sweep stands, and the LF-2c note is marked
+superseded in the ledger. Rationale: Standard's charter is "stop explaining"; a tooltip that says
+"Click to re-roll" IS explanation, and the `aria-label` twin keeps the accessible name.
 
 Notes:
 - **Automatic leaning (optional enhancement):** helpers can also be *dismissable in place*
@@ -96,9 +108,10 @@ reads as junk, and it blurs "my notes" with "tutorial."
 - **Where the dial lives** — appearance menu? A persistent corner control? And how discoverable
   the "go Lean" path is without nagging.
 - **Demos** — examples-doc vs. a dismissable "take a tour" card, or both.
-- **Noise vs. guardrail** — the key data that should *define* the future Standard tier. Worth
-  watching once Guided + Lean ship (which helpers do people keep dismissing? which do they miss
-  in Lean?) rather than guessing the middle now.
+- **Noise vs. guardrail** — ~~the key data that should define the future Standard tier~~
+  RESOLVED by decision, not data: Standard shipped (LF-2d) with the "stop explaining, keep the
+  conveniences" charter. Usage watching remains useful for tuning WHICH helpers count as
+  explanation, but the tier no longer waits on it.
 - **Per-feature vs. global** — is one global dial enough, or do power-uneven users (pro outliner,
   novice at dice) need finer control? (Likely over-engineering for v1 — note and defer.)
 
