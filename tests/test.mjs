@@ -9073,3 +9073,34 @@ test('inventory drift guard: every SLASH_ARG_VERBS member is listed in the secti
     assert.ok(row.includes('`' + verb + '`'), `arg-verb /${verb}: shipped in SLASH_ARG_VERBS but missing from the section 3 row`);
   }
 });
+
+// ── CSS consistency batch drift guards (#395 #396 #397 #398 #400 #411 #414) ──
+test('menu/table/strip CSS conformance pins (fleet CSS batch)', () => {
+  // #395: the selected row's solid-accent icon tile keeps --acc-fg (was --fg at 1.62:1 dark)
+  assert.ok(_src.includes('.cmd-item:hover .cmd-icon.accent,.cmd-item.hi .cmd-icon.accent{color:var(--acc-fg)}'),
+    'ink on the solid accent tile must be --acc-fg even on the highlighted row');
+  // #411: header echo — 600 (never 700) + a 2px rule with winning specificity
+  assert.ok(/\.mt-name-pill\{[^}]*font-weight:600/.test(_src), 'column names render 600, never 700 (DL §4)');
+  assert.ok(_src.includes('.md-table th.mt-colhead{border-bottom-width:2px}'), 'the 2px header rule needs th.mt-colhead specificity to actually paint');
+  // #396: one highlight recipe — no 13% or accent-ink variants, no gray highlight
+  assert.ok(!/\.lp-item:hover,\.lp-item\.hi\{[^}]*13%/.test(_src), 'the link picker must use the 10% recipe');
+  assert.ok(!/\.bm-item:hover,\.bm-item\.hi\{[^}]*color:var\(--acc\)/.test(_src), 'picker highlight must not flip ink to accent');
+  assert.ok(!/\.mt-col-item:hover,\.mt-col-item:focus\{background:var\(--bdr\)\}/.test(_src), 'the column panel highlight must be the accent tint, not the disabled-look gray');
+  // #400: danger is --bad everywhere
+  assert.ok(/\.mt-col-item\.mt-col-danger\{color:var\(--bad\)/.test(_src), 'a destructive menu row is --bad, never the de-emphasis gray');
+  // #397: doc-tab strip carries the full chip grammar; the canon chip pins its own 22px
+  assert.ok(/\.doc-tab\{[^}]*border:1px solid var\(--bdr-ui\)/.test(_src), 'doc-tab border is the functional --bdr-ui token');
+  assert.ok(/\.doc-tab\{[^}]*font-weight:600/.test(_src), 'doc-tab text weighs 600 like every strip chip');
+  assert.ok(/\.doc-tab-add\{[^}]*font-size:11px/.test(_src), 'the + glyph is 11px like .cap-add');
+  assert.ok(/\.ag-toggle\{[^}]*height:22px/.test(_src), 'the canon chip pins the explicit 22px');
+  // #398: the Week pane uses the shared urgency recipe + the one done opacity
+  assert.ok(!/\.agw-item\.(overdue|today|soon)\{[^}]*(32%|28%|9%,)/.test(_src), 'the Week pane must not re-mint the urgency tints');
+  assert.ok(/\.agw-item\.done\{opacity:\.5;/.test(_src), 'one done opacity (.5) across the agenda panes');
+  // #414: the sub-floor cluster is at/above the 11px floor or carries the caps exemption
+  for (const sel of ['.sf-tip', '.sh-ws-snip', '.agd-count', '.agd-more']) {
+    assert.ok(new RegExp(sel.replace('.', '\\.') + '\\{[^}]*font-size:11px').test(_src), sel + ' must clear the 11px info-text floor');
+  }
+  assert.ok(/\.sh-row code\{[^}]*font-size:11px/.test(_src), '.sh-row code must clear the floor');
+  assert.ok(/\.agg-tick\{[^}]*text-transform:uppercase;letter-spacing:\.07em/.test(_src), '.agg-tick earns 10px only via the caps-eyebrow exemption');
+  assert.ok(!/\.sc-or\{[^}]*opacity/.test(_src), 'no opacity fade on muted ink (de-emphasis is by role)');
+});

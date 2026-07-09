@@ -214,10 +214,15 @@ editable content and `text-transform` would lie about it.
   change color on hover (a key's meaning doesn't change when pointed at). One notation
   per platform via `fmtKey()` — `⌘S` on Mac, `Ctrl+S` elsewhere — everywhere a shortcut
   is printed.
-- **One menu hover language:** every `.cmd-item` row hovers/highlights with the 10%
-  accent tint; menu icons are bare glyphs (transparent box, `--muted` ink, `--fg` on
-  row hover) — the filled icon tile is retired except the file-menu header's identity
-  chip. The slash-menu footer (description + mono syntax example + cross-teaching tip)
+- **One menu hover language:** every pointable menu/picker row — `.cmd-item`, the
+  `[[`/`{`/`#`/emoji pickers (`.lp-item`/`.bm-item`), the column panel + card menu
+  (`.mt-col-item`), and keyboard focus in `#bpop` — hovers/highlights with the SAME 10%
+  accent tint, ink unchanged (converged 2026-07-09, #396; the pickers' 13%+accent-ink
+  variant and the column panel's gray are retired). Keyboard-focus background = hover
+  background + the focus ring, so pointer and keyboard read one language. Menu icons are
+  bare glyphs (transparent box, `--muted` ink, `--fg` on row hover) — the filled icon
+  tile is retired except the file-menu header's identity chip; a row's SOLID-accent icon
+  tile (`.cmd-icon.accent`) keeps `--acc-fg` ink on hover/highlight (#395, the §3 rule). The slash-menu footer (description + mono syntax example + cross-teaching tip)
   is the canonical teaching pattern; new menus adopt it rather than inventing another.
   `.cmd-item` rows also share **one padding** in every menu; a menu adopts the shared row
   metrics rather than restyling them.
@@ -229,6 +234,12 @@ editable content and `text-transform` would lie about it.
 - **Eyebrow labels are one recipe:** 10px / 600 / `.07em` caps in `--muted`, **never
   opacity-faded** (§3's role-not-failing-ink rule applies to labels too).
 - **Toolbar controls share one 28px height.**
+- **Agenda dated-point chips: one tint recipe, two recorded densities.** Every surface
+  that renders a dated point (List `.ag-chip`, Week `.agw-item`, Month `.agc-item`) uses
+  the ONE urgency recipe — 10% token bg, 35% border (overdue/today) / 30% (soon) — and
+  one done treatment (opacity .5 + strike). Two densities are deliberate: the roomy List
+  row (12px title, `--r-sm`) and the packed grid cell (11-12px, `--r-xs`); a new pane
+  picks one of these two, never a third (#398).
 - **Docked strip controls share the agenda's chip grammar.** Every toolbar-docked strip
   (agenda, capture) builds its controls as `.ag-toggle`-style chips: 11px / 600, `--muted`
   ink, `--bdr-ui` hairline, `--r-sm`, 2px 8px padding, the §4 tint recipe when active. A

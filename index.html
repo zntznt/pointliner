@@ -177,7 +177,8 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-head .cmd-icon{background:var(--acc);color:var(--acc-fg)}
 .fm-head-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
 .fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);cursor:text;border-radius:var(--r-sm);padding:0 3px;margin:0 -3px}/* UXP-156: row-level surface → the radius ladder, off the bare 4px (DL §4) */
-.fm-title:hover,.fm-title:focus-visible{background:var(--hbg);outline:1px solid var(--bdr);outline-offset:0}
+.fm-title:hover{background:var(--hbg);outline:1px solid var(--bdr);outline-offset:0}
+.fm-title:focus-visible{background:var(--hbg);outline:2px solid var(--acc);outline-offset:-2px}/* #399: keyboard focus gets the standard ring, not the hover hairline (inset, matching the file-menu rows) */
 .fm-title.editing{overflow:visible;text-overflow:clip;background:var(--bg);outline:2px solid var(--acc);cursor:text}
 .fm-status{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* section labels */
@@ -236,7 +237,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 body:not(.v-guided) #search-hint .sh-row{display:none}
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap}
 .sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.sc-panel kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
-.sh-row code{font-family:var(--mono);font-size:10px}
+.sh-row code{font-family:var(--mono);font-size:11px}/* #414: the info-text floor (UXP-78 raised the sibling kbd chips; the code examples lagged) */
 /* saved searches: the one interactive island in the otherwise inert hint panel */
 #sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
 .sh-saved-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px}/* UXP-135: the one eyebrow recipe (DL §4): 10px/600/.07em, was missing font-weight */
@@ -258,7 +259,7 @@ body:not(.v-guided) #search-hint .sh-row{display:none}
 .sh-ws-item:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);outline:2px solid var(--acc);outline-offset:-2px}
 .sh-ws-title{color:var(--fg);font-size:12px}
 .sh-ws-doc{color:var(--muted);font-size:11px}
-.sh-ws-snip{color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:330px}
+.sh-ws-snip{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:330px}
 #search-save{position:absolute;right:26px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);
   font-size:12px;display:none;line-height:1;border:none;background:transparent;padding:2px}
 #search-save.on{display:block}
@@ -279,7 +280,7 @@ body:not(.v-guided) #search-hint .sh-row{display:none}
 /* breadcrumb */
 /* document tabs strip — mirrors the breadcrumb-row chrome (border-top + --hbg) */
 #doc-tabs{display:none;align-items:center;gap:4px;padding:4px 12px;border-top:1px solid var(--bdr);background:var(--hbg);overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
-.doc-tab{display:inline-flex;align-items:center;gap:6px;height:22px;box-sizing:border-box;padding:0 6px 0 10px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;white-space:nowrap;flex:0 0 auto}/* 22px = the docked-strip control height (design-language §4: every control in a strip row shares one 22px height) */
+.doc-tab{display:inline-flex;align-items:center;gap:6px;height:22px;box-sizing:border-box;padding:0 6px 0 10px;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);background:transparent;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex:0 0 auto}/* #397: --bdr-ui (a functional boundary) + 600, the full strip chip grammar *//* 22px = the docked-strip control height (design-language §4: every control in a strip row shares one 22px height) */
 .doc-tab:hover{background:color-mix(in srgb,var(--acc) 6%,transparent);color:var(--fg)}
 .doc-tab.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .doc-tab:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -289,8 +290,9 @@ body:not(.v-guided) #search-hint .sh-row{display:none}
 .doc-tab-dot{width:6px;height:6px;border-radius:999px;background:currentColor;flex:0 0 auto;display:none}
 #toolbar-row.dirty .doc-tab.active .doc-tab-dot{display:inline-block}
 .doc-tab-close{width:16px;height:16px;font-size:12px;opacity:.6}
-.doc-tab-close:hover,.doc-tab-close:focus-visible{opacity:1}
-.doc-tab-add{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;box-sizing:border-box;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;color:var(--muted);cursor:pointer;flex:0 0 auto;font-size:13px;line-height:1}/* 22px square to match the strip control height */
+.doc-tab-close:hover{opacity:1}
+.doc-tab-close:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px}/* #399: opacity alone is not a focus indicator */
+.doc-tab-add{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;box-sizing:border-box;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);background:transparent;color:var(--muted);cursor:pointer;flex:0 0 auto;font-size:11px;font-weight:600;line-height:1}/* #397: the + glyph at 11px like .cap-add *//* 22px square to match the strip control height */
 .doc-tab-add:hover{background:color-mix(in srgb,var(--acc) 6%,transparent);color:var(--fg)}
 .doc-tab-add:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 #breadcrumb-row{display:none;padding:5px 16px;border-top:1px solid var(--bdr);font-size:12px;flex-wrap:wrap;align-items:center;gap:4px;background:var(--hbg)}
@@ -317,7 +319,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .zoom-title{--zoom-title-size:30px;--zoom-title-max:40vh;font-size:var(--zoom-title-size);font-weight:640;font-family:var(--display-font);font-variation-settings:'opsz' 60;letter-spacing:-.025em;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--bdr);outline:none;white-space:normal;overflow-wrap:break-word;max-height:var(--zoom-title-max);overflow-y:auto;cursor:text}
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:var(--r-xs)}
-.zoom-title:focus-visible{outline:2px solid color-mix(in srgb,var(--acc) 70%,transparent);outline-offset:1px}
+.zoom-title:focus-visible{outline:2px solid var(--acc);outline-offset:1px}/* #399: the solid ring — the one diluted ring in the app was unrecorded */
 .zoom-title-base{cursor:default;white-space:normal;overflow-x:visible;overflow-y:visible;max-height:none;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
 
 /* node base */
@@ -540,6 +542,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell .ag-chip,.bv-card .ag-chip,.gv-card .ag-chip,.cv-chip .ag-chip{border:none;padding:0 4px;gap:3px;background:color-mix(in srgb,currentColor 12%,transparent)}
 .md-table{border-collapse:separate;border-spacing:0;font-size:.95em;width:100%}
 .md-table td,.md-table th{border:1px solid var(--bdr)}
+.md-table th.mt-colhead{border-bottom-width:2px}/* #411: the DL §4 2px header rule needs 0,1,2 specificity to beat the td/th border above */
 .mt-cell{font-variant-numeric:tabular-nums;padding:5px 9px;min-width:64px;max-width:340px;outline:none;vertical-align:top;word-break:break-word;cursor:text}
 .mt-cell:focus{box-shadow:inset 0 0 0 2px var(--ring)}
 .mt-cell:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
@@ -575,11 +578,11 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-colhead:hover{background:var(--hbg)}
 .mt-colhead:active{cursor:grabbing}
 .mt-colhead.mt-dragover{border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--ring)}/* UXP-180: a non-fill drop cue (matching .bv-lane.bv-dragover) so the editable column title never sits on a bare --acc fill with unpaired --fg ink (DL §3 --acc/--acc-fg pairing) */
-.mt-name-pill{display:inline-block;max-width:100%;padding:1px 7px;border-radius:var(--r-sm);font-weight:700;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;min-width:1.4em;min-height:1.25em;line-height:1.3;outline:none;background:transparent;transition:background .12s}
+.mt-name-pill{display:inline-block;max-width:100%;padding:1px 7px;border-radius:var(--r-sm);font-weight:600;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;min-width:1.4em;min-height:1.25em;line-height:1.3;outline:none;background:transparent;transition:background .12s}
 .mt-name-pill:hover{background:var(--bg)}
 .mt-name-pill:focus{background:var(--bg);box-shadow:inset 0 0 0 2px var(--ring);overflow:visible;text-overflow:clip}
 .mt-name-pill:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
-.mt-name-pill:empty::before{content:attr(data-ph);color:var(--muted);font-weight:400}/* UXP-107: no opacity fade (kept it sub-floor); weight 400 vs filled 700 carries the empty cue */
+.mt-name-pill:empty::before{content:attr(data-ph);color:var(--muted);font-weight:400}/* UXP-107: no opacity fade (kept it sub-floor); weight 400 vs filled 600 carries the empty cue (#411: 600, never 700 — DL §4 header echo) */
 @media(prefers-reduced-motion:reduce){.mt-name-pill{transition:none}}
 /* column resize: an invisible grab zone straddling the column's right border. No
    visual cue — you discover it by dragging the border, and the col-resize cursor on
@@ -614,9 +617,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-col-section{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:6px 10px 2px}
 .mt-col-section.mt-col-sep{border-top:1px solid var(--bdr);margin-top:4px;padding-top:6px}
 .mt-col-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;gap:12px;outline:none}
-.mt-col-item:hover,.mt-col-item:focus{background:var(--bdr)}
+.mt-col-item:hover,.mt-col-item:focus{background:color-mix(in srgb,var(--acc) 10%,transparent)}/* #396: the accent tint, not the disabled-look gray */
 .mt-col-item.on{font-weight:600}
-.mt-col-item.mt-col-danger{color:var(--del)}
+.mt-col-item.mt-col-danger{color:var(--bad)}/* #400: danger is --bad everywhere (DL §3 one-red); --del is de-emphasis, not danger */
 .mt-col-item.mt-col-disabled{opacity:.4;cursor:default;pointer-events:none}
 .mt-col-item-check{color:var(--acc);font-size:11px;visibility:hidden}
 .mt-col-item.on .mt-col-item-check{visibility:visible}
@@ -977,9 +980,10 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cmd-item{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:var(--r-md);cursor:pointer}
 .cmd-item:hover,.cmd-item.hi{background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .cmd-item:hover .cmd-icon,.cmd-item.hi .cmd-icon{color:var(--fg)}
+.cmd-item:hover .cmd-icon.accent,.cmd-item.hi .cmd-icon.accent{color:var(--acc-fg)}/* #395: ink on solid accent is ALWAYS --acc-fg (DL §3) — the hover rule above was overriding it to --fg (1.62:1 dark) */
 .cmd-note{cursor:default;color:var(--muted)}.cmd-note:hover,.cmd-note.hi{background:transparent}.cmd-note:hover .cmd-icon{color:var(--muted)}.cmd-note button{pointer-events:auto;cursor:pointer;flex-shrink:0}
 /* keyboard focus rings inside the point-actions menu (UXP-14) */
-#bpop .cmd-item:focus,#bpop .cmd-item:focus-visible{background:var(--bdr);outline:2px solid var(--acc);outline-offset:-2px}
+#bpop .cmd-item:focus,#bpop .cmd-item:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);outline:2px solid var(--acc);outline-offset:-2px}/* #396: keyboard focus bg = the hover bg + the ring (one highlight language) */
 #bpop .bpop-type:focus,#bpop .bpop-type:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #bpop .cmd-item.danger .cmd-label,#bpop .cmd-item.danger .cmd-icon{color:var(--bad)}
 .cmd-icon{width:24px;height:24px;border-radius:var(--r-sm);background:transparent;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;color:var(--muted);font-family:var(--mono)}
@@ -1049,7 +1053,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .slash-footer{display:flex;flex-direction:column;gap:3px;padding:6px 10px 8px;border-top:1px solid var(--bdr);min-height:24px}
 .sf-desc{font-size:11px;color:var(--muted);line-height:1.4}
 .sf-ex{font-family:var(--mono);font-size:11px;color:var(--acc);background:var(--cbg);border-radius:var(--r-xs);padding:2px 6px;line-height:1.4;word-break:break-word}
-.sf-tip{font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--muted);line-height:1.4;border-top:1px solid var(--bdr);padding-top:4px;margin-top:1px}
+.sf-tip{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--muted);line-height:1.4;border-top:1px solid var(--bdr);padding-top:4px;margin-top:1px}
 .slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.07em}
 
 /* inline-insert dialog (links / images) */
@@ -1204,7 +1208,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .sc-row{display:grid;grid-template-columns:minmax(96px,124px) 1fr;gap:10px;align-items:baseline;padding:2.5px 0}
 .sc-row[hidden],.sc-sec[hidden]{display:none}
 .sc-keys{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
-.sc-or{color:var(--muted);font-size:10px;opacity:.7;margin:0 1px}
+.sc-or{color:var(--muted);font-size:10px;margin:0 1px}/* #414: no opacity fade on muted ink (DL §3); size stands under the UXP-118 connective-punctuation carve-out */
 .sc-desc{color:var(--muted);line-height:1.45}
 .sc-empty{color:var(--muted);font-size:12px;padding:10px 0 4px}
 #sc-toggle{position:fixed;bottom:16px;right:16px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--bdr);background:var(--hbg);border-radius:50%;z-index:99;box-shadow:var(--sh-1);transition:color .12s,border-color .12s,background .12s}
@@ -1261,7 +1265,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .ag-filters{display:flex;gap:3px}
 .ag-view{min-width:0}   /* switcher buttons size to their label, not the 64px filter min */
 .ag-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;padding-left:10px}
-.ag-toggle{font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}
+.ag-toggle{display:inline-flex;align-items:center;height:22px;box-sizing:border-box;font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:0 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}/* #397: the canon chip pins the explicit 22px it defines */
 .ag-toggle:hover{color:var(--fg);border-color:var(--muted)}
 .ag-toggle.on{color:var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 /* Overdue is a FOCUS filter, not an inclusion toggle — when active it wears the overdue-red
@@ -1318,7 +1322,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .ag-gantt{max-height:min(46vh,300px);overflow-x:auto;overflow-y:auto;scrollbar-width:thin}
 .agg-inner{position:relative;min-height:100%;min-width:100%;box-sizing:border-box}
 .agg-axis{position:relative;height:15px;margin-bottom:2px}
-.agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;border-left:1px solid var(--bdr);padding-left:3px}
+.agg-tick{position:absolute;top:0;height:100%;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;/* #414: the caps-eyebrow exemption, matching the UXP-154 hover/today labels */border-left:1px solid var(--bdr);padding-left:3px}
 .agg-today{position:absolute;top:0;bottom:0;width:2px;background:color-mix(in srgb,var(--acc) 65%,transparent);z-index:2}
 .agg-today-lbl{position:absolute;top:1px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--acc);white-space:nowrap;line-height:1;padding:0 2px;background:var(--hbg);border-radius:var(--r-xs)}/* UXP-154: eyebrow recipe; UXP-187: --r-xs radius */
 /* hover slice — muted twin of the today line, follows the cursor's day (display:none until placed) */
@@ -1353,10 +1357,10 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agw-item{font-size:12px;line-height:1.3;color:var(--fg);background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-xs);padding:3px 6px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:normal;word-break:break-word}
 .agw-item:hover{border-color:var(--muted)}
 .agw-item:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-.agw-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 32%,transparent)}
-.agw-item.today{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 32%,transparent)}
-.agw-item.soon{background:color-mix(in srgb,var(--acc) 9%,transparent);border-color:color-mix(in srgb,var(--acc) 28%,transparent)}
-.agw-item.done{opacity:.55;text-decoration:line-through}
+.agw-item.overdue{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}/* #398: the one urgency recipe (10% bg, 35%/30% border) List+Month share */
+.agw-item.today{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+.agw-item.soon{background:color-mix(in srgb,var(--acc) 10%,transparent);border-color:color-mix(in srgb,var(--acc) 30%,transparent)}
+.agw-item.done{opacity:.5;text-decoration:line-through}/* #398: one done treatment (matches .agc-item.done) */
 /* ── Calendar pane — month grid ── */
 .ag-calendar{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px}
 /* 3-column grid: an empty 1fr on the left balances the Today button's 1fr on the right, so
@@ -1418,11 +1422,11 @@ body.agg-resizing{cursor:col-resize;user-select:none}
    (.agd-expanded) grows and this scrolls with it */
 .agd-list{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:2px;overflow:hidden}
 .agd-expanded .agd-list{overflow:visible;flex:0 0 auto}
-.agd-count{font-size:10px;font-weight:600;color:var(--muted);line-height:1.2;flex-shrink:0;display:flex;align-items:baseline;gap:3px;white-space:nowrap}
+.agd-count{font-size:11px;font-weight:600;color:var(--muted);line-height:1.2;flex-shrink:0;display:flex;align-items:baseline;gap:3px;white-space:nowrap}
 .agd-todo{color:var(--acc)}
 .agd-done{color:var(--muted)}
 .agd-dot{opacity:.5}
-.agd-more{font-size:10px;font-weight:600;color:var(--acc);background:transparent;border:none;padding:1px 2px;cursor:pointer;line-height:1.3;flex-shrink:0;text-align:left;border-radius:var(--r-xs)}
+.agd-more{font-size:11px;font-weight:600;color:var(--acc);background:transparent;border:none;padding:1px 2px;cursor:pointer;line-height:1.3;flex-shrink:0;text-align:left;border-radius:var(--r-xs)}
 .agd-more:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
 .agd-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 @media(hover:none){
@@ -1617,8 +1621,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── link picker ([[ trigger) ── */
 #lp-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:260px;max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #lp-menu.on{display:block}
-.lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:var(--r-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
+.lp-item{padding:6px 10px;font-size:13px;cursor:pointer;border-radius:var(--r-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lp-item:hover,.lp-item.hi{background:color-mix(in srgb,var(--acc) 10%,transparent)}/* #396: the one .cmd-item highlight recipe — 10% tint, ink unchanged */
 /* link-and-create: the "+ New point" row reads as a create affordance, not a match */
 .lp-item.lp-create{color:var(--muted);font-style:italic}
 .lp-item.lp-create:hover,.lp-item.lp-create.hi{color:var(--acc)}
@@ -1626,13 +1630,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .lp-item.lp-create:not(:first-child){margin-top:3px;border-top:1px solid var(--bdr);padding-top:7px}
 /* alias hint: why a non-title match surfaced */
 .lp-alias-hint,.lp-doc-hint{color:var(--muted);font-size:11px}
-.lp-item.hi .lp-alias-hint,.lp-item:hover .lp-alias-hint,.lp-item.hi .lp-doc-hint,.lp-item:hover .lp-doc-hint{color:var(--acc)}
 /* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
 #brace-menu,#tag-menu,#emoji-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #brace-menu.on,#tag-menu.on,#emoji-menu.on{display:block}
 .bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
-.bm-item{display:flex;align-items:baseline;gap:8px;padding:5px 8px;border-radius:var(--r-sm);cursor:pointer;font-size:13px}
-.bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 13%,transparent);color:var(--acc)}
+.bm-item{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:var(--r-md);cursor:pointer;font-size:13px}/* #396: the shared .cmd-item row metrics */
+.bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 10%,transparent)}/* #396: one highlight recipe */
 .bm-name{flex:none;font-family:var(--mono)}
 .bm-val{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .bm-item.hi .bm-val{color:var(--muted)}
@@ -1773,7 +1776,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* focus-visible sweep (UXP-17): every keyboard-focusable control shows the standard
    2px accent ring (the app's one focus indicator), instead of the per-browser default. */
 .collapse-btn:focus-visible,.crumb:focus-visible,.fn-key:focus-visible,#storage-warn-close:focus-visible,
-.bullet:focus-visible,.lvl-btn:focus-visible,#btn-done:focus-visible,.io-btn:focus-visible,.io-chip:focus-visible,
+.bullet:focus-visible,.lvl-btn:focus-visible,.tbtn-toggle:focus-visible,.io-btn:focus-visible,.io-chip:focus-visible,
 .dice-edit:focus-visible,.mk-edit:focus-visible,.gr-edit:focus-visible,
 .math-edit:focus-visible,.var-edit:focus-visible,.est-edit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* menu rows: inset ring so the scrollable panel doesn't clip it (matches #bpop) */

@@ -1932,6 +1932,38 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### CSS-1 ◐ CSS consistency batch: nine token/recipe drifts (Fixes #395 #396 #397 #398 #399 #400 #410 #411 #414) (RESOLVED pending merge)
+- **The fleet's CSS cluster, closed in one CSS-only pass** (plus drift-guard pins). Worst first:
+- **#395 (major): the / and @ menu's SELECTED row painted its accent icon tile at 1.62:1 dark /
+  2.13:1 light** — the `.cmd-item.hi .cmd-icon{color:var(--fg)}` hover rule out-specified
+  `.cmd-icon.accent`'s `--acc-fg`. One higher-specificity pairing rule restores the §3 law (ink on
+  solid accent is always `--acc-fg`). Browser-verified: ink now #16130f on #a5b4fc (9.29:1).
+- **#396 (major): one menu-row concept, four highlight recipes.** Converged to the `.cmd-item`
+  canon (10% accent tint, ink unchanged, `--r-md`, 6px 10px): `.lp-item` + `.bm-item` lose the
+  13%+accent-ink variant, `.mt-col-item` and `#bpop` keyboard focus lose the disabled-look gray
+  (focus bg = hover bg + ring, one language for pointer and keyboard). DL §4's hover-language
+  sentence now names all the row surfaces.
+- **#411 (major): the base header echo never rendered** — column names computed 700 (the
+  `.mt-name-pill` rule) and the declared 2px header rule lost specificity to the td/th border.
+  Now 600 (never 700; the UXP-107 empty-cue survives as 400-vs-600) and
+  `.md-table th.mt-colhead{border-bottom-width:2px}` actually paints. Verified computed 600 + 2px.
+- **#399/#410 (minor): focus-ring stragglers.** `.fm-title` (was the hover hairline), `.doc-tab-close`
+  (was opacity-only), `.zoom-title` (the one 70%-diluted ring) join the standard 2px solid accent
+  ring; the four newer toolbar toggles get it by CLASS (`.tbtn-toggle:focus-visible` replaces
+  `#btn-done:...` in the UXP-17 rule, so future toolbar buttons inherit automatically).
+- **#400 (minor): danger is `--bad` everywhere** — the column/card menu's Delete rows wore `--del`
+  (byte-identical to `--muted`), reading closer to "unavailable" than "destructive".
+- **#397 (minor): the doc-tab strip adopts the FULL chip grammar** (`--bdr-ui` functional border,
+  600 weight, 11px + glyph) — the 22px fix had left the other axes; `.ag-toggle` (the canon) now
+  pins its own explicit 22px.
+- **#398 (minor): the Week pane re-minted the urgency tint** (32/28% + 9% vs the 35/30% + 10%
+  List/Month share) and its own done opacity. Converged; the deliberate two-density rule (roomy
+  List row vs packed grid cell) is now recorded in DL §4.
+- **#414 (minor): the sub-floor type cluster** — `.sf-tip`, `.sh-ws-snip`, `.sh-row code`,
+  `.agd-count`, `.agd-more` raised to the 11px floor; `.agg-tick` earns 10px via the caps-eyebrow
+  exemption (matching its UXP-154 siblings); `.sc-or` drops the opacity fade (de-emphasis by role).
+- 895 tests (+1 batch drift-guard pin covering all nine). CSS-only; no markup or behavior changes.
+
 ### DOC-1 ◐ Doc-truth pass: inventory rot, keyboard-grammar lag, dial-doc reversal + drift guards (Fixes #393 #408 #409 #394) (RESOLVED pending merge)
 - **The fleet's doc-truth cluster: the binding standards had drifted from shipped code in both
   directions, and nothing enforced them.** One pass over ux-discipline.md §2/§3/§7.1a, ux.md, the
