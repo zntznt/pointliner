@@ -295,6 +295,8 @@ One pattern, four channels. Reuse — do not invent.
 | State change while focus is elsewhere (reroll, `#ERR`, autosave) | **`aria-live` region** | P3-5 |
 | Approaching a limit (storage, depth, size) | **Proactive banner** with an action | the storage-quota warning — the gold standard |
 
+**Toast priority (#391):** the toast channel is ONE element, so it carries a priority rule: an error owns the element for its full dwell; a hint that lands mid-dwell is deferred (it still reaches assistive tech immediately, and the last deferred hint replays after the dwell); a new error may always preempt. One pattern does not mean last-writer-wins: a failure is never silently displaced by a success (P4-1). The rule lives in the pure `toastGate`.
+
 **Tone:** plain language, names the thing, offers the next step. The storage warning ("…save it to a file to be safe") is the template for all of it.
 
 **Drafts:** a transient input surface (the capture strip, the search box) MUST NOT discard a non-empty draft on dismiss; the draft is kept for the next open, or its loss is confirmed (P4).

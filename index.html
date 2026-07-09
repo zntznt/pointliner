@@ -131,7 +131,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:1.06
 html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 
 /* toolbar */
-#toolbar{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--hbg);border-bottom:1px solid var(--bdr)}
+#toolbar{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--hbg);border-bottom:1px solid var(--bdr);max-height:100vh;max-height:100dvh;display:flex;flex-direction:column}/* #389 failsafe: the docked stack may never exceed the viewport — the agenda pane shrinks + scrolls, everything else keeps its height */
+#toolbar > *{flex-shrink:0}/* only the agenda strip (below) may give up height */
 #toolbar-row{padding:0 14px;height:44px;display:flex;align-items:center;gap:7px;position:relative;user-select:none;caret-color:transparent}
 #toolbar-row #search-wrap{caret-color:auto}
 .logo{display:inline-flex;align-items:center;gap:7px;color:var(--fg);flex-shrink:0;cursor:pointer;user-select:none}
@@ -1251,7 +1252,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
    switcher + Done/Running filters) beside the always-present List, and the one active
    view (if any) opens as a full-width bar below. */
 #agenda-strip{display:none;flex-direction:column;gap:0;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
-#agenda-strip.on{display:flex}
+#agenda-strip.on{display:flex;flex-shrink:1;min-height:0;overflow-y:auto;scrollbar-width:thin}/* #389: the tall pane is the scrolling region when the stack would overflow the viewport */
 .ag-top{display:flex;align-items:stretch;min-width:0}
 /* Controls column: a single view switcher (Week/Month/Timeline, one at a time) above the
    Done/Running filters. Both are rows of the same .ag-toggle chip. */
@@ -5391,7 +5392,20 @@ function copyNodeLink(id) {
 }
 // Minimal transient confirmation toast (no persistent chrome). Self-styled so it
 // needs no CSS rule; respects the theme via custom properties.
+//
+// Pure: the one-element toast channel's priority rule (issue #391). Hints and errors share
+// one element with one timer, so without priority whichever fires last wins: a "couldn't
+// write" error was silently replaced mid-dwell by the next "Captured N" hint (P4-1, "a
+// failure is never silent"). Rule: an error OWNS the element until its dwell ends (now+4000);
+// a hint that lands mid-dwell must not repaint it; a new error always may. Clock passed in
+// so the rule is pin-testable.
+function toastGate(kind, now, holdUntil) {
+  if (kind === 'error') return { paint: true, holdUntil: now + 4000 };
+  return { paint: now >= holdUntil, holdUntil };
+}
 let _hintTimer = null;
+let _errorHoldUntil = 0;  // epoch ms until which the shared toast element belongs to an error
+let _pendingHint = null;  // the LAST hint deferred during an error dwell; replays after it
 // UXP-116: lift the toast above any open bottom-docked panel (footnotes/backlinks/variables)
 // so it never stacks over their content — the same collision syncHelpBtnBottom solves for the
 // help toggle, extended to count #var-panel too. Stays bottom-center (not top) so the toast's
@@ -5402,7 +5416,14 @@ function flashBottom() {
   const safe = 'env(safe-area-inset-bottom)';
   return stack ? `calc(${stack + 20}px + ${safe})` : `calc(20px + ${safe})`;
 }
-function flashHint(msg) {
+function flashHint(msg, _replay) {
+  if (!toastGate('hint', Date.now(), _errorHoldUntil).paint) {
+    // An error owns the element (#391): don't repaint it mid-dwell. The hint reaches
+    // assistive tech now; the LAST deferred hint replays visually after the dwell.
+    _pendingHint = msg;
+    announce(msg);
+    return;
+  }
   let el = document.getElementById('flash-hint');
   if (!el) {
     el = document.createElement('div');
@@ -5415,7 +5436,7 @@ function flashHint(msg) {
     + 'background:var(--fg);color:var(--bg);font-size:12.5px;padding:7px 14px;border-radius:var(--r-md);'
     + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none';
   el.textContent = msg;
-  announce(msg); // every toast also reaches assistive tech via the #a11y-live region
+  if (!_replay) announce(msg); // every toast also reaches assistive tech via the #a11y-live region (a replayed hint was already announced when it was deferred)
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   clearTimeout(_hintTimer);
   _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
@@ -5435,8 +5456,14 @@ function flashError(msg) {
   el.textContent = msg;
   announce(msg);
   requestAnimationFrame(() => { el.style.opacity = '1'; });
+  _errorHoldUntil = toastGate('error', Date.now(), 0).holdUntil; // the dwell length lives in toastGate only
   clearTimeout(_hintTimer);
-  _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 4000);
+  _hintTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    _errorHoldUntil = 0;
+    // replay the last hint the error displaced (#391) — announced already, so paint-only
+    if (_pendingHint) { const m = _pendingHint; _pendingHint = null; flashHint(m, true); }
+  }, _errorHoldUntil - Date.now());
 }
 
 // One-time touch onboarding (D4): on touch there's no hover, so the bullet's press-hold
