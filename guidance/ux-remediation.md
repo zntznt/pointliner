@@ -1929,6 +1929,30 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### FR-1 ◐ First-run bundle: four fleet findings on the boot path (Fixes #401 #402 #403 #404) (RESOLVED pending merge)
+- **The design-review fleet's worst cluster: the first frame a new user sees shipped with three stacked
+  majors** (no prior sweep ever booted fresh). All four fixed in one pass, browser-verified on a real
+  fresh boot of the fixed file served over localhost.
+- **#403 (major, two-lens convergence): the tour's sole `{level := 3}` rendered struck-through.** The
+  positional shadow loop marked a declaration dead whenever no same-name REFERENCE event followed it,
+  even when no later declaration existed either; identifiers consumed only by math/grammar pills emit no
+  reference events, so any computation-only variable was falsely flagged with a false tooltip. Fixed by
+  extracting the loop into the pure `shadowedDeclKeys(events)`: shadowed now requires a LATER same-name
+  DECLARATION to actually exist, making the tooltip true by construction. Pinned (6 boundary cases).
+- **#401 (major): the first-run banner covered the Welcome H1.** `#storage-warn` is fixed below the
+  toolbar but body padding compensated only for the toolbar. The body-pad ResizeObserver now observes the
+  banner too and adds its height while `.on` (banners push the outline down, never overlap: the §4 rule
+  the docked strips follow). Verified: banner bottom 107px, first row top 144px, no overlap.
+- **#402 (major): fresh boot dropped the caret into the tour title**, so the first frame was raw
+  `# Welcome to Pointliner` instead of the composed masthead. The boot rAF now skips `focusNode` when
+  `_showingExamples` (the same read-first treatment the C1 snapshot gets). Verified: first row renders an
+  `<h1>`, nothing is in edit mode.
+- **#404 (minor): the welcome greeting wore the warn caution tint.** New `#storage-warn.invite` variant
+  (accent tint recipe, `role=status` instead of `role=alert`), used only by `showExamplesBanner`;
+  `hideStorageWarn` clears it and restores the alert role, and the CSS is ordered so `.soft` wins if a
+  caution banner ever replaces the invite without a hide. Verified: `.invite` + `role=status` + accent bg.
+- 881 tests (+1 pure-core pin). All four verified live; the issues close via this PR.
+
 ### STRIP-2 ◐ Workspace tabs + agenda date switchers: height + text-scale mismatch vs the strip band (user-reported) (RESOLVED pending merge)
 - **User caught a real visual-consistency bug my a11y audit missed.** The prior pass judged these families
   against the tap-target FLOOR (and found them fine on touch), but the user's actual complaint was that the

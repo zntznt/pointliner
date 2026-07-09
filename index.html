@@ -1441,6 +1441,11 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 /* storage warning banner */
 #storage-warn{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:400;background:color-mix(in srgb,var(--bad) 14%,var(--hbg));color:var(--bad);border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);font-size:12.5px;line-height:1.45;padding:8px 10px 8px 14px;border-radius:var(--r-md);box-shadow:var(--sh-2);display:none;align-items:center;gap:10px;max-width:calc(100vw - 24px)}
 #storage-warn.on{display:flex}
+/* .invite: the FRIENDLY banner variant (the first-run examples greeting). Accent tint, not the warn
+   caution lane (issue #404: one color per meaning; the amber surface is reserved for real cautions
+   like reconnect/storage). Defined BEFORE .soft so that if both classes ever coexist (a caution
+   banner replacing the invite without a hide in between), the later .soft rule wins the conflict. */
+#storage-warn.invite{background:color-mix(in srgb,var(--acc) 14%,var(--hbg));color:var(--acc);border-color:color-mix(in srgb,var(--acc) 40%,transparent)}
 #storage-warn.soft{background:color-mix(in srgb,var(--warn) 14%,var(--hbg));color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
 #storage-warn-msg{flex:1;min-width:0}
 #storage-warn button{border:1px solid currentColor;background:transparent;color:inherit;font-size:11.5px;padding:3px 9px;border-radius:var(--r-xs);flex-shrink:0}
@@ -3470,6 +3475,30 @@ function warnVarDeclRipple(node, before, prevText) {
   }
 }
 
+// Identify shadowed declarations POSITIONALLY (Stage B) from the ordered events stream
+// ({name, key, isDecl} in document order). A declaration is shadowed ONLY when a LATER
+// same-name declaration exists AND no reference falls in its range (after it, before that
+// later declaration). With no later declaration, nothing shadows it: a variable consumed
+// only by math/grammar pills (which emit no reference events) stays LIVE, and the
+// "Shadowed by a later declaration" tooltip is true by construction. The old loop marked
+// any declaration with zero in-range reference events as shadowed, which falsely struck
+// through the Welcome tour's sole {level := 3} (issue #403). Pure, Node-testable.
+function shadowedDeclKeys(events) {
+  const out = new Set();
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (!e.isDecl) continue;
+    let live = false, laterDecl = false;
+    for (let j = i + 1; j < events.length; j++) {
+      if (events[j].name !== e.name) continue;
+      if (events[j].isDecl) { laterDecl = true; break; }  // the next same-name declaration ends the range
+      live = true; break;                                  // a reference falls in range
+    }
+    if (!live && laterDecl) out.add(e.key);
+  }
+  return out;
+}
+
 // Walk the entire tree in document order, evaluating each [[var:KEY]] token's
 // expression to build a name→number map available in math and dice formulas.
 // Variables may reference OTHER variables (e.g. area = pi*r^2 where r is a var);
@@ -3526,24 +3555,7 @@ function collectVars(rootNode) {
     delete pickVals[nm];
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
-  // Identify shadowed keys POSITIONALLY (Stage B): a declaration is dead only if NO reference
-  // falls in its range — after it, before the next declaration of the same name. (Under the old
-  // global model this was "every declaration except the last"; now an earlier declaration that
-  // governs some references above a later redeclaration is live, not shadowed.)
-  const shadowedKeys = new Set();
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i];
-    if (!e.isDecl) continue;
-    // scan forward to the next same-name declaration; any reference before it = in range = live
-    let live = false;
-    for (let j = i + 1; j < events.length; j++) {
-      if (events[j].name !== e.name) continue;
-      if (events[j].isDecl) break;     // next declaration of this name ends the range
-      live = true; break;              // a reference falls in range
-    }
-    if (!live) shadowedKeys.add(e.key);
-  }
-  _varShadowedKeys = shadowedKeys;
+  _varShadowedKeys = shadowedDeclKeys(events);
   _varActiveExprs  = defs;
 
   const { resolved, cycles } = resolveVarDefs(defs, pickVals, order);
@@ -22829,10 +22841,23 @@ document.addEventListener('keydown', e => {
 // Plain default-mode autosave (OPFS/localStorage) survives a reload, so it needs no warning.
 window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventDefault(); e.returnValue=''; } });
 
-// keep body padding in sync with toolbar height (toolbar is fixed; breadcrumb changes its height)
-new ResizeObserver(() => {
-  document.body.style.paddingTop = document.getElementById('toolbar').offsetHeight + 'px';
-}).observe(document.getElementById('toolbar'));
+// keep body padding in sync with the fixed top chrome: the toolbar (breadcrumb changes its height)
+// PLUS the #storage-warn banner while it shows. Banners push the outline down, never overlap it
+// (issue #401 — the first-run banner was covering the Welcome tour's H1; same §4 rule the docked
+// strips follow). Observing the banner too catches its show/hide (a display flip resizes it to/from
+// 0) and its narrow-width wrapping. getElementById here, not the storageWarn const: that const is
+// declared further down and observe() runs at module init (TDZ).
+{
+  const _tb = document.getElementById('toolbar');
+  const _warn = document.getElementById('storage-warn');
+  const syncBodyPad = () => {
+    const warnH = _warn.classList.contains('on') ? _warn.offsetHeight + 16 : 0;  // 8px gap above the banner + 8 below
+    document.body.style.paddingTop = (_tb.offsetHeight + warnH) + 'px';
+  };
+  const _ro = new ResizeObserver(syncBodyPad);
+  _ro.observe(_tb);
+  _ro.observe(_warn);
+}
 
 // keep footnote panel above the software keyboard on mobile (syncFnPanelBottom
 // is defined in the footnotes section; it no-ops the offset while the panel is
@@ -22960,7 +22985,11 @@ function showExamplesBanner() {
   _warnAction = 'startblank';
   storageWarnBtn.textContent = 'Start a blank outline';   // UXP-185: button label stays (ux-discipline §L81)
   storageWarnMsg.textContent = `These are live examples to explore. ${IS_TOUCH ? 'Tap' : 'Click'} any pill, or start your own document.`;
-  storageWarn.classList.add('soft');
+  // the invite variant, not the warn caution lane (issue #404): a greeting is not a warning,
+  // and it announces politely (role=status), not assertively (role=alert)
+  storageWarn.classList.remove('soft');
+  storageWarn.classList.add('invite');
+  storageWarn.setAttribute('role', 'status');
   storageWarn.classList.add('on');
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
 }
@@ -23002,6 +23031,8 @@ function showStorageWarn(kind, msg) {
 }
 function hideStorageWarn() {
   storageWarn.classList.remove('on');
+  storageWarn.classList.remove('invite');           // the invite variant never outlives its banner (#404)
+  storageWarn.setAttribute('role', 'alert');        // restore the default for the caution variants
   // keep storageWarnState so a dismissed warning doesn't immediately reappear;
   // it clears only when a save succeeds comfortably under the limit
 }
@@ -23413,6 +23444,11 @@ requestAnimationFrame(() => {
     showSnapshotBanner();   // UXP-102: a persistent, dismissible banner outlasts the boot flash
     return;
   }
+  // The first-run Welcome tour is the same read-first situation as a snapshot: opening it
+  // in edit-mode-on-point-1 renders the masthead as raw "# Welcome to Pointliner" instead of
+  // the composed H1, and unfolds its pills. Open it in DISPLAY mode; click-anywhere-to-edit
+  // gives "start typing immediately" back with one click. (Issue #402)
+  if (_showingExamples) return;
   // Otherwise focus the first node so the user can start typing immediately.
   // Desktop only: on touch, focusing a contenteditable pops the soft keyboard over
   // half the screen before the user has seen the document. They tap when ready.
