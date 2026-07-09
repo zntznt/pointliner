@@ -1929,6 +1929,34 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### KBD-1 ◐ Editing-keyboard majors: fence split, Esc double-rung, silent date decline (Fixes #405 #406 #407) (RESOLVED pending merge)
+- **The fleet triage's editing-keyboard batch: three majors on ordinary keystrokes.**
+- **#405 (major): Enter mid-fence split a code block into two broken halves** (unterminated opener +
+  orphaned closer, "line two" silently demoted to prose). New pure `inFence(text, offset)`: strictly
+  inside a fence region (fence lines inclusive, region edges exclusive — those split into two VALID
+  halves; an unclosed opener protects to end-of-text) the caret-split arm now declines and falls
+  through to the eject arm — the advertised "Enter exits to a new point", block intact. The eject
+  sibling matches the pre-existing caret-at-end eject exactly (verified, including its inherited
+  type). Chose decline-over-fence-reclosing: it matches the shipped copy and the UXP-68 precedent
+  (Backspace-merge already declines into code).
+- **#406 (major): Esc while editing inside a zoom consumed two rungs in one press** (zoomOut's
+  re-render killed the active edit, so zoom + blur collapsed together, violating the §3 one-rung
+  ladder). The Esc arm now carries the edit across the re-render: capture caret, `zoomOut()`, then
+  `focusNodeAtOffset(id, off)` (both sides unfolded, same offset space). Verified: Esc 1 = zoom out
+  with the edit intact and the caret exactly preserved; Esc 2 = the unchanged blur rung. (Repro'd
+  the double-rung on a served copy of main first.)
+- **#407 (major): an invalid `{date due: }` value failed silently on exit while edit styling
+  promised a pill.** The UXP-6 lockstep contract was broken for this branch: classify said
+  "artifact", promote declined to literal with no signal. `classifyBraceBody` now returns `invalid`
+  for a dateDecl body whose value fails `parseDueDate` (empty stays valid — it clears the date), so
+  the gr-bad marker + AT announcement fire LIVE; and the exit decline now flashes the same
+  "Not a valid date" message as the `/due:value` twin (P4 parity). Verified live on both surfaces.
+- 891 tests (+5: inFence boundary pins, the split-arm veto wiring, the Esc carry-across pin, the
+  classify date-lockstep pins incl. impossible calendar dates, the decline-flash pin).
+- **Verification note:** an OS-unfocused Chrome window fires NO focus/blur events (`el.blur()` is
+  event-silent), so blur-rung assertions must run in a focused window — the "residue" that cost an
+  hour here was that artifact, not a defect.
+
 ### FEED-1 ◐ Toast error priority + docked-stack viewport ceiling (Fixes #391 #389) (RESOLVED pending merge)
 - **Two adversarial-standard findings where the fleet challenged a locked decision's unstated
   corollary and the measurement sided with the fleet.** Both fixed inside the challenged decision

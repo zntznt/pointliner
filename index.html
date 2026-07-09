@@ -10543,7 +10543,11 @@ function classifyBraceBody(body, rules, vars) {
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
   if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
   if (propDeclParts(body)) return 'artifact';                          // {prop owner: zeo} (LEAN FLOOR)
-  if (dateDeclParts(body)) return 'artifact';                          // {date due: friday} (LEAN FLOOR)
+  const dd0 = dateDeclParts(body);                                     // {date due: friday} (LEAN FLOOR)
+  // lockstep with promoteBraceBody (#407): an unparseable value stays literal on exit,
+  // so the edit surface must say so LIVE (gr-bad) instead of promising a promotion.
+  // An empty value is valid (it clears the date on exit).
+  if (dd0) return (!dd0.val || parseDueDate(dd0.val) !== null) ? 'artifact' : 'invalid';
   if (queryParts(body)) return 'artifact';                             // {query: is:todo}
   if (rollParts(body)) return 'artifact';                              // {roll: is:todo} — pick a random matching point
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
@@ -11212,7 +11216,18 @@ function onKeyDown(e, id, content) {
   else if (e.key==='ArrowDown' && !e.altKey && !ctrl && !e.shiftKey) {
     if (isAtLastLine(content)) { e.preventDefault(); navigateToNext(id); }
   }
-  else if (e.key==='Escape') { e.preventDefault(); if (focusedId) zoomOut(); else content.blur(); }
+  else if (e.key==='Escape') {
+    e.preventDefault();
+    if (focusedId) {
+      // One Esc = one rung (§3, issue #406): zoomOut's re-render used to kill the active
+      // edit too, so a single press consumed both the zoom rung AND the blur rung. Carry
+      // the edit across the re-render (same offset space: the restore re-enters edit, so
+      // both sides are unfolded); the NEXT Esc blurs.
+      const off = getCaretOffset(content);
+      zoomOut();
+      focusNodeAtOffset(id, off);
+    } else content.blur();
+  }
 }
 
 // ─── multi-select ─────────────────────────────────────────────────────────────
@@ -15065,7 +15080,10 @@ function promoteBraceBody(node, body) {
   const dd = dateDeclParts(body);
   if (dd) {
     if (!dd.val) { setDateProp(node, dd.key, ''); return ''; }        // empty → clear
-    if (parseDueDate(dd.val) === null) return null;                    // invalid → stays literal {date …}
+    if (parseDueDate(dd.val) === null) {                               // invalid → stays literal {date …}
+      flashHint('Not a valid date: ' + dd.val + '. ' + DATE_FORMS_HINT); // P4 parity with /due:value (#407)
+      return null;
+    }
     setDateProp(node, dd.key, dd.val); return '';
   }
   // typed query pill: {query: is:todo | due:week} → a live [[query:KEY]] embedded search.
@@ -17736,6 +17754,27 @@ function splitForSibling(text, offset, contPrefix) {
   return { before: s.slice(0, o), after: (contPrefix || '') + s.slice(o) };
 }
 
+// Pure (issue #405): would a split at `offset` break a fenced code block of `text`?
+// Splitting mid-fence leaves an unterminated opener on one half and an orphaned closer
+// on the other — code silently demoted to prose. "Inside" is STRICTLY between a fence
+// region's outer edges: offset exactly BEFORE the opening ``` line or exactly AFTER the
+// closing fence line splits into two VALID halves and stays allowed (so does any offset
+// outside a fence). An unclosed opener counts to end-of-text (still broken if split).
+function inFence(text, offset) {
+  const s = text == null ? '' : String(text);
+  const o = Math.max(0, Math.min(offset | 0, s.length));
+  let open = -1, pos = 0;
+  for (const line of s.split('\n')) {
+    const end = pos + line.length;
+    if (/^\s*```/.test(line)) {
+      if (open < 0) open = pos;
+      else { if (o > open && o < end) return true; open = -1; }
+    }
+    pos = end + 1;
+  }
+  return open >= 0 && o > open;
+}
+
 // Pure core (UXP-68): merge `body` (the prefix-stripped trailing point) onto the end of
 // `prevText` (the previous visible point) when Backspace is pressed at offset 0 — the
 // inverse of splitForSibling. Joins FLUSH onto the target's last *content* line: a
@@ -17790,7 +17829,11 @@ function insertSiblingAfter(id) {
     ? document.querySelector(`.node-content[data-id="${id}"][data-editing]`)
     : null;
   const off = ed ? getCaretOffset(ed) : -1;
-  if (ed && off >= 0 && off < editableText(ed).length) {
+  const buf = ed ? editableText(ed) : '';
+  // Mid-fence Enter never splits (issue #405): both halves would be broken (unterminated
+  // opener + orphaned closer, code demoted to prose). Fall through to the eject arm below —
+  // the advertised "Enter exits to a new point" — leaving the block intact.
+  if (ed && off >= 0 && off < buf.length && !inFence(buf, off)) {
     pushUndo();                                   // flush typing (folded) + snapshot tree
     ed.blur();                                    // exit edit: refold + promote + prune → srcNode.text folded
     const foff = foldedOffsetFor(srcNode, off);
