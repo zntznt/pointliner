@@ -8964,3 +8964,32 @@ test('board card opener and the document closer agree on the click event (#417)'
   assert.ok(body.includes('e.stopPropagation()'), 'the opener must stop propagation so the document closer never sees the opening click');
   assert.ok(/document\.addEventListener\('click', e => \{[^]{0,300}hideColPanel\(\)/.test(_src), 'the document-level closer must listen on click, matching the opener');
 });
+
+// ── toastGate (#391): the shared toast element has error priority ──
+test('toastGate: an error owns the toast for its dwell; hints defer; errors always preempt (#391)', () => {
+  const err = c.toastGate('error', 1000, 0);
+  assert.equal(err.paint, true, 'an error always paints');
+  assert.equal(err.holdUntil, 5000, 'the error dwell is 4000ms from now');
+  assert.equal(c.toastGate('hint', 2000, 5000).paint, false, 'a hint mid-dwell must not repaint the element');
+  assert.equal(c.toastGate('hint', 5000, 5000).paint, true, 'the dwell end releases the element to hints');
+  assert.equal(c.toastGate('hint', 6000, 0).paint, true, 'no live error: hints paint freely');
+  assert.equal(c.toastGate('error', 3000, 5000).paint, true, 'a NEW error may preempt a live error');
+});
+
+test('flash channel wiring: hints consult the gate, deferred hints still announce, errors set the hold (#391)', () => {
+  assert.ok(_src.includes("toastGate('hint', Date.now(), _errorHoldUntil)"), 'flashHint must ask the gate before painting');
+  assert.ok(_src.includes("toastGate('error', Date.now(), 0)"), 'flashError must take the hold from the gate (the dwell length lives there only)');
+  const defer = _src.slice(_src.indexOf("toastGate('hint', Date.now(), _errorHoldUntil)"));
+  const block = defer.slice(0, defer.indexOf('return;'));
+  assert.ok(block.includes('_pendingHint = msg'), 'a deferred hint is queued for replay after the dwell');
+  assert.ok(block.includes('announce(msg)'), 'a deferred hint must still reach assistive tech immediately');
+});
+
+// ── Docked-stack viewport ceiling (#389): the toolbar can never exceed the screen ──
+test('docked stack failsafe: #toolbar clamps to the viewport and the agenda pane scrolls (#389)', () => {
+  assert.ok(/#toolbar\{[^}]*max-height:100dvh/.test(_src), '#toolbar must clamp to 100dvh (was unbounded: 123% of a landscape phone)');
+  assert.ok(/#toolbar\{[^}]*flex-direction:column/.test(_src), 'the toolbar is a flex column so exactly one strip can give up height');
+  assert.ok(/#toolbar > \*\{flex-shrink:0\}/.test(_src), 'every strip keeps its height by default');
+  assert.ok(/#agenda-strip\.on\{[^}]*overflow-y:auto/.test(_src), 'the agenda strip is the designated scrolling region');
+  assert.ok(/#agenda-strip\.on\{[^}]*min-height:0/.test(_src), 'min-height:0 lets the flex item actually shrink below its content');
+});

@@ -1929,6 +1929,29 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### FEED-1 ◐ Toast error priority + docked-stack viewport ceiling (Fixes #391 #389) (RESOLVED pending merge)
+- **Two adversarial-standard findings where the fleet challenged a locked decision's unstated
+  corollary and the measurement sided with the fleet.** Both fixed inside the challenged decision
+  (one feedback pattern kept; docking kept), and both standards now record the missing rule.
+- **#391 (major): the single-toast channel silently swallowed errors.** `flashHint`/`flashError`
+  share one element + one timer with last-writer-wins, so a "couldn't write to the folder" error was
+  replaced mid-dwell by the next "Captured N" hint — the exact failure P4-1 exists for, on the
+  channel capture made high-traffic. Fixed with the pure `toastGate(kind, now, holdUntil)`: an error
+  owns the element for its 4s dwell (the dwell constant lives ONLY there); a mid-dwell hint defers
+  (announced to AT immediately, the LAST one replays visually after the dwell, un-reannounced); a
+  new error always preempts. Rule recorded in ux-discipline §6. Verified live: the issue's exact
+  repro now shows the error red for the full dwell, then replays "Captured 3".
+- **#389 (major): the everything-docks model had no height ceiling** — agenda-Month + capture +
+  journal measured 123% of a landscape phone: the fixed chrome was taller than the screen, the
+  outline permanently covered, the strips' own lower controls unreachable. Failsafe shipped:
+  `#toolbar` clamps to `100dvh` (flex column, `>*{flex-shrink:0}`), and `#agenda-strip.on` — the one
+  tall pane — is the designated shrink-and-scroll region (`flex-shrink:1;min-height:0;overflow-y:auto`).
+  Ceiling rule recorded in design-language §4 so the NEXT docked surface is designed against it.
+  Verified live at 844×373: toolbar = exactly the viewport (was ~483px natural), agenda scrolls
+  internally (263 vs 357), desktop 1200×800 untouched (pane at full natural height, no scroll).
+- 886 tests (+3: toastGate boundary pins, the flash-wiring src-pin incl. deferred-hints-still-announce,
+  the CSS ceiling drift-guard).
+
 ### MENU-1 ◐ Base/board menu operability: flip clamp + card-opener event contract (Fixes #415 #417) (RESOLVED pending merge)
 - **The fleet triage's board/base operability pair: two majors on the newest surfaces, shippable
   regardless of how the #416 mega-menu decision lands.** Both browser-verified live on the fixed file

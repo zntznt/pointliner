@@ -235,6 +235,13 @@ editable content and `text-transform` would lie about it.
   strip's single primary commit action wears the solid accent at the same chip scale; every control in a strip row shares one 22px height, the text field included
   (it grows only with content). A new docked strip adopts this grammar
   rather than minting its own (decided 2026-07-01, capture aligned to agenda).
+  **The stack has a viewport ceiling (#389):** the docked stack may never exceed the
+  viewport — `#toolbar` clamps to `100dvh` and the agenda strip (the one tall pane) is the
+  designated shrink-and-scroll region; every other strip keeps its natural height. The
+  strips are honest one at a time, but they compose: agenda-Month + capture + journal
+  measured 123% of a landscape phone before the clamp, burying both the outline AND the
+  strips' own lower controls. A new docked surface is designed against this ceiling
+  (if it can be tall, it must be able to scroll internally).
   **Capture layout (re-evaluated and defended 2026-07-01):** the strip docks and never
   navigates (a modal would hide the outline a brain-dump references); the text field
   leads the row on every width, content before chrome, with destination and commit
