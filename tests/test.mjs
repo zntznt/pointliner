@@ -8923,3 +8923,20 @@ test('switcher chips: doc-tabs + agenda nav are 22px (strip height); date text c
   assert.ok(/\.agc-nav\{[^}]*font-size:13px/.test(_src), 'the nav glyph must be 13px to fit the 22px row (was 16px)');
   assert.ok(/\.agc-title\{[^}]*font-size:13px/.test(_src), 'the month title must be 13px to fit the strip band (was 15px)');
 });
+
+// ── shadowedDeclKeys (#403): shadowed requires a LATER same-name declaration, not just zero refs ──
+test('shadowedDeclKeys: a sole declaration with no references is LIVE, not shadowed (#403)', () => {
+  const D = (name, key) => ({ name, key, isDecl: true });
+  const R = (name) => ({ name, isDecl: false });
+  // the Welcome-tour case: {level := 3} consumed only by math pills (which emit no reference events)
+  assert.equal(c.shadowedDeclKeys([D('level', 'k1')]).size, 0, 'a sole declaration is live: nothing shadows it');
+  // a later same-name declaration with no reference in between: the earlier one IS shadowed
+  assert.ok(c.shadowedDeclKeys([D('x', 'a'), D('x', 'b')]).has('a'), 'redeclared with no in-range ref: shadowed');
+  assert.ok(!c.shadowedDeclKeys([D('x', 'a'), D('x', 'b')]).has('b'), 'the last declaration is never shadowed');
+  // a reference in range keeps the earlier declaration live even with a later redeclaration
+  assert.equal(c.shadowedDeclKeys([D('x', 'a'), R('x'), D('x', 'b')]).size, 0, 'an in-range ref keeps it live');
+  // a reference AFTER the later declaration belongs to that one: the earlier stays shadowed
+  assert.ok(c.shadowedDeclKeys([D('x', 'a'), D('x', 'b'), R('x')]).has('a'), 'a ref after the redeclaration does not rescue the earlier one');
+  // different names never interact
+  assert.equal(c.shadowedDeclKeys([D('x', 'a'), D('y', 'b')]).size, 0, 'different names are independent ranges');
+});
