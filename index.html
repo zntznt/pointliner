@@ -16293,13 +16293,19 @@ function renderMathPill(key, m) {
   // sum/avg/count(prop) against the point being rendered so subtree aggregation
   // stays live as children change (cookieNode = the current render node).
   const expr = expandAggExpr(m.expr, cookieNode);
-  const fresh = evalMath(expr, renderVarMap);   // positional: vars visible at this node
+  // Scope = doc vars at this node, with the render node's OWN numeric props merged OVER them —
+  // the same rule evalCheck already uses (nodePropVars wins over vars). This closes a real
+  // WYSIWYG surprise: `/check:hp<=max` resolved an `hp:` prop but a bare `{= hp}` pill on the
+  // same point did not. Own-node only (the ancestor-inheritance half is a separate decision,
+  // backlog). A no-prop node yields renderVarMap unchanged, so nothing else moves.
+  const scope = Object.assign(Object.create(null), renderVarMap, nodePropVars(cookieNode));
+  const fresh = evalMath(expr, scope);          // positional: vars visible at this node, own props on top
   if (fresh === null) {
     // The live recompute failed — a referenced variable became unresolvable (deleted,
     // cyclic, or redeclared non-numeric). Surface the failure with its reason rather
     // than the stale last-good m.result (UXP-34); the pill stays clickable so the user
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
-    const reason = mathErrorReason(expr, renderVarMap, _varCycles);
+    const reason = mathErrorReason(expr, scope, _varCycles);
     const label = reason ? `#ERR (${reason})` : '#ERR';
     const phrase = mathReasonPhrase(reason);
     const tip = phrase ? `This uses ${phrase}. Click to edit.` : 'This can\'t be computed. Click to edit.';

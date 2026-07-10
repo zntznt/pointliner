@@ -9309,3 +9309,25 @@ test('format shortcuts: ⌘/Ctrl+B/I/U route to applyInlineFormat via FORMAT_SHO
   // every mapped id is a real FORMAT_CMDS id (no dangling map entry)
   assert.ok(/id:'bold'/.test(_src) && /id:'italic'/.test(_src) && /id:'uline'/.test(_src), 'bold/italic/uline are real FORMAT_CMDS ids');
 });
+
+// ── Math pills read own-node props (backlog A, own-node half) ──
+test('math pill scope: a node own numeric prop resolves in {= }, own props win over doc vars', () => {
+  // the behavior the pill now uses: Object.assign({}, docVars, nodePropVars(node)) then evalMath.
+  const node = { props: [{ key: 'hp', val: '14' }, { key: 'max', val: '20' }, { key: 'name', val: 'Aric' }] };
+  const docVars = { hp: 3, bonus: 2 };   // a doc var also named hp — the node prop must WIN
+  const scope = Object.assign(Object.create(null), docVars, c.nodePropVars(node));
+  assert.equal(c.evalMath('hp', scope), 14, 'own prop hp:14 resolves and shadows the doc var hp:3');
+  assert.equal(c.evalMath('max - hp', scope), 6, 'arithmetic over own props');
+  assert.equal(c.evalMath('bonus', scope), 2, 'a doc var with no prop shadow still resolves');
+  assert.equal(c.evalMath('name', scope), null, 'a non-numeric prop is not a number (nodePropVars drops it)');
+  // a no-prop node leaves the doc scope untouched
+  const empty = Object.assign(Object.create(null), docVars, c.nodePropVars({ props: [] }));
+  assert.equal(c.evalMath('hp', empty), 3, 'no own props → doc var stands, nothing moves');
+});
+
+test('renderMathPill wiring: builds the merged own-prop scope and uses it for both compute and error reason (backlog A)', () => {
+  const fn = _src.slice(_src.indexOf('function renderMathPill'), _src.indexOf('function renderMathPill') + 1700);
+  assert.ok(/const scope = Object\.assign\(Object\.create\(null\), renderVarMap, nodePropVars\(cookieNode\)\)/.test(fn), 'the pill must merge own props over renderVarMap');
+  assert.ok(/evalMath\(expr, scope\)/.test(fn), 'the fresh compute uses the merged scope');
+  assert.ok(/mathErrorReason\(expr, scope, _varCycles\)/.test(fn), 'the error-reason path uses the SAME scope (or a prop-resolved expr shows a false #ERR reason)');
+});
