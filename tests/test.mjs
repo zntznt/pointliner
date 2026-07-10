@@ -5643,7 +5643,7 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   // Add-inbox must OPEN the modal overlay itself (the strip is no longer a modal, so the
   // tree picker needs its own ioBack.on — the "dead Add button" regression).
   {
-    const add = _src.slice(_src.indexOf('function captureAddInbox'), _src.indexOf('function captureAddInbox') + 1100);
+    const add = _src.slice(_src.indexOf('function captureAddInbox'), _src.indexOf('function captureAddInbox') + 1500);
     assert.ok(add.includes("ioBack.classList.add('on')"), 'Add-inbox must open the modal overlay');
     assert.ok(add.includes('buildTreePicker'), 'Add-inbox must use the tree picker');
   }
@@ -9210,4 +9210,23 @@ test('column header carries the visible menu door; agenda groups carry kind labe
   assert.ok(_src.includes("mkGrpLbl('Filters')"), 'the filters carry theirs');
   assert.ok(_src.includes("mkGrpLbl('Sort')"), 'Sort stands apart with its own label');
   assert.ok(/\.ag-grp-lbl\{[^}]*text-transform:uppercase;letter-spacing:\.07em/.test(_src), 'labels use the caps-eyebrow exemption, not sub-floor plain text');
+});
+
+// ── Mobile neophyte batch: first-run tap targets + duplicate-inbox guard ──
+test('first-run banner controls reach the touch tap floor (mobile-neophyte review)', () => {
+  // the Save/"Start a blank outline" button and the ✕ were the only first-screen controls
+  // the @media(hover:none) enlargement pass never reached (guardrail 5). Both now do.
+  const hoverNone = _src.slice(_src.indexOf('@media(hover:none){\n  #storage-warn button'));
+  assert.ok(/#storage-warn button\{min-height:36px/.test(hoverNone), 'the banner buttons must grow to the 36px+ box on touch');
+  assert.ok(/#storage-warn-close\{[^}]*min-height:36px/.test(hoverNone), 'the ✕ must reach the tap floor on touch');
+  assert.ok(/#storage-warn-close::after\{content:'';position:absolute;inset:-6px\}/.test(hoverNone), 'the ✕ uses the invisible ::after hit overlay (glyph stays small)');
+});
+
+test('inbox picker: re-picking an existing inbox retargets its slot, never appends a duplicate (mobile-neophyte review)', () => {
+  // the "Add an inbox" tree picker computed length+1 unconditionally, so re-picking a point that
+  // was already an inbox produced inboxes == [id, id]. Guard with inboxSlotOf, like the bullet menu.
+  const pick = _src.slice(_src.indexOf("title: 'Add an inbox'"));
+  const body = pick.slice(0, pick.indexOf('footLabel'));
+  assert.ok(/const existing = inboxSlotOf\(it\.id\);/.test(body), 'the picker must check whether the point is already an inbox');
+  assert.ok(/if \(existing\) \{ captureSlot = existing; back\(\); return; \}/.test(body), 'a re-pick retargets the existing slot and returns before appending');
 });

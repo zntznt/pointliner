@@ -1932,6 +1932,33 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### MOBILE-1 ◐ First-run tap targets + duplicate-inbox guard (mobile-neophyte review) (RESOLVED pending merge)
+- **Source: a fresh-eyes mobile-neophyte review fleet** (6 personas each attempting a concrete
+  first-timer goal on a phone viewport, every finding adversarially re-verified against source).
+  Verdict up front: **a genuine neophyte CAN use the app** — all six completed their core task. Two
+  findings were clean, cheap, decision-respecting fixes; the rest were either working-as-designed,
+  device-only unknowns, or blocked by a recorded decision (see the deferred note below).
+- **Tap targets (major-by-convergence, 3 personas hit it): the first-run banner's controls were the
+  ONLY first-screen controls the `@media(hover:none)` enlargement pass never reached.** `#storage-warn-save`
+  ("Start a blank outline" / "Save to file") measured 127×23px and `#storage-warn-close` (the ✕) 29×20px,
+  both under the 24px WCAG floor and far under the app's own 36-38px aim (guardrail 5) — on the literal
+  first screen a phone user meets. Fixed: a `@media(hover:none)` block grows the buttons to `min-height:36px`
+  and the ✕ to a 36×36 box with an invisible `::after` inset:-6px overlay (glyph stays small). Verified by
+  applying the rule live: base 23/20px → touch 36/36px, clears the floor.
+- **Duplicate-inbox slot (minor): re-picking an existing inbox appended a duplicate.** The "Add an inbox"
+  tree-picker `onPick` computed `slot = inboxes.length + 1` unconditionally, so re-designating a point that
+  was already an inbox produced `inboxes == [id, id]`. The bullet-menu Set-as-inbox path already guarded via
+  `inboxSlotOf`; the picker now matches it — a re-pick retargets the existing slot and returns. Verified
+  live: re-pick retargets to slot 1 (no dup), a new point still appends as slot 2.
+- 904 tests (+2 pins; one pre-existing capture wiring-pin window widened for the guard's added lines).
+- **Deferred (real neophyte pain, but each fix collides with a recorded decision — owner call, not a quick fix):**
+  (a) **checkbox-vanish** — ticking a to-do hides it (showDone=false default); an Apple-Notes user reads
+  "deleted." Owner chose the *persistent hidden-count cue* direction (its own PR, MOBILE-2). (b) **strip has
+  no touch close** — design-language §4 explicitly records "the strip carries no dismiss button, it closes
+  the way it opened," AND outside-tap-closes would break capture's core premise ("the outline stays live+editable
+  underneath a brain-dump"); needs a design decision, not a batch fix. (c) **examples-tap shows raw `#`** —
+  that's the universal markdown-first edit model, not an examples bug; redirecting the tap would violate P1.
+
 ### INBOX-5 ◐ Capture chips: the big zone selects, navigation moves to a ↗ segment (Fixes #421) (RESOLVED pending merge)
 - **Owner-adjudicated re-examination of INBOX-2/3's own mapping.** The chip's biggest zone (the
   125px name) navigated AWAY (zoomed to the inbox point) while the actual capture-target selection
