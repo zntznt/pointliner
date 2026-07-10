@@ -9599,21 +9599,28 @@ test('dialog ? help icons deep-link to real GUIDE entries (#466)', () => {
   assert.ok(/dialogHelp\(head, opts\.guideId\)/.test(_src), 'openInsertDialog must thread opts.guideId to dialogHelp');
 });
 
-// #463: click an agenda day → a point due that day on the inbox. DOM/module-global coupled
-// (reads root/resolveInbox), so pin the wiring at the source: the helper composes the shipped
-// cores (resolveInbox → mkNode → setDateProp 'due' → inbox append → zoom+focus), and the
-// in-month cell renders a keyboard-operable + button that calls it. Also assert the date is a
-// valid, round-trippable due value (formatEpochDays ↔ parseDueDate, behavioral).
-test('agenda day + button creates a due point on the inbox (#463 wiring)', () => {
+// #463 (adversarial-review revision): the agenda "+" ROUTES THROUGH CAPTURE rather than
+// committing a point itself. This kills three defects at once — no empty-point litter (capture
+// requires non-empty text before it creates), no zoom-away (the strip stays put), a visible
+// destination + picker-on-no-inbox. So the wiring is: createDatedPointOnInbox pre-loads a
+// pending due date (captureDue) and opens the strip; doCapture stamps that date onto the point
+// it builds (and only when there IS text). DOM/module-global coupled, so pin at the source.
+test('agenda day + button routes through capture with a pending due date (#463 wiring)', () => {
   const fn = fnBody(_src, 'createDatedPointOnInbox');
   assert.ok(fn, 'createDatedPointOnInbox must exist');
-  assert.ok(fn.includes('resolveInbox()'), 'resolves the inbox (reuses the capture flow)');
-  assert.ok(/setDateProp\(n, 'due', formatEpochDays\(epochDay\)\)/.test(fn), 'sets a due date = the clicked day');
-  assert.ok(fn.includes('inbox.children.push(n)') && fn.includes('nodeMap.set(n.id, n)'),
-    'appends + registers the point on the inbox like doCapture');
-  assert.ok(fn.includes('zoomInto(inbox.id)') && fn.includes('focusNode(n.id)'),
-    'zooms into the inbox and focuses the new point to title it (per the owner decision)');
-  assert.ok(/if \(!inbox\)/.test(fn) && fn.includes('flashHint('), 'no inbox → a P4 guidance flash, never silent');
+  assert.ok(/captureDue = epochDay/.test(fn), 'pre-loads the clicked day as the pending capture due date');
+  assert.ok(fn.includes('openCaptureDialog()'), 'opens the capture strip (visible destination, picker if no inbox)');
+  // it must NOT create a point itself — that is doCapture's job, gated on non-empty text (no litter)
+  assert.ok(!/mkNode\(/.test(fn), 'the "+" never creates a point directly (no empty-point litter)');
+  assert.ok(!/inbox\.children\.push/.test(fn) && !/zoomInto\(/.test(fn),
+    'no direct append and no zoom-away — the strip stays open over the calendar');
+  // doCapture consumes the pending date onto the point it builds, then clears it (one-shot)
+  const cap = fnBody(_src, 'doCapture');
+  assert.ok(/captureDue !== null/.test(cap) && /setDateProp\(n, 'due', formatEpochDays\(captureDue\)\)/.test(cap),
+    'doCapture stamps the pending due date onto the captured point');
+  assert.ok(/captureDue = null/.test(cap), 'doCapture clears the pending date after one capture (one-shot)');
+  // closing the strip also drops a pending date so it cannot bleed into a later unrelated capture
+  assert.ok(/captureDue = null/.test(fnBody(_src, 'closeCapture')), 'closeCapture drops any pending due date');
   // the cell renders a real, keyboard-operable + button that calls the helper (in-month only)
   assert.ok(/if \(cell\.inMonth && !side\)/.test(_src), 'the + is only on in-month cells (side months switch month)');
   assert.ok(/className = 'agc-add'/.test(_src) && /createDatedPointOnInbox\(ep\)/.test(_src), 'the + button calls the helper');
@@ -9621,4 +9628,16 @@ test('agenda day + button creates a due point on the inbox (#463 wiring)', () =>
   // the stored date is a valid, round-trippable due value
   const iso = c.formatEpochDays(20600);
   assert.equal(c.parseDueDate(iso), 20600, 'formatEpochDays produces a due value parseDueDate round-trips');
+  // the capture chip/toast use formatDateConcrete: a click-target confirmation must carry the
+  // DAY NUMBER (formatDueDate's bare "Wed" is ambiguous with several Wednesdays on screen)
+  assert.ok(/captureDue !== null/.test(_src) && /formatDateConcrete\(captureDue\)/.test(_src),
+    'the pending-due chip labels with the concrete date, not the ambiguous urgency word');
+});
+
+// #463 feel-pass: formatDateConcrete always includes the day number so a click-target
+// confirmation is unambiguous. 20600 is a Wednesday (2026-05-27); assert weekday+month+day.
+test('formatDateConcrete carries the day number for an unambiguous confirmation (#463)', () => {
+  const s = c.formatDateConcrete(20600);
+  assert.match(s, /\d/, 'always contains a day number (never a bare weekday)');
+  assert.equal(s, 'Wed May 27', 'weekday + month + day for a normal future/near date');
 });
