@@ -87,6 +87,9 @@ Turn the outline into a lightweight planner.
 
 - **Start and due dates.** Schedule any point with a start, a deadline, or both; color-coded chips
   show what is due, soon, or overdue. ([scheduling](dates-and-planning.md#scheduling-dates))
+- **Recurring tasks.** Give a task a Repeat schedule (`every week`, `every Monday`, `monthly on the
+  1st`); completing it rolls the date forward and re-opens it.
+  ([recurring](dates-and-planning.md#recurring-tasks))
 - **Agenda.** A built-in calendar, timeline (Gantt), and due-list view of your dated points.
   ([agenda](dates-and-planning.md#agenda-and-calendar))
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
