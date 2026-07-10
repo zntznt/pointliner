@@ -96,7 +96,7 @@ Turn the outline into a lightweight planner.
   (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus
   `has:children` / `has:footnote` and `has:dice` / `has:math` / `has:est` / `has:grammar` / `has:markov`
   / `has:var` / `has:seq`, link and tag presence via `has:link` / `has:backlink` / `has:tag` /
-  `is:broken`), date and property operators (`due:overdue`, `due:week` / `due:month`,
+  `is:broken`, hygiene flags `is:empty` / `is:orphan` / `is:duplicate-title`), date and property operators (`due:overdue`, `due:week` / `due:month`,
   `priority:a`, `var:name`, `has:key`, `key:value`, numeric compares `key:>N` / `key:<=N`), exact
   `"phrases"`, `-` to exclude, and `a | b` for either-side (OR) matching. Star a search to save it.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))

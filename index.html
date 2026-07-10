@@ -1846,6 +1846,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>is:pill</kbd><kbd>is:random</kbd><kbd>has:dice</kbd><span>carries a pill / a re-rollable one; <code>has:</code> also takes <code>math est grammar markov var seq</code></span></div>
         <div class="sh-row"><kbd>has:children</kbd><kbd>has:footnote</kbd><span>has sub-points / a footnote</span></div>
         <div class="sh-row"><kbd>has:link</kbd><kbd>has:backlink</kbd><kbd>is:broken</kbd><span>contains a link / is linked to (this document) / has a broken link</span></div>
+        <div class="sh-row"><kbd>is:empty</kbd><kbd>is:orphan</kbd><kbd>is:duplicate-title</kbd><span>no text / nothing links to it / its title collides with another point</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
         <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next 7 / 30 days, not overdue (add <code>| due:overdue</code> for both)</span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
@@ -9780,7 +9781,7 @@ function parseSearchQuery(q) {
     // never feeds it to `new RegExp('...#'+value+'...')` — a ~32k tag exceeds V8's regex program
     // limit and throws mid-render(). (Adversarial pass, blast: crash.) The `else if` chain below
     // catches the fall-through; an over-long token becomes a plain text search, which is harmless.
-    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|held|pill|random|leaf|parent|collapsed|expanded|broken)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|held|pill|random|leaf|parent|collapsed|expanded|broken|empty|orphan|duplicate-title)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -9887,6 +9888,21 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
       const lk = links || collectLinks();
       return (lk.outgoing[node.id] || []).some(l => lk.broken.includes(l.target));
     }
+    // #468: is:empty — a point that reads blank. textForDisplay strips the block prefix and
+    // task/ol markers, so a bare `#`, an empty `- [ ]`, or a lone `1.` all count (nothing here).
+    if (term.value === 'empty') return !(textForDisplay(node) || '').trim();
+    // #468: is:orphan — nothing in the document links TO this point (no backlinks). Reuses the
+    // links param already plumbed for is:broken; a title/text match is not a link.
+    if (term.value === 'orphan') {
+      const lk = links || collectLinks();
+      return !((lk.backlinks[node.id] || []).length);
+    }
+    // #468: is:duplicate-title — this point's display title collides (case-insensitively) with
+    // at least one other point's. The collision Set is a per-search doc-cache (duplicateTitleIds).
+    // Scoped to the CURRENT document by design: a title matching across two separate folder docs
+    // isn't a "duplicate" in the hygiene sense (that's link/alias territory), so in a cross-doc
+    // workspace search this matches nothing outside the active doc — deliberate, not a gap.
+    if (term.value === 'duplicate-title') return duplicateTitleIds().has(node.id);
     // to-do-ness is SEQ-AWARE here: a leading keyword recognized in THESE seqs, or a task
     // line. deriveTypeFromText reads the module-global knownStates (the CURRENT doc's), which
     // is wrong for another doc's custom sequence — WS-1 amendment. In-doc, seqs is the current
@@ -10025,7 +10041,7 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
   const seqs = allSequences(rootNode);
   const needsCtx = terms.some(t => t.kind === 'is');
   const vars = needsCtx ? collectVars(rootNode) : undefined;
-  const needsLinks = terms.some(t => (t.kind === 'is' && t.value === 'broken') || (t.kind === 'has' && t.value === 'backlink'));
+  const needsLinks = terms.some(t => (t.kind === 'is' && (t.value === 'broken' || t.value === 'orphan')) || (t.kind === 'has' && t.value === 'backlink'));
   const links = needsLinks ? collectLinks(rootNode) : undefined;
   const rows = [];
   let total = 0;
@@ -10054,7 +10070,7 @@ function pickFromQuery(expr, rootNode, hostId) {
   const seqs = allSequences(rootNode);
   const needsCtx = terms.some(t => t.kind === 'is');
   const vars = needsCtx ? collectVars(rootNode) : undefined;
-  const needsLinks = terms.some(t => (t.kind === 'is' && t.value === 'broken') || (t.kind === 'has' && t.value === 'backlink'));
+  const needsLinks = terms.some(t => (t.kind === 'is' && (t.value === 'broken' || t.value === 'orphan')) || (t.kind === 'has' && t.value === 'backlink'));
   const links = needsLinks ? collectLinks(rootNode) : undefined;
   const hits = [];
   (function walk(n) {
@@ -10089,7 +10105,7 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
   if (!terms.length || !colList.length) return { header, rows: [], total: 0, truncated: false };
   const seqs = allSequences(rootNode);
   const vars = collectVars(rootNode);   // '=' columns need it regardless of the query
-  const needsLinks = terms.some(tm => (tm.kind === 'is' && tm.value === 'broken') || (tm.kind === 'has' && tm.value === 'backlink'));
+  const needsLinks = terms.some(tm => (tm.kind === 'is' && (tm.value === 'broken' || tm.value === 'orphan')) || (tm.kind === 'has' && tm.value === 'backlink'));
   const links = needsLinks ? collectLinks(rootNode) : undefined;
   const project = (n, field) => {
     const f = field.trim();
@@ -14430,6 +14446,32 @@ function collectTags(rootNode) {
   return result;
 }
 
+// Ids of every point whose display title collides (case-insensitively) with at least one
+// OTHER point's title — the data behind `is:duplicate-title` (#468). Built ONCE per search
+// (a doc-cache keyed on _varsVer, mirroring collectTags), not per node, so the search loop
+// stays O(n). Empty titles never collide. Titles are the prefix-stripped display text
+// (textForDisplay), so `# Draft` and `Draft` collide but `## Draft` vs `# Draft` do not
+// differ by prefix (both read "Draft"). Aliases are deliberately out — a title collision is
+// the plain-title case; alias overlap is a separate, fuzzier notion.
+let _dupTitleCacheVer = -1, _dupTitleCached = null; // doc-cache: duplicateTitleIds
+function duplicateTitleIds(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _dupTitleCacheVer === _varsVer && _dupTitleCached) return _dupTitleCached;
+  const byTitle = new Map();   // lowercased title -> [ids]
+  function walk(n) {
+    const t = (textForDisplay(n) || '').trim().toLowerCase();
+    if (t) { const a = byTitle.get(t) || []; a.push(n.id); byTitle.set(t, a); }
+    for (const c of n.children || []) walk(c);
+  }
+  // walk CHILDREN, not the root itself (a container point has no title) — mirrors collectTags.
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  const dup = new Set();
+  for (const ids of byTitle.values()) if (ids.length > 1) for (const id of ids) dup.add(id);
+  if (useCache) { _dupTitleCacheVer = _varsVer; _dupTitleCached = dup; }
+  return dup;
+}
+
 // Filter a collectTags() list by prefix (case-insensitive, anchored at start).
 // A lone match that IS the typed prefix offers nothing to complete → empty
 // (the menu dismisses itself once the tag is fully typed). Pure.
@@ -14666,7 +14708,7 @@ function searchWorkspace(query, index, currentDocId, cap = 50) {
   if (!terms.length) return [];
   const needsCtx = terms.some(t => t.kind === 'is');      // only is:* reads seqs/vars — compute lazily
   // QX-6: link filters read THIS doc's link index (backlinks/broken are doc-relative)
-  const needsLinks = terms.some(t => (t.kind === 'is' && t.value === 'broken') || (t.kind === 'has' && t.value === 'backlink'));
+  const needsLinks = terms.some(t => (t.kind === 'is' && (t.value === 'broken' || t.value === 'orphan')) || (t.kind === 'has' && t.value === 'backlink'));
   const out = [];
   for (const [docId, root] of index.roots) {
     if (docId === currentDocId) continue;                 // current doc → the in-outline filter
@@ -18701,7 +18743,7 @@ function performMultiDrop(ids, targetId, position) {
 // would be served until the first keystroke (UXP-32). Call beside every
 // buildIndex(root, null) that swaps the tree. The invariant is pinned by the
 // "doc-cache invalidation" regression test in tests/test.mjs.
-function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); }
+function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); _dupTitleCached = null; }
 
 // UXP-103: the persistence signals must all mean the SAME thing — "unsaved to a named disk
 // target," not "there is any unpersisted keystroke." In default (no-handle) mode autosave keeps
@@ -22357,6 +22399,8 @@ const GUIDE = [
       { syn:'has:children / has:footnote', desc:'has sub-points / a footnote' },
       { syn:'has:link / has:backlink',desc:'contains a link / is linked to by another point (this document)' },
       { syn:'has:tag / is:broken',    desc:'carries any hashtag / contains a link whose target is gone' },
+      { syn:'is:empty / is:orphan',   desc:'has no text (a blank stub) / nothing links to it' },
+      { syn:'is:duplicate-title',     desc:'its title collides with another point (find accidental dupes)' },
       { syn:'has:dice (math, est, grammar, markov, var, seq)', desc:'carries that kind of pill' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'key:>N / key:<=N',       desc:'numeric property compare (cost:>100, score:<=3.5)' },
