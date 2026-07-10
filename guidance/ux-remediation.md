@@ -1963,9 +1963,10 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
 - **Tests: +2 behavior pins that would have CAUGHT #2/#3/#4** (the query-carry pin fails against the
   unpatched code — the audit's point about existence-only pins). `rederiveFromText`, `cloneArtifactSidecars`,
   `mergeArtifactSidecars` registered as pure cores; `structuredClone` added to the test sandbox. 908 tests.
-- **The minor/polish backlog** (regex scope hazards, five copy-pasted reroll one-liners, the 145-line table
-  keydown maze, etc.) was NOT fixed here — logged from the audit for a future maintainability pass; none are
-  bugs on a normal path.
+- **Issue trail:** the four fixed findings are filed + closed as #445 (folder-write data loss), #446 (derived
+  desync), #447 (query sidecar) — all Fixed in #444. The minor/polish backlog was filed OPEN, grouped by
+  theme: #448 (correctness hazards), #449 (silent-failure), #450 (maintainability/refactor), #451 (state-hygiene
+  + large-doc perf), #452 (dead CSS + test gaps). None are bugs on a normal path; they're a future pass.
 
 ### MOBILE-2 ◐ The "N done hidden" cue lives on the Done button (mobile-neophyte review) (RESOLVED pending merge)
 - **The neophyte fleet's #1 finding, owner-adjudicated fix.** Ticking a to-do hides it (showDone
