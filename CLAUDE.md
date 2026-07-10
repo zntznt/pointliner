@@ -564,12 +564,15 @@ with the per-generation cache (production); an explicit root walks that tree and
 bypasses the cache, making them pure functions of their argument (used by tests).
 A variable's value is **a number or a string**: a *formula* var evaluates its
 `expr` through `evalMath`; a **random pick** var (`kind:'pick'`) carries a frozen
-`rolled` string that `collectVars` returns **unchanged on every pass** — the
+`rolled` string that `collectVars` returns **without re-rolling on any pass** — the
 grammar engine runs only at declaration and on explicit re-roll (`rollPickSource`),
-never on a render pass, or the value would change on every keystroke. Display any
+never on a render pass, or the value would change on every keystroke. A pick whose
+frozen roll **is a number** resolves **as a number** (`resolveVarDefs` coerces), so
+a captured die (`{r := 1d20}`) composes with conditionals and math
+(`{r == 20: …}`, `{= r + mod}` — the crit-check pattern). Display any
 varMap value through `formatVarValue` (string-aware), never `formatMathResult`
-directly; in math/dice a string value fails to `null` visibly (the type-safety
-contract). Direction: `guidance/generation-direction.md`. **The reverted thing is the
+directly; in math/dice a *text* value fails to `null` visibly (the type-safety
+contract is for text, not for numbers it would mislabel). Direction: `guidance/generation-direction.md`. **The reverted thing is the
 per-expansion bound-picks *scope* (`ctx.binds`, PR #51) — that must not return.** The `:=`
 *operator itself* HAS shipped, as **typed inline variable declaration** `{name := expr}`
 (`parseVarDecl`): it is sugar that promotes to a normal persistent `[[var:key]]` record in

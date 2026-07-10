@@ -150,6 +150,24 @@ The branches are full templates, so they can roll dice or call rules:
 {gold>=100: you buy {a {weapon} | armor} | you can't afford anything}
 ```
 
+### Test a captured roll (crits and checks)
+
+A bare `{1d20}` re-rolls at every mention, so to test one roll several ways, **capture it in a
+variable first**: `{r := 1d20}` rolls once and freezes (click the pill to re-roll). Conditionals
+nest, so a full d20 check with critical results on the natural die and a DC on the total is:
+
+```
+{mod := 3}
+Attack: {r := 1d20} {r == 1: Critical failure!|{r == 20: Critical!|{r + mod >= 12: Success ({= r + mod})|Fail ({= r + mod})}}}
+```
+
+Read it inside out: natural 1 and 20 win first, otherwise the total `r + mod` is checked against
+DC 12 and shown either way. Use `r >= 12` instead of `r + mod >= 12` to check the natural die.
+
+To make a new attack, click the `r` pill (new die), then the verdict pill (it re-judges whatever
+`r` currently shows). Both freeze between clicks, like dice, so a resolved check stays on the page
+exactly as it landed; clicking only the verdict pill re-judges the same roll.
+
 ---
 
 ## Draw without repeating (decks)

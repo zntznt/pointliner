@@ -130,7 +130,11 @@ useful for a name you reuse, a label, a status word:
 Without quotes a bare word is read as a generator rule, not text, so quote anything you mean
 literally. Options split on the bar make a **random pick** instead (`{tone := warm | cool}`, re-rolls
 on click). A text variable is for writing and generators; it can't be used inside `{= …}` math (math
-is numbers only, and a text value there fails visibly rather than guessing). You can also build any of
+is numbers only, and a text value there fails visibly rather than guessing). A pick whose result is a
+**number** works in math, though: `{r := 1d20}` captures one die roll, and `{= r + 5}` or a
+conditional like `{r == 20: Critical!}` can then read it (see
+[Test a captured roll](generating-text.md#test-a-captured-roll-crits-and-checks) for the full
+crit-check pattern). You can also build any of
 these from the **`@` → Variable** dialog if you prefer a form to typing.
 
 ---
