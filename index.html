@@ -580,6 +580,10 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-colhead{position:relative;font-weight:600;background:var(--cbg);border:1px solid var(--bdr);border-bottom-width:2px;padding:3px 8px;min-width:72px;max-width:340px;cursor:pointer;vertical-align:middle;box-sizing:border-box}
 .mt-colhead:hover{background:var(--hbg)}
 .mt-colhead:active{cursor:grabbing}
+.mt-col-open{position:absolute;top:50%;transform:translateY(-50%);right:8px;font-size:10px;line-height:1;color:var(--muted);opacity:0;transition:opacity .12s;pointer-events:none}/* #416: the visible menu door; pointer-events:none = clicks fall through to the header's menu zone */
+.mt-colhead:hover .mt-col-open,.mt-colhead:focus-within .mt-col-open{opacity:1}
+@media(hover:none){.mt-col-open{opacity:1}}/* no hover on touch: always visible */
+@media(prefers-reduced-motion:reduce){.mt-col-open{transition:none}}
 .mt-colhead.mt-dragover{border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--ring)}/* UXP-180: a non-fill drop cue (matching .bv-lane.bv-dragover) so the editable column title never sits on a bare --acc fill with unpaired --fg ink (DL §3 --acc/--acc-fg pairing) */
 .mt-name-pill{display:inline-block;max-width:100%;padding:1px 7px;border-radius:var(--r-sm);font-weight:600;cursor:text;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;min-width:1.4em;min-height:1.25em;line-height:1.3;outline:none;background:transparent;transition:background .12s}
 .mt-name-pill:hover{background:var(--bg)}
@@ -1264,8 +1268,8 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 /* Controls column: a single view switcher (Week/Month/Timeline, one at a time) above the
    Done/Running filters. Both are rows of the same .ag-toggle chip. */
 .ag-controls{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-content:center;justify-content:center;padding-right:10px;border-right:1px solid var(--bdr)}
-.ag-switcher{display:flex;gap:3px}
-.ag-filters{display:flex;gap:3px}
+.ag-switcher,.ag-filters{display:flex;gap:3px;align-items:center}
+.ag-grp-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);min-width:44px;user-select:none}/* #419: kind labels (caps-eyebrow exemption) — a VIEW opens a pane, a FILTER changes the List */
 .ag-view{min-width:0}   /* switcher buttons size to their label, not the 64px filter min */
 .ag-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;padding-left:10px}
 .ag-toggle{display:inline-flex;align-items:center;height:22px;box-sizing:border-box;font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:0 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}/* #397: the canon chip pins the explicit 22px it defines */
@@ -7107,6 +7111,7 @@ function buildTableWidget(node, readOnly) {
     } else {
       h += `<th class="mt-colhead${aCls(model.aligns[c])}" data-c="${c}" draggable="true"${colStyle(c)} title="Drag to reorder · click for column options">`
          + `<span class="mt-cell mt-name-pill" data-r="0" data-c="${c}" contenteditable="true" role="textbox" aria-label="Column ${c+1} name" data-ph="Name">${mtInline(node, nm)}</span>`
+         + `<span class="mt-col-open" aria-hidden="true" title="Column options">\u25be</span>`
          + `<span class="mt-col-resize" data-c="${c}" title="Drag to resize · double-click to auto-fit"></span>`
          + `</th>`;
     }
@@ -20965,7 +20970,11 @@ function renderAgenda() {
     btn.setAttribute('aria-label', (active ? 'Hide ' : 'Show ') + label + ' view');
     return btn;
   };
+  // #419: three control KINDS share one chip look; leading eyebrow labels tell them apart
+  // (a VIEW opens a pane below, a FILTER changes the List, SORT cycles an order).
+  const mkGrpLbl = t => { const l = document.createElement('span'); l.className = 'ag-grp-lbl'; l.textContent = t; l.setAttribute('aria-hidden', 'true'); return l; };
   sw.append(
+    mkGrpLbl('Views'),
     mkView('week', 'Week', 'Show the week planner (7 day columns) on its own bar below'),
     mkView('month', 'Month', 'Show the month calendar on its own bar below'),
     mkView('timeline', 'Timeline', 'Show the Gantt timeline (start → due bars) on its own bar below'),
@@ -20987,7 +20996,10 @@ function renderAgenda() {
     agendaSort = sortByPri ? 'date' : 'priority'; renderAgenda(); scheduleAutosave();
   });
   sortT.title = 'Order the List by date or by priority';
-  filters.append(doneT, runT, overdueT, sortT);
+  filters.append(mkGrpLbl('Filters'), doneT, runT, overdueT);
+  const sortRow = document.createElement('div'); sortRow.className = 'ag-filters ag-sortrow';
+  sortRow.setAttribute('role', 'group'); sortRow.setAttribute('aria-label', 'Agenda ordering');
+  sortRow.append(mkGrpLbl('Sort'), sortT);
   if (agendaView === 'timeline') {  // §7.5 twin for the titles-column drag (the separator is hidden on touch), UXP-85
     const wName = ganttNamesW == null ? 'default' : (ganttNamesW <= 110 ? 'narrow' : 'wide');
     const wT = mkAgToggle('Titles', ganttNamesW != null, () => {
@@ -20996,9 +21008,9 @@ function renderAgenda() {
     });
     wT.title = 'Cycle the Timeline titles-column width (narrow, default, wide)';
     wT.setAttribute('aria-label', 'Titles column width: ' + wName + '. Activate to cycle.');
-    filters.append(wT);
+    sortRow.append(wT);
   }
-  controls.append(sw, filters);
+  controls.append(sw, filters, sortRow);
 
   const listHost = document.createElement('div'); listHost.className = 'ag-list';
   renderAgendaList(listHost, visible, all.length);

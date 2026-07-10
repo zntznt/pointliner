@@ -205,7 +205,11 @@ are scoped and must stay separate. The base *echoes* the editorial signature wit
 merging the skins: 2px header bottom rule, header weight 600 (never 700), the table hugs
 its content (`width:auto;min-width:min(380px,100%)`) instead of stretching across the
 measure, and rows get a 3%-fg hover. Don't uppercase the base header — the name pill is
-editable content and `text-transform` would lie about it.
+editable content and `text-transform` would lie about it. **The header's menu zone carries
+a visible door** (#416, owner-adjudicated 2026-07-09): a hover-revealed `▾` (`.mt-col-open`,
+always visible on touch, `pointer-events:none` so the header's existing click zone stays
+the one handler) marks click-for-menu vs click-the-name-to-rename; the whitespace door
+UXP-21 established keeps working alongside it.
 
 **Decision: chrome control grammar.**
 - **Active toggles wear the tint recipe** (16% accent mix + accent ink + 35% border),
@@ -238,6 +242,11 @@ editable content and `text-transform` would lie about it.
 - **Eyebrow labels are one recipe:** 10px / 600 / `.07em` caps in `--muted`, **never
   opacity-faded** (§3's role-not-failing-ink rule applies to labels too).
 - **Toolbar controls share one 28px height.**
+- **Agenda controls: one chip look, three labelled kinds.** The control cluster mixes
+  view switchers (open a pane), filters (change the List), and a sort cycler in one chip
+  grammar; each group leads with a caps-eyebrow kind label (`.ag-grp-lbl`: Views / Filters
+  / Sort, Sort on its own row) so a newcomer can predict a chip's blast radius before
+  clicking (#419).
 - **Agenda dated-point chips: one tint recipe, two recorded densities.** Every surface
   that renders a dated point (List `.ag-chip`, Week `.agw-item`, Month `.agc-item`) uses
   the ONE urgency recipe — 10% token bg, 35% border (overdue/today) / 30% (soon) — and
