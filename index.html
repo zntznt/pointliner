@@ -6738,9 +6738,21 @@ function mtFocusCell(node, r, c) {
   const host = mtHost(node.id); if (!host) return false;
   const target = host.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
   if (!target) return false;
+  mtSetRovingCell(host, target);   // the remembered tab stop follows focus (#443)
   target.focus();
   mtSelectCellContents(target); // marks the selection navigation-placed (no toolbar)
   return true;
+}
+
+// Roving tabindex for the base grid (#443, the ARIA grid pattern the calendar already
+// uses): exactly ONE cell is the grid's tab stop (tabindex 0), every other cell is
+// tabindex -1 (still programmatically focusable, so arrow-nav is unaffected). Called on
+// render to seed the stop and by mtFocusCell as focus moves — so Tab enters the grid at
+// one predictable cell and Tab-out-then-back returns to where you were.
+function mtSetRovingCell(host, cell) {
+  if (!host) return;
+  host.querySelectorAll('.mt-cell').forEach(c => c.setAttribute('tabindex', '-1'));
+  if (cell) cell.setAttribute('tabindex', '0');
 }
 
 // ── base view system (BV-1) ─────────────────────────────────────────────────
@@ -7235,6 +7247,10 @@ function buildTableWidget(node, readOnly) {
   host.dataset.id = node.id;
   host.innerHTML = h;
   mtWireBaseChrome(host, node);
+  // Seed the roving tab stop (#443): exactly one cell carries tabindex 0 so Tab enters the
+  // grid at a predictable cell (the first data cell, falling back to any cell — e.g. a
+  // read-only query base whose only cells are computed). Applies to readOnly grids too.
+  mtSetRovingCell(host, host.querySelector('.mt-cell[data-r="1"]') || host.querySelector('.mt-cell'));
   if (readOnly) return host;
 
   // cell editing: show raw text on focus, render markdown on blur

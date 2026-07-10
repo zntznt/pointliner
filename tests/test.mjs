@@ -9385,3 +9385,21 @@ test('applyRefold — deleting one of two identical shorthands does not misattac
   // single untouched shorthand still refolds (the common case)
   assert.equal(c.applyRefold('x {2d6} y', [{ sh: '{2d6}', token: '[[dice:K1]]' }]), 'x [[dice:K1]] y');
 });
+
+// #443: base grid roving tabindex — exactly one cell is the grid's tab stop, so Tab enters
+// at a predictable cell and Tab-out-then-back returns to it. DOM-coupled (operates on a live
+// host), so the wiring is pinned at the source: the helper exists, the render seeds it, and
+// mtFocusCell keeps it in sync as focus moves.
+test('base grid roving tabindex is wired (#443)', () => {
+  assert.ok(_src.includes('function mtSetRovingCell('), 'mtSetRovingCell helper must exist');
+  assert.ok(/host\.querySelectorAll\('\.mt-cell'\)\.forEach\(c => c\.setAttribute\('tabindex', '-1'\)\)/.test(_src),
+    'mtSetRovingCell must reset every cell to tabindex -1');
+  assert.ok(/if \(cell\) cell\.setAttribute\('tabindex', '0'\)/.test(_src),
+    'mtSetRovingCell must promote the one active cell to tabindex 0');
+  // seeded on render (first data cell, falling back to any cell for a read-only query base)
+  assert.ok(/mtSetRovingCell\(host, host\.querySelector\('\.mt-cell\[data-r="1"\]'\) \|\| host\.querySelector\('\.mt-cell'\)\)/.test(_src),
+    'buildTableWidget must seed the roving stop after render');
+  // mtFocusCell moves the stop as focus moves (Tab-back returns to the remembered cell)
+  const mfc = _src.slice(_src.indexOf('function mtFocusCell'), _src.indexOf('function mtFocusCell') + 400);
+  assert.ok(/mtSetRovingCell\(host, target\)/.test(mfc), 'mtFocusCell must update the roving stop to the focused cell');
+});
