@@ -12066,7 +12066,11 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       btn.setAttribute('role', 'menuitem');
       btn.setAttribute('tabindex', '-1');
       btn.setAttribute('aria-label', 'Turn into ' + cmd.label);
-      btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId); hideBpop(); });
+      // A type-switch from a MOUSE-opened menu is a display-mode gesture: it should show
+      // the RESULT, not re-enter edit mode on the raw `- [ ]` / `#KW` source. Pass
+      // display:true so applyBlockCmd renders without re-focusing. A KEYBOARD open keeps
+      // the caret in the point (that flow navigates by keeping focus), so it re-enters.
+      btn.addEventListener('mousedown', e => { e.preventDefault(); applyBlockCmd(cmd.id, nodeId, null, null, { display: !opts.keyboard }); hideBpop(); });
       typeRow.appendChild(btn);
     });
     bpop.appendChild(typeRow);
@@ -17495,9 +17499,20 @@ function checkMdBlockPrefix(content, node) {
 
 // Point-level command: change the node's type (or insert a table). Inline
 // formatting and inline inserts are handled elsewhere (selection toolbar / "@").
-function applyBlockCmd(id, nodeId, node, content) {
+function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   node = node || nodeById(nodeId);
   if (!node) return;
+  // display:true (a mouse type-switch from the bullet menu) renders the RESULT instead of
+  // re-entering edit mode on the raw source. finishBlockCmd is the shared tail for the
+  // todo/state/block branches: it repaints and either exits edit (display) or re-focuses.
+  const finishBlockCmd = () => {
+    markDirty();
+    if (opts.display) {
+      const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+      if (ed) { const n = nodeById(nodeId); if (n) exitEdit(ed, n); }
+      render();
+    } else rerenderNode(nodeId);
+  };
   // A base is a special structured object — it cannot be converted into another block
   // type (its grid/cell data doesn't translate to prose). The only way "out" is the
   // base menu's Copy-as-markdown + Delete. Nothing turns a base into anything else.
@@ -17515,8 +17530,7 @@ function applyBlockCmd(id, nodeId, node, content) {
     node.checked = todoDoneFromText(node.text);
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
-    markDirty();
-    rerenderNode(nodeId);
+    finishBlockCmd();
     flashHiddenIfDone(node, wasDone);   // P4: setting DONE while show-done is off hides the row; say so
     return;
   }
@@ -17531,8 +17545,7 @@ function applyBlockCmd(id, nodeId, node, content) {
     node.checked = todoDoneFromText(t);
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
-    markDirty();
-    rerenderNode(nodeId);
+    finishBlockCmd();
     return;
   }
   // base: create the interactive grid, NON-DESTRUCTIVELY (see createBaseAt). The
@@ -17576,8 +17589,7 @@ function applyBlockCmd(id, nodeId, node, content) {
   // if currently editing this node, sync the live contenteditable
   const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
   if (activeEl) activeEl.innerHTML = editModeHTML(node);
-  markDirty();
-  rerenderNode(nodeId);
+  finishBlockCmd();
 }
 
 // Returns the logical character offset of the caret within el.
