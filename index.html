@@ -506,7 +506,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-base-views{display:flex;align-items:center;gap:2px;flex:1}
 .mt-view-btn{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 .mt-view-btn:hover{color:var(--fg);background:var(--cbg)}
-.mt-view-btn.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}/* UXP-166: the one active-toggle recipe (DL §4), matching .mt-align-bar button.on one strip below */
+.mt-view-btn.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}/* UXP-166: the one active-toggle recipe (DL §4) */
 .mt-view-btn-dim{opacity:.45}/* UXP-169: Board/Calendar with no eligible column — dimmed so it stops advertising a view it punts; still clickable (the click flashHints how to enable it) */
 /* board view (BV-1): lanes + cards, tokens only */
 .bv-lanes{display:flex;gap:8px;overflow-x:auto;padding:4px 0 6px;align-items:flex-start;scrollbar-width:thin}
@@ -569,7 +569,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-table-static .mt-cell{padding:6px 10px}
 .mt-cell .md-img{max-height:120px}
 /* row handle + column header: no border/bg by default; handle revealed on hover */
-.mt-colhead,.mt-rowh,.mt-pad{border:1px solid transparent;background:transparent}
+.mt-colhead,.mt-rowh{border:1px solid transparent;background:transparent}
 .mt-rowh{width:10px;padding:0;position:relative;cursor:grab;box-sizing:border-box}
 .mt-rowh:active{cursor:grabbing}
 .mt-rowh:hover{background:var(--hbg)}
@@ -648,9 +648,6 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-total-cell{font-style:normal!important;font-weight:700;color:var(--fg)}
 .mt-total-blank::before{content:none!important}
 .mt-total-cell::before{content:attr(data-agg) '\00a0';font-size:.72em;font-weight:600;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.mt-align-bar{display:flex;gap:3px;align-items:center;margin:4px 0 2px;font-size:11px;color:var(--muted)}
-.mt-align-bar button{font-size:11px;padding:1px 6px}
-.mt-align-bar button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:var(--r-sm);margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
@@ -995,7 +992,6 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cmd-item:hover,.cmd-item.hi{background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .cmd-item:hover .cmd-icon,.cmd-item.hi .cmd-icon{color:var(--fg)}
 .cmd-item:hover .cmd-icon.accent,.cmd-item.hi .cmd-icon.accent{color:var(--acc-fg)}/* #395: ink on solid accent is ALWAYS --acc-fg (DL §3) — the hover rule above was overriding it to --fg (1.62:1 dark) */
-.cmd-note{cursor:default;color:var(--muted)}.cmd-note:hover,.cmd-note.hi{background:transparent}.cmd-note:hover .cmd-icon{color:var(--muted)}.cmd-note button{pointer-events:auto;cursor:pointer;flex-shrink:0}
 /* keyboard focus rings inside the point-actions menu (UXP-14) */
 #bpop .cmd-item:focus,#bpop .cmd-item:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent);outline:2px solid var(--acc);outline-offset:-2px}/* #396: keyboard focus bg = the hover bg + the ring (one highlight language) */
 #bpop .bpop-type:focus,#bpop .bpop-type:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
@@ -1309,7 +1305,6 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .ag-chip.ag-waiting .ag-badge{color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;font-size:10px}/* UXP-129: the Waiting badge reads muted/blocked, the eyebrow recipe (10px caps floor, DL §4) */
 .ag-run{font-size:11px;font-weight:600;color:var(--muted);flex-shrink:0}
 .ag-chip-title{font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis}
-.ag-empty{padding:3px 2px;color:var(--muted);font-size:12px;white-space:nowrap;align-self:center}
 .ag-mini{font-size:11px;color:var(--muted);white-space:normal;flex-shrink:1;min-width:0;font-style:normal}
 .ag-pane{min-width:0;display:flex;flex-direction:column;border-top:1px solid var(--bdr);margin-top:5px;padding-top:6px}
 /* ── Timeline (Gantt) — fixed names column left, scrollable chart right ── */
