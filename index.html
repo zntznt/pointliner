@@ -12844,6 +12844,22 @@ function closeSizePicker() {
   slashMenu.innerHTML = '';
 }
 
+// Land focus in a freshly-created base's first editable cell (#441). focusNode()
+// deliberately no-ops for a base (it manages its own cell focus), so a plain
+// focusNode(baseId) after createBaseAt left focus on <body> with no cue that a grid
+// appeared. rAF-deferred like focusNode so the widget DOM exists; announces the grid
+// for AT (there is otherwise no spoken signal the point became a base).
+function focusNewBase(baseId) {
+  requestAnimationFrame(() => {
+    ensureRowVisible(baseId);
+    const base = nodeById(baseId);
+    if (!base || base.type !== 'base') return;
+    // row 0 is the header; the first editable data cell is r1/c0 (starterTableText).
+    mtFocusCell(base, 1, 0);
+    announce('Base added. A grid of cells; type to fill a cell, arrow keys move between cells.');
+  });
+}
+
 // Create a base (interactive grid) from /base — NON-DESTRUCTIVELY. This fixes the
 // old data-loss bug where converting a point overwrote its text with a starter grid.
 // An EMPTY point becomes the base in place; a CONTENT-bearing point keeps its text
@@ -12861,7 +12877,7 @@ function createBaseAt(nodeId, rows, cols) {
   pushUndo();
   if (plan.mode === 'in-place') {
     node.text = plan.text; node.type = 'base'; node.checked = false;
-    markDirty(); render(); focusNode(nodeId);
+    markDirty(); render(); focusNewBase(nodeId);
     return;
   }
   // content-bearing: preserve the text as its own point, drop the base right after it
@@ -12871,7 +12887,7 @@ function createBaseAt(nodeId, rows, cols) {
   const base = mkNode(plan.insert, 'base');
   parent.children.splice(idx + 1, 0, base);
   nodeMap.set(base.id, base); parentMap.set(base.id, parent);
-  markDirty(); render(); focusNode(base.id);
+  markDirty(); render(); focusNewBase(base.id);
 }
 
 // "Convert to base" on a static table (§6 promote). Splits the point around the table
@@ -12910,7 +12926,7 @@ function promoteStaticTable(node, l0, l1) {
     parent.children.splice(at, 0, tail);
     nodeMap.set(tail.id, tail); parentMap.set(tail.id, parent);
   }
-  markDirty(); render(); focusNode(focusId);
+  markDirty(); render(); focusNewBase(focusId);   // focusId is always the base node (#441)
 }
 
 // Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)
