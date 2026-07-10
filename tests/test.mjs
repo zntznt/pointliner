@@ -9258,3 +9258,42 @@ test('Done-button badge wiring: syncDoneBadge sets the count + recovery aria-lab
   assert.ok(_src.includes('id="btn-done-badge"'), 'the badge span is in the button');
   assert.ok(/#btn-done\.has-hidden \.tbtn-badge\{[^}]*display:inline-flex/.test(_src), 'the badge shows only under .has-hidden');
 });
+
+// ── Code-quality audit fixes: derived-hint re-derivation + sidecar carry ──
+test('rederiveFromText: restores BOTH type and checked from text (audit #2/#3 — checked was dropped)', () => {
+  // the bug: applyEntry (undo) and exitZoomEdit re-derived type but forgot checked, so an
+  // undone/edited to-do kept a stale checked and isVisible filtered the intact row out.
+  const n1 = { type: 'todo', checked: true, text: '- [ ] open again' };
+  c.rederiveFromText(n1);
+  assert.equal(n1.checked, false, 'unchecking via text must clear checked, not leave it stale');
+  assert.equal(n1.type, 'todo', 'still a to-do');
+  const n2 = { type: 'todo', checked: false, text: '- [x] now done' };
+  c.rederiveFromText(n2);
+  assert.equal(n2.checked, true, 'checking via text sets checked');
+  // a heading loses its to-do-ness in both fields
+  const n3 = { type: 'todo', checked: true, text: '## A heading now' };
+  c.rederiveFromText(n3);
+  assert.equal(n3.type, 'h2'); assert.equal(n3.checked, false, 'a non-task text is not checked');
+  // the ul fallback: was a block type, text no longer carries a prefix
+  const n4 = { type: 'quote', checked: false, text: 'plain text' };
+  c.rederiveFromText(n4);
+  assert.equal(n4.type, 'ul', 'a former block type with plain text falls back to ul');
+  assert.doesNotThrow(() => c.rederiveFromText(null), 'null node is a safe no-op');
+});
+
+test('ARTIFACT_SIDECARS carry: a query record survives a split/merge (audit #4 — query was omitted)', () => {
+  // the bug: [[query:KEY]] moved with the text on Enter-split/Backspace-merge but node.query
+  // was left behind, so the moved token rendered as query-bad. clone/merge must carry it.
+  const src = { query: [{ key: 'q1', expr: 'is:todo' }], dice: [{ key: 'd1' }], props: [{ key: 'owner', val: 'zeo' }] };
+  const clone = {};
+  c.cloneArtifactSidecars(src, clone);
+  assert.equal(clone.query?.length, 1, 'the query sidecar must be carried on a split (was dropped)');
+  assert.equal(clone.query[0].expr, 'is:todo', 'the record content survives');
+  assert.equal(clone.dice?.length, 1, 'other token sidecars still carry');
+  assert.equal(clone.props, undefined, 'props is point METADATA — deliberately NOT carried (a split continues text, not metadata)');
+  // merge concatenates onto the destination, keeping both sides
+  const dst = { query: [{ key: 'q0', expr: 'is:done' }] };
+  c.mergeArtifactSidecars(src, dst);
+  assert.equal(dst.query.length, 2, 'merge keeps the destination record AND appends the source query record');
+  assert.deepEqual(dst.query.map(q => q.key).sort(), ['q0', 'q1']);
+});

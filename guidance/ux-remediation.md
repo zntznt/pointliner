@@ -1932,6 +1932,41 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### CQ-1 ◐ Code-quality audit: derived-hint desync + folder-write data loss + query sidecar drop (RESOLVED pending merge)
+- **Source: a 7-lens static code-quality audit fleet** (no runtime; every major+ finding adversarially
+  verified against source, then re-verified by me line-by-line before fixing). Verdict up front: **for a
+  single-file zero-build vanilla-JS app, this is well-built and unusually disciplined** — injection is
+  closed at the boundary (every pill escapes, no eval, safeUrl blocks javascript:), persistence is
+  reconcile-guarded, ~906 pure-core tests. The real risk was ONE recurring class (derived-cache desync)
+  plus one narrow on-disk data-loss path. Four confirmed, all fixed.
+- **#1 (major, data loss on disk): folder reopen could clobber the real file with an empty tree.**
+  `reopenWorkspaceDoc` (line ~19412): when the disk copy is authoritative but `fromOpml` throws
+  (half-written by a sync tool, corrupt, over-depth), the catch rebound `workspaceFile = fh` as the
+  auto-write target while leaving `root` as the stale/empty boot doc, anchored `_wsKnownModified` to the
+  file's own mtime (staleness check passes), and returned true with no error. The next edit's
+  `flushWorkspaceFile` (gated on `workspaceFile`) wrote the empty tree over the user's real file. Fixed:
+  on a parse failure of the authoritative copy, `workspaceFile = null` (detach the auto-write target) +
+  `flashError` ("Could not read X. Auto-save is paused so it will not be overwritten."). Invariant now:
+  never make a file an auto-write target when you failed to load its authoritative content. OPFS/localStorage
+  still hold the in-memory doc, so nothing is lost, just write-guarded.
+- **#2/#3 (major+minor, same root cause): two edit paths re-derived `type` but forgot `checked`.**
+  `node.checked` and `node.type` are BOTH derived from `node.text`; `applyEntry` (undo/redo, ~18677) and
+  `exitZoomEdit` (~5634) re-derived only `type`, so an undone/zoom-edited to-do kept a stale `checked` and
+  `isVisible` filtered the intact row out with Show-Done off (#2 major; #3 minor — self-heals on reload).
+  Fixed structurally: one `rederiveFromText(node)` helper (type AND checked, matching exitEdit's fallback);
+  the two incomplete sites route through it so a fourth path can't drop it again.
+- **#4 (major): Enter-split / Backspace-merge silently destroyed a `{query:}` embedded search.**
+  `ARTIFACT_SIDECARS` listed 8 sidecars but omitted `query`, so a `[[query:KEY]]` token moved with the
+  text on a normal keystroke while its `node.query` record was left behind → the moved token rendered
+  query-bad ("missing data"). The functions were existence-pinned only, so the bug hid behind green tests.
+  Fixed: added `query`; recorded that `props`/`note` are point METADATA deliberately NOT carried.
+- **Tests: +2 behavior pins that would have CAUGHT #2/#3/#4** (the query-carry pin fails against the
+  unpatched code — the audit's point about existence-only pins). `rederiveFromText`, `cloneArtifactSidecars`,
+  `mergeArtifactSidecars` registered as pure cores; `structuredClone` added to the test sandbox. 908 tests.
+- **The minor/polish backlog** (regex scope hazards, five copy-pasted reroll one-liners, the 145-line table
+  keydown maze, etc.) was NOT fixed here — logged from the audit for a future maintainability pass; none are
+  bugs on a normal path.
+
 ### MOBILE-2 ◐ The "N done hidden" cue lives on the Done button (mobile-neophyte review) (RESOLVED pending merge)
 - **The neophyte fleet's #1 finding, owner-adjudicated fix.** Ticking a to-do hides it (showDone
   defaults off), and the only cue was a 1400ms toast — an Apple-Notes user reads "ticked = deleted."

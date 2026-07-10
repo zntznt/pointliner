@@ -2123,6 +2123,19 @@ function deriveTypeFromText(text) {
   return null;
 }
 
+// Re-derive BOTH derived hints (type AND checked) from node.text, the single source of truth.
+// Every path that restores/replaces node.text must call this — the code-quality audit found two
+// edit paths (undo/redo applyEntry, exitZoomEdit) that re-derived `type` but forgot `checked`,
+// so an undone to-do kept a stale `checked` and `isVisible` filtered the intact row out with
+// Show-Done off. One helper so a fourth path can't drop it again. Matches exitEdit's fallback.
+function rederiveFromText(node) {
+  if (!node) return;
+  const t = deriveTypeFromText(node.text);
+  if (t) node.type = t;
+  else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
+  node.checked = todoDoneFromText(node.text);
+}
+
 // Text shown in rendered (non-edit) view — block prefix stripped. Also strips a
 // leading task marker (`- [ ] `) and/or Org keyword (`TODO [#A] `) so breadcrumbs
 // and search show clean text. NOT used by the main render (mdToHtml gets raw text)
@@ -5631,9 +5644,7 @@ function render() {
     };
     const exitZoomEdit = () => {
       vp.text = editableText(te);
-      const zt = deriveTypeFromText(vp.text);
-      if (zt) vp.type = zt;
-      else if (vp.type in BLOCK_PREFIX_MAP || vp.type === 'ol') vp.type = 'ul';
+      rederiveFromText(vp);   // type AND checked (audit #3: same drop as applyEntry — toggling done in the zoom title left checked stale)
       delete te.dataset.editing;
       te.innerHTML = renderContentHTML(vp);
       if (!showNotes && vp.note && noteEditId !== vp.id) appendNoteIndicator(te, vp);
@@ -17891,7 +17902,12 @@ function mergeUpText(prevText, body) {
 // half; each node's pruneArtifacts then sheds the records whose token lives elsewhere
 // (clone-both-then-prune — safer than partitioning by key). props/note stay on the
 // source: a split continues the text, not the point's metadata.
-const ARTIFACT_SIDECARS = ['footnotes','dice','markov','math','vars','grammar','est','seq'];
+// The token-in-text sidecars carried across an Enter-split / Backspace-merge (they follow their
+// [[type:key]] token in node.text). `query` was omitted (audit #4): a [[query:KEY]] token moved
+// with the text but its node.query record was left behind, so the moved embedded search rendered
+// as query-bad ("missing data") after a normal keystroke. props/note/baseRows are point-level
+// METADATA, deliberately NOT carried — a split continues the text, not the point's metadata.
+const ARTIFACT_SIDECARS = ['footnotes','dice','markov','math','vars','grammar','est','seq','query'];
 function cloneArtifactSidecars(srcNode, dst) {
   for (const k of ARTIFACT_SIDECARS) {
     if (Array.isArray(srcNode[k])) dst[k] = srcNode[k].map(r => structuredClone(r));
@@ -18675,9 +18691,7 @@ function applyEntry(entry, intoStack, dir) {
     }
     if (node) {
       node.text = entry[dir];
-      const rt = deriveTypeFromText(node.text);
-      if (rt) node.type = rt;
-      else if (node.type in BLOCK_PREFIX_MAP || node.type === 'ol') node.type = 'ul';
+      rederiveFromText(node);   // type AND checked (audit #2: was type-only, so an undone to-do vanished with Show-Done off)
     }
     markDirty(); render();
     if (node) { ensureRowVisible(entry.nodeId); focusNode(entry.nodeId); }
@@ -19407,7 +19421,16 @@ async function reopenWorkspaceDoc(dir, name) {
   }
   if (file.lastModified >= lastAutosaveSavedAt()) {      // folder is the newer/authoritative copy
     try { adoptDoc(fromOpml(await file.text()), { fileName: name, fileHandle: fh, workspaceFile: fh }); }
-    catch (_) { fileHandle = fh; workspaceFile = fh; fileName = name; }   // unreadable OPML → keep local, rebind
+    catch (_) {
+      // The AUTHORITATIVE disk copy failed to parse (half-written by a sync tool, corrupt,
+      // over-depth). Do NOT rebind it as an auto-write target — the old code did, leaving `root`
+      // as the stale/empty boot doc while making the file writable, so the next edit clobbered the
+      // real file with an empty tree (audit #1, silent on-disk data loss). Invariant: never make a
+      // file an auto-write target when you failed to load its authoritative content. Detach + warn.
+      workspaceFile = null;
+      flashError('Could not read “' + name + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
+      return true;   // the folder IS reachable (keep the workspace); the doc is just write-guarded
+    }
   } else {                                               // local copy is newer (post-degrade edit) — keep it, just rebind
     fileHandle = fh; workspaceFile = fh; fileName = name;
     renderFileName(); updateTitle();
