@@ -36,6 +36,25 @@ const c = loadCores();
 // identical structure. Normalize to plain host-realm values before comparing.
 const host = (x) => JSON.parse(JSON.stringify(x));
 
+// #452: STRUCTURAL source-pin — return the body of `function name(...) { … }` by brace
+// matching from its declaration, so a pin asserts a substring is present ANYWHERE in the
+// function, with no byte-offset window. Replaces the brittle /function X[\s\S]{0,N}sub/
+// pins (a behavior-preserving insert pushed the substring past N → false red). Returns ''
+// if the function isn't found (the caller's includes() then fails with a clear message).
+function fnBody(src, name) {
+  const start = src.indexOf('function ' + name);
+  if (start < 0) return '';
+  const open = src.indexOf('{', start);
+  if (open < 0) return '';
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) return src.slice(open, i + 1); }
+  }
+  return src.slice(open);   // unbalanced (shouldn't happen) → from the open brace onward
+}
+
 // ── dice: parsing ──────────────────────────────────────────────────────────
 test('parseDice — basic NdM + modifier', () => {
   const t = c.parseDice('2d6+3');
@@ -6664,11 +6683,13 @@ test('mergeUpText trims a leading blank line on the body', () => {
 test('UXP-68 wiring: Backspace-at-start merges up via mergeUpInto', () => {
   assert.ok(_src.includes('function mergeUpInto'), 'mergeUpInto must be defined');
   assert.ok(_src.includes('function mergeArtifactSidecars'), 'mergeArtifactSidecars must be defined');
-  // target = the row above (deleteNode's focus model: prev sibling's last visible, else parent)
-  assert.match(_src, /function mergeUpInto[\s\S]{0,700}lastVis\(parent\.children\[idx - 1\]\)/,
+  // target = the row above (deleteNode's focus model: prev sibling's last visible, else parent).
+  // Structural pin (#452): assert the call is present anywhere in mergeUpInto's body, no window.
+  const _mergeUp = fnBody(_src, 'mergeUpInto');
+  assert.ok(_mergeUp.includes('lastVis(parent.children[idx - 1])'),
     'mergeUpInto targets the previous visible point via lastVis');
   // mirrors the fold dance: caret lands at the folded join via unfoldedPrefixLen
-  assert.match(_src, /function mergeUpInto[\s\S]{0,2000}unfoldedPrefixLen\(target, joinPrefix\)/,
+  assert.ok(_mergeUp.includes('unfoldedPrefixLen(target, joinPrefix)'),
     'mergeUpInto lands the caret at the folded join');
   // keydown gate: only when the selection is collapsed at offset 0
   assert.match(_src, /getCaretOffset\(content\) === 0 && mergeUpInto\(id\)/,
@@ -6725,9 +6746,11 @@ test('caret-split wiring: insertSiblingAfter has the caret-aware path', () => {
   // half is empty (classic empty-continuation append).
   assert.ok(_src.includes('cloneArtifactSidecars'), 'cloneArtifactSidecars missing');
   assert.ok(_src.includes('focusNodeAtOffset'), 'focusNodeAtOffset missing');
-  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1700}foldedOffsetFor\(srcNode, off\)/,
+  // Structural pins (#452): assert the calls are present anywhere in insertSiblingAfter's body.
+  const _insSib = fnBody(_src, 'insertSiblingAfter');
+  assert.ok(_insSib.includes('foldedOffsetFor(srcNode, off)'),
     'insertSiblingAfter must translate the caret via foldedOffsetFor');
-  assert.match(_src, /function insertSiblingAfter[\s\S]{0,1900}splitForSibling\(srcNode\.text, foff, cont\)/,
+  assert.ok(_insSib.includes('splitForSibling(srcNode.text, foff, cont)'),
     'insertSiblingAfter must split on the folded text at the translated offset');
 });
 
@@ -9446,4 +9469,74 @@ test('dead CSS selectors stay removed (#452)', () => {
   assert.ok(!/\.mt-pad\b/.test(_src), '.mt-pad was dead — must stay removed from the shared rule');
   assert.ok(/\.mt-colhead,\.mt-rowh\{border:1px solid transparent/.test(_src),
     'the mt-colhead/mt-rowh border rule must survive the .mt-pad removal');
+});
+
+// #452 coverage: FN1 unit conversions were half-covered — a transcription error in a
+// factor would ship green. Test each through evalMath (the shipped entry point), checking
+// a known value AND the inverse round-trip (so a swapped ×/÷ or wrong factor is caught).
+test('evalMath — FN1 unit conversions (#452)', () => {
+  const near = (expr, want, eps = 1e-9) => {
+    const got = c.evalMath(expr, {});
+    assert.ok(got !== null && Math.abs(got - want) < eps, `${expr} = ${got}, want ≈ ${want}`);
+  };
+  // temperature
+  near('c2f(100)', 212); near('c2f(0)', 32); near('f2c(212)', 100); near('f2c(32)', 0);
+  // distance (long): 1 mile = 1.609344 km
+  near('km2mi(1.609344)', 1); near('mi2km(1)', 1.609344);
+  // distance (short): 1 inch = 2.54 cm; 1 m = 1/0.3048 ft
+  near('cm2in(2.54)', 1); near('in2cm(1)', 2.54);
+  near('ft2m(1)', 0.3048); near('m2ft(0.3048)', 1);
+  // mass: 1 lb = 0.45359237 kg
+  near('lb2kg(1)', 0.45359237); near('kg2lb(0.45359237)', 1);
+  // speed: same factor as distance-long
+  near('mph2kmh(1)', 1.609344); near('kmh2mph(1.609344)', 1);
+  // volume: 1 US gal = 3.785411784 L
+  near('gal2l(1)', 3.785411784); near('l2gal(3.785411784)', 1);
+  // round-trip a non-trivial value through each pair (catches a swapped ×/÷)
+  for (const [to, from] of [['c2f','f2c'],['km2mi','mi2km'],['m2ft','ft2m'],['cm2in','in2cm'],['kg2lb','lb2kg'],['kmh2mph','mph2kmh'],['l2gal','gal2l']]) {
+    near(`${from}(${to}(7))`, 7, 1e-6);
+  }
+});
+
+// #452 coverage: these transcendental FN1/FN2 entries were untested.
+test('evalMath — hypot / cbrt / log2 / acos (#452)', () => {
+  const near = (expr, want, eps = 1e-9) => {
+    const got = c.evalMath(expr, {});
+    assert.ok(got !== null && Math.abs(got - want) < eps, `${expr} = ${got}, want ≈ ${want}`);
+  };
+  near('hypot(3, 4)', 5);          // 3-4-5 triangle
+  near('cbrt(27)', 3);             // cube root
+  near('log2(8)', 3);              // 2^3 = 8
+  near('acos(1)', 0);              // acos(1) = 0
+  near('acos(0)', Math.PI / 2);    // acos(0) = π/2
+});
+
+// #452 coverage: splitTopLevel's unbalanced-brace clamp (depth = max(0, depth-1)) was only
+// exercised indirectly. Pin the boundary directly so a regression to a plain depth-- (which
+// would drive depth negative on a stray `}` and mis-split the rest) is caught.
+test('splitTopLevel — boundaries incl. unbalanced braces (#452)', () => {
+  const s = (str, sep = '|') => host(c.splitTopLevel(str, sep));
+  assert.deepEqual(s('a|b|c'), ['a', 'b', 'c'], 'plain top-level split');
+  assert.deepEqual(s('a|{b|c}|d'), ['a', '{b|c}', 'd'], 'a nested sep is not a split point');
+  assert.deepEqual(s('{a|b}'), ['{a|b}'], 'fully nested → one part');
+  assert.deepEqual(s(''), [''], 'empty → one empty part');
+  assert.deepEqual(s('abc'), ['abc'], 'no sep → the whole string');
+  // the clamp: a stray leading `}` must NOT make depth negative and swallow later top-level seps
+  assert.deepEqual(s('}a|b'), ['}a', 'b'], 'unbalanced close does not disable later splits');
+  assert.deepEqual(s('a}|b|c'), ['a}', 'b', 'c'], 'mid-string stray close still splits after it');
+  assert.deepEqual(s('{a}}|b'), ['{a}}', 'b'], 'extra close after a balanced pair clamps, stays top-level');
+});
+
+// #452 coverage: olNum counts only the PRECEDING ol siblings (the display ordinal). Boundary-pin
+// the no-parent case and the mixed-sibling count.
+test('olNum — ordinal from preceding ol siblings (#452)', () => {
+  assert.equal(c.olNum({}, null), 1, 'no parent → 1');
+  const a = { type: 'ol' }, b = { type: 'ul' }, d = { type: 'ol' }, e = { type: 'ol' };
+  const parent = { children: [a, b, d, e] };
+  assert.equal(c.olNum(a, parent), 1, 'first ol → 1');
+  assert.equal(c.olNum(d, parent), 2, 'second ol (a ul between does not count) → 2');
+  assert.equal(c.olNum(e, parent), 3, 'third ol → 3');
+  // olNum counts PRECEDING ol siblings by position, independent of the queried node's own type:
+  // b (the ul at index 1) has one preceding ol (a), so it reports 2. It stops at the node, never counting it.
+  assert.equal(c.olNum(b, parent), 2, 'preceding ol count is by position, independent of node type');
 });

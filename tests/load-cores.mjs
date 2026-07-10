@@ -223,6 +223,7 @@ export function loadCores() {
     'propDeclParts','setProp','parsePropSlash','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC
     'splitForSibling', 'inFence', 'mergeUpText',
     'flatRowStep',
+    'splitTopLevel', 'olNum',   // #452 boundary coverage
   ];
   // Two-pass lookup. `function foo(){}` declarations land on the context global, so
   // pass 1 reads them directly. Top-level `const`/`let` arrows (escHtml, escAttr, …) are
