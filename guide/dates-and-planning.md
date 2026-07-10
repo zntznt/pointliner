@@ -23,6 +23,21 @@ Set a date two ways:
 
 Dates can be exact (`2026-07-01`) or relative (`today`, `tomorrow`, `today+7`).
 
+### Recurring tasks
+
+A task that comes back on a schedule (a weekly review, monthly rent) does not need a fresh copy
+each time. Open the **Schedule dialog** (`/due`) and fill the **Repeat** field with a short phrase:
+
+- **Intervals:** `every day`, `every 3 days`, `every week`, `every 2 weeks`, `every month`,
+  `every year` (or the shorthands `daily` / `weekly` / `monthly` / `yearly`).
+- **A weekday:** `every Monday`, or a few at once, `every Tue,Fri`.
+- **A day of the month:** `monthly on the 1st`, `every month on the 15th`.
+
+When you complete the task, its date rolls forward to the next occurrence and the task re-opens, so
+the same point keeps recurring. The cadence is anchored to the due date, not to when you check it
+off, so finishing a day late does not drift the schedule. A completion always announces where it
+landed ("Rescheduled to ...").
+
 ## Agenda and calendar
 
 See all your upcoming work without scrolling the outline. Click the **calendar button** in the
@@ -49,9 +64,9 @@ not scheduled yet still has a home; the same list is a search away with `state:n
 Click any item to jump straight to it.
 
 Pointliner has no background reminders or notifications: it runs entirely offline with no server, so
-the agenda is where you come to check what is due, rather than something that pings you. A completed
-dated point stays where it is, and tasks do not repeat on their own yet, so a recurring task is one
-you re-date by hand.
+the agenda is where you come to check what is due, rather than something that pings you. A one-off
+dated point stays where it is once done; a [recurring task](#recurring-tasks) rolls its date forward
+and re-opens when you complete it.
 
 ## Daily journal
 

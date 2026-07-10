@@ -2374,7 +2374,7 @@ function propDeclParts(body) {
   // a date/check/alias key routes through its own reserved writer, not the generic prop bag — so a
   // {prop due: friday} can't shadow the Schedule dialog's DATE_KEYS handling. Keep those out.
   const lk = key.toLowerCase();
-  if (DATE_KEYS.has(lk) || lk === CHECK_KEY || lk === ALIAS_KEY) return null;
+  if (DATE_KEYS.has(lk) || lk === CHECK_KEY || lk === ALIAS_KEY || lk === REPEAT_KEY) return null;
   return { key, val: m[2].trim() };
 }
 
@@ -2888,9 +2888,22 @@ const CHECK_KEY = 'check';
 // / nodeNames live beside textForDisplay.)
 const ALIAS_KEY = 'aliases';
 
+// Reserved property holding a recurrence phrase for a dated to-do (#462). Same model as
+// check/dates: hidden from the generic Properties editor, merged back on save, round-trips
+// through `_props`, no new sidecar. Parsed by parseRepeat; on the task flipping to done its
+// due/start roll forward by nextOccurrence and it re-opens. (rollForwardRepeat, below.)
+const REPEAT_KEY = 'repeat';
+
 // This point's `check` assertion string (the reserved property's value), or null.
 function checkExprOf(node) {
   const p = (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === CHECK_KEY);
+  const v = p ? String(p.val).trim() : '';
+  return v || null;
+}
+
+// This point's `repeat` phrase (the reserved property's value), or null.
+function repeatOf(node) {
+  const p = (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === REPEAT_KEY);
   const v = p ? String(p.val).trim() : '';
   return v || null;
 }
@@ -2904,7 +2917,7 @@ function nodePropVars(node) {
   const out = Object.create(null);
   for (const p of (node?.props || [])) {
     const k = (p.key || '').trim().toLowerCase();
-    if (!k || k === CHECK_KEY || k === ALIAS_KEY || DATE_KEYS.has(k)) continue;
+    if (!k || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || DATE_KEYS.has(k)) continue;
     const n = Number(String(p.val).trim());
     if (Number.isFinite(n)) out[k] = n;
   }
@@ -3362,6 +3375,104 @@ function agendaDayStats(items) {
 }
 // Pure: shift a week by `delta` weeks (7-day steps). Node-testable.
 function addWeeks(epochDay, delta) { return (epochDay == null ? dueDateToday() : epochDay) + delta * 7; }
+
+// ─── recurring tasks (#462) ───────────────────────────────────────────────────
+// A reserved `repeat` property (same model as due/start/check) holds a tiny recurrence
+// phrase. parseRepeat is the pure, null-on-miss core (mirrors parseDueDate): it returns a
+// small descriptor, never applies it. The closed grammar (P5 sign-off, ux-discipline.md §2):
+//   INTERVAL:  every [N] day|week|month|year   (+ daily/weekly/monthly/yearly = every 1 …)
+//   WEEKDAY:   every <weekday>[,<weekday>…]     (e.g. "every Monday", "every Tue,Fri")
+//   MONTHDAY:  every month on the <Nth> | monthly on the <Nth>   (1..31, clamped per month)
+// Descriptors: {kind:'interval', unit:'day'|'week'|'month'|'year', n}
+//              {kind:'weekday', days:[0..6…]}          (0=Sun … 6=Sat, sorted, deduped)
+//              {kind:'monthday', day:1..31}
+const _WD = { sunday:0, sun:0, monday:1, mon:1, tuesday:2, tue:2, tues:2, wednesday:3, wed:3,
+  thursday:4, thu:4, thur:4, thurs:4, friday:5, fri:5, saturday:6, sat:6 };
+const _UNIT_ALIAS = { daily:'day', weekly:'week', monthly:'month', yearly:'year' };
+function parseRepeat(val) {
+  if (val == null) return null;
+  let s = String(val).trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!s) return null;
+  // bare aliases: daily / weekly / monthly / yearly → every-1-unit
+  if (_UNIT_ALIAS[s]) return { kind: 'interval', unit: _UNIT_ALIAS[s], n: 1 };
+  // "monthly on the 15th" / "every month on the 1st"
+  let m = s.match(/^(?:monthly|every month) on the (\d{1,2})(?:st|nd|rd|th)?$/);
+  if (m) { const d = +m[1]; return (d >= 1 && d <= 31) ? { kind: 'monthday', day: d } : null; }
+  // everything else starts with "every"
+  m = s.match(/^every (.+)$/);
+  if (!m) return null;
+  const rest = m[1];
+  // interval: "[N] day|week|month|year" (plural tolerated)
+  const iv = rest.match(/^(?:(\d{1,3}) )?(day|week|month|year)s?$/);
+  if (iv) { const n = iv[1] ? +iv[1] : 1; return (n >= 1 && n <= 366) ? { kind: 'interval', unit: iv[2], n } : null; }
+  // weekday list: "monday" / "tue,fri" / "mon, wed, fri"
+  const parts = rest.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length && parts.every(p => p in _WD)) {
+    const days = [...new Set(parts.map(p => _WD[p]))].sort((a, b) => a - b);
+    return { kind: 'weekday', days };
+  }
+  return null;
+}
+
+// Given a repeat descriptor and the occurrence's OWN date (the old due, fixed-cadence base),
+// return the NEXT occurrence's epoch-day. Anchored off `fromEpochDay` (not "today"), so a late
+// completion doesn't drift the schedule; but if that next date is still ≤ today (task was very
+// overdue), snap forward until it lands strictly after today so it never reschedules to the past.
+// Pure + Node-testable. `today` is injectable for tests.
+function nextOccurrence(desc, fromEpochDay, today = dueDateToday()) {
+  if (!desc || fromEpochDay == null) return null;
+  const step = (from) => {
+    if (desc.kind === 'interval') {
+      if (desc.unit === 'day')   return from + desc.n;
+      if (desc.unit === 'week')  return addWeeks(from, desc.n);
+      if (desc.unit === 'month') return addMonths(from, desc.n);
+      if (desc.unit === 'year')  return addMonths(from, desc.n * 12);
+    }
+    if (desc.kind === 'weekday') {
+      const wd = new Date(from * 86400000).getUTCDay();
+      // smallest positive offset to one of the target weekdays
+      let best = 8;
+      for (const d of desc.days) { const off = ((d - wd) % 7 + 7) % 7 || 7; if (off < best) best = off; }
+      return from + best;
+    }
+    if (desc.kind === 'monthday') {
+      // next month's clamped Nth (from the 1st of the month AFTER `from`, then set the day)
+      const d = new Date(from * 86400000);
+      const y = d.getUTCFullYear(), mo = d.getUTCMonth();
+      const lastOfNext = new Date(Date.UTC(y, mo + 2, 0)).getUTCDate();
+      return Math.floor(Date.UTC(y, mo + 1, Math.min(desc.day, lastOfNext)) / 86400000);
+    }
+    return null;
+  };
+  let next = step(fromEpochDay);
+  if (next == null) return null;
+  // guard against a stale base leaving `next` in the past: advance until strictly future.
+  let guard = 0;
+  while (next != null && next <= today && guard++ < 500) next = step(next);
+  return next;
+}
+
+// Human-readable phrase for a repeat descriptor (dialog preview + toast). Pure.
+const _WD_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function describeRepeat(desc) {
+  if (!desc) return '';
+  if (desc.kind === 'interval') {
+    const u = desc.unit;
+    return desc.n === 1 ? `every ${u}` : `every ${desc.n} ${u}s`;
+  }
+  if (desc.kind === 'weekday') return 'every ' + desc.days.map(d => _WD_NAME[d]).join(', ');
+  if (desc.kind === 'monthday') {
+    const ord = ordinalSuffix(desc.day);
+    return `monthly on the ${desc.day}${ord}`;
+  }
+  return '';
+}
+// 1→st 2→nd 3→rd 4→th … 11-13→th. Pure.
+function ordinalSuffix(n) {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return 'th';
+  return ['th','st','nd','rd'][n % 10] || 'th';
+}
 
 // Pure: a non-colour urgency cue prefixed onto agenda labels (the visual twin of
 // the aria-label, which already states urgency). Only the critical 'overdue'
@@ -6079,6 +6190,62 @@ function flashHiddenIfDone(node, wasDone) {
   }
 }
 
+// Recurring tasks (#462): when a dated to-do carrying a `repeat` property flips to done,
+// roll its schedule forward to the next occurrence and re-open it, so the same point keeps
+// recurring rather than piling up copies. Anchored off the OLD due date (fixed cadence).
+// The start→due span is preserved (both shift by the same delta). VISIBLE + ANNOUNCED
+// (P1/P4): never a silent render-time flip. Returns true if it rescheduled. Called at the
+// done-transition chokepoints AFTER node.checked flips true.
+function rollForwardRepeat(node, wasDone) {
+  if (wasDone || !node || !node.checked) return false;      // only on a fresh not-done → done flip
+  const phrase = repeatOf(node);
+  if (!phrase) return false;
+  const desc = parseRepeat(phrase);
+  if (!desc) return false;                                   // an unrecognized phrase just completes normally
+  const dueVal = (node.props || []).find(p => p.key.toLowerCase() === 'due');
+  const startVal = (node.props || []).find(p => p.key.toLowerCase() === 'start');
+  const dueEp = dueVal ? parseDueDate(dueVal.val) : null;
+  const startEp = startVal ? parseDueDate(startVal.val) : null;
+  const base = dueEp != null ? dueEp : startEp;              // schedule anchors on due, else start
+  if (base == null) return false;                            // a repeat with no date can't advance
+  const nextDue = nextOccurrence(desc, base);
+  if (nextDue == null) return false;
+  const delta = nextDue - base;
+  if (dueEp != null)   setDateProp(node, 'due',   formatEpochDays(dueEp + delta));
+  if (startEp != null) setDateProp(node, 'start', formatEpochDays(startEp + delta));
+  reopenTaskText(node);                                      // clear the done marker in node.text
+  node.checked = todoDoneFromText(node.text);               // re-derive (now false)
+  const when = formatDateConcrete(dueEp != null ? dueEp + delta : startEp + delta);
+  flashHint('⟳ Rescheduled to ' + when + '.');              // flashHint also reaches #a11y-live (P3/P4)
+  return true;
+}
+
+// Flip a task's done marker back to open in node.text: uncheck every `[x]` task box and
+// turn a done keyword back to its sequence's first active state (#DONE → #TODO). Mirrors
+// the task/keyword grammar used by todoDoneFromText. Mutates node.text.
+function reopenTaskText(node) {
+  let text = node.text;
+  // task checkboxes: [x] / [X] → [ ]
+  text = text.replace(TASK_LINE_RE, (m, pre, state, tail) =>
+    state.toLowerCase() === 'x' ? `${pre}[ ]${tail || ''}` : m);
+  // done keyword → the owning sequence's first active state (built-in: #DONE → #TODO)
+  text = reopenDoneKeyword(text);
+  node.text = text;
+}
+
+// If the first line leads with a DONE keyword, rewrite it to its sequence's first active
+// state (#DONE → #TODO), preserving any [#priority] and the rest of the line. Mirrors
+// continuationPrefix's reopen rule. Returns the text unchanged if no done keyword leads.
+function reopenDoneKeyword(text) {
+  const seqs = allSequences();
+  const km = String(text).match(LEAD_WORD_RE);
+  if (!km) return text;
+  const sq = sequenceForKeyword(km[1], seqs);
+  if (!sq || !keywordIsDone(km[1], seqs)) return text;
+  // replace just the leading "#KEYWORD" with "#FIRSTSTATE" (LEAD_WORD_RE is anchored at start)
+  return text.replace(km[0], km[0].replace('#' + km[1], '#' + sq.states[0]));
+}
+
 function createChildModel(parent) {
   const n = mkNode();
   parent.children.push(n);
@@ -8045,6 +8212,15 @@ function buildPropsArea(node) {
       chip.title = 'Click to edit aliases';
       chip.setAttribute('aria-label', `aliases: ${val}. Click to edit aliases`);
     }
+    if (propK === REPEAT_KEY) {
+      // reserved recurrence prop: a ⟳ marker + the phrase, routes to the Schedule dialog.
+      // A phrase parseRepeat rejects is shown but flagged, so a typo is visible not silent (P4).
+      const ok = parseRepeat(val) !== null;
+      displayVal = '⟳ ' + val;
+      chip.classList.add('prop-repeat' + (ok ? '' : ' prop-repeat-bad'));
+      chip.title = ok ? 'Recurring. Click to edit the schedule' : 'Unrecognized repeat phrase. Click to fix';
+      chip.setAttribute('aria-label', `repeats ${val}${ok ? '' : ' (unrecognized)'}. Click to edit the schedule`);
+    }
     if (!chip.title) chip.title = 'Edit properties';
     if (!chip.getAttribute('aria-label')) chip.setAttribute('aria-label', `${key}: ${val}. Click to edit properties`);
     const k = document.createElement('span'); k.className = 'prop-key'; k.textContent = key;
@@ -8122,9 +8298,10 @@ function openPropsDialog(nodeId, targets = null) {
   if (!node) return;
   const applyList = targets || [node];
   // Reserved properties (due/start → Schedule dialog; check → Check dialog;
-  // aliases → Aliases dialog) are managed by their own editors, not here — hide
-  // them from the generic editor and merge them back untouched on save.
-  const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY || k === ALIAS_KEY;
+  // aliases → Aliases dialog; repeat → Schedule dialog) are managed by their own
+  // editors, not here — hide them from the generic editor and merge them back
+  // untouched on save.
+  const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY;
   // bulk over many points: start blank — what you type is merged onto every point.
   // single point: prefill its own (non-reserved) props for editing.
   let props = applyList.length > 1 ? [{ key: '', val: '' }]
@@ -8379,6 +8556,7 @@ function openDueDateDialog(nodeId, targets = null) {
   const propVal = k => ((node.props || []).find(p => p.key.toLowerCase() === k) || {}).val || '';
   const startInit = propVal('start');
   const dueInit   = propVal('due') || (startInit ? '' : formatEpochDays(dueDateToday()));
+  const repeatInit = propVal(REPEAT_KEY);
 
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
@@ -8425,7 +8603,38 @@ function openDueDateDialog(nodeId, targets = null) {
   // only writes the field, exactly as before, so range editing keeps its explicit Save.
   const startF = dateField('Start', startInit, 'Start date', () => { if (!dueF.inp.value.trim()) save(); });
   const dueF   = dateField('Due',   dueInit,   'Due date',   () => { if (!startF.inp.value.trim()) save(); });
-  wrap.append(startF.f, dueF.f); ioCard.appendChild(wrap);
+  wrap.append(startF.f, dueF.f);
+
+  // Repeat field (#462): a recurrence phrase. Blank = one-off (the default). A live preview
+  // describes what parseRepeat understood, so the tiny grammar teaches itself (P2/P4).
+  const repeatF = (() => {
+    const f = document.createElement('div');
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px';
+    lbl.textContent = 'Repeat';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.className = 'props-input val-in';
+    inp.style.cssText = 'width:100%;box-sizing:border-box';
+    inp.value = repeatInit;
+    inp.placeholder = 'every week, every Monday, monthly on the 1st…';
+    inp.setAttribute('aria-label', 'Repeat schedule');
+    const preview = document.createElement('div');
+    preview.style.cssText = 'font-size:11px;color:var(--muted);margin-top:5px;min-height:16px';
+    function updatePreview() {
+      const v = inp.value.trim();
+      if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank for a one-off task'; return; }
+      const desc = parseRepeat(v);
+      if (!desc) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a repeat phrase. Try "every week", "every Monday", or "monthly on the 1st".'; return; }
+      preview.style.color = 'var(--muted)';
+      preview.textContent = '⟳ ' + describeRepeat(desc) + '. Advances when you complete it.';
+    }
+    inp.addEventListener('input', updatePreview);
+    updatePreview();
+    f.append(lbl, inp, preview);
+    return { f, inp, valid: () => { const v = inp.value.trim(); return !v || parseRepeat(v) !== null; } };
+  })();
+  wrap.append(repeatF.f);
+  ioCard.appendChild(wrap);
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
@@ -8435,11 +8644,13 @@ function openDueDateDialog(nodeId, targets = null) {
   function save() {
     if (!startF.valid()) { startF.inp.focus(); return; }
     if (!dueF.valid())   { dueF.inp.focus();   return; }
+    if (!repeatF.valid()) { repeatF.inp.focus(); return; }
     pushUndo();
-    const sv = startF.inp.value.trim(), dv = dueF.inp.value.trim();
+    const sv = startF.inp.value.trim(), dv = dueF.inp.value.trim(), rv = repeatF.inp.value.trim();
     for (const t of applyList) {
       setDateProp(t, 'start', sv);   // blank clears that date (setDateProp drops the key)
       setDateProp(t, 'due',   dv);
+      setDateProp(t, REPEAT_KEY, rv); // blank clears the recurrence
     }
     markDirty(); render();
     if (agendaOpen) renderAgenda();
@@ -8447,7 +8658,7 @@ function openDueDateDialog(nodeId, targets = null) {
   }
   cancelBtn.addEventListener('click', closeIo);
   saveBtn.addEventListener('click', save);
-  [startF.inp, dueF.inp].forEach(inp => inp.addEventListener('keydown', e => {
+  [startF.inp, dueF.inp, repeatF.inp].forEach(inp => inp.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); save(); }
     if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
   }));
@@ -11043,6 +11254,9 @@ function exitEdit(content, node) {
   // than bolting it onto the transient cycle keystroke (which would over-notify while still
   // editing). If this edit just turned the point done AND show-done is off, it will vanish on the
   // next render, so say so once (P4). node.type is a derived hint, so gate on todo-ness by text.
+  // recurring task completed by typing #DONE / the state-cycle chord: roll forward + re-open (#462).
+  // Do this BEFORE the hidden-cue (a rescheduled task isn't hidden) and re-derive checked.
+  if (node.checked && rollForwardRepeat(node, wasDone)) node.checked = todoDoneFromText(node.text);
   if (node.checked) flashHiddenIfDone(node, wasDone);
   if (!_suppressPruneOnFlush) pruneArtifacts(node); // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
@@ -17941,7 +18155,12 @@ function toggleTaskInNode(node, taskIndex) {
   node.text = lines.join('\n');
   node.checked = todoDoneFromText(node.text);
   markDirty();
-  if (node.checked !== wasDone) { flashHiddenIfDone(node, wasDone); render(); return; }
+  if (node.checked !== wasDone) {
+    // recurring task: completing it rolls the schedule forward and re-opens it (#462) instead
+    // of leaving a done copy. Runs before the hidden-cue since a rescheduled task is NOT hidden.
+    if (rollForwardRepeat(node, wasDone)) { render(); return; }
+    flashHiddenIfDone(node, wasDone); render(); return;
+  }
   // done-ness unchanged → targeted repaint of this node (skips a full render)…
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
@@ -20559,7 +20778,7 @@ document.getElementById('outline').addEventListener('click', e => {
 // A property chip opens its editor: a date chip (due/start) → the Schedule
 // dialog (with the calendar); any other property → the generic Properties dialog.
 function openPropChip(chip) {
-  if (DATE_KEYS.has(chip.dataset.propKey)) openDueDateDialog(chip.dataset.propsId);
+  if (DATE_KEYS.has(chip.dataset.propKey) || chip.dataset.propKey === REPEAT_KEY) openDueDateDialog(chip.dataset.propsId);
   else if (chip.dataset.propKey === CHECK_KEY) openCheckDialog(chip.dataset.propsId);
   else if (chip.dataset.propKey === ALIAS_KEY) openAliasDialog(chip.dataset.propsId);
   else openPropsDialog(chip.dataset.propsId);
@@ -22714,16 +22933,18 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the date picker. Dates can be exact or relative like today+7.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday, or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.",
     examples:[
       { syn:'/due:tomorrow',    desc:'set the due date inline' },
       { syn:'/start:2026-07-01',desc:'set the start date inline' },
-      { syn:'/due',             desc:'open the date picker' },
+      { syn:'/due',             desc:'open the Schedule dialog (dates + repeat)' },
       { syn:'today+7',          desc:'a week from now (also today, today-N)' },
+      { syn:'every week',       desc:'repeat: rolls forward when you complete it' },
+      { syn:'monthly on the 1st', desc:'repeat: a fixed monthly slot (also every Monday)' },
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any #NEXT or #TODO point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with state:next or is:todo. Note that Pointliner has no background reminders or notifications (it runs entirely offline with no server), so the agenda is where you come to check what is due. A completed dated point stays where it is, and tasks do not repeat on their own yet, so a recurring task is one you re-date by hand. Click any point to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any #NEXT or #TODO point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with state:next or is:todo. Note that Pointliner has no background reminders or notifications (it runs entirely offline with no server), so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it. Click any point to jump straight to it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },

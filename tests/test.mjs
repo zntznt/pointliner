@@ -6146,6 +6146,134 @@ test('parseDueDate — absurd years outside the scheduling window are rejected',
   assert.ok(c.parseDueDate('2200-12-31') !== null);
 });
 
+// ─── recurring tasks (#462) — parseRepeat + nextOccurrence ──────────────────────
+test('parseRepeat — interval forms', () => {
+  assert.deepEqual(host(c.parseRepeat('every day')),      { kind: 'interval', unit: 'day',   n: 1 });
+  assert.deepEqual(host(c.parseRepeat('every 3 days')),   { kind: 'interval', unit: 'day',   n: 3 });
+  assert.deepEqual(host(c.parseRepeat('every week')),     { kind: 'interval', unit: 'week',  n: 1 });
+  assert.deepEqual(host(c.parseRepeat('every 2 weeks')),  { kind: 'interval', unit: 'week',  n: 2 });
+  assert.deepEqual(host(c.parseRepeat('every month')),    { kind: 'interval', unit: 'month', n: 1 });
+  assert.deepEqual(host(c.parseRepeat('every year')),     { kind: 'interval', unit: 'year',  n: 1 });
+  // bare aliases
+  assert.deepEqual(host(c.parseRepeat('daily')),   { kind: 'interval', unit: 'day',   n: 1 });
+  assert.deepEqual(host(c.parseRepeat('weekly')),  { kind: 'interval', unit: 'week',  n: 1 });
+  assert.deepEqual(host(c.parseRepeat('monthly')), { kind: 'interval', unit: 'month', n: 1 });
+  assert.deepEqual(host(c.parseRepeat('yearly')),  { kind: 'interval', unit: 'year',  n: 1 });
+  // case / whitespace tolerant
+  assert.deepEqual(host(c.parseRepeat('  EVERY   2   Weeks ')), { kind: 'interval', unit: 'week', n: 2 });
+});
+
+test('parseRepeat — weekday and monthday forms', () => {
+  assert.deepEqual(host(c.parseRepeat('every Monday')),    { kind: 'weekday', days: [1] });
+  assert.deepEqual(host(c.parseRepeat('every Tue,Fri')),   { kind: 'weekday', days: [2, 5] });
+  assert.deepEqual(host(c.parseRepeat('every mon, wed, fri')), { kind: 'weekday', days: [1, 3, 5] });
+  // dedupe + sort
+  assert.deepEqual(host(c.parseRepeat('every fri,mon,fri')), { kind: 'weekday', days: [1, 5] });
+  // month-day, both spellings, ordinal suffix optional
+  assert.deepEqual(host(c.parseRepeat('monthly on the 1st')),      { kind: 'monthday', day: 1 });
+  assert.deepEqual(host(c.parseRepeat('every month on the 15th')), { kind: 'monthday', day: 15 });
+  assert.deepEqual(host(c.parseRepeat('monthly on the 31')),       { kind: 'monthday', day: 31 });
+});
+
+test('parseRepeat — invalid values return null (null-on-miss, like parseDueDate)', () => {
+  assert.equal(c.parseRepeat(null),            null);
+  assert.equal(c.parseRepeat(''),              null);
+  assert.equal(c.parseRepeat('sometimes'),     null);
+  assert.equal(c.parseRepeat('every blorp'),   null);
+  assert.equal(c.parseRepeat('every 0 days'),  null); // n must be ≥ 1
+  assert.equal(c.parseRepeat('every 400 days'),null); // n capped at 366
+  assert.equal(c.parseRepeat('monthly on the 32nd'), null); // day out of range
+  assert.equal(c.parseRepeat('monthly on the 0'),    null);
+  assert.equal(c.parseRepeat('every Mon,Blip'),      null); // one bad token voids the list
+});
+
+test('nextOccurrence — interval anchors off the OLD date, fixed cadence', () => {
+  const past = 1;              // an epoch-day far in the past so "today" never interferes
+  const today = 20000;
+  // weekly: Mon Jul 6 (20640) → Mon Jul 13 (20647), regardless of completion date
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'week', n: 1 }, 20640, 20000), 20647);
+  // every 3 days
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'day', n: 3 }, 20640, 20000), 20643);
+  // monthly clamps: Jan 31 (20484) + 1 month → Feb 28 (not Mar 3)
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'month', n: 1 }, 20484, 20000),
+    Math.floor(Date.UTC(2026, 1, 28) / 86400000));
+  // yearly = 12 months: 2026-01-31 → 2027-01-31
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'year', n: 1 }, 20484, 20000),
+    Math.floor(Date.UTC(2027, 0, 31) / 86400000));
+});
+
+test('nextOccurrence — weekday snaps to the next matching day', () => {
+  // from Mon Jul 6 (20640): "every Monday" → next Monday = Jul 13 (20647), never same day
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [1] }, 20640, 20000), 20647);
+  // from Mon Jul 6: "every Tue,Fri" → Tue Jul 7 (20641)
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [2, 5] }, 20640, 20000), 20641);
+});
+
+test('nextOccurrence — monthday moves to next month, clamped', () => {
+  // from Jan 15 (20468), "monthly on the 15th" → Feb 15 (20499)
+  assert.equal(c.nextOccurrence({ kind: 'monthday', day: 15 }, 20468, 20000), 20499);
+  // clamp: from Jan 15, "on the 31st" → Feb 28 (Feb has no 31)
+  assert.equal(c.nextOccurrence({ kind: 'monthday', day: 31 }, 20468, 20000),
+    Math.floor(Date.UTC(2026, 1, 28) / 86400000));
+});
+
+test('nextOccurrence — a very overdue task snaps forward past today, never to the past', () => {
+  // weekly task last due Mon Jul 6 (20640), but today is Aug 10 (20675, five weeks later).
+  // Advancing once lands Jul 13 — still in the past; must snap to the first Monday after today.
+  const today = 20675; // Mon Aug 10 2026
+  const next = c.nextOccurrence({ kind: 'interval', unit: 'week', n: 1 }, 20640, today);
+  assert.ok(next > today, 'the rescheduled date is strictly in the future');
+  assert.equal(next, 20682, 'first weekly slot after today'); // 20640 + 6*7 = 20682
+});
+
+test('nextOccurrence — null on missing descriptor or date', () => {
+  assert.equal(c.nextOccurrence(null, 20640), null);
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'week', n: 1 }, null), null);
+});
+
+test('describeRepeat — readable phrase for each descriptor', () => {
+  assert.equal(c.describeRepeat({ kind: 'interval', unit: 'week', n: 1 }), 'every week');
+  assert.equal(c.describeRepeat({ kind: 'interval', unit: 'day', n: 3 }),  'every 3 days');
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [1] }),           'every Monday');
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [2, 5] }),        'every Tuesday, Friday');
+  assert.equal(c.describeRepeat({ kind: 'monthday', day: 1 }),             'monthly on the 1st');
+  assert.equal(c.describeRepeat({ kind: 'monthday', day: 22 }),            'monthly on the 22nd');
+  assert.equal(c.describeRepeat({ kind: 'monthday', day: 13 }),            'monthly on the 13th'); // teen → th
+  // round-trips: a phrase parseRepeat accepts describes back to a phrase parseRepeat accepts
+  for (const p of ['every week', 'every 3 days', 'every Monday', 'monthly on the 1st']) {
+    assert.ok(c.parseRepeat(c.describeRepeat(c.parseRepeat(p))) !== null, `round-trip: ${p}`);
+  }
+});
+
+test('ordinalSuffix — st/nd/rd/th incl. the 11-13 teens', () => {
+  assert.equal(c.ordinalSuffix(1),  'st');
+  assert.equal(c.ordinalSuffix(2),  'nd');
+  assert.equal(c.ordinalSuffix(3),  'rd');
+  assert.equal(c.ordinalSuffix(4),  'th');
+  assert.equal(c.ordinalSuffix(11), 'th');
+  assert.equal(c.ordinalSuffix(12), 'th');
+  assert.equal(c.ordinalSuffix(13), 'th');
+  assert.equal(c.ordinalSuffix(21), 'st');
+  assert.equal(c.ordinalSuffix(31), 'st');
+});
+
+// The roll-forward wiring is DOM/module-global coupled (reads node.props, mutates text,
+// flashes), so pin it at the source: rollForwardRepeat must anchor off the old date, preserve
+// the span, re-open the task, and announce — never a silent flip.
+test('rollForwardRepeat — wiring (#462)', () => {
+  const fn = fnBody(_src, 'rollForwardRepeat');
+  assert.ok(fn, 'rollForwardRepeat must exist');
+  assert.ok(/if \(wasDone \|\| !node \|\| !node\.checked\) return false/.test(fn), 'only fires on a fresh not-done→done flip');
+  assert.ok(/nextOccurrence\(desc, base\)/.test(fn), 'advances via nextOccurrence off the old date (fixed cadence)');
+  assert.ok(/const delta = nextDue - base/.test(fn) && /startEp \+ delta/.test(fn), 'preserves the start→due span (both shift by the same delta)');
+  assert.ok(/reopenTaskText\(node\)/.test(fn), 're-opens the task text so it recurs, not a done copy');
+  assert.ok(/flashHint\(/.test(fn), 'visible + announced (flashHint reaches #a11y-live), never a silent flip');
+  // it is actually called at the two done-transition chokepoints
+  assert.ok(/rollForwardRepeat\(node, wasDone\)/.test(fnBody(_src, 'toggleTaskInNode')), 'wired into the checkbox path');
+  // repeat is a reserved key everywhere the other reserved keys are guarded
+  assert.ok(/k === REPEAT_KEY/.test(_src), 'repeat is hidden from the generic Properties editor + prop-vars');
+});
+
 test('formatDueDate — state classification', () => {
   const today = c.dueDateToday();
   assert.equal(c.formatDueDate(today).state,     'today');
