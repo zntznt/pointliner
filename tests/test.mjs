@@ -9435,3 +9435,15 @@ test('query-pill memo is _varsVer-guarded and cleared on doc reset (#451 item 4)
   const rqp = _src.slice(_src.indexOf('function renderQueryPill'), _src.indexOf('function renderQueryPill') + 400);
   assert.ok(/queryRowsMemo\(expr, cookieNode\?\.id\)/.test(rqp), 'renderQueryPill must route through queryRowsMemo');
 });
+
+// #452: dead CSS removal — these selectors matched no DOM element (present only in their
+// own CSS rule, never in a JS-generated HTML string). Guard so they don't creep back.
+test('dead CSS selectors stay removed (#452)', () => {
+  for (const sel of ['.cmd-note', '.mt-align-bar', '.ag-empty']) {
+    assert.ok(!_src.includes(sel), `${sel} was dead CSS — must stay removed`);
+  }
+  // .mt-pad was removed from the shared border/background rule (mt-colhead/mt-rowh kept)
+  assert.ok(!/\.mt-pad\b/.test(_src), '.mt-pad was dead — must stay removed from the shared rule');
+  assert.ok(/\.mt-colhead,\.mt-rowh\{border:1px solid transparent/.test(_src),
+    'the mt-colhead/mt-rowh border rule must survive the .mt-pad removal');
+});
