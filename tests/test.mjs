@@ -6061,6 +6061,50 @@ test('nodePropVars: numeric own props only — skips dates, the check key, and n
   assert.deepEqual(host(c.nodePropVars(n)), { budget: 100, hours: 8 });
 });
 
+// ─── point timestamps (#467) — nowStamp / parseStamp / stampEdit ────────────────
+test('nowStamp: a local ISO datetime to the minute', () => {
+  // a fixed local date → deterministic string (constructed with local components)
+  const d = new Date(2026, 6, 10, 14, 32, 59); // Jul 10 2026, 14:32:59 local
+  assert.equal(c.nowStamp(d), '2026-07-10T14:32', 'YYYY-MM-DDTHH:MM, seconds dropped');
+  const d2 = new Date(2026, 0, 5, 9, 5, 0);
+  assert.equal(c.nowStamp(d2), '2026-01-05T09:05', 'month/day/hour/minute all zero-padded');
+});
+test('parseStamp: parses a stamp to epoch-ms, null on absent/garbage (never 0)', () => {
+  assert.equal(c.parseStamp(''), null, 'empty → unknown, not 0');
+  assert.equal(c.parseStamp(null), null);
+  assert.equal(c.parseStamp('not a date'), null);
+  assert.equal(typeof c.parseStamp('2026-07-10T14:32'), 'number');
+  assert.ok(c.parseStamp('2026-07-10T14:32') > 0);
+});
+test('stampEdit: sets created once, always (re)sets edited', () => {
+  const n = c.mkNode('hello');
+  c.stampEdit(n, '2026-07-10T09:00');
+  const created = n.props.find(p => p.key === 'created')?.val;
+  assert.equal(created, '2026-07-10T09:00', 'created set on first stamp');
+  assert.equal(n.props.find(p => p.key === 'edited')?.val, '2026-07-10T09:00', 'edited set');
+  // a later edit: created stays, edited advances
+  c.stampEdit(n, '2026-07-10T15:30');
+  assert.equal(n.props.find(p => p.key === 'created')?.val, '2026-07-10T09:00', 'created is NOT overwritten');
+  assert.equal(n.props.find(p => p.key === 'edited')?.val, '2026-07-10T15:30', 'edited advances to the new time');
+  // exactly one of each key (setDateProp replaces, never duplicates)
+  assert.equal(n.props.filter(p => p.key === 'edited').length, 1, 'a single edited prop, replaced not appended');
+});
+test('timestampOf: reads a point stamp to epoch-ms or null', () => {
+  const n = c.mkNode('x');
+  c.stampEdit(n, '2026-07-10T09:00');
+  assert.equal(c.timestampOf(n, 'edited'), c.parseStamp('2026-07-10T09:00'));
+  assert.equal(c.timestampOf(c.mkNode('bare'), 'edited'), null, 'no stamp → null (unknown)');
+});
+test('timestamps are reserved: not variables, not typeable via {prop}', () => {
+  const n = c.mkNode('x');
+  n.props.push({ key: 'created', val: '2026-07-10T09:00' }, { key: 'edited', val: '2026-07-10T15:30' }, { key: 'cost', val: '5' });
+  // created/edited never become math variables (only cost does)
+  assert.deepEqual(host(c.nodePropVars(n)), { cost: 5 });
+  // a typed {prop created: …} is refused (stays literal) so a user can't forge a timestamp
+  assert.equal(c.propDeclParts('created: 2026-01-01'), null, '{prop created:…} is reserved, returns null');
+  assert.equal(c.propDeclParts('edited: whenever'), null, '{prop edited:…} is reserved, returns null');
+});
+
 // ─── ancestor-property inheritance (#461) — resolveNodeScope ────────────────────
 const propNode = (title, props = {}) => {
   const n = c.mkNode(title);
