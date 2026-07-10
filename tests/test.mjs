@@ -9844,3 +9844,24 @@ test('formatDateConcrete carries the day number for an unambiguous confirmation 
   assert.match(s, /\d/, 'always contains a day number (never a bare weekday)');
   assert.equal(s, 'Wed May 27', 'weekday + month + day for a normal future/near date');
 });
+
+// ── Per-doc view persistence (idea 5): remember zoom + scroll across doc switches ──
+test('doc view persistence: adoptDoc restores a remembered focus only if the node still exists', () => {
+  // the wiring: a docViewState Map, capture before switch, restoreFocusId passed to adoptDoc
+  // and guarded by nodeById (a stale id from a changed-on-disk file must NOT zoom into nothing).
+  assert.ok(_src.includes('const docViewState = new Map()'), 'the per-doc view store must exist');
+  assert.ok(/function captureDocView\(name\)/.test(_src), 'captureDocView records {focusedId, scrollY} for a doc');
+  assert.ok(/restoreFocusId && nodeById\(restoreFocusId\)\) focusedId = restoreFocusId/.test(_src), 'adoptDoc restores the zoom ONLY if the node still exists (validity-guarded)');
+  assert.ok(/captureDocView\(fileName\)/.test(_src), 'switchWorkspaceDoc captures the outgoing view before the swap');
+  assert.ok(/restoreFocusId: saved\?\.focusedId/.test(_src), 'the incoming doc restore id comes from its remembered view');
+  // scroll restore is clamped to the doc height (best-effort, after reconcile)
+  assert.ok(/Math\.min\(saved\.scrollY, Math\.max\(0, document\.body\.scrollHeight - window\.innerHeight\)\)/.test(_src), 'scroll restore is clamped to the doc height');
+  // in-memory only: no OPML attribute for view state (session ergonomics, not file storage)
+  assert.ok(!/_focusedId="|_viewFocus=|_scrollY=/.test(_src), 'view state must NOT be written into OPML (portable-file hazard)');
+});
+
+test('concept guide: the workspace-search entry now carries usage examples (idea 4 fill)', () => {
+  const entry = _src.slice(_src.indexOf("id:'workspace-search'"), _src.indexOf("id:'hashtags'"));
+  assert.ok(!/examples:\[\]/.test(entry), 'the workspace-search entry must not have empty examples');
+  assert.ok(/Found in other documents/.test(entry), 'it teaches the cross-doc results list');
+});
