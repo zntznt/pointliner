@@ -9581,3 +9581,20 @@ test('duplicateTitleIds: flags every colliding-title id, case-insensitive, empty
   const ids = [...dup].sort();
   assert.deepEqual(ids, ['a', 'b', 'c'], 'the three "Draft" variants collide; unique + empties do not');
 });
+
+// #466: every dialog ? help icon must deep-link to a REAL Concept-guide entry, else it dead-
+// links (openGuide falls back to the first entry — a silent miss). Extract every guide id the
+// dialogs reference (guideId:'X' passed to openInsertDialog + dialogHelp(head,'X') direct) and
+// assert each exists as a GUIDE id:'X'. A renamed/typo'd guide id fails CI instead of silently.
+test('dialog ? help icons deep-link to real GUIDE entries (#466)', () => {
+  const guideIds = new Set([...(_src.match(/\bid:'[a-z-]+'/g) || [])].map(s => s.slice(4, -1)));
+  const refs = new Set();
+  for (const m of _src.matchAll(/guideId:\s*'([a-z-]+)'/g))          refs.add(m[1]);
+  for (const m of _src.matchAll(/dialogHelp\(head,\s*'([a-z-]+)'\)/g)) refs.add(m[1]);
+  assert.ok(refs.size >= 10, `expected many dialog help refs, found ${refs.size}`);
+  const dead = [...refs].filter(id => !guideIds.has(id));
+  assert.deepEqual(dead, [], `dialog ? icons point at nonexistent GUIDE ids: ${dead.join(', ')}`);
+  // the helper + wiring exist
+  assert.ok(_src.includes('function dialogHelp('), 'dialogHelp helper must exist');
+  assert.ok(/dialogHelp\(head, opts\.guideId\)/.test(_src), 'openInsertDialog must thread opts.guideId to dialogHelp');
+});
