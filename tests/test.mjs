@@ -9297,3 +9297,15 @@ test('ARTIFACT_SIDECARS carry: a query record survives a split/merge (audit #4 �
   assert.equal(dst.query.length, 2, 'merge keeps the destination record AND appends the source query record');
   assert.deepEqual(dst.query.map(q => q.key).sort(), ['q0', 'q1']);
 });
+
+// ── Formatting keyboard shortcuts (backlog G): ⌘B/I/U wrap the selection ──
+test('format shortcuts: ⌘/Ctrl+B/I/U route to applyInlineFormat via FORMAT_SHORTCUTS', () => {
+  assert.ok(_src.includes("const FORMAT_SHORTCUTS = { b: 'bold', i: 'italic', u: 'uline' }"), 'the chord→format-id map must exist');
+  // the onKeyDown binding: plain ctrl (no shift/alt), preventDefault, calls applyInlineFormat with the mapped id
+  assert.ok(/ctrl && !e\.shiftKey && !e\.altKey && FORMAT_SHORTCUTS\[e\.key\?\.toLowerCase\(\)\]/.test(_src), 'the binding must be plain-ctrl, no shift/alt, guarded by the map');
+  assert.ok(/applyInlineFormat\(FORMAT_SHORTCUTS\[e\.key\.toLowerCase\(\)\]\)/.test(_src), 'it must call the shipped applyInlineFormat, not a new wrap path');
+  // documented in the ? panel
+  assert.ok(_src.includes("id:'edit-format'") && /Bold \/ italic \/ underline/.test(_src), 'the shortcut must be in the ? panel Edit section');
+  // every mapped id is a real FORMAT_CMDS id (no dangling map entry)
+  assert.ok(/id:'bold'/.test(_src) && /id:'italic'/.test(_src) && /id:'uline'/.test(_src), 'bold/italic/uline are real FORMAT_CMDS ids');
+});
