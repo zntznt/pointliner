@@ -1149,6 +1149,10 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 /* the input grows with content; single-row default */
 .cap-input{flex:1 1 auto;min-width:0;resize:none;font-family:var(--font);font-size:12px;line-height:18px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:1px 9px;outline:none;min-height:22px;max-height:120px;transition:border-color .12s,box-shadow .12s;overflow-y:auto} /* one 22px strip-row height, same as the chips; grows only with content */
 .cap-input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
+.cap-due-chip{flex:0 0 auto;height:22px;display:inline-flex;align-items:center;gap:3px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc);background:transparent;border:1px solid var(--acc);border-radius:var(--r-sm);padding:1px 6px 1px 8px;cursor:pointer;white-space:nowrap} /* pending agenda-"+" due date (#463) */
+.cap-due-chip:hover{background:var(--ring)}
+.cap-due-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cap-due-x{font-weight:400;opacity:.7}
 .cap-go{flex:0 0 auto;height:22px;font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--acc-fg);background:var(--acc);border:1px solid var(--acc);border-radius:var(--r-sm);padding:2px 12px;min-width:72px;text-align:center;cursor:pointer} /* shared min-width: stacked strips (capture, journal) keep their commit column aligned */
 /* solid-accent primary states mirror .io-btn.primary: one hover value app-wide, and disabled resets the filter (source order after :hover) so a dead control never hover-reacts.
    Both rules re-pin background: the generic button:hover{background:var(--bdr)} wash (0,1,1) outranks the single-class .cap-go (0,1,0) and was painting --acc-fg text on a --bdr fill. */
@@ -3041,6 +3045,19 @@ function formatDueDate(epochDay) {
     state = 'future';
   }
   return { iso, label, state };
+}
+
+// A concrete, unambiguous date label for a CONFIRMATION context (e.g. the capture strip's
+// pending-due chip): unlike formatDueDate's urgency label ("Wed" — ambiguous when several
+// Wednesdays are visible), this always carries the day number. "Today"/"Tomorrow" keep their
+// friendly word but still show the date, so the user sees exactly which day they picked.
+function formatDateConcrete(epochDay) {
+  const d = new Date(epochDay * 86400000);
+  const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
+  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+  const date = `${wd} ${mo} ${d.getUTCDate()}`;
+  const rel = formatDueDate(epochDay).label;
+  return (rel === 'Today' || rel === 'Tomorrow') ? `${rel} (${date})` : date;
 }
 
 // parseDateSlash(query) — pure, Node-testable. The keyboard bridge for scheduling
@@ -9199,6 +9216,7 @@ const MAX_INBOXES = 10;
 let captureDraft = '';
 let captureCount = 0;
 let captureSlot = 1;
+let captureDue = null;  // pending due date (epoch-day) stamped onto the next capture, then cleared — the agenda "+" route (#463)
 // Slot N's node (or null). Prunes a stale id (point deleted) lazily on read.
 function inboxAt(slot) { const id = root.inboxes?.[slot - 1]; return id ? nodeById(id) : null; }
 function resolveInbox() { return inboxAt(captureSlot) || root.inboxes?.map((_, i) => inboxAt(i + 1)).find(Boolean) || null; }
@@ -9264,7 +9282,7 @@ function openCaptureDialog(slot) {   // name kept: still the single entry point 
 }
 let captureReturnFocus = null;
 function closeCapture() {
-  captureOpen = false; captureManage = false;
+  captureOpen = false; captureManage = false; captureDue = null; // drop any pending agenda-"+" date (#463)
   document.getElementById('capture-strip').classList.remove('on');
   const btn = document.getElementById('btn-capture');
   btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
@@ -9347,6 +9365,16 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   input.spellcheck = true;
   input.addEventListener('input', () => { captureDraft = input.value; capBtn.disabled = !inbox || !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', capInputKeydown);
+  // pending agenda-"+" due date: a removable chip so the target date is visible and dismissable (#463, P2/P4)
+  if (captureDue !== null) {
+    const dueChip = document.createElement('button'); dueChip.type = 'button'; dueChip.className = 'cap-due-chip';
+    const dueLbl = formatDateConcrete(captureDue);
+    dueChip.innerHTML = `due ${escHtml(dueLbl)} <span class="cap-due-x" aria-hidden="true">×</span>`;
+    dueChip.setAttribute('aria-label', `Capturing with due date ${dueLbl}. Activate to remove the date.`);
+    dueChip.title = 'Remove the due date';
+    dueChip.addEventListener('click', () => { captureDue = null; renderCaptureStrip({ keepFocus: true }); });
+    row.appendChild(dueChip);
+  }
   row.appendChild(input);
   row.appendChild(dest); // input leads on every width (content before chrome); destination, commit, dismiss follow
 
@@ -9496,6 +9524,7 @@ function doCapture() {
   const n = mkNode(text);
   n.type = deriveTypeFromText(text) || 'ul';
   n.checked = todoDoneFromText(text);
+  if (captureDue !== null) setDateProp(n, 'due', formatEpochDays(captureDue)); // agenda "+" route (#463)
   if (inbox.collapsed) inbox.collapsed = false;
   inbox.children.push(n);
   nodeMap.set(n.id, n); parentMap.set(n.id, inbox);
@@ -9503,8 +9532,10 @@ function doCapture() {
   render();
   captureCount++;
   captureDraft = '';
+  const dueLabel = captureDue !== null ? ` · due ${formatDateConcrete(captureDue)}` : '';
+  captureDue = null; // one capture consumes the pending date; the next is an ordinary capture
   // the running count rides the canonical toast (§6 one-pattern rule); no in-strip feedback line
-  flashHint(`✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'} · ${crumbLabel(inbox)}`);
+  flashHint(`✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'} · ${crumbLabel(inbox)}${dueLabel}`);
   renderCaptureStrip(); // clear + keep the strip open for the next capture (brain-dump flow)
 }
 
@@ -21569,24 +21600,14 @@ let _agExpandedDay = null;
 // items active-first into a flex region that CLIPS overflow (CSS), then let layout tell us
 // whether anything got cut: if it did, we swap in a "+N more" expander. No magic per-cell
 // limit — whatever fits, fits, at any cell size. Expanding removes the clip (agd-expanded).
-// #463: create a new point on the current inbox, due on `epochDay`, then zoom into the inbox
-// and focus the new point to title it — the agenda strip stays open. Reuses the shipped cores
-// (resolveInbox / mkNode / setDateProp) exactly like the capture flow; `due` is the default
-// (a deadline is the common planner intent). No inbox → the same P4 guidance capture shows.
+// The agenda calendar "+" routes through the capture strip rather than committing a point
+// itself (#463 adversarial review): capture already requires non-empty text (no empty-point
+// litter), shows its inbox destination, opens the picker when no inbox is set, and never
+// zooms the outline away from the calendar. We just pre-load the due date; doCapture stamps it.
 function createDatedPointOnInbox(epochDay) {
-  const inbox = resolveInbox();
-  if (!inbox) { flashHint('Set a point as your inbox first (a point’s bullet menu → Set as inbox).'); return; }
-  pushUndo();
-  const n = mkNode('');
-  setDateProp(n, 'due', formatEpochDays(epochDay));
-  if (inbox.collapsed) inbox.collapsed = false;
-  inbox.children.push(n);
-  nodeMap.set(n.id, n); parentMap.set(n.id, inbox);
-  markDirty();
-  zoomInto(inbox.id);          // render() commits; keeps the agenda strip open (it's a toolbar strip)
-  focusNode(n.id);             // land the caret in the new point to title it
-  if (agendaOpen) renderAgenda();
-  flashHint('Added a point due ' + formatDueDate(epochDay).label + ' to ' + crumbLabel(inbox) + '. Type its title.');
+  captureDue = epochDay;
+  openCaptureDialog();          // opens (or re-focuses) the strip on its current/first inbox; picker if none. Always renders, so the due chip shows.
+  flashHint('Type a point to schedule for ' + formatDateConcrete(epochDay) + '.');
 }
 
 function fillAgendaDay(box, epochDay, items, mkItem, { repaint, expandable = true }) {
@@ -21841,16 +21862,18 @@ function renderAgendaCalendar(host, visible, totalDated) {
       dom.setAttribute('aria-hidden', 'true');
       c.appendChild(dom);
 
-      // #463: an in-month cell carries a `+` to create a point due that day on the inbox. It's a
-      // real button (not overloading the cell's expand/nav), hover-revealed on desktop + always
-      // shown on touch (the .agc-add CSS), keyboard-reachable. Side months are inert (they switch
-      // month on click), so no `+` there. mousedown+preventDefault keeps the caret invariant.
+      // #463: an in-month cell carries a `+` to schedule a point for that day. It opens the
+      // capture strip with the due date preloaded (routes through capture, not a direct create —
+      // see createDatedPointOnInbox), a real button (not overloading the cell's expand/nav),
+      // hover-revealed on desktop + always shown on touch (the .agc-add CSS), keyboard-reachable.
+      // Side months are inert (they switch month on click), so no `+` there. mousedown+preventDefault
+      // keeps the caret invariant.
       if (cell.inMonth && !side) {
         const add = document.createElement('button');
         add.type = 'button'; add.className = 'agc-add';
         add.textContent = '+';
-        add.setAttribute('aria-label', 'Add a point due ' + cellLabel.split(',').slice(0, 2).join(','));
-        add.title = 'Add a point due this day';
+        add.setAttribute('aria-label', 'Schedule a point for ' + cellLabel.split(',').slice(0, 2).join(','));
+        add.title = 'Schedule a point for this day';
         const ep = cell.epochDay;
         add.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); createDatedPointOnInbox(ep); });
         add.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); createDatedPointOnInbox(ep); } });
