@@ -5326,6 +5326,11 @@ const FORMAT_CMDS = [
   { id:'strike',   icon:'S',   fa:'fa-solid fa-strikethrough', label:'Strikethrough', desc:'~~strike~~' },
   { id:'mark',     icon:'H',   fa:'fa-solid fa-highlighter',   label:'Highlight',     desc:'==highlight==' },
 ];
+// Ctrl/⌘ + letter → the FORMAT_CMDS id it wraps the selection with. The standard editor
+// chords, routed through applyInlineFormat (the same wrap the selection toolbar uses), so
+// they mint no syntax and inherit its cross-pill guard. Only the two universal ones (B, I)
+// plus the app's own ++underline++ (U); we deliberately do not override ⌘E/⌘K/etc.
+const FORMAT_SHORTCUTS = { b: 'bold', i: 'italic', u: 'uline' };
 
 // ─── icons: Font Awesome (subset, embedded) with a unicode fallback ──────────
 // The FA webfont is inlined in the <head> as a base64 woff2 subset, so it is
@@ -11313,6 +11318,12 @@ function onKeyDown(e, id, content) {
   // caret-to-document-edge, which the old binding clobbered.
   else if (e.key==='.' && ctrl && !e.shiftKey) { e.preventDefault(); setCollapsed(id,true); }   // +Shift is the verbosity dial (forward)
   else if (e.key===',' && ctrl && !e.shiftKey) { e.preventDefault(); setCollapsed(id,false); }   // +Shift is the verbosity dial (reverse)
+  // ⌘/Ctrl+B / I / U → wrap the selection (the standard editor chords). preventDefault always
+  // (so the browser's native ⌘B never inserts a rogue <b> into the contenteditable); applyInlineFormat
+  // is a safe no-op on a collapsed selection, so a bare ⌘B just does nothing rather than misbehaving.
+  else if (ctrl && !e.shiftKey && !e.altKey && FORMAT_SHORTCUTS[e.key?.toLowerCase()]) {
+    e.preventDefault(); applyInlineFormat(FORMAT_SHORTCUTS[e.key.toLowerCase()]);
+  }
   else if (e.key==='ArrowUp'   && !e.altKey && !ctrl && !e.shiftKey) {
     if (isAtFirstLine(content)) { e.preventDefault(); navigateToPrev(id); }
   }
@@ -22200,6 +22211,7 @@ const GUIDE = [
   { id:'edit-capture', essential:true, essSection:'Edit', keys:[`${MOD}+⇧+I`],           essLabel:'Capture to inbox from anywhere' },
   { id:'edit-capn',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+1–0`],         essLabel:'Capture to inbox 1–10 (empty slot adopts the current point)' },
   { id:'edit-setinbox',essential:true, essSection:'Edit', keys:[`${MOD}+Alt+1–0`],       essLabel:'Set current point as inbox 1–10' },
+  { id:'edit-format', essential:true, essSection:'Edit', keys:[`${MOD}+B`,`${MOD}+I`,`${MOD}+U`], essLabel:'Bold / italic / underline the selection' },
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Toggle task on current line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state (this point, or the whole selection)' },
   { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority (this point, or the whole selection)' },
