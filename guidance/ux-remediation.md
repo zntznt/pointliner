@@ -1671,12 +1671,15 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   lossy-trap gap (out of scope).
 
 ### LF-1d ◐ Phase 1d: bare /due + /note go keyboard-only (RESOLVED pending merge)
-- **bare `/due`** now writes the fill-in stub `{date due: ▮}` (caret on the value blank) instead of
-  opening the Schedule dialog; type the date, exit promotes it to the due chip. Uses a NEW date twin of
-  the prop stub — `dateDeclParts` sniffs `{date due|start: VALUE}`, the `promoteBraceBody` branch routes
-  to `setDateProp` VALIDATED (`parseDueDate`): valid → chip + brace consumed, empty → clears, INVALID →
-  stays literal `{date …}` (the escape hatch, never a silent no-op). `/due:tomorrow` one-shot unchanged;
-  the Schedule dialog stays the higher-verbosity door (bullet menu / date-chip click).
+- **bare `/due`** (verbosity-split, amended #442 2026-07-10): in **lean** it writes the fill-in stub
+  `{date due: ▮}` (caret on the value blank) — type the date, exit promotes it to the due chip; in
+  **guided/standard** it opens the **Schedule dialog**, matching bare `/check` and `/alias` (P1 sibling
+  consistency — the code had drifted to always-stub, contradicting the intended "bare /due opens the
+  dialog" recorded above at §7.1a and UXP-20). The stub uses a date twin of the prop stub —
+  `dateDeclParts` sniffs `{date due|start: VALUE}`, the `promoteBraceBody` branch routes to `setDateProp`
+  VALIDATED (`parseDueDate`): valid → chip + brace consumed, empty → clears, INVALID → stays literal
+  `{date …}` (the escape hatch, never a silent no-op). `/due:tomorrow` one-shot unchanged; the Schedule
+  dialog is also reachable via the bullet menu / a date-chip click.
 - **`/note`** is a NEW verb — creates (if absent) and focuses the inline note editor below the point
   via the existing `openNoteEditor`, the keyboard door the note previously lacked (bullet-menu only).
   Pure reuse, no stub needed. Concept-guide `notes` entry updated + `note` covered.
