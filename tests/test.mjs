@@ -9168,3 +9168,17 @@ test('typed var decl promotion — fresh name visible to later braces in the sam
   assert.ok(walk.includes('node.text = out + text.slice(i); continue;'),
     'the walk must publish the partial rewrite so collectVars sees the fresh [[var:]] token');
 });
+
+// ── textForDisplay (#420): labels derive from the text, matching the render ──
+test('textForDisplay: a heading/quote point with the DEFAULT type still labels prefix-stripped (#420)', () => {
+  const N = (text, type) => ({ text, type, children: [] });
+  // the Examples-doc case: OPML with no _type → node.type stays 'ul' but the text IS a heading
+  assert.equal(c.textForDisplay(N('## Advanced', 'ul')), 'Advanced', 'breadcrumb/picker labels must not show raw ## when the flag is absent');
+  assert.equal(c.textForDisplay(N('> a quote line', 'ul')), 'a quote line', 'quote prefix strips by derivation too');
+  // parity: the flag path still works and wins first
+  assert.equal(c.textForDisplay(N('## Advanced', 'h2')), 'Advanced', 'the typed path is unchanged');
+  // a hashtag is NOT a heading (no space after #): stays intact
+  assert.equal(c.textForDisplay(N('#tag first', 'ul')), '#tag first', 'a leading hashtag must not be mistaken for a heading prefix');
+  // plain text untouched
+  assert.equal(c.textForDisplay(N('plain point', 'ul')), 'plain point');
+});

@@ -2107,6 +2107,12 @@ function textForDisplay(node) {
   let t = node.text;
   const prefix = BLOCK_PREFIX_MAP[node.type];
   if (prefix && t.startsWith(prefix)) return t.slice(prefix.length);
+  // #420: labels must agree with the RENDER, which derives from the text (mdToHtml never
+  // reads the flag). A doc whose OPML carried no _type (foreign tools, the embedded
+  // Examples) leaves node.type at the default, so trusting the flag alone showed raw
+  // "## Advanced" in breadcrumbs and tree pickers. Derive and strip with full parity.
+  const derived = BLOCK_PREFIX_MAP[deriveTypeFromText(t)];
+  if (derived && t.startsWith(derived)) return t.slice(derived.length);
   // divider: show the label only — the break line is the "prefix" here
   if (node.type === 'divider' && HR_RE.test(t.split('\n', 1)[0])) {
     return t.split('\n').slice(1).join('\n').trim();
