@@ -1932,6 +1932,28 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### INBOX-5 ◐ Capture chips: the big zone selects, navigation moves to a ↗ segment (Fixes #421) (RESOLVED pending merge)
+- **Owner-adjudicated re-examination of INBOX-2/3's own mapping.** The chip's biggest zone (the
+  125px name) navigated AWAY (zoomed to the inbox point) while the actual capture-target selection
+  lived on the 24px badge, with zero hover cues — the reviewer's first click got ripped out of
+  their zoom, the exact disruption "capturing never navigates you" exists to prevent. Adjudicated:
+  swap the mapping on BOTH strips, add titles everywhere.
+- **Manager chips (4 segments now):** the badge AND the name both SELECT the capture target (one
+  `selectSlot` handler — the whole visible chip is the safe action); a new small `↗` jump segment
+  (`.cap-chip-jump`, `fa-arrow-up-right-from-square`, the cross-doc-link outward metaphor) zooms
+  to that inbox's point; the ✕ removes. Order: badge | name | ↗ | ✕.
+- **Main strip:** the destination NAME now opens/closes the manager (it carries `aria-expanded` and
+  the open accent; the pencil is retired — the name does its job) and a trailing `.cap-dest-jump`
+  ↗ navigates. Every segment on both strips carries a `title` (sighted mouse users can finally
+  read the seams; aria-labels already covered AT).
+- FA subset +1 glyph (64), verified painting; the concept-guide capture entry re-taught to the new
+  zone map (it still described pencil-opens-manager / name-zooms).
+- **Verified live on the exact harm scenario:** zoomed into a work point, opened the manager,
+  clicked chip 2's NAME → capture target switched to slot 2 and the zoom STAYED PUT (was: ripped
+  to the inbox); the chip's ↗ is the one zone that navigates (verified it zooms to the inbox).
+- 902 tests (old INBOX-2/3 mapping pins REWRITTEN to the new contract in the same commit, incl.
+  a pin that the retired pencil never returns and the four segment titles).
+
 ### CHROME-1 ◐ Visible column-menu door + agenda kind labels (Fixes #416 #419) (RESOLVED pending merge)
 - **#416 (major, owner-adjudicated): the 29-item Column menu's only pointer door was invisible.**
   UXP-21's "the header IS the affordance" left the menu zone as unmarked whitespace around the name

@@ -8868,29 +8868,34 @@ test('inbox chips: reorder wiring (drag + Alt+Arrow) is present; the ✕ keeps i
   assert.ok(/\.cap-chip-rm\{[^}]*flex-shrink:0/.test(_src), 'the ✕ must be flex-shrink:0 so a long label cannot squish it');
 });
 
-// ── Capture strip destination: name zooms into the inbox, a pencil opens the manager ──
-test('capture dest: the name-button zooms into the inbox; the pencil opens the manager', () => {
-  // the destination is now a two-part control (a name button + a pencil), not one button
-  assert.ok(_src.includes("className = 'cap-dest-name-btn'"), 'the zoomable name button is missing');
-  assert.ok(_src.includes("className = 'cap-dest-edit'"), 'the pencil (manage) button is missing');
-  // clicking the name zooms into the inbox point (navigate to where captures land)
-  assert.ok(_src.includes('zoomInto(inbox.id)'), 'the name must zoom into the inbox point');
-  // the pencil toggles the manager (second strip); it carries the aria-expanded state
-  assert.ok(/edit\.addEventListener\('click', \(\) => \{ captureManage = !captureManage/.test(_src), 'the pencil must toggle the inbox manager');
-  assert.ok(_src.includes("edit.setAttribute('aria-expanded'"), 'the pencil carries aria-expanded for the manager');
-  // when no inbox is set, the name opens the manager to choose one (nothing to zoom into)
-  assert.ok(/name\.addEventListener\('click', \(\) => \{ captureManage = true/.test(_src), 'with no inbox, the name opens the manager to set one');
-  // the pencil uses the same subsetted pencil glyph as the pill edit-pencils, and stays shrink-proof
-  assert.ok(_src.includes('<i class="fa-solid fa-pen" aria-hidden="true"></i>') && /\.cap-dest-edit\{[^}]*flex-shrink:0/.test(_src), 'pencil glyph / shrink-proof missing');
+// ── Capture strip destination (#421 remap): the NAME opens the manager; the ↗ jumps ──
+test('capture dest: the name-button opens the manager; the trailing jump segment zooms (#421)', () => {
+  assert.ok(_src.includes("className = 'cap-dest-name-btn'"), 'the name button is missing');
+  assert.ok(_src.includes("className = 'cap-dest-jump'"), 'the ↗ jump segment is missing');
+  // the BIG zone does the safe thing: it toggles the manager and carries aria-expanded
+  assert.ok(/name\.addEventListener\('click', \(\) => \{ captureManage = !captureManage/.test(_src), 'the name must toggle the inbox manager');
+  assert.ok(_src.includes("name.setAttribute('aria-expanded'"), 'the name carries aria-expanded for the manager');
+  // navigation lives ONLY on the small jump segment ("capturing never navigates you")
+  assert.ok(/jump\.addEventListener\('click', \(\) => \{ zoomInto\(inbox\.id\)/.test(_src), 'the jump segment must zoom into the inbox point');
+  assert.ok(_src.includes('fa-arrow-up-right-from-square'), 'the jump wears the outward-arrow glyph');
+  assert.ok(/\.cap-dest-jump\{[^}]*flex-shrink:0/.test(_src), 'the jump segment stays shrink-proof');
+  // the retired pencil must not come back
+  assert.ok(!_src.includes("className = 'cap-dest-edit'"), 'the pencil is retired: the name does its job now');
 });
 
 // ── Inbox manager chips: badge selects the target, name zooms into the point; long name never hides ✕ ──
-test('inbox manager chip: three segments (badge selects, name zooms), and the chip can shrink', () => {
-  // the chip now has a badge (select) + name (zoom) + remove, not one select-only button
-  assert.ok(_src.includes("className = 'cap-chip-badge'"), 'the slot badge (select target) is missing');
-  assert.ok(/badge\.addEventListener\('click', \(\) => \{ captureSlot = slot/.test(_src), 'the badge must select this inbox as the capture target');
-  assert.ok(/pick\.addEventListener\('click', \(\) => \{ zoomInto\(n\.id\)/.test(_src), 'the chip name must zoom into that inbox point');
-  assert.ok(_src.includes('chip.append(badge, pick, rm)'), 'the chip order must be badge | name | remove');
+test('inbox manager chip: whole chip selects, the jump segment zooms (#421), and the chip can shrink', () => {
+  // #421 remap: the badge AND the name both SELECT (the whole chip is the safe action);
+  // navigation moved to the small ↗ jump segment between the name and the ✕
+  assert.ok(_src.includes("className = 'cap-chip-badge'"), 'the slot badge is missing');
+  assert.ok(_src.includes('badge.addEventListener(\'click\', selectSlot)'), 'the badge selects the capture target');
+  assert.ok(_src.includes('pick.addEventListener(\'click\', selectSlot)'), 'the NAME selects too — the 125px zone must never navigate away');
+  assert.ok(/jump\.addEventListener\('click', \(\) => \{ zoomInto\(n\.id\)/.test(_src), 'the chip jump segment zooms into that inbox point');
+  assert.ok(_src.includes('chip.append(badge, pick, jump, rm)'), 'the chip order must be badge | name | jump | remove');
+  // every segment teaches its verb to sighted mouse users (titles; aria-labels already existed)
+  for (const t of ["badge.title = 'Set as capture target'", "pick.title = 'Set as capture target'", "jump.title = 'Go to this inbox point'", "rm.title = 'Remove inbox'"]) {
+    assert.ok(_src.includes(t), 'missing segment title: ' + t);
+  }
   // The overflow fix, browser-verified root cause: a global `button{flex-shrink:0}` makes the name button
   // (.cap-chip-pick) refuse to shrink, so its min-width:0 + text-overflow:ellipsis never fire and it pushes
   // the ✕ out of the overflow:hidden chip. The label MUST override with flex-shrink:1; the ✕ stays :0.

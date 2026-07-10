@@ -60,6 +60,9 @@ ICONS = [
     # each get their OWN glyph (fa-clone stays deck-only; fa-circle-half-stroke stays
     # theme-only; the check family stays the task pair's)
     "stamp", "bars-progress", "clipboard-check",
+    # capture chips (2026-07-09, #421): the jump-away segment wears the outward arrow
+    # (the same metaphor as the cross-doc link's trailing cue)
+    "arrow-up-right-from-square",
 ]
 
 # Some icons are used in BOTH solid and regular in the app. The font subset must
