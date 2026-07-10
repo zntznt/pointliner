@@ -1932,6 +1932,26 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### CHROME-1 ◐ Visible column-menu door + agenda kind labels (Fixes #416 #419) (RESOLVED pending merge)
+- **#416 (major, owner-adjudicated): the 29-item Column menu's only pointer door was invisible.**
+  UXP-21's "the header IS the affordance" left the menu zone as unmarked whitespace around the name
+  pill; the reviewer's own first click hit the name and got a rename. Adjudication: restore a slim
+  visible opener, keep ONE menu (the #415 clamp+scrollbar already made the length livable), keep
+  both doors. Shipped: a `▾` (`.mt-col-open`) in each header's right gutter — hover/focus-revealed
+  on desktop, always visible on touch (`@media(hover:none)`), and `pointer-events:none` so clicks
+  fall through to the header's existing menu zone (zero new handlers; the door was always there,
+  now it's marked). Verified live: a click at the ▾'s own pixel opens the Column menu.
+- **#419 (minor, owner-adjudicated): three control kinds wore one undifferentiated chip look.**
+  The agenda cluster mixes view switchers (open a pane), filters (change the List), and a sort
+  cycler as identical chips. Adjudication: eyebrow sub-groups, no behavior change. Shipped:
+  caps-eyebrow kind labels (Views / Filters / Sort) leading each group, Sort split to its own row
+  (the Titles cycler joins it in Timeline view). The stacking half of the issue was already fixed
+  (one-view-at-a-time); the doc row was corrected in DOC-1. Verified live: labels render, Sort row
+  separate.
+- Both recorded in design-language §4. 902 tests (+1 pin). One guard catch en route: the ▾ at 9px
+  tripped the 10px-floor drift guard — raised to 10px rather than extending the glyph-only
+  exemption list (the guard's list is a deliberate decision, not a default).
+
 ### DATE-1 ◐ Schedule dialog: a day-pick commits-and-closes for single-date points (Fixes #418) (RESOLVED pending merge)
 - **Adjudicated (owner, 2026-07-09): the cheap trim, not the anchored popover.** The most common
   date edit ("push this deadline a day") cost chip → day → Save, three interactions plus a modal

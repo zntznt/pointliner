@@ -9191,3 +9191,18 @@ test('Schedule dialog: calendar day-pick commits-and-closes for single-date poin
     'a Due day-pick saves when Start is empty (the one-day-bump path)');
   assert.ok(_src.includes('if (onPicked) onPicked(ep);'), 'attachDateCalendar exposes the pick hook the dialog wires');
 });
+
+// ── Chrome legibility (#416/#419): visible column-menu door + agenda kind labels ──
+test('column header carries the visible menu door; agenda groups carry kind labels (#416/#419)', () => {
+  // #416: the ▾ opener is emitted in every plain header, hover-revealed, always-on for touch,
+  // and pointer-transparent (the header's existing menu zone stays the one handler)
+  assert.ok(_src.includes('class="mt-col-open"'), 'the header must emit the visible menu door');
+  assert.ok(/\.mt-col-open\{[^}]*pointer-events:none/.test(_src), 'the door is decorative: clicks fall through to the existing menu zone');
+  assert.ok(_src.includes('.mt-colhead:hover .mt-col-open,.mt-colhead:focus-within .mt-col-open{opacity:1}'), 'hover/focus reveals it');
+  assert.ok(/@media\(hover:none\)\{\.mt-col-open\{opacity:1\}\}/.test(_src), 'touch (no hover) shows it always');
+  // #419: the three control kinds are labelled; Sort stands apart from the filters
+  assert.ok(_src.includes("mkGrpLbl('Views')"), 'the view switcher carries its kind label');
+  assert.ok(_src.includes("mkGrpLbl('Filters')"), 'the filters carry theirs');
+  assert.ok(_src.includes("mkGrpLbl('Sort')"), 'Sort stands apart with its own label');
+  assert.ok(/\.ag-grp-lbl\{[^}]*text-transform:uppercase;letter-spacing:\.07em/.test(_src), 'labels use the caps-eyebrow exemption, not sub-floor plain text');
+});
