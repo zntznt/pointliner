@@ -9403,3 +9403,17 @@ test('base grid roving tabindex is wired (#443)', () => {
   const mfc = _src.slice(_src.indexOf('function mtFocusCell'), _src.indexOf('function mtFocusCell') + 400);
   assert.ok(/mtSetRovingCell\(host, target\)/.test(mfc), 'mtFocusCell must update the roving stop to the focused cell');
 });
+
+// #442: bare /due opens the Schedule dialog in guided/standard (like /check + /alias),
+// keeps the typed stub in lean. The apply branch is DOM/dialog-coupled, so pin the gate
+// at the source: the isLean split, the dialog call, and the stub fallback.
+test('bare /due: dialog in guided/standard, stub in lean (#442)', () => {
+  const branch = _src.slice(_src.indexOf("cmd.id === 'due'"), _src.indexOf("cmd.id === 'check'"));
+  assert.ok(/if \(!isLean\(\)\) \{/.test(branch), 'the bare-/due branch must split on !isLean()');
+  assert.ok(/openDueDateDialog\(nodeId\)/.test(branch), 'guided/standard opens the Schedule dialog');
+  assert.ok(/applyInlineInsertion\(nodeId, slashOffset, '\{date due: \}'\)/.test(branch),
+    'lean still writes the fill-in stub');
+  // the false "still opens the Schedule dialog" comment on the /due:value path is gone
+  assert.ok(!/A bare "\/due" \(no value\) still opens the Schedule dialog\./.test(_src),
+    'the stale contradictory comment must be corrected');
+});
