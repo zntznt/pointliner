@@ -2786,15 +2786,28 @@ function aggregateChildren(node, fn, prop, depth = 1) {
 function expandAggExpr(expr, node) {
   if (!expr) return expr;
   let e = String(expr);
-  if (/\b(?:sum|avg|count|min|max)\s*\(/.test(e)) {
-    // UXP-159: an optional 2nd arg is the depth scope — sum(cost) = direct children (unchanged),
-    // sum(cost, subtree) = whole subtree, sum(cost, 2) = two levels. An UNRECOGNIZED scope leaves
-    // the call literal so evalMath surfaces #ERR (never a silent wrong depth). The numeric min/max
-    // variadic still needs ≥2 numbers, so `min(prop)` / `min(prop, subtree)` never clash with it.
-    e = e.replace(/\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g,
+  // sum/avg/count are NOT evalMath functions — the rollup is their only meaning — so the
+  // 2nd arg can be a keyword scope OR a numeric depth: sum(cost) = direct children (default),
+  // sum(cost, subtree) = whole subtree, sum(cost, 2) = two levels. An UNRECOGNIZED scope leaves
+  // the call literal so evalMath surfaces #ERR (never a silent wrong depth).
+  if (/\b(?:sum|avg|count)\s*\(/.test(e)) {
+    e = e.replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g,
       (m, fn, prop, scope) => {
         const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
         if (depth === null) return m;   // bad scope → literal → #ERR downstream
+        return '(' + aggregateChildren(node, fn, prop, depth) + ')';
+      });
+  }
+  // min/max ALSO exist as evalMath's numeric variadic (min(a, b, …)). So the numeric-floor
+  // idiom `max(hp, 10)` must NOT be captured as an aggregation (#448): only a KEYWORD scope
+  // (self/children/subtree) marks a rollup here — a numeric 2nd arg stays a variadic arg and
+  // falls through to evalMath. `max(cost)` (1 arg) and `max(cost, subtree)` still roll up;
+  // `max(hp, 10)` / `min(x, 5)` compute the numeric max/min the user intends.
+  if (/\b(?:min|max)\s*\(/.test(e)) {
+    e = e.replace(/\b(min|max)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree)\s*)?\)/g,
+      (m, fn, prop, scope) => {
+        const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
+        if (depth === null) return m;
         return '(' + aggregateChildren(node, fn, prop, depth) + ')';
       });
   }
@@ -5139,6 +5152,14 @@ function treeDepthExceeds(node, max = MAX_OPML_DEPTH) {
   }
   return false;
 }
+// Parse an underscore-prefixed sidecar attribute as an ARRAY of records, defaulting to
+// [] on a missing attr, malformed JSON, OR valid-but-non-array JSON (#448). Every sidecar
+// (dice/markov/math/vars/grammar/est/seq/query/props/…) is an array the render path calls
+// .find/.map on, so a non-array here would throw downstream — the guard belongs at parse.
+function arrAttr(el, name) {
+  try { const v = JSON.parse(el.getAttribute(name) || '[]'); return Array.isArray(v) ? v : []; }
+  catch (_) { return []; }
+}
 function fromOpml(xml) {
   const doc = new DOMParser().parseFromString(xml,'application/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid OPML');
@@ -5168,19 +5189,23 @@ function fromOpml(xml) {
       underline: el.getAttribute('_underline') === 'true',
       checked: el.getAttribute('_checked') === 'true',
       collapsed: el.getAttribute('_collapsed') === 'true',
-      footnotes: (() => { try { return JSON.parse(el.getAttribute('_footnotes') || '[]'); } catch(_) { return []; } })(),
-      dice: (() => { try { return JSON.parse(el.getAttribute('_dice') || '[]'); } catch(_) { return []; } })(),
-      markov: (() => { try { return JSON.parse(el.getAttribute('_markov') || '[]'); } catch(_) { return []; } })(),
+      // Every sidecar is an ARRAY of records; downstream code calls .find/.map on it. A
+      // corrupt/hostile .opml can carry valid JSON that isn't an array (_dice="{}"), which
+      // would make renderContentHTML throw. arrAttr guards ALL of them uniformly (#448:
+      // est/query/props already did this; the rest didn't — the inconsistency was the bug).
+      footnotes: arrAttr(el, '_footnotes'),
+      dice:      arrAttr(el, '_dice'),
+      markov:    arrAttr(el, '_markov'),
       // legacy roll tables: still read (migrateRolltables folds them into grammar
       // records on load — see migrateNodePrefixes), never written back
-      rolltable: (() => { try { return JSON.parse(el.getAttribute('_rolltable') || '[]'); } catch(_) { return []; } })(),
-      math:      (() => { try { return JSON.parse(el.getAttribute('_math')      || '[]'); } catch(_) { return []; } })(),
-      vars:      (() => { try { return JSON.parse(el.getAttribute('_vars')      || '[]'); } catch(_) { return []; } })(),
-      grammar:   (() => { try { return JSON.parse(el.getAttribute('_grammar')   || '[]'); } catch(_) { return []; } })(),
-      est:       (() => { try { const e = JSON.parse(el.getAttribute('_est')    || '[]'); return Array.isArray(e) ? e : []; } catch(_) { return []; } })(),
-      seq:       (() => { try { return JSON.parse(el.getAttribute('_seq')       || '[]'); } catch(_) { return []; } })(),
-      query:     (() => { try { const q = JSON.parse(el.getAttribute('_query')  || '[]'); return Array.isArray(q) ? q : []; } catch(_) { return []; } })(),
-      props:     (() => { try { const p = JSON.parse(el.getAttribute('_props')  || '[]'); return Array.isArray(p) ? p : []; } catch(_) { return []; } })(),
+      rolltable: arrAttr(el, '_rolltable'),
+      math:      arrAttr(el, '_math'),
+      vars:      arrAttr(el, '_vars'),
+      grammar:   arrAttr(el, '_grammar'),
+      est:       arrAttr(el, '_est'),
+      seq:       arrAttr(el, '_seq'),
+      query:     arrAttr(el, '_query'),
+      props:     arrAttr(el, '_props'),
       children: Array.from(el.children).filter(c=>c.tagName==='outline').map(c=>po(c, depth + 1)),
     };
     // Base column widths (px|null): only attach when present, so non-bases stay clean.
@@ -15479,9 +15504,26 @@ function unfoldArtifacts(node) {
 // never re-attaching a frozen roll to a user-typed duplicate that happens to sit
 // earlier in the text (the indexOf-from-0 bug). A pair whose sh is not found at or
 // after the cursor was edited/removed → left for promoteInlineShorthand.
+//
+// Duplicate-deletion guard (#448): when an sh value appears N times in `pairs` but only
+// M < N times in `text`, one of the identical duplicates was deleted while editing — and
+// positional order can no longer tell which surviving occurrence belongs to which frozen
+// roll. Refolding by order would reattach the WRONG frozen roll (e.g. delete the first of
+// two {2d6} and the survivor silently inherits the deleted one's result). So for any such
+// ambiguous sh we DON'T refold it at all — leave every occurrence as {sh} text and let
+// promoteInlineShorthand re-promote it as a FRESH roll. A fresh roll is correct-by-
+// construction; a wrong frozen roll is silent corruption. Non-duplicated sh (the common
+// case) and duplicates where none were deleted (M >= N) are unaffected.
 function applyRefold(text, pairs) {
+  const shInPairs = new Map();   // sh -> count in pairs
+  for (const u of pairs) shInPairs.set(u.sh, (shInPairs.get(u.sh) || 0) + 1);
+  const countIn = (hay, needle) => { let n = 0, i = 0; while ((i = hay.indexOf(needle, i)) >= 0) { n++; i += needle.length; } return n; };
+  const ambiguous = new Set();
+  for (const [sh, n] of shInPairs) if (n > 1 && countIn(text, sh) < n) ambiguous.add(sh);
+
   let out = '', cursor = 0;
   for (const u of pairs) {
+    if (ambiguous.has(u.sh)) continue;   // leave as {sh}: re-promote fresh, never a wrong roll
     const idx = text.indexOf(u.sh, cursor);
     if (idx < 0) continue;
     out += text.slice(cursor, idx) + u.token;
