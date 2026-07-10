@@ -1932,6 +1932,26 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### MOBILE-2 ◐ The "N done hidden" cue lives on the Done button (mobile-neophyte review) (RESOLVED pending merge)
+- **The neophyte fleet's #1 finding, owner-adjudicated fix.** Ticking a to-do hides it (showDone
+  defaults off), and the only cue was a 1400ms toast — an Apple-Notes user reads "ticked = deleted."
+  Owner chose the persistent-count-cue direction over changing the default (the hide-done model is
+  deliberate and useful; the problem is recovery discoverability, not the hide). Placement: the
+  count rides the **Done toolbar button itself**, so the cue and the recovery control are the SAME
+  element.
+- **Built:** a pure `countHiddenDone(tree, shown)` core (counts checked `type:todo` points hidden
+  while show-done is off; 0 when shown); `syncDoneBadge()` puts an accent count badge on `#btn-done`
+  (`.has-hidden` reveals it, `>99` clamps to "99+") and rewrites the accessible name to
+  "Done points: N hidden. Activate to show them." so it's not a visual-only cue; `render()` calls it,
+  so the count tracks every check/uncheck, show-done toggle, doc swap, and undo. The transient
+  `flashHiddenIfDone` toast stays as the immediate P4 beat; the badge is the standing answer.
+- **Verified live (mobile viewport, real tick gestures):** tick 1 → row vanishes, badge "1" appears
+  (top-right accent pill, radius 999px, aria "1 hidden. Activate to show them."); tick 2 → "2";
+  tap Done → all rows return, badge clears, aria back to "Done points."
+- 906 tests (+2: the pure count with boundary cases incl. non-todo-checked never counting, and the
+  badge wiring/aria/reveal pins). One token-guard catch: the badge's 8px radius tripped the
+  border-radius drift guard; switched to the `999px` pill token like the other rounded badges.
+
 ### MOBILE-1 ◐ First-run tap targets + duplicate-inbox guard (mobile-neophyte review) (RESOLVED pending merge)
 - **Source: a fresh-eyes mobile-neophyte review fleet** (6 personas each attempting a concrete
   first-timer goal on a phone viewport, every finding adversarially re-verified against source).

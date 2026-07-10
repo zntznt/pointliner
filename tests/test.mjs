@@ -9230,3 +9230,31 @@ test('inbox picker: re-picking an existing inbox retargets its slot, never appen
   assert.ok(/const existing = inboxSlotOf\(it\.id\);/.test(body), 'the picker must check whether the point is already an inbox');
   assert.ok(/if \(existing\) \{ captureSlot = existing; back\(\); return; \}/.test(body), 'a re-pick retargets the existing slot and returns before appending');
 });
+
+// ── countHiddenDone (MOBILE-2): the Done-button badge count ──
+test('countHiddenDone: counts checked to-dos hidden while show-done is off; 0 when shown (MOBILE-2)', () => {
+  const todo = (checked) => ({ type: 'todo', checked, children: [] });
+  const tree = { children: [
+    todo(true),               // hidden done
+    todo(false),              // open to-do — not counted
+    { type: 'ul', children: [ todo(true), todo(true) ] },   // two nested hidden done
+    { type: 'ul', checked: true, children: [] },            // checked but NOT type todo — not counted
+  ] };
+  assert.equal(c.countHiddenDone(tree, false), 3, 'three checked to-dos are hidden while show-done is off');
+  assert.equal(c.countHiddenDone(tree, true), 0, 'show-done on: nothing is hidden');
+  assert.equal(c.countHiddenDone({ children: [todo(false), todo(false)] }, false), 0, 'no done points: 0');
+  assert.equal(c.countHiddenDone({ children: [] }, false), 0, 'empty tree: 0');
+  // a non-todo checked node (e.g. a base) never counts
+  assert.equal(c.countHiddenDone({ children: [{ type: 'base', checked: true, children: [] }] }, false), 0, 'only type:todo counts');
+});
+
+test('Done-button badge wiring: syncDoneBadge sets the count + recovery aria-label, render() calls it (MOBILE-2)', () => {
+  assert.ok(_src.includes('function syncDoneBadge()'), 'the badge sync function must exist');
+  assert.ok(/countHiddenDone\(root, showDone\)/.test(_src), 'it counts hidden-done from the live root + showDone');
+  assert.ok(/btn\.classList\.toggle\('has-hidden', n > 0\)/.test(_src), 'the .has-hidden class reveals the badge only when something is hidden');
+  assert.ok(_src.includes('Done points: ${n} hidden. Activate to show them.') || _src.includes('hidden. Activate to show them.'), 'the accessible name must carry the count + recovery verb');
+  assert.ok(/syncDoneBadge\(\);\s*\/\/ MOBILE-2/.test(_src) || /syncDoneBadge\(\);\s*reconcileHeights/.test(_src), 'render() must call syncDoneBadge so the count tracks every check/toggle');
+  // the badge markup + the reveal CSS
+  assert.ok(_src.includes('id="btn-done-badge"'), 'the badge span is in the button');
+  assert.ok(/#btn-done\.has-hidden \.tbtn-badge\{[^}]*display:inline-flex/.test(_src), 'the badge shows only under .has-hidden');
+});

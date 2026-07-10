@@ -206,7 +206,7 @@ export function loadCores() {
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','queryRows','queryParts','pickFromQuery','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','cycleColRole','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'toggleSavedSearch','isSavedSearch',
-    'tallyMarkers','progressCount','formatProgressCookie',
+    'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
     'childPropNumber','aggregateChildren','expandAggExpr','countWords','subtreeWords',
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','checkExprOf',

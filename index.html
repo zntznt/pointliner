@@ -158,6 +158,12 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    ON keeps the accent fill from button.active. Kept subtle so the toolbar stays calm. */
 .tbtn-toggle{border-color:var(--bdr)}
 .tbtn-toggle:hover{border-color:var(--muted)}
+/* MOBILE-2: the "N done hidden" count badge on the Done button. A calm accent-tinted corner
+   count that appears only when checked items are hidden, so the cue and the recovery control
+   (this same toggle) are one element. Hidden by default; .has-hidden reveals it. */
+#btn-done{position:relative}
+.tbtn-badge{display:none}
+#btn-done.has-hidden .tbtn-badge{display:inline-flex;align-items:center;justify-content:center;position:absolute;top:-4px;right:-4px;min-width:15px;height:15px;padding:0 3px;box-sizing:border-box;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1;color:var(--acc-fg);background:var(--acc);border-radius:999px;pointer-events:none}
 /* hidden-note indicator: a whisper-level trailing mark after the point text
    (the .fn-ref metrics, but muted ink — accent would read as a link-jump) */
 .note-ind{color:var(--muted);font-size:.72em;vertical-align:super;cursor:pointer;line-height:0;margin-left:.35em;user-select:none}
@@ -1869,7 +1875,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
-    <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i></button>
+    <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
     <button id="btn-notes" class="tbtn-toggle active" title="Notes" aria-label="Notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
   <div id="doc-tabs" role="tablist" aria-label="Open documents" style="display:none"></div>
@@ -5878,6 +5884,7 @@ function renderWindow(force) {
   if (isStandardOrLean()) {
     vlist.querySelectorAll('.node-content .dice-roll[title], .node-content .mk-roll[title], .node-content .gr-roll[title], .node-content .math-roll[title], .node-content .seq-pill[title], .node-content .est-pill[title], .node-content .var-pill[title], .node-content [class$="-edit"][title]').forEach(el => el.removeAttribute('title'));
   }
+  syncDoneBadge();   // MOBILE-2: keep the "N done hidden" count on the Done button current
   reconcileHeights();
 }
 
@@ -5964,6 +5971,23 @@ function appendGhostRow(parent, container) {
 
 function isVisible(node) {
   return showDone || node.type !== 'todo' || !node.checked;
+}
+
+// Pure (mobile-neophyte review, MOBILE-2): count the checked to-dos anywhere in `tree` that
+// are being HIDDEN right now — i.e. done points that `isVisible` filters out while show-done
+// is off. `shown` is passed in (not read from the module global) so the count is a pure
+// function of its inputs and testable; the caller passes `showDone`. Returns 0 when show-done
+// is on (nothing is hidden) or there are no done points. This is what the Done-button badge
+// shows, so "checked = deleted?" has a standing on-screen answer instead of a 1400ms toast.
+function countHiddenDone(tree, shown) {
+  if (shown) return 0;
+  let n = 0;
+  const walk = node => {
+    if (node.type === 'todo' && node.checked) n++;
+    for (const ch of node.children || []) walk(ch);
+  };
+  for (const ch of (tree.children || [])) walk(ch);
+  return n;
 }
 
 // A checked to-do is filtered out of the outline while show-done is off, so the row
@@ -22032,6 +22056,23 @@ document.getElementById('btn-done').addEventListener('click', () => {
   btn.classList.toggle('active', showDone);
   render();
 });
+
+// MOBILE-2: the persistent "N done hidden" cue lives ON the Done button — the cue and the
+// recovery control are the SAME element, so a first-timer who ticks a to-do and watches the
+// row vanish has a standing answer (the count) sitting where the fix is (tap to show). Called
+// from render(), so it tracks every check/uncheck, show-done toggle, doc swap, and undo.
+function syncDoneBadge() {
+  const badge = document.getElementById('btn-done-badge');
+  const btn = document.getElementById('btn-done');
+  if (!badge || !btn) return;
+  const n = countHiddenDone(root, showDone);
+  badge.textContent = n > 99 ? '99+' : String(n);
+  btn.classList.toggle('has-hidden', n > 0);
+  // AT: the accessible name carries the count + the recovery verb so it isn't a silent visual-only cue
+  btn.setAttribute('aria-label', n > 0
+    ? `Done points: ${n} hidden. Activate to show them.`
+    : 'Done points');
+}
 function syncNotesBtn() {
   const btn = document.getElementById('btn-notes');
   // UXP-153: stable name ("Notes"); aria-pressed alone signals shown/hidden, matching the sibling toggles.
