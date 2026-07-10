@@ -50,6 +50,9 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
   ([modifiers](generating-text.md#shape-the-words-modifiers))
 - **Conditionals.** Say different things in different cases: `{hp>0: still standing | defeated}`.
   ([conditionals](generating-text.md#say-different-things-in-different-cases-conditionals))
+- **Crit checks on a captured roll.** `{r := 1d20}` freezes one die; nested conditionals then judge
+  it: nat 1/20 crits, DC on the total, all in one line.
+  ([test a captured roll](generating-text.md#test-a-captured-roll-crits-and-checks))
 - **Decks.** Draw without repeating, like a real deck of cards.
   ([decks](generating-text.md#draw-without-repeating-decks))
 - **Markov chains and a yes/no oracle** for organic sequences and solo-play decisions.
