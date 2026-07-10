@@ -6200,6 +6200,19 @@ function mtModelText(text) { return parseTable(stripTblfm(text)) || parseTable(s
 // base does ZERO tree work on a plain re-render (base-views-vision §0.3 — this is
 // what keeps the no-eager-reactive-query-layer property performance.md relies on).
 const _qbaseCache = new Map(); // doc-cache — nodeId -> {ver, cfg, model}; cleared on doc swap (resetDocCaches)
+// Query-PILL row cache (#451 item 4): renderQueryPill runs a full-document queryRows on
+// EVERY render of a node containing a [[query:]] token — re-searching the whole tree each
+// frame. Results depend on (expr, hostId, whole-doc state); _varsVer tracks doc state, so
+// key on `expr\0hostId` + a _varsVer guard, mirroring _qbaseCache. Cleared in resetDocCaches.
+const _queryPillCache = new Map(); // `expr\0hostId` -> {ver, result:{rows,total,truncated}}
+function queryRowsMemo(expr, hostId) {
+  const k = (expr || '') + '\0' + (hostId || '');
+  const hit = _queryPillCache.get(k);
+  if (hit && hit.ver === _varsVer) return hit.result;
+  const result = queryRows(expr, root, hostId);
+  _queryPillCache.set(k, { ver: _varsVer, result });
+  return result;
+}
 const QBASE_ROW_CAP = 100;
 function isQueryBase(node) { return node?.type === 'base' && !!node.qbase; }
 function qbaseModel(node) {
@@ -16546,7 +16559,7 @@ function renderSeqPill(key, sq) {
 function renderQueryPill(key, q) {
   if (!q) return `<span class="query-pill query-bad" data-key="${escQ(key)}" aria-label="Query (missing data)"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> ?</span>`;
   const expr = q.expr || '';
-  const { rows, total, truncated } = queryRows(expr, root, cookieNode?.id);
+  const { rows, total, truncated } = queryRowsMemo(expr, cookieNode?.id);
   const head = `<span class="query-head" contenteditable="false"><span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
     + `<span class="query-expr">${escHtml(expr || 'empty query')}</span>`
     + `<span class="query-count">${total}</span>`
@@ -18714,7 +18727,7 @@ function performMultiDrop(ids, targetId, position) {
 // would be served until the first keystroke (UXP-32). Call beside every
 // buildIndex(root, null) that swaps the tree. The invariant is pinned by the
 // "doc-cache invalidation" regression test in tests/test.mjs.
-function resetDocCaches() { _varsVer++; _qbaseCache.clear(); }
+function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); }
 
 // UXP-103: the persistence signals must all mean the SAME thing — "unsaved to a named disk
 // target," not "there is any unpersisted keystroke." In default (no-handle) mode autosave keeps

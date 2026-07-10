@@ -9417,3 +9417,21 @@ test('bare /due: dialog in guided/standard, stub in lean (#442)', () => {
   assert.ok(!/A bare "\/due" \(no value\) still opens the Schedule dialog\./.test(_src),
     'the stale contradictory comment must be corrected');
 });
+
+// #451 item 4: query-pill row memo. renderQueryPill re-ran a full-document queryRows every
+// render; queryRowsMemo caches on (expr\0hostId) guarded by _varsVer and cleared in
+// resetDocCaches — mirroring _qbaseCache. DOM/module-global coupled, so the invalidation
+// wiring is pinned at the source (a stale guard here would silently serve old query counts).
+test('query-pill memo is _varsVer-guarded and cleared on doc reset (#451 item 4)', () => {
+  assert.ok(_src.includes('const _queryPillCache = new Map()'), 'the query-pill cache must exist');
+  assert.ok(/function queryRowsMemo\(expr, hostId\)/.test(_src), 'queryRowsMemo wrapper must exist');
+  assert.ok(/if \(hit && hit\.ver === _varsVer\) return hit\.result/.test(_src),
+    'the memo must guard on _varsVer (else it serves stale results after an edit)');
+  assert.ok(/_queryPillCache\.set\(k, \{ ver: _varsVer, result \}\)/.test(_src),
+    'the memo must stamp the current _varsVer');
+  assert.ok(/function resetDocCaches\(\) \{ _varsVer\+\+; _qbaseCache\.clear\(\); _queryPillCache\.clear\(\); \}/.test(_src),
+    'resetDocCaches must clear the query-pill cache on doc swap');
+  // renderQueryPill must READ through the memo, not call queryRows directly anymore
+  const rqp = _src.slice(_src.indexOf('function renderQueryPill'), _src.indexOf('function renderQueryPill') + 400);
+  assert.ok(/queryRowsMemo\(expr, cookieNode\?\.id\)/.test(rqp), 'renderQueryPill must route through queryRowsMemo');
+});
