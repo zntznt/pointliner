@@ -9598,3 +9598,27 @@ test('dialog ? help icons deep-link to real GUIDE entries (#466)', () => {
   assert.ok(_src.includes('function dialogHelp('), 'dialogHelp helper must exist');
   assert.ok(/dialogHelp\(head, opts\.guideId\)/.test(_src), 'openInsertDialog must thread opts.guideId to dialogHelp');
 });
+
+// #463: click an agenda day → a point due that day on the inbox. DOM/module-global coupled
+// (reads root/resolveInbox), so pin the wiring at the source: the helper composes the shipped
+// cores (resolveInbox → mkNode → setDateProp 'due' → inbox append → zoom+focus), and the
+// in-month cell renders a keyboard-operable + button that calls it. Also assert the date is a
+// valid, round-trippable due value (formatEpochDays ↔ parseDueDate, behavioral).
+test('agenda day + button creates a due point on the inbox (#463 wiring)', () => {
+  const fn = fnBody(_src, 'createDatedPointOnInbox');
+  assert.ok(fn, 'createDatedPointOnInbox must exist');
+  assert.ok(fn.includes('resolveInbox()'), 'resolves the inbox (reuses the capture flow)');
+  assert.ok(/setDateProp\(n, 'due', formatEpochDays\(epochDay\)\)/.test(fn), 'sets a due date = the clicked day');
+  assert.ok(fn.includes('inbox.children.push(n)') && fn.includes('nodeMap.set(n.id, n)'),
+    'appends + registers the point on the inbox like doCapture');
+  assert.ok(fn.includes('zoomInto(inbox.id)') && fn.includes('focusNode(n.id)'),
+    'zooms into the inbox and focuses the new point to title it (per the owner decision)');
+  assert.ok(/if \(!inbox\)/.test(fn) && fn.includes('flashHint('), 'no inbox → a P4 guidance flash, never silent');
+  // the cell renders a real, keyboard-operable + button that calls the helper (in-month only)
+  assert.ok(/if \(cell\.inMonth && !side\)/.test(_src), 'the + is only on in-month cells (side months switch month)');
+  assert.ok(/className = 'agc-add'/.test(_src) && /createDatedPointOnInbox\(ep\)/.test(_src), 'the + button calls the helper');
+  assert.ok(/add\.addEventListener\('keydown'/.test(_src), 'the + is keyboard-operable (Enter/Space)');
+  // the stored date is a valid, round-trippable due value
+  const iso = c.formatEpochDays(20600);
+  assert.equal(c.parseDueDate(iso), 20600, 'formatEpochDays produces a due value parseDueDate round-trips');
+});

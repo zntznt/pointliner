@@ -33,7 +33,7 @@ done items sunk to the end) so nothing gets lost. Beside it, a single **view swi
 deeper view at a time below the List (click the active one again to return to just the List):
 
 - **Week** , a 7-day planner spread; overdue items are gathered in a leading **Earlier** column.
-- **Month** , a full month calendar.
+- **Month** , a full month calendar. Hover a day (or, on touch, look for the corner **+**) to add a new point due that day: it lands in your inbox and zooms in so you can title it right away.
 - **Timeline** , a Gantt-style view of overlapping tasks. A Titles chip cycles the name-column width (narrow, default, wide); on desktop you can also drag the dotted separator.
 
 In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
