@@ -137,6 +137,27 @@ conditional like `{r == 20: Critical!}` can then read it (see
 crit-check pattern). You can also build any of
 these from the **`@` → Variable** dialog if you prefer a form to typing.
 
+### Properties are variables too, and they inherit
+
+A point's own numeric **properties** are visible to its math pills by their key. Give a point a
+`STR: 14` property and a `{= STR + 2}` pill on that same point reads **16**, no separate `{STR := …}`
+declaration needed.
+
+Properties also **inherit down the outline**. A pill reads any numeric property set on an **ancestor**
+point, so you can put shared values on a parent and use them in the children:
+
+```
+Character
+  STR: 14
+  Scene: strength is {= STR + 2}     → 16   (STR inherited from the character)
+```
+
+The **nearest** value wins: a point's own property overrides the same key on an ancestor, and a
+nearer ancestor overrides a farther one. So a scene with its own `STR: 20` reads **22**, not 16. This
+is the natural way to keep a character sheet, a per-section config, or any set of values that a
+subtree should share. (Only numbers inherit, and only *down* the tree; a value on a sibling or a
+child is not in scope.)
+
 ---
 
 ## Roll a number up your outline (aggregation)

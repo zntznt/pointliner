@@ -2924,6 +2924,25 @@ function nodePropVars(node) {
   return out;
 }
 
+// The merged { name: number } variable scope visible AT a node — the ONE place the two
+// node-scoped evaluators (a `{= }` math pill and a `check`) compute it, so they can't drift
+// (#461). Precedence, low → high (later wins):
+//   doc variables  ←  ancestor props (farthest → nearest)  ←  this node's own props.
+// So own props win, then the NEAREST ancestor, out to the doc vars; evalMath's own constants
+// (`today`) still win over all of these at eval time. `ancestors` is the chain nearest-first
+// (parent, grandparent, …) — the order ancestorsOf() returns; passing [] gives own-node-only
+// scope (#460), which the pure/test callers use. Pure; no DOM (the caller supplies ancestors).
+// SCOPE BOUNDARY (v1): a query base's `= expr` cell and the `is:passing/failing` search filter
+// stay own-node — their rows come from a SEARCH, not a subtree, so inheriting the matched
+// point's OUTLINE ancestors would be a surprising mental model, not the character-sheet one.
+function resolveNodeScope(node, ancestors, docVars = {}) {
+  const out = Object.assign(Object.create(null), docVars);
+  // apply ancestors farthest → nearest so a nearer ancestor overwrites a farther one
+  for (let i = (ancestors?.length || 0) - 1; i >= 0; i--) Object.assign(out, nodePropVars(ancestors[i]));
+  Object.assign(out, nodePropVars(node)); // own props win last
+  return out;
+}
+
 // Evaluate a point's `check` constraint → 'pass' | 'fail' | 'error' | null.
 //   null  → the point has no check.
 //   pass  → the assertion evaluated to a truthy number (1).
@@ -2933,7 +2952,7 @@ function nodePropVars(node) {
 // doc vars; evalMath's own constants (`today`) still win over both. Child aggregation
 // (sum/avg/count(prop)) is substituted first via expandAggExpr (B1). Pure; no DOM —
 // reuses the exact math + aggregation machinery as a math pill.
-function evalCheck(node, vars = {}) {
+function evalCheck(node, vars = {}, ancestors = []) {
   const raw = checkExprOf(node);
   if (!raw) return null;
   // A check is a TRUE/FALSE assertion, so it MUST contain a comparison. A bare
@@ -2942,7 +2961,9 @@ function evalCheck(node, vars = {}) {
   // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
   if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
   const expanded = expandAggExpr(raw, node);
-  const scope = Object.assign(Object.create(null), vars, nodePropVars(node));
+  // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
+  // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
+  const scope = resolveNodeScope(node, ancestors, vars);
   const res = evalMath(expanded, scope);
   if (res === null) return 'error';
   return res ? 'pass' : 'fail';
@@ -3951,6 +3972,15 @@ function deregisterSubtree(n) {
 }
 function nodeById(id) { return nodeMap.get(id) ?? null; }
 function parentOf(id) { return parentMap.has(id) ? parentMap.get(id) : undefined; }
+// The chain of ancestor NODES above `node`, nearest-first (parent, grandparent, …),
+// stopping at the root (the root's config-only node is excluded — it holds no user props).
+// The bridge that feeds resolveNodeScope its `ancestors` at each of the four scope sites (#461).
+function ancestorsOf(node) {
+  const chain = [];
+  let p = node ? parentOf(node.id) : undefined;
+  while (p && p !== root) { chain.push(p); p = parentOf(p.id); }
+  return chain;
+}
 function pathTo(id) {
   if (!nodeMap.has(id)) return null;
   const path = [];
@@ -8244,7 +8274,7 @@ const _checkVerdicts = new Map();
 // verdict (P4 — fail AND error are visible; pass is a muted ✓, not silent). Routes
 // to the Check dialog on click/Enter. Returns null when the point has no check.
 function buildCheckChip(node) {
-  const verdict = evalCheck(node, globalVarMap);
+  const verdict = evalCheck(node, globalVarMap, ancestorsOf(node)); // #461: inherit ancestor props
   if (!verdict) { _checkVerdicts.delete(node.id); return null; }
   const prev = _checkVerdicts.get(node.id);
   _checkVerdicts.set(node.id, verdict);
@@ -15518,7 +15548,9 @@ function promoteBraceBody(node, body) {
   if (!body) return null;
   // expression: {= expr}
   if (body[0] === '=') {
-    const roll = makeMathResult(body.slice(1).trim());
+    // validate against the node's inherited scope (#461) so a pill referencing an own/ancestor
+    // prop promotes; falls back to doc vars for a node with no props / no ancestors.
+    const roll = makeMathResult(body.slice(1).trim(), resolveNodeScope(node, ancestorsOf(node), collectVars()));
     if (!roll) return null;
     (node.math ||= []).push(roll);
     return `[[math:${roll.key}]]`;
@@ -16004,8 +16036,10 @@ function checkInlineHighlight(content, node) {
   if (start < 0) { hideBracePreview(); return false; }
   const body = node.text.slice(start + 1, off - 1);
   // Re-render for 'invalid' too — the gr-bad typo marker must appear live as the
-  // closing } lands, not on the next incidental re-render (UXP-6).
-  const braceCls = classifyBraceBody(body, collectRules(), collectVars());
+  // closing } lands, not on the next incidental re-render (UXP-6). Validate a `{= }`
+  // body against the node's inherited scope (#461) so a pill that resolves via an own /
+  // ancestor prop is styled valid (agreeing with what promotion will do on exit).
+  const braceCls = classifyBraceBody(body, collectRules(), resolveNodeScope(node, ancestorsOf(node), collectVars()));
   if (braceCls === 'literal') { hideBracePreview(); return false; }
   // the marker's AT twin (UXP-15): the visual signal is also announced
   if (braceCls === 'invalid') { hideBracePreview(); announce('Not recognized, so it stays plain text'); }
@@ -16273,10 +16307,14 @@ function formatVarValue(v) { return typeof v === 'string' ? v : formatMathResult
 
 function mathKey() { return 'x' + Math.random().toString(36).slice(2, 9); }
 
-function makeMathResult(expr) {
+function makeMathResult(expr, scope = null) {
   // expandAggExpr keeps {= sum(prop)} valid at creation (no render node → empty
   // children → 0); renderMathPill recomputes against the real children on render.
-  const v = evalMath(expandAggExpr(expr, null), collectVars());
+  // `scope` is the variable map to VALIDATE against at creation. Default = doc vars, but the
+  // promotion path passes the node's inherited scope (own + ancestor props, #460/#461) so a
+  // {= STR + 2} pill on a point that only sees STR through a prop / an ancestor still promotes
+  // instead of staying raw text — parity with how renderMathPill will evaluate it.
+  const v = evalMath(expandAggExpr(expr, null), scope || collectVars());
   if (v === null) return null;
   return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isDateExpr(expr) ? 'date' : undefined };
 }
@@ -16701,12 +16739,11 @@ function renderMathPill(key, m) {
   // sum/avg/count(prop) against the point being rendered so subtree aggregation
   // stays live as children change (cookieNode = the current render node).
   const expr = expandAggExpr(m.expr, cookieNode);
-  // Scope = doc vars at this node, with the render node's OWN numeric props merged OVER them —
-  // the same rule evalCheck already uses (nodePropVars wins over vars). This closes a real
-  // WYSIWYG surprise: `/check:hp<=max` resolved an `hp:` prop but a bare `{= hp}` pill on the
-  // same point did not. Own-node only (the ancestor-inheritance half is a separate decision,
-  // backlog). A no-prop node yields renderVarMap unchanged, so nothing else moves.
-  const scope = Object.assign(Object.create(null), renderVarMap, nodePropVars(cookieNode));
+  // Scope = doc vars, then ANCESTOR props (farthest → nearest), then the render node's OWN
+  // props on top (resolveNodeScope, #461 — the ancestor-inheritance half; #460 shipped own-node).
+  // So a `{= STR + 2}` pill on a scene under a `STR:14` character point reads 16, and its own
+  // `STR:` (if any) still wins. A no-prop node + no-prop ancestors yields renderVarMap unchanged.
+  const scope = resolveNodeScope(cookieNode, ancestorsOf(cookieNode), renderVarMap);
   const fresh = evalMath(expr, scope);          // positional: vars visible at this node, own props on top
   if (fresh === null) {
     // The live recompute failed — a referenced variable became unresolvable (deleted,
@@ -23089,7 +23126,7 @@ const GUIDE = [
     ] },
   { id:'variables', cat:'compute', covers:['var'],
     title:'Variables',
-    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. A variable can be a fixed number, a formula that depends on other variables, a bit of text, or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as {name := value}: a number or formula on the right makes a number, quoted text like {company := \"Acme Corp\"} makes a text value, and options split on the bar like {tone := warm | cool} make a random pick.",
+    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. A variable can be a fixed number, a formula that depends on other variables, a bit of text, or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as {name := value}: a number or formula on the right makes a number, quoted text like {company := \"Acme Corp\"} makes a text value, and options split on the bar like {tone := warm | cool} make a random pick. A point's own numeric PROPERTIES are variables too: give a point a STR: 14 property and {= STR + 2} on it reads 16, no declaration needed. Properties also inherit DOWN the outline, so a pill reads a numeric property set on an ancestor point (a scene under a STR: 14 character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
     examples:[
       { syn:'{rate := 0.2}', desc:'a number, by typing' },
       { syn:'{company := "Acme Corp"}', desc:'a text value (quote it)' },
@@ -23097,6 +23134,7 @@ const GUIDE = [
       { syn:'{markup := cost * 1.2}', desc:'built from another variable' },
       { syn:'{name}',      desc:'drop the value in' },
       { syn:'{= 2 * area}',desc:'use a number in a calculation' },
+      { syn:'STR: 14 then {= STR + 2}', desc:'a property is a variable (inherits from ancestors)' },
       { syn:'{r := 1d20} {r == 20: Critical!}', desc:'capture one roll, then test it' },
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
