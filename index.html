@@ -9537,13 +9537,21 @@ function doJournalAdd() {
   if (!text.trim()) { flashHint('Type something to journal'); return; } // P4: never silent; the toast is the one feedback channel
   const mode = root.journal?.mode || 'append';
   if (mode === 'file' && workspaceDir) {
-    // file mode: the day file is the context; open/create it (navigates by nature) and append there
-    journalDraft = '';
-    closeJournalStrip();
+    // file mode: the day file is the context; open/create it (navigates by nature) and append there.
+    // DON'T clear the draft or close the strip until the append actually lands — the open is async
+    // and can fail (folder access lost, file write, doc switch), and losing the user's typed text on
+    // a silent failure is the worst outcome. journalDraft survives close/reopen (§6), so on any
+    // failure we restore the strip with the text intact and say why (P4 — never silent, never drop).
     openJournalEntry().then(() => {
-      const entry = root.children[0]; if (!entry) return;
+      const entry = root.children[0];
+      if (!entry) { flashError('Could not open today’s journal file. Your note is still here.'); openJournalStrip(); return; }
       pushUndo(); appendJournalPoint(entry, text);
+      journalDraft = '';
+      closeJournalStrip();
       flashHint('✓ Journaled to ' + todayISO());
+    }).catch(e => {
+      flashError('Could not journal to file: ' + (e?.message || e) + '. Your note is still here.');
+      openJournalStrip();   // draft intact — user can retry or switch modes
     });
     return;
   }
@@ -23464,18 +23472,22 @@ function lastAutosaveSavedAt() {
 // autosave (a recipient must see exactly what was sent — never a stale local doc).
 // The app shell ships the island empty, so the live editor is untouched.
 let loadedFromEmbed = false;
+let embedRestoreFailed = false;   // an embed was present but wouldn't parse (#449) — surfaced at boot
 (function restoreEmbeddedDoc() {
+  const el = document.getElementById('pl-embedded-doc');
+  const opml = el && el.textContent ? el.textContent.trim() : '';
+  if (!opml) return;   // no embed → a normal doc, nothing to restore or report
+  // An embed IS present: a corrupt/unparseable one must NOT boot as a silent blank doc —
+  // the recipient of a shared snapshot would think the sender sent an empty file (#449).
+  // Record the failure; the boot rAF (where the toast infra is ready) surfaces it.
   try {
-    const el = document.getElementById('pl-embedded-doc');
-    const opml = el && el.textContent ? el.textContent.trim() : '';
-    if (!opml) return;
     const parsed = fromOpml(opml);
-    if (!parsed) return;
+    if (!parsed) { embedRestoreFailed = true; return; }
     root = parsed;
     ensureDocId(root);
     loadedFromEmbed = true;
     dirty = false;
-  } catch(_) {}
+  } catch(_) { embedRestoreFailed = true; }
 })();
 
 // Apply a parsed autosave payload (root + view prefs) to the live app. Shared by the
@@ -23771,6 +23783,11 @@ requestAnimationFrame(() => {
   // re-rollable doc — not get dropped into edit-mode-on-point-1 (which unfolds pills to
   // raw shorthand). It is also read-into-memory, not saved-to-disk, so say so once (P4)
   // — edits-then-reload data loss is never silent.
+  if (embedRestoreFailed) {
+    // A shared snapshot was embedded but couldn't be parsed — tell the recipient it was
+    // corrupt, not empty (#449). We fall through to whatever doc did load (Examples/blank).
+    flashError('This shared snapshot appears to be corrupt and could not be opened. Ask the sender to export and share it again.');
+  }
   if (loadedFromEmbed) {
     flashHint('Opened a shared snapshot. Edits stay in this browser; export again to save a copy.');
     showSnapshotBanner();   // UXP-102: a persistent, dismissible banner outlasts the boot flash
