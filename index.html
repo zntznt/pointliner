@@ -5932,7 +5932,12 @@ function renderWindow(force) {
   if (isStandardOrLean()) {
     vlist.querySelectorAll('.node-content .dice-roll[title], .node-content .mk-roll[title], .node-content .gr-roll[title], .node-content .math-roll[title], .node-content .seq-pill[title], .node-content .est-pill[title], .node-content .var-pill[title], .node-content [class$="-edit"][title]').forEach(el => el.removeAttribute('title'));
   }
-  syncDoneBadge();   // MOBILE-2: keep the "N done hidden" count on the Done button current
+  // MOBILE-2: keep the "N done hidden" count current — but only on a real re-render (force),
+  // not on scroll-driven window shifts (#451 item 3). The count changes only when a to-do
+  // toggles done-ness or Show-done flips, both of which go through render() → force=true;
+  // syncDoneBadge whole-tree-walks countHiddenDone, so running it per scroll frame is pure
+  // waste on a large doc.
+  if (force) syncDoneBadge();
   reconcileHeights();
 }
 
@@ -7611,9 +7616,19 @@ function mtInitGlobal() {
   });
 }
 
+// Total descendant count for a node's collapse-count badge. Memoized on _varsVer (#451
+// item 6): every collapsed visible row calls this per render, and each call is a full
+// subtree walk — so on a large doc the render re-walks the same subtrees every frame. The
+// count only changes on a structural edit, which bumps _varsVer (markDirty), so a
+// generation-guarded per-node Map is safe. The recursion reuses cached children for free.
+let _descCache = new Map(), _descCacheVer = -1;
 function countDescendants(n) {
+  if (_descCacheVer !== _varsVer) { _descCache = new Map(); _descCacheVer = _varsVer; }
+  const hit = _descCache.get(n);
+  if (hit !== undefined) return hit;
   let c = n.children.length;
   for (const ch of n.children) c += countDescendants(ch);
+  _descCache.set(n, c);
   return c;
 }
 
