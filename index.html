@@ -19348,11 +19348,35 @@ async function newFile() {
 // in folder mode (folder docs are renamed via the folder, not here). Returns nothing;
 // errors flash and leave the name unchanged.
 async function commitFileName(rawDisplay) {
-  if (workspaceDir) return;
   const trimmed = (rawDisplay || '').trim();
   if (!trimmed) return;                       // empty → keep the current name
   const next = toFileName(trimmed);
   if (next === fileName) return;              // unchanged
+
+  if (workspaceDir) {
+    // Folder-backed rename (idea 6a): the single-file path below always could; a connected folder
+    // used to bail here, silently stripping the ability to name docs. Move the file within the
+    // folder, collision-safe, then re-anchor + update every pointer that keys on the name (the
+    // reopen record, the open-tab strip, the cross-doc index). Bracketed in _wsSelfWriting so the
+    // sync observer ignores our own move (else it flags it external and loops).
+    if (!(hasFSA && workspaceFile && workspaceFile.move)) return;
+    const others = (await listWorkspaceNames(workspaceDir)).filter(n => n !== fileName);
+    const target = uniqueWorkspaceName(others, next);   // never clobber a sibling doc
+    _wsSelfWriting = true;
+    try { await workspaceFile.move(workspaceDir, target); }
+    catch (e) { flashError('Could not rename the file: ' + (e.message || e)); return; }
+    finally { _wsSelfWriting = false; }
+    const prevName = fileName;
+    fileName = target;
+    openTabs = openTabs.map(n => n === prevName ? target : n);   // keep the tab pointing at the renamed doc
+    await anchorWorkspaceFile();                                 // the moved handle's mtime is our new anchor
+    try { await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name: target }); } catch (_) {}  // reopen-on-load points at the new name
+    try { await idbSet(OPEN_TABS_KEY, openTabs); } catch (_) {}
+    renderFileName(); updateTitle(); renderWorkspaceAffordance(); refreshWorkspaceIndex();
+    flashHint('Renamed to “' + displayName(target) + '”');
+    return;
+  }
+
   if (hasFSA && fileHandle && fileHandle.move) {
     try { await fileHandle.move(next); } catch (e) { flashError('Could not rename the file: ' + (e.message || e)); return; }
   }
@@ -20062,8 +20086,24 @@ async function newWorkspaceDoc() {
     try { await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root))); markClean(); }
     catch (_) { if (!await openConfirmDialog({ title: 'Could not save this document', message: 'Saving the current document failed, so creating a new one would lose your recent edits. Continue anyway, or stay?', confirmLabel: 'Continue and lose edits', cancelLabel: 'Stay' })) return; }
   } else if (!workspaceFile && dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
+  // idea 6b: prompt for a name instead of auto-creating "outline.opml" (the single-file path lets
+  // you name; the folder path silently didn't, so every new folder doc was outline / outline-2). A
+  // blank name keeps the "outline" default, so pressing Enter is the old one-tap behavior, no worse.
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-plus', fb: '＋' },   // fa-plus is in the subset; fa-file-circle-plus is not
+    title: 'New document',
+    submitLabel: 'Create',
+    fields: [{ key: 'name', label: 'Document name', placeholder: 'outline', value: '' }],
+    onSubmit: v => createWorkspaceDocNamed(v.name),
+  });
+}
+
+// The actual folder-doc creation, given a chosen (possibly blank) name. Split out of
+// newWorkspaceDoc so the name prompt (6b) and any future caller share one collision-safe path.
+async function createWorkspaceDocNamed(rawName) {
   try {
-    const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), 'outline.opml');
+    const base = toFileName((rawName || '').trim() || 'outline');
+    const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), base);
     const fh = await workspaceDir.getFileHandle(name, { create: true });
     adoptDoc(mkRoot(), { fileName: name, fileHandle: fh, workspaceFile: fh });
     await writeH(fh);                                   // materialize the empty doc on disk (anchors via the atomic path)
@@ -20071,7 +20111,7 @@ async function newWorkspaceDoc() {
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
     renderWorkspaceAffordance();
     refreshWorkspaceIndex();           // CF-1: a new doc joined the notebook
-    flashHint('New document “' + name + '” in the folder');
+    flashHint('New document “' + displayName(name) + '” in the folder');
   } catch (e) { degradeWorkspace('Could not create the document. The folder may be unavailable. Reconnect, or use Save as to keep your work.'); }
 }
 
@@ -22387,7 +22427,7 @@ document.getElementById('btn-restore')?.addEventListener('click', async () => { 
     const s = getSelection(); s.removeAllRanges(); s.addRange(r);
   };
   const begin = () => {
-    if (editing || workspaceDir) return;       // not renameable in folder mode
+    if (editing) return;                        // idea 6a: folder-mode is now renameable (commitFileName moves the file)
     editing = true;
     prevText = displayName(fileName) === 'Untitled' ? '' : displayName(fileName);
     fn.textContent = prevText;
