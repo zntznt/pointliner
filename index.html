@@ -5173,11 +5173,12 @@ function fromOpml(xml) {
   const seenIds = new Set();
   const freshId = (raw) => { let id = raw || uid(); if (seenIds.has(id)) id = uid(); seenIds.add(id); return id; };
   function po(el, depth = 0) {
-    // WAVE-3 HARD-11 (crash): clamp ingestion nesting. A tree deeper than ~1500 levels overflows the
-    // recursive tree-walkers downstream (toOpml / collectVars / collectRules / render), so a
-    // pathological or hostile OPML/HTML would load into memory and then crash on the next serialize
-    // or render — and re-crash on every reopen. A real document is never this deep; reject at import
-    // (callers already catch fromOpml throws and flashError), so the deep tree never enters memory.
+    // WAVE-3 HARD-11 (crash): clamp ingestion nesting. The recursive tree-walkers downstream
+    // (toOpml / collectVars / collectRules / render) overflow the stack around ~1500 levels, so the
+    // clamp is set LOWER — at MAX_OPML_DEPTH (1000, see its declaration) — well under that crash point.
+    // Without it a pathological or hostile OPML/HTML would load into memory and then crash on the next
+    // serialize or render, and re-crash on every reopen. A real document is never this deep; reject at
+    // import (callers already catch fromOpml throws and flashError), so the deep tree never enters memory.
     if (depth > MAX_OPML_DEPTH) throw new Error('Document nesting is too deep (over ' + MAX_OPML_DEPTH + ' levels)');
     const raw = el.getAttribute('_type') || 'ul';
     const n = {
@@ -10277,6 +10278,28 @@ function restoreChromeReturn() {
   return true;
 }
 
+// Re-roll a pill while its point is in EDIT mode (#450): capture the caret, run the reroll,
+// refresh the var maps the pills read, repaint the edit HTML, and restore the caret. The five
+// edit-mode reroll sites (the four REROLL_PILLS branches + the var pill) shared this verbatim.
+function rerollInEdit(content, node, doReroll) {
+  const off = getCaretOffset(content);
+  doReroll();
+  globalVarMap = collectVars();
+  renderVarMap = varMapAt(node);
+  content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(content, off); } catch (_) {}
+}
+
+// The generative re-rollable pills, data-driving the four identical mousedown branches (#450).
+// sel = pill hit-target, bad = its error class (a bad pill is inert), editSel = the pencil,
+// edit/reroll = the pill's two actions. Order is dice → est → markov → grammar (unchanged).
+const REROLL_PILLS = [
+  { sel: '.dice-roll', bad: 'dice-bad', editSel: '.dice-edit', edit: (n, k) => editDice(n, k),    reroll: (n, k) => rerollDice(n, k) },
+  { sel: '.est-pill',  bad: 'est-bad',  editSel: '.est-edit',  edit: (n, k) => editEst(n, k),     reroll: (n, k) => rerollEst(n, k) },
+  { sel: '.mk-roll',   bad: 'mk-bad',   editSel: '.mk-edit',   edit: (n, k) => editMarkov(n, k),  reroll: (n, k) => rerollMarkov(n, k) },
+  { sel: '.gr-roll',   bad: 'gr-bad',   editSel: '.gr-edit',   edit: (n, k) => editGrammar(n, k), reroll: (n, k) => rerollGrammar(n, k) },
+];
+
 function attachContentEvents(content, node) {
   // Table nodes: clicking OUTSIDE the widget → raw-markdown text edit; clicking ON
   // the widget → cell editing handled internally by buildTableWidget.
@@ -10400,61 +10423,24 @@ function attachContentEvents(content, node) {
       if (st) promoteStaticTable(node, +st.dataset.l0, +st.dataset.l1);
       return;
     }
-    // dice pill: pencil opens the editor, body re-rolls in place
-    const pill = e.target.closest?.('.dice-roll');
-    if (pill && !pill.classList.contains('dice-bad')) {
-      e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) {
-        if (e.target.closest('.dice-edit')) { exitEdit(content, node); editDice(node, pill.dataset.key); }
-        else { const off = getCaretOffset(content); rerollDice(node, pill.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
-      } else {
-        // display mode: the pill is a live widget — act in place, stay rendered
-        if (e.target.closest('.dice-edit')) editDice(node, pill.dataset.key);
-        else rerollDice(node, pill.dataset.key);
+    // Generative re-rollable pills (dice / estimate / markov / grammar): four structurally
+    // identical branches (#450). Each = pencil opens the editor, body re-rolls in place; in edit
+    // mode the re-roll goes through rerollInEdit (repaint + caret restore), in display mode it acts
+    // live and stays rendered. Only the selector, bad-class, edit-sub-selector, and the two
+    // fns vary — data-drive them. (var/seq pills differ in shape and stay their own branches below.)
+    for (const p of REROLL_PILLS) {
+      const el = e.target.closest?.(p.sel);
+      if (el && !el.classList.contains(p.bad)) {
+        e.preventDefault(); e.stopPropagation();
+        const key = el.dataset.key, onEdit = e.target.closest(p.editSel);
+        if (content.dataset.editing) {
+          if (onEdit) { exitEdit(content, node); p.edit(node, key); }
+          else rerollInEdit(content, node, () => p.reroll(node, key));
+        } else {
+          if (onEdit) p.edit(node, key); else p.reroll(node, key);
+        }
+        return;
       }
-      return;
-    }
-    // estimate pill: pencil opens the editor, body re-samples in place
-    const est = e.target.closest?.('.est-pill');
-    if (est && !est.classList.contains('est-bad')) {
-      e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) {
-        if (e.target.closest('.est-edit')) { exitEdit(content, node); editEst(node, est.dataset.key); }
-        else { const off = getCaretOffset(content); rerollEst(node, est.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
-      } else {
-        // display mode: the pill is a live widget — act in place, stay rendered
-        if (e.target.closest('.est-edit')) editEst(node, est.dataset.key);
-        else rerollEst(node, est.dataset.key);
-      }
-      return;
-    }
-    // markov pill: pencil opens the editor, body re-rolls the walk
-    const mk = e.target.closest?.('.mk-roll');
-    if (mk && !mk.classList.contains('mk-bad')) {
-      e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) {
-        if (e.target.closest('.mk-edit')) { exitEdit(content, node); editMarkov(node, mk.dataset.key); }
-        else { const off = getCaretOffset(content); rerollMarkov(node, mk.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
-      } else {
-        // display mode: the pill is a live widget — act in place, stay rendered
-        if (e.target.closest('.mk-edit')) editMarkov(node, mk.dataset.key);
-        else rerollMarkov(node, mk.dataset.key);
-      }
-      return;
-    }
-    // grammar pill: pencil opens the editor, body re-generates
-    const gr = e.target.closest?.('.gr-roll');
-    if (gr && !gr.classList.contains('gr-bad')) {
-      e.preventDefault(); e.stopPropagation();
-      if (content.dataset.editing) {
-        if (e.target.closest('.gr-edit')) { exitEdit(content, node); editGrammar(node, gr.dataset.key); }
-        else { const off = getCaretOffset(content); rerollGrammar(node, gr.dataset.key); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {} }
-      } else {
-        // display mode: the pill is a live widget — act in place, stay rendered
-        if (e.target.closest('.gr-edit')) editGrammar(node, gr.dataset.key);
-        else rerollGrammar(node, gr.dataset.key);
-      }
-      return;
     }
     // math pill: click anywhere opens the editor (no re-roll — result is deterministic)
     const mp = e.target.closest?.('.math-roll');
@@ -10473,8 +10459,8 @@ function attachContentEvents(content, node) {
       const vRec = node.vars?.find(x => x.key === vp2.dataset.key);
       if (vRec?.kind === 'pick' && !e.target.closest('.var-edit')) {
         if (content.dataset.editing) {
-          // mirror the dice edit-mode reroll: swap the buffer in place, keep the caret
-          const off = getCaretOffset(content); rerollPickVar(node, vp2.dataset.key, { repaintAll: false }); globalVarMap = collectVars(); renderVarMap = varMapAt(node); content.innerHTML = editModeHTML(node); try { setCaretByOffset(content, off); } catch(_) {}
+          // mirror the dice edit-mode reroll: swap the buffer in place, keep the caret (#450)
+          rerollInEdit(content, node, () => rerollPickVar(node, vp2.dataset.key, { repaintAll: false }));
         } else {
           rerollPickVar(node, vp2.dataset.key); // re-renders: every {name} reference updates
         }
@@ -11184,6 +11170,17 @@ function parseMLlines(lines) {
 
 // ─── keydown ─────────────────────────────────────────────────────────────────
 
+// The single-column inline picker menus, data-driving their identical ↓/↑/Enter/Tab/Escape
+// nav (#450). `open` is a thunk so it reads the live *State let at keydown time. Only one is
+// ever open. (The 2D sizePicker is NOT here — it has its own ←/→ + key-swallow block.)
+const INLINE_MENU_NAV = [
+  { open: () => lpState && isLpMenuOpen(),       move: lpMove,    apply: lpApply,    hide: hideLinkMenu },
+  { open: () => slashState && isSlashMenuOpen(), move: slashMove, apply: slashApply, hide: hideSlashMenu },
+  { open: () => braceState && isBraceMenuOpen(), move: braceMove, apply: braceApply, hide: hideBraceMenu },
+  { open: () => tagState && isTagMenuOpen(),     move: tagMove,   apply: tagApply,   hide: hideTagMenu },
+  { open: () => emojiState && isEmojiMenuOpen(), move: emojiMove, apply: emojiApply, hide: hideEmojiMenu },
+];
+
 function onKeyDown(e, id, content) {
   // IME guard (UX audit): while composing (CJK/IME), Enter/Tab/Backspace belong to the
   // candidate selection, not the structural editor — let the IME own every key.
@@ -11259,11 +11256,17 @@ function onKeyDown(e, id, content) {
   }
   // Copy a ready-to-paste link token for this node to the clipboard.
   if ((e.key === 'l' || e.key === 'L') && ctrl && e.shiftKey) { e.preventDefault(); copyNodeLink(id); return; }
-  if (lpState && isLpMenuOpen()) {
-    if (e.key==='ArrowDown') { e.preventDefault(); lpMove(1); return; }
-    if (e.key==='ArrowUp')   { e.preventDefault(); lpMove(-1); return; }
-    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); lpApply(); return; }
-    if (e.key==='Escape')    { e.preventDefault(); hideLinkMenu(); return; }
+  // The single-column inline picker menus (link / slash / brace / tag / emoji) all navigate
+  // identically: ↓/↑ move, Enter/Tab apply, Escape hide (#450). Only one is ever open, so a
+  // table-driven sweep replaces five copy-paste blocks. The sizePicker below is NOT in the set
+  // — it's a 2D grid (←/→ too) that also swallows every other key while it owns the popup.
+  for (const m of INLINE_MENU_NAV) {
+    if (!m.open()) continue;
+    if (e.key==='ArrowDown')            { e.preventDefault(); m.move(1);  return; }
+    if (e.key==='ArrowUp')              { e.preventDefault(); m.move(-1); return; }
+    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); m.apply();  return; }
+    if (e.key==='Escape')               { e.preventDefault(); m.hide();   return; }
+    break;   // this menu owns the popup; unhandled keys fall through (matches the old blocks)
   }
   if (isSizePickerOpen()) {
     if (e.key==='ArrowRight') { e.preventDefault(); sizePickerMove(0, 1); return; }
@@ -11273,30 +11276,6 @@ function onKeyDown(e, id, content) {
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); sizePickerConfirm(); return; }
     if (e.key==='Escape')     { e.preventDefault(); closeSizePicker(); return; }
     e.preventDefault(); return; // swallow other keys while the picker owns the popup
-  }
-  if (slashState && isSlashMenuOpen()) {
-    if (e.key==='ArrowDown') { e.preventDefault(); slashMove(1); return; }
-    if (e.key==='ArrowUp')   { e.preventDefault(); slashMove(-1); return; }
-    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); slashApply(); return; }
-    if (e.key==='Escape')    { e.preventDefault(); hideSlashMenu(); return; }
-  }
-  if (braceState && isBraceMenuOpen()) {
-    if (e.key==='ArrowDown') { e.preventDefault(); braceMove(1); return; }
-    if (e.key==='ArrowUp')   { e.preventDefault(); braceMove(-1); return; }
-    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); braceApply(); return; }
-    if (e.key==='Escape')    { e.preventDefault(); hideBraceMenu(); return; }
-  }
-  if (tagState && isTagMenuOpen()) {
-    if (e.key==='ArrowDown') { e.preventDefault(); tagMove(1); return; }
-    if (e.key==='ArrowUp')   { e.preventDefault(); tagMove(-1); return; }
-    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); tagApply(); return; }
-    if (e.key==='Escape')    { e.preventDefault(); hideTagMenu(); return; }
-  }
-  if (emojiState && isEmojiMenuOpen()) {
-    if (e.key==='ArrowDown') { e.preventDefault(); emojiMove(1); return; }
-    if (e.key==='ArrowUp')   { e.preventDefault(); emojiMove(-1); return; }
-    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); emojiApply(); return; }
-    if (e.key==='Escape')    { e.preventDefault(); hideEmojiMenu(); return; }
   }
   // Inline keyboard chords (keyboard-a11y, P3): edit-mode shortcuts for link navigation,
   // task toggling, and to-do state/priority cycling — added alongside mousedown handlers,
