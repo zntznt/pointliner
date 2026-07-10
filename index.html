@@ -19261,7 +19261,7 @@ const OPML_TYPE = { description:'Outline file', accept:{'text/x-opml':['.opml']}
 // App-wide prefs NOT touched (they survive a swap): showDone · showNotes ·
 // forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
 // agendaShowDone.
-function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null } = {}) {
+function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null, restoreFocusId = null } = {}) {
   // Cancel any pending debounced autosave from the OUTGOING doc. The timer closure reads
   // the module-level root/fileName/workspaceFile at fire time, so if it fired AFTER this
   // swap it would write the NEW doc's content — or, worse, be orphaned so the outgoing
@@ -19305,6 +19305,9 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   const assigned = !root.docId; ensureDocId(root);
   if (assigned) scheduleAutosave();                            // normalization #2: a freshly-assigned docId persists; final dirty state stays clean
   markClean();
+  // idea 5: restore a remembered zoom for this doc — but only if that point STILL EXISTS (the file
+  // may have changed on disk since we left). Guarded by nodeById; a missing/absent id stays at root.
+  if (restoreFocusId && nodeById(restoreFocusId)) focusedId = restoreFocusId;
   render();
 }
 
@@ -19461,6 +19464,17 @@ async function writeH(h) {
 const hasWorkspace = 'showDirectoryPicker' in window;
 let workspaceDir = null;   // the permission-granted FileSystemDirectoryHandle this session, or null
 let pendingDir = null;     // a rehydrated stored handle awaiting a re-permission gesture (→ 'reconnect')
+// Per-doc view state (idea 5): switching between folder docs used to drop you at root, fully
+// collapsed, scroll lost — strictly worse than a reload (which keeps focusedId). Collapse already
+// round-trips through OPML (_collapsed), so only zoom + scroll are lost; remember them per doc,
+// keyed by fileName. IN-MEMORY ONLY (session ergonomics, not file storage): a zoomed-node id
+// baked into a portable OPML that syncs to another machine — where the node may not exist — is a
+// hazard, not a feature. Restore is validity-guarded (the node must still exist).
+const docViewState = new Map();   // fileName → { focusedId, scrollY }
+function captureDocView(name) {
+  if (!name) return;
+  docViewState.set(name, { focusedId, scrollY: window.scrollY || 0 });   // the outline scrolls the window (cf. ensureRowVisible)
+}
 let workspaceFile = null;  // the current doc's FileSystemFileHandle within the folder, or null. Folder-backed ⇔ non-null (brief #4: continuous auto-write)
 let workspaceIndex = null; // CF-1: the in-memory cross-doc link/backlink index (buildWorkspaceIndex), or null when no workspace. NOT a _varsVer doc-cache — rebuilt on workspace/FS events, not per-edit.
 let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
@@ -20018,10 +20032,18 @@ async function switchWorkspaceDoc(name) {
     // Single-file (detached) doc with unsaved edits: no auto-save target, so still confirm.
     return false;
   }
+  captureDocView(fileName);   // idea 5: remember where we were in the OUTGOING doc before we swap it away
   try {
     const fh = await workspaceDir.getFileHandle(name);
     const file = await fh.getFile();
-    adoptDoc(fromOpml(await file.text()), { fileName: name, fileHandle: fh, workspaceFile: fh });
+    const saved = docViewState.get(name);
+    adoptDoc(fromOpml(await file.text()), { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId: saved?.focusedId ?? null });
+    // idea 5: restore the INCOMING doc's scroll after the render + height reconcile settle (the
+    // outline scrolls the window; reconcile runs on a rAF, so wait one frame past it). Best-effort:
+    // clamped to the document height so a shorter doc can't leave a blank scroll.
+    if (saved && saved.scrollY) requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.scrollTo(0, Math.min(saved.scrollY, Math.max(0, document.body.scrollHeight - window.innerHeight)));
+    }));
     _wsKnownModified = file.lastModified || 0;                  // sync-safety: anchor to the version we just read
     startWorkspaceWatch();                                      // sync-safety: watch the newly-open file
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
@@ -22777,7 +22799,12 @@ const GUIDE = [
   { id:'workspace-search', cat:'getting-around',
     title:'Searching all your documents',
     body:"When several documents are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your documents but can't remember which one. Matches from other documents appear in a 'Found in other documents' list; click one to jump straight there.",
-    examples:[] },
+    examples:[
+      { syn:'connect a folder', desc:'File → Connect folder: cross-document search turns on once a folder holds your notes' },
+      { syn:'type in the search box', desc:'matches in the current document filter it live, as always' },
+      { syn:'Found in other documents', desc:'a list below the outline of matches in your OTHER folder documents' },
+      { syn:'click a result', desc:'jumps straight to that point in the other document' },
+    ] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
     body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point (like #idea or #urgent) and it becomes a clickable tag. Nest tags with a slash to build a little hierarchy, like #thread/torn-letter under #thread: a search for the parent #thread rounds up every point under it, while #thread/torn-letter narrows to just that branch. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",
