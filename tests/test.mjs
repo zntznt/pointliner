@@ -9182,3 +9182,12 @@ test('textForDisplay: a heading/quote point with the DEFAULT type still labels p
   // plain text untouched
   assert.equal(c.textForDisplay(N('plain point', 'ul')), 'plain point');
 });
+
+// ── Schedule dialog trim (#418): a day-pick commits when the other field is empty ──
+test('Schedule dialog: calendar day-pick commits-and-closes for single-date points (#418)', () => {
+  assert.ok(_src.includes("dateField('Start', startInit, 'Start date', () => { if (!dueF.inp.value.trim()) save(); })"),
+    'a Start day-pick saves when Due is empty');
+  assert.ok(_src.includes("dateField('Due',   dueInit,   'Due date',   () => { if (!startF.inp.value.trim()) save(); })"),
+    'a Due day-pick saves when Start is empty (the one-day-bump path)');
+  assert.ok(_src.includes('if (onPicked) onPicked(ep);'), 'attachDateCalendar exposes the pick hook the dialog wires');
+});

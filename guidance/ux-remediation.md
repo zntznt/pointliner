@@ -1932,6 +1932,20 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### DATE-1 ◐ Schedule dialog: a day-pick commits-and-closes for single-date points (Fixes #418) (RESOLVED pending merge)
+- **Adjudicated (owner, 2026-07-09): the cheap trim, not the anchored popover.** The most common
+  date edit ("push this deadline a day") cost chip → day → Save, three interactions plus a modal
+  covering the point being rescheduled; the anchored-popover alternative was judged too much new
+  surface (focus-trap, touch-edge, second validation surface) for the win. The trim: picking a
+  calendar day now SAVES AND CLOSES when the OTHER date field is empty — the single-date case the
+  chips make frequent — while a point with both dates keeps the explicit Save (range edits stay
+  deliberate; nothing changes there). Mechanism: `attachDateCalendar` gains an `onPicked` hook;
+  each Schedule `dateField` wires it to `save()` gated on the sibling field being blank.
+- Verified live both ways: due-calendar day-pick with start empty → dialog closed, `due` written,
+  start untouched; day-pick on a start+due point → dialog stays open, model unchanged until Save.
+  The chip → dialog routing, keyboard paths (`/due:value`), and bulk-selection apply are untouched.
+- Recorded in the ux-discipline Dates row. 901 tests (+1 wiring pin).
+
 ### LBL-1 ◐ Label surfaces trusted node.type; raw "## " shown for flag-absent headings (Fixes #420) (RESOLVED pending merge)
 - **Adjudicated (owner, 2026-07-09): derive in `textForDisplay`, never trust the flag alone.** The
   render derives everything from the text (`mdToHtml` never reads `node.type`), but every label
