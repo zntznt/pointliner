@@ -1074,6 +1074,10 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .io-head .cmd-icon{width:30px;height:30px;font-size:14px}
 .io-title{font-size:14.5px;font-weight:600}
+/* #466: the dialog header ? that deep-links to the Concept guide (matches #sc-toggle's idiom) */
+.io-help{width:24px;height:24px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:var(--muted);background:var(--hbg);border:1px solid var(--bdr);border-radius:50%;cursor:pointer;transition:color .12s,border-color .12s}
+.io-help:hover{color:var(--fg);border-color:var(--acc)}
+.io-help:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .io-field{margin-bottom:11px}
 .io-field label{display:block;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}/* UXP-154: the one eyebrow recipe (DL §4) */
 .io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
@@ -6408,6 +6412,7 @@ function openFormulaDialog(node, lhs, kindLabel, disp) {
   const col1 = disp.c + 1;
   openInsertDialog({
     icon: { fa: 'fa-solid fa-calculator', fb: '=' },
+    guideId: 'math',   // #466
     title: `${kindLabel} formula for ${lhs}`,
     submitLabel: cur != null ? 'Save' : 'Set formula',
     fields: [{
@@ -8108,7 +8113,7 @@ function openPropsDialog(nodeId, targets = null) {
   setIcon(ic, PROPS_ICON);
   const ttl = document.createElement('div'); ttl.className = 'io-title';
   ttl.textContent = 'Properties';
-  head.append(ic, ttl); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, 'properties'); ioCard.appendChild(head);
 
   const list = document.createElement('div'); list.className = 'props-list';
   ioCard.appendChild(list);
@@ -8354,7 +8359,7 @@ function openDueDateDialog(nodeId, targets = null) {
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, DUE_ICON);
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Schedule';
-  head.append(ic, ttl); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, 'dates'); ioCard.appendChild(head);
 
   const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px;display:flex;flex-direction:column;gap:12px';
 
@@ -8448,6 +8453,7 @@ function openCheckDialog(nodeId, targets = null) {
   });
   openInsertDialog({
     icon: CHECK_ICON,
+    guideId: 'check',   // #466
     title: 'Check',
     submitLabel: 'Save',
     fields: [
@@ -8500,7 +8506,7 @@ function openAliasDialog(nodeId) {
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, ALIAS_ICON);
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Aliases';
-  head.append(ic, ttl); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, 'aliases'); ioCard.appendChild(head);
 
   const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px;display:flex;flex-direction:column;gap:8px';
   const lbl = document.createElement('div');
@@ -8584,7 +8590,7 @@ function openTemplatePicker(nodeId) {
   setIcon(ic, TEMPLATE_ICON);
   const ttl = document.createElement('div'); ttl.className = 'io-title';
   ttl.textContent = 'Stamp a template';
-  head.append(ic, ttl); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, 'template'); ioCard.appendChild(head);
 
   if (!list.length) {
     const empty = document.createElement('p');
@@ -8721,7 +8727,7 @@ function showBrokenLinksReport() {
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
   setIcon(ic, { fa: 'fa-solid fa-triangle-exclamation', fb: '⚠' });
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Broken links';
-  head.append(ic, ttl); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, 'broken-links'); ioCard.appendChild(head);
 
   const sub = document.createElement('p');
   sub.style.cssText = 'font-size:12px;color:var(--muted);margin:-2px 0 12px;line-height:1.5';
@@ -13535,12 +13541,30 @@ const MARKOV_CHIPS = [
 ];
 
 
+// A `?` help button for a dialog header (#466): deep-links to the Concept guide entry
+// `guideId`, so a dialog teaches the concept it edits. Appended to an `.io-head` (flex row);
+// margin-left:auto floats it to the right edge. Keyboard-operable (Enter/Space + click, the
+// pill-a11y kit), and it closes the dialog before opening the guide — the guide reuses ioCard,
+// and openGuide arms the chrome-return so Escape lands back where the caret was. No-op if no id.
+function dialogHelp(head, guideId) {
+  if (!guideId) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'io-help';
+  b.style.marginLeft = 'auto';
+  b.setAttribute('aria-label', 'Open the guide for this'); b.title = 'Open the guide for this';
+  b.textContent = '?';   // matches the app's existing #sc-toggle help affordance; subset-safe
+  const go = () => { closeIo(); openGuide(guideId); };
+  b.addEventListener('click', go);
+  b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  head.appendChild(b);
+}
+
 function openInsertDialog(opts) {
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, opts.icon);
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title;
-  head.append(ic, ttl); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, opts.guideId); ioCard.appendChild(head);
 
   const inputs = {};
   opts.fields.forEach((f, i) => {
@@ -13685,6 +13709,7 @@ function openDiceDialog({ title, submitLabel, expr = '', existing = null, onResu
   openInsertDialog({
     icon: { fa:'fa-solid fa-dice-d20', fb:'🎲' },
     title,
+    guideId: 'dice',   // #466
     submitLabel: submitLabel || 'Roll',
     fields: [
       { key:'expr', label:'Formula', placeholder:'e.g. 2d6+3  4d6kh3  2d6!  4dF', value: (expr || '').replace(/\s+/g,''), chips: DICE_CHIPS,
@@ -13706,6 +13731,7 @@ function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = ''
   openInsertDialog({
     icon: { fa:'fa-solid fa-circle-nodes', fb:'⛓' },
     title,
+    guideId: 'markov',   // #466
     submitLabel: submitLabel || 'Roll',
     fields: [
       { key:'def', label:'States & transitions', type:'textarea', rows:5, value:def, chips: MARKOV_CHIPS,
@@ -14971,6 +14997,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
   openInsertDialog({
     icon: tableFlavor ? { fa:'fa-solid fa-table-list', fb:'🎯' } : { fa:'fa-solid fa-shuffle', fb:'❖' },
     title,
+    guideId: 'grammar',   // #466
     submitLabel: submitLabel || 'Generate',
     fields: [
       { key:'def', label:'Rules (one per line: name: a | b | c)', type:'textarea', rows:6, value:def, chips: GRAMMAR_CHIPS,
@@ -15090,6 +15117,7 @@ function openOracleDialog({ onResult }) {
   ];
   openInsertDialog({
     icon: { fa: 'fa-solid fa-circle-question', fb: '🔮' },
+    guideId: 'oracle',   // #466
     title: 'Yes/No oracle',
     submitLabel: 'Insert',
     fields: [
@@ -16600,6 +16628,7 @@ function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
   openInsertDialog({
     icon: { fa: 'fa-solid fa-list-check', fb: '⇶' },
     title,
+    guideId: 'sequence',   // #466
     submitLabel,
     fields: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Flow, Pipeline, Review', value: name, required: true,
@@ -16670,6 +16699,7 @@ function parseQBaseCols(text) {
 function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: title', onResult }) {
   openInsertDialog({
     icon: { fa: 'fa-solid fa-magnifying-glass', fb: '\u{1F50D}' },
+    guideId: 'querybase',   // #466
     title, submitLabel,
     fields: [
       { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true,
@@ -16779,6 +16809,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
   openInsertDialog({
     icon: { fa:'fa-solid fa-calculator', fb:'🖩' },
     title,
+    guideId: 'math',   // #466
     submitLabel: submitLabel || 'Insert',
     fields: [
       {
@@ -16865,7 +16896,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, { fa:'fa-solid fa-dollar-sign', fb:'$' });
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = title;
-  head.append(ic, ttl); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, 'var'); ioCard.appendChild(head);   // #466
 
   // Known-variable picker (only when vars exist)
   let cardEls = [];
