@@ -456,6 +456,7 @@ body.v-lean .mt-promote:focus-visible{opacity:1}   /* keyboard focus still revea
 /* the zoomed point's note sits under the zoom title, pulled into the title's
    bottom-border gap so they read as one header block; its gutter mark starts at
    the container's left edge, aligned with the title's divider rule above */
+.zoom-ts-line{font-size:11px;color:var(--muted);margin:-8px 0 16px;letter-spacing:.01em}/* #467: created/edited metadata line in the zoom view */
 .zoom-note-row{display:flex;align-items:flex-start;margin:-12px 0 18px;padding-top:4px}
 .zoom-note-row>.note-mark{width:auto;margin:8px 7px 0 0}
 .zoom-note{flex:1;min-width:0}
@@ -1863,6 +1864,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>has:children</kbd><kbd>has:footnote</kbd><span>has sub-points / a footnote</span></div>
         <div class="sh-row"><kbd>has:link</kbd><kbd>has:backlink</kbd><kbd>is:broken</kbd><span>contains a link / is linked to (this document) / has a broken link</span></div>
         <div class="sh-row"><kbd>is:empty</kbd><kbd>is:orphan</kbd><kbd>is:duplicate-title</kbd><span>no text / nothing links to it / its title collides with another point</span></div>
+        <div class="sh-row"><kbd>is:recently-edited</kbd><span>changed in the last 48 hours (points remember when you last edited them)</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
         <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next 7 / 30 days, not overdue (add <code>| due:overdue</code> for both)</span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
@@ -2374,7 +2376,7 @@ function propDeclParts(body) {
   // a date/check/alias key routes through its own reserved writer, not the generic prop bag — so a
   // {prop due: friday} can't shadow the Schedule dialog's DATE_KEYS handling. Keep those out.
   const lk = key.toLowerCase();
-  if (DATE_KEYS.has(lk) || lk === CHECK_KEY || lk === ALIAS_KEY || lk === REPEAT_KEY) return null;
+  if (DATE_KEYS.has(lk) || lk === CHECK_KEY || lk === ALIAS_KEY || lk === REPEAT_KEY || TIMESTAMP_KEYS.has(lk)) return null;
   return { key, val: m[2].trim() };
 }
 
@@ -2894,6 +2896,37 @@ const ALIAS_KEY = 'aliases';
 // due/start roll forward by nextOccurrence and it re-opens. (rollForwardRepeat, below.)
 const REPEAT_KEY = 'repeat';
 
+// Reserved timestamp properties (#467): `created` is stamped once when a point first gets
+// text; `edited` is re-stamped whenever the point's OWN text/note changes (the exitEdit
+// commit chokepoint — NOT structural moves, NOT a child changing). Both hold a local ISO
+// datetime to the minute (YYYY-MM-DDTHH:MM). These are the FIRST app-MAINTAINED props (not
+// user-authored), so they are hidden from the generic Properties editor, cannot be forged via
+// a typed {prop …}, and a point with neither is "unknown" (never epoch 0). Round-trip via _props.
+const CREATED_KEY = 'created', EDITED_KEY = 'edited';
+const TIMESTAMP_KEYS = new Set([CREATED_KEY, EDITED_KEY]);
+// A local wall-clock ISO datetime to the minute. `d` is injectable for tests.
+function nowStamp(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+// Parse a stored timestamp to epoch-ms for sorting/compare, or null if absent/unparseable
+// (an unknown timestamp is NOT 0 — callers treat null as "sorts last / never recently-edited").
+function parseStamp(val) {
+  if (!val) return null;
+  const ms = Date.parse(String(val).trim());
+  return Number.isFinite(ms) ? ms : null;
+}
+// This point's `created` / `edited` timestamp epoch-ms, or null. (timestampOf(node, key))
+function timestampOf(node, key) {
+  const p = (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === key);
+  return p ? parseStamp(p.val) : null;
+}
+// The window `is:recently-edited` matches: the last 48 hours. `recentEditNow` is a seam so
+// the search core reads one clock (and tests can stub it via _recentEditNowOverride).
+const RECENT_EDIT_MS = 48 * 60 * 60 * 1000;
+let _recentEditNowOverride = null;
+function recentEditNow() { return _recentEditNowOverride ?? Date.now(); }
+
 // This point's `check` assertion string (the reserved property's value), or null.
 function checkExprOf(node) {
   const p = (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === CHECK_KEY);
@@ -2917,7 +2950,7 @@ function nodePropVars(node) {
   const out = Object.create(null);
   for (const p of (node?.props || [])) {
     const k = (p.key || '').trim().toLowerCase();
-    if (!k || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || DATE_KEYS.has(k)) continue;
+    if (!k || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || TIMESTAMP_KEYS.has(k) || DATE_KEYS.has(k)) continue;
     const n = Number(String(p.val).trim());
     if (Number.isFinite(n)) out[k] = n;
   }
@@ -3137,6 +3170,17 @@ function setDateProp(node, key, val) {
   const props = (node.props || []).filter(p => p.key.toLowerCase() !== key);
   if (val) props.push({ key, val });
   node.props = props;
+}
+
+// #467: stamp the point's timestamps. `created` is set only if absent (first content);
+// `edited` is always (re)set to now. Called from the exitEdit commit ONLY when the point's
+// own text/note actually changed — structural moves and child edits don't stamp. `now` is
+// injectable for tests. Pure (mutates node.props via setDateProp); no DOM.
+function stampEdit(node, now = nowStamp()) {
+  if (!node) return;
+  const has = k => (node.props || []).some(p => (p.key || '').trim().toLowerCase() === k);
+  if (!has(CREATED_KEY)) setDateProp(node, CREATED_KEY, now);
+  setDateProp(node, EDITED_KEY, now);
 }
 
 // Opted-in /-verbs that take a typed ":value" (the keyboard bridge that skips the
@@ -5939,6 +5983,10 @@ function render() {
       zpRow.append(zmark, buildPropsArea(vp));
       container.appendChild(zpRow);
     }
+    // #467: a muted created/edited line — the timestamps are surfaced here (not as always-on
+    // chips), so they're visible metadata without cluttering every point in the outline.
+    const tsLine = buildTimestampLine(vp);
+    if (tsLine) container.appendChild(tsLine);
     } // end non-table branch
   }
 
@@ -8185,6 +8233,7 @@ function commitNote(noteEl, node) {
   }
   pushUndo();
   node.note = next;
+  stampEdit(node); // #467: a note change is a content edit too
   markDirty();
   render();
 }
@@ -8213,6 +8262,7 @@ function buildPropsArea(node) {
   (node.props || []).forEach(({ key, val }) => {
     const propK = key.toLowerCase();
     if (propK === CHECK_KEY) return; // rendered as a pass/fail chip after the loop, not as raw text
+    if (TIMESTAMP_KEYS.has(propK)) return; // #467: app-maintained metadata, not shown as an always-on chip (surfaced in the zoom detail line)
     const chip = document.createElement('span');
     chip.className = 'prop-chip';
     chip.setAttribute('role', 'button');
@@ -8301,6 +8351,31 @@ function buildCheckChip(node) {
   return chip;
 }
 
+// #467: a muted "Created … · Edited …" line for the zoom detail view, or null if the point
+// carries neither timestamp (an old / never-edited point stays clean, not "unknown"). The
+// stored value is a local ISO datetime; we show the date, and the time only when it adds info.
+function buildTimestampLine(node) {
+  const get = k => (node?.props || []).find(p => (p.key || '').trim().toLowerCase() === k)?.val;
+  const created = get(CREATED_KEY), edited = get(EDITED_KEY);
+  if (!created && !edited) return null;
+  const parts = [];
+  if (created) parts.push('Created ' + formatStampDisplay(created));
+  // show Edited only when it differs from Created (an untouched-since-creation point is just "Created")
+  if (edited && edited !== created) parts.push('Edited ' + formatStampDisplay(edited));
+  const line = document.createElement('div');
+  line.className = 'zoom-ts-line';
+  line.textContent = parts.join(' · ');
+  return line;
+}
+// A stored ISO stamp → a readable "Jul 10, 2026, 2:32 PM"-ish label (locale-formatted).
+// Falls back to the raw value if it won't parse.
+function formatStampDisplay(val) {
+  const ms = parseStamp(val);
+  if (ms === null) return String(val);
+  const d = new Date(ms);
+  return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 // Full outline row: invisible gutter clones + the props-area.
 function buildPropsRow(node, opts = {}) {
   const row = document.createElement('div');
@@ -8331,7 +8406,7 @@ function openPropsDialog(nodeId, targets = null) {
   // aliases → Aliases dialog; repeat → Schedule dialog) are managed by their own
   // editors, not here — hide them from the generic editor and merge them back
   // untouched on save.
-  const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY;
+  const reserved = k => DATE_KEYS.has(k) || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || TIMESTAMP_KEYS.has(k);
   // bulk over many points: start blank — what you type is merged onto every point.
   // single point: prefill its own (non-reserved) props for editing.
   let props = applyList.length > 1 ? [{ key: '', val: '' }]
@@ -10067,7 +10142,7 @@ function parseSearchQuery(q) {
     // never feeds it to `new RegExp('...#'+value+'...')` — a ~32k tag exceeds V8's regex program
     // limit and throws mid-render(). (Adversarial pass, blast: crash.) The `else if` chain below
     // catches the fall-through; an over-long token becomes a plain text search, which is harmless.
-    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|held|pill|random|leaf|parent|collapsed|expanded|broken|empty|orphan|duplicate-title)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|held|pill|random|leaf|parent|collapsed|expanded|broken|empty|orphan|duplicate-title|recently-edited)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -10129,6 +10204,12 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
   }
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
+    // #467: recently-edited = the point's `edited` timestamp is within the last 48h. An
+    // unstamped point (unknown) never matches (null, not 0). Reads the wall clock like due:.
+    if (term.value === 'recently-edited') {
+      const ms = timestampOf(node, EDITED_KEY);
+      return ms !== null && (recentEditNow() - ms) <= RECENT_EDIT_MS;
+    }
     // UXP-113: has any date / is dateless — the "tasks I forgot to schedule" axis. Not
     // to-do-gated: any point with a valid due/start counts (mirrors the due:/start: readers).
     if (term.value === 'scheduled' || term.value === 'unscheduled') {
@@ -11314,6 +11395,10 @@ function exitEdit(content, node) {
     }
   }
   if (activeContentId === node.id) activeContentId = null;
+  // #467: stamp created/edited only when the point's own text actually changed (same signal
+  // recordTextEdit uses for undo). Structural moves + child edits never reach here, so they
+  // don't stamp — "edited" means "I changed what this point says".
+  if (node.text !== prevText) stampEdit(node);
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
   hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
@@ -22755,6 +22840,7 @@ const GUIDE = [
       { syn:'has:tag / is:broken',    desc:'carries any hashtag / contains a link whose target is gone' },
       { syn:'is:empty / is:orphan',   desc:'has no text (a blank stub) / nothing links to it' },
       { syn:'is:duplicate-title',     desc:'its title collides with another point (find accidental dupes)' },
+      { syn:'is:recently-edited',     desc:'changed in the last 48 hours' },
       { syn:'has:dice (math, est, grammar, markov, var, seq)', desc:'carries that kind of pill' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'key:>N / key:<=N',       desc:'numeric property compare (cost:>100, score:<=3.5)' },

@@ -212,6 +212,7 @@ export function loadCores() {
     'childPropNumber','aggregateChildren','expandAggExpr','countWords','subtreeWords',
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','resolveNodeScope','checkExprOf',
+    'nowStamp','parseStamp','timestampOf','stampEdit','formatStampDisplay',
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
