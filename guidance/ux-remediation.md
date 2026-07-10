@@ -1932,6 +1932,22 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### LBL-1 ◐ Label surfaces trusted node.type; raw "## " shown for flag-absent headings (Fixes #420) (RESOLVED pending merge)
+- **Adjudicated (owner, 2026-07-09): derive in `textForDisplay`, never trust the flag alone.** The
+  render derives everything from the text (`mdToHtml` never reads `node.type`), but every label
+  surface (`crumbLabel`/`displayTitle` breadcrumbs, Refile/Add-inbox tree pickers, backlink rows)
+  stripped block prefixes only when `node.type` matched — so a doc whose OPML carried no `_type`
+  (foreign tools, the embedded first-run Examples) showed "## Advanced" raw in the crumb while the
+  outline rendered "Advanced". Fixed with one derivation line after the flag check: strip
+  `BLOCK_PREFIX_MAP[deriveTypeFromText(t)]` with full parity. Chosen over normalize-on-load
+  because it never mutates user data and covers docs that skip the loader. Verified live: the
+  defect-shape node (`## Advanced`, type `ul`) labels "Advanced" in the breadcrumb and
+  `displayTitle`. Pinned (5 cases, incl. the hashtag-is-not-a-heading boundary).
+- **Also adjudicated this pass (owner, 2026-07-09): #390 CLOSED, decision stands** — the agenda
+  stays a vertical stack at every width; no responsive side-dock fork. The #389 ceiling + the
+  one-view-at-a-time switcher bound the cost the issue measured; the recorded fallback if it still
+  bites is a desktop pane max-height, not a sidebar.
+
 ### GLYPH-1 ◐ Glyph identities: template, progress, and Check get their own glyphs (Fixes #412 #413) (RESOLVED pending merge)
 - **The fleet's two DL §1 glyph findings, closed with a real subset rebuild** (the egress block
   UXP-170 hit is gone; `tools/build-fa-subset.py --check` resolved all 63, build + splice clean).
