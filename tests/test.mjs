@@ -9331,3 +9331,57 @@ test('renderMathPill wiring: builds the merged own-prop scope and uses it for bo
   assert.ok(/evalMath\(expr, scope\)/.test(fn), 'the fresh compute uses the merged scope');
   assert.ok(/mathErrorReason\(expr, scope, _varCycles\)/.test(fn), 'the error-reason path uses the SAME scope (or a prop-resolved expr shows a false #ERR reason)');
 });
+
+// ── #448 correctness hazards batch ───────────────────────────────────────────
+
+// Hazard 1: expandAggExpr must NOT capture the numeric-floor idiom max(hp, 10) / min(x, 5)
+// as a child-property rollup — only a KEYWORD scope marks a min/max rollup; a numeric 2nd
+// arg stays a variadic arg for evalMath. sum/avg/count keep the full scope incl. numeric depth.
+test('expandAggExpr — min/max numeric 2nd arg is a variadic arg, not a rollup scope (#448)', () => {
+  const mk = (cost) => ({ props: [{ key: 'cost', val: String(cost) }], children: [] });
+  const node = { props: [], children: [mk(3), mk(7), mk(5)] };
+  const ax = (e) => c.expandAggExpr(e, node);
+  // the bug: max(hp,10) was read as aggregate(prop=hp, scope=10). Must stay literal now.
+  assert.equal(ax('max(hp, 10)'), 'max(hp, 10)', 'numeric-floor max stays literal for evalMath');
+  assert.equal(ax('min(x, 5)'), 'min(x, 5)', 'numeric-floor min stays literal for evalMath');
+  assert.equal(c.evalMath(ax('max(hp, 10)'), { hp: 4 }), 10, 'evalMath computes the floor (hp<10)');
+  assert.equal(c.evalMath(ax('max(hp, 10)'), { hp: 99 }), 99, 'evalMath computes the floor (hp>10)');
+  // min/max rollups still work with 1 arg or a KEYWORD scope
+  assert.equal(ax('max(cost)'), '(7)', 'max(cost) still rolls up direct children');
+  assert.equal(ax('max(cost, subtree)'), '(7)', 'max(cost, subtree) still rolls up');
+  // sum/avg/count keep numeric depth (they are not evalMath fns → no collision)
+  assert.equal(ax('sum(cost)'), '(15)', 'sum(cost) rolls up');
+  assert.equal(ax('sum(cost, 2)'), '(15)', 'sum(cost, N) numeric depth still works');
+  assert.equal(ax('count(cost)'), '(3)', 'count(cost) rolls up');
+});
+
+// Hazard 2 (source pin): every array sidecar in fromOpml goes through arrAttr, which
+// Array-guards so a corrupt/hostile .opml carrying non-array JSON (_dice="{}") can't make
+// renderContentHTML throw on .find/.map. (DOM-coupled, so pinned at the source.)
+test('fromOpml — every array sidecar is Array-guarded via arrAttr (#448)', () => {
+  assert.ok(_src.includes('function arrAttr('), 'the arrAttr helper must exist');
+  assert.ok(/return Array\.isArray\(v\) \? v : \[\]/.test(_src), 'arrAttr must Array-guard the parsed value');
+  for (const key of ['footnotes', 'dice', 'markov', 'rolltable', 'math', 'vars', 'grammar', 'est', 'seq', 'query', 'props']) {
+    assert.ok(new RegExp(`${key}:\\s*arrAttr\\(el, '_${key === 'footnotes' ? 'footnotes' : key}'\\)`).test(_src)
+      || new RegExp(`${key}:\\s*arrAttr\\(el, '_\\w+'\\)`).test(_src),
+      `${key} sidecar must parse via arrAttr`);
+  }
+});
+
+// Hazard 3: applyRefold must not reattach the WRONG frozen roll to a surviving duplicate.
+// When identical sh appears N times in pairs but < N in the text (one was deleted while
+// editing), positional order is ambiguous → leave those {sh} to re-promote fresh.
+test('applyRefold — deleting one of two identical shorthands does not misattach a frozen roll (#448)', () => {
+  const pairs = [{ sh: '{2d6}', token: '[[dice:K1]]' }, { sh: '{2d6}', token: '[[dice:K2]]' }];
+  // both survive, unchanged: refold in order (no regression)
+  assert.equal(c.applyRefold('a {2d6} b {2d6} c', pairs), 'a [[dice:K1]] b [[dice:K2]] c');
+  // deleted the FIRST: the survivor must NOT silently become K1 — left as {2d6} to re-roll
+  assert.equal(c.applyRefold('a  b {2d6} c', pairs), 'a  b {2d6} c', 'ambiguous survivor re-rolls, never a wrong frozen roll');
+  // deleted the SECOND: likewise ambiguous → left to re-roll
+  assert.equal(c.applyRefold('a {2d6} b  c', pairs), 'a {2d6} b  c');
+  // DISTINCT shorthands are unaffected even when one is deleted
+  const p2 = [{ sh: '{2d6}', token: '[[dice:K1]]' }, { sh: '{1d20}', token: '[[dice:K2]]' }];
+  assert.equal(c.applyRefold('a  b {1d20} c', p2), 'a  b [[dice:K2]] c', 'distinct sh keeps its own frozen roll');
+  // single untouched shorthand still refolds (the common case)
+  assert.equal(c.applyRefold('x {2d6} y', [{ sh: '{2d6}', token: '[[dice:K1]]' }]), 'x [[dice:K1]] y');
+});
