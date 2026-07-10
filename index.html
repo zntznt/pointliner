@@ -7669,9 +7669,12 @@ function renderRow(r) {
     } else {
       // dwell before showing: sweeping the cursor across bullets shouldn't pop the menu
       // on each one. Only open after the cursor rests ~200ms; a mouseleave cancels it.
+      // Never hover-open while a point is being edited (#455): the menu positions over the
+      // content, so a cursor drifting into the gutter mid-type would cover your text and
+      // the "New point" row. The menu stays reachable by clicking the bullet or Shift+F10.
       bullet.addEventListener('mouseenter', () => {
         clearTimeout(bpopShowTimer);
-        bpopShowTimer = setTimeout(() => { if (!dragId) showBulletPopup(node.id, bullet); }, 200);
+        bpopShowTimer = setTimeout(() => { if (!dragId && activeContentId == null) showBulletPopup(node.id, bullet); }, 200);
       });
       bullet.addEventListener('mouseleave', () => { clearTimeout(bpopShowTimer); scheduleBpopHide(); });
     }
