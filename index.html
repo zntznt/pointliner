@@ -3465,6 +3465,13 @@ function renderContentHTML(node) {
   varRenderList     = null;
   grammarRenderList = null;
   seqRenderList     = null;
+  // #451: clear the two per-node render globals this block used to omit. queryRenderList is
+  // per-node context (→ null, like the sidecar lists); renderVarMap is POSITIONAL scope, so
+  // reset it to the document-wide map (its declared default), the value readers outside a
+  // node render expect. globalVarMap is DELIBERATELY left set — it's the document-wide map
+  // that search / check eval read outside render (see the save/restore note above).
+  queryRenderList   = null;
+  renderVarMap      = globalVarMap;
   cookieNode        = null;
   return html;
 }
