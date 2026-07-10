@@ -33,7 +33,10 @@ expression, and that value is **frozen** until re-rolled.
 - **MUST:** the rolled value is **frozen on the record** and returned by `collectVars` unchanged on
   every pass. It is re-rolled **only** by explicit user action (clicking the declaration pill), never
   on a render/`markDirty` pass — otherwise it would change on every keystroke and never be consistent.
-- **MUST NOT:** resolve the value through `evalMath` (it returns numbers; a pick value is text).
+- **MUST NOT:** resolve the value through `evalMath` (the pick SOURCE is grammar, not math, and
+  resolution never re-rolls). *Amended 2026-07-10 (PR #429):* the frozen value's **type** is now
+  number when the roll is a pure number (`{r := 1d20}` → `15`, not `"15"`), so a captured die can
+  be READ by math/conditionals; a text roll stays a string.
 
 ---
 
@@ -106,9 +109,12 @@ enumerates each; the requirements are:
 2. **Frozen value, never a surprise re-roll.** `collectVars` returns the stored value; the grammar
    engine runs only at declaration and on explicit re-roll. Re-roll bumps `markDirty` so all
    references recompute from the new frozen value.
-3. **Type-safe and fail-visible.** A pick value is **text**. Referencing it inside a *math*
-   expression does not compute — it must fail **visibly** (a marker / non-number display), never
-   silently. A broken/undefined reference shows the existing `var-undef` / `{name?}` treatment.
+3. **Type-safe and fail-visible.** A *text* pick value referenced inside a *math* expression
+   does not compute — it must fail **visibly** (a marker / non-number display), never silently.
+   A broken/undefined reference shows the existing `var-undef` / `{name?}` treatment.
+   *Amended 2026-07-10 (PR #429):* a pick whose frozen roll **is a pure number** resolves as a
+   number (`resolveVarDefs` coerces), so `{r := 1d20}` composes with conditionals and `{= …}` —
+   the contract protects text, it does not mislabel numbers.
 4. **Round-trips.** The record's new fields persist through OPML save **and** reload (add serialize
    *and* parse in the same change — the `_vars` sidecar rule). Verified by an actual save→reload.
 5. **Real-path verification gate** (not just engine unit tests — the #45/#51 lesson): declare a
@@ -155,7 +161,7 @@ enumerates each; the requirements are:
 
 **Still DEFERRED (do not build on spec):**
 - **Modifiers** (`a/an`, plural, capitalize) on a reference — a separable follow-up.
-- **Using a pick value in math** — out; pick values are text.
+- **Using a pick value in math** — ~~out; pick values are text~~ **SHIPPED for numeric rolls** (2026-07-10, PR #429): a pure-number roll resolves as a number; text picks stay out of math (fail visibly).
 - **Per-reference (non-global) re-roll** — out; the model is one value, all references update together.
 - **Random variables referencing other random variables** in deep chains — keep v1 to a pick whose
   source resolves through the grammar engine once; defer complex inter-pick dependency.
