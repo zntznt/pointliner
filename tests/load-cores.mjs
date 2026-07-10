@@ -120,6 +120,7 @@ export function loadCores() {
   sandbox.scrollTo = () => {};
   sandbox.scroll = () => {};
   sandbox.queueMicrotask = (f) => { try { f(); } catch {} };
+  sandbox.structuredClone = (v) => structuredClone(v);   // the app uses it (browsers >=2022); expose Node's into the vm realm
   sandbox.scrollX = 0;
   sandbox.scrollY = 0;
   sandbox.innerWidth = 1024;
@@ -189,7 +190,8 @@ export function loadCores() {
     'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
-    'deriveTypeFromText','isTaskFirst','todoDoneFromText','continuationPrefix',
+    'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix',
+    'cloneArtifactSidecars','mergeArtifactSidecars',
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates',
