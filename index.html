@@ -3646,10 +3646,17 @@ function resolveVarDefs(defs, pickVals, order) {
   });
   function resolve(name) {
     if (name in memo) return memo[name];
-    // Random pick: return the frozen rolled string as-is. The grammar engine ran
-    // at declaration / explicit re-roll time — resolution must never re-roll, or
-    // the value would change on every render pass.
-    if (name in pickVals) { memo[name] = pickVals[name]; resolved[name] = pickVals[name]; return memo[name]; }
+    // Random pick: return the frozen rolled value. The grammar engine ran at
+    // declaration / explicit re-roll time — resolution must never re-roll, or the
+    // value would change on every render pass. A roll that IS a number resolves as
+    // one, so a captured die ({r := 1d20}) composes with conditionals and math
+    // ({r == 20: …}, {= r + mod}); any other pick stays a string and fails math
+    // visibly (the type-safety contract is for text, not for numbers it mislabels).
+    if (name in pickVals) {
+      const s = pickVals[name];
+      const n = (typeof s === 'string' && s.trim() !== '' && Number.isFinite(Number(s))) ? Number(s) : s;
+      memo[name] = n; resolved[name] = n; return n;
+    }
     if (!(name in defs)) return undefined;
     const idx = stack.indexOf(name);
     if (idx !== -1) {                       // cycle: flag the whole loop, bail
@@ -15017,12 +15024,16 @@ function promoteBraceBody(node, body) {
     if (!varDeclIsPick(decl.expr)) {
       const rec = { key: varKey(), name: decl.name, expr: decl.expr, kind: undefined, rolled: undefined, typed: true };
       (node.vars ||= []).push(rec);
+      resetDocCaches();   // a later brace in this same promotion pass may read the fresh name
       return `[[var:${rec.key}]]`;
     }
     const rolled = rollPickSource(decl.expr);
     if (rolled !== null) {
       const rec = { key: varKey(), name: decl.name, kind: 'pick', expr: decl.expr, rolled, typed: true };
       (node.vars ||= []).push(rec);
+      // Without this, a conditional/grammar promoted right after ({r := 1d20} {r == 20: …})
+      // expands against the stale collectVars cache and freezes the unresolved marker.
+      resetDocCaches();
       return `[[var:${rec.key}]]`;
     }
     return null; // RHS resolves as neither math nor a pick source → stays literal (escape hatch)
@@ -15179,7 +15190,12 @@ function promoteInlineShorthand(node) {
         // token: a [[…]] pill token, OR '' for a sidecar write that leaves no inline trace ({prop …}
         // → a chip, not a pill), OR null = not promotable (keep the brace as literal text). So the
         // guard is "promoted at all" (!= null), not "truthy" — '' must count as consumed.
-        if (token != null) { out += token; i = j + 1; changed = true; continue; }
+        // Publish the partial rewrite NOW, not just at the end: a later brace in this same
+        // walk may expand through collectVars, which reads node.text for [[var:]] tokens —
+        // without this, {r := 1d20} {r == 20: …} freezes its first verdict as the
+        // unresolved marker because r's token isn't in the text yet (its cache reset in
+        // promoteBraceBody is not enough on its own).
+        if (token != null) { out += token; i = j + 1; changed = true; node.text = out + text.slice(i); continue; }
       }
     }
     out += text[i++];

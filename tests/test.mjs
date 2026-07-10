@@ -9121,3 +9121,50 @@ test('glyph identities: template/progress/check wear their own glyphs; deck and 
     assert.ok(new RegExp('\\.' + g + '::before\\{content:').test(_src), g + ' must have its ::before rule in the fa-embed style');
   }
 });
+
+// ── Numeric pick vars compose with math (the {r := 1d20} crit-check pattern) ──
+// A pick var freezes its roll as a string; when that string IS a number, collectVars
+// resolves it as one so conditionals and {= …} can test a captured die. Any other
+// pick stays a string and keeps failing math visibly (the type-safety contract).
+test('collectVars — a numeric pick roll resolves as a number, a text pick stays a string', () => {
+  const root = { id: 'root', text: '', children: [
+    { id: 'a', text: 'm [[var:k1]]', vars: [{ key: 'k1', name: 'mod', expr: '3', typed: true }], children: [] },
+    { id: 'b', text: 'r [[var:k2]]', vars: [{ key: 'k2', name: 'r', expr: '1d20', kind: 'pick', rolled: '15', typed: true }], children: [] },
+    { id: 'c', text: 'n [[var:k3]]', vars: [{ key: 'k3', name: 'npc', expr: 'Acme | Zenith', kind: 'pick', rolled: 'Acme', typed: true }], children: [] },
+  ] };
+  const vars = c.collectVars(root);
+  assert.equal(vars.r, 15);
+  assert.equal(typeof vars.r, 'number');
+  assert.equal(vars.npc, 'Acme');           // text picks are untouched
+  assert.equal(c.evalMath('r + mod', vars), 18);
+  assert.equal(c.evalMath('npc + 1', vars), null);   // strings still fail math visibly
+});
+
+test('conditional grammar — captured d20 crit/DC check expands through collectVars', () => {
+  const mk = (rolled) => c.collectVars({ id: 'root', text: '', children: [
+    { id: 'a', text: 'm [[var:k1]]', vars: [{ key: 'k1', name: 'mod', expr: '3', typed: true }], children: [] },
+    { id: 'b', text: 'r [[var:k2]]', vars: [{ key: 'k2', name: 'r', expr: '1d20', kind: 'pick', rolled, typed: true }], children: [] },
+  ] });
+  const tpl = '{r == 1: Critical failure!|{r == 20: Critical!|{r + mod >= 12: Success ({= r + mod})|Fail ({= r + mod})}}}';
+  const run = (rolled) => c.expandTemplate(tpl, { rules: {}, vars: mk(rolled), depth: 0, seen: new Set() });
+  assert.equal(run('1'), 'Critical failure!');
+  assert.equal(run('20'), 'Critical!');
+  assert.equal(run('8'), 'Fail (11)');
+  assert.equal(run('9'), 'Success (12)');
+  assert.equal(run('15'), 'Success (18)');
+});
+
+// Wiring pins for the same-pass promotion ordering ({r := 1d20} {r == 20: …}): the decl
+// branch must invalidate the collector cache AND the walk must publish the partially
+// promoted text before the next brace expands, or the conditional freezes its first
+// verdict as the unresolved marker. Behavior is browser-verified; these pin the wiring
+// (the promotion chain reads the module-level `root`, so it can't run against a test tree).
+test('typed var decl promotion — fresh name visible to later braces in the same pass', () => {
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const declBlock = src.slice(src.indexOf('function promoteBraceBody'), src.indexOf('// dice: {2d6}'));
+  assert.equal((declBlock.match(/resetDocCaches\(\)/g) || []).length, 2,
+    'both decl pushes (formula + pick) must reset the doc caches');
+  const walk = src.slice(src.indexOf('function promoteInlineShorthand'), src.indexOf('function promoteLoadedShorthand'));
+  assert.ok(walk.includes('node.text = out + text.slice(i); continue;'),
+    'the walk must publish the partial rewrite so collectVars sees the fresh [[var:]] token');
+});
