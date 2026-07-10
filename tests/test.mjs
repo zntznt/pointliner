@@ -4872,8 +4872,9 @@ test('user-guide drift: generating-text.md lists exactly the code MODIFIERS set'
 });
 
 test('user-guide drift: features.md lists every is: search operator from the code', () => {
-  // Canonical source: the is:(...) alternation in parseSearchQuery.
-  const m = _src.match(/is:\(([a-z|]+)\)/i);
+  // Canonical source: the is:(...) alternation in parseSearchQuery. Allow `-` so hyphenated
+  // operators (is:duplicate-title, #468) are captured, not truncated at the dash.
+  const m = _src.match(/is:\(([a-z|-]+)\)/i);
   assert.ok(m, 'is:(...) operator regex not found in index.html (parseSearchQuery changed?)');
   const codeOps = m[1].split('|');
   assert.ok(codeOps.length >= 3, `parsed too few is: operators: ${codeOps.join(',')}`);
@@ -9086,7 +9087,7 @@ test('inventory drift guard: every brace sniff in code has its token in the sect
 });
 
 test('inventory drift guard: the is: whitelist in parseSearchQuery matches the section 2 row (#408)', () => {
-  const m = _src.match(/\^is:\(([a-z|]+)\)\$/);
+  const m = _src.match(/\^is:\(([a-z|-]+)\)\$/);   // `-` so hyphenated ops (is:duplicate-title) match
   assert.ok(m, 'could not find the is: whitelist regex in parseSearchQuery — update this guard with the new shape');
   for (const kw of m[1].split('|')) {
     assert.ok(_inv.includes('`' + kw + '`'), `is:${kw} shipped in code but is missing from the section 2 Search-query row`);
@@ -9452,7 +9453,7 @@ test('query-pill memo is _varsVer-guarded and cleared on doc reset (#451 item 4)
     'the memo must guard on _varsVer (else it serves stale results after an edit)');
   assert.ok(/_queryPillCache\.set\(k, \{ ver: _varsVer, result \}\)/.test(_src),
     'the memo must stamp the current _varsVer');
-  assert.ok(/function resetDocCaches\(\) \{ _varsVer\+\+; _qbaseCache\.clear\(\); _queryPillCache\.clear\(\); \}/.test(_src),
+  assert.ok(fnBody(_src, 'resetDocCaches').includes('_queryPillCache.clear()'),
     'resetDocCaches must clear the query-pill cache on doc swap');
   // renderQueryPill must READ through the memo, not call queryRows directly anymore
   const rqp = _src.slice(_src.indexOf('function renderQueryPill'), _src.indexOf('function renderQueryPill') + 400);
@@ -9539,4 +9540,44 @@ test('olNum — ordinal from preceding ol siblings (#452)', () => {
   // olNum counts PRECEDING ol siblings by position, independent of the queried node's own type:
   // b (the ul at index 1) has one preceding ol (a), so it reports 2. It stops at the node, never counting it.
   assert.equal(c.olNum(b, parent), 2, 'preceding ol count is by position, independent of node type');
+});
+
+// #468: three hygiene is: operators — is:empty, is:orphan, is:duplicate-title.
+test('parseSearchQuery: is:empty / is:orphan / is:duplicate-title join the is: family (#468)', () => {
+  assert.deepEqual(host(c.parseSearchQuery('is:empty')),  [{ neg: false, kind: 'is', value: 'empty' }]);
+  assert.deepEqual(host(c.parseSearchQuery('is:orphan')), [{ neg: false, kind: 'is', value: 'orphan' }]);
+  assert.deepEqual(host(c.parseSearchQuery('is:duplicate-title')), [{ neg: false, kind: 'is', value: 'duplicate-title' }]);
+  assert.deepEqual(host(c.parseSearchQuery('-is:empty')), [{ neg: true, kind: 'is', value: 'empty' }]);
+});
+
+test('termMatchesNode: is:empty is true when the point reads blank (prefixes/markers stripped) (#468)', () => {
+  const term = { neg: false, kind: 'is', value: 'empty' };
+  assert.equal(c.termMatchesNode(term, c.mkNode(''),           [], {}), true,  'truly empty');
+  assert.equal(c.termMatchesNode(term, c.mkNode('   '),        [], {}), true,  'whitespace only');
+  assert.equal(c.termMatchesNode(term, c.mkNode('# '),         [], {}), true,  'bare heading prefix reads empty');
+  assert.equal(c.termMatchesNode(term, c.mkNode('- [ ] '),     [], {}), true,  'empty checkbox reads empty');
+  assert.equal(c.termMatchesNode(term, c.mkNode('# Title'),    [], {}), false, 'a titled heading is not empty');
+  assert.equal(c.termMatchesNode(term, c.mkNode('- [ ] task'), [], {}), false, 'a labelled task is not empty');
+});
+
+test('termMatchesNode: is:orphan is true when no backlinks point to the node (#468)', () => {
+  const term = { neg: false, kind: 'is', value: 'orphan' };
+  const linked   = { outgoing: {}, backlinks: { n1: ['n9'] }, broken: [] };
+  const orphaned = { outgoing: {}, backlinks: {},             broken: [] };
+  const n = c.mkNode('a point'); n.id = 'n1';
+  assert.equal(c.termMatchesNode(term, n, [], {}, linked),   false, 'has a backlink → not orphan');
+  assert.equal(c.termMatchesNode(term, n, [], {}, orphaned), true,  'no backlinks → orphan');
+});
+
+test('duplicateTitleIds: flags every colliding-title id, case-insensitive, empty titles never collide (#468)', () => {
+  const mk = (id, text) => { const n = c.mkNode(text); n.id = id; return n; };
+  const root = { id: 'r', children: [
+    mk('a', 'Draft'), mk('b', 'draft'),      // collide (case-insensitive)
+    mk('c', '# Draft'),                       // collides too (prefix stripped → "Draft")
+    mk('d', 'Unique'),                         // alone
+    mk('e', ''), mk('f', '   '),               // empty titles never collide
+  ] };
+  const dup = c.duplicateTitleIds(root);
+  const ids = [...dup].sort();
+  assert.deepEqual(ids, ['a', 'b', 'c'], 'the three "Draft" variants collide; unique + empties do not');
 });
