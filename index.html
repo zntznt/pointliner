@@ -19346,7 +19346,7 @@ const OPML_TYPE = { description:'Outline file', accept:{'text/x-opml':['.opml']}
 // App-wide prefs NOT touched (they survive a swap): showDone · showNotes ·
 // forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
 // agendaShowDone.
-function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null } = {}) {
+function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null, restoreFocusId = null } = {}) {
   // Cancel any pending debounced autosave from the OUTGOING doc. The timer closure reads
   // the module-level root/fileName/workspaceFile at fire time, so if it fired AFTER this
   // swap it would write the NEW doc's content — or, worse, be orphaned so the outgoing
@@ -19390,6 +19390,9 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   const assigned = !root.docId; ensureDocId(root);
   if (assigned) scheduleAutosave();                            // normalization #2: a freshly-assigned docId persists; final dirty state stays clean
   markClean();
+  // idea 5: restore a remembered zoom for this doc — but only if that point STILL EXISTS (the file
+  // may have changed on disk since we left). Guarded by nodeById; a missing/absent id stays at root.
+  if (restoreFocusId && nodeById(restoreFocusId)) focusedId = restoreFocusId;
   render();
 }
 
@@ -19430,11 +19433,35 @@ async function newFile() {
 // in folder mode (folder docs are renamed via the folder, not here). Returns nothing;
 // errors flash and leave the name unchanged.
 async function commitFileName(rawDisplay) {
-  if (workspaceDir) return;
   const trimmed = (rawDisplay || '').trim();
   if (!trimmed) return;                       // empty → keep the current name
   const next = toFileName(trimmed);
   if (next === fileName) return;              // unchanged
+
+  if (workspaceDir) {
+    // Folder-backed rename (idea 6a): the single-file path below always could; a connected folder
+    // used to bail here, silently stripping the ability to name docs. Move the file within the
+    // folder, collision-safe, then re-anchor + update every pointer that keys on the name (the
+    // reopen record, the open-tab strip, the cross-doc index). Bracketed in _wsSelfWriting so the
+    // sync observer ignores our own move (else it flags it external and loops).
+    if (!(hasFSA && workspaceFile && workspaceFile.move)) return;
+    const others = (await listWorkspaceNames(workspaceDir)).filter(n => n !== fileName);
+    const target = uniqueWorkspaceName(others, next);   // never clobber a sibling doc
+    _wsSelfWriting = true;
+    try { await workspaceFile.move(workspaceDir, target); }
+    catch (e) { flashError('Could not rename the file: ' + (e.message || e)); return; }
+    finally { _wsSelfWriting = false; }
+    const prevName = fileName;
+    fileName = target;
+    openTabs = openTabs.map(n => n === prevName ? target : n);   // keep the tab pointing at the renamed doc
+    await anchorWorkspaceFile();                                 // the moved handle's mtime is our new anchor
+    try { await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name: target }); } catch (_) {}  // reopen-on-load points at the new name
+    try { await idbSet(OPEN_TABS_KEY, openTabs); } catch (_) {}
+    renderFileName(); updateTitle(); renderWorkspaceAffordance(); refreshWorkspaceIndex();
+    flashHint('Renamed to “' + displayName(target) + '”');
+    return;
+  }
+
   if (hasFSA && fileHandle && fileHandle.move) {
     try { await fileHandle.move(next); } catch (e) { flashError('Could not rename the file: ' + (e.message || e)); return; }
   }
@@ -19546,6 +19573,17 @@ async function writeH(h) {
 const hasWorkspace = 'showDirectoryPicker' in window;
 let workspaceDir = null;   // the permission-granted FileSystemDirectoryHandle this session, or null
 let pendingDir = null;     // a rehydrated stored handle awaiting a re-permission gesture (→ 'reconnect')
+// Per-doc view state (idea 5): switching between folder docs used to drop you at root, fully
+// collapsed, scroll lost — strictly worse than a reload (which keeps focusedId). Collapse already
+// round-trips through OPML (_collapsed), so only zoom + scroll are lost; remember them per doc,
+// keyed by fileName. IN-MEMORY ONLY (session ergonomics, not file storage): a zoomed-node id
+// baked into a portable OPML that syncs to another machine — where the node may not exist — is a
+// hazard, not a feature. Restore is validity-guarded (the node must still exist).
+const docViewState = new Map();   // fileName → { focusedId, scrollY }
+function captureDocView(name) {
+  if (!name) return;
+  docViewState.set(name, { focusedId, scrollY: window.scrollY || 0 });   // the outline scrolls the window (cf. ensureRowVisible)
+}
 let workspaceFile = null;  // the current doc's FileSystemFileHandle within the folder, or null. Folder-backed ⇔ non-null (brief #4: continuous auto-write)
 let workspaceIndex = null; // CF-1: the in-memory cross-doc link/backlink index (buildWorkspaceIndex), or null when no workspace. NOT a _varsVer doc-cache — rebuilt on workspace/FS events, not per-edit.
 let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
@@ -20103,10 +20141,18 @@ async function switchWorkspaceDoc(name) {
     // Single-file (detached) doc with unsaved edits: no auto-save target, so still confirm.
     return false;
   }
+  captureDocView(fileName);   // idea 5: remember where we were in the OUTGOING doc before we swap it away
   try {
     const fh = await workspaceDir.getFileHandle(name);
     const file = await fh.getFile();
-    adoptDoc(fromOpml(await file.text()), { fileName: name, fileHandle: fh, workspaceFile: fh });
+    const saved = docViewState.get(name);
+    adoptDoc(fromOpml(await file.text()), { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId: saved?.focusedId ?? null });
+    // idea 5: restore the INCOMING doc's scroll after the render + height reconcile settle (the
+    // outline scrolls the window; reconcile runs on a rAF, so wait one frame past it). Best-effort:
+    // clamped to the document height so a shorter doc can't leave a blank scroll.
+    if (saved && saved.scrollY) requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.scrollTo(0, Math.min(saved.scrollY, Math.max(0, document.body.scrollHeight - window.innerHeight)));
+    }));
     _wsKnownModified = file.lastModified || 0;                  // sync-safety: anchor to the version we just read
     startWorkspaceWatch();                                      // sync-safety: watch the newly-open file
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
@@ -20125,8 +20171,24 @@ async function newWorkspaceDoc() {
     try { await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root))); markClean(); }
     catch (_) { if (!await openConfirmDialog({ title: 'Could not save this document', message: 'Saving the current document failed, so creating a new one would lose your recent edits. Continue anyway, or stay?', confirmLabel: 'Continue and lose edits', cancelLabel: 'Stay' })) return; }
   } else if (!workspaceFile && dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
+  // idea 6b: prompt for a name instead of auto-creating "outline.opml" (the single-file path lets
+  // you name; the folder path silently didn't, so every new folder doc was outline / outline-2). A
+  // blank name keeps the "outline" default, so pressing Enter is the old one-tap behavior, no worse.
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-plus', fb: '＋' },   // fa-plus is in the subset; fa-file-circle-plus is not
+    title: 'New document',
+    submitLabel: 'Create',
+    fields: [{ key: 'name', label: 'Document name', placeholder: 'outline', value: '' }],
+    onSubmit: v => createWorkspaceDocNamed(v.name),
+  });
+}
+
+// The actual folder-doc creation, given a chosen (possibly blank) name. Split out of
+// newWorkspaceDoc so the name prompt (6b) and any future caller share one collision-safe path.
+async function createWorkspaceDocNamed(rawName) {
   try {
-    const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), 'outline.opml');
+    const base = toFileName((rawName || '').trim() || 'outline');
+    const name = uniqueWorkspaceName(await listWorkspaceNames(workspaceDir), base);
     const fh = await workspaceDir.getFileHandle(name, { create: true });
     adoptDoc(mkRoot(), { fileName: name, fileHandle: fh, workspaceFile: fh });
     await writeH(fh);                                   // materialize the empty doc on disk (anchors via the atomic path)
@@ -20134,7 +20196,7 @@ async function newWorkspaceDoc() {
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });
     renderWorkspaceAffordance();
     refreshWorkspaceIndex();           // CF-1: a new doc joined the notebook
-    flashHint('New document “' + name + '” in the folder');
+    flashHint('New document “' + displayName(name) + '” in the folder');
   } catch (e) { degradeWorkspace('Could not create the document. The folder may be unavailable. Reconnect, or use Save as to keep your work.'); }
 }
 
@@ -22450,7 +22512,7 @@ document.getElementById('btn-restore')?.addEventListener('click', async () => { 
     const s = getSelection(); s.removeAllRanges(); s.addRange(r);
   };
   const begin = () => {
-    if (editing || workspaceDir) return;       // not renameable in folder mode
+    if (editing) return;                        // idea 6a: folder-mode is now renameable (commitFileName moves the file)
     editing = true;
     prevText = displayName(fileName) === 'Untitled' ? '' : displayName(fileName);
     fn.textContent = prevText;
@@ -22863,7 +22925,12 @@ const GUIDE = [
   { id:'workspace-search', cat:'getting-around',
     title:'Searching all your documents',
     body:"When several documents are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your documents but can't remember which one. Matches from other documents appear in a 'Found in other documents' list; click one to jump straight there.",
-    examples:[] },
+    examples:[
+      { syn:'connect a folder', desc:'File → Connect folder: cross-document search turns on once a folder holds your notes' },
+      { syn:'type in the search box', desc:'matches in the current document filter it live, as always' },
+      { syn:'Found in other documents', desc:'a list below the outline of matches in your OTHER folder documents' },
+      { syn:'click a result', desc:'jumps straight to that point in the other document' },
+    ] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
     body:"Label points by topic, status or project so related ones are easy to round up later. Type # followed by a word anywhere in a point (like #idea or #urgent) and it becomes a clickable tag. Nest tags with a slash to build a little hierarchy, like #thread/torn-letter under #thread: a search for the parent #thread rounds up every point under it, while #thread/torn-letter narrows to just that branch. As you type #, a menu lists tags you've already used with a count of how many points carry each, so you reuse #todo instead of drifting to #todos; arrow to one and press Enter, or keep typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every point that shares it.",

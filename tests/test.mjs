@@ -9888,3 +9888,47 @@ test('formatDateConcrete carries the day number for an unambiguous confirmation 
   assert.match(s, /\d/, 'always contains a day number (never a bare weekday)');
   assert.equal(s, 'Wed May 27', 'weekday + month + day for a normal future/near date');
 });
+
+// ── Per-doc view persistence (idea 5): remember zoom + scroll across doc switches ──
+test('doc view persistence: adoptDoc restores a remembered focus only if the node still exists', () => {
+  // the wiring: a docViewState Map, capture before switch, restoreFocusId passed to adoptDoc
+  // and guarded by nodeById (a stale id from a changed-on-disk file must NOT zoom into nothing).
+  assert.ok(_src.includes('const docViewState = new Map()'), 'the per-doc view store must exist');
+  assert.ok(/function captureDocView\(name\)/.test(_src), 'captureDocView records {focusedId, scrollY} for a doc');
+  assert.ok(/restoreFocusId && nodeById\(restoreFocusId\)\) focusedId = restoreFocusId/.test(_src), 'adoptDoc restores the zoom ONLY if the node still exists (validity-guarded)');
+  assert.ok(/captureDocView\(fileName\)/.test(_src), 'switchWorkspaceDoc captures the outgoing view before the swap');
+  assert.ok(/restoreFocusId: saved\?\.focusedId/.test(_src), 'the incoming doc restore id comes from its remembered view');
+  // scroll restore is clamped to the doc height (best-effort, after reconcile)
+  assert.ok(/Math\.min\(saved\.scrollY, Math\.max\(0, document\.body\.scrollHeight - window\.innerHeight\)\)/.test(_src), 'scroll restore is clamped to the doc height');
+  // in-memory only: no OPML attribute for view state (session ergonomics, not file storage)
+  assert.ok(!/_focusedId="|_viewFocus=|_scrollY=/.test(_src), 'view state must NOT be written into OPML (portable-file hazard)');
+});
+
+test('concept guide: the workspace-search entry now carries usage examples (idea 4 fill)', () => {
+  const entry = _src.slice(_src.indexOf("id:'workspace-search'"), _src.indexOf("id:'hashtags'"));
+  assert.ok(!/examples:\[\]/.test(entry), 'the workspace-search entry must not have empty examples');
+  assert.ok(/Found in other documents/.test(entry), 'it teaches the cross-doc results list');
+});
+
+// ── Folder-backed file naming (idea 6): rename + create-name ──
+test('folder rename (6a): commitFileName renames the folder file instead of bailing', () => {
+  const fn = _src.slice(_src.indexOf('async function commitFileName'), _src.indexOf('async function commitFileName') + 1900);
+  assert.ok(!/^async function commitFileName\(rawDisplay\) \{\s*if \(workspaceDir\) return;/.test(fn.replace(/\n\s*/g, ' ')) , 'the workspaceDir bail-out guard must be gone');
+  assert.ok(/if \(workspaceDir\) \{/.test(fn), 'a folder-aware rename branch must exist');
+  assert.ok(/workspaceFile\.move\(workspaceDir, target\)/.test(fn), 'it must move() the file within the folder');
+  assert.ok(/uniqueWorkspaceName\(others, next\)/.test(fn), 'the rename target is collision-safe against sibling docs');
+  assert.ok(/_wsSelfWriting = true;[\s\S]*_wsSelfWriting = false/.test(fn), 'the move is bracketed in _wsSelfWriting so the sync observer ignores it');
+  assert.ok(/idbSet\(WORKSPACE_KEY, \{ dir: workspaceDir, name: target \}\)/.test(fn), 'the reopen-on-load pointer updates to the new name');
+  assert.ok(/openTabs = openTabs\.map\(n => n === prevName \? target : n\)/.test(fn), 'the open-tab strip follows the rename');
+  // the inline-rename begin() no longer blocks folder mode
+  assert.ok(_src.includes('if (editing) return;') && !/if \(editing \|\| workspaceDir\) return;/.test(_src), 'begin() must not bail on folder mode anymore');
+});
+
+test('folder create-name (6b): newWorkspaceDoc prompts for a name, blank keeps the default', () => {
+  const fn = _src.slice(_src.indexOf('async function newWorkspaceDoc'), _src.indexOf('async function newWorkspaceDoc') + 1700);
+  assert.ok(/openInsertDialog\(\{[\s\S]*title: 'New document'/.test(fn), 'it must open a name prompt, not auto-create');
+  assert.ok(/onSubmit: v => createWorkspaceDocNamed\(v\.name\)/.test(fn), 'submit routes the chosen name to the create helper');
+  const helper = _src.slice(_src.indexOf('async function createWorkspaceDocNamed'), _src.indexOf('async function createWorkspaceDocNamed') + 900);
+  assert.ok(/toFileName\(\(rawName \|\| ''\)\.trim\(\) \|\| 'outline'\)/.test(helper), 'a blank name falls back to the outline default (Enter = old one-tap behavior)');
+  assert.ok(/uniqueWorkspaceName\(await listWorkspaceNames\(workspaceDir\), base\)/.test(helper), 'the create is still collision-safe');
+});
