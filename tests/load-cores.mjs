@@ -211,7 +211,7 @@ export function loadCores() {
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
     'childPropNumber','aggregateChildren','expandAggExpr','countWords','subtreeWords',
     'resolveScopeDepth','collectScoped',
-    'evalCheck','nodePropVars','checkExprOf',
+    'evalCheck','nodePropVars','resolveNodeScope','checkExprOf',
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',

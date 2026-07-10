@@ -6061,6 +6061,80 @@ test('nodePropVars: numeric own props only — skips dates, the check key, and n
   assert.deepEqual(host(c.nodePropVars(n)), { budget: 100, hours: 8 });
 });
 
+// ─── ancestor-property inheritance (#461) — resolveNodeScope ────────────────────
+const propNode = (title, props = {}) => {
+  const n = c.mkNode(title);
+  for (const [k, v] of Object.entries(props)) n.props.push({ key: k, val: String(v) });
+  return n;
+};
+test('resolveNodeScope: own props win, then nearest ancestor, then farther, then doc vars', () => {
+  // nodePropVars lowercases keys (evalMath ident lookup is case-insensitive), so scope keys are lc
+  const doc = { str: 1, dex: 1, luck: 1 };
+  const grandparent = propNode('Party',     { STR: 5, LUCK: 9 });
+  const parent      = propNode('Character',  { STR: 14 });          // nearer than grandparent
+  const node        = propNode('Scene',      { DEX: 20 });          // own
+  // ancestors are nearest-first: [parent, grandparent]
+  const scope = host(c.resolveNodeScope(node, [parent, grandparent], doc));
+  assert.equal(scope.dex,  20, 'own prop wins');
+  assert.equal(scope.str,  14, 'nearest ancestor (Character) beats the farther one (Party)');
+  assert.equal(scope.luck, 9,  'a prop only a farther ancestor has still inherits');
+  // the real user path: a {= STR + 2} pill resolves case-insensitively against the inherited str:14
+  assert.equal(c.evalMath('STR + 2', scope), 16, '{= STR + 2} on a scene under STR:14 reads 16');
+});
+test('resolveNodeScope: empty ancestors == own-node-only scope (#460 unchanged)', () => {
+  const doc = { budget: 100 };
+  const node = propNode('P', { budget: 50, hours: 6 });
+  const own = host(c.resolveNodeScope(node, [], doc));
+  assert.deepEqual(own, { budget: 50, hours: 6 }, 'no ancestors → doc vars then own props, exactly #460');
+  // a missing/undefined ancestors list is treated as empty, never throws
+  assert.deepEqual(host(c.resolveNodeScope(node, undefined, doc)), { budget: 50, hours: 6 });
+});
+test('resolveNodeScope: only numeric props inherit (nodePropVars filter applies up the chain)', () => {
+  const parent = propNode('Character', { STR: 14, name: 'Bram', due: '2026-01-01' });
+  const node = propNode('Scene');
+  const scope = host(c.resolveNodeScope(node, [parent], {}));
+  assert.deepEqual(scope, { str: 14 }, 'text + date ancestor props do not become variables (keys lowercased)');
+});
+test('evalCheck: a check inherits ancestor props (parity with the math pill, #461)', () => {
+  // a scene under a STR:14 character; the check references STR with no own STR
+  const parent = propNode('Character', { STR: 14 });
+  const scene = mkCheckNode('STR >= 10', {});
+  assert.equal(c.evalCheck(scene, {}, [parent]), 'pass', 'STR resolves from the ancestor');
+  assert.equal(c.evalCheck(scene, {}, []), 'error', 'without ancestors STR is unresolved (own-node #460)');
+});
+
+// The two DOM-render scope sites (math pill + check chip) must feed resolveNodeScope the
+// ancestor chain; the pure query-base / search sites deliberately stay own-node (boundary).
+test('ancestor inheritance is wired at the math pill + check chip, own-node at the query base (#461)', () => {
+  // renderMathPill builds its scope through resolveNodeScope with ancestorsOf(cookieNode)
+  assert.ok(/resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), renderVarMap\)/.test(_src),
+    'math pill scope inherits via resolveNodeScope + ancestorsOf');
+  // buildCheckChip passes ancestorsOf(node) to evalCheck
+  assert.ok(/evalCheck\(node, globalVarMap, ancestorsOf\(node\)\)/.test(_src),
+    'check chip verdict inherits ancestor props');
+  // the query-base row engine stays own-node (documented boundary): still the bare merge
+  assert.ok(/const scope = Object\.assign\(Object\.create\(null\), vars, nodePropVars\(n\)\)/.test(_src),
+    'query base = expr cell stays own-node in v1 (rows come from a search, not a subtree)');
+  // ancestorsOf stops at root (config-only) and is nearest-first
+  const anc = fnBody(_src, 'ancestorsOf');
+  assert.ok(/while \(p && p !== root\)/.test(anc), 'ancestorsOf walks up, excluding the root config node');
+  // PROMOTION parity (#461): a {= } shorthand must validate against the inherited scope, or a
+  // pill resolving only via an own/ancestor prop stays raw text instead of promoting.
+  const pb = fnBody(_src, 'promoteBraceBody');
+  assert.ok(/makeMathResult\(body\.slice\(1\)\.trim\(\), resolveNodeScope\(node, ancestorsOf\(node\), collectVars\(\)\)\)/.test(pb),
+    'promoteBraceBody validates {= } against the node inherited scope, so an ancestor-prop pill promotes');
+  // makeMathResult accepts a scope to validate against (default = doc vars for pure/test callers)
+  const mm = fnBody(_src, 'makeMathResult');
+  assert.ok(/scope \|\| collectVars\(\)/.test(mm), 'makeMathResult validates against the passed scope, falling back to doc vars');
+});
+
+test('makeMathResult: an ancestor-prop expr promotes when given the inherited scope (#461)', () => {
+  // without STR in scope → no pill (stays raw); WITH an inherited str:14 → a valid math record
+  assert.equal(c.makeMathResult('STR + 2', {}), null, 'STR unknown → not promotable');
+  const rec = c.makeMathResult('STR + 2', { str: 14 });
+  assert.ok(rec && rec.expr === 'STR + 2', 'inherited str:14 makes {= STR + 2} a valid pill at creation');
+});
+
 test('checkExprOf: returns the trimmed assertion or null', () => {
   assert.equal(c.checkExprOf(mkCheckNode('sum(cost) <= budget', { budget: 1 })), 'sum(cost) <= budget');
   assert.equal(c.checkExprOf(c.mkNode('plain')), null);
@@ -9477,9 +9551,10 @@ test('math pill scope: a node own numeric prop resolves in {= }, own props win o
   assert.equal(c.evalMath('hp', empty), 3, 'no own props → doc var stands, nothing moves');
 });
 
-test('renderMathPill wiring: builds the merged own-prop scope and uses it for both compute and error reason (backlog A)', () => {
+test('renderMathPill wiring: builds the merged own+ancestor scope and uses it for both compute and error reason (backlog A / #461)', () => {
   const fn = _src.slice(_src.indexOf('function renderMathPill'), _src.indexOf('function renderMathPill') + 1700);
-  assert.ok(/const scope = Object\.assign\(Object\.create\(null\), renderVarMap, nodePropVars\(cookieNode\)\)/.test(fn), 'the pill must merge own props over renderVarMap');
+  // #461: the merge now flows through resolveNodeScope with the ancestor chain (own props still win)
+  assert.ok(/const scope = resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), renderVarMap\)/.test(fn), 'the pill scope inherits ancestor props via resolveNodeScope (own props win last)');
   assert.ok(/evalMath\(expr, scope\)/.test(fn), 'the fresh compute uses the merged scope');
   assert.ok(/mathErrorReason\(expr, scope, _varCycles\)/.test(fn), 'the error-reason path uses the SAME scope (or a prop-resolved expr shows a false #ERR reason)');
 });
