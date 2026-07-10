@@ -1412,8 +1412,16 @@ body.agg-resizing{cursor:col-resize;user-select:none}
    (the +N-more expander reveals overflow); the grid itself never grows past this box. */
 .agc-grid{position:relative;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(6,1fr);gap:2px;height:min(52vh,360px)}
 .agc-week{display:contents}
-.agc-cell{min-height:0;min-width:0;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default;overflow:hidden}
+.agc-cell{position:relative;min-height:0;min-width:0;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default;overflow:hidden}
 .agc-cell:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
+/* #463: the "add a point due this day" affordance — top-left of the cell, hover-revealed on
+   desktop (opacity), always shown on touch (no hover). A real button, focus-visible. */
+.agc-add{position:absolute;top:2px;left:2px;width:16px;height:16px;padding:0;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;font-weight:600;color:var(--muted);background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-xs);cursor:pointer;opacity:0;transition:opacity .1s,color .1s,border-color .1s;z-index:3}
+.agc-cell:hover .agc-add,.agc-add:focus-visible{opacity:1}
+.agc-add:hover{color:var(--acc);border-color:var(--acc)}
+.agc-add:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.agc-cell.agd-expanded .agc-add{display:none}/* a fully-expanded day is a list to read, not a target */
+@media(hover:none){.agc-add{opacity:1;width:20px;height:20px}}
 .agc-cell.oom{background:color-mix(in srgb,var(--fg) 1.5%,transparent)}/* UXP-173: recess an out-of-month cell by role (a fainter background), not by fading its point chips under the floor (DL §3) */
 .agc-cell.oom .agc-dom{opacity:.6}/* the day number dims for out-of-month; the item chips stay full-contrast */
 .agc-cell.today{background:color-mix(in srgb,var(--acc) 9%,transparent);outline:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
@@ -21561,6 +21569,26 @@ let _agExpandedDay = null;
 // items active-first into a flex region that CLIPS overflow (CSS), then let layout tell us
 // whether anything got cut: if it did, we swap in a "+N more" expander. No magic per-cell
 // limit — whatever fits, fits, at any cell size. Expanding removes the clip (agd-expanded).
+// #463: create a new point on the current inbox, due on `epochDay`, then zoom into the inbox
+// and focus the new point to title it — the agenda strip stays open. Reuses the shipped cores
+// (resolveInbox / mkNode / setDateProp) exactly like the capture flow; `due` is the default
+// (a deadline is the common planner intent). No inbox → the same P4 guidance capture shows.
+function createDatedPointOnInbox(epochDay) {
+  const inbox = resolveInbox();
+  if (!inbox) { flashHint('Set a point as your inbox first (a point’s bullet menu → Set as inbox).'); return; }
+  pushUndo();
+  const n = mkNode('');
+  setDateProp(n, 'due', formatEpochDays(epochDay));
+  if (inbox.collapsed) inbox.collapsed = false;
+  inbox.children.push(n);
+  nodeMap.set(n.id, n); parentMap.set(n.id, inbox);
+  markDirty();
+  zoomInto(inbox.id);          // render() commits; keeps the agenda strip open (it's a toolbar strip)
+  focusNode(n.id);             // land the caret in the new point to title it
+  if (agendaOpen) renderAgenda();
+  flashHint('Added a point due ' + formatDueDate(epochDay).label + ' to ' + crumbLabel(inbox) + '. Type its title.');
+}
+
 function fillAgendaDay(box, epochDay, items, mkItem, { repaint, expandable = true }) {
   const { ordered, todo, done } = agendaDayStats(items);
   const expanded = expandable && _agExpandedDay === epochDay;
@@ -21812,6 +21840,22 @@ function renderAgendaCalendar(host, visible, totalDated) {
       const dom = document.createElement('span'); dom.className = 'agc-dom'; dom.textContent = String(cell.dom);
       dom.setAttribute('aria-hidden', 'true');
       c.appendChild(dom);
+
+      // #463: an in-month cell carries a `+` to create a point due that day on the inbox. It's a
+      // real button (not overloading the cell's expand/nav), hover-revealed on desktop + always
+      // shown on touch (the .agc-add CSS), keyboard-reachable. Side months are inert (they switch
+      // month on click), so no `+` there. mousedown+preventDefault keeps the caret invariant.
+      if (cell.inMonth && !side) {
+        const add = document.createElement('button');
+        add.type = 'button'; add.className = 'agc-add';
+        add.textContent = '+';
+        add.setAttribute('aria-label', 'Add a point due ' + cellLabel.split(',').slice(0, 2).join(','));
+        add.title = 'Add a point due this day';
+        const ep = cell.epochDay;
+        add.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); createDatedPointOnInbox(ep); });
+        add.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); createDatedPointOnInbox(ep); } });
+        c.appendChild(add);
+      }
 
       // Side months: items still render but are inert, so clicking anywhere on the month
       // (cell or chip) switches to that month rather than zooming an item or expanding a day.
