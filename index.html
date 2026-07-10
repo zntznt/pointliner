@@ -8172,11 +8172,11 @@ function buildDatePicker(opts) {
 // Wire an inline calendar to a date text input. The calendar lives in `host` and
 // shows while host has focus AND isDate() is true; picking writes the ISO date to
 // the input (firing 'input' so the field's own listeners update) and refocuses it.
-function attachDateCalendar(input, host, isDate) {
+function attachDateCalendar(input, host, isDate, onPicked) {
   isDate = isDate || (() => true);
   const picker = buildDatePicker({
     initialEpoch: parseDueDate(input.value.trim()),
-    onPick: ep => { input.value = formatEpochDays(ep); input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); },
+    onPick: ep => { input.value = formatEpochDays(ep); input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); if (onPicked) onPicked(ep); },
     onEscape: () => input.focus(),
   });
   host.appendChild(picker.el);
@@ -8224,7 +8224,7 @@ function openDueDateDialog(nodeId, targets = null) {
   const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px;display:flex;flex-direction:column;gap:12px';
 
   // One labelled date field with a live preview. Returns { inp, valid() }.
-  function dateField(labelText, initVal, ariaLabel) {
+  function dateField(labelText, initVal, ariaLabel, onDayPick) {
     const f = document.createElement('div');
     const lbl = document.createElement('div');
     lbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px';
@@ -8250,12 +8250,16 @@ function openDueDateDialog(nodeId, targets = null) {
     updatePreview();
     f.append(lbl, inp, preview);
     // inline calendar — always a date field here, so isDate is implicitly true
-    attachDateCalendar(inp, f);
+    attachDateCalendar(inp, f, null, onDayPick);
     return { f, inp, valid: () => { const v = inp.value.trim(); return !v || parseDueDate(v) !== null; } };
   }
 
-  const startF = dateField('Start', startInit, 'Start date');
-  const dueF   = dateField('Due',   dueInit,   'Due date');
+  // #418 (owner-adjudicated trim): picking a calendar day COMMITS-AND-CLOSES when the
+  // OTHER field is empty — the common single-date case ("push this deadline a day") drops
+  // from chip → day → Save to chip → day. With both dates in play (a range), a day-pick
+  // only writes the field, exactly as before, so range editing keeps its explicit Save.
+  const startF = dateField('Start', startInit, 'Start date', () => { if (!dueF.inp.value.trim()) save(); });
+  const dueF   = dateField('Due',   dueInit,   'Due date',   () => { if (!startF.inp.value.trim()) save(); });
   wrap.append(startF.f, dueF.f); ioCard.appendChild(wrap);
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
