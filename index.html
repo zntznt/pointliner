@@ -1468,6 +1468,15 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 #storage-warn button:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
 #storage-warn-close{opacity:.8;font-size:13px;flex-shrink:0;user-select:none;color:inherit;font-family:inherit} /* banner ink stays inherited on the tinted warn surface */
 #storage-warn-close:hover{opacity:1}
+/* Touch: the banner is the first screen a fresh phone user meets, and its "Start a blank
+   outline" / Save button (23px) and the ✕ (20px) were the ONLY controls the hover:none
+   enlargement pass never reached (guardrail 5). Lift each to the 44px hit floor: the buttons
+   grow their own box, the ✕ gets the invisible ::after overlay (its glyph stays small). */
+@media(hover:none){
+  #storage-warn button{min-height:36px;padding:8px 12px}
+  #storage-warn-close{position:relative;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}
+  #storage-warn-close::after{content:'';position:absolute;inset:-6px}
+}
 /* Phone width: the no-wrap shrink-to-fit flex row would squeeze the message to one
    word per line beside the fixed-width buttons. Span the viewport (minus the 12px
    gutters), give the message the full first row, and wrap the buttons below it. */
@@ -9331,6 +9340,12 @@ function captureAddInbox() {
     searchAria: 'Search for an inbox point',
     listAria: 'Inbox candidates',
     onPick: it => {
+      // If this point is ALREADY an inbox, re-selecting it must retarget capture to its
+      // existing slot, not append a duplicate (mobile-neophyte review: the picker computed
+      // length+1 unconditionally, so a re-pick produced inboxes == [id, id]). The bullet-menu
+      // Set-as-inbox path already guards via inboxSlotOf; match it here.
+      const existing = inboxSlotOf(it.id);
+      if (existing) { captureSlot = existing; back(); return; }
       const slot = (root.inboxes || []).length + 1;
       if (slot <= MAX_INBOXES) { setInboxSlot(slot, it.id); captureSlot = slot; }
       back();
