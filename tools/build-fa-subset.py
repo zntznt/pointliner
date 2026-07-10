@@ -56,6 +56,10 @@ ICONS = [
     "book", "triangle-exclamation", "xmark", "arrow-right-arrow-left",
     # file-ops UX (2026-06-30): distinct icons for connect / disconnect / save-as
     "folder-plus", "folder-minus", "copy",
+    # glyph identities (2026-07-09, #412/#413): template, progress, and the Check verb
+    # each get their OWN glyph (fa-clone stays deck-only; fa-circle-half-stroke stays
+    # theme-only; the check family stays the task pair's)
+    "stamp", "bars-progress", "clipboard-check",
 ]
 
 # Some icons are used in BOTH solid and regular in the app. The font subset must

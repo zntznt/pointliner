@@ -1932,6 +1932,28 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### GLYPH-1 ◐ Glyph identities: template, progress, and Check get their own glyphs (Fixes #412 #413) (RESOLVED pending merge)
+- **The fleet's two DL §1 glyph findings, closed with a real subset rebuild** (the egress block
+  UXP-170 hit is gone; `tools/build-fa-subset.py --check` resolved all 63, build + splice clean).
+- **#412: one glyph carried two unrelated concepts, twice.** `fa-clone` was deck AND both template
+  verbs (+ `TEMPLATE_ICON`, so the picker/save-dialog/bullet-row too); `fa-circle-half-stroke` was
+  theme AND the Progress door. The recorded identities keep their glyphs (deck = `fa-clone`,
+  theme = `fa-circle-half-stroke`); **template → `fa-stamp`** (the stamp-a-copy verb) and
+  **progress → `fa-bars-progress`**, updated at every referencing surface so door, dialog, and
+  keyboard row agree.
+- **#413: three check-family glyphs clustered in the one / menu** (To-do `fa-regular
+  fa-square-check`, DONE `fa-solid fa-square-check`, Check `fa-solid fa-circle-check`). The task
+  pair keeps its checkbox family (unchecked/checked ends of one concept, defensible); the **Check
+  verb → `fa-clipboard-check`** (a pass/fail assertion), `CHECK_ICON` updated so the dialog +
+  bullet-menu row agree. The file-menu's saved-status `fa-circle-check` is a success cue — a
+  different concept — and stays.
+- All three identities recorded in design-language §1 beside the fa-left-right precedent. The
+  subset gains 3 glyphs (63 total); `ICONS` in the build script is the source of truth.
+- **Verified painting (the step the workflow says never to skip):** all three new glyphs render
+  the real FA font at non-zero width after `fonts.ready`, and the pre-existing identities
+  (clone/half-stroke/square-check/d20/check/book) survived the rebuild.
+- 896 tests (+1: the four identities + FA_GLYPHS/::before presence pinned).
+
 ### CSS-1 ◐ CSS consistency batch: nine token/recipe drifts (Fixes #395 #396 #397 #398 #399 #400 #410 #411 #414) (RESOLVED pending merge)
 - **The fleet's CSS cluster, closed in one CSS-only pass** (plus drift-guard pins). Worst first:
 - **#395 (major): the / and @ menu's SELECTED row painted its accent icon tile at 1.62:1 dark /

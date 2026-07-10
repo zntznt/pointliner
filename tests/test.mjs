@@ -9104,3 +9104,20 @@ test('menu/table/strip CSS conformance pins (fleet CSS batch)', () => {
   assert.ok(/\.agg-tick\{[^}]*text-transform:uppercase;letter-spacing:\.07em/.test(_src), '.agg-tick earns 10px only via the caps-eyebrow exemption');
   assert.ok(!/\.sc-or\{[^}]*opacity/.test(_src), 'no opacity fade on muted ink (de-emphasis is by role)');
 });
+
+// ── Glyph identities (#412/#413): one glyph, one concept ──
+test('glyph identities: template/progress/check wear their own glyphs; deck and theme keep theirs (#412/#413)', () => {
+  assert.ok(/id:'template',[^}]*fa-stamp/.test(_src), 'template is fa-stamp (stamp-a-copy)');
+  assert.ok(/id:'savetemplate',[^}]*fa-stamp/.test(_src), 'savetemplate matches template');
+  assert.ok(_src.includes("const TEMPLATE_ICON = { fa: 'fa-solid fa-stamp'"), 'TEMPLATE_ICON (picker + save dialog + bullet row) agrees with the door');
+  assert.ok(/id:'deck',[^}]*fa-clone/.test(_src), 'deck keeps its recorded fa-clone identity');
+  assert.ok(/id:'progress',[^}]*fa-bars-progress/.test(_src), 'progress is fa-bars-progress');
+  assert.ok(_src.includes('#theme-icon') || /fa-circle-half-stroke/.test(_src), 'theme keeps fa-circle-half-stroke');
+  assert.ok(/id:'check',[^}]*fa-clipboard-check/.test(_src), 'the Check verb leaves the check family (three near-identical picks in one menu)');
+  assert.ok(_src.includes("const CHECK_ICON = { fa: 'fa-solid fa-clipboard-check'"), 'CHECK_ICON (dialog + bullet-menu row) agrees with the door');
+  // the subset must actually carry the three new glyphs, or they paint the emoji fallback
+  for (const g of ['fa-stamp', 'fa-bars-progress', 'fa-clipboard-check']) {
+    assert.ok(new RegExp("FA_GLYPHS = new Set\\(\\[[^\\]]*'" + g + "'").test(_src), g + ' must be in the FA_GLYPHS allow-list');
+    assert.ok(new RegExp('\\.' + g + '::before\\{content:').test(_src), g + ' must have its ::before rule in the fa-embed style');
+  }
+});
