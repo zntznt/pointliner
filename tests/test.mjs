@@ -6816,6 +6816,43 @@ test('cross-calendar identity: the same epoch-day sorts identically, labels diff
   assert.deepEqual(sortedByInt, [5, 42, 100, 380], 'ordering is on the integer, independent of calendar');
 });
 
+// review fixes (BUG-1/2/3): the cores must return null on invalid input, NEVER throw or emit
+// a fractional/NaN-laced result (the "null on invalid input" house rule the parse layer relies on).
+test('calendar cores are total: null on non-integer input, never throw (#527 review)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  // epochToCal
+  assert.equal(c.epochToCal(1.5, cal), null, 'fractional epoch → null (was a fractional day/weekday)');
+  assert.equal(c.epochToCal(NaN, cal), null, 'NaN epoch → null (was a malformed object)');
+  assert.equal(c.epochToCal(Infinity, cal), null);
+  // calToEpoch — a NaN month used to throw (indexing cal.months[NaN]); a float day used to return 0.5
+  assert.equal(c.calToEpoch(1, NaN, 1, cal), null, 'NaN month → null (was a TypeError throw)');
+  assert.equal(c.calToEpoch(1, 1, 1.5, cal), null, 'fractional day → null (was a fractional epoch-day)');
+  assert.equal(c.calToEpoch(1.5, 1, 1, cal), null, 'fractional year → null');
+  assert.doesNotThrow(() => c.calToEpoch(1, NaN, 1, cal), 'never throws on bad input');
+});
+test('normalizeCalendar clamps a garbage epochDay/current to safe-integer range (#527 review)', () => {
+  const c1 = c.normalizeCalendar({ months: [{ name: 'M', days: 30 }], epochDay: 9e18, current: 9e18 });
+  assert.equal(c1.epochDay, 0, 'an unsafe epochDay falls back to 0');
+  assert.equal(c1.current, null, 'an unsafe current falls back to null (no in-fiction today)');
+  // a valid large-but-safe value is kept
+  assert.equal(c.normalizeCalendar({ months: [{ name: 'M', days: 30 }], epochDay: 1000000 }).epochDay, 1000000);
+});
+test('calEraYear / calYearFromEra round-trip: display year ↔ intrinsic year (the parse contract)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // era DR, yearZero 1000
+  assert.equal(c.calEraYear(5, cal, 'DR'), 1005, 'intrinsic 5 → display 1005');
+  assert.equal(c.calYearFromEra(1005, cal, 'DR'), 5, 'display 1005 → intrinsic 5 (parse must do this before calToEpoch)');
+  // round-trip identity
+  for (const y of [-100, 0, 1, 5000]) assert.equal(c.calYearFromEra(c.calEraYear(y, cal, 'DR'), cal, 'DR'), y);
+});
+test('dueDateToday: uses the in-fiction `current` when a calendar has one — else falls back (#527 decision)', () => {
+  // pinned as a DECISION, not an accident: current present → that integer; the wall-clock fallback
+  // when current is null is a documented Tier-1 choice (a calendar with no in-fiction "now").
+  const fn = fnBody(_src, 'dueDateToday');
+  assert.ok(/Number\.isInteger\(cal\.current\)/.test(fn) && /return cal\.current/.test(fn),
+    'returns the in-fiction current when the active calendar defines one');
+  assert.ok(/Date\.UTC/.test(fn), 'falls back to the wall clock otherwise (documented Tier-1 choice)');
+});
+
 // ── due dates ─────────────────────────────────────────────────────────────────
 
 test('parseDueDate — ISO date parses to epoch day', () => {
