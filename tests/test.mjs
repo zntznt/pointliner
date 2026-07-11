@@ -10257,3 +10257,17 @@ test('#523: declaration forms are deliberately NOT resolved nested (top-level-on
   // src-pin: the three generator branches exist before the alternation split
   assert.ok(/const mkp = markovParts\(body\);[\s\S]{0,700}const alts = splitTopLevel/.test(_src), 'the generator branches must precede the | split (or a |-bearing generator body shreds)');
 });
+
+// ── #528: rollup est pills stay atomic (only constructor est unfolds) ──
+test('#528: an est ROLLUP unfolds to null (stays atomic); a constructor est still unfolds', () => {
+  // the bug: artifactToShorthand unfolded {sum(cost)} to editable text, but estParts (the promote
+  // gate) rejects rollup exprs — so an edit of the unfolded text couldn't re-promote and the
+  // distribution silently became inert prose. Rollup est now stays atomic (null), like a dialog var.
+  assert.equal(c.artifactToShorthand('est', { key: 'u', expr: 'sum(cost)' }), null, 'a rollup est must stay atomic');
+  assert.equal(c.artifactToShorthand('est', { key: 'u', expr: 'avg(score)' }), null);
+  // constructor est (typeable, re-promotable via estParts) still unfolds
+  assert.equal(c.artifactToShorthand('est', { key: 'u', expr: '5 to 10' }), '{5 to 10}');
+  assert.equal(c.artifactToShorthand('est', { key: 'u', expr: 'normal(3, 1)' }), '{normal(3, 1)}');
+  // the gate IS estParts (so unfold and promote agree on what round-trips)
+  assert.ok(c.estParts('5 to 10') && !c.estParts('sum(cost)'), 'the unfold gate matches the promote gate');
+});
