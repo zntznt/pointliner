@@ -10130,6 +10130,66 @@ function doCapture() {
   renderCaptureStrip(); // clear + keep the strip open for the next capture (brain-dump flow)
 }
 
+// Append one markdown-aware point (like doCapture) to the resolved inbox. Returns the node,
+// or null if there is no inbox / the text is blank. Shared by the URL-append route (#465);
+// the text is PLAIN TEXT into node.text — never evaluated, no pill promotion from the source.
+function appendTextToInbox(text) {
+  const t = String(text || '').replace(/\s+$/, '');
+  if (!t.trim()) return null;
+  const inbox = resolveInbox();
+  if (!inbox) return null;
+  pushUndo();
+  const n = mkNode(t);
+  n.type = deriveTypeFromText(t) || 'ul';
+  n.checked = todoDoneFromText(t);
+  if (inbox.collapsed) inbox.collapsed = false;
+  inbox.children.push(n);
+  nodeMap.set(n.id, n); parentMap.set(n.id, inbox);
+  markDirty();
+  return n;
+}
+
+// Combine a shared body / title / url into one point's plain text (#465). The body leads; a
+// title is prepended only when the body doesn't already start with it; a url is appended on its
+// own line when present and not already in the text. All plain text — never a pill. Pure.
+function buildSharePointText(body, title, url) {
+  const b = (body || '').trim(), t = (title || '').trim(), u = (url || '').trim();
+  let head = b;
+  if (t && !b) head = t;                                   // title-only share
+  else if (t && b && !b.startsWith(t)) head = `${t}: ${b}`;  // title + body (no em dash — this is text the user reads)
+  const parts = [];
+  if (head) parts.push(head);
+  if (u && !head.includes(u)) parts.push(u);
+  return parts.join('\n').trim();
+}
+
+// #465: URL-based capture. `?append=<text>` (and the PWA share_target, which routes shared
+// title/text/url to the same param) drops ONE point into the inbox on load, then strips the
+// param so a reload never re-appends. HOSTED-only + secure-context (PWA-exception rule): inert
+// and silent from a file:// open. Plain text only — the param is NEVER evaluated. Runs after the
+// doc is restored (the inbox exists); markDirty() from the append then wins over a stale OPFS copy.
+function handleUrlAppend() {
+  if (location.protocol === 'file:' || !window.isSecureContext) return; // hosted enhancement only
+  let params;
+  try { params = new URL(location.href).searchParams; } catch { return; }
+  // `append` is the direct form; the PWA share_target maps shared text→append but may also
+  // send title/url separately (sharing a web page). Nothing to do if none are present.
+  if (params.get('append') == null && params.get('title') == null && params.get('url') == null) return;
+  // strip the params FIRST (before any early return), so a reload/back never re-appends
+  try {
+    const u = new URL(location.href);
+    ['append', 'title', 'text', 'url'].forEach(k => u.searchParams.delete(k));
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  } catch {}
+  // combine into one point's text: the shared body, then a title/url if they add info
+  const text = buildSharePointText(params.get('append'), params.get('title'), params.get('url'));
+  if (!text) return;
+  const n = appendTextToInbox(text);
+  if (!n) { flashHint('Set a point as your inbox to capture from a link (a point’s bullet menu → Set as inbox).'); return; }
+  render();
+  flashHint(`✓ Captured to ${crumbLabel(resolveInbox())}: ${textForDisplay(n).slice(0, 40)}`);
+}
+
 // ─── journal / daily-notes ────────────────────────────────────────────────────
 // Open (or create) today's journal entry and zoom into it.
 // Append mode: find or create a "Journal" top-level home point, then find or create
@@ -23433,13 +23493,14 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the destination name) to pick a slot, add or remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the destination name) to pick a slot, add or remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes. When Pointliner is installed as an app (or open on the web), you can also capture from a link: opening it with ?append=your%20text in the address adds that text as a point to your inbox, and sharing a page or selection to Pointliner from your system share menu does the same. It is added as plain text (never run as a pill), and the address is cleaned up so a reload will not add it twice; if you have no inbox set, it tells you and adds nothing.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
       { syn:'⌘⌥1 … ⌘⌥0',           desc:'set the current point as inbox 1 to 10' },
       { syn:'Menu → Set as inbox N', desc:'add this point as the next inbox slot' },
       { syn:'- [ ] buy milk',       desc:'a typed task captures as a to-do' },
+      { syn:'?append=Buy milk',     desc:'capture from a link or the share menu' },
     ] },
   { id:'aliases', cat:'todos', covers:['alias'],
     title:'Nicknames (aliases)',
@@ -24661,6 +24722,7 @@ ensureDocId(root);
 render();
 updateTitle();
 refreshIcons();
+handleUrlAppend();   // #465: ?append=<text> / PWA share_target → one point in the inbox (hosted-only, param stripped)
 if (_showingExamples) showExamplesBanner();   // UXP-126: surface the Start-blank door beside the examples
 // Platform-correct the search box's shortcut chip on load. The HTML hardcodes ⌘F;
 // on Windows/Linux it must read Ctrl+F. (openFileMenu also fixes it, but the search

@@ -218,7 +218,7 @@ export function loadCores() {
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'pickerTitle','treeRows','selectionRoots','resolveRefileTarget',   // LEAN FLOOR: /refile:title resolution
-    'dueDateToday','parseDueDate','formatDueDate','formatDateConcrete','parseRepeat','nextOccurrence','describeRepeat','ordinalSuffix','collectDueDates','collectActions','priorityRank','oracleSwingBody',
+    'dueDateToday','parseDueDate','formatDueDate','formatDateConcrete','parseRepeat','nextOccurrence','describeRepeat','ordinalSuffix','buildSharePointText','collectDueDates','collectActions','priorityRank','oracleSwingBody',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
