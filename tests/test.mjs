@@ -1309,6 +1309,19 @@ test('parsePackVarLines — name = expr per line; blank skipped, malformed surfa
   // the manager front door + engine toggle are wired at the source
   assert.ok(/openDataPackManager\(\)/.test(_src) && /id="btn-datapacks"/.test(_src), 'File menu opens the manager');
   assert.ok(/pluginPackActive\(p\)/.test(_src), 'the merges gate on pluginPackActive (disable toggle)');
+  // adversarial-review fixes (#487):
+  // BUG-1 — a New pack is a DRAFT (_packDraft), persisted to root.plugins only in save(), so Back drops it
+  const nb = fnBody(_src, 'buildPackListView');
+  assert.ok(/_packDraft = newPluginPack/.test(nb) && !/root\.plugins = \[\.\.\.\(root\.plugins \|\| \[\]\), p\]/.test(nb),
+    'New pack creates a draft, does not persist to root.plugins before Save');
+  const ev = fnBody(_src, 'buildPackEditView');
+  assert.ok(/if \(isDraft\) root\.plugins = \[\.\.\.\(root\.plugins \|\| \[\]\), \{ \.\.\._packDraft/.test(ev), 'save() appends the draft only on commit');
+  assert.ok(/_packDraft = null/.test(ev), 'Back / save clear the draft');
+  // BUG-2 — import dedupes ids against a RUNNING set (in-file dups get fresh ids too)
+  const imp = fnBody(_src, 'importDataPacks');
+  assert.ok(/seen\.add\(id\)/.test(imp) && /if \(seen\.has\(id\)\) id = uid\(\)/.test(imp), 'import dedupes ids within the file, not just against existing');
+  // UX-2 — remove routes through openConfirmDialog (consistent with other destructive ops)
+  assert.ok(/await openConfirmDialog\(\{[\s\S]*?Remove data pack/.test(nb), 'remove confirms like every other destructive op');
 });
 
 test('collectCallables — an anonymous pill does not advertise `origin` as a callable (UXP-33)', () => {

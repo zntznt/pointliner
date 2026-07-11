@@ -1951,7 +1951,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
-  <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-cubes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
+  <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
   <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
@@ -9013,8 +9013,17 @@ function openTemplatePicker(nodeId) {
 // Every mutation writes root.plugins + markDirty() so the _varsVer-cached collectRules/collectVars
 // pick it up on the next render. Packs are pure DATA (parseRules + evalMath), so the code-execution
 // gate (plugins-direction.md) stays intact — this adds no new authoring syntax.
-const PACK_ICON = { fa: 'fa-solid fa-cubes', fb: '📦' };
+const PACK_ICON = { fa: 'fa-solid fa-circle-nodes', fb: '📦' };  // in-subset glyph (a connected set of rules/vars); fb only if FA fails to load
 let _packEditId = null; // when set, the manager shows the edit view for this pack id
+let _packDraft = null;  // BUG-1: a NEW pack lives here (in memory) until first Save — never persisted
+                        // on root.plugins until the user commits, so "New pack → Back" leaves no junk.
+let _packFocusId = null; // UX-1: the pack whose row control to re-focus after an in-place re-render
+
+// Resolve the pack under edit — the in-memory draft (a fresh New pack) or one on root.plugins.
+function packUnderEdit() {
+  if (_packDraft && _packDraft.id === _packEditId) return _packDraft;
+  return (root.plugins || []).find(x => x.id === _packEditId) || null;
+}
 
 function openDataPackManager() {
   ioCard.innerHTML = '';
@@ -9027,7 +9036,7 @@ function openDataPackManager() {
   if (_packEditId) buildPackEditView(); else buildPackListView();
 
   if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target (UXP-81)
-  ioCancel = () => { _packEditId = null; closeIo(); };
+  ioCancel = () => { _packEditId = null; _packDraft = null; closeIo(); }; // drop any unsaved draft on close
   ioCard.setAttribute('aria-label', _packEditId ? 'Edit data pack' : 'Data packs');
   ioBack.classList.add('on');
 }
@@ -9042,7 +9051,7 @@ function buildPackListView() {
   } else {
     const plist = document.createElement('div'); plist.className = 'tpl-list';
     list.forEach(p => {
-      const row = document.createElement('div'); row.className = 'tpl-row pack-row';
+      const row = document.createElement('div'); row.className = 'tpl-row pack-row'; row.dataset.packId = p.id;
       // enable toggle (a real checkbox — keyboard + AT operable)
       const tog = document.createElement('input'); tog.type = 'checkbox'; tog.className = 'pack-toggle';
       tog.checked = pluginPackActive(p);
@@ -9050,7 +9059,7 @@ function buildPackListView() {
       tog.addEventListener('change', () => {
         pushUndo(); root.plugins = togglePluginPack(root.plugins, p.id); markDirty(); render();
         flashHint(`${tog.checked ? 'Enabled' : 'Disabled'} pack “${packLabel(p)}”`);
-        openDataPackManager();
+        _packFocusId = p.id; openDataPackManager(); // UX-1: keep focus on this row after the re-render
       });
       // name (dimmed when disabled) — clicking it edits, like the template picker's pick
       const pick = document.createElement('button'); pick.type = 'button'; pick.className = 'tpl-pick';
@@ -9067,10 +9076,21 @@ function buildPackListView() {
       const del = document.createElement('button'); del.className = 'io-btn xsm'; del.type = 'button';
       setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
       del.title = 'Remove'; del.setAttribute('aria-label', `Remove pack ${packLabel(p)}`);
-      del.addEventListener('click', () => {
-        pushUndo(); root.plugins = removePluginPack(root.plugins, p.id); markDirty(); render();
-        flashHint(`Removed pack “${packLabel(p)}”`);
-        openDataPackManager();
+      del.addEventListener('click', async () => {
+        // UX-2: confirm like every other destructive op (workspace-doc / base delete).
+        const idx = (root.plugins || []).findIndex(x => x.id === p.id);
+        const neighbor = (root.plugins || [])[idx + 1] || (root.plugins || [])[idx - 1]; // UX-1: focus a surviving row
+        const ok = await openConfirmDialog({
+          title: 'Remove data pack',
+          message: `Remove “${packLabel(p)}”? Its rules and variables stop applying. You can undo this.`,
+          confirmLabel: 'Remove',
+        });
+        if (ok) {
+          pushUndo(); root.plugins = removePluginPack(root.plugins, p.id); markDirty(); render();
+          flashHint(`Removed pack “${packLabel(p)}”`);
+          _packFocusId = neighbor?.id || null;
+        }
+        openDataPackManager(); // rebuild the manager card the confirm replaced (either outcome)
       });
       row.append(tog, pick, del);
       plist.appendChild(row);
@@ -9081,11 +9101,9 @@ function buildPackListView() {
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const newBtn = document.createElement('button'); newBtn.className = 'io-btn'; newBtn.textContent = '+ New pack';
   newBtn.addEventListener('click', () => {
-    pushUndo();
-    const p = newPluginPack('New pack');
-    root.plugins = [...(root.plugins || []), p];
-    markDirty();
-    _packEditId = p.id; openDataPackManager();  // straight into editing the fresh pack
+    // BUG-1: the fresh pack is a DRAFT held in memory, not persisted — Save appends it, Back drops it.
+    _packDraft = newPluginPack('New pack');
+    _packEditId = _packDraft.id; openDataPackManager();  // straight into editing the fresh draft
   });
   const impBtn = document.createElement('button'); impBtn.className = 'io-btn'; impBtn.textContent = 'Import…';
   impBtn.addEventListener('click', importDataPacks);
@@ -9095,12 +9113,20 @@ function buildPackListView() {
   const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn primary'; closeBtn.textContent = 'Close';
   closeBtn.addEventListener('click', () => { _packEditId = null; closeIo(); });
   foot.append(newBtn, impBtn, expBtn, closeBtn); ioCard.appendChild(foot);
-  requestAnimationFrame(() => { (ioCard.querySelector('.pack-toggle') || newBtn).focus(); });
+  // UX-1: after an in-place re-render, keep focus on the row the user was acting on (_packFocusId),
+  // not always the first toggle. Falls back to the first toggle, else New.
+  requestAnimationFrame(() => {
+    const target = (_packFocusId && ioCard.querySelector(`.pack-row[data-pack-id="${_packFocusId}"] .pack-toggle`))
+      || ioCard.querySelector('.pack-toggle') || newBtn;
+    _packFocusId = null;
+    target.focus();
+  });
 }
 
 function buildPackEditView() {
-  const p = (root.plugins || []).find(x => x.id === _packEditId);
-  if (!p) { _packEditId = null; openDataPackManager(); return; }
+  const p = packUnderEdit();       // the in-memory draft (a New pack) or one on root.plugins
+  if (!p) { _packEditId = null; _packDraft = null; openDataPackManager(); return; }
+  const isDraft = _packDraft && _packDraft.id === _packEditId;
   // Canonical dialog fields (design-language §4): .io-field { label, input/textarea.io-mono }
   // appended straight to #io-card (which owns the padding), with an .io-preview live line — the
   // exact shape openInsertDialog uses. No inline styles; all tokens/focus/anti-zoom via the class.
@@ -9147,18 +9173,20 @@ function buildPackEditView() {
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const backBtn = document.createElement('button'); backBtn.className = 'io-btn'; backBtn.textContent = 'Back';
-  backBtn.addEventListener('click', () => { _packEditId = null; openDataPackManager(); });
+  backBtn.addEventListener('click', () => { _packEditId = null; _packDraft = null; openDataPackManager(); }); // BUG-1: Back drops an unsaved draft
   const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
   const save = () => {
     const vp = parsePackVarLines(varsIn.value);
-    if (vp.bad.length) { varsIn.focus(); return; } // P4: don't save a malformed vars line silently
+    if (vp.bad.length) { varsIn.focus(); flashHint(`Fix the variable line: ${vp.bad[0]} (use name = expression)`); return; } // NIT-1/P4: say why, don't silently no-op
+    const name = nameIn.value.trim() || 'pack';
+    const fields = { name, rules: rulesIn.value.trim(), vars: vp.vars };
     pushUndo();
-    root.plugins = updatePluginPack(root.plugins, p.id, {
-      name: nameIn.value.trim() || 'pack', rules: rulesIn.value.trim(), vars: vp.vars,
-    });
+    if (isDraft) root.plugins = [...(root.plugins || []), { ..._packDraft, ...fields }]; // BUG-1: a New pack is persisted only NOW
+    else root.plugins = updatePluginPack(root.plugins, p.id, fields);
+    _packDraft = null;
     markDirty(); render();
-    flashHint(`Saved pack “${nameIn.value.trim() || 'pack'}”`);
-    _packEditId = null; openDataPackManager();
+    flashHint(`Saved pack “${name}”`);
+    _packFocusId = p.id; _packEditId = null; openDataPackManager(); // UX-1: land on the saved row
   };
   saveBtn.addEventListener('click', save);
   foot.append(backBtn, saveBtn); ioCard.appendChild(foot);
@@ -9206,8 +9234,15 @@ function importDataPacks() {
     reader.onload = () => {
       const incoming = parsePackImport(String(reader.result || ''));
       if (!incoming.length) { flashHint('No valid data packs found in that file'); return; }
-      const have = new Set((root.plugins || []).map(p => p.id));
-      const added = incoming.map(p => have.has(p.id) ? { ...p, id: uid() } : p);
+      // BUG-2: dedupe against a RUNNING set (existing ids + ids seen earlier in this import),
+      // so two packs sharing an id inside the file don't both land with the same key.
+      const seen = new Set((root.plugins || []).map(p => p.id));
+      const added = incoming.map(p => {
+        let id = p.id;
+        if (seen.has(id)) id = uid();
+        seen.add(id);
+        return id === p.id ? p : { ...p, id };
+      });
       pushUndo();
       root.plugins = [...(root.plugins || []), ...added];
       markDirty(); render();
