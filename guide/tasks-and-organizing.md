@@ -67,6 +67,12 @@ with the cursor waiting on the blank. Search by them with
 `key:value` to match an exact one. Child properties feed the [roll-up
 totals](computing-numbers.md#roll-a-number-up-your-outline-aggregation).
 
+**Give a property an icon.** Open **File then Tag & property styling**, type a property key, and pick
+an icon (a dollar sign for `cost`, a calendar for `due`). Every chip for that key then shows the icon
+before its name, so a property is recognizable at a glance. To change or remove it, revisit the same
+dialog. Like tag colors, it is purely visual and stored with the document; the property's text and
+searchability are untouched.
+
 ## Templates
 
 Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly

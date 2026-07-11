@@ -1281,6 +1281,102 @@ test('packLabel — name, else id, else "(unnamed)"', () => {
   assert.equal(c.packLabel(null), '(unnamed)');
 });
 
+// ── per-name appearance config (#464) ──────────────────────────────────────
+test('tagColorOf — returns a configured swatch, null otherwise, hierarchical', () => {
+  const ap = { tags: { urgent: 'red', thread: 'teal' }, props: {} };
+  assert.equal(c.tagColorOf('urgent', ap), 'red');
+  assert.equal(c.tagColorOf('#urgent', ap), 'red', 'leading # is stripped');
+  assert.equal(c.tagColorOf('URGENT', ap), 'red', 'case-insensitive');
+  assert.equal(c.tagColorOf('unset', ap), null, 'an unconfigured tag has no color');
+  // hierarchical: a color on `thread` also colors `thread/torn-letter` (nearest ancestor)
+  assert.equal(c.tagColorOf('thread/torn-letter', ap), 'teal');
+  assert.equal(c.tagColorOf('thread/sub/deep', ap), 'teal');
+  // an unknown color value is ignored (only the curated swatch names apply)
+  assert.equal(c.tagColorOf('x', { tags: { x: 'chartreuse' }, props: {} }), null);
+});
+test('propIconOf — returns a configured in-subset icon, null otherwise', () => {
+  const ap = { tags: {}, props: { cost: 'fa-dollar-sign' } };
+  assert.equal(c.propIconOf('cost', ap), 'fa-dollar-sign');
+  assert.equal(c.propIconOf(' Cost ', ap), 'fa-dollar-sign', 'trimmed + case-insensitive');
+  assert.equal(c.propIconOf('owner', ap), null);
+  // an icon not in the shortlist is ignored (guards against a hand-edited OPML)
+  assert.equal(c.propIconOf('x', { tags: {}, props: { x: 'fa-rocket' } }), null);
+});
+test('setTagColor / setPropIcon — set, clear, and reject unknown values', () => {
+  const ap = { tags: {}, props: {} };
+  c.setTagColor(ap, '#Urgent', 'red');
+  assert.equal(ap.tags.urgent, 'red', 'key normalized (no #, lowercased)');
+  c.setTagColor(ap, 'urgent', '');            // falsy clears
+  assert.equal('urgent' in ap.tags, false, 'empty color removes the mapping');
+  c.setTagColor(ap, 'urgent', 'chartreuse');  // unknown swatch is a no-op
+  assert.equal('urgent' in ap.tags, false, 'an unknown swatch is not stored');
+  c.setPropIcon(ap, 'Cost', 'fa-dollar-sign');
+  assert.equal(ap.props.cost, 'fa-dollar-sign');
+  c.setPropIcon(ap, 'cost', 'fa-rocket');     // not in shortlist
+  assert.equal(ap.props.cost, 'fa-dollar-sign', 'a non-shortlist icon leaves the mapping unchanged');
+  c.setPropIcon(ap, 'cost', null);            // clear
+  assert.equal('cost' in ap.props, false);
+});
+test('normalizeAppearance — keeps only well-shaped name→known-value, never throws', () => {
+  const cleaned = host(c.normalizeAppearance({
+    tags: { good: 'red', bad: 'neon', UP: 'blue' },
+    props: { cost: 'fa-dollar-sign', x: 'fa-rocket' },
+    junk: 42,
+  }));
+  assert.deepEqual(cleaned, { tags: { good: 'red', up: 'blue' }, props: { cost: 'fa-dollar-sign' } });
+  assert.deepEqual(host(c.normalizeAppearance(null)), { tags: {}, props: {} });
+  assert.deepEqual(host(c.normalizeAppearance('nope')), { tags: {}, props: {} });
+});
+test('appearance serializes to OPML <_appearance> (present when set, absent when empty); normalizeAppearance is the parse-back guard', () => {
+  const root = c.mkRoot();
+  root.appearance = { tags: { urgent: 'red' }, props: { cost: 'fa-dollar-sign' } };
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_appearance>'), 'non-empty appearance emits the head element');
+  assert.ok(xml.includes('urgent') && xml.includes('fa-dollar-sign'), 'the mappings are serialized');
+  // empty appearance emits nothing (mirrors _plugins / _templates)
+  assert.ok(!c.toOpml(c.mkRoot()).includes('<_appearance>'), 'empty appearance → no head element');
+  // the parse-back path (fromOpml needs a DOM; normalizeAppearance is the pure validator it runs)
+  assert.deepEqual(host(c.normalizeAppearance(root.appearance)), { tags: { urgent: 'red' }, props: { cost: 'fa-dollar-sign' } },
+    'the stored shape survives the load-time validator unchanged');
+});
+test('appearance is display-only wired at the render sites (#464)', () => {
+  assert.ok(/tagColorOf\(t\)/.test(_src) && /data-color="\$\{col\}"/.test(_src), 'the hashtag render reads tagColorOf');
+  assert.ok(/propIconOf\(propK\)/.test(_src), 'the property chip render reads propIconOf');
+  // live-caught regression guard: the per-color rule MUST restate `color` (not only --tc), or
+  // `.node-content a{color:var(--acc)}` (0,1,1) wins over `.hashtag{color}` (0,1,0) and the tag
+  // renders accent instead of the chosen swatch. The [data-color] selector is 0,2,0, so it wins.
+  assert.ok(/\.hashtag\[data-color\]\{color:var\(--tc\)/.test(_src), 'the [data-color] rule re-applies color to beat .node-content a');
+  // the icon shortlist is only in-subset glyphs (no CDN / no blank icon)
+  const m = _src.match(/FA_GLYPHS\s*=\s*new Set\(\[([^\]]*)\]/);
+  const subset = new Set(m[1].replace(/'/g, '').split(',').map(s => s.trim()));
+  const iconLit = _src.match(/APPEARANCE_ICONS\s*=\s*\[([^\]]*)\]/)[1];
+  const icons = iconLit.replace(/'/g, '').split(',').map(s => s.trim()).filter(Boolean);
+  assert.ok(icons.length >= 8, 'a usable icon shortlist');
+  for (const g of icons) assert.ok(subset.has(g), `${g} must be in the embedded FA subset`);
+});
+
+test('isValidTagName — accepts the hashtag grammar, rejects unrenderable names (#464 review)', () => {
+  assert.equal(c.isValidTagName('urgent'), true);
+  assert.equal(c.isValidTagName('#urgent'), true, 'a leading # is fine');
+  assert.equal(c.isValidTagName('thread/torn-letter'), true, 'nested + hyphen');
+  assert.equal(c.isValidTagName('my tag'), false, 'a space is not a tag');
+  assert.equal(c.isValidTagName('café'), false, 'non-word chars rejected (would never render)');
+  assert.equal(c.isValidTagName(''), false);
+  assert.equal(c.isValidTagName('a/'), false, 'a trailing slash is not a valid segment');
+});
+
+test('appearance dialog — review fixes wired (focus by section, name validation, renamed menu)', () => {
+  // #464 review #1: focus returns to the section acted in, not always the tag input
+  assert.ok(/_apprFocus === 'prop' \? propIn : tagIn\)\.focus\(\)/.test(_src), 'focus restore honors the acted-on section');
+  assert.ok(/_apprFocus = 'prop'/.test(_src) && /_apprFocus = 'tag'/.test(_src), 'handlers set the focus section');
+  // #464 review #3: a swatch click validates the tag name (no silent-wrong-success)
+  assert.ok(/if \(!isValidTagName\(name\)\)/.test(_src), 'the dialog validates the tag name before storing a color');
+  // #464 review #2: the menu label no longer collides with the theme "Appearance" controls
+  assert.ok(/<span class="cmd-label">Tag &amp; property styling<\/span>/.test(_src), 'menu item renamed to avoid the Appearance collision');
+  // finding A: applyAutosaveData backfills the {tags,props} shape for a pre-feature autosave
+  assert.ok(/root\.appearance = normalizeAppearance\(root\.appearance\)/.test(_src), 'old autosave gets a normalized appearance shape');
+});
+
 test('parsePackImport — the trust boundary: valid packs only, [] on junk, never throws', () => {
   // a JSON array of packs
   assert.deepEqual(host(c.parsePackImport('[{"id":"a","rules":"x: y"}]').map(p => p.id)), ['a']);
@@ -3651,9 +3747,10 @@ test('filterTagCandidates: case-insensitive prefix; a lone exact match offers no
 });
 
 test('UXP-39: rendered #hashtag is keyboard-operable (role/tabindex + Enter/Space twin)', () => {
-  // the rendered chip carries button semantics + AT focus reach (mirrors note-ind/prop-chip)
-  assert.ok(_src.includes('class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}"'),
-    'hashtag render missing role/tabindex/aria-label');
+  // the rendered chip carries button semantics + AT focus reach (mirrors note-ind/prop-chip).
+  // (#464 inserts an optional data-color between data-tag and role, so match the parts, not one string.)
+  assert.ok(/class="hashtag" data-tag="#\$\{t\}"/.test(_src), 'hashtag class + data-tag');
+  assert.ok(/role="button" tabindex="-1" aria-label="Filter by #\$\{t\}"/.test(_src), 'hashtag role/tabindex/aria-label');
   assert.ok(_src.includes('.hashtag:focus-visible'), 'hashtag focus-visible style missing');
   // the keyboard twin: Enter/Space on a focused chip runs the same filter as the click
   assert.ok(_src.includes("closest?.('.hashtag')"), 'hashtag Enter/Space branch missing');

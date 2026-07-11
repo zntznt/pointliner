@@ -116,6 +116,11 @@ button,[contenteditable],input{touch-action:manipulation}
   --row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);
   --sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);
   --hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff;
+  /* #464 appearance swatches: a curated on-brand tag palette. Reuse the semantic inks where they
+     fit (red/amber/green/blue) + four more, all contrast-floor-safe. Config stores the NAME, so a
+     tag stays legible + theme-portable. Dark values below (dual-home palette invariant, DL §4). */
+  --sw-red:#b3271f;--sw-amber:#8a5300;--sw-green:#1e7029;--sw-teal:#0f766e;
+  --sw-blue:#0f5cb0;--sw-violet:#6d28d9;--sw-pink:#a3327a;--sw-gray:#5c574d;
 }
 @media(prefers-color-scheme:dark){:root{
   color-scheme:dark;
@@ -123,6 +128,9 @@ button,[contenteditable],input{touch-action:manipulation}
   --cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--acc:#a5b4fc;--acc-fg:#16130f;--ring:rgba(165,180,252,.25);/* UXP-157: .25 matches applyAccentCSS's live value (the appended <style> always wins), so the static fallback shows the same effect */
   --cbg:#272320;--del:#a39a8d;--qbdr:color-mix(in srgb,var(--acc) 50%,transparent);
   --ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;
+  /* #464 swatches, dark: pastels that read on the dark paper, mirroring --ok/--warn/--bad/--info */
+  --sw-red:#f0928b;--sw-amber:#d9a25a;--sw-green:#84b389;--sw-teal:#5ec8bd;
+  --sw-blue:#82b4e8;--sw-violet:#c4b5fd;--sw-pink:#e79ac8;--sw-gray:#b0a99c;
   --sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);
   --sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);
   --sh-up:0 -6px 28px rgba(0,0,0,.5);
@@ -656,9 +664,17 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    tint + accent ink + a small radius), NOT the stadium artifact pill (§4: two shapes, two
    meanings). Kept at inline text size so they flow inside a sentence; the box replaces the
    old dotted underline as the affordance. */
-.hashtag{color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:var(--r-xs);padding:0 5px;cursor:pointer;white-space:nowrap;transition:background .12s}
-.hashtag:hover{background:color-mix(in srgb,var(--acc) 20%,transparent)}
-.hashtag:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
+.hashtag{--tc:var(--acc);color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,transparent);border-radius:var(--r-xs);padding:0 5px;cursor:pointer;white-space:nowrap;transition:background .12s}
+.hashtag:hover{background:color-mix(in srgb,var(--tc) 20%,transparent)}
+.hashtag:focus-visible{outline:2px solid var(--tc);outline-offset:1px;border-radius:var(--r-xs)}
+/* #464 per-tag color: config stores the swatch NAME; data-color sets --tc AND re-applies color so
+   it beats `.node-content a{color:var(--acc)}` (0,1,1) — a bare .hashtag[data-color] (0,2,0) already
+   out-specifies it, but .hashtag's own color rule is 0,1,0, so we must restate color here. */
+.hashtag[data-color]{color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,transparent)}
+.hashtag[data-color=red]{--tc:var(--sw-red)}.hashtag[data-color=amber]{--tc:var(--sw-amber)}
+.hashtag[data-color=green]{--tc:var(--sw-green)}.hashtag[data-color=teal]{--tc:var(--sw-teal)}
+.hashtag[data-color=blue]{--tc:var(--sw-blue)}.hashtag[data-color=violet]{--tc:var(--sw-violet)}
+.hashtag[data-color=pink]{--tc:var(--sw-pink)}.hashtag[data-color=gray]{--tc:var(--sw-gray)}
 /* dice roll pill */
 .dice-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .dice-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -926,6 +942,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .prop-chip:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .prop-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
 .prop-key{color:var(--muted);font-weight:600}
+.prop-icon{color:var(--muted);margin-right:4px;font-size:.9em;align-self:center}/* #464: optional per-property icon */
 .prop-sep{color:var(--muted);margin:0 3px}
 .prop-val{color:var(--fg)}
 .prop-chip.prop-due-overdue .prop-val{color:var(--bad)}
@@ -1214,6 +1231,16 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
 .io-chip{font-family:var(--mono);font-size:11.5px;line-height:1;padding:4px 9px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .io-chip:hover{background:color-mix(in srgb,var(--acc) 6%,var(--cbg));border-color:var(--acc)}/* UXP-136: the tint hover recipe (DL §4); solid accent fill is reserved for the primary commit button */
+/* #464 appearance dialog: color swatches + icon buttons */
+.appr-swatch{width:24px;height:24px;padding:0;border-radius:var(--r-sm);border:1px solid var(--bdr);cursor:pointer;background:var(--sw-gray)}
+.appr-swatch[data-color=red]{background:var(--sw-red)}.appr-swatch[data-color=amber]{background:var(--sw-amber)}
+.appr-swatch[data-color=green]{background:var(--sw-green)}.appr-swatch[data-color=teal]{background:var(--sw-teal)}
+.appr-swatch[data-color=blue]{background:var(--sw-blue)}.appr-swatch[data-color=violet]{background:var(--sw-violet)}
+.appr-swatch[data-color=pink]{background:var(--sw-pink)}.appr-swatch[data-color=gray]{background:var(--sw-gray)}
+.appr-swatch:hover{transform:scale(1.08)}.appr-swatch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.appr-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--muted);cursor:pointer;transition:border-color .12s,color .12s}
+.appr-icon:hover{border-color:var(--acc);color:var(--acc)}.appr-icon:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.appr-list{margin-top:8px}
 .io-preview{margin-top:8px;min-height:22px;line-height:1.5}
 .io-preview-bad{font-size:12px;color:var(--del)}
 .io-preview-note{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
@@ -1952,6 +1979,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
   <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
+  <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
   <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
@@ -2094,7 +2122,7 @@ let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null } };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} } };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -2899,6 +2927,69 @@ const ALIAS_KEY = 'aliases';
 // through `_props`, no new sidecar. Parsed by parseRepeat; on the task flipping to done its
 // due/start roll forward by nextOccurrence and it re-opens. (rollForwardRepeat, below.)
 const REPEAT_KEY = 'repeat';
+
+// ─── per-name appearance config (#464) — pure display, keyed by name ────────────
+// root.appearance = { tags: {tagname → colorName}, props: {propKey → iconName} }. Display only,
+// no node.text change; round-trips as the <_appearance> head element like savedSearches. A tag
+// gets an on-brand swatch color; a property key gets an FA icon from the bundled subset. Names
+// are lowercased to match how tags/props are keyed. Stores the swatch/icon NAME (theme-portable).
+const APPEARANCE_COLORS = ['red', 'amber', 'green', 'teal', 'blue', 'violet', 'pink', 'gray'];
+// Curated FA icon shortlist — ONLY glyphs already in the embedded subset (no CDN / no rebuild).
+const APPEARANCE_ICONS = ['fa-tag', 'fa-dollar-sign', 'fa-calendar-day', 'fa-inbox', 'fa-book',
+  'fa-circle-check', 'fa-clipboard-check', 'fa-calculator', 'fa-image', 'fa-folder-open',
+  'fa-pen', 'fa-dice-d20', 'fa-circle-nodes', 'fa-link'];  // ONLY in-subset glyphs (verified against FA_GLYPHS)
+// A valid hashtag name: `[\w-]+` segments joined by `/` (mirrors the mdInline / collectTags
+// grammar). Used to reject a color on a name that could never render as a #tag. Pure.
+function isValidTagName(name) {
+  return /^[\w-]+(?:\/[\w-]+)*$/.test(String(name || '').replace(/^#/, ''));
+}
+// The swatch color for a tag, or null. Hierarchical like tag search: a color set on `thread`
+// also colors `thread/torn-letter` (the nearest configured ancestor wins). Pure.
+function tagColorOf(name, appearance = root?.appearance) {
+  const tags = appearance?.tags;
+  if (!tags) return null;
+  let key = String(name || '').replace(/^#/, '').toLowerCase();
+  while (key) {
+    const c = tags[key];
+    if (APPEARANCE_COLORS.includes(c)) return c;
+    const cut = key.lastIndexOf('/');
+    if (cut < 0) break;
+    key = key.slice(0, cut);   // walk up the tag hierarchy
+  }
+  return null;
+}
+// The FA icon configured for a property key, or null. Pure.
+function propIconOf(key, appearance = root?.appearance) {
+  const i = appearance?.props?.[String(key || '').trim().toLowerCase()];
+  return APPEARANCE_ICONS.includes(i) ? i : null;
+}
+// Set (or, with a falsy value, clear) a tag color / prop icon on the appearance config. Mutates
+// and normalizes the key. Pure-ish (mutates the passed appearance object); the caller markDirty()s.
+function setTagColor(appearance, name, color) {
+  const k = String(name || '').replace(/^#/, '').toLowerCase();
+  if (!k) return appearance;
+  appearance.tags = appearance.tags || {};
+  if (color == null || color === '') delete appearance.tags[k];         // explicit clear
+  else if (APPEARANCE_COLORS.includes(color)) appearance.tags[k] = color; // set a known swatch; an unknown one is a no-op
+  return appearance;
+}
+function setPropIcon(appearance, key, icon) {
+  const k = String(key || '').trim().toLowerCase();
+  if (!k) return appearance;
+  appearance.props = appearance.props || {};
+  if (icon == null || icon === '') delete appearance.props[k];        // explicit clear
+  else if (APPEARANCE_ICONS.includes(icon)) appearance.props[k] = icon; // set a known icon; an unknown one is a no-op
+  return appearance;
+}
+// Load-time validator: keep only well-shaped {tags, props} of name→known-value. Never throws.
+function normalizeAppearance(a) {
+  const out = { tags: {}, props: {} };
+  if (a && typeof a === 'object') {
+    for (const [k, v] of Object.entries(a.tags || {})) if (APPEARANCE_COLORS.includes(v)) out.tags[String(k).toLowerCase()] = v;
+    for (const [k, v] of Object.entries(a.props || {})) if (APPEARANCE_ICONS.includes(v)) out.props[String(k).toLowerCase()] = v;
+  }
+  return out;
+}
 
 // Reserved timestamp properties (#467): `created` is stamped once when a point first gets
 // text; `edited` is re-stamped whenever the point's OWN text/note changes (the exitEdit
@@ -4306,7 +4397,10 @@ function mdInline(s) {
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
   // hashtags: segments are [\w-]+, joined by / for nested tags (#thread/torn-letter).
   // A trailing / is NOT consumed (so "#a/" tags as #a), keeping the slug clean.
-  s = s.replace(/(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g, (_,t) => `<a class="hashtag" data-tag="#${t}" role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`);
+  s = s.replace(/(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g, (_,t) => {
+    const col = tagColorOf(t); // #464: an on-brand swatch, hierarchical (nearest configured ancestor)
+    return `<a class="hashtag" data-tag="#${t}"${col ? ` data-color="${col}"` : ''} role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`;
+  });
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>tok[+i]);
   return s;
 }
@@ -5332,7 +5426,9 @@ function toOpml(r) {
     return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
   }
   // doc-level config in the head, each via the shared headEl serializer (F6)
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + headEl('_docid', r.docId) + headEl('_journal', r.journal);
+  // #464: emit <_appearance> only when it holds at least one mapping (mirrors headEl's empty-skip)
+  const appHas = r.appearance && (Object.keys(r.appearance.tags || {}).length || Object.keys(r.appearance.props || {}).length);
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + headEl('_docid', r.docId) + headEl('_journal', r.journal);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -5468,7 +5564,10 @@ function fromOpml(xml) {
   // data packs (plugins): the validator drops shape-invalid packs (no string id);
   // bad rules/vars inside a kept pack are neutralized defensively at collect time.
   const plugins       = headJSONArray(doc, '_plugins', validPluginPack);
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, docId, journal,
+  // #464: appearance config — validated to known swatch/icon names, never throws
+  const appearanceRaw = doc.querySelector('head > _appearance')?.textContent?.trim();
+  const appearance    = (() => { try { return normalizeAppearance(JSON.parse(appearanceRaw || 'null')); } catch(_) { return { tags: {}, props: {} }; } })();
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, docId, journal,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -8332,6 +8431,8 @@ function buildPropsArea(node) {
     const k = document.createElement('span'); k.className = 'prop-key'; k.textContent = key;
     const s = document.createElement('span'); s.className = 'prop-sep';  s.textContent = ':';
     const v = document.createElement('span'); v.className = 'prop-val';  v.textContent = displayVal;
+    const icon = propIconOf(propK); // #464: an optional FA icon before the key
+    if (icon) { const ig = document.createElement('span'); ig.className = 'prop-icon'; ig.setAttribute('aria-hidden', 'true'); setIcon(ig, { fa: 'fa-solid ' + icon, fb: '' }); chip.appendChild(ig); }
     chip.append(k, s, v);
     area.appendChild(chip);
   });
@@ -9252,6 +9353,113 @@ function importDataPacks() {
     reader.readAsText(file);
   });
   inp.click();
+}
+
+// ─── appearance config dialog (#464) ───────────────────────────────────────────
+// One "Appearance" dialog (File menu) to give a tag an on-brand color and a property key an
+// icon. Display-only, keyed by name, stored on root.appearance (round-trips as <_appearance>).
+// Two sections: Tags (name + 8 swatches) and Properties (key + the curated icon shortlist).
+const APPEARANCE_ICON = { fa: 'fa-solid fa-image', fb: '🎨' };
+let _apprFocus = 'tag'; // #464 review #1: which section's input to focus after an in-place re-render ('tag' | 'prop')
+function openAppearanceDialog() {
+  root.appearance = root.appearance || { tags: {}, props: {} };
+  const ap = root.appearance;
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, APPEARANCE_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Tag & property styling';
+  head.append(ic, ttl); dialogHelp(head, 'appearance'); ioCard.appendChild(head);
+
+  const commit = (msg) => { markDirty(); render(); if (msg) flashHint(msg); openAppearanceDialog(); };
+
+  // ── Tags → color ──
+  const tagField = document.createElement('div'); tagField.className = 'io-field';
+  const tagLbl = document.createElement('label'); tagLbl.textContent = 'Tag color';
+  const tagIn = document.createElement('input'); tagIn.type = 'text'; tagIn.placeholder = 'a tag name, e.g. urgent';
+  tagIn.spellcheck = false; tagIn.autocomplete = 'off'; tagIn.setAttribute('aria-label', 'Tag name to color');
+  tagField.append(tagLbl, tagIn);
+  const swatches = document.createElement('div'); swatches.className = 'io-chips appr-swatches';
+  APPEARANCE_COLORS.forEach(col => {
+    const sw = document.createElement('button'); sw.type = 'button'; sw.className = 'appr-swatch'; sw.dataset.color = col;
+    sw.setAttribute('aria-label', `Color the tag ${col}`); sw.title = col;
+    sw.addEventListener('click', () => {
+      const name = tagIn.value.trim().replace(/^#/, '');
+      if (!name) { tagIn.focus(); flashHint('Type a tag name first'); return; }
+      // must be a real hashtag name (#464 review #3: else the color is stored but never renders — P4)
+      if (!isValidTagName(name)) { tagIn.focus(); flashHint('Not a tag name. Use letters, numbers, - and / (like urgent or thread/idea).'); return; }
+      _apprFocus = 'tag'; // #464 review #1: keep focus in this section after the re-render
+      pushUndo(); setTagColor(ap, name, col); commit(`#${name} is now ${col}`);
+    });
+    swatches.appendChild(sw);
+  });
+  tagField.appendChild(swatches);
+  ioCard.appendChild(tagField);
+  // existing tag colors, each removable
+  const tagKeys = Object.keys(ap.tags || {});
+  if (tagKeys.length) {
+    const list = document.createElement('div'); list.className = 'tpl-list appr-list';
+    tagKeys.sort().forEach(name => {
+      const row = document.createElement('div'); row.className = 'tpl-row';
+      const chip = document.createElement('span'); chip.className = 'hashtag'; chip.dataset.color = ap.tags[name]; chip.textContent = '#' + name;
+      chip.style.cursor = 'default';
+      const spacer = document.createElement('span'); spacer.style.flex = '1';
+      const del = document.createElement('button'); del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' }); del.title = 'Remove'; del.setAttribute('aria-label', `Remove the color from #${name}`);
+      del.addEventListener('click', () => { _apprFocus = 'tag'; pushUndo(); setTagColor(ap, name, ''); commit(`Cleared #${name}`); });
+      row.append(chip, spacer, del); list.appendChild(row);
+    });
+    ioCard.appendChild(list);
+  }
+
+  // ── Properties → icon ──
+  const propField = document.createElement('div'); propField.className = 'io-field'; propField.style.marginTop = '10px';
+  const propLbl = document.createElement('label'); propLbl.textContent = 'Property icon';
+  const propIn = document.createElement('input'); propIn.type = 'text'; propIn.placeholder = 'a property key, e.g. cost';
+  propIn.spellcheck = false; propIn.autocomplete = 'off'; propIn.setAttribute('aria-label', 'Property key to give an icon');
+  propField.append(propLbl, propIn);
+  const icons = document.createElement('div'); icons.className = 'io-chips appr-icons';
+  APPEARANCE_ICONS.forEach(icon => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'appr-icon';
+    b.setAttribute('aria-label', `Icon ${icon.replace('fa-', '')} for the property`); b.title = icon.replace('fa-', '');
+    const ig = document.createElement('span'); ig.setAttribute('aria-hidden', 'true'); setIcon(ig, { fa: 'fa-solid ' + icon, fb: '□' });
+    b.appendChild(ig);
+    b.addEventListener('click', () => {
+      const key = propIn.value.trim();
+      if (!key) { propIn.focus(); flashHint('Type a property key first'); return; }
+      _apprFocus = 'prop'; // #464 review #1: stay in the Properties section after the re-render
+      pushUndo(); setPropIcon(ap, key, icon); commit(`${key} now shows an icon`);
+    });
+    icons.appendChild(b);
+  });
+  propField.appendChild(icons);
+  ioCard.appendChild(propField);
+  const propKeys = Object.keys(ap.props || {});
+  if (propKeys.length) {
+    const list = document.createElement('div'); list.className = 'tpl-list appr-list';
+    propKeys.sort().forEach(key => {
+      const row = document.createElement('div'); row.className = 'tpl-row';
+      const ig = document.createElement('span'); ig.className = 'prop-icon'; ig.setAttribute('aria-hidden', 'true'); setIcon(ig, { fa: 'fa-solid ' + ap.props[key], fb: '□' });
+      const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = key;
+      const spacer = document.createElement('span'); spacer.style.flex = '1';
+      const del = document.createElement('button'); del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' }); del.title = 'Remove'; del.setAttribute('aria-label', `Remove the icon from ${key}`);
+      del.addEventListener('click', () => { _apprFocus = 'prop'; pushUndo(); setPropIcon(ap, key, ''); commit(`Cleared ${key}`); });
+      row.append(ig, nm, spacer, del); list.appendChild(row);
+    });
+    ioCard.appendChild(list);
+  }
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn primary'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', closeIo);
+  foot.append(closeBtn); ioCard.appendChild(foot);
+  ioCancel = closeIo;
+  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target
+  ioCard.setAttribute('aria-label', 'Tag and property styling');
+  ioBack.classList.add('on');
+  // #464 review #1: after an in-place rebuild, return focus to the section the user was acting in
+  // (not always the Tag input), so configuring several properties in a row doesn't jump to the top.
+  requestAnimationFrame(() => (_apprFocus === 'prop' ? propIn : tagIn).focus());
 }
 
 // The document switcher (brief #5b): an io-card list of the connected folder's .opml docs.
@@ -22866,6 +23074,7 @@ document.getElementById('btn-open').addEventListener('click', () => { openFile()
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
+document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
 document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
 // the File-menu row is a CYCLE button (guided → standard → lean → …): the label names where the next
 // press lands + the desc names the current tier, so the user always sees both. Refreshed on menu open.
@@ -23092,8 +23301,8 @@ function applyTheme() {
   const forcedMeta = forcedTheme && themeColorMetas.find(m => (m.media || '').includes('dark') === (forcedTheme === 'dark'));
   themeColorMetas.forEach(m => { m.content = forcedMeta ? forcedMeta.dataset.sys : m.dataset.sys; });
   themeStyle.textContent = forcedTheme ? (forcedTheme === 'dark'
-    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);--sh-up:0 -6px 28px rgba(0,0,0,.5);--row-hover:rgba(255,255,255,.04);--edit-row:color-mix(in srgb,var(--acc) 8%,transparent);--sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);--hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f}'
-    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10);--row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);--sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);--hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff}'
+    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sw-red:#f0928b;--sw-amber:#d9a25a;--sw-green:#84b389;--sw-teal:#5ec8bd;--sw-blue:#82b4e8;--sw-violet:#c4b5fd;--sw-pink:#e79ac8;--sw-gray:#b0a99c;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 18px 44px rgba(0,0,0,.45);--sh-up:0 -6px 28px rgba(0,0,0,.5);--row-hover:rgba(255,255,255,.04);--edit-row:color-mix(in srgb,var(--acc) 8%,transparent);--sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);--hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f}'
+    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sw-red:#b3271f;--sw-amber:#8a5300;--sw-green:#1e7029;--sw-teal:#0f766e;--sw-blue:#0f5cb0;--sw-violet:#6d28d9;--sw-pink:#a3327a;--sw-gray:#5c574d;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 14px 32px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10);--row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);--sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);--hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff}'
   ) : '';
   document.documentElement.style.colorScheme = forcedTheme || '';
   applyAccentCSS(dark);
@@ -23718,6 +23927,14 @@ const GUIDE = [
       { syn:'npc: knight | rogue | mage', desc:'a pack grammar rule, callable as {npc} anywhere' },
       { syn:'tax = 0.2',              desc:'a pack formula variable, usable in any {= …}' },
       { syn:'toggle off',             desc:'disable a pack without deleting it' },
+    ] },
+  { id:'appearance', cat:'todos',
+    title:'Tag colors & property icons',
+    body:"Make your outline easier to scan at a glance. Open File then Tag & property styling to give a tag its own color and a property key a small icon. Type a tag name and click a color swatch: every #tag with that name shows in that color, and nested tags inherit it (a color on #thread also colors #thread/idea). Type a property key and pick an icon: that property's chip shows the icon before its name (a dollar sign on cost, a calendar on due). Both are purely visual, stored with the document, and change nothing about the text or how search works. The colors are a curated on-brand set that stays legible in light and dark mode; the icons are drawn from the built-in set.",
+    examples:[
+      { syn:'File → Tag & property styling', desc:'color tags and icon properties' },
+      { syn:'#urgent → red',       desc:'a tag color (nested tags inherit it)' },
+      { syn:'cost → $ icon',       desc:'a property icon before the key' },
     ] },
 
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
@@ -24487,6 +24704,7 @@ function applyAutosaveData(data) {
   // serialize. Reject it (the caller falls back to the Examples doc), so a corrupt blob can't brick boot.
   if (treeDepthExceeds(data.root)) return false;
   root = data.root;
+  root.appearance = normalizeAppearance(root.appearance); // #464: a pre-feature autosave has none; guarantee the {tags,props} shape
   migrateNodePrefixes(root);
   buildIndex(root, null); resetDocCaches();
   focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
