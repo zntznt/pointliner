@@ -1342,6 +1342,10 @@ test('appearance serializes to OPML <_appearance> (present when set, absent when
 test('appearance is display-only wired at the render sites (#464)', () => {
   assert.ok(/tagColorOf\(t\)/.test(_src) && /data-color="\$\{col\}"/.test(_src), 'the hashtag render reads tagColorOf');
   assert.ok(/propIconOf\(propK\)/.test(_src), 'the property chip render reads propIconOf');
+  // live-caught regression guard: the per-color rule MUST restate `color` (not only --tc), or
+  // `.node-content a{color:var(--acc)}` (0,1,1) wins over `.hashtag{color}` (0,1,0) and the tag
+  // renders accent instead of the chosen swatch. The [data-color] selector is 0,2,0, so it wins.
+  assert.ok(/\.hashtag\[data-color\]\{color:var\(--tc\)/.test(_src), 'the [data-color] rule re-applies color to beat .node-content a');
   // the icon shortlist is only in-subset glyphs (no CDN / no blank icon)
   const m = _src.match(/FA_GLYPHS\s*=\s*new Set\(\[([^\]]*)\]/);
   const subset = new Set(m[1].replace(/'/g, '').split(',').map(s => s.trim()));

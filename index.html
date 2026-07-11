@@ -667,7 +667,10 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .hashtag{--tc:var(--acc);color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,transparent);border-radius:var(--r-xs);padding:0 5px;cursor:pointer;white-space:nowrap;transition:background .12s}
 .hashtag:hover{background:color-mix(in srgb,var(--tc) 20%,transparent)}
 .hashtag:focus-visible{outline:2px solid var(--tc);outline-offset:1px;border-radius:var(--r-xs)}
-/* #464 per-tag color: config stores the swatch NAME; data-color drives the --tc ink via the same badge recipe */
+/* #464 per-tag color: config stores the swatch NAME; data-color sets --tc AND re-applies color so
+   it beats `.node-content a{color:var(--acc)}` (0,1,1) — a bare .hashtag[data-color] (0,2,0) already
+   out-specifies it, but .hashtag's own color rule is 0,1,0, so we must restate color here. */
+.hashtag[data-color]{color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,transparent)}
 .hashtag[data-color=red]{--tc:var(--sw-red)}.hashtag[data-color=amber]{--tc:var(--sw-amber)}
 .hashtag[data-color=green]{--tc:var(--sw-green)}.hashtag[data-color=teal]{--tc:var(--sw-teal)}
 .hashtag[data-color=blue]{--tc:var(--sw-blue)}.hashtag[data-color=violet]{--tc:var(--sw-violet)}
