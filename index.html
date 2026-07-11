@@ -1109,6 +1109,9 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-btn.xsm{padding:4px 8px;font-size:12px}
 .tpl-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:260px;overflow-y:auto}
 .tpl-row{display:flex;align-items:center;gap:6px}
+.pack-toggle{flex:0 0 auto;width:15px;height:15px;accent-color:var(--acc);cursor:pointer}/* #487: pack enable toggle */
+.pack-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.tpl-name.pack-off{color:var(--muted);text-decoration:line-through}/* a disabled pack reads dimmed + struck */
 .tpl-pick{flex:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 11px;cursor:pointer;text-align:left;transition:border-color .12s,background .12s}
 .tpl-pick:hover,.tpl-pick:focus-visible{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);outline:none}
 .tpl-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1948,6 +1951,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
+  <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-cubes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
   <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
@@ -9001,6 +9005,220 @@ function openTemplatePicker(nodeId) {
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
 }
 
+// ─── data-pack manager (#487) ──────────────────────────────────────────────────
+// The front door for declarative data packs (the engine — root.plugins + mergePackRules +
+// packVarDefs — already ships; this is the missing UI, the #487 gap). Two in-place views in one
+// io-card: a LIST (each pack: enable toggle · name · Edit · Remove) with New / Import / Export in
+// the footer, and an EDIT view (name + a rules textarea + a vars textarea, live-validated).
+// Every mutation writes root.plugins + markDirty() so the _varsVer-cached collectRules/collectVars
+// pick it up on the next render. Packs are pure DATA (parseRules + evalMath), so the code-execution
+// gate (plugins-direction.md) stays intact — this adds no new authoring syntax.
+const PACK_ICON = { fa: 'fa-solid fa-cubes', fb: '📦' };
+let _packEditId = null; // when set, the manager shows the edit view for this pack id
+
+function openDataPackManager() {
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, PACK_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title';
+  ttl.textContent = _packEditId ? 'Edit data pack' : 'Data packs';
+  head.append(ic, ttl); dialogHelp(head, 'datapacks'); ioCard.appendChild(head);
+
+  if (_packEditId) buildPackEditView(); else buildPackListView();
+
+  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target (UXP-81)
+  ioCancel = () => { _packEditId = null; closeIo(); };
+  ioCard.setAttribute('aria-label', _packEditId ? 'Edit data pack' : 'Data packs');
+  ioBack.classList.add('on');
+}
+
+function buildPackListView() {
+  const list = root.plugins || [];
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 14px;line-height:1.55';
+    empty.textContent = 'No data packs yet. A pack bundles grammar rules and formula variables you can reuse across the document. Create one, or import a pack file.';
+    ioCard.appendChild(empty);
+  } else {
+    const plist = document.createElement('div'); plist.className = 'tpl-list';
+    list.forEach(p => {
+      const row = document.createElement('div'); row.className = 'tpl-row pack-row';
+      // enable toggle (a real checkbox — keyboard + AT operable)
+      const tog = document.createElement('input'); tog.type = 'checkbox'; tog.className = 'pack-toggle';
+      tog.checked = pluginPackActive(p);
+      tog.setAttribute('aria-label', `${pluginPackActive(p) ? 'Disable' : 'Enable'} pack ${packLabel(p)}`);
+      tog.addEventListener('change', () => {
+        pushUndo(); root.plugins = togglePluginPack(root.plugins, p.id); markDirty(); render();
+        flashHint(`${tog.checked ? 'Enabled' : 'Disabled'} pack “${packLabel(p)}”`);
+        openDataPackManager();
+      });
+      // name (dimmed when disabled) — clicking it edits, like the template picker's pick
+      const pick = document.createElement('button'); pick.type = 'button'; pick.className = 'tpl-pick';
+      pick.setAttribute('aria-label', `Edit pack ${packLabel(p)}`);
+      const nm = document.createElement('span'); nm.className = 'tpl-name' + (pluginPackActive(p) ? '' : ' pack-off');
+      nm.textContent = packLabel(p);
+      const cnt = document.createElement('span'); cnt.className = 'tpl-count';
+      const nRules = parseRules(p.rules || '')?.order?.length || 0;
+      const nVars = Array.isArray(p.vars) ? p.vars.length : 0;
+      cnt.textContent = `${nRules} rule${nRules === 1 ? '' : 's'}, ${nVars} var${nVars === 1 ? '' : 's'}`;
+      pick.append(nm, cnt);
+      pick.addEventListener('click', () => { _packEditId = p.id; openDataPackManager(); });
+      // remove
+      const del = document.createElement('button'); del.className = 'io-btn xsm'; del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
+      del.title = 'Remove'; del.setAttribute('aria-label', `Remove pack ${packLabel(p)}`);
+      del.addEventListener('click', () => {
+        pushUndo(); root.plugins = removePluginPack(root.plugins, p.id); markDirty(); render();
+        flashHint(`Removed pack “${packLabel(p)}”`);
+        openDataPackManager();
+      });
+      row.append(tog, pick, del);
+      plist.appendChild(row);
+    });
+    ioCard.appendChild(plist);
+  }
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const newBtn = document.createElement('button'); newBtn.className = 'io-btn'; newBtn.textContent = '+ New pack';
+  newBtn.addEventListener('click', () => {
+    pushUndo();
+    const p = newPluginPack('New pack');
+    root.plugins = [...(root.plugins || []), p];
+    markDirty();
+    _packEditId = p.id; openDataPackManager();  // straight into editing the fresh pack
+  });
+  const impBtn = document.createElement('button'); impBtn.className = 'io-btn'; impBtn.textContent = 'Import…';
+  impBtn.addEventListener('click', importDataPacks);
+  const expBtn = document.createElement('button'); expBtn.className = 'io-btn'; expBtn.textContent = 'Export…';
+  expBtn.disabled = !(root.plugins || []).length;
+  expBtn.addEventListener('click', exportDataPacks);
+  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn primary'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', () => { _packEditId = null; closeIo(); });
+  foot.append(newBtn, impBtn, expBtn, closeBtn); ioCard.appendChild(foot);
+  requestAnimationFrame(() => { (ioCard.querySelector('.pack-toggle') || newBtn).focus(); });
+}
+
+function buildPackEditView() {
+  const p = (root.plugins || []).find(x => x.id === _packEditId);
+  if (!p) { _packEditId = null; openDataPackManager(); return; }
+  // Canonical dialog fields (design-language §4): .io-field { label, input/textarea.io-mono }
+  // appended straight to #io-card (which owns the padding), with an .io-preview live line — the
+  // exact shape openInsertDialog uses. No inline styles; all tokens/focus/anti-zoom via the class.
+  const mkField = (labelText, control) => {
+    const f = document.createElement('div'); f.className = 'io-field';
+    const lbl = document.createElement('label'); lbl.textContent = labelText;
+    f.append(lbl, control); ioCard.appendChild(f); return f;
+  };
+  // .io-preview-note = the muted helper-line variant; .io-preview-bad flips it to the error ink.
+  const mkPreview = (f) => { const p = document.createElement('div'); p.className = 'io-preview io-preview-note'; f.appendChild(p); return p; };
+  const setPrev = (el, text, bad) => { el.textContent = text; el.classList.toggle('io-preview-bad', !!bad); el.classList.toggle('io-preview-note', !bad); };
+
+  // name
+  const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = p.name || '';
+  nameIn.spellcheck = false; nameIn.autocomplete = 'off';
+  mkField('Pack name', nameIn);
+  // rules
+  const rulesIn = document.createElement('textarea'); rulesIn.className = 'io-mono'; rulesIn.rows = 5;
+  rulesIn.value = p.rules || ''; rulesIn.placeholder = 'color: red | blue | green\nnpc: a {color} knight';
+  rulesIn.spellcheck = false; rulesIn.autocomplete = 'off';
+  const rulesPrev = mkPreview(mkField('Grammar rules (one per line, name: choices)', rulesIn));
+  const updRules = () => {
+    const v = rulesIn.value.trim();
+    if (!v) return setPrev(rulesPrev, 'Blank is fine (a vars-only pack).');
+    const parsed = parseRules(v);
+    const n = parsed?.order?.length || 0;
+    if (!n) return setPrev(rulesPrev, 'No valid rule lines found. Use name: choices per line.', true);
+    setPrev(rulesPrev, `${n} rule${n === 1 ? '' : 's'}: ${parsed.order.join(', ')}`);
+  };
+  rulesIn.addEventListener('input', updRules); updRules();
+  // vars (one per line: name = expr)
+  const varsIn = document.createElement('textarea'); varsIn.className = 'io-mono'; varsIn.rows = 3;
+  varsIn.value = (p.vars || []).map(v => `${v.name} = ${v.expr}`).join('\n');
+  varsIn.placeholder = 'tax = 0.2\narea = pi * 4^2';
+  varsIn.spellcheck = false; varsIn.autocomplete = 'off';
+  const varsPrev = mkPreview(mkField('Formula variables (one per line, name = expression)', varsIn));
+  const updVars = () => {
+    const parsed = parsePackVarLines(varsIn.value);
+    if (!varsIn.value.trim()) return setPrev(varsPrev, 'Blank is fine (a rules-only pack).');
+    if (parsed.bad.length) return setPrev(varsPrev, `Not a name = expression: ${parsed.bad[0]}`, true);
+    setPrev(varsPrev, `${parsed.vars.length} variable${parsed.vars.length === 1 ? '' : 's'}: ${parsed.vars.map(v => v.name).join(', ')}`);
+  };
+  varsIn.addEventListener('input', updVars); updVars();
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const backBtn = document.createElement('button'); backBtn.className = 'io-btn'; backBtn.textContent = 'Back';
+  backBtn.addEventListener('click', () => { _packEditId = null; openDataPackManager(); });
+  const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
+  const save = () => {
+    const vp = parsePackVarLines(varsIn.value);
+    if (vp.bad.length) { varsIn.focus(); return; } // P4: don't save a malformed vars line silently
+    pushUndo();
+    root.plugins = updatePluginPack(root.plugins, p.id, {
+      name: nameIn.value.trim() || 'pack', rules: rulesIn.value.trim(), vars: vp.vars,
+    });
+    markDirty(); render();
+    flashHint(`Saved pack “${nameIn.value.trim() || 'pack'}”`);
+    _packEditId = null; openDataPackManager();
+  };
+  saveBtn.addEventListener('click', save);
+  foot.append(backBtn, saveBtn); ioCard.appendChild(foot);
+  requestAnimationFrame(() => nameIn.focus());
+}
+
+// Parse the edit view's vars textarea ("name = expr" per line) → { vars:[{name,expr}], bad:[lines] }.
+// A blank line is skipped; a line without a top-level `=` (or an empty name/expr) is 'bad' (surfaced,
+// not silently dropped — P4). Pure; no DOM. The expr is NOT evaluated here (a formula may reference
+// a var not yet defined), matching packVarDefs' formula-only, resolve-at-collect contract.
+function parsePackVarLines(text) {
+  const vars = [], bad = [];
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) { bad.push(line); continue; }
+    const name = line.slice(0, eq).trim(), expr = line.slice(eq + 1).trim();
+    if (!name || !expr || !/^[A-Za-z_]\w*$/.test(name)) { bad.push(line); continue; }
+    vars.push({ name, expr });
+  }
+  return { vars, bad };
+}
+
+// Export root.plugins as a downloaded JSON file (the { plugins:[…] } wrapper parsePackImport reads).
+function exportDataPacks() {
+  const packs = root.plugins || [];
+  if (!packs.length) { flashHint('No data packs to export'); return; }
+  const blob = new Blob([JSON.stringify({ plugins: packs }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'pointliner-data-packs.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  flashHint(`Exported ${packs.length} data pack${packs.length === 1 ? '' : 's'}`);
+}
+
+// Import data packs from a chosen JSON file. parsePackImport is the trust boundary (valid packs
+// only, never executes). Imported packs APPEND (existing packs are kept); a fresh id is minted for
+// any whose id already exists, so an import never silently overwrites.
+function importDataPacks() {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+  inp.addEventListener('change', () => {
+    const file = inp.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const incoming = parsePackImport(String(reader.result || ''));
+      if (!incoming.length) { flashHint('No valid data packs found in that file'); return; }
+      const have = new Set((root.plugins || []).map(p => p.id));
+      const added = incoming.map(p => have.has(p.id) ? { ...p, id: uid() } : p);
+      pushUndo();
+      root.plugins = [...(root.plugins || []), ...added];
+      markDirty(); render();
+      flashHint(`Imported ${added.length} data pack${added.length === 1 ? '' : 's'}`);
+      openDataPackManager();
+    };
+    reader.readAsText(file);
+  });
+  inp.click();
+}
+
 // The document switcher (brief #5b): an io-card list of the connected folder's .opml docs.
 // Click a row → switch; trash → delete (confirmed); "+ New document" → create. Rows are
 // keyboard-operable (↑/↓ move, Enter switches, Delete removes). Re-renders in place after a
@@ -14732,6 +14950,13 @@ let _rulesCacheVer = -1, _rulesCached = {}; // doc-cache 2: collectRules (see re
 function validPluginPack(p) {
   return !!p && typeof p === 'object' && !Array.isArray(p) && typeof p.id === 'string';
 }
+// A pack is ACTIVE unless it carries `enabled: false` (#487 manager toggle). Absent =
+// active, so every existing / imported pack stays on by default (back-compatible — a pack
+// authored without the field never silently vanishes). The collect-time merges skip an
+// inactive pack, so disabling one drops its rules/vars on the next _varsVer bump.
+function pluginPackActive(p) {
+  return validPluginPack(p) && p.enabled !== false;
+}
 
 // Merge every valid pack's grammar rules into `target` (a null-proto rule map), in
 // pack order (a later pack wins on a name collision). Mirrors collectRules' tree
@@ -14739,7 +14964,7 @@ function validPluginPack(p) {
 // Returns `target`. Pure; no DOM.
 function mergePackRules(target, plugins) {
   for (const p of (plugins || [])) {
-    if (!validPluginPack(p) || typeof p.rules !== 'string') continue;
+    if (!pluginPackActive(p) || typeof p.rules !== 'string') continue;  // #487: skip a disabled pack
     const parsed = parseRules(p.rules);
     if (parsed) Object.assign(target, parsed.rules);
   }
@@ -14752,12 +14977,58 @@ function mergePackRules(target, plugins) {
 function packVarDefs(plugins) {
   const out = [];
   for (const p of (plugins || [])) {
-    if (!validPluginPack(p) || !Array.isArray(p.vars)) continue;
+    if (!pluginPackActive(p) || !Array.isArray(p.vars)) continue;  // #487: skip a disabled pack
     for (const v of p.vars) {
       if (v && typeof v.name === 'string' && typeof v.expr === 'string') out.push({ name: v.name, expr: v.expr });
     }
   }
   return out;
+}
+
+// ─── data-pack manager model (#487) — pure list ops over root.plugins ──────────
+// A pack is { id, name?, rules?, vars?, enabled? }. `id` is the stable key; `name` is the
+// display label (falls back to id). These are pure array transforms — the DOM manager calls
+// them then markDirty()s so the _varsVer-cached collectRules/collectVars pick up the change.
+
+// A short display label for a pack (a non-blank name, else id, else "(unnamed)").
+function packLabel(p) {
+  if (!p) return '(unnamed)';
+  const nm = (p.name || '').trim();
+  return nm || (p.id || '').trim() || '(unnamed)';
+}
+
+// A fresh empty pack with a unique id. `gen` injectable for tests.
+function newPluginPack(name, gen = uid) {
+  const nm = (name || '').trim();
+  return { id: gen(), name: nm || 'pack', rules: '', vars: [], enabled: true };
+}
+
+// Return a NEW plugins array with pack `id` replaced by `patch` (shallow-merged), others
+// untouched. No-op (returns the same-shaped copy) if the id is absent. Pure.
+function updatePluginPack(plugins, id, patch) {
+  return (plugins || []).map(p => (p && p.id === id) ? { ...p, ...patch } : p);
+}
+// Remove pack `id`. Pure — returns a new array.
+function removePluginPack(plugins, id) {
+  return (plugins || []).filter(p => !(p && p.id === id));
+}
+// Flip a pack's enabled state (absent → was active → becomes false). Pure.
+function togglePluginPack(plugins, id) {
+  return (plugins || []).map(p => (p && p.id === id) ? { ...p, enabled: p.enabled === false } : p);
+}
+
+// Parse an imported packs payload (a JSON string or a parsed value) to a clean array of
+// VALID packs, dropping anything malformed (validPluginPack guard — never throws, never
+// executes). Accepts either a bare array of packs or a { plugins: [...] } wrapper (the
+// export shape). Returns [] on any parse failure. Pure — the import trust boundary.
+function parsePackImport(input) {
+  let data = input;
+  if (typeof input === 'string') {
+    try { data = JSON.parse(input); } catch { return []; }
+  }
+  const arr = Array.isArray(data) ? data : (data && Array.isArray(data.plugins) ? data.plugins : null);
+  if (!arr) return [];
+  return arr.filter(validPluginPack);
 }
 
 function collectRules(rootNode) {
@@ -22499,6 +22770,7 @@ document.getElementById('btn-new').addEventListener('click', () => { newFile(); 
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
+document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
 document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
 // the File-menu row is a CYCLE button (guided → standard → lean → …): the label names where the next
 // press lands + the desc names the current tier, so the user always sees both. Refreshed on menu open.
@@ -23341,6 +23613,15 @@ const GUIDE = [
       { syn:'hours <= 8',          desc:"a point's own limit" },
       { syn:'count(score) >= 3',   desc:'at least 3 scored children' },
       { syn:'is:failing',          desc:'find everything that fails' },
+    ] },
+  { id:'datapacks', cat:'compute',
+    title:'Data packs',
+    body:"Bundle grammar rules and formula variables you want to reuse, so you don't have to redefine them in every document. A pack is pure data (the same rules and variables you already write in pills), stored with the document. Open File then Data packs to manage them: create a pack, type its grammar rules (one per line, name: choices) and formula variables (one per line, name = expression), and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. Toggle a pack off to remove its rules and variables without deleting it, or export a pack to a file to share it and import one back. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. Packs never run code; they only add the data the existing pill engines already understand.",
+    examples:[
+      { syn:'File → Data packs',      desc:'create, enable, edit, import or export packs' },
+      { syn:'npc: knight | rogue | mage', desc:'a pack grammar rule, callable as {npc} anywhere' },
+      { syn:'tax = 0.2',              desc:'a pack formula variable, usable in any {= …}' },
+      { syn:'toggle off',             desc:'disable a pack without deleting it' },
     ] },
 
   // ── Links & knowledge (guide) ─────────────────────────────────────────────

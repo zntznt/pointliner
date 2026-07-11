@@ -1236,6 +1236,81 @@ test('plugin packs — toOpml round-trips <_plugins> (present when set, absent w
   assert.ok(!c.toOpml(c.mkRoot()).includes('<_plugins>'), 'empty plugins → no <_plugins> element (mirrors _templates)');
 });
 
+// ── data-pack MANAGER model (#487) ──────────────────────────────────────────
+test('pluginPackActive — active unless enabled:false (absent = active, back-compat)', () => {
+  assert.equal(c.pluginPackActive({ id: 'p' }), true, 'no enabled field → active');
+  assert.equal(c.pluginPackActive({ id: 'p', enabled: true }), true);
+  assert.equal(c.pluginPackActive({ id: 'p', enabled: false }), false, 'enabled:false → inactive');
+  assert.equal(c.pluginPackActive({ enabled: true }), false, 'still needs a valid id');
+});
+
+test('a DISABLED pack drops out of collectRules / collectVars', () => {
+  const root = c.mkRoot();
+  root.plugins = [{ id: 'p', enabled: false, rules: 'color: red', vars: [{ name: 'tax', expr: '0.1' }] }];
+  assert.ok(!('color' in c.collectRules(root)), 'disabled pack rules do not register');
+  assert.ok(!('tax' in c.collectVars(root)), 'disabled pack vars do not register');
+  // re-enabling brings them back
+  root.plugins = c.togglePluginPack(root.plugins, 'p');
+  assert.ok('color' in c.collectRules(root), 'toggled back on → rules register');
+  assert.equal(c.collectVars(root).tax, 0.1);
+});
+
+test('manager list ops — new / update / remove / toggle are pure, id-keyed', () => {
+  let seq = 0; const gen = () => 'id' + (++seq);
+  const p = c.newPluginPack('My Pack', gen);
+  assert.deepEqual(host(p), { id: 'id1', name: 'My Pack', rules: '', vars: [], enabled: true });
+  // a blank name falls back to "pack" (uses its own gen so the shared counter below stays clean)
+  assert.equal(c.newPluginPack('', () => 'tmp').name, 'pack', 'blank name falls back to "pack"');
+  const list = [p, c.newPluginPack('Other', gen)]; // p=id1, Other=id2
+  // update shallow-merges by id, leaves others untouched (new array)
+  const upd = c.updatePluginPack(list, 'id1', { rules: 'a: b' });
+  assert.equal(upd.find(x => x.id === 'id1').rules, 'a: b');
+  assert.equal(upd.find(x => x.id === 'id2').name, 'Other', 'other packs untouched');
+  assert.notEqual(upd, list, 'returns a new array (pure)');
+  // toggle flips enabled (absent/ true → false → true)
+  assert.equal(c.togglePluginPack(list, 'id1')[0].enabled, false);
+  assert.equal(c.togglePluginPack(c.togglePluginPack(list, 'id1'), 'id1')[0].enabled, true);
+  // remove drops just that id
+  assert.deepEqual(c.removePluginPack(list, 'id1').map(x => x.id), ['id2']);
+});
+
+test('packLabel — name, else id, else "(unnamed)"', () => {
+  assert.equal(c.packLabel({ id: 'x', name: 'Pretty' }), 'Pretty');
+  assert.equal(c.packLabel({ id: 'x' }), 'x');
+  assert.equal(c.packLabel({ id: 'x', name: '  ' }), 'x', 'a blank name falls back to id');
+  assert.equal(c.packLabel(null), '(unnamed)');
+});
+
+test('parsePackImport — the trust boundary: valid packs only, [] on junk, never throws', () => {
+  // a JSON array of packs
+  assert.deepEqual(host(c.parsePackImport('[{"id":"a","rules":"x: y"}]').map(p => p.id)), ['a']);
+  // the export wrapper shape { plugins: [...] }
+  assert.deepEqual(host(c.parsePackImport('{"plugins":[{"id":"b"}]}').map(p => p.id)), ['b']);
+  // malformed entries are dropped, valid ones kept
+  assert.deepEqual(host(c.parsePackImport('[{"id":"a"},{"no":"id"},"junk",5]').map(p => p.id)), ['a']);
+  // broken JSON / wrong shape → [] (never throws — this is the import trust boundary)
+  assert.deepEqual(host(c.parsePackImport('not json')), []);
+  assert.deepEqual(host(c.parsePackImport('{"nope":1}')), []);
+  assert.deepEqual(host(c.parsePackImport(42)), []);
+  // accepts an already-parsed value too
+  assert.deepEqual(host(c.parsePackImport([{ id: 'z' }]).map(p => p.id)), ['z']);
+});
+
+test('parsePackVarLines — name = expr per line; blank skipped, malformed surfaced (#487)', () => {
+  const r = c.parsePackVarLines('tax = 0.2\n\narea = pi * 4^2');
+  assert.deepEqual(host(r.vars), [{ name: 'tax', expr: '0.2' }, { name: 'area', expr: 'pi * 4^2' }]);
+  assert.deepEqual(host(r.bad), [], 'clean lines produce no bad entries; a blank line is skipped');
+  // malformed lines are surfaced (P4), not silently dropped
+  const b = c.parsePackVarLines('good = 1\nno equals here\n= 5\nx =');
+  assert.deepEqual(host(b.vars), [{ name: 'good', expr: '1' }]);
+  assert.equal(b.bad.length, 3, 'a line without a name=expr, an empty name, and an empty expr are all bad');
+  // a non-identifier name is bad (would never resolve as a variable)
+  assert.equal(c.parsePackVarLines('2x = 3').bad.length, 1, 'name must be an identifier');
+  // the manager front door + engine toggle are wired at the source
+  assert.ok(/openDataPackManager\(\)/.test(_src) && /id="btn-datapacks"/.test(_src), 'File menu opens the manager');
+  assert.ok(/pluginPackActive\(p\)/.test(_src), 'the merges gate on pluginPackActive (disable toggle)');
+});
+
 test('collectCallables — an anonymous pill does not advertise `origin` as a callable (UXP-33)', () => {
   const root = c.mkRoot();
   const n = c.mkNode('shorthand [[grammar:a1]]');

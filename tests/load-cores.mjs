@@ -173,6 +173,7 @@ export function loadCores() {
     'searchWorkspace',                          // WS-1: workspace-wide search matcher (pure)
     'searchSnippet',                            // UXP-64: context-aware snippet for workspace results
     'validPluginPack', 'mergePackRules', 'packVarDefs',
+    'pluginPackActive', 'packLabel', 'newPluginPack', 'updatePluginPack', 'removePluginPack', 'togglePluginPack', 'parsePackImport', 'parsePackVarLines',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
     'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
