@@ -5140,6 +5140,19 @@ test('UXP-19: the interactive base table is role="grid"; computed cells aria-rea
   assert.ok(_src.includes(`tabindex="0" aria-readonly="true"`), 'computed cells aria-readonly');
 });
 
+// #488: a full render() must not throw scroll to the top. It captures scrollY at entry and
+// restores it after the vlist rebuild, clamped to the new document height, and SKIPS the restore
+// when the render intends to move scroll (a zoom changed focusedId, or an empty-doc focusNode runs).
+test('#488: render() captures and restores scroll (clamped), skipping intentional scroll moves', () => {
+  // whole-source checks (render() is a large function with nested closures; the tokens below
+  // are unique to the #488 scroll-restore block, so a src-level match is precise enough)
+  assert.ok(/const _preScrollY = window\.scrollY/.test(_src), 'captures scrollY at entry');
+  assert.ok(/_focusChanged = focusedId !== _lastRenderFocusedId/.test(_src), 'detects a zoom (focusedId change) to skip restore');
+  assert.ok(/if \(!_focusChanged && !firstChildId\)/.test(_src), 'skips restore on a zoom or an empty-doc focusNode');
+  assert.ok(/Math\.min\(_preScrollY, maxScroll\)/.test(_src), 'clamps the restored offset to the new (possibly shorter) document height');
+  assert.ok(/window\.scrollTo\(0, target\)/.test(_src) && /renderWindow\(false\); \/\/ re-window/.test(_src), 'restores scroll and re-windows for the restored offset (no flash)');
+});
+
 test('UXP-19: pills carry tabindex=-1 (programmatic/AT focus reach)', () => {
   const dice = c.renderDicePill('k', { key: 'k', expr: '2d6', total: 7, parts: [] });
   assert.ok(dice.includes('tabindex="-1"'), dice);
