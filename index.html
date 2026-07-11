@@ -11595,9 +11595,24 @@ function attachSwipeIndent(content, node) {
 //   'invalid'  — reads as an attempted formula/roll/reference but will NOT promote;
 //                styled as the gr-bad typo signal so the failure isn't silent (UXP-6)
 //   'literal'  — plain prose braces, left alone (the deliberate escape hatch)
+
+// The ONE quote-literal test the three lockstep functions share (#521/#522). A body is a
+// quoted literal iff it opens and closes with the SAME matched quote (" or '). resolveBrace,
+// classifyBraceBody and promoteBraceBody all check this FIRST so quotes win over every sniff —
+// previously only resolveBrace did, so a quoted body with a top-level | mis-classified/mis-promoted.
+function isQuotedLiteral(body) {
+  const s = (body || '').trim();
+  const q = s[0];
+  return (q === '"' || q === "'") && s.length >= 2 && s[s.length - 1] === q;
+}
 function classifyBraceBody(body, rules, vars) {
   body = (body || '').trim();
   if (!body) return 'literal';
+  // String literal: {"text"} / {'text'} is a fixed literal, checked FIRST so quotes always
+  // win — mirroring resolveBrace's quote-first rule (#521). Without this, a quoted body whose
+  // inner text holds a top-level | (e.g. {"a | b"}) fell through to the alternation split and
+  // classified 'artifact', so it styled as a valid pill and promoted to a shredded alternation.
+  if (isQuotedLiteral(body)) return 'literal';
   if (body[0] === '=') {                                                // {= expr}
     const expr = body.slice(1).trim();
     return expr && evalMath(expandAggExpr(expr, null), vars) !== null ? 'artifact' : 'invalid';
@@ -11610,7 +11625,9 @@ function classifyBraceBody(body, rules, vars) {
     // source is valid when it actually resolves (a rule / alternation / dice / literal).
     if (!varDeclIsPick(decl.expr)) return 'artifact';                  // formula (live, self-heals)
     const c = classifyBraceBody(decl.expr, rules, vars);
-    return (c === 'artifact' || splitTopLevel(decl.expr, '|').length > 1) ? 'artifact' : 'invalid';
+    // A quoted-string RHS classifies 'literal' (a fixed text value) — it IS a usable pick source,
+    // exactly what rollPickSource accepts (#522: classify said 'invalid' while promote built a pill).
+    return (c === 'artifact' || c === 'literal' || splitTopLevel(decl.expr, '|').length > 1) ? 'artifact' : 'invalid';
   }
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
@@ -15051,9 +15068,8 @@ function resolveBrace(body, ctx) {
   // escape hatch so a bare word can be a fixed string ({label := "hello"}) instead of
   // hunting for a rule named `hello`. Checked first so quotes always win. Nested {…}
   // still expand inside (a literal text frame with live interpolation), like any template.
-  const q = body[0];
-  if ((q === '"' || q === "'") && body.length >= 2 && body[body.length - 1] === q) {
-    return expandTemplate(body.slice(1, -1), ctx);
+  if (isQuotedLiteral(body)) {
+    return expandTemplate(body.slice(1, -1), ctx);   // the inside, quotes stripped (nested {…} still interpolate)
   }
   // {roll: <search-query>} — pick a random point matching the query from the current point's
   // subtree (cookieNode; a #tag query reaches wherever that tag lives). The generative reader of
@@ -16207,6 +16223,12 @@ const _VAR_PROBE = new Proxy({}, { has: () => true, get: () => 1 });
 function promoteBraceBody(node, body) {
   body = body.trim();
   if (!body) return null;
+  // String literal: {"text"} / {'text'} is fixed prose, not a pill — stays literal (#521). Checked
+  // FIRST so quotes win over every sniff, matching resolveBrace + classifyBraceBody; without it a
+  // quoted body with a top-level | (e.g. {"a | b"}) fell to the alternation split and promoted to a
+  // shredded grammar pill. (A quoted PICK-var RHS `{v := "a | b"}` is handled in the varDecl arm via
+  // rollPickSource, not here — this only guards a STANDALONE quoted body.)
+  if (isQuotedLiteral(body)) return null;
   // expression: {= expr}
   if (body[0] === '=') {
     // validate against the node's inherited scope (#461) so a pill referencing an own/ancestor

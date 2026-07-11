@@ -10198,3 +10198,38 @@ test('openInsertDialog associates each field label with its input (accessible na
   assert.ok(/const _fid = 'io-fld-' \+ f\.key;/.test(fn), 'each field gets a stable id from its key');
   assert.ok(/inp\.id = _fid; lab\.setAttribute\('for', _fid\)/.test(fn), 'the label is tied to the input via for/id');
 });
+
+// ── {…} quote-literal lockstep (#521/#522): classify/promote/resolve agree on quoted bodies ──
+test('isQuotedLiteral: matched leading/trailing quote of the same kind', () => {
+  assert.equal(c.isQuotedLiteral('"a | b"'), true);
+  assert.equal(c.isQuotedLiteral("'x'"), true);
+  assert.equal(c.isQuotedLiteral('"hello"'), true);
+  assert.equal(c.isQuotedLiteral('"mismatch\''), false, 'different quote kinds are not a literal');
+  assert.equal(c.isQuotedLiteral('a | b'), false);
+  assert.equal(c.isQuotedLiteral('"'), false, 'a lone quote is not a pair');
+  assert.equal(c.isQuotedLiteral(''), false);
+});
+
+test('#521: a quoted literal with a top-level | classifies literal and promotes to null (not a shredded alternation)', () => {
+  // the bug: classify/promote had no quote branch, so {"a | b"} split inside the quotes and
+  // promoted to an alternation rendering "a / b" — defeating the documented quote escape hatch.
+  for (const body of ['"a | b"', '"cats | dogs | fish"', "'a | b'", '"shuffle: a | b"']) {
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'literal', `${body} must classify literal`);
+    assert.equal(c.promoteBraceBody({ math:[], vars:[], grammar:[] }, body), null, `${body} must stay literal (promote null)`);
+  }
+  // resolveBrace already stripped quotes; confirm all three agree on the value
+  assert.equal(c.resolveBrace('"a | b"', { rules:{}, vars:{} }), 'a | b');
+});
+
+test('#522: {name := "string"} classifies artifact, matching promote (the advertised pick-var example)', () => {
+  // the bug: classify recursed on the quoted RHS with no quote branch → 'invalid' ("stays plain text")
+  // while promoteBraceBody built a real pick var. The advertised {client := "Acme Corp"} was broken.
+  for (const body of ['client := "Acme Corp"', 'greeting := "hello there"', 'name := Sir Reginald', 'v := "a | b"']) {
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'artifact', `${body} must classify artifact (it promotes)`);
+    const decl = c.parseVarDecl(body);
+    assert.ok(decl && c.varDeclIsPick(decl.expr), `${body} is a pick source`);
+  }
+  // regression: a formula RHS and a plain literal are unchanged
+  assert.equal(c.classifyBraceBody('x := 1 to 5', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('"hello"', {}, {}), 'literal');
+});
