@@ -15143,6 +15143,19 @@ function resolveBrace(body, ctx) {
     }
     return out.join(' ').trim();
   }
+  // Nested GENERATORS (#523): markov / query / est classify + promote at the top level, but
+  // resolveBrace had no branch, so `chain: {markov: a→b}` leaked the raw source (or shredded a
+  // |-bearing body via the split below). Resolve them here, BEFORE the | split, reusing the exact
+  // top-level builders — so `{name}` calling a rule that contains a nested generator produces its
+  // value, matching classify/promote. (Declaration forms — prop/date/seqDecl/varDecl — are
+  // deliberately NOT resolved nested: a config-write has no sensible meaning inside an expansion;
+  // they stay top-level-only, and classifyBraceBody no longer calls them a nested artifact.)
+  const mkp = markovParts(body);
+  if (mkp) { const roll = makeTypedMarkovRoll(mkp.def); return roll ? roll.path.join(' → ') : `{markov?}`; }
+  const qp = queryParts(body);
+  if (qp) { const picked = pickFromQuery(qp.expr, cookieNode || root, cookieNode ? cookieNode.id : null); return picked || `{query: ${qp.expr}?}`; }
+  const ep = estParts(body);   // estParts returns the expr STRING (or null), not an object
+  if (ep) { const s = sampleUncertain(ep, 400, ep, cookieNode || null); return s ? formatDist(s) : `{est?}`; }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
   if (body[0] === '=') {
