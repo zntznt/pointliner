@@ -5853,6 +5853,13 @@ function render() {
   // triggers that keep editing (move/indent/collapse-self) re-enter afterward.
   // Safe: exitEdit for normal nodes does not call render() (no re-entrancy).
   if (activeContentId != null) commitActiveEdit();
+  // #488: a full render wipes #outline (below), which collapses the document height and lets the
+  // browser clamp scrollY to 0 — so a collapse/expand or a whole-tree pill promotion silently
+  // jumps you to the top. Capture the scroll here and restore it after the vlist is rebuilt,
+  // UNLESS this render intends to move scroll (a zoom in/out changed focusedId, or a focusNode
+  // will run below for the empty-doc case). Those legitimate moves keep their behavior.
+  const _preScrollY = window.scrollY;
+  const _focusChanged = focusedId !== _lastRenderFocusedId;
   renderBreadcrumb();
   const container = document.getElementById('outline');
   container.innerHTML = '';
@@ -6034,8 +6041,23 @@ function render() {
   winStart = 0; winEnd = -1;
   renderWindow(true);
 
+  // #488: put scroll back where it was. Skip when the render intends to move it — a zoom
+  // (focusedId changed) reframes to the top by design, and an empty-doc focusNode runs next.
+  // Clamp to the new document height (a collapse shortens the doc, so the old offset may exceed
+  // the new maximum). Restoring scrollY re-windows correctly since computeWindow reads scrollY.
+  if (!_focusChanged && !firstChildId) {
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const target = Math.min(_preScrollY, maxScroll);
+    if (_preScrollY > 0 && target !== window.scrollY) {
+      window.scrollTo(0, target);
+      renderWindow(false); // re-window for the restored offset NOW, so the correct rows are mounted (no flash)
+    }
+  }
+  _lastRenderFocusedId = focusedId;
+
   if (firstChildId) focusNode(firstChildId);
 }
+let _lastRenderFocusedId = null; // #488: detect a zoom (focusedId change) to skip scroll-restore
 
 // ─── virtual list ──────────────────────────────────────────────────────────────
 
