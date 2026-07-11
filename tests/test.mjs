@@ -10233,3 +10233,27 @@ test('#522: {name := "string"} classifies artifact, matching promote (the advert
   assert.equal(c.classifyBraceBody('x := 1 to 5', {}, {}), 'artifact');
   assert.equal(c.classifyBraceBody('"hello"', {}, {}), 'literal');
 });
+
+// ── #523: nested generators resolve in resolveBrace (no raw-source leak) ──
+test('#523: a nested markov/est body resolves instead of leaking raw source', () => {
+  c.setRandom(c.seedSequence([0.1, 0.4, 0.2, 0.7, 0.3]));
+  const ctx = { rules: {}, vars: {} };
+  const mk = c.resolveBrace('markov: a->b, b->c', ctx);
+  assert.ok(!mk.includes('markov:'), 'a nested markov must not leak its raw source');
+  assert.ok(/→/.test(mk), 'it resolves to a walked path');
+  const es = c.resolveBrace('5 to 10', ctx);
+  assert.notEqual(es, '5 to 10', 'a nested est must not leak its raw source');
+  assert.ok(/\(.*–.*\)/.test(es), 'it resolves to a distribution summary');
+  c.resetRandom();
+});
+
+test('#523: declaration forms are deliberately NOT resolved nested (top-level-only), and the fix does not regress the working forms', () => {
+  const ctx = { rules: {}, vars: {} };
+  // a declaration nested in a rule stays passthrough — a config-write has no nested meaning
+  assert.equal(c.resolveBrace('x := 3', ctx), 'x := 3');
+  // the generator branches sit BEFORE the | split, so a quoted literal and alternation are untouched
+  assert.equal(c.resolveBrace('"quoted | lit"', ctx), 'quoted | lit');
+  assert.equal(c.resolveBrace('= 2+2', ctx), '4');
+  // src-pin: the three generator branches exist before the alternation split
+  assert.ok(/const mkp = markovParts\(body\);[\s\S]{0,700}const alts = splitTopLevel/.test(_src), 'the generator branches must precede the | split (or a |-bearing generator body shreds)');
+});
