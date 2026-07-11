@@ -33,6 +33,9 @@ The everyday outliner. This is the part you use without thinking about it.
   ([per-point notes](writing-and-formatting.md#per-point-notes))
 - **Properties.** Give a point `key: value` data (like `cost: 12` or `owner: me`) you can total
   and search. ([properties](tasks-and-organizing.md#properties))
+- **Tag colors and property icons.** File then Tag & property styling: give a `#tag` its own
+  on-brand color (nested tags inherit it) and a property key a small icon. Purely visual, stored
+  with the document.
 - **Click anywhere to edit.** Click any empty part of a point and you are typing there.
 
 ## Generating text
