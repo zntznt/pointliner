@@ -16481,7 +16481,12 @@ function artifactToShorthand(type, rec) {
   if (!rec) return null;
   if (type === 'dice') return rec.expr ? `{${rec.expr}}` : null;
   if (type === 'math') return rec.expr ? `{= ${rec.expr}}` : null;
-  if (type === 'est')  return rec.expr ? `{${rec.expr}}` : null;
+  // An est pill unfolds ONLY when its expr is a re-promotable constructor ({5 to 10}/normal/uniform):
+  // estParts accepts exactly those, so refold/promote can rebuild it. A ROLLUP est ({sum(cost)}) is
+  // dialog-authored and estParts rejects it, so unfolding it would strand the pill — an edit of the
+  // unfolded text can't re-promote and the distribution silently becomes inert prose (#528). Rollup
+  // est pills stay ATOMIC (return null), the same rule dialog-declared vars follow.
+  if (type === 'est')  return rec.expr && estParts(rec.expr) ? `{${rec.expr}}` : null;
   if (type === 'seq') {
     // LEAN FLOOR: a named sequence unfolds to its {seq Name: active | held? | done} source so it can
     // be EDITED inline (keyboard-only, no dialog) — it round-trips LOSSLESSLY: the states+bands come
