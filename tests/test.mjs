@@ -9945,3 +9945,18 @@ test('folder create-name (6b): newWorkspaceDoc prompts for a name, blank keeps t
   assert.ok(/toFileName\(\(rawName \|\| ''\)\.trim\(\) \|\| 'outline'\)/.test(helper), 'a blank name falls back to the outline default (Enter = old one-tap behavior)');
   assert.ok(/uniqueWorkspaceName\(await listWorkspaceNames\(workspaceDir\), base\)/.test(helper), 'the create is still collision-safe');
 });
+
+// ── render() preserves scroll across a full rebuild (#488) ──
+test('render(): captures scrollY and restores it clamped, skipping intentional scroll moves (#488)', () => {
+  const fn = _src.slice(_src.indexOf('function render()'), _src.indexOf('function render()') + 10500);
+  // capture at entry, before the container wipe
+  assert.ok(/const _preScrollY = window\.scrollY/.test(fn), 'render must capture scrollY at entry');
+  assert.ok(/const _focusChanged = focusedId !== _lastRenderFocusedId/.test(fn), 'it must detect a zoom (focusedId change) to skip restore');
+  // restore is GUARDED: not on a zoom (_focusChanged) and not when an empty-doc focusNode will run (firstChildId)
+  assert.ok(/if \(!_focusChanged && !firstChildId\) \{/.test(fn), 'the restore must skip intentional scroll moves (zoom + empty-doc focusNode)');
+  // clamped to the new document height (a collapse shortens the doc)
+  assert.ok(/Math\.min\(_preScrollY, maxScroll\)/.test(fn) && /scrollHeight - window\.innerHeight/.test(fn), 'restore must clamp to the new doc height');
+  assert.ok(/window\.scrollTo\(0, target\)/.test(fn), 'it must actually put the scroll back');
+  // the guard state is threaded across renders
+  assert.ok(_src.includes('let _lastRenderFocusedId = null'), 'the last-focus tracker must exist for the zoom guard');
+});
