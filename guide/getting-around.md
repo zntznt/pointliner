@@ -160,6 +160,13 @@ each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and pre
 typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every
 point that shares it.
 
+**Give a tag a color.** Open **File then Tag & property styling**, type a tag name, and click one of
+the color swatches. Every `#tag` with that name then shows in that color, and nested tags inherit it
+(coloring `#thread` also colors `#thread/idea`). To change a color, type the same name and pick a
+different swatch; to remove it, clear it from the list in that dialog. The colors are a curated set
+chosen to stay readable in light and dark mode. It is purely visual: the color is stored with the
+document and changes nothing about the tag's text or how search works.
+
 Working inside an interactive base entirely from the keyboard (moving, inserting, and resizing columns
 and rows) is covered on the [writing and formatting](writing-and-formatting.md#tables) page with the
 rest of the table controls.
