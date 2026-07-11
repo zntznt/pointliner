@@ -141,6 +141,10 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   ([find broken links](links-and-references.md#find-broken-links))
 - **Capture inbox.** A quick-capture box that drops a note into your inbox from anywhere, without
   navigating away. ([capture](tasks-and-organizing.md#capture-and-quick-inbox))
+- **Capture from a link.** Opening Pointliner (installed or on the web) with `?append=your text`
+  in the address adds that text to your inbox as a point; sharing a page or selection to it from
+  your system share menu does the same, as plain text.
+  ([capture](tasks-and-organizing.md#capture-and-quick-inbox))
 - **Templates and refile.** Save a subtree as a reusable template; move any point's subtree
   elsewhere with a searchable picker.
   ([templates](tasks-and-organizing.md#templates) · [refile](getting-around.md#refile-a-point))

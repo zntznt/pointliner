@@ -9990,6 +9990,42 @@ test('formatDateConcrete carries the day number for an unambiguous confirmation 
   assert.equal(s, 'Wed May 27', 'weekday + month + day for a normal future/near date');
 });
 
+// ── URL-based capture (#465): buildSharePointText + handleUrlAppend wiring ──
+test('buildSharePointText — combines a shared body / title / url into one plain-text point', () => {
+  // body only (the ?append= case)
+  assert.equal(c.buildSharePointText('Buy milk', '', ''), 'Buy milk');
+  // title-only share (a bookmark with no selected text)
+  assert.equal(c.buildSharePointText('', 'Cool Article', ''), 'Cool Article');
+  // title + body → "title: body" (no em dash — this is text the user reads)
+  assert.equal(c.buildSharePointText('a quote', 'Cool Article', ''), 'Cool Article: a quote');
+  // a url is appended on its own line
+  assert.equal(c.buildSharePointText('note', '', 'https://x.com'), 'note\nhttps://x.com');
+  // title + url (a shared web page: title + link)
+  assert.equal(c.buildSharePointText('', 'Cool Article', 'https://x.com'), 'Cool Article\nhttps://x.com');
+  // a body that already starts with the title isn't doubled
+  assert.equal(c.buildSharePointText('Cool Article and more', 'Cool Article', ''), 'Cool Article and more');
+  // a url already present in the text isn't duplicated
+  assert.equal(c.buildSharePointText('see https://x.com', '', 'https://x.com'), 'see https://x.com');
+  // no em dash slips into the composed text (no-em-dash rule — this is user-facing content)
+  assert.ok(!/—/.test(c.buildSharePointText('body', 'Title', 'https://x.com')));
+  // all-empty → empty (nothing to capture)
+  assert.equal(c.buildSharePointText('', '', ''), '');
+});
+
+test('#465 URL-append wiring: hosted-only, param-stripped, plain-text, no-inbox flash', () => {
+  const fn = fnBody(_src, 'handleUrlAppend');
+  assert.ok(fn, 'handleUrlAppend must exist');
+  assert.ok(/location\.protocol === 'file:' \|\| !window\.isSecureContext/.test(fn), 'inert on file:// and non-secure (PWA-exception rule)');
+  assert.ok(/history\.replaceState/.test(fn) && /searchParams\.delete/.test(fn), 'strips the param so a reload never re-appends');
+  assert.ok(/appendTextToInbox\(text\)/.test(fn), 'routes through the shared inbox-append helper');
+  assert.ok(/Set a point as your inbox to capture from a link/.test(fn), 'no inbox → a P4 flash, text dropped');
+  // it is called in the boot sequence after render(), and the manifest advertises share_target
+  assert.ok(/handleUrlAppend\(\);/.test(_src), 'called on boot');
+  // the append helper never evaluates the param — plain text into node.text (no promoteInlineShorthand)
+  const app = fnBody(_src, 'appendTextToInbox');
+  assert.ok(/mkNode\(t\)/.test(app) && !/promoteInlineShorthand/.test(app), 'plain text only, never promotes a pill from the URL param');
+});
+
 // ── Per-doc view persistence (idea 5): remember zoom + scroll across doc switches ──
 test('doc view persistence: adoptDoc restores a remembered focus only if the node still exists', () => {
   // the wiring: a docViewState Map, capture before switch, restoreFocusId passed to adoptDoc
