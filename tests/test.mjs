@@ -10271,3 +10271,21 @@ test('#528: an est ROLLUP unfolds to null (stays atomic); a constructor est stil
   // the gate IS estParts (so unfold and promote agree on what round-trips)
   assert.ok(c.estParts('5 to 10') && !c.estParts('sum(cost)'), 'the unfold gate matches the promote gate');
 });
+
+// ── #529: parseUncertain guards its recursive descent (no uncaught RangeError) ──
+test('#529: parseUncertain returns null on a pathologically nested body instead of throwing', () => {
+  // the bug: a deep-nested est body overflowed the stack with an UNCAUGHT RangeError that
+  // propagated through estParts→makeEstRoll→sampleUncertain and blanked the render. evalMath
+  // has the try/catch→null this lacked; now they match.
+  const deepParens = '('.repeat(2000) + '1 to 2' + ')'.repeat(2000);
+  const deepNormal = 'normal('.repeat(1500) + '1,1' + ')'.repeat(1500);
+  assert.equal(c.parseUncertain(deepParens), null, 'deep parens → null, not a throw');
+  assert.equal(c.parseUncertain(deepNormal), null, 'deep normal() → null, not a throw');
+  // the callers that reach it are safe too
+  assert.equal(c.estParts(deepParens), null);
+  assert.equal(c.makeEstRoll(deepParens), null);
+  // regression: valid bodies still parse, garbage still nulls
+  assert.ok(c.parseUncertain('5 to 10'), 'a valid constructor still parses');
+  assert.ok(c.parseUncertain('normal(3, 1)'), 'normal() still parses');
+  assert.equal(c.parseUncertain('garbage'), null);
+});

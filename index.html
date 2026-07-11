@@ -17182,8 +17182,15 @@ function parseUncertain(expr) {
     return null;
   }
 
-  const ast = pTo();
-  return (ast != null && pos === toks.length) ? ast : null;
+  // Guard the recursive descent (#529): a pathologically nested body ({((((…1 to 2…))))} or
+  // deep normal(normal(…))) overflows the stack. evalMath's parser has this exact try/catch →
+  // null; parseUncertain lacked it, so the RangeError propagated uncaught through estParts →
+  // makeEstRoll → sampleUncertain and blanked the whole render (and re-threw on every reopen).
+  // Match evalMath's null-on-malformed contract so a bad est body fails visibly as #ERR / no-promote.
+  try {
+    const ast = pTo();
+    return (ast != null && pos === toks.length) ? ast : null;
+  } catch (_) { return null; }
 }
 
 // Read a child point's uncertain property value (the raw expression string), or
