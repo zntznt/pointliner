@@ -6763,6 +6763,59 @@ test('outline constraints: front-door + render + search wiring (src pins)', () =
   assert.ok(_src.includes("openCheckDialog(chip.dataset.propsId)"), 'check chip not routed in openPropChip');
 });
 
+// ── custom calendars (#527, Tier 1): the pure bijection ─────────────────────────
+// A fictional Calendar of Harptos-ish: 12 30-day months, a 10-day week, epoch at day 0.
+const HARPTOS = {
+  id: 'harptos', name: 'Harptos', epochDay: 0,
+  months: Array.from({ length: 12 }, (_, i) => ({ name: 'M' + (i + 1), days: 30 })),
+  week: { length: 10, days: [] }, eras: [{ name: 'DR', yearZero: 1000 }], current: 5000,
+};
+test('normalizeCalendar — keeps a valid def, rejects a malformed one (null = Gregorian)', () => {
+  assert.ok(c.normalizeCalendar(HARPTOS), 'a well-formed calendar survives');
+  assert.equal(c.normalizeCalendar(null), null, 'null → Gregorian');
+  assert.equal(c.normalizeCalendar({ months: [] }), null, 'a calendar needs at least one month');
+  assert.equal(c.normalizeCalendar({ months: [{ name: 'x', days: 0 }] }), null, 'a month needs a positive length');
+  // defaults: week length falls back to 7, epoch to 0
+  const min = c.normalizeCalendar({ months: [{ name: 'Only', days: 10 }] });
+  assert.equal(min.week.length, 7); assert.equal(min.epochDay, 0);
+});
+test('calYearLength — sums the month lengths', () => {
+  assert.equal(c.calYearLength(c.normalizeCalendar(HARPTOS)), 360, '12 × 30');
+});
+test('epochToCal / calToEpoch — round-trip is identity across a wide range', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  for (const ep of [0, 1, 29, 30, 359, 360, 361, 5000, -1, -360, -361, 12345]) {
+    const d = c.epochToCal(ep, cal);
+    assert.equal(c.calToEpoch(d.year, d.month, d.day, cal), ep, `round-trip at ${ep}`);
+  }
+  // spot-check the decomposition: day 0 = year 1, month 1, day 1, weekday 0
+  assert.deepEqual(host(c.epochToCal(0, cal)), { year: 1, month: 1, day: 1, weekday: 0 });
+  assert.deepEqual(host(c.epochToCal(30, cal)), { year: 1, month: 2, day: 1, weekday: 0 }, '10-day week: day 30 is weekday 0');
+  assert.deepEqual(host(c.epochToCal(360, cal)), { year: 2, month: 1, day: 1, weekday: 0 }, 'day 360 rolls to year 2');
+  assert.equal(c.epochToCal(35, cal).weekday, 5, 'weekday wraps at the custom week length (10)');
+});
+test('calToEpoch — rejects an out-of-range month/day (the bijection has no gaps to fake)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  assert.equal(c.calToEpoch(1, 13, 1, cal), null, 'month 13 does not exist in a 12-month calendar');
+  assert.equal(c.calToEpoch(1, 1, 31, cal), null, 'day 31 does not exist in a 30-day month');
+  assert.equal(c.calToEpoch(1, 1, 0, cal), null, 'day 0 is invalid');
+});
+test('calEraYear — an era offsets the display year; the epoch integer is unchanged', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  assert.equal(c.calEraYear(5, cal, 'DR'), 1005, 'year 5 in DR (yearZero 1000) shows as 1005');
+  assert.equal(c.calEraYear(5, cal, undefined), 1005, 'no era name → the first era');
+});
+test('cross-calendar identity: the same epoch-day sorts identically, labels differently', () => {
+  // Two calendars over the SAME integer axis — sort is on the integer, so it is calendar-agnostic.
+  const a = c.normalizeCalendar(HARPTOS);
+  const b = c.normalizeCalendar({ id: 'b', epochDay: 0, months: [{ name: 'Long', days: 40 }, { name: 'Short', days: 20 }], week: { length: 5, days: [] } });
+  const eps = [100, 5, 380, 42];
+  const sortedByInt = [...eps].sort((x, y) => x - y);
+  // the decomposition differs per calendar, but ordering by the raw integer is shared truth
+  assert.notDeepEqual(host(c.epochToCal(42, a)), host(c.epochToCal(42, b)), 'same day, different (m,d) per calendar');
+  assert.deepEqual(sortedByInt, [5, 42, 100, 380], 'ordering is on the integer, independent of calendar');
+});
+
 // ── due dates ─────────────────────────────────────────────────────────────────
 
 test('parseDueDate — ISO date parses to epoch day', () => {

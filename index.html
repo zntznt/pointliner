@@ -3179,7 +3179,70 @@ function evalCheck(node, vars = {}, ancestors = []) {
 // carry a start→due range. Epoch-day numbers are the internal currency — the same
 // integer unit evalMath uses for `today`. Both keys parse through parseDueDate.
 
+// ─── custom calendars (#527, Tier 1) ──────────────────────────────────────────
+// The epoch-day INTEGER is always the source of truth; a calendar only changes the
+// integer↔(year,month,day) bijection + the display labels + the in-fiction "now".
+// root.calendar (null = Gregorian) is a regular fixed-table calendar:
+//   { id, name, epochDay, months:[{name,days}], week:{length,days:[]}, eras:[{name,yearZero}], current }
+// `epochDay` is the epoch-day integer that == this calendar's year 1, month 1, day 1.
+// So arithmetic, sort, agendaGantt, due:< — everything on the raw integer — is
+// calendar-agnostic and untouched. Only the parse/format/component seam routes here.
+// The active calendar for the live doc; a param lets the pure cores stay testable.
+function activeCalendar() { return (typeof root !== 'undefined' && root && root.calendar) || null; }
+// Validate + normalize a calendar def; returns null (= Gregorian) if unusable. Pure.
+function normalizeCalendar(c) {
+  if (!c || typeof c !== 'object') return null;
+  const months = Array.isArray(c.months) ? c.months.filter(m => m && typeof m.name === 'string' && Number.isInteger(m.days) && m.days > 0) : [];
+  if (!months.length) return null;                       // a calendar needs ≥1 month
+  const wl = Number.isInteger(c.week?.length) && c.week.length > 0 ? c.week.length : 7;
+  const wdays = Array.isArray(c.week?.days) ? c.week.days.map(String) : [];
+  const eras = Array.isArray(c.eras) ? c.eras.filter(e => e && typeof e.name === 'string' && Number.isInteger(e.yearZero)) : [];
+  return {
+    id: String(c.id || 'custom'), name: String(c.name || 'Calendar'),
+    epochDay: Number.isInteger(c.epochDay) ? c.epochDay : 0,
+    months: months.map(m => ({ name: m.name, days: m.days })),
+    week: { length: wl, days: wdays },
+    eras: eras.map(e => ({ name: e.name, yearZero: e.yearZero })),
+    current: Number.isInteger(c.current) ? c.current : null,
+  };
+}
+// Days in one full year of a fixed-table calendar. Pure.
+function calYearLength(cal) { return cal.months.reduce((n, m) => n + m.days, 0); }
+// epoch-day integer → { year, month (1-based), day (1-based), weekday (0-based) } for a
+// fixed-table calendar. year is relative to the calendar's own year 1 (era offsets are a
+// display concern). Uses div/mod over a cumulative month table — no leap branching. Pure.
+function epochToCal(ep, cal) {
+  const yearLen = calYearLength(cal);
+  let rel = ep - cal.epochDay;                           // days since year 1, day 1 (day 0 = that day)
+  const weekday = ((rel % cal.week.length) + cal.week.length) % cal.week.length;
+  let year = Math.floor(rel / yearLen) + 1;              // year 1 is the epoch year
+  let doy = rel - (year - 1) * yearLen;                  // 0-based day of year
+  let month = 1;
+  for (const m of cal.months) { if (doy < m.days) break; doy -= m.days; month++; }
+  return { year, month, day: doy + 1, weekday };
+}
+// { year, month, day } → epoch-day integer for a fixed-table calendar, or null if the
+// (month, day) is out of range for this calendar. Inverse of epochToCal. Pure.
+function calToEpoch(year, month, day, cal) {
+  if (!Number.isInteger(year) || month < 1 || month > cal.months.length) return null;
+  const md = cal.months[month - 1].days;
+  if (day < 1 || day > md) return null;
+  let days = (year - 1) * calYearLength(cal);
+  for (let i = 0; i < month - 1; i++) days += cal.months[i].days;
+  days += day - 1;
+  return cal.epochDay + days;
+}
+// The display year for a given era (default = the calendar's intrinsic year). Pure.
+function calEraYear(year, cal, eraName) {
+  const era = cal.eras.find(e => e.name === eraName) || cal.eras[0];
+  return era ? year + era.yearZero : year;
+}
+
 function dueDateToday() {
+  // #527: in a fictional calendar there is no wall-clock "today" — use the document's
+  // in-fiction `current` when a calendar with one is active, else the real clock.
+  const cal = activeCalendar();
+  if (cal && Number.isInteger(cal.current)) return cal.current;
   const d = new Date();
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
 }
