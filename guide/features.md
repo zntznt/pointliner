@@ -155,6 +155,9 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))
+- **Data packs.** Bundle grammar rules and formula variables into a named, reusable pack (File then
+  Data packs): every rule and variable becomes callable across the document, and you can enable,
+  disable, edit, import, or export packs. Pure data, no code, so opening any file stays safe.
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.
 - **Verbosity dial.** `Ctrl/Cmd+Shift+.` cycles Guided (all hints shown), Standard (beginner hints and
   tooltips off, menus and pencils kept), and Lean (the keyboard canvas: menus and pencils hidden, still
