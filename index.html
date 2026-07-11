@@ -8969,51 +8969,26 @@ const ALIAS_ICON = { fa: 'fa-solid fa-tag', fb: '🏷' };
 function openAliasDialog(nodeId) {
   const node = nodeById(nodeId);
   if (!node) return;
-
-  ioCard.innerHTML = '';
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, ALIAS_ICON);
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Aliases';
-  head.append(ic, ttl); dialogHelp(head, 'aliases'); ioCard.appendChild(head);
-
-  const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px;display:flex;flex-direction:column;gap:8px';
-  const lbl = document.createElement('div');
-  lbl.style.cssText = 'font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em';
-  lbl.textContent = 'Aliases (comma-separated)';
-  const inp = document.createElement('input');
-  inp.type = 'text'; inp.className = 'props-input val-in';
-  inp.style.cssText = 'width:100%;box-sizing:border-box';
-  inp.value = aliasesOf(node).join(', ');
-  inp.placeholder = 'e.g. wyrm, drake';
-  inp.setAttribute('aria-label', 'Aliases, comma-separated');
-  inp.spellcheck = false; inp.autocomplete = 'off';
-  const hint = document.createElement('div');
-  hint.style.cssText = 'font-size:11px;color:var(--muted)';
-  hint.textContent = 'Alternate names so links and mentions find this point. The link still shows its title.';
-  wrap.append(lbl, inp, hint); ioCard.appendChild(wrap);
-
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
-  foot.append(cancelBtn, saveBtn); ioCard.appendChild(foot);
-
-  function save() {
-    pushUndo();
-    setAliasProp(node, inp.value);  // shared with the /alias:a,b path
-    markDirty(); render(); closeIo();
-  }
-  cancelBtn.addEventListener('click', closeIo);
-  saveBtn.addEventListener('click', save);
-  inp.addEventListener('keydown', e => {
-    if (e.key !== 'Tab') e.stopPropagation();         // protect global shortcuts; Tab bubbles to the focus trap
-    if (e.key === 'Enter') { e.preventDefault(); save(); }
-    if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+  // Rides the shared openInsertDialog harness (absorption audit): the io-head/dialogHelp, the
+  // labelled input + hint, the cancel/save foot, the stopPropagation keydown guard, the io-plumbing
+  // (ioCancel/ioReturnFocus/ioBack.on) and the rAF focus were all a hand-rolled twin of the harness.
+  // setAliasProp stays the shared core (blank clears the property), so behavior is unchanged. The name
+  // + signature are kept (called by the alias chip, the bullet menu, and the /alias path).
+  openInsertDialog({
+    icon: ALIAS_ICON,
+    guideId: 'aliases',
+    title: 'Aliases',
+    submitLabel: 'Save',
+    fields: [{
+      key: 'aliases',
+      label: 'Aliases (comma-separated)',
+      value: aliasesOf(node).join(', '),
+      placeholder: 'e.g. wyrm, drake',
+      hint: 'Alternate names so links and mentions find this point. The link still shows its title.',
+    }],
+    validate: () => true,
+    onSubmit: v => { pushUndo(); setAliasProp(node, v.aliases); markDirty(); render(); },
   });
-  ioCancel = closeIo;
-  ioReturnFocus = document.activeElement;
-  ioCard.setAttribute('aria-label', 'Aliases');
-  ioBack.classList.add('on');
-  requestAnimationFrame(() => { inp.select(); inp.focus(); });
 }
 
 // ─── templates ─────────────────────────────────────────────────────────────────
@@ -14487,6 +14462,11 @@ function openInsertDialog(opts) {
     if (area) { inp.rows = f.rows || 4; inp.className = 'io-mono'; }
     inp.placeholder = f.placeholder || ''; inp.value = f.value || '';
     inp.spellcheck = false; inp.autocomplete = 'off';
+    // Tie the visible label to its input (for + id) so it IS the accessible name — the label was
+    // previously orphaned, so a field read unlabelled unless the caller also passed aria-label.
+    // Every dialog on the harness gets a proper accessible name for free (absorption prerequisite).
+    const _fid = 'io-fld-' + f.key;
+    inp.id = _fid; lab.setAttribute('for', _fid);
     if (i === 0) inp.dataset.first = '1';
     inputs[f.key] = inp;
     inp.addEventListener('input', validate);

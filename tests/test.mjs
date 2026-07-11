@@ -10181,3 +10181,20 @@ test('render(): captures scrollY and restores it clamped, skipping intentional s
   // the guard state is threaded across renders
   assert.ok(_src.includes('let _lastRenderFocusedId = null'), 'the last-focus tracker must exist for the zoom guard');
 });
+
+// ── Alias dialog absorbed onto the openInsertDialog harness (absorption audit) ──
+test('alias dialog rides the shared openInsertDialog harness, not a hand-rolled io-card', () => {
+  const fn = _src.slice(_src.indexOf('function openAliasDialog'), _src.indexOf('function openAliasDialog') + 1300);
+  assert.ok(/openInsertDialog\(\{/.test(fn), 'openAliasDialog must call the shared harness');
+  assert.ok(/setAliasProp\(node, v\.aliases\)/.test(fn), 'onSubmit routes the field value through the shared setAliasProp core (blank clears)');
+  assert.ok(!/ioCard\.innerHTML = ''/.test(fn), 'the hand-rolled io-card must be gone');
+  assert.ok(!/ioBack\.classList\.add\('on'\)/.test(fn), 'the io-plumbing is now the harness job');
+  // the name is preserved for its three callers (chip, bullet menu, /alias)
+  assert.ok(_src.includes('function openAliasDialog(nodeId)'), 'the exported name/signature is kept');
+});
+
+test('openInsertDialog associates each field label with its input (accessible name for all riders)', () => {
+  const fn = _src.slice(_src.indexOf('function openInsertDialog'), _src.indexOf('function openInsertDialog') + 1500);
+  assert.ok(/const _fid = 'io-fld-' \+ f\.key;/.test(fn), 'each field gets a stable id from its key');
+  assert.ok(/inp\.id = _fid; lab\.setAttribute\('for', _fid\)/.test(fn), 'the label is tied to the input via for/id');
+});
