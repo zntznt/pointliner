@@ -328,6 +328,37 @@ test('resolveBrace — an unresolvable condition fails visibly (P4), never silen
   assert.equal(c.resolveBrace('hp > 0: a | b', { rules: {}, vars: {}, depth: 0, stack: [] }), '{hp > 0?}');
 });
 
+// ── string equality in conditionals (#540) ──────────────────────────────────
+test('strCondVerdict — quoted-side == / != compares as text, case-insensitive', () => {
+  assert.equal(c.strCondVerdict('mood == "angry"', { mood: 'angry' }), 1);
+  assert.equal(c.strCondVerdict('mood == "angry"', { mood: 'calm' }), 0);
+  assert.equal(c.strCondVerdict('mood != "angry"', { mood: 'calm' }), 1);
+  assert.equal(c.strCondVerdict('mood == "Angry"', { mood: 'angry' }), 1);   // case-insensitive by design
+  assert.equal(c.strCondVerdict("mood == 'angry'", { mood: 'angry' }), 1);   // single quotes too
+  assert.equal(c.strCondVerdict('"a" == "a"', {}), 1);                       // both sides quoted
+  assert.equal(c.strCondVerdict('"left" == mood', { mood: 'left' }), 1);     // quote on either side
+  assert.equal(c.strCondVerdict('r == "20"', { r: 20 }), 1);                 // numeric var stringifies
+});
+
+test('strCondVerdict — not-applicable and unresolvable are distinct outcomes', () => {
+  assert.equal(c.strCondVerdict('a == b', { a: 1, b: 1 }), null);      // no quoted side → numeric path
+  assert.equal(c.strCondVerdict('hp > 0', { hp: 1 }), null);           // no == / != at all
+  assert.ok(Number.isNaN(c.strCondVerdict('mood == "x"', {})));        // unknown ref → NaN → {cond?}
+  assert.ok(Number.isNaN(c.strCondVerdict('2 + x == "y"', {})));       // non-identifier side → NaN
+});
+
+test('resolveBrace — a text pick var drives a conditional branch (#540, the #429 text half)', () => {
+  const ctx = (vars) => ({ rules: {}, vars, depth: 0, stack: [] });
+  assert.equal(c.resolveBrace('mood == "angry": attacks | waits', ctx({ mood: 'angry' })), 'attacks');
+  assert.equal(c.resolveBrace('mood == "angry": attacks | waits', ctx({ mood: 'calm' })), 'waits');
+  assert.equal(c.resolveBrace('mood != "angry": talks | fights', ctx({ mood: 'calm' })), 'talks');
+  // unresolvable string ref → the same visible {cond?} marker as the numeric path (P4)
+  assert.equal(c.resolveBrace('mood == "angry": a | b', ctx({})), '{mood == "angry"?}');
+  // numeric conditions are untouched by the new arm
+  assert.equal(c.resolveBrace('hp > 0: alive | dead', ctx({ hp: 3 })), 'alive');
+  assert.equal(c.resolveBrace('r == 20: crit | miss', ctx({ r: 20 })), 'crit');
+});
+
 // ── {roll: query} — pick a random point from the live outline (the tree-reference generator) ──
 test('rollParts — sniffs the reserved roll: keyword, keeps the query tail verbatim', () => {
   // assert on .expr (not the whole object) — cores run in a vm realm, so deepEqual trips on the

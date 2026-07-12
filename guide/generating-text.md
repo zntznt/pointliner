@@ -150,6 +150,21 @@ The branches are full templates, so they can roll dice or call rules:
 {gold>=100: you buy {a {weapon} | armor} | you can't afford anything}
 ```
 
+### Branch on text, not just numbers
+
+Quote one side of an `==` / `!=` and the comparison works on **text**, so a text pick can drive
+the story:
+
+```
+{mood := angry | calm | afraid}
+The guard {mood == "angry": attacks on sight | {mood == "afraid": flees | waves you through}}.
+```
+
+The unquoted side is a variable; matching ignores capitalization (`"Angry"` and `angry` are the
+same). Only `==` and `!=` compare text; `<` and `>` stay numeric. Keep compared values to simple
+words (a quoted value containing `:` or `|` won't survive the template split). Re-roll the pick
+and the branch re-judges, same as the crit check below.
+
 ### Test a captured roll (crits and checks)
 
 A bare `{1d20}` re-rolls at every mention, so to test one roll several ways, **capture it in a
