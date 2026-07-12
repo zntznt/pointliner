@@ -2,6 +2,37 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<!-- Content-Security-Policy — defense in depth behind the escape-at-the-sink discipline.
+     The app is one self-contained file with ~100 innerHTML sinks; if any single escape is
+     ever missed, this policy is the backstop that keeps the miss from becoming code execution.
+     Delivered via <meta http-equiv> because the app is build-free and header-served only on the
+     hosted copy — this is the one delivery that also protects the downloaded-from-disk file.
+     IMPORTANT delivery caveat: a meta-delivered CSP does NOT enforce the eval() restriction
+     (that carve-out is header-only in browsers), so omitting 'unsafe-eval' here buys nothing —
+     eval still runs. We omit it anyway (correct intent; free), but the real protection this
+     policy provides is the URL-fetch directives below, which ARE enforced from a meta tag
+     (verified: connect-src 'none' blocks fetch() from the page context under file://).
+     Decisions (see the security review):
+       script-src 'self' 'unsafe-inline'  — the 5 inline <script> blocks need 'unsafe-inline'
+         (no build step ⇒ no nonces without breaking the byte-for-byte from-disk copy). This does
+         NOT stop inline XSS (that's what 'unsafe-inline' permits); the value is in connect-src.
+       style-src 'self' 'unsafe-inline'   — inline <style>, runtime-injected theme/accent <style>
+         elements, and per-element .style/.cssText all require inline styles; can't tighten
+         without breaking theming.
+       img-src 'self' data: blob:         — inline SVG favicon + canvas-rasterized icons (data:/
+         blob:) + user markdown images.
+       font-src 'self' data:              — the embedded Font Awesome woff2 subset is a data: font.
+       connect-src 'none'                 — the app makes ZERO network requests (no fetch/XHR/WS).
+         This is the load-bearing directive and it IS enforced from a meta tag: even if inline
+         XSS runs, it cannot fetch()/XHR/WebSocket to exfiltrate or phone home.
+       object-src / base-uri / form-action 'none' — free hardening (no plugins, no <base>, no forms).
+     'self' resolves to the opaque null origin under file://, which is fine here: every 'self'
+     directive is paired with the data:/blob: (or 'none') the from-disk copy actually needs, and
+     nothing is loaded by same-origin URL that a null origin would reject. Verified working from
+     file:// (CSP parsed, app boots, FA data: font loads, favicon data: URL renders, theme <style>
+     injects; connect-src 'none' confirmed blocking fetch). The manifest is skipped under file://
+     (CORS on a null origin, unrelated to CSP) exactly as the PWA-optional design intends. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Pointliner</title>
 <!-- PWA install (hosted copy only): the manifest + companion files make the app
