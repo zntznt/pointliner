@@ -15028,7 +15028,8 @@ function strCondVerdict(cond, vars) {
 // ─── text modifiers (A1) ─────────────────────────────────────────────────────
 // A `.mod` suffix on a rule/variable reference shapes its output: {beast.a} →
 // "an ogre", {noun.s} → "foxes", {name.cap} → "Name", chainable {beast.a.cap} →
-// "A dragon". Six canonical tokens, one per function, NO aliases. Detection is
+// "A dragon". A closed set of canonical tokens, one per function, NO aliases (grown
+// via explicit sign-off only — .poss/.ing landed through #545). Detection is
 // syntactic (modParts, like condParts); the base resolves through the existing
 // rule/var machinery and applyMods folds the modifiers left-to-right. The only new
 // lexical element is the `.mod` suffix — a recorded P5 decision (ux-discipline §2).
@@ -15048,6 +15049,24 @@ function pastTense(w) {
   if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ied';   // try → tried
   if (/e$/i.test(w)) return w + 'd';                          // love → loved
   return w + 'ed';                                            // walk → walked, play → played
+}
+
+// Possessive (AP style; documented heuristic like pluralize): a word ending in s takes a
+// bare apostrophe (foxes → foxes'), anything else takes 's (ogre → ogre's).
+function possessive(w) {
+  return /s$/i.test(w) ? w + "'" : w + "'s";
+}
+
+// Regular present participle (documented heuristic, same honesty as pastTense: irregular
+// and stress-dependent verbs are out of scope — the CVC doubling rule is the naive one,
+// so a polysyllabic verb with an unstressed last syllable doubles wrongly: visit →
+// visitting, open → openning). Order matters: ie → ying; single trailing e dropped
+// (ee kept: see → seeing); consonant-vowel-consonant doubles (run → running, not w/x/y).
+function presentParticiple(w) {
+  if (/ie$/i.test(w)) return w.slice(0, -2) + 'ying';                       // die → dying
+  if (/[^e]e$/i.test(w)) return w.slice(0, -1) + 'ing';                     // love → loving
+  if (/[^aeiou][aeiou][^aeiouwxy]$/i.test(w)) return w + w[w.length - 1] + 'ing'; // run → running
+  return w + 'ing';                                                          // walk → walking
 }
 
 // English ordinal of an integer-valued string; non-integer input returned unchanged.
@@ -15070,6 +15089,8 @@ const MODIFIERS = Object.assign(Object.create(null), {
   s:     s => pluralize(s),
   ed:    s => pastTense(s),
   ord:   s => ordinal(s),
+  poss:  s => possessive(s),
+  ing:   s => presentParticiple(s),
 });
 
 // Detect a modified reference: a bare base identifier + ≥1 modifier suffix, EVERY
@@ -24097,7 +24118,8 @@ const GUIDE = [
       { syn:'{word.upper}',  desc:'ALL CAPS (or .lower for all lowercase)' },
       { syn:'{beast.a}',     desc:'add a or an in front' },
       { syn:'{sword.s}',     desc:'make it plural' },
-      { syn:'{walk.ed}',     desc:'past tense, e.g. walked' },
+      { syn:'{walk.ed}',     desc:'past tense, e.g. walked (.ing for walking)' },
+      { syn:"{beast.poss}",  desc:"possessive: the ogre's" },
       { syn:'{3.ord}',       desc:'1st, 2nd, 3rd…' },
       { syn:'{beast.a.cap}', desc:'chain them: An ogre' },
     ] },

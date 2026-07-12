@@ -23,7 +23,7 @@ surface. The PKM / multi-document workspace — once "the next frontier" — has
 - Grammar engine `{…}`, content-sniffed: alternation `{a|b 2|c}`, **dynamic odds** (A5 — a `{= expr}`
   weight), **conditional text** `{cond: then|else}` (A3), **stateful sequences / decks**
   `{shuffle|cycle|once|stopping: …}` (A4 — resolved the "stateful randomness" open question),
-  **repeat** `{Nx: template}`, **text modifiers** `{ref.mod}` (A1 — `cap/title/upper/lower/a/s/ed/ord`),
+  **repeat** `{Nx: template}`, **text modifiers** `{ref.mod}` (A1 — `cap/title/upper/lower/a/s/ed/ing/poss/ord`; `.poss`/`.ing` added via #545 sign-off),
   **hierarchical items** `{item.field}` via dotted sub-rules (A6), named rules/tables/chains/vars.
 - **Yes/no oracle** (a front door over weighted-alt — original neutral odds, IP-fenced).
 - Variables: **formula** + **random pick** (frozen, re-rollable) — the locked consistency model.

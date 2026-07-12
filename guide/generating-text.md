@@ -111,10 +111,12 @@ each case.
 {shout.upper}  → "DOG"
 {calm.lower}   → "dog"
 {verb.ed}      → "walked"   (past tense)
+{verb.ing}     → "walking"  (present participle)
+{owner.poss}   → "ogre's"   (possessive; "foxes" becomes "foxes'")
 {n.ord}        → "3rd"      (ordinal)
 ```
 
-The full set: **`a` · `s` · `cap` · `title` · `upper` · `lower` · `ed` · `ord`**.
+The full set: **`a` · `s` · `cap` · `title` · `upper` · `lower` · `ed` · `ing` · `poss` · `ord`**.
 
 Modifiers **chain**, left to right:
 
@@ -127,7 +129,10 @@ Modifiers **chain**, left to right:
 
 *Known limits (they're heuristics, not a dictionary): `a`/`an` looks at the first letter
 ("an hour" / "a university" come out wrong); plurals are the regular English rules
-(`child` → `childs`); title-case splits on spaces only.*
+(`child` → `childs`); title-case splits on spaces only; `.ing` doubles a final
+consonant-vowel-consonant regardless of stress ("run" → "running" is right, "visit" →
+"visitting" is wrong); a grammar field named `poss` or `ing` is now shadowed by the
+modifier, like every modifier name.*
 
 ---
 
