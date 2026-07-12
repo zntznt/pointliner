@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>The campaign calendar</title><_calendar>{&quot;id&quot;:&quot;vale&quot;,&quot;name&quot;:&quot;Calendar of the Vale&quot;,&quot;epochDay&quot;:0,&quot;months&quot;:[{&quot;name&quot;:&quot;Firstfrost&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Deepwinter&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Thawing&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Seedfall&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Greening&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Highsun&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Goldencrest&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Emberwane&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Harvestide&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Fallowmoon&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Mistfall&quot;,&quot;days&quot;:30},{&quot;name&quot;:&quot;Longnight&quot;,&quot;days&quot;:30}],&quot;week&quot;:{&quot;length&quot;:7,&quot;days&quot;:[&quot;Moonday&quot;,&quot;Tilday&quot;,&quot;Windday&quot;,&quot;Seaday&quot;,&quot;Hearthday&quot;,&quot;Forgeday&quot;,&quot;Restday&quot;]},&quot;eras&quot;:[{&quot;name&quot;:&quot;AE&quot;,&quot;yearZero&quot;:1200}],&quot;current&quot;:1181}</_calendar></head>
+  <body>
+    <outline text="# The Salt Road" _id="il98dwyi">
+      <outline text="A caravan campaign running on its own calendar. It is {= asdate(today)}. Advance the clock from the agenda's Today chip (the toolbar calendar button) and this line follows it. See campaign-calendar.md for the walkthrough." _id="m2r3yetk"/>
+    </outline>
+    <outline text="## Threads on the road" _id="9ptdbssb">
+      <outline text="Each thread carries a due date in WORLD time. Open the agenda and the urgency colors count from the calendar's clock, not your computer's. Advance the clock and watch the drovers' payday go red." _id="4na0goot"/>
+      <outline text="#TODO [#A] Reach the Highsun ford before the toll doubles #thread" _props="[{&quot;key&quot;:&quot;due&quot;,&quot;val&quot;:&quot;1204-04-18&quot;}]" _id="khesg973"/>
+      <outline text="#WAITING The brokers' answer from the Vale #thread" _props="[{&quot;key&quot;:&quot;due&quot;,&quot;val&quot;:&quot;1204-04-15&quot;}]" _id="a4hizwrq"/>
+      <outline text="#TODO Pay the drovers #thread" _props="[{&quot;key&quot;:&quot;due&quot;,&quot;val&quot;:&quot;1204-04-13&quot;}]" _id="p80w35wv"/>
+      <outline text="The board, always current: {query: #thread}" _id="3rfcn5os"/>
+    </outline>
+    <outline text="## The road deck" _id="ikbnikia">
+      <outline text="Draw one event per travel day, no repeats until the deck runs dry: {shuffle: a broken axle|a toll post ahead|dust on the horizon|a stranger asks to join the column|wolves at dusk|clear roads and good water}" _id="q81303mt"/>
+    </outline>
+    <outline text="Journal" _id="3ssv31f4">
+      <outline text="1204" _id="xlm4g5l9">
+        <outline text="04" _id="cmdvi6ix">
+          <outline text="12" _id="0nnc2elf">
+            <outline text="The caravan formed up at the Vale gate. Twelve wagons, the salt sealed, Mother Casks counting barrels twice. The brokers promised an answer by the 15th." _id="15omhcbd"/>
+          </outline>
+        </outline>
+      </outline>
+    </outline>
+  </body>
+</opml>

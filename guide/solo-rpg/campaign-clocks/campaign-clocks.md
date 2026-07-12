@@ -81,6 +81,10 @@ The value is flexible: `today`, `tomorrow`, `today+3`, `today+7`, or a fixed cal
 like `2026-12-21`. A relative date is perfect for "check back in a few sessions," a fixed date
 for a thread that lands on a specific in-world occasion.
 
+(These are real-world dates standing in for fiction time, and that proxy is fine for most
+campaigns. If you want the world to run on its **own** calendar, with threads due in its months
+and a clock you advance when the story moves, see [the campaign calendar](../campaign-calendar/campaign-calendar.md).)
+
 A thread is often a clock *and* a date together: the open question carries the deadline, and a
 progress cookie inside it tracks how close you are to an answer. The granary thread in the demo
 does exactly that, a due date on the question and a `[1/4]` clock nested under it. The date tells

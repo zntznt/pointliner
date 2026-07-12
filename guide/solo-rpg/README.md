@@ -35,7 +35,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 
 - **The loop (start here):** Lonelog, Oracle play.
 - **Tools (beat the blank page):** Generators, Session prep.
-- **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log.
+- **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log, The campaign calendar.
 - **Computing (let the numbers run themselves):** Living character sheet, Campaign clocks and threads.
 - **A full system:** Ironsworn, Cairn, and Maze Rats (their rules wired into pills, adapted from their open licences).
 
@@ -49,6 +49,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 | **Hex-crawl travel log** | A map that IS the outline: nested regions and hexes, a self-reshuffling terrain deck, dice encounters, and supplies totaled up each region | [hex-crawl/hex-crawl.md](hex-crawl/hex-crawl.md) | [hex-crawl/hex-crawl-demo.opml](hex-crawl/hex-crawl-demo.opml) |
 | **Living character sheet** | Stats as variables that feed derived numbers, an inventory that totals its own weight, and an encumbrance check that flips red when overloaded | [character-sheet/character-sheet.md](character-sheet/character-sheet.md) | [character-sheet/character-sheet-demo.opml](character-sheet/character-sheet-demo.opml) |
 | **Campaign clocks and threads** | Progress-cookie clocks that fill as you check segments, threads that tick on a date and surface in the agenda, and a live query pulling every open thread | [campaign-clocks/campaign-clocks.md](campaign-clocks/campaign-clocks.md) | [campaign-clocks/campaign-clocks-demo.opml](campaign-clocks/campaign-clocks-demo.opml) |
+| **The campaign calendar** | The world on its own calendar: months, week, and era you define, threads due in world time, a clock you advance from the agenda, and a journal that chronicles in campaign dates | [campaign-calendar/campaign-calendar.md](campaign-calendar/campaign-calendar.md) | [campaign-calendar/campaign-calendar-demo.opml](campaign-calendar/campaign-calendar-demo.opml) |
 | **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks, and oracles, with the SRD's moves and tables dropped into the pill structure (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
 | **Cairn in Pointliner** | A rules-light OSR system in pills: 3d6 attributes as variables, d20 roll-under saves, a slot inventory with an overload check, HP-then-Strength damage, and the game's tables (CC BY-SA 4.0, Yochai Gal) | [cairn/cairn.md](cairn/cairn.md) | [cairn/cairn-demo.opml](cairn/cairn-demo.opml) |
 | **Maze Rats in Pointliner** | A table-driven OSR generator in pills: 2d6 saves off modifier variables, and the game's many random tables as one-click picks, including its two-list improvised-spell trick (CC BY 4.0, Ben Milton) | [maze-rats/maze-rats.md](maze-rats/maze-rats.md) | [maze-rats/maze-rats-demo.opml](maze-rats/maze-rats-demo.opml) |
