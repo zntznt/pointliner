@@ -11752,6 +11752,11 @@ function classifyBraceBody(body, rules, vars) {
     // else 'literal' so prose like {file.name} with no such rule stays plain text.
     return (rules[`${b}.${fp.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) ? 'artifact' : 'literal';
   }
+  const fmp0 = fieldModParts(body);                                    // {weapon.damage.cap} (#545)
+  if (fmp0) {
+    const b = fmp0.base.toLowerCase();
+    return (rules[`${b}.${fmp0.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) ? 'artifact' : 'literal';
+  }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (estParts(body)) return 'artifact';                               // {5 to 10}
@@ -11792,6 +11797,11 @@ function braceTypeLabel(body, rules, vars) {
   if (fp0) {
     const b = fp0.base.toLowerCase();
     if (rules[`${b}.${fp0.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) return ['grammar', body];
+  }
+  const fmp1 = fieldModParts(body);                                    // {weapon.damage.cap} (#545)
+  if (fmp1) {
+    const b = fmp1.base.toLowerCase();
+    if (rules[`${b}.${fmp1.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) return ['grammar', body];
   }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
@@ -15135,6 +15145,43 @@ function fieldParts(body) {
   return { base: m[1], field: m[2] };
 }
 
+// Field-then-modifier chain (#545, the A6 phase-2 half that shipped): {w.damage.cap} — a
+// base, ONE field, then ≥1 modifier suffixes. Disjoint by construction: modParts wins
+// when EVERY suffix is a modifier (an all-modifier chain on a bare ref); fieldParts stays
+// the plain 2-segment read; this form needs ≥3 segments whose SECOND is not a modifier
+// (a field named after a modifier stays shadowed, the documented A6 rule) and whose tail
+// is all modifiers. Multi-level field NESTING ({planet.country.town}) remains out (A6 v1
+// scope): a non-modifier third segment is still null → the {…?} marker.
+function fieldModParts(body) {
+  const segs = (body || '').trim().split('.');
+  if (segs.length < 3) return null;
+  if (!segs.every(s => /^[a-z_]\w*$/i.test(s))) return null;
+  if (segs[1].toLowerCase() in MODIFIERS) return null;
+  const mods = segs.slice(2);
+  if (!mods.every(m => m in MODIFIERS)) return null;
+  return { base: segs[0], field: segs[1], mods };
+}
+
+// Resolve a base.field read to its expanded string, or null when undefined (A6). The
+// three resolutions, shared by the plain field branch and the modifier chain (#545):
+// 1. a directly-named sub-rule ({sword.damage} → rule `sword.damage`);
+// 2. resolve the base to an item KEY, then read THAT item's field: {weapon.damage} picks
+//    weapon ("sword") → reads `sword.damage`; {w.damage} where pick-var w="sword" reads
+//    the SAME item's field — the locked cross-reference-consistency path (a pick
+//    variable, NOT a per-expansion bind / the reverted ctx.binds model);
+// 3. neither → null (callers show the visible {…?} marker, P4).
+function resolveField(base, field, ctx) {
+  if (ctx.rules[`${base}.${field}`]) return expandRule(`${base}.${field}`, ctx);
+  let v;
+  if (ctx.rules[base]) v = expandRule(base, ctx);
+  else if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, base)) v = formatVarValue(ctx.vars[base]);
+  if (v != null) {
+    const key = `${String(v).trim().toLowerCase()}.${field}`;
+    if (ctx.rules[key]) return expandRule(key, ctx);
+  }
+  return null;
+}
+
 // ─── stateful sequences (decks / cycles) ─────────────────────────────────────
 // A {mode: a | b | c} brace whose leading `mode` keyword gives it MEMORY: a
 // `shuffle` is a DECK (draw without replacement, reshuffle when the bag empties),
@@ -15303,22 +15350,16 @@ function resolveBrace(body, ctx) {
   const fp = fieldParts(body);
   if (fp) {
     // {base.field} — read a sub-rule field of a picked item (A6). Checked AFTER
-    // modParts so a modifier suffix wins the `.` overlap. Three resolutions:
-    const base = fp.base.toLowerCase(), field = fp.field.toLowerCase();
-    // 1. a directly-named sub-rule: {sword.damage} → rule `sword.damage`
-    if (ctx.rules[`${base}.${field}`]) return expandRule(`${base}.${field}`, ctx);
-    // 2. resolve the base to an item KEY, then read THAT item's field: {weapon.damage}
-    //    picks weapon ("sword") → reads `sword.damage`; {w.damage} where pick-var w="sword"
-    //    reads the SAME item's field — the locked cross-reference-consistency path (a pick
-    //    variable, NOT a per-expansion bind / the reverted ctx.binds model).
-    let v;
-    if (ctx.rules[base]) v = expandRule(base, ctx);
-    else if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, base)) v = formatVarValue(ctx.vars[base]);
-    if (v != null) {
-      const key = `${String(v).trim().toLowerCase()}.${field}`;
-      if (ctx.rules[key]) return expandRule(key, ctx);
-    }
-    return `{${fp.base}.${fp.field}?}`;                   // undefined field → visible marker (P4)
+    // modParts so a modifier suffix wins the `.` overlap.
+    const s = resolveField(fp.base.toLowerCase(), fp.field.toLowerCase(), ctx);
+    return s != null ? s : `{${fp.base}.${fp.field}?}`;   // undefined field → visible marker (P4)
+  }
+  const fmp = fieldModParts(body);
+  if (fmp) {
+    // {base.field.mod+} — a field read shaped by modifiers ({w.damage.cap}, #545 / A6
+    // phase 2): resolve the field exactly like the plain form, then fold applyMods.
+    const s = resolveField(fmp.base.toLowerCase(), fmp.field.toLowerCase(), ctx);
+    return s != null ? applyMods(s, fmp.mods) : `{${body}?}`;   // undefined → marker, mods not applied
   }
   const rp = repeatParts(body);
   if (rp) {
@@ -16632,6 +16673,16 @@ function promoteBraceBody(node, body) {
   if (fp) {
     const b = fp.base.toLowerCase();
     if (collectRules()[`${b}.${fp.field.toLowerCase()}`] || collectRules()[b] || b in collectVars()) {
+      const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+      if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+    }
+  }
+  // field-then-modifier chain: {weapon.damage.cap} → the same anonymous grammar wrap as
+  // the plain field read (#545, A6 phase 2). Undefined base → falls through → literal.
+  const fmp = fieldModParts(body);
+  if (fmp) {
+    const b = fmp.base.toLowerCase();
+    if (collectRules()[`${b}.${fmp.field.toLowerCase()}`] || collectRules()[b] || b in collectVars()) {
       const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
       if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
     }
@@ -24156,6 +24207,7 @@ const GUIDE = [
       { syn:'{mood == "angry": attacks | waits}', desc:'quote a value to branch on text' },
       { syn:'sword.damage: 1d8',  desc:'give an item a detail' },
       { syn:'{weapon.damage}',    desc:'read a detail of a picked item' },
+      { syn:'{w.name.cap}',       desc:'shape a detail with a modifier' },
       { syn:'w = {weapon}',       desc:'freeze one pick in a variable…' },
       { syn:'{w.name} {w.damage}',desc:'…then read its details together' },
     ] },
