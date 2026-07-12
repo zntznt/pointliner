@@ -260,16 +260,14 @@ decision** in `ux-discipline.md` (the value vocabulary is new authoring surface,
 `due:`/`check` were), and the roll-forward MUST be a **visible, announced** action (flash
 "Rescheduled to <date>", route through `#a11y-live`), never a silent render-time flip (P1/P4).
 
-### ☐ "Random point from a subtree" generator
-From the 2026-07-02 design review (Solo RPG Player, thread-tracking use). Today decks/grammar draw
-only from **literal typed text** in a rule/deck body; there is no `{thread}`-style generator that
-picks a random *point under a parent* (e.g. "advance a random open thread", "roll a random NPC from
-this list of points"). The solo-RPG thread loop leans on this. **Fit — medium/hard, needs owner
-sign-off:** it is a genuine new capability (a grammar reference that resolves to live tree content),
-not expressible with the current engine, and it must not become a new sigil — the natural home is a
-`resolveBrace` branch or a reserved reference form inside the existing `{…}` syntax. Interim: the
-review's guide recipe shows a hand-authored `shuffle:` deck of current threads as the buildable-today
-substitute.
+### ✓ "Random point from a subtree" generator — *shipped as `{roll: query}` (DECISION-191b)*
+From the 2026-07-02 design review (Solo RPG Player, thread-tracking use). Shipped exactly along the
+lines this entry asked for: a reserved keyword form inside the existing `{…}` syntax, no new sigil —
+`rollParts` + a `resolveBrace` branch pick a random matching point live (`pickFromQuery`), promotion
+wraps it in an anonymous grammar (`origin: {roll: …}`) so it freezes/re-rolls like any grammar pill,
+and the §2 syntax inventory records it (DECISION-191b). "Advance a random open thread" is
+`{roll: #thread is:todo}`; wrap in a pick var for a stable value. (Issue #546 flagged this row as
+stale after the ship.)
 
 ### ⊘ Mirrors / cloned items — *shelved (but a useful slice now exists)*
 The same node in multiple places with synced edits. Hardest item; conflicts with the strict
