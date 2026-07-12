@@ -15014,18 +15014,28 @@ function fieldParts(body) {
 // before the `:`) and from plain alternation (which has no mode keyword).
 const SEQ_MODES = ['shuffle', 'cycle', 'once', 'stopping'];
 
-// Parse a {mode: a | b | c} body → {mode, items} or null. The FIRST top-level `:`
+// Parse a {mode: a | b | c} body → {mode, items, count} or null. The FIRST top-level `:`
 // splits the mode from the items (an item may itself contain a `:`); items split
 // on top-level `|` (a nested {a|b} is protected and stays one item).
 function seqParts(body) {
   body = (body || '').trim();
   const segs = splitTopLevel(body, ':');
   if (segs.length < 2) return null;
-  const mode = segs[0].trim().toLowerCase();
-  if (!SEQ_MODES.includes(mode)) return null;
+  const head = segs[0].trim().toLowerCase();
+  // #542: an optional draw count after the mode keyword — {shuffle 3: …} deals 3 per
+  // draw (distinct while the bag lasts). v1 scopes the count to shuffle: a counted
+  // cycle/once/stopping has no agreed meaning yet, so there a count stays unparsed and
+  // the body falls through (alternation / literal — the usual escape hatch). Range
+  // 1–99 like {Nx:}; {shuffle 1: …} is exactly {shuffle: …}. NB this re-reads a body
+  // like {shuffle 3: a|b} that previously fell through to alternation (pinned).
+  const hm = /^([a-z]+)(?:\s+(\d{1,2}))?$/.exec(head);
+  if (!hm || !SEQ_MODES.includes(hm[1])) return null;
+  const mode = hm[1];
+  const count = hm[2] ? parseInt(hm[2], 10) : 1;
+  if (count < 1 || (count !== 1 && mode !== 'shuffle')) return null;
   const rest = body.slice(segs[0].length + 1);
   const items = splitTopLevel(rest, '|').map(s => s.trim()).filter(s => s !== '');
-  return items.length ? { mode, items } : null;
+  return items.length ? { mode, items, count } : null;
 }
 
 // A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests
@@ -15080,10 +15090,18 @@ function nextSeqIndex(rec) {
 // Advance a sequence and return its emitted text — the chosen item expanded
 // against the document grammar/vars, so an item may itself roll dice / call a
 // rule ({shuffle: {2d6} gold | a {color} gem}). Pure when rules+vars are passed.
+// #542: a counted shuffle (rec.count > 1) DEALS that many cards per advance, each
+// through nextSeqIndex — so a deal spanning an empty bag reshuffles mid-deal and
+// continues, like a real deck; draws are distinct while the bag lasts.
 function advanceSeq(rec, rules = collectRules(), vars = collectVars()) {
-  const idx = nextSeqIndex(rec);
-  if (idx < 0) return '';
-  return expandTemplate(rec.items[idx], { rules, vars, depth: 0, stack: [] });
+  const deal = Math.max(1, rec.count || 1);
+  const out = [];
+  for (let i = 0; i < deal; i++) {
+    const idx = nextSeqIndex(rec);
+    if (idx < 0) break;                    // an exhausted `once` ends the deal
+    out.push(expandTemplate(rec.items[idx], { rules, vars, depth: 0, stack: [] }));
+  }
+  return out.join(' ').trim();
 }
 
 // Resolve one {...} body. Content-sniffed: a conditional `cond: a|b` (a comparison
@@ -15123,6 +15141,12 @@ function resolveBrace(body, ctx) {
     // state, so it degrades to a uniform random draw from its items (the stateful
     // deck/cycle behaviour lives only in the standalone pill, which advances via
     // nextSeqIndex, not through here).
+    if (sp.count > 1) {
+      // #542: a counted shuffle nested in a rule deals N DISTINCT items per expansion,
+      // capped at the item count — a fresh stateless shuffle each time.
+      return shuffledIndices(sp.items.length).slice(0, Math.min(sp.count, sp.items.length))
+        .map(i => expandTemplate(sp.items[i], ctx)).join(' ').trim();
+    }
     return expandTemplate(sp.items[Math.floor(Math.random() * sp.items.length)], ctx);
   }
   const mp = modParts(body);
@@ -15884,10 +15908,11 @@ function makeGrammarRoll(def, originInput) {
 // state), already advanced once so it shows its first emission. anon:true keeps
 // it out of the document-wide rule namespace (it's a standalone pill, not a
 // callable). null if the mode is unknown or there are no items.
-function makeSeqGen(mode, items, key) {
+function makeSeqGen(mode, items, key, count) {
   mode = (mode || '').toLowerCase();
   if (!SEQ_MODES.includes(mode) || !items || !items.length) return null;
   const rec = { key: key || grammarKey(), mode, items: items.slice(), anon: true };
+  if (count > 1) rec.count = count;   // #542: shuffle deal size; absent = 1; rides _grammar
   if (mode === 'shuffle') rec.bag = []; else rec.pos = 0;
   rec.result = advanceSeq(rec);
   return rec;
@@ -15930,12 +15955,16 @@ function renderSeqGenPill(key, g) {
   // with no cards-remaining cue. Guard the lazy bag: undefined = a pristine deck (never drawn), so
   // only a real Array of length 0 after a non-empty draw is the recycle boundary.
   const willRecycle = g.mode === 'shuffle' && Array.isArray(g.bag) && g.bag.length === 0 && g.result !== '';
-  const verb = ended ? '' : (g.mode === 'shuffle' ? 'draw the next' : 'advance');
+  // #542: a counted shuffle deals several cards per click — say so ("deal 3"), and label
+  // the mode the way its source reads (shuffle 3), so pill, unfold, and dialog agree (P1).
+  const deal = g.count > 1 ? g.count : 1;
+  const modeLabel = g.mode + (deal > 1 ? ' ' + deal : '');
+  const verb = ended ? '' : (g.mode === 'shuffle' ? (deal > 1 ? `deal ${deal}` : 'draw the next') : 'advance');
   const cta = ended ? 'Spent. Edit to reset'
     : willRecycle ? 'Last card. Click to reshuffle and draw'
     : ('Click to ' + verb);
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(g.mode)}). ${cta}"`
-    + ` aria-label="Deck (${escQ(g.mode)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${cta}">`
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${cta}"`
+    + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -16050,18 +16079,18 @@ function openDeckDialog({ title, submitLabel, body = 'shuffle: a | b | c', onRes
     fields: [
       { key:'body', label:'Mode and items (mode: a | b | c)', type:'textarea', rows:3, value:body, chips: SEQ_CHIPS,
         placeholder:'shuffle: ace | king | queen | jack',
-        hint:'Start with a mode: shuffle (a deck: draws without replacement, reshuffles when empty) · cycle (loops in order) · once (each once, then nothing) · stopping (advances, then stays on the last). Then add items separated by |. Items may roll dice / call rules. Click the pill to advance.',
+        hint:'Start with a mode: shuffle (a deck: draws without replacement, reshuffles when empty) · cycle (loops in order) · once (each once, then nothing) · stopping (advances, then stays on the last). A number after shuffle deals that many per click (shuffle 3: …). Then add items separated by |. Items may roll dice / call rules. Click the pill to advance.',
         preview: v => {
           const sp = seqParts(v);
           if (!sp) return `<span class="io-preview-bad">Start with shuffle / cycle / once / stopping, then items</span>`;
-          const probe = makeSeqGen(sp.mode, sp.items);
+          const probe = makeSeqGen(sp.mode, sp.items, undefined, sp.count);
           return probe ? `<span class="gr-preview-result">${escHtml(probe.result || '(empty)')}</span>` : `<span class="io-preview-bad">Invalid</span>`;
         } },
     ],
     validate: v => !!seqParts(v.body),
     onSubmit: v => {
       const sp = seqParts(v.body);
-      const rec = sp && makeSeqGen(sp.mode, sp.items);
+      const rec = sp && makeSeqGen(sp.mode, sp.items, undefined, sp.count);
       if (rec) onResult(rec);
     },
   });
@@ -16186,9 +16215,9 @@ function editGrammar(node, key) {
     openDeckDialog({
       title: 'Edit deck',
       submitLabel: 'Save',
-      body: `${g.mode}: ${(g.items || []).join(' | ')}`,
+      body: `${g.mode}${g.count > 1 ? ' ' + g.count : ''}: ${(g.items || []).join(' | ')}`,
       onResult: rec => {
-        const fresh = makeSeqGen(rec.mode, rec.items, key);   // reuse the key; reset pos/bag
+        const fresh = makeSeqGen(rec.mode, rec.items, key, rec.count);   // reuse the key; reset pos/bag
         if (!fresh) return;
         Object.assign(g, fresh);
         markDirty();
@@ -16333,7 +16362,7 @@ function promoteBraceBody(node, body) {
   // since the items carry a top-level `|`.
   const sp = seqParts(body);
   if (sp) {
-    const rec = makeSeqGen(sp.mode, sp.items);
+    const rec = makeSeqGen(sp.mode, sp.items, undefined, sp.count);
     if (rec) { (node.grammar ||= []).push(rec); return `[[grammar:${rec.key}]]`; }
   }
   // typed markov chain: {markov: a→b, b→c} → an anonymous, typed markov pill. The
@@ -16550,7 +16579,7 @@ function artifactToShorthand(type, rec) {
     // {mode: a | b | c}. The transient draw state (pos/bag) isn't in the text and
     // is preserved by the unfold WeakMap when the source is left untouched (reset
     // to a fresh deck only if the items are edited) — the same frozen-roll model.
-    if (rec.mode) return `{${rec.mode}: ${(rec.items || []).join(' | ')}}`;
+    if (rec.mode) return `{${rec.mode}${rec.count > 1 ? ' ' + rec.count : ''}: ${(rec.items || []).join(' | ')}}`;
     // Only ANONYMOUS shorthand pills unfold. A named (non-anon) grammar is a
     // declaration — its rule name is doc-wide callable config richer than the
     // text (same principle as declaring variables), and unfolding would lose
@@ -23911,13 +23940,14 @@ const GUIDE = [
     ] },
   { id:'deck', cat:'generators', covers:['deck'],
     title:'Decks & repeats',
-    body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. You can also expand a template multiple times at once, and each expansion rolls independently, so you get several different results in one click.",
+    body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. A number after shuffle deals that many cards at once ({shuffle 3: …}), the classic 'draw three, no duplicates'. You can also expand a template multiple times at once, and each expansion rolls independently, so you get several different results in one click.",
     examples:[
       { syn:'{shuffle: a|b|c}', desc:'deal without repeats' },
+      { syn:'{shuffle 3: a|b|c|d}', desc:'deal 3 at once, no duplicates' },
       { syn:'{cycle: a|b|c}',   desc:'go in order, then loop' },
       { syn:'{once: a|b|c}',    desc:'go through once, then stop' },
       { syn:'{stopping: a|b|c}',desc:'advance, then stay on the last' },
-      { syn:'{3x: {beast}}',    desc:'repeat 3 times, each different' },
+      { syn:'{3x: {beast}}',    desc:'repeat 3 times, each may repeat' },
     ] },
   { id:'markov', cat:'generators', covers:['markov'],
     title:'Markov chains',

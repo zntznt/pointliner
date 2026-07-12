@@ -577,12 +577,25 @@ test('classifyBraceBody / braceTypeLabel — a resolvable field ref is a grammar
 
 // ── stateful sequences: {shuffle|cycle|once|stopping: a | b | c} ─────────────
 test('seqParts — parses a mode + items; rejects non-modes', () => {
-  assert.deepEqual(host(c.seqParts('shuffle: a | b | c')), { mode: 'shuffle', items: ['a', 'b', 'c'] });
-  assert.deepEqual(host(c.seqParts('CYCLE: x|y')), { mode: 'cycle', items: ['x', 'y'] }); // case-insensitive mode
+  assert.deepEqual(host(c.seqParts('shuffle: a | b | c')), { mode: 'shuffle', items: ['a', 'b', 'c'], count: 1 });
+  assert.deepEqual(host(c.seqParts('CYCLE: x|y')), { mode: 'cycle', items: ['x', 'y'], count: 1 }); // case-insensitive mode
   assert.equal(c.seqParts('a | b'), null);          // plain alternation (no mode)
   assert.equal(c.seqParts('note: hello'), null);    // a colon without a reserved mode
   assert.equal(c.seqParts('hp > 0: a | b'), null);  // a conditional, not a sequence
   assert.equal(c.seqParts('shuffle:'), null);       // a mode with no items
+});
+
+test('seqParts — optional draw count on shuffle only (#542)', () => {
+  // BEHAVIOR CHANGE, intentional: {shuffle 3: a|b} previously fell through to alternation
+  // (first alt the literal "shuffle 3: a"); it now parses as a counted deck.
+  assert.deepEqual(host(c.seqParts('shuffle 3: a | b | c | d')), { mode: 'shuffle', items: ['a', 'b', 'c', 'd'], count: 3 });
+  assert.deepEqual(host(c.seqParts('SHUFFLE 12: a | b')), { mode: 'shuffle', items: ['a', 'b'], count: 12 });
+  assert.deepEqual(host(c.seqParts('shuffle 1: a | b')), { mode: 'shuffle', items: ['a', 'b'], count: 1 }); // 1 == no count
+  assert.equal(c.seqParts('shuffle 0: a | b'), null);   // zero is not a deal
+  assert.equal(c.seqParts('cycle 3: a | b'), null);     // count is shuffle-only in v1
+  assert.equal(c.seqParts('once 2: a | b'), null);
+  assert.equal(c.seqParts('stopping 2: a | b'), null);
+  assert.equal(c.seqParts('shuffle 100: a | b'), null); // out of the 1–99 range (like {Nx:})
 });
 
 test('nextSeqIndex — cycle loops, once exhausts, stopping sticks on the last', () => {
@@ -614,6 +627,44 @@ test('nextSeqIndex — shuffle never repeats across the reshuffle boundary', () 
     assert.notEqual(cur, prev, `draw ${i + 1} repeated the previous (boundary repeat)`);
     prev = cur;
   }
+});
+
+test('advanceSeq — a counted shuffle deals N distinct cards per advance (#542)', () => {
+  const rec = { mode: 'shuffle', items: ['a', 'b', 'c', 'd', 'e'], count: 3, bag: [] };
+  const dealt = c.advanceSeq(rec, {}, {}).split(' ');
+  assert.equal(dealt.length, 3, 'deals exactly count cards');
+  assert.equal(new Set(dealt).size, 3, 'no duplicates within a deal (bag had enough)');
+  assert.equal(rec.bag.length, 2, 'the deck is 2 cards lighter');
+  // the next deal spans the reshuffle boundary: 2 remaining + 1 from a fresh bag
+  const dealt2 = c.advanceSeq(rec, {}, {}).split(' ');
+  assert.equal(dealt2.length, 3, 'a deal spanning an empty bag reshuffles and completes');
+});
+
+test('advanceSeq — an exhausted once ends the deal early, never pads (#542 guard)', () => {
+  // count only ships on shuffle, but advanceSeq must stay safe if a record carries one
+  const rec = { mode: 'once', items: ['a', 'b'], count: 3, pos: 0 };
+  assert.equal(c.advanceSeq(rec, {}, {}), 'a b');   // 2 items, deal of 3 → stops at the end
+  assert.equal(c.advanceSeq(rec, {}, {}), '');      // spent
+});
+
+test('resolveBrace — a nested counted shuffle deals distinct items, capped at the list (#542)', () => {
+  const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
+  for (let i = 0; i < 20; i++) {
+    const out = c.resolveBrace('shuffle 3: a | b | c | d | e', ctx).split(' ');
+    assert.equal(out.length, 3);
+    assert.equal(new Set(out).size, 3, `deal ${i} repeated an item: ${out.join(' ')}`);
+  }
+  // count larger than the list → every item once, no padding
+  const all = c.resolveBrace('shuffle 99: a | b | c', ctx).split(' ');
+  assert.deepEqual([...all].sort(), ['a', 'b', 'c']);
+});
+
+test('makeSeqGen — stores the deal count on the record (round-trips _grammar) (#542)', () => {
+  const rec = c.makeSeqGen('shuffle', ['a', 'b', 'c', 'd'], undefined, 3);
+  assert.equal(rec.count, 3);
+  assert.equal(rec.result.split(' ').length, 3, 'first emission is already a full deal');
+  const plain = c.makeSeqGen('shuffle', ['a', 'b']);
+  assert.equal(plain.count, undefined, 'no count key when the deal is 1');
 });
 
 test('advanceSeq — emits the chosen item, expanded against the grammar', () => {

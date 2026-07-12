@@ -191,6 +191,15 @@ Four modes:
 A deck pill is **stateful**: click it to **draw the next card** (it doesn't re-roll, it advances).
 Its position is saved with the document.
 
+**Deal several at once.** A number after `shuffle` sets the deal size:
+
+```
+{shuffle 3: ruby | opal | pearl | bone die | iron key}   → "pearl ruby iron key"
+```
+
+Each click deals 3, no duplicates while the deck lasts; when the deck runs out mid-deal it
+reshuffles and keeps dealing, like a real deck. The count is 1 to 99 and works on `shuffle` only.
+
 The stateful, no-repeat behavior only holds when the deck is **its own pill**. If you nest a
 `{shuffle: ...}` (or any mode) inside a named rule, it becomes an ordinary random pick with no
 memory, so items can repeat. Keep a deck as a standalone pill when the draw order matters.
@@ -206,7 +215,8 @@ Emit a template several times, **re-rolled independently each time**:
 {2x: {2d6} gold}     → "7 gold 11 gold"
 ```
 
-The count is 1 to 99; results are joined by spaces. (For draw-*without*-repeat, use a deck instead.)
+The count is 1 to 99; results are joined by spaces. (For draw-*without*-repeat, use a deck:
+`{shuffle 3: …}` deals three distinct items in one go.)
 
 ---
 
