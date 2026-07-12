@@ -10336,3 +10336,30 @@ test('#530: frozenTokenText freezes a query pill to its expr + matching titles',
   const frozen = c.frozenTokenText('query', 'qm', many.children[0], {}, many);
   assert.match(frozen, /^is:todo → .+ \(\+3 more\)$/, 'caps at 10 titles, tallies the rest');
 });
+
+
+// ── Security regressions (XSS / injection) ────────────────────────────────────
+// These pin the two defenses a hostile imported document (OPML/shared HTML) must not defeat.
+// A malicious _seq reaches showCardMenu's move-to labels unescaped; a leading control char
+// defeated safeUrl's scheme test (WHATWG strips it, so \x01javascript: resolved as script).
+
+test('safeUrl blocks javascript: even behind a leading control char (WHATWG strip bypass)', () => {
+  const ctrl = String.fromCharCode(1);
+  assert.equal(c.safeUrl('javascript:alert(1)'), '', 'plain javascript: blocked');
+  assert.equal(c.safeUrl(ctrl + 'javascript:alert(1)'), '', 'leading \\x01 must not smuggle javascript:');
+  assert.equal(c.safeUrl(String.fromCharCode(9) + 'javascript:x'), '', 'leading tab must not smuggle javascript:');
+  assert.equal(c.safeUrl('vbscript:x'), '', 'vbscript: blocked');
+  assert.equal(c.safeUrl('data:text/html,x', true), '', 'data:text/html blocked even with image flag');
+  // benign URLs still pass through unchanged
+  assert.equal(c.safeUrl('https://example.com'), 'https://example.com');
+  assert.equal(c.safeUrl('#anchor'), '#anchor');
+  assert.equal(c.safeUrl('data:image/png;base64,AAA', true), 'data:image/png;base64,AAA', 'data:image allowed for images');
+});
+
+test('escHtml neutralizes an img-onerror payload from a hostile sidecar', () => {
+  // The showCardMenu move-to sink (index.html addItem) and the renderCmd twin both route
+  // attacker _seq state keywords through escHtml; pin that escHtml actually defangs the vector.
+  const out = c.escHtml('<img src=x onerror=alert(document.domain)>');
+  assert.ok(!/[<>]/.test(out), 'angle brackets escaped, so no live element is injected');
+  assert.equal(out, '&lt;img src=x onerror=alert(document.domain)&gt;');
+});

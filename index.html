@@ -4177,7 +4177,12 @@ function editableTextBlocks(el) {
 
 // reject URLs that could execute script; allow data:image only for <img>
 function safeUrl(u, allowDataImage) {
-  const t = (u || '').trim();
+  // Strip ALL C0 control chars and whitespace before the scheme test, not just via trim():
+  // the WHATWG URL parser removes leading C0 controls (\x00-\x1F) before resolving the scheme,
+  // so `\x01javascript:…` resolves to the javascript: scheme in the browser. A plain .trim()
+  // leaves those in place and the anchored regex below is defeated by the leading control char,
+  // letting a hostile markdown link (node.text is attacker-authorable via OPML import) through.
+  const t = (u || '').replace(/[\u0000-\u0020]+/g, '');
   if (/^(javascript|vbscript):/i.test(t)) return '';
   if (/^data:/i.test(t) && !(allowDataImage && /^data:image\//i.test(t))) return '';
   return t;
@@ -6968,7 +6973,11 @@ function mtMenuBuilder(panel) {
     item.setAttribute('role', 'menuitem');
     item.setAttribute('tabindex', '-1');
     if (disabled) item.setAttribute('aria-disabled', 'true');
-    item.innerHTML = '<span class="mt-col-item-label">' + label + '</span>' +
+    // Escape at the sink: `label` reaches here unescaped from attacker-controlled sidecar
+    // data (showCardMenu passes raw seq.states keywords from a malicious _seq). This is the
+    // twin of renderCmd's cmd-info sink, which already escapes the same source; every caller
+    // passes a plain string, so escaping here is idempotent and the correct single escape point.
+    item.innerHTML = '<span class="mt-col-item-label">' + escHtml(label) + '</span>' +
                      '<span class="mt-col-item-check" aria-hidden="true">✓</span>';
     if (!disabled) item.addEventListener('mousedown', e => { e.preventDefault(); onApply(); hideColPanel(); });
     panel.appendChild(item);

@@ -200,7 +200,7 @@ export function loadCores() {
     'classifyBraceBody','isQuotedLiteral','braceTypeLabel','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
-    'escHtml','escAttr','escQ',                // const-arrow escapers (reached via the const pass)
+    'escHtml','escAttr','escQ','safeUrl',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
