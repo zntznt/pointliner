@@ -724,6 +724,35 @@ test('classifyBraceBody / braceTypeLabel — a resolvable field ref is a grammar
   assert.deepEqual(host(c.braceTypeLabel('weapon.damage', rules, {})), ['grammar', 'weapon.damage']);
 });
 
+// ── field-then-modifier chaining {w.damage.cap} (#545, A6 phase 2) ───────────
+test('fieldModParts — ≥3 segments, a non-modifier field, an all-modifier tail', () => {
+  assert.deepEqual(host(c.fieldModParts('w.damage.cap')), { base: 'w', field: 'damage', mods: ['cap'] });
+  assert.deepEqual(host(c.fieldModParts('weapon.name.a.cap')), { base: 'weapon', field: 'name', mods: ['a', 'cap'] });
+  assert.equal(c.fieldModParts('w.damage'), null);        // 2 segments → fieldParts' job
+  assert.equal(c.fieldModParts('beast.a.cap'), null);     // all-modifier tail on a bare ref → modParts' job
+  assert.equal(c.fieldModParts('w.cap.upper'), null);     // a field named after a modifier stays shadowed
+  assert.equal(c.fieldModParts('a.b.c'), null);           // non-modifier third segment → nesting, still out
+  assert.equal(c.fieldModParts('w.damage.txt'), null);    // unknown trailing suffix → not a chain
+});
+
+test('resolveBrace / runGrammar — a field read shaped by modifiers (#545)', () => {
+  // all three field resolutions, then applyMods folds the tail
+  assert.equal(c.runGrammar('origin: {sword.damage.cap}\nsword.damage: hit', 'origin', {}, {}), 'Hit');
+  assert.equal(c.runGrammar('origin: {weapon.damage.upper}\nweapon: sword\nsword.damage: hit', 'origin', {}, {}), 'HIT');
+  assert.equal(c.runGrammar('origin: {w.name.a.cap}\nsword.name: ogre blade', 'origin', {}, { w: 'sword' }), 'An ogre blade');
+  // the new tokens chain here too (stacked on the .poss/.ing branch)
+  assert.equal(c.runGrammar('origin: {w.name.poss}\nsword.name: ogre', 'origin', {}, { w: 'sword' }), "ogre's");
+  // undefined base/field → the visible marker, modifiers NOT applied (P4)
+  assert.equal(c.runGrammar('origin: {ghost.name.cap}', 'origin', {}, {}), '{ghost.name.cap?}');
+});
+
+test('classify/typeLabel/promote agree on a modifier-chained field ref (#545)', () => {
+  const rules = { weapon: [{ template: 'sword', weight: 1 }], 'sword.damage': [{ template: 'hit', weight: 1 }] };
+  assert.equal(c.classifyBraceBody('weapon.damage.cap', rules, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('nope.name.cap', {}, {}), 'literal');   // undefined base → prose
+  assert.deepEqual(host(c.braceTypeLabel('weapon.damage.cap', rules, {})), ['grammar', 'weapon.damage.cap']);
+});
+
 // ── stateful sequences: {shuffle|cycle|once|stopping: a | b | c} ─────────────
 test('seqParts — parses a mode + items; rejects non-modes', () => {
   assert.deepEqual(host(c.seqParts('shuffle: a | b | c')), { mode: 'shuffle', items: ['a', 'b', 'c'], count: 1 });

@@ -83,7 +83,7 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
 
 ## Deferred (recorded follow-ons — not lost, just not v1)
 
-- **A6:** field × modifier chaining (`{w.damage.cap}`); multi-level nesting (`{planet.country.town}`);
+- **A6:** ~~field × modifier chaining (`{w.damage.cap}`)~~ shipped 2026-07-12 via #545; multi-level nesting (`{planet.country.town}`);
   fields with their own frozen state.
 - **B2:** `min/max/count` in the uncertain context; mixtures (`mx`); correlation / shared variables;
   more families (beta, …); the analytic `est+` (no-sampling) rollup; cross-engine use (an estimate's
