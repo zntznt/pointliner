@@ -122,6 +122,9 @@ the month list in; it takes about two minutes. One honest caveat: calendars with
 festival days that sit outside any month (Harptos' Midwinter, for example) can't be represented
 exactly yet; the usual workaround is folding each festival into the preceding month as an extra day.
 
+For a worked campaign example with an importable demo, see
+[the campaign calendar](solo-rpg/campaign-calendar/campaign-calendar.md) in the solo-RPG guides.
+
 ---
 
 ## Doing math with dates
