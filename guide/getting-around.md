@@ -131,6 +131,18 @@ Type `@` and choose **Query**, or write it inline: `{query: is:todo | due:week}`
 `-` to exclude, `|` for OR). Click any result to jump to it, or the pencil to change the search. A
 long list shows the first ten with a `+N more`. The query never lists its own point.
 
+### Just the number (count)
+
+Sometimes you want the tally, not the list. `{count: <search>}` (or `@` then **Count**) renders a
+compact live number: how many points match right now.
+
+```
+Open threads: {count: #thread is:todo} · Overdue: {count: due:overdue}
+```
+
+It updates as the document changes, `0` is a valid answer, and the pencil edits the search, same
+as a query pill. The same search counts what the matching `{query: …}` would list.
+
 ## Query bases
 
 When a list is not enough, turn the same live search into a **table**. A query base's rows are the

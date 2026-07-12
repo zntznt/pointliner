@@ -208,7 +208,7 @@ export function loadCores() {
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','seqDeclParts','sequenceLint','collectSequences','sequenceForKeyword','keywordIsDone','keywordIsHeld','seqDefString',
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
-    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','queryRows','queryParts','pickFromQuery','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','cycleColRole','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
+    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','queryRows','queryParts','countParts','pickFromQuery','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','cycleColRole','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
     'childPropNumber','aggregateChildren','expandAggExpr','countWords','subtreeWords',
