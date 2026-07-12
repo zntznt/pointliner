@@ -192,6 +192,54 @@ test('evalMath — malformed input returns null (callers branch on null)', () =>
   assert.equal(c.evalMath('2+2x'), null); // unconsumed trailing token
 });
 
+test('evalMath — and/or/not: 0/1 logic over nonzero-is-true operands (#539)', () => {
+  assert.equal(c.evalMath('and(1,1)'), 1);
+  assert.equal(c.evalMath('and(1,0)'), 0);
+  assert.equal(c.evalMath('or(0,0)'), 0);
+  assert.equal(c.evalMath('or(0,2)'), 1);
+  assert.equal(c.evalMath('not(0)'), 1);
+  assert.equal(c.evalMath('not(3)'), 0);
+  assert.equal(c.evalMath('not(-2)'), 0);            // any nonzero is true, sign irrelevant
+  // variadic like min/max
+  assert.equal(c.evalMath('and(1,2,3)'), 1);
+  assert.equal(c.evalMath('and(1,0,3)'), 0);
+  assert.equal(c.evalMath('or(0,0,5)'), 1);
+  // composition with comparisons, ternary, if(), and variables
+  assert.equal(c.evalMath('and(2>1, 3<5)'), 1);
+  assert.equal(c.evalMath('and(a>1, b>1)', { a: 2, b: 3 }), 1);
+  assert.equal(c.evalMath('or(a>9, b>9)', { a: 2, b: 3 }), 0);
+  assert.equal(c.evalMath('if(and(x>0, y>0), 7, 9)', { x: 1, y: 2 }), 7);
+  assert.equal(c.evalMath('not(x==5)', { x: 5 }), 0);
+});
+
+test('evalMath — and/or/not: arity errors and NaN operands fail to null (#539)', () => {
+  assert.equal(c.evalMath('and(1)'), null);          // < 2 args, like min/max
+  assert.equal(c.evalMath('or(1)'), null);
+  assert.equal(c.evalMath('and()'), null);
+  assert.equal(c.evalMath('not()'), null);           // not is strictly unary
+  assert.equal(c.evalMath('not(1,2)'), null);
+  // a NaN operand must fail the whole test, never read as a false/true verdict
+  assert.equal(c.evalMath('and(sqrt(-1), 1)'), null);
+  assert.equal(c.evalMath('or(sqrt(-1), 1)'), null);
+  assert.equal(c.evalMath('not(sqrt(-1))'), null);
+  // an unknown name inside still fails the expression (existing contract)
+  assert.equal(c.evalMath('and(nope>1, 1)'), null);
+});
+
+test('evalCheck — a compound and(…) check passes the comparison gate and verdicts correctly (#539)', () => {
+  const node = { text: 'x', props: [{ key: 'check', val: 'and(sum(cost) <= 10, count(cost) >= 2)' }],
+    children: [
+      { text: 'a', props: [{ key: 'cost', val: '4' }], children: [] },
+      { text: 'b', props: [{ key: 'cost', val: '5' }], children: [] },
+    ] };
+  assert.equal(c.evalCheck(node, {}), 'pass');
+  node.children[1].props[0].val = '9';               // sum 13 > 10 → the and() fails
+  assert.equal(c.evalCheck(node, {}), 'fail');
+  // a compound with no comparison anywhere is still not a test (P4 gate unchanged)
+  const bare = { text: 'x', props: [{ key: 'check', val: 'and(1, 2)' }], children: [] };
+  assert.equal(c.evalCheck(bare, {}), 'error');
+});
+
 test('evalMath — names colliding with Object.prototype fail to null, not the inherited member', () => {
   // On plain-object tables `'constructor' in MATH_CONSTS` was true via the prototype, so
   // `constructor*2` resolved to the Object function (NaN) and `constructor(5)`
@@ -326,6 +374,37 @@ test('resolveBrace — conditional emits THEN when the comparison holds, else EL
 test('resolveBrace — an unresolvable condition fails visibly (P4), never silently', () => {
   // hp is undefined → evalMath returns null → a `{cond?}` marker, not a blank or a throw.
   assert.equal(c.resolveBrace('hp > 0: a | b', { rules: {}, vars: {}, depth: 0, stack: [] }), '{hp > 0?}');
+});
+
+// ── string equality in conditionals (#540) ──────────────────────────────────
+test('strCondVerdict — quoted-side == / != compares as text, case-insensitive', () => {
+  assert.equal(c.strCondVerdict('mood == "angry"', { mood: 'angry' }), 1);
+  assert.equal(c.strCondVerdict('mood == "angry"', { mood: 'calm' }), 0);
+  assert.equal(c.strCondVerdict('mood != "angry"', { mood: 'calm' }), 1);
+  assert.equal(c.strCondVerdict('mood == "Angry"', { mood: 'angry' }), 1);   // case-insensitive by design
+  assert.equal(c.strCondVerdict("mood == 'angry'", { mood: 'angry' }), 1);   // single quotes too
+  assert.equal(c.strCondVerdict('"a" == "a"', {}), 1);                       // both sides quoted
+  assert.equal(c.strCondVerdict('"left" == mood', { mood: 'left' }), 1);     // quote on either side
+  assert.equal(c.strCondVerdict('r == "20"', { r: 20 }), 1);                 // numeric var stringifies
+});
+
+test('strCondVerdict — not-applicable and unresolvable are distinct outcomes', () => {
+  assert.equal(c.strCondVerdict('a == b', { a: 1, b: 1 }), null);      // no quoted side → numeric path
+  assert.equal(c.strCondVerdict('hp > 0', { hp: 1 }), null);           // no == / != at all
+  assert.ok(Number.isNaN(c.strCondVerdict('mood == "x"', {})));        // unknown ref → NaN → {cond?}
+  assert.ok(Number.isNaN(c.strCondVerdict('2 + x == "y"', {})));       // non-identifier side → NaN
+});
+
+test('resolveBrace — a text pick var drives a conditional branch (#540, the #429 text half)', () => {
+  const ctx = (vars) => ({ rules: {}, vars, depth: 0, stack: [] });
+  assert.equal(c.resolveBrace('mood == "angry": attacks | waits', ctx({ mood: 'angry' })), 'attacks');
+  assert.equal(c.resolveBrace('mood == "angry": attacks | waits', ctx({ mood: 'calm' })), 'waits');
+  assert.equal(c.resolveBrace('mood != "angry": talks | fights', ctx({ mood: 'calm' })), 'talks');
+  // unresolvable string ref → the same visible {cond?} marker as the numeric path (P4)
+  assert.equal(c.resolveBrace('mood == "angry": a | b', ctx({})), '{mood == "angry"?}');
+  // numeric conditions are untouched by the new arm
+  assert.equal(c.resolveBrace('hp > 0: alive | dead', ctx({ hp: 3 })), 'alive');
+  assert.equal(c.resolveBrace('r == 20: crit | miss', ctx({ r: 20 })), 'crit');
 });
 
 // ── {roll: query} — pick a random point from the live outline (the tree-reference generator) ──

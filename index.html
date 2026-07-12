@@ -2,6 +2,37 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<!-- Content-Security-Policy — defense in depth behind the escape-at-the-sink discipline.
+     The app is one self-contained file with ~100 innerHTML sinks; if any single escape is
+     ever missed, this policy is the backstop that keeps the miss from becoming code execution.
+     Delivered via <meta http-equiv> because the app is build-free and header-served only on the
+     hosted copy — this is the one delivery that also protects the downloaded-from-disk file.
+     IMPORTANT delivery caveat: a meta-delivered CSP does NOT enforce the eval() restriction
+     (that carve-out is header-only in browsers), so omitting 'unsafe-eval' here buys nothing —
+     eval still runs. We omit it anyway (correct intent; free), but the real protection this
+     policy provides is the URL-fetch directives below, which ARE enforced from a meta tag
+     (verified: connect-src 'none' blocks fetch() from the page context under file://).
+     Decisions (see the security review):
+       script-src 'self' 'unsafe-inline'  — the 5 inline <script> blocks need 'unsafe-inline'
+         (no build step ⇒ no nonces without breaking the byte-for-byte from-disk copy). This does
+         NOT stop inline XSS (that's what 'unsafe-inline' permits); the value is in connect-src.
+       style-src 'self' 'unsafe-inline'   — inline <style>, runtime-injected theme/accent <style>
+         elements, and per-element .style/.cssText all require inline styles; can't tighten
+         without breaking theming.
+       img-src 'self' data: blob:         — inline SVG favicon + canvas-rasterized icons (data:/
+         blob:) + user markdown images.
+       font-src 'self' data:              — the embedded Font Awesome woff2 subset is a data: font.
+       connect-src 'none'                 — the app makes ZERO network requests (no fetch/XHR/WS).
+         This is the load-bearing directive and it IS enforced from a meta tag: even if inline
+         XSS runs, it cannot fetch()/XHR/WebSocket to exfiltrate or phone home.
+       object-src / base-uri / form-action 'none' — free hardening (no plugins, no <base>, no forms).
+     'self' resolves to the opaque null origin under file://, which is fine here: every 'self'
+     directive is paired with the data:/blob: (or 'none') the from-disk copy actually needs, and
+     nothing is loaded by same-origin URL that a null origin would reject. Verified working from
+     file:// (CSP parsed, app boots, FA data: font loads, favicon data: URL renders, theme <style>
+     injects; connect-src 'none' confirmed blocking fetch). The manifest is skipped under file://
+     (CORS on a null origin, unrelated to CSP) exactly as the PWA-optional design intends. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Pointliner</title>
 <!-- PWA install (hosted copy only): the manifest + companion files make the app
@@ -8962,8 +8993,9 @@ function openCheckDialog(nodeId, targets = null) {
           { label: 'count( )', insert: el => insertAndSelect(el, 'count(', 'prop', ')') },
           { label: '<=',       insert: ' <= ' },
           { label: '==',       insert: ' == ' },
+          { label: 'and( )',   insert: el => insertAndSelect(el, 'and(', 'test, test', ')') },
         ],
-        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). e.g. sum(cost) <= budget · count(score) >= 3',
+        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). Combine tests with and(…) or or(…), flip one with not(…). e.g. sum(cost) <= budget · and(hours <= 8, count(score) >= 3)',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -14917,6 +14949,38 @@ function condParts(body) {
   return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
 }
 
+// String-equality conditional arm (#540). A conditional's test is normally an evalMath
+// comparison — number-only, so a TEXT pick var ({mood := {angry|calm}}) could never drive
+// a branch (#429 fixed the numeric half; this is the text half). A condition qualifies
+// only when it is a single == / != with a QUOTED side ({mood == "angry"}) — the quote is
+// the sniff anchor, reusing the inventory's existing text escape hatch, so detection
+// stays syntactic and no numeric condition changes meaning. The unquoted side must be a
+// bare identifier resolving through the VARS map (rules are re-rolled per evaluation, so
+// comparing one would be a coin flip, not a test — deliberately out). Comparison is
+// trimmed + case-insensitive, matching the engine's lowercased-identifier conventions.
+// Quotes do NOT protect : or | from splitTopLevel (same as every template), so compared
+// values should be simple words. evalMath never sees any of this — its number-only
+// contract is untouched. Returns 1/0 (verdict), null (not a string condition — caller
+// falls through to evalMath), or NaN (string condition, unresolvable ref → {cond?}).
+function strCondVerdict(cond, vars) {
+  const m = /^(.+?)\s*(==|!=)\s*(.+)$/s.exec((cond || '').trim());
+  if (!m) return null;
+  const lq = isQuotedLiteral(m[1]), rq = isQuotedLiteral(m[3]);
+  if (!lq && !rq) return null;                          // no quoted side → numeric comparison
+  const side = s => {
+    s = s.trim();
+    if (isQuotedLiteral(s)) return s.slice(1, -1);
+    if (!/^[a-z_]\w*$/i.test(s)) return undefined;      // only a bare name can resolve as text
+    const low = s.toLowerCase();
+    if (vars && Object.prototype.hasOwnProperty.call(vars, low)) return String(formatVarValue(vars[low]));
+    return undefined;
+  };
+  const a = side(m[1]), b = side(m[3]);
+  if (a === undefined || b === undefined) return NaN;
+  const eq = a.trim().toLowerCase() === b.trim().toLowerCase();
+  return (m[2] === '==') === eq ? 1 : 0;
+}
+
 // ─── text modifiers (A1) ─────────────────────────────────────────────────────
 // A `.mod` suffix on a rule/variable reference shapes its output: {beast.a} →
 // "an ogre", {noun.s} → "foxes", {name.cap} → "Name", chainable {beast.a.cap} →
@@ -15131,7 +15195,11 @@ function resolveBrace(body, ctx) {
   }
   const cp = condParts(body);
   if (cp) {
-    const v = evalMath(cp.cond, ctx.vars);
+    // #540: try the string-equality arm first — a quoted side makes it a TEXT comparison
+    // (the missing half of #429: text pick vars driving a branch). Not applicable → the
+    // numeric evalMath path, unchanged. NaN = a string condition whose ref can't resolve.
+    const sv = strCondVerdict(cp.cond, ctx.vars);
+    const v = sv !== null ? (isNaN(sv) ? null : sv) : evalMath(cp.cond, ctx.vars);
     if (v === null) return `{${cp.cond}?}`;             // condition couldn't resolve → visible marker (P4)
     return expandTemplate(v ? cp.then : cp.else, ctx);
   }
@@ -16821,7 +16889,8 @@ function checkInlineHighlight(content, node) {
 // preview — the expression is evaluated in place, no randomness involved.
 // Supports: +−×/^%, unary −, parentheses, named constants (pi/π, e, tau),
 // the most common functions (sqrt, abs, sin, cos, tan, log, ln, …),
-// comparison operators (>, >=, <, <=, ==, !=) returning 0/1, and
+// comparison operators (>, >=, <, <=, ==, !=) returning 0/1, logical
+// and(…)/or(…)/not(x) over those 0/1 values (variadic like min/max), and
 // conditionals: ternary  a > b ? x : y  or function form  if(cond, then, else).
 // Uses a recursive-descent parser — no eval(), safe to run on user input.
 
@@ -16860,6 +16929,10 @@ const FN1 = Object.assign(Object.create(null), {
   quarter: x => Math.floor(new Date(Math.round(x) * DAY_MS).getUTCMonth() / 3) + 1, // 1–4
   daysuntil: d => Math.round(d) - dueDateToday(),                     // days from today to date d (negative if past)
   asdate:  x => x,
+  // logic — not() flips a truth value (nonzero → 0, zero → 1). The NaN guard keeps a
+  // failed sub-expression from reading as a verdict; and()/or() are the variadic arm
+  // beside min/max inside evalMath.
+  not: x => (isNaN(x) ? NaN : (x ? 0 : 1)),
 });
 const FN2 = Object.assign(Object.create(null), {
   atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot,
@@ -16942,7 +17015,7 @@ function evalMath(input, vars = {}) {
       expect(')');
       return cond ? thenV : elseV;
     }
-    if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max') {
+    if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max' || name === 'and' || name === 'or') {
       expect('(');
       const args = [];
       if (peek() !== ')') {
@@ -16954,7 +17027,13 @@ function evalMath(input, vars = {}) {
       if (name in FN2) { if (args.length !== 2) throw 0; return FN2[name](args[0], args[1]); }
       if (name in FN3) { if (args.length !== 3) throw 0; return FN3[name](args[0], args[1], args[2]); }
       if (args.length < 2) throw 0;
-      return name === 'min' ? Math.min(...args) : Math.max(...args);
+      if (name === 'min' || name === 'max') return name === 'min' ? Math.min(...args) : Math.max(...args);
+      // and/or — variadic like min/max, returning 0/1 over nonzero-is-true operands.
+      // Eager on purpose: operands are pure numbers, there is nothing to short-circuit.
+      // A NaN operand propagates (→ the final isNaN gate → null) so a failed
+      // sub-expression fails the whole test instead of reading as false.
+      if (args.some(a => isNaN(a))) return NaN;
+      return (name === 'and' ? args.every(a => a !== 0) : args.some(a => a !== 0)) ? 1 : 0;
     }
     throw 0;
   }
@@ -17875,7 +17954,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, sin, log, min, max, … · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
+        hint: 'Functions: sqrt, sin, log, min, max, … · logic and(x>0, y>0), or(…), not(x) · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -23929,10 +24008,11 @@ const GUIDE = [
     ] },
   { id:'gen-conditions', cat:'generators',
     title:'Conditions & item details',
-    body:"Two tools for smarter generators. A condition lets output adapt to the numbers you're tracking: show 'alive' or 'dead' depending on a hit-points variable, or change a description based on a stat. An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
+    body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat, or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
     examples:[
       { syn:'{hp>0: alive|dead}', desc:'show the first if true, else the second' },
       { syn:'{luck>=10: lucky!}', desc:'the else part is optional' },
+      { syn:'{mood == "angry": attacks | waits}', desc:'quote a value to branch on text' },
       { syn:'sword.damage: 1d8',  desc:'give an item a detail' },
       { syn:'{weapon.damage}',    desc:'read a detail of a picked item' },
       { syn:'w = {weapon}',       desc:'freeze one pick in a variable…' },
@@ -23980,11 +24060,12 @@ const GUIDE = [
     ] },
   { id:'math-fns', cat:'compute',
     title:'Math functions',
-    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, compute a percentage change or run a scientific calculation. Call any function by name; they mix freely with variables, dice and other functions.",
+    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, combine several comparisons into one test with and, or and not, compute a percentage change or run a scientific calculation. Call any function by name; they mix freely with variables, dice and other functions.",
     examples:[
       { syn:'{= round(3.7)}',     desc:'round (also floor, ceil, trunc)' },
       { syn:'{= abs(-5)}',        desc:'absolute value; sign(x) for the sign' },
       { syn:'{= min(a, b, c)}',   desc:'smallest (max for the largest)' },
+      { syn:'{= and(a > 0, b > 0)}', desc:'1 when every test holds (or, not)' },
       { syn:'{= clamp(x, 0, 100)}', desc:'keep a value within a range' },
       { syn:'{= sqrt(16)}',       desc:'square root (cbrt, log, ln, sin…)' },
       { syn:'{= pctof(20, 80)}',  desc:'20 is what percent of 80' },
@@ -24038,11 +24119,12 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
       { syn:'count(score) >= 3',   desc:'at least 3 scored children' },
+      { syn:'and(hours <= 8, cost <= cap)', desc:'two tests in one check' },
       { syn:'is:failing',          desc:'find everything that fails' },
     ] },
   { id:'datapacks', cat:'compute',
