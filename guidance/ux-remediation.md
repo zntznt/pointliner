@@ -1935,6 +1935,23 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### SEQ-1 ◐ Finish absorbing the hardcoded to-do layer into the sequence system (Fixes #510 #509) (RESOLVED pending merge)
+- **Source: adversarial architectural review of the to-do layer vs the sequence system.** Verdict up
+  front: they are NOT two parallel systems — `DEFAULT_SEQUENCE` IS the built-in to-do set expressed as a
+  sequence, first in `allSequences()`, and done-ness / held-ness / search / sort / progress / continuation
+  / migration already flow through the sequence-aware functions. Well-made, ~90% unified. Only 3 bypass
+  sites remained (one already fixed as #508's cause).
+- **The absorption, finished:** (1) deleted `cycleTodoKeyword` + `TODO_CYCLE` — dead since #508 routed
+  `cycleTodoState` through `sequenceForKeyword`; nothing else reached the raw default array. (2) deleted
+  `todoIsDone` / `TODO_DONE` (#509) — dead artifact; done-ness derives from `keywordIsDone` (sequence-aware).
+  (3) `todoSortKey`'s no-keyword fallback was `TODO_STATES.length` (a magic 4 coupling the sort to the
+  default set's length); now `Infinity` — an unrecognized point sorts after every known state of any
+  sequence, decoupled. That was the last hardcoded `TODO_STATES` reference in logic.
+- **Kept separate BY DESIGN (not duplication):** priorities (`[#A]`) are an orthogonal axis the sequence
+  system never modeled; per-name badge colors are deliberate polish. Neither is a correctness dependency.
+- Behavior-preserving: 982 tests (net −3 — the deleted `todoIsDone`/`cycleTodoKeyword` pins went with
+  their code; the sortKey pin updated to assert the `Infinity` fallback). No production call-site changes.
+
 ### EXPORT-1 ◐ Query pills leaked their raw [[query:KEY]] token into Markdown/plaintext export (Fixes #530) (RESOLVED pending merge)
 - **Source: second adversarial review of the {…} grammar.** MINOR — cosmetic export leak, not
   corruption (OPML round-trips fine via the `_query` sidecar). Every OTHER newer sub-form flattens on

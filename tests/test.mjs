@@ -2610,7 +2610,7 @@ test('base copy "with TBLFM": keeps raw literals plus the #+TBLFM recipe', () =>
 });
 
 // ── TODO states + priorities (Org-style headline keyword + [#A] priority) ──────
-const { parseTodo, formatTodo, todoIsDone, cycleTodoKeyword, cyclePriority,
+const { parseTodo, formatTodo, cyclePriority,
         cycleTodoState, cycleTodoPriority, todoSortKey, compareTodo,
         setTodoState, setTodoPriority } = c;
 
@@ -2644,25 +2644,6 @@ test('todo: formatTodo inverts parseTodo (normalized)', () => {
   assert.equal(round('#TODO   [#b]   tidy'), '#TODO [#B] tidy');
   assert.equal(round('#DONE'), '#DONE');
   assert.equal(round('plain text'), 'plain text');
-});
-
-test('todo: todoIsDone', () => {
-  assert.equal(todoIsDone('DONE'), true);
-  assert.equal(todoIsDone('TODO'), false);
-  assert.equal(todoIsDone(''), false);
-});
-
-test('todo: cycleTodoKeyword full forward cycle incl. cleared state', () => {
-  assert.equal(cycleTodoKeyword(''), 'TODO');
-  assert.equal(cycleTodoKeyword('TODO'), 'NEXT');
-  assert.equal(cycleTodoKeyword('NEXT'), 'WAITING');
-  assert.equal(cycleTodoKeyword('WAITING'), 'DONE');
-  assert.equal(cycleTodoKeyword('DONE'), '');
-});
-
-test('todo: cycleTodoKeyword reverse direction', () => {
-  assert.equal(cycleTodoKeyword('', -1), 'DONE');
-  assert.equal(cycleTodoKeyword('TODO', -1), '');
 });
 
 test('todo: cyclePriority none → A → B → C → none, and reverse', () => {
@@ -2701,7 +2682,11 @@ test('todo: setTodoPriority direct jump, no-op without keyword, clamps garbage',
 test('todo: todoSortKey + compareTodo (not-done before done, A<B<C<none)', () => {
   assert.deepEqual(host(todoSortKey('#TODO [#A] x')), [0, 0, 0]);
   assert.deepEqual(host(todoSortKey('#DONE x')),      [1, 3, 3]);
-  assert.deepEqual(host(todoSortKey('plain')),        [0, 3, 4]);
+  // #510: a no-keyword/unrecognized point sorts after every known state — Infinity,
+  // not the default set's length (the last hardcoded TODO_STATES coupling, now gone).
+  // (Element-wise, not host()/deepEqual: JSON round-trips Infinity to null, and the
+  // array is from the vm realm so deepEqual rejects it as not reference-equal.)
+  assert.deepEqual([...todoSortKey('plain')], [0, 3, Infinity]);
   const items = ['#DONE done it', '#TODO [#C] low', '#NEXT [#A] hot', 'plain note'];
   assert.deepEqual(items.slice().sort(compareTodo),
     ['#NEXT [#A] hot', '#TODO [#C] low', 'plain note', '#DONE done it']);
