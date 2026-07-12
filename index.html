@@ -3295,7 +3295,7 @@ function calMonthName(cal, monthIdx) { // monthIdx is 1-based, matching epochToC
 // year (matching the label layer); `weekday` is the index into THIS calendar's week (0 = the day
 // epochDay fell on), a different origin from Gregorian's 0=Sunday because a fictional week has no
 // Sunday. cal=null → the exact Gregorian values the fns returned before. Pure.
-function calComponents(epoch, cal) {
+function calComponents(epoch, cal = activeCalendar()) {   // #527 PR-A: defaults like every other seam core — a one-arg call site must never silently fall to Gregorian under an active fiction
   const ep = Math.round(epoch);
   if (cal) {
     const c = epochToCal(ep, cal);

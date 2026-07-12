@@ -7059,6 +7059,13 @@ test('root.calendar round-trips through the OPML head, validated on load (#527)'
   // No calendar → no element (mirrors headEl's empty-skip; a Gregorian doc stays clean).
   assert.ok(!c.toOpml(c.mkRoot()).includes('_calendar'), 'a Gregorian doc emits no <_calendar>');
 });
+test('calComponents defaults to the ACTIVE calendar like every other seam core (#527 PR-A regression)', () => {
+  // Caught live in the browser: calComponents predated the label cores and had NO default, so a
+  // one-arg call site (the week-span title, the Gantt month-start test) silently fell to Gregorian
+  // under an active fiction ("Uktar 21 – 19"). The default is the seam contract; pin it.
+  assert.ok(/function calComponents\(epoch, cal = activeCalendar\(\)\)/.test(_src),
+    'calComponents(epoch, cal = activeCalendar()) — a one-arg call must follow the active calendar');
+});
 test('the render-label cores: fiction labels + byte-identical Gregorian arms (#527 PR-A)', () => {
   const named = c.normalizeCalendar({ ...HARPTOS, week: { length: 10, days: ['Sul','Mol','Dul'] } });
   // calWeekLen: THE grid-geometry answer
