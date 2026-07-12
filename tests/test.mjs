@@ -10863,3 +10863,38 @@ test('findOrCreateChild — creates once, then finds the same child (no duplicat
   assert.equal(fuzzy.created, false, 'fuzzy match reuses the suffixed day node');
   assert.equal(fuzzy.entry.id, 'x');
 });
+
+test('stripQueryTags (#558) — removes only the queried tags from a rolled result', () => {
+  const q = c.parseSearchQuery('#npc');
+  assert.equal(c.stripQueryTags('Mara the smuggler #npc', q), 'Mara the smuggler',
+    'the queried #npc is stripped, so the roll reads as fiction');
+  // a hierarchical query strips the nested tag too (mirrors termMatchesNode)
+  assert.equal(c.stripQueryTags('Torn letter #thread/torn-letter', c.parseSearchQuery('#thread')),
+    'Torn letter', 'a #thread query strips #thread/torn-letter (hierarchical)');
+  // a tag the query did NOT ask for stays (it can carry signal)
+  assert.equal(c.stripQueryTags('Rusty #npc #tavern', c.parseSearchQuery('#npc')),
+    'Rusty #tavern', 'an unqueried tag survives');
+  // word-anchored: #npc does not strip inside #npcs or a mid-word #
+  assert.equal(c.stripQueryTags('Sea #npcs afloat', c.parseSearchQuery('#npc')),
+    'Sea #npcs afloat', '#npc never matches #npcs');
+  // a negated tag is left alone (a -#done query never rolls a #done point anyway)
+  assert.equal(c.stripQueryTags('Done thing #done', c.parseSearchQuery('-#done')),
+    'Done thing #done', 'a negated tag is not stripped');
+  // non-tag queries pass through untouched
+  assert.equal(c.stripQueryTags('Open thread', c.parseSearchQuery('is:todo')),
+    'Open thread', 'an is: query strips nothing');
+  // punctuation left clean when a trailing tag is removed
+  assert.equal(c.stripQueryTags('Ambush! #encounter', c.parseSearchQuery('#encounter')),
+    'Ambush!', 'trailing tag removed without leaving a dangling space');
+});
+
+test('pickFromQuery (#558) — the drawn value has its queried tag stripped', () => {
+  const root = { children: [
+    { id: 'a', text: 'Mara the smuggler #npc', children: [] },
+    { id: 'b', text: 'Rusty the innkeep #npc', children: [] },
+  ] };
+  const picked = c.pickFromQuery('#npc', root, 'host');
+  assert.ok(picked === 'Mara the smuggler' || picked === 'Rusty the innkeep',
+    `picked "${picked}" reads as fiction, no #npc`);
+  assert.ok(!/#npc/.test(picked), 'the queried tag never appears in the result');
+});

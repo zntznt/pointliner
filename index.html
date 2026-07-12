@@ -11076,6 +11076,24 @@ function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) 
   return n;
 }
 
+// #558: the {roll: query} payoff should read as fiction, not as its own database key.
+// A `#npc` in the query is plumbing, so strip it from the drawn point's text — but ONLY
+// the tags the query itself asked for; any OTHER hashtag on the point stays (it can carry
+// signal). Mirrors termMatchesNode's tag rule (word-anchored, hierarchical: a `#thread`
+// query strips `#thread` AND `#thread/torn-letter`), negated tags left alone (a `-#done`
+// query never rolls a #done point anyway). Pure; collapses the whitespace a removed tag
+// leaves. Non-tag queries (is:, key:value, words) pass through untouched.
+function stripQueryTags(text, terms) {
+  let out = text;
+  for (const t of terms) {
+    if (t.kind !== 'tag' || t.neg) continue;
+    const esc = t.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // strip `#tag` and any nested `#tag/sub`, word-anchored on the left like the matcher
+    out = out.replace(new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?:\\/[\\w-]+)*(?![\\w-])', 'gi'), '');
+  }
+  return out.replace(/\s{2,}/g, ' ').replace(/\s+([.,;:!?])/g, '$1').trim();
+}
+
 function pickFromQuery(expr, rootNode, hostId) {
   const terms = parseSearchQuery(expr || '');
   if (!terms.length) return '';
@@ -11088,7 +11106,7 @@ function pickFromQuery(expr, rootNode, hostId) {
   (function walk(n) {
     for (const c of (n.children || [])) {
       if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
-        hits.push(stripMd(textForDisplay(c)) || '(untitled)');
+        hits.push(stripQueryTags(stripMd(textForDisplay(c)), terms) || '(untitled)');
       }
       walk(c);
     }
