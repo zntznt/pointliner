@@ -1928,7 +1928,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div id="journal-strip" role="region" aria-label="Journal"></div>
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
-<div id="file-menu" role="dialog" aria-label="Pointliner menu">
+<div id="file-menu" role="dialog" aria-modal="true" aria-label="Pointliner menu">
   <div class="fm-head">
     <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
     <div class="fm-head-info">
@@ -1971,7 +1971,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="fm-group">Appearance</div>
   <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
   <div id="accent-row"><span class="acc-row-lbl">Color</span><div id="accent-swatches"></div></div>
-  <div class="cmd-item" id="btn-width"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Full width</span><span class="cmd-desc">Widen the editing column</span></div></div>
+  <div class="cmd-item" id="btn-width" aria-pressed="false"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Width: Narrow</span><span class="cmd-desc">Widen the editing column</span></div></div>
 
   <div class="cmd-sep"></div>
   <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, Markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
@@ -23097,6 +23097,11 @@ function closeFileMenu() {
   fileMenu.classList.remove('on');
   logoBtn.setAttribute('aria-expanded', 'false');
   if (wasOpen && fileMenu.contains(document.activeElement)) logoBtn.focus();
+  // #506: drop any armed caret-return on close. The Escape path restores it FIRST (so this
+  // clear is a no-op there); every other close — click-away, clicking a row that opens a
+  // sub-surface, the logo toggle — leaves it stale, so a later reopen + Escape would yank the
+  // caret back into a point you'd long moved on from. Clearing here kills that ghost.
+  chromeReturn = null;
 }
 // keyboard path added ALONGSIDE the pointer path. Per ux-discipline §7.1 the file
 // menu is a settings *dialog*, not a menu — rows are buttons; arrow-roving is a
@@ -23104,7 +23109,14 @@ function closeFileMenu() {
 // Hidden rows (the workspace connect/disconnect rows toggle by state) stay out of the
 // arrow-roving order and the initial-focus pick.
 const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')].filter(el => el.style.display !== 'none');
-fileMenu.querySelectorAll('.cmd-item').forEach(it => { it.setAttribute('role', 'button'); it.setAttribute('tabindex', '-1'); });
+// #507: only the plain <div> rows get role=button — the two external-link <a> rows keep
+// their native link semantics (a SR announces "opens in new window") and the native
+// <button> (Install) keeps its own role. tabindex=-1 on all of them so arrow-roving owns
+// the tab order (they're reachable by arrows/Tab-wrap, not the page tab sequence).
+fileMenu.querySelectorAll('.cmd-item').forEach(it => {
+  if (it.tagName === 'DIV') it.setAttribute('role', 'button');
+  it.setAttribute('tabindex', '-1');
+});
 fileMenu.addEventListener('keydown', e => {
   const items = fmItems();
   const idx = items.indexOf(document.activeElement);
@@ -23114,9 +23126,17 @@ fileMenu.addEventListener('keydown', e => {
     items[(idx + d + items.length) % items.length]?.focus();
   } else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
   else if (e.key === 'End')  { e.preventDefault(); items[items.length - 1]?.focus(); }
+  else if (e.key === 'Tab') {
+    // #503: it's role=dialog + aria-modal, so honor the dialog contract — Tab wraps within
+    // the menu instead of walking out into the live outline behind it. Same rove list as the
+    // arrows; Shift+Tab reverses.
+    e.preventDefault();
+    const d = e.shiftKey ? -1 : 1;
+    items[(idx + d + items.length) % items.length]?.focus();
+  }
   else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.click(); }
   // Escape: back to the edit it interrupted (exact caret), else to the logo button
-  else if (e.key === 'Escape') { e.preventDefault(); closeFileMenu(); restoreChromeReturn(); }
+  else if (e.key === 'Escape') { e.preventDefault(); restoreChromeReturn(); closeFileMenu(); }
 });
 
 logoBtn.addEventListener('click', e => {
@@ -23386,12 +23406,19 @@ document.getElementById('btn-theme').addEventListener('click', () => {
   forcedTheme = forcedTheme === null ? 'light' : forcedTheme === 'light' ? 'dark' : null;
   applyTheme();
   scheduleAutosave();
+  // #504: the tri-state toggle has no aria-pressed (that's binary); announce the new state so a
+  // screen reader hears the change instead of it living only in the visible label.
+  announce(document.getElementById('theme-label').textContent);
 });
 
 let fullWidth = false;
 function applyWidth() {
   document.body.classList.toggle('full-width', fullWidth);
-  document.getElementById('width-label').textContent = fullWidth ? 'Narrow width' : 'Full width';
+  // #505: name the CURRENT state ("Width: Full" / "Width: Narrow"), matching Theme/Verbosity —
+  // the label used to name the NEXT action, so Width's state was invisible until you clicked.
+  // The desc still names what a click does. #504: expose the binary state programmatically.
+  document.getElementById('width-label').textContent = fullWidth ? 'Width: Full' : 'Width: Narrow';
+  document.getElementById('btn-width').setAttribute('aria-pressed', String(fullWidth));
   document.getElementById('btn-width').querySelector('.cmd-desc').textContent =
     fullWidth ? 'Center the editing column' : 'Widen the editing column';
   // wrapping changes with the column width — discard stale row heights and re-measure
@@ -24292,7 +24319,7 @@ function openGuide(initialId) {
 }
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
-  if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); closeFileMenu(); restoreChromeReturn(); return; }
+  if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); restoreChromeReturn(); closeFileMenu(); return; }
   if (e.key==='Escape' && scPanel.classList.contains('on')) { e.preventDefault(); toggleShortcuts(false); restoreChromeReturn(); return; }
   // Open the shortcuts panel from the keyboard (it's the keyboard reference; it should have a
   // key). ⌘/Ctrl+/ works anywhere, including mid-edit. A bare ? (the universal help key) also
