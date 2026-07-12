@@ -3390,6 +3390,111 @@ function dueDateToday(cal = activeCalendar()) {
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
 }
 
+// ── the Calendar dialog line grammars (#527 PR-C) ────────────────────────────────
+// The dialog authors a calendar as TEXT (one month per line, the seq/qbase/data-pack
+// pattern), so each field needs a parser with LINE-LEVEL errors — normalizeCalendar
+// stays the reject-whole validator for hostile input; these say WHICH line is wrong
+// (P4, human-grade feedback). Each returns { value, error }: on the first bad line,
+// value is null and error names it. All pure, Node-tested.
+function parseCalMonths(text) {
+  const months = [];
+  const lines = String(text || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const m = line.match(/^(.+?)[:\s]\s*(\d+)$/);   // "Hammer: 30" | "Hammer 30" (the last number is the day count)
+    if (!m) return { value: null, error: `Line ${i + 1}: "${line}" needs a day count, like "Hammer: 30"` };
+    const days = +m[2];
+    if (!(days > 0 && days <= 1e6)) return { value: null, error: `Line ${i + 1}: the day count must be at least 1` };
+    months.push({ name: m[1].trim(), days });
+  }
+  if (!months.length) return { value: null, error: 'Add at least one month line, like "Hammer: 30"' };
+  if (months.length > 1000) return { value: null, error: 'At most 1000 months' };
+  return { value: months, error: null };
+}
+// One line, three forms: "10" (an unnamed 10-day week) | "Sul Mol Dul" (length = the name
+// count) | "10: Sul Mol Dul" (explicit length, first days named — the rest fall back to
+// ordinals per the RISK-1 contract). Blank = the 7-day default.
+function parseCalWeek(text) {
+  const s = String(text || '').trim();
+  if (!s) return { value: { length: 7, days: [] }, error: null };
+  const ln = s.match(/^(\d+)\s*(?::\s*(.*))?$/);
+  if (ln) {
+    const len = +ln[1];
+    if (!(len > 0 && len <= 1000)) return { value: null, error: 'The week length must be between 1 and 1000' };
+    const days = ln[2] ? ln[2].split(/\s+/).filter(Boolean).slice(0, len) : [];
+    return { value: { length: len, days }, error: null };
+  }
+  const names = s.split(/\s+/).filter(Boolean);
+  return { value: { length: names.length, days: names }, error: null };
+}
+function parseCalEras(text) {
+  const eras = [];
+  const lines = String(text || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const m = line.match(/^(.+?)[:\s]\s*(-?\d+)$/);   // "DR: 1000" — year 1 displays as 1001 DR
+    if (!m) return { value: null, error: `Line ${i + 1}: "${line}" needs a year offset, like "DR: 1000"` };
+    eras.push({ name: m[1].trim(), yearZero: +m[2] });
+  }
+  if (eras.length > 100) return { value: null, error: 'At most 100 eras' };
+  return { value: eras, error: null };   // empty is fine — years then display unadorned
+}
+// The inverse: an existing calendar back into the dialog's field texts (for editing). Pure.
+function calendarToText(cal) {
+  if (!cal) return { name: '', months: '', week: '', eras: '', current: '' };
+  return {
+    name: cal.name,
+    months: cal.months.map(m => `${m.name}: ${m.days}`).join('\n'),
+    week: cal.week.days.length
+      ? (cal.week.days.length === cal.week.length ? cal.week.days.join(' ') : `${cal.week.length}: ${cal.week.days.join(' ')}`)
+      : String(cal.week.length),
+    eras: cal.eras.map(e => `${e.name}: ${e.yearZero}`).join('\n'),
+    current: Number.isInteger(cal.current) ? formatEpochDays(cal.current, cal) : '',
+  };
+}
+
+// ── the calendar-switch audit (#527 PR-C, adversarial review #5) ─────────────────
+// Dates persist as STRINGS re-parsed per render, so changing root.calendar silently
+// reinterprets or hides them ("2026-01-31" is null under a 30-day-month fiction and
+// drops out of the agenda). This core classifies what would happen to every stored
+// date under the candidate calendar so the dialog can warn BEFORE committing. It
+// gates EVERY bijection change — activate, edit-in-place, switch, deactivate — and
+// classifies only, never judges, never writes. Relative forms (today/today±N) are
+// matched by regex, not parsed: floating with "now" is their point, not a change.
+// Repeat descriptors always parse but silently reinterpret (fiction weekdays/months),
+// so they're listed as their own informational bucket. Pure, Node-tested.
+function auditCalendarSwitch(rootNode, oldCal, newCal) {
+  const changed = [], broken = [], adopted = [], relative = [], repeats = [];
+  let ok = 0, total = 0;
+  const walk = (n) => {
+    for (const p of (n.props || [])) {
+      const key = p.key.toLowerCase();
+      if (key === 'repeat') {
+        const d = parseRepeat(p.val);
+        if (d) repeats.push({ id: n.id, title: textForDisplay(n), val: p.val, kind: d.kind });
+        continue;
+      }
+      if (!DATE_KEYS.has(key)) continue;
+      total++;
+      if (/^(today([+-]\d+)?|tomorrow)$/i.test(String(p.val).trim())) {
+        relative.push({ id: n.id, title: textForDisplay(n), key, val: p.val }); ok++; continue;
+      }
+      const oldEp = parseDueDate(p.val, oldCal);
+      const newEp = parseDueDate(p.val, newCal);
+      const item = { id: n.id, title: textForDisplay(n), key, val: p.val, oldEp, newEp };
+      if (oldEp != null && newEp == null) broken.push(item);          // readable now, unreadable after
+      else if (oldEp == null && newEp != null) adopted.push(item);    // the symmetric honesty
+      else if (oldEp != null && oldEp !== newEp) changed.push(item);  // both parse, different day
+      else ok++;                                                      // same day, or garbage under both
+    }
+    for (const c of (n.children || [])) walk(c);
+  };
+  walk(rootNode);
+  return { changed, broken, adopted, relative, repeats, ok, total };
+}
+
 // ─── journal / daily-notes pure cores ────────────────────────────────────────
 // todayISO() — pure, but depends on current time. Returns 'YYYY-MM-DD'.
 function todayISO() { return formatEpochDays(dueDateToday()); }
