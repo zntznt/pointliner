@@ -15049,18 +15049,54 @@ function strCondVerdict(cond, vars) {
 // rule/var machinery and applyMods folds the modifiers left-to-right. The only new
 // lexical element is the `.mod` suffix — a recorded P5 decision (ux-discipline §2).
 
-// Regular-English pluralizer (documented heuristic; irregulars like child→childs are
-// out of scope). Order matters: sibilant → +es; f/fe → ves; consonant+y → ies; else +s.
+// Common-irregulars dictionaries for the word-shaping heuristics. Curated and CLOSED:
+// the point is the words prose actually trips on (child→childs read as a typo), not a
+// lexicon — anything absent falls through to the regular rules, the same documented-
+// heuristic honesty as before. Lookup is lowercased; irregularLookup restores a leading
+// capital ("Child" → "Children") so .cap-shaped bases survive the substitution.
+const IRREGULAR_PLURALS = Object.assign(Object.create(null), {
+  man: 'men', woman: 'women', child: 'children', person: 'people',
+  foot: 'feet', tooth: 'teeth', goose: 'geese', mouse: 'mice', ox: 'oxen',
+  die: 'dice', sheep: 'sheep', deer: 'deer', fish: 'fish',
+});
+const IRREGULAR_PAST = Object.assign(Object.create(null), {
+  be: 'was', go: 'went', do: 'did', have: 'had', say: 'said', make: 'made',
+  take: 'took', come: 'came', see: 'saw', know: 'knew', get: 'got', give: 'gave',
+  find: 'found', think: 'thought', tell: 'told', become: 'became', leave: 'left',
+  feel: 'felt', keep: 'kept', begin: 'began', bring: 'brought', buy: 'bought',
+  catch: 'caught', choose: 'chose', cut: 'cut', deal: 'dealt', draw: 'drew',
+  drink: 'drank', eat: 'ate', fall: 'fell', fight: 'fought', fly: 'flew',
+  forget: 'forgot', hear: 'heard', hit: 'hit', hold: 'held', lead: 'led',
+  lose: 'lost', meet: 'met', pay: 'paid', put: 'put', ride: 'rode', ring: 'rang',
+  rise: 'rose', run: 'ran', sell: 'sold', send: 'sent', set: 'set', shake: 'shook',
+  shoot: 'shot', sing: 'sang', sit: 'sat', sleep: 'slept', speak: 'spoke',
+  stand: 'stood', steal: 'stole', strike: 'struck', swear: 'swore', swim: 'swam',
+  swing: 'swung', teach: 'taught', throw: 'threw', wake: 'woke', wear: 'wore',
+  win: 'won', write: 'wrote',
+});
+function irregularLookup(table, w) {
+  const hit = table[String(w).toLowerCase()];
+  if (hit === undefined) return null;
+  return /^[A-Z]/.test(w) ? hit.charAt(0).toUpperCase() + hit.slice(1) : hit;
+}
+
+// English pluralizer: common irregulars first (the recorded A1 deferral, closed via the
+// leftover pass), then the regular heuristic. Order matters below: sibilant → +es;
+// f/fe → ves; consonant+y → ies; else +s.
 function pluralize(w) {
+  const irr = irregularLookup(IRREGULAR_PLURALS, w);
+  if (irr !== null) return irr;
   if (/(s|x|z|ch|sh)$/i.test(w)) return w + 'es';
   if (/(?:[^f]f|fe)$/i.test(w)) return w.replace(/fe?$/i, 'ves');
   if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ies';
   return w + 's';
 }
 
-// Regular past tense (documented heuristic; irregulars like go→goed are out of scope,
-// same limitation as pluralize): consonant+y → …ied; trailing e → +d; else +ed.
+// English past tense: common irregulars first (same pass), then the regular heuristic:
+// consonant+y → …ied; trailing e → +d; else +ed.
 function pastTense(w) {
+  const irr = irregularLookup(IRREGULAR_PAST, w);
+  if (irr !== null) return irr;
   if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ied';   // try → tried
   if (/e$/i.test(w)) return w + 'd';                          // love → loved
   return w + 'ed';                                            // walk → walked, play → played

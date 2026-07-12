@@ -595,6 +595,26 @@ test('pluralize — regular English heuristic', () => {
   assert.equal(c.pluralize('knife'), 'knives');
 });
 
+test('pluralize / pastTense — common irregulars resolve from the dictionaries first', () => {
+  assert.equal(c.pluralize('child'), 'children');
+  assert.equal(c.pluralize('man'), 'men');
+  assert.equal(c.pluralize('person'), 'people');
+  assert.equal(c.pluralize('die'), 'dice');                 // the on-brand one
+  assert.equal(c.pluralize('sheep'), 'sheep');              // invariant plurals stay put
+  assert.equal(c.pluralize('Child'), 'Children');           // a leading capital survives
+  assert.equal(c.pluralize('cat'), 'cats');                 // regular fallback untouched
+  assert.equal(c.pluralize('knife'), 'knives');
+  assert.equal(c.pastTense('go'), 'went');
+  assert.equal(c.pastTense('fight'), 'fought');
+  assert.equal(c.pastTense('put'), 'put');                  // zero-change irregulars
+  assert.equal(c.pastTense('Strike'), 'Struck');            // capital survives here too
+  assert.equal(c.pastTense('walk'), 'walked');              // regular fallback untouched
+  assert.equal(c.pastTense('love'), 'loved');
+  // the modifiers route through the same cores, so {ref.s}/{ref.ed} inherit the fix
+  assert.equal(c.applyMods('child', ['s']), 'children');
+  assert.equal(c.applyMods('go', ['ed', 'cap']), 'Went');
+});
+
 test('applyMods — folds modifiers left-to-right', () => {
   assert.equal(c.applyMods('dragon', ['a', 'cap']), 'A dragon');
   assert.equal(c.applyMods('dragon', ['cap', 'a']), 'a Dragon');

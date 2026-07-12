@@ -89,8 +89,10 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
 - **B2:** `min/max/count` in the uncertain context; mixtures (`mx`); correlation / shared variables;
   more families (beta, …); the analytic `est+` (no-sampling) rollup; cross-engine use (an estimate's
   mean as a number inside `{= …}`); sensitivity / tornado.
-- **A1 modifiers:** aliases (`.an`/`.capitalize`/`.plural`); irregular plurals / past tense (regular-only
-  by design). Modifiers on non-references (alternation/dice/math directly) — name a rule first.
+- **A1 modifiers:** aliases (`.an`/`.capitalize`/`.plural`). ~~Irregular plurals / past tense~~ —
+  common irregulars shipped 2026-07-12 (curated closed dictionaries `IRREGULAR_PLURALS`/`IRREGULAR_PAST`
+  checked before the regular heuristics; anything absent still falls through regular). Modifiers on
+  non-references (alternation/dice/math directly) — name a rule first.
 - **F2 checks:** multiple checks per point (`evalMath` has no `&&`); upward / cross-parent references;
   structural / existence checks (that is **F5**, enforced tree grammars). Date-valued *own*-props as
   check variables (only *child* date props aggregate today).

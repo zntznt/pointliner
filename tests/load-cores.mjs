@@ -165,7 +165,7 @@ export function loadCores() {
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'strCondVerdict',
-    'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'fieldParts', 'fieldModParts',
+    'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'pastTense', 'fieldParts', 'fieldModParts',
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',

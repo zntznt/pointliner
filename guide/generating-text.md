@@ -127,12 +127,13 @@ Modifiers **chain**, left to right:
 > Modifiers attach to a **rule or variable name**, not to a bare `{a|b}` or a dice roll. If you
 > want a modified random pick, name a rule first (`creature: ogre | dragon`) then `{creature.a}`.
 
-*Known limits (they're heuristics, not a dictionary): `a`/`an` looks at the first letter
-("an hour" / "a university" come out wrong); plurals are the regular English rules
-(`child` → `childs`); title-case splits on spaces only; `.ing` doubles a final
-consonant-vowel-consonant regardless of stress ("run" → "running" is right, "visit" →
-"visitting" is wrong); a grammar field named `poss` or `ing` is now shadowed by the
-modifier, like every modifier name.*
+*Known limits (mostly heuristics, not a dictionary): `a`/`an` looks at the first letter
+("an hour" / "a university" come out wrong); `.s` and `.ed` know the **common irregulars**
+(`child` → "children", `go` → "went", `die` → "dice") and fall back to the regular English
+rules for everything else, so an uncommon irregular still comes out regular; title-case
+splits on spaces only; `.ing` doubles a final consonant-vowel-consonant regardless of
+stress ("run" → "running" is right, "visit" → "visitting" is wrong); a grammar field named
+`poss` or `ing` is shadowed by the modifier, like every modifier name.*
 
 ---
 
