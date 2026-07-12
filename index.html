@@ -2296,12 +2296,10 @@ function nodeNames(node) {
 // field and no OPML change — text stays the source of truth. The cycle runs
 // '' → TODO → NEXT → WAITING → DONE → '' (the empty state clears it); priority
 // cycles none → A → B → C → none. Done-ness (strikethrough / hide-done) derives
-// from the keyword being DONE, so the agent keeps `node.checked = todoIsDone(kw)`
-// as a derived convenience. Pure: no DOM.
+// from the keyword's sequence band via `keywordIsDone(kw)` — sequence-aware, so a
+// custom sequence's own done states count too. Pure: no DOM.
 
 const TODO_STATES = ['TODO', 'NEXT', 'WAITING', 'DONE']; // ordered active→done
-const TODO_DONE = new Set(['DONE']);                     // keywords counted "done"
-const TODO_CYCLE = ['', ...TODO_STATES];                 // cycle incl. cleared state
 const TODO_PRIOS = ['A', 'B', 'C'];                      // highest → lowest
 const PRIO_CYCLE = [null, ...TODO_PRIOS];                // cycle incl. no-priority
 
@@ -2603,8 +2601,6 @@ function parseTodo(text, states = knownStates()) {
   return { keyword: km[1], priority, body: rest };
 }
 
-function todoIsDone(keyword) { return TODO_DONE.has(keyword); }
-
 // Re-serialize a parsed todo to `#keyword [#P] body`, trimming cleanly when the
 // keyword / priority are absent. Inverse of parseTodo (modulo whitespace).
 function formatTodo({ keyword, priority, body }) {
@@ -2619,7 +2615,6 @@ function cycleIn(list, current, dir) {
   const at = i < 0 ? 0 : i, n = list.length;
   return list[((at + dir) % n + n) % n];
 }
-function cycleTodoKeyword(current, dir = 1) { return cycleIn(TODO_CYCLE, current || '', dir); }
 function cyclePriority(current, dir = 1) { return cycleIn(PRIO_CYCLE, current || null, dir); }
 
 // Text-level mutators the DOM calls. Clearing the keyword also drops the priority
@@ -2651,7 +2646,10 @@ function todoSortKey(text) {
   const sq = sequenceForKeyword(t.keyword);
   const done = keywordIsDone(t.keyword) ? 1 : 0;
   const prio = t.priority ? TODO_PRIOS.indexOf(t.priority) : TODO_PRIOS.length;
-  const state = sq ? sq.states.indexOf(t.keyword) : TODO_STATES.length;
+  // A no-keyword or unrecognized point sorts after every known state (of any
+  // sequence), not at the default set's length — that magic number was the last
+  // hardcoded coupling to TODO_STATES (#510). Infinity is always largest.
+  const state = sq ? sq.states.indexOf(t.keyword) : Infinity;
   return [done, prio, state];
 }
 function compareTodo(a, b) {

@@ -189,7 +189,7 @@ export function loadCores() {
     'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtApplyAggregate', 'aggKindLabel',
     'tblfmGetAssign', 'tblfmSetAssign',
     'mtModelText', 'baseFrozenMarkdown', 'baseRecipeMarkdown',
-    'parseTodo','formatTodo','todoIsDone','cycleTodoKeyword','cyclePriority',
+    'parseTodo','formatTodo','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix',

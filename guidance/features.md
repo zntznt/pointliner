@@ -792,7 +792,8 @@ Implemented:
   Old saves (bare `TODO body` form) are NOT migrated — they load as plain text
   (a load-time rewrite would also capture prose typed after the change); retype
   as `#KEYWORD` if meant as statuses.
-  - **Done-ness derived from keyword:** `node.checked = todoIsDone(keyword)`, so the existing
+  - **Done-ness derived from keyword:** `node.checked = keywordIsDone(keyword)` (sequence-aware,
+    so a custom sequence's own done states count too), so the existing
     strikethrough (`.nt-todo.checked`) and the **hide-done filter (with the show-done toggle)
     keep working unchanged** — completed items hiding is a deliberate, load-bearing feature.
   - **Checkbox ⇄ keyword:** when a keyword is present, ticking the checkbox sets `#DONE` (the
