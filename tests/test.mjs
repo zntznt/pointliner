@@ -7026,6 +7026,16 @@ test('agendaMonthCells / agendaWeekCells stamp fiction day numbers, not Gregoria
   assert.deepEqual(host(wk.days.map(d => d.dow)), [0,1,2,3,4,5,6,7,8,9]);
   assert.equal(c.agendaWeekCells([], 20617, 20615, null).days.length, 7, 'Gregorian week unchanged');
 });
+test('isoParts / findOrCreateDatedEntry survive a negative fiction display year (#527 review #11)', () => {
+  assert.deepEqual(host(c.isoParts('-1004-01-11')), ['-1004', '01', '11'], 'the year rung keeps its minus');
+  assert.deepEqual(host(c.isoParts('2026-06-13')), ['2026', '06', '13'], 'a plain date splits as before');
+  // the dated-entry walk builds year > month > day with the negative year INTACT
+  const home = { children: [] };
+  const mk = t => ({ text: t, children: [] });
+  const { entry } = c.findOrCreateDatedEntry(home, '-1004-01-11', mk);
+  assert.equal(home.children[0].text, '-1004', 'the year node is "-1004", not an empty rung');
+  assert.equal(entry.text, '11');
+});
 test('describeRepeat names fiction weekdays through the calendar (#527)', () => {
   const named = c.normalizeCalendar({ ...HARPTOS, week: { length: 10, days: ['Sul','Mol','Dul'] } });
   assert.equal(c.describeRepeat({ kind: 'weekday', days: [1] }, named), 'every Mol');

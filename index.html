@@ -3346,6 +3346,15 @@ function todayISO() { return formatEpochDays(dueDateToday()); }
 // journalFileName(iso) — pure, Node-testable. One file per day: iso + '.opml'.
 function journalFileName(iso) { return iso + '.opml'; }
 
+// Split a 'Y-M-D' label into its three rungs. A NEGATIVE display year is legal under a fiction
+// era ("-1004-01-01", before the era's yearZero) and breaks a naive split('-') into a leading
+// empty rung (#527 review #11) — so anchor the match instead. Non-date input falls back to a
+// plain split (same as before). Pure.
+function isoParts(iso) {
+  const m = String(iso).match(/^(-?\d+)-(\d+)-(\d+)$/);
+  return m ? [m[1], m[2], m[3]] : String(iso).split('-');
+}
+
 // findOrCreateChild(parent, label, mk, fuzzy) — find-or-create one direct child.
 // Matches a child whose first line is exactly `label` (or, when fuzzy, starts with
 // `label `/`label:` so a day node may carry a title suffix). mk(text) builds the node.
@@ -3367,7 +3376,7 @@ function findOrCreateChild(parent, label, mk, fuzzy) {
 // ('16 Tuesday') is reused. `created` is true if any rung was newly made (so the
 // caller knows to render). mk(text) is called for each created node.
 function findOrCreateDatedEntry(home, iso, mk) {
-  const [y, mo, d] = iso.split('-');
+  const [y, mo, d] = isoParts(iso);   // negative-year-safe (#527: a fiction era below yearZero)
   let parent = home, anyCreated = false, entry = home;
   const segs = [[y, false], [mo, false], [d, true]];
   for (const [label, fuzzy] of segs) {
@@ -10806,7 +10815,7 @@ function renderJournalStrip() {
   const strip = document.getElementById('journal-strip');
   strip.innerHTML = '';
   if (!journalOpen) return;
-  const iso = todayISO(), [y, mo, d] = iso.split('-');
+  const iso = todayISO(), [y, mo, d] = isoParts(iso);   // negative-year-safe (#527)
   const row = document.createElement('div'); row.className = 'cap-row';
 
   const input = document.createElement('textarea');
@@ -10848,7 +10857,7 @@ function openJournalLevel(depth) {
   // the strip stays open across the jump, same as the agenda when zooming from a chip
   const mode = root.journal?.mode || 'append';
   if (mode === 'file' && workspaceDir) { openJournalEntry(); return; }
-  const iso = todayISO(), segs = iso.split('-');
+  const iso = todayISO(), segs = isoParts(iso);   // negative-year-safe (#527)
   pushUndo();
   const home = findOrCreateJournalHome();
   let parent = home, entry = home;
