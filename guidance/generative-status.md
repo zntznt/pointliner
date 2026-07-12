@@ -15,6 +15,14 @@ surface. The PKM / multi-document workspace — once "the next frontier" — has
 (connected workspace folder, cross-document links + backlinks, whole-folder search; see
 `features.md` and `roadmap.md`), so that chapter is no longer the open frontier either.
 
+**2026-07-12 addendum:** a same-day batch extended both engines strictly within the recorded
+charter — logic fns + a date/numeric menu in `evalMath` (#548/#554), string-equality conditionals
+(#550), `{count:}` pills (#555), counted decks (#552), the oracle typed twin (#553), the three
+#545 sign-off items (`.poss`/`.ing` + irregulars, `{w.damage.cap}` chaining, `{2d4x:}` dice
+counts), the F5-lite `count("query")` structural checks (#577), and the #574 chip/search scope
+fix. The completeness claim stands: every addition was a new name or a recorded sub-form, no new
+delimiter. Rows below are struck/rewritten where those changes landed.
+
 ## Shipped (the engine, end to end)
 
 **Engine 1 — generative / random (`{…}` grammar + dice/markov):**
@@ -34,11 +42,15 @@ surface. The PKM / multi-document workspace — once "the next frontier" — has
 
 **Engine 2 — expression evaluator (`evalMath`):**
 - Arithmetic/precedence, comparisons, ternary/`if`, constants (`pi`/`e`/`tau`/`today`).
+- **Logic** (#548): `and(…)`/`or(…)` (variadic beside `min`/`max`, 0/1 over nonzero-is-true,
+  NaN-safe) + `not(x)` — one compound `check` asserts several rules.
 - Functions in `FN1`/`FN2`/`FN3`: math, **unit conversions** (`from2to`), **date math**
-  (`date`/`year`/`month`/`day`/`weekday`/`quarter`), and the utility helpers
-  (`daysuntil`/`daysbetween`/`clamp`/`pctof`/`pctchange`).
+  (`date`/`year`/`month`/`day`/`weekday`/`quarter`, plus the #554 menu:
+  `weeknum`/`eom`/`age`/`addmonths`/`workdaysbetween`), and the utility helpers
+  (`daysuntil`/`daysbetween`/`clamp`/`pctof`/`pctchange`/`gcd`/`lcm`/`roundto`, variadic `avg`).
 - **Subtree aggregation** (B1): `{= sum|avg|count|min|max(prop)}` over direct children — render-time,
-  live; numeric **and date-shaped** props (epoch-days), so F2 date-range checks compute.
+  live; numeric **and date-shaped** props (epoch-days), so F2 date-range checks compute. The QUOTED
+  overload `count("query")` (F5-lite, #577) counts matching descendants by the same substitution.
 
 **Engine 3 — uncertainty sampler (B2, frontier F3, first-in-class):**
 - The `est` artifact: `lo to hi` / `normal` / `uniform` / `+−×÷`, Phase-2 `sum|avg(prop)` tree rollup;
@@ -102,9 +114,12 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
   child SHAPES beyond what a search can express) remain the F5 frontier. Still open: cross-parent
   (sibling-subtree) references; date-valued *own*-props as check variables (only *child* date props
   aggregate today).
-- **A8 knobs:** `random(lo,hi)` in `FN2`; a cycling-link pill; a user-facing RNG **seed** (pairs with C1).
-- **B3/B4/B5:** living-document line refs / running totals; deeper unit dimension-tracking; richer
-  date/interval formatting.
+- **A8 knobs:** a user-facing RNG **seed** (pairs with C1 snapshot sharing) — the one survivor of
+  this row; `random(lo,hi)` and the cycling-link pill moved to Won't-do below (2026-07-12 review).
+- **B3/B4/B5:** B3 living-document line refs / running totals (unchanged — positional line identity
+  is fragile in a reorderable tree). B4: only unit **dimension-tracking** remains (`gcd`/`lcm`/
+  `roundto` shipped in #554). B5: only richer **display-layer** interval formatting remains
+  (`weeknum`/`eom`/`age`/`addmonths`/`workdaysbetween` shipped in #554).
 
 ## Won't-do (deliberate, locked out)
 
@@ -115,6 +130,12 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
   `typed-var-declaration-proposal.md` and the Shipped list above.
 - **`{d66}` dice mode** — collides with a literal 66-sided die.
 - **Anti-repeat reroll** — churns the seeded determinism for a marginal feel-good gain.
+- **`random(lo,hi)` in `evalMath`** (was an A8 deferral; moved 2026-07-12) — math pills recompute
+  LIVE on every render, so a `random()` would re-roll on every keystroke, violating the
+  never-reroll-on-render invariant that decks and pick-vars exist to protect. Dice are the ranged-
+  randomness primitive WITH freeze semantics (`{1dN+M}`); the same reasoning that killed anti-repeat.
+- **Cycling-link pill** (was an A8 deferral; moved 2026-07-12) — superseded outright by `{cycle:}`
+  decks (A4): a stateful in-order advance with a click, persisted on the record.
 - **Bane/botch pools** — niche; the success-pool primitive already covers the general case.
 - **New top-level syntax in general** — the §2 inventory is closed; growth needs explicit sign-off and
   retirement of what it overlaps (P5).
