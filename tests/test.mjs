@@ -6912,6 +6912,31 @@ test('formatDueDate / formatDateConcrete use calendar names, fall back on gaps (
   const soon = c.formatDueDate(3, cal2); // 3 days after current=0, within the week window
   assert.ok(cal2.week.days.includes(soon.label), `named weekday in the soon label: ${soon.label}`);
 });
+test('the cal-branch date fns are total: garbage epochs never throw under a calendar (#527 review #6)', () => {
+  // The Gregorian twins return garbage on NaN/Infinity but never throw; the cal branches used to
+  // throw (epochToCal → null → property read). Contract: garbage in, garbage out, NEVER throw —
+  // these run naked at chip-render sites, where a throw kills the whole render.
+  const cal = c.normalizeCalendar(HARPTOS);
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    assert.doesNotThrow(() => c.calComponents(bad, cal), `calComponents(${bad})`);
+    assert.doesNotThrow(() => c.formatDueDate(bad, cal), `formatDueDate(${bad})`);
+    assert.doesNotThrow(() => c.formatDateConcrete(bad, cal), `formatDateConcrete(${bad})`);
+    assert.doesNotThrow(() => c.addMonths(bad, 1, cal), `addMonths(${bad})`);
+    assert.doesNotThrow(() => c.calendarMonthGrid(bad, cal), `calendarMonthGrid(${bad})`);
+    assert.doesNotThrow(() => c.dueWindowDays('month', cal, bad), `dueWindowDays(${bad})`);
+  }
+  assert.equal(c.dueWindowDays('month', cal, NaN), 30, 'garbage today → the Gregorian span fallback');
+});
+test('formatDueDate weekday-name window spans the fiction week, not the Gregorian 7 (#527 review #10)', () => {
+  const cal = c.normalizeCalendar({ ...HARPTOS, current: 0, week: { length: 10, days: ['D0','D1','D2','D3','D4','D5','D6','D7','D8','D9'] } });
+  // days 7..9 sit inside the coming 10-day fiction week: they get weekday names now (were month-day)
+  assert.equal(c.formatDueDate(8, cal).label, 'D8', 'day 8 of a 10-day week is a named weekday');
+  assert.equal(c.formatDueDate(9, cal).label, 'D9');
+  assert.equal(c.formatDueDate(10, cal).state, 'future', 'one full week out falls to the month-day label');
+  // Gregorian window unchanged: diff 7 is a month-day label, exactly as before
+  const g = c.formatDueDate(c.dueDateToday(null) + 7, null);
+  assert.equal(g.state, 'future', 'Gregorian diff=7 stays outside the weekday window');
+});
 test('calComponents — evalMath date-fn COMPUTE seam: fiction values vs Gregorian identity (#527)', () => {
   const cal = c.normalizeCalendar(HARPTOS); // 12×30, era DR yearZero 1000, week length 10
   // epoch 45 = intrinsic year 1, month 2, day 16 (30 + 15); era-year 1001; weekday = 45 % 10 = 5.
