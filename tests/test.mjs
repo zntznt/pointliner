@@ -6989,6 +6989,49 @@ test('addMonths — clamps day to the fiction month length, wraps the year (#527
   const jan31 = c.parseDueDate('2026-01-31', null);
   assert.equal(c.formatEpochDays(c.addMonths(jan31, 1, null), null), '2026-02-28', 'Gregorian clamp intact');
 });
+test('recurrence + week cores step in the fiction units (#527 review #3 routing)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 10-day week, 12×30-day months, year = 360
+  assert.equal(c.addWeeks(5000, 1, cal), 5010, 'a 10-day fiction week advances 10');
+  assert.equal(c.addWeeks(100, 2, null), 114, 'Gregorian stays 7-day');
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'week', n: 1 }, 5000, 5000, cal), 5010);
+  const tenMonth = c.normalizeCalendar({ ...HARPTOS, months: HARPTOS.months.slice(0, 10) }); // year = 300
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'year', n: 1 }, 5000, 5000, tenMonth), 5300,
+    'a fiction year is ITS OWN length (was addMonths n*12 = 1.2 years on a 10-month calendar)');
+  // weekday kind: epoch 5000 is fiction weekday 0; the indices are into THIS calendar's week
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [3] }, 5000, 5000, cal), 5003);
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [0] }, 5000, 5000, cal), 5010, 'same weekday → a full fiction week');
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [12] }, 5000, 5000, cal), null, 'an index past week.length can never occur → null');
+  // monthday kind: year 2 month 12 wraps to year 3 month 1; day 40 clamps to the 30-day month
+  const from = c.calToEpoch(2, 12, 15, cal);
+  const nx = c.epochToCal(c.nextOccurrence({ kind: 'monthday', day: 40 }, from, from, cal), cal);
+  assert.deepEqual([nx.year, nx.month, nx.day], [3, 1, 30]);
+});
+test('agendaMonthCells / agendaWeekCells stamp fiction day numbers, not Gregorian (#527 review #2)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  const cells = c.agendaMonthCells([], 5000, 5000, cal);
+  assert.equal(cells.length, 30, 'fiction month grid');
+  assert.equal(cells[0].dom, 1, 'first cell is FICTION day 1 (was stamping the Gregorian date)');
+  assert.equal(cells[29].dom, 30);
+  assert.ok(cells.every(x => x.inMonth), 'an aligned month has no spill');
+  // an uneven first month shifts month 2 off the week boundary → a real leading-spill cell
+  const uneven = c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'Long', days: 31 }, ...HARPTOS.months.slice(1)] });
+  const m2 = c.calToEpoch(1, 2, 1, uneven);   // epoch 31, weekday 1
+  const oc = c.agendaMonthCells([], m2, 5000, uneven);
+  assert.ok(!oc[0].inMonth && oc[0].dom === 31, 'the leading spill cell is the PRIOR month day 31, fiction-numbered');
+  assert.ok(oc[1].inMonth && oc[1].dom === 1);
+  // week bar: fiction length, fiction weekday-0 anchor, fiction dow indices
+  const wk = c.agendaWeekCells([], 5005, 5000, cal);
+  assert.equal(wk.days.length, 10, 'a fiction week bar has week.length cells');
+  assert.equal(wk.start, 5000, 'the week backs up to fiction weekday 0, not a Gregorian Sunday');
+  assert.deepEqual(host(wk.days.map(d => d.dow)), [0,1,2,3,4,5,6,7,8,9]);
+  assert.equal(c.agendaWeekCells([], 20617, 20615, null).days.length, 7, 'Gregorian week unchanged');
+});
+test('describeRepeat names fiction weekdays through the calendar (#527)', () => {
+  const named = c.normalizeCalendar({ ...HARPTOS, week: { length: 10, days: ['Sul','Mol','Dul'] } });
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [1] }, named), 'every Mol');
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [5] }, named), 'every Day 6', 'unnamed fiction weekday → the ordinal fallback');
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [1] }, null), 'every Monday', 'Gregorian names unchanged');
+});
 test('root.calendar round-trips through the OPML head, validated on load (#527)', () => {
   // Serialize a root carrying a calendar; the <_calendar> head element holds the JSON.
   const root = c.mkRoot();

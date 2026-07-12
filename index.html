@@ -3781,15 +3781,32 @@ function addMonths(epochDay, delta, cal = activeCalendar()) {
 // all items that fall on its day. Returns 42 cells (6 weeks × 7 cols, Sunday-
 // aligned — see calendarMonthGrid): [{ epochDay, dom, inMonth, isToday, isPast,
 // items:[…] }]. `monthEpoch` is any day in the month to show. Node-testable.
-function agendaMonthCells(items, monthEpoch, today = dueDateToday()) {
+function agendaMonthCells(items, monthEpoch, today = null, cal = activeCalendar()) {
+  if (today == null) today = dueDateToday(cal);   // resolved here so it reads the SAME calendar
   const byDay = new Map();
   for (const it of (items || [])) {
     if (it.epochDay == null) continue;
     if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
     byDay.get(it.epochDay).push(it);
   }
+  // #527 review #2 (half-routing): the grid was fiction-shaped but dom/inMonth read Gregorian —
+  // a 30-cell fiction month stamped with the wrong day numbers. Both now come from ONE calendar.
+  const anchor = cal && epochToCal(Math.round(monthEpoch || 0), cal);
+  if (anchor) {
+    return calendarMonthGrid(monthEpoch, cal).map(ep => {
+      const cc = epochToCal(ep, cal);
+      return {
+        epochDay: ep,
+        dom: cc.day,
+        inMonth: cc.month === anchor.month && cc.year === anchor.year,
+        isToday: ep === today,
+        isPast: ep < today,
+        items: byDay.get(ep) || [],
+      };
+    });
+  }
   const vm = new Date((monthEpoch || 0) * 86400000).getUTCMonth();
-  return calendarMonthGrid(monthEpoch).map(ep => {
+  return calendarMonthGrid(monthEpoch, null).map(ep => {
     const d = new Date(ep * 86400000);
     return {
       epochDay: ep,
@@ -3806,23 +3823,34 @@ function agendaMonthCells(items, monthEpoch, today = dueDateToday()) {
 // plus an `earlier` bucket for still-relevant items dated BEFORE this week (overdue
 // deadlines and started-but-not-done ranges) so nothing hides off the left edge. Each
 // item is placed by its primary date (it.epochDay). Node-testable.
-function agendaWeekCells(items, weekEpoch, today = dueDateToday()) {
+function agendaWeekCells(items, weekEpoch, today = null, cal = activeCalendar()) {
+  if (today == null) today = dueDateToday(cal);   // resolved here so it reads the SAME calendar
   const base = (weekEpoch == null ? today : weekEpoch);
-  const start = base - new Date(base * 86400000).getUTCDay();   // back up to Sunday
+  // #527 review #2 (half-routing): the week is the ACTIVE calendar's week — its own length, its
+  // own weekday-0 anchor — not a hardcoded Gregorian Sunday-aligned 7. One calendar throughout.
+  const bc = cal && epochToCal(base, cal);
+  const len = bc ? cal.week.length : 7;
+  const start = base - (bc ? bc.weekday : new Date(base * 86400000).getUTCDay());   // back up to weekday 0
   const byDay = new Map();
   const earlier = [];
   for (const it of (items || [])) {
     if (it.epochDay == null) continue;
     if (it.epochDay < start) { if (!it.done) earlier.push(it); continue; }   // spilled off the left
-    if (it.epochDay >= start + 7) continue;                                  // next week or later
+    if (it.epochDay >= start + len) continue;                                // next week or later
     if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
     byDay.get(it.epochDay).push(it);
   }
   earlier.sort((a, b) => a.epochDay - b.epochDay);   // most-overdue first
   const days = [];
-  for (let i = 0; i < 7; i++) {
-    const ep = start + i, d = new Date(ep * 86400000);
-    days.push({ epochDay: ep, dom: d.getUTCDate(), dow: d.getUTCDay(), isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
+  for (let i = 0; i < len; i++) {
+    const ep = start + i;
+    if (bc) {
+      const cc = epochToCal(ep, cal);
+      days.push({ epochDay: ep, dom: cc.day, dow: cc.weekday, isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
+    } else {
+      const d = new Date(ep * 86400000);
+      days.push({ epochDay: ep, dom: d.getUTCDate(), dow: d.getUTCDay(), isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
+    }
   }
   return { start, days, earlier };
 }
@@ -3839,8 +3867,11 @@ function agendaDayStats(items) {
   const ordered = list.slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0));
   return { ordered, todo: list.length - done, done };
 }
-// Pure: shift a week by `delta` weeks (7-day steps). Node-testable.
-function addWeeks(epochDay, delta) { return (epochDay == null ? dueDateToday() : epochDay) + delta * 7; }
+// Pure: shift a week by `delta` weeks — 7-day steps under Gregorian, week.length-day steps
+// under the active calendar (#527 review #3: a 10-day fiction week must advance 10). Node-testable.
+function addWeeks(epochDay, delta, cal = activeCalendar()) {
+  return (epochDay == null ? dueDateToday(cal) : epochDay) + delta * (cal ? cal.week.length : 7);
+}
 
 // ─── recurring tasks (#462) ───────────────────────────────────────────────────
 // A reserved `repeat` property (same model as due/start/check) holds a tiny recurrence
@@ -3885,16 +3916,35 @@ function parseRepeat(val) {
 // completion doesn't drift the schedule; but if that next date is still ≤ today (task was very
 // overdue), snap forward until it lands strictly after today so it never reschedules to the past.
 // Pure + Node-testable. `today` is injectable for tests.
-function nextOccurrence(desc, fromEpochDay, today = dueDateToday()) {
+function nextOccurrence(desc, fromEpochDay, today = null, cal = activeCalendar()) {
   if (!desc || fromEpochDay == null) return null;
+  if (today == null) today = dueDateToday(cal);   // resolved here so it reads the SAME calendar
   const step = (from) => {
     if (desc.kind === 'interval') {
       if (desc.unit === 'day')   return from + desc.n;
-      if (desc.unit === 'week')  return addWeeks(from, desc.n);
-      if (desc.unit === 'month') return addMonths(from, desc.n);
-      if (desc.unit === 'year')  return addMonths(from, desc.n * 12);
+      if (desc.unit === 'week')  return addWeeks(from, desc.n, cal);
+      if (desc.unit === 'month') return addMonths(from, desc.n, cal);
+      // a fiction year is its OWN length (#527 review #3: addMonths(n*12) walked 12 fiction
+      // months — 1.2 years on a 10-month calendar). All fiction years are equal (no leap in
+      // Tier 1), so a whole-year step preserves the month/day exactly.
+      if (desc.unit === 'year')  return cal ? from + desc.n * calYearLength(cal) : addMonths(from, desc.n * 12, null);
     }
     if (desc.kind === 'weekday') {
+      if (cal) {
+        // fiction weekdays: desc.days are indices into THIS calendar's week (a fiction has no
+        // "Monday"). An index past week.length can never occur — skipped; none valid → null
+        // (the caller reads null as "no next occurrence"), never a garbage +8.
+        const cc = epochToCal(from, cal);
+        if (!cc) return null;
+        const len = cal.week.length;
+        let best = Infinity;
+        for (const d of desc.days) {
+          if (!Number.isInteger(d) || d < 0 || d >= len) continue;
+          const off = ((d - cc.weekday) % len + len) % len || len;
+          if (off < best) best = off;
+        }
+        return Number.isFinite(best) ? from + best : null;
+      }
       const wd = new Date(from * 86400000).getUTCDay();
       // smallest positive offset to one of the target weekdays
       let best = 8;
@@ -3902,6 +3952,15 @@ function nextOccurrence(desc, fromEpochDay, today = dueDateToday()) {
       return from + best;
     }
     if (desc.kind === 'monthday') {
+      if (cal) {
+        // next fiction month's clamped Nth (wrapping the year), same shape as the Gregorian arm
+        const cc = epochToCal(from, cal);
+        if (!cc) return null;
+        const n = cal.months.length;
+        const mIdx = cc.month % n;                                   // 0-based index of the NEXT month
+        const yr = cc.year + (cc.month === n ? 1 : 0);
+        return calToEpoch(yr, mIdx + 1, Math.min(desc.day, cal.months[mIdx].days), cal);
+      }
       // next month's clamped Nth (from the 1st of the month AFTER `from`, then set the day)
       const d = new Date(from * 86400000);
       const y = d.getUTCFullYear(), mo = d.getUTCMonth();
@@ -3920,13 +3979,15 @@ function nextOccurrence(desc, fromEpochDay, today = dueDateToday()) {
 
 // Human-readable phrase for a repeat descriptor (dialog preview + toast). Pure.
 const _WD_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-function describeRepeat(desc) {
+function describeRepeat(desc, cal = activeCalendar()) {
   if (!desc) return '';
   if (desc.kind === 'interval') {
     const u = desc.unit;
     return desc.n === 1 ? `every ${u}` : `every ${desc.n} ${u}s`;
   }
-  if (desc.kind === 'weekday') return 'every ' + desc.days.map(d => _WD_NAME[d]).join(', ');
+  // weekday NAMES come from the active calendar (#527): a fiction has no "Monday"; unnamed
+  // fiction weekdays fall back to calWeekdayName's ordinal ("Day 3"), never undefined.
+  if (desc.kind === 'weekday') return 'every ' + desc.days.map(d => cal ? calWeekdayName(cal, d) : _WD_NAME[d]).join(', ');
   if (desc.kind === 'monthday') {
     const ord = ordinalSuffix(desc.day);
     return `monthly on the ${desc.day}${ord}`;
@@ -23670,7 +23731,7 @@ function renderAgendaCalendar(host, visible, totalDated) {
     requestAnimationFrame(() => requestAnimationFrame(() => { _switching = false; centreCurrent(); }));
   }
   const navMonth = (delta) => switchTo(addMonths(curM(), delta));
-  const jumpYear = (delta) => switchTo(addMonths(curM(), delta * 12));   // ‹‹/›› = one year
+  const jumpYear = (delta) => switchTo(addMonths(curM(), delta * (activeCalendar()?.months.length ?? 12)));   // ‹‹/›› = one year OF THE ACTIVE CALENDAR (#527: 12 months is only a Gregorian year)
   const goToday  = () => switchTo(dueDateToday());
   // clicking a side month switches to it (guarded so it can't race a pending switch)
   prevBlk.block.addEventListener('mousedown', e => { e.preventDefault(); switchTo(addMonths(curM(), -1)); });
