@@ -960,6 +960,12 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .query-more{padding:2px 10px 2px 22px;font-size:.82em;color:var(--muted);font-style:normal}
 .query-empty{display:block;padding:5px 10px;font-size:.86em;color:var(--muted)}
 .query-pill.query-bad{border-style:dashed;color:var(--del);cursor:default}
+/* #541: the count variant is a compact INLINE pill (the number is the content), not the block list */
+.query-pill.query-pill-count{display:inline-flex;align-items:center;gap:5px;margin:0 1px;padding:1px 8px;vertical-align:baseline}
+.query-pill-count .query-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));font-size:.85em;display:inline-flex;flex-shrink:0}
+.query-pill-count .query-count{font-weight:600;font-variant-numeric:tabular-nums;color:var(--fg)}
+.query-pill-count .query-edit{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
+.query-pill-count:hover .query-edit{opacity:.6}
 .todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;cursor:pointer;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback for out-of-range letters; the a/b/c variants override. UXP-177: cursor:pointer — it's clickable (opens the state/priority picker) like .todo-state */
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
@@ -1936,6 +1942,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><kbd>priority:none</kbd><span>to-do priority (<code>priority:a</code>/<code>b</code>); <code>none</code> = unprioritized, <code>any</code> = has one</span></div>
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
+        <div class="sh-row"><kbd>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
         <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from the points below this one (rolls on your live outline)</span></div>
         <div class="sh-row"><kbd>/querybase</kbd><span>a live grid of matching points: title, properties, or a per-point formula as columns</span></div>
       </div>
@@ -2406,6 +2413,24 @@ function queryParts(body) {
   return { expr };
 }
 function queryKey() { return 'qy' + Math.random().toString(36).slice(2, 9); }
+
+// countParts(body) — sniff the query family's third verb: {count: is:todo} (#541).
+// {query:} lists the matching points, {roll:} picks one, {count:} counts them — a live
+// inline number ("Open threads: {count: #thread is:todo}"). Same reserved-keyword shape
+// as its siblings: keyword before the FIRST colon, tail verbatim (a query legitimately
+// carries `:` and `|`). Returns { expr } or null. Pure.
+// The record is the QUERY sidecar with show:'count' (prune/OPML/dialog inherited), and
+// it recomputes LIVE each render like every query/math pill — it must never freeze the
+// way {roll:} does (that wraps an anonymous grammar because randomness must not re-roll
+// on render; a count is deterministic, and a frozen count is a stale number reading as
+// current — a P4 silent lie).
+function countParts(body) {
+  const m = /^count\s*:(.*)$/is.exec((body || '').trim());
+  if (!m) return null;
+  const expr = m[1].trim();
+  if (!expr) return null;                              // {count:} with no search string → not a pill
+  return { expr };
+}
 
 // {roll: <search-query>} — the generative sniff twin of queryParts: a reserved `roll:` keyword
 // (like seqParts' mode: / markovParts' markov:) whose tail is a verbatim search string (a query
@@ -5703,6 +5728,7 @@ const INSERT_CMDS = [
   // Organize — document-wide state sets
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
   { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
+  { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. Type {count: is:todo} to write one inline.', ex:'{count: is:todo}', section:'Organize' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -11702,6 +11728,7 @@ function classifyBraceBody(body, rules, vars) {
   // An empty value is valid (it clears the date on exit).
   if (dd0) return (!dd0.val || parseDueDate(dd0.val) !== null) ? 'artifact' : 'invalid';
   if (queryParts(body)) return 'artifact';                             // {query: is:todo}
+  if (countParts(body)) return 'artifact';                             // {count: is:todo} — a live inline count (#541)
   if (rollParts(body)) return 'artifact';                              // {roll: is:todo} — pick a random matching point
   // {oracle: likely} — the band name is a closed set, so an unknown band is an ATTEMPT
   // (typo styling), not prose; the text still stays literal on exit (#543, the #407 model).
@@ -11751,6 +11778,7 @@ function braceTypeLabel(body, rules, vars) {
   if (markovParts(body)) return ['markov', null];                      // {markov: a→b, b→c}
   if (seqDeclParts(body)) return ['seq', null];                        // {seq Flow: A B | C}
   if (queryParts(body)) return ['query', null];                        // {query: is:todo}
+  if (countParts(body)) return ['query', 'count'];                     // {count: is:todo} (#541)
   if (oracleParts(body)) return ['grammar', 'oracle'];                 // {oracle: likely} (#543)
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
@@ -14193,6 +14221,18 @@ function insertInlineArtifact(id, nodeId, content) {
         applyInlineInsertion(nodeId, offset, `[[query:${rec.key}]]`);
       },
     });
+  } else if (id === 'count') {
+    // #541: same dialog, same record shape — only show:'count' differs (the compact number render)
+    openQueryDialog({
+      title: 'Count matching points',
+      submitLabel: 'Insert',
+      onResult: expr => {
+        const n = nodeById(nodeId); if (!n) return;
+        const rec = { key: queryKey(), expr, show: 'count' };
+        (n.query ||= []).push(rec);
+        applyInlineInsertion(nodeId, offset, `[[query:${rec.key}]]`);
+      },
+    });
   } else if (id === 'progress') {
     // a cookie is plain computed text (no sidecar) — insert the [/] recipe; it
     // renders as a live [done/total] tally. Type [%] by hand for the percent form.
@@ -15280,6 +15320,8 @@ function resolveBrace(body, ctx) {
   if (mkp) { const roll = makeTypedMarkovRoll(mkp.def); return roll ? roll.path.join(' → ') : `{markov?}`; }
   const qp = queryParts(body);
   if (qp) { const picked = pickFromQuery(qp.expr, cookieNode || root, cookieNode ? cookieNode.id : null); return picked || `{query: ${qp.expr}?}`; }
+  const cnp = countParts(body);
+  if (cnp) return String(queryRows(cnp.expr, cookieNode || root, cookieNode ? cookieNode.id : null, 1).total);   // #541: live count; 0 is a valid answer
   const orp = oracleParts(body);
   if (orp) return expandTemplate(`{${orp.body}}`, ctx);   // #543: a Yes/No pick at the band's odds
 
@@ -16500,6 +16542,15 @@ function promoteBraceBody(node, body) {
     (node.query ||= []).push(rec);
     return `[[query:${rec.key}]]`;
   }
+  // {count: <query>} → the SAME query sidecar with show:'count' (#541): prune, _query
+  // OPML round-trip, and the edit dialog are inherited; only the render is the compact
+  // number. Recomputed live each render — never frozen (see countParts).
+  const cnp = countParts(body);
+  if (cnp) {
+    const rec = { key: queryKey(), expr: cnp.expr, show: 'count' };
+    (node.query ||= []).push(rec);
+    return `[[query:${rec.key}]]`;
+  }
   // {roll: <query>} → an anonymous grammar wrapping `origin: {roll: …}`, so it rides the grammar
   // machinery exactly like inline alternation: resolveBrace's roll branch resolves it (picking a
   // random matching point from the render node's subtree), it freezes like any grammar pill, and
@@ -16658,7 +16709,7 @@ function artifactToShorthand(type, rec) {
     // the expr verbatim; the key is a private sidecar handle nothing references, so a fresh key on
     // re-promote is harmless. The block-level render is a DISPLAY-mode concern; unfold rewrites the
     // token to {query: …} TEXT before editModeHTML runs, so the caret machinery just sees plain text.
-    return rec.expr ? `{query: ${rec.expr}}` : null;
+    return rec.expr ? `{${rec.show === 'count' ? 'count' : 'query'}: ${rec.expr}}` : null;   // #541: a count pill unfolds to its own verb
   }
   if (type === 'markov') {
     // Only a TYPED (anonymous) markov unfolds to {markov: a→b, b→c}; a NAMED / dialog
@@ -17770,6 +17821,18 @@ function renderSeqPill(key, sq) {
 function renderQueryPill(key, q) {
   if (!q) return `<span class="query-pill query-bad" data-key="${escQ(key)}" aria-label="Query (missing data)"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> ?</span>`;
   const expr = q.expr || '';
+  // #541: the count variant is a compact INLINE number, not the block list — same record,
+  // same live recompute, only the render differs. 0 is a valid, visible answer (P4).
+  if (q.show === 'count') {
+    const total = expr.trim() ? queryRowsMemo(expr, cookieNode?.id).total : 0;
+    return `<span class="query-pill query-pill-count" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
+      + ` title="Count of: ${escQ(expr || 'empty query')}. Click to edit."`
+      + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}. Click to edit the search.">`
+      + `<span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
+      + `<span class="query-count">${total}</span>`
+      + `<span class="query-edit" role="button" tabindex="-1" aria-label="Edit query" title="Edit query"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `</span>`;
+  }
   const { rows, total, truncated } = queryRowsMemo(expr, cookieNode?.id);
   const head = `<span class="query-head" contenteditable="false"><span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
     + `<span class="query-expr">${escHtml(expr || 'empty query')}</span>`
@@ -23919,12 +23982,13 @@ const GUIDE = [
       { syn:'is:todo | due:week',    desc:'any search works as the row source' },
       { syn:'Cost: = sum(cost)',     desc:'a column computed per matching point' },
     ] },
-  { id:'query', cat:'todos', covers:['query'],
+  { id:'query', cat:'todos', covers:['query','count'],
     title:'Embedded queries',
-    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project, or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more.",
+    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project, or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more. Want just the number? {count: is:todo} (or @ then Count) shows a live count instead of the list, handy for a dashboard line like open bugs: 7.",
     examples:[
       { syn:'{query: is:todo}',        desc:'every open task, live' },
       { syn:'{query: #idea -is:done}', desc:'combine any search operators' },
+      { syn:'{count: #thread is:todo}',desc:'just the number, live' },
       { syn:'@ then Query',            desc:'insert one from the menu' },
     ] },
   { id:'templates', cat:'todos', covers:['template','savetemplate'],

@@ -5174,7 +5174,7 @@ test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
 
 test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
   const INSERT_IDS = ['footnote','image','link','table','progress','dice','markov',
-    'rolltable','grammar','deck','oracle','math','var','est','sequence'];
+    'rolltable','grammar','deck','oracle','math','var','est','sequence','query','count'];
   const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('(function buildShortcutsPanel()'));
   const coveredIds = new Set();
   for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
@@ -8950,6 +8950,45 @@ test('queryParts — sniffs {query: expr}, rejects the empty and keywordless for
   assert.equal(c.classifyBraceBody('query: is:todo', [], {}), 'artifact');
 });
 
+// ── {count: query} — the query family's third verb (#541) ───────────────────
+test('countParts — sniffs {count: expr}, rejects the empty and keywordless forms', () => {
+  assert.deepEqual(host(c.countParts('count: is:todo | due:week')), { expr: 'is:todo | due:week' });
+  assert.deepEqual(host(c.countParts('count:#thread is:todo')), { expr: '#thread is:todo' });
+  assert.equal(c.countParts('count:'), null);         // no search string
+  assert.equal(c.countParts('count:   '), null);      // whitespace only
+  assert.equal(c.countParts('is:todo'), null);        // no keyword
+  assert.equal(c.countParts('counter: x'), null);     // the keyword must be exactly 'count'
+  // classify + typeLabel agree: valid artifact, labeled as the query family's count form
+  assert.equal(c.classifyBraceBody('count: is:todo', [], {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('count: is:todo', [], {})), ['query', 'count']);
+});
+
+test('promoteBraceBody — {count:} builds a query record with show:count; unfolds to its own verb (#541)', () => {
+  const node = { text: '', query: [] };
+  const tok = c.promoteBraceBody(node, 'count: is:todo');
+  assert.match(tok, /^\[\[query:/, 'a {count:} promotes to a QUERY pill (same sidecar)');
+  assert.equal(node.query[0].expr, 'is:todo');
+  assert.equal(node.query[0].show, 'count');
+  // the unfold source round-trips the verb, so an edit re-promotes to the same form
+  assert.equal(c.artifactToShorthand('query', node.query[0]), '{count: is:todo}');
+  // a plain query record still unfolds to {query: …}, untouched
+  assert.equal(c.artifactToShorthand('query', { key: 'q1', expr: 'is:todo' }), '{query: is:todo}');
+});
+
+test('queryRows — total counts every match even when the row cap clips the list (#541 reads .total)', () => {
+  const tree = { id: 'r', text: '', children: [
+    { id: 'a', text: '- [ ] one', children: [] },
+    { id: 'b', text: '- [ ] two', children: [] },
+    { id: 'c', text: '- [ ] three', children: [] },
+    { id: 'd', text: 'done already', children: [] },
+  ] };
+  const { total, rows } = c.queryRows('is:todo', tree, null, 1);
+  assert.equal(total, 3, 'total is the real count');
+  assert.equal(rows.length, 1, 'the cap only clips the rows');
+  assert.equal(c.queryRows('is:todo', tree, 'a', 99).total, 2, 'the host point is excluded');
+  assert.equal(c.queryRows('nomatchword', tree, null, 1).total, 0, 'zero is a valid count');
+});
+
 // ── QX-6: link/tag presence filters (has:link/tag pure; has:backlink/is:broken threaded) ──
 test('QX-6 has:link and has:tag are pure node reads with the props fall-through intact', () => {
   const hasM = (val, node) => c.termMatchesNode({ kind: 'has', value: val }, node, SEQS);
@@ -10061,8 +10100,10 @@ test('query-pill memo is _varsVer-guarded and cleared on doc reset (#451 item 4)
   assert.ok(fnBody(_src, 'resetDocCaches').includes('_queryPillCache.clear()'),
     'resetDocCaches must clear the query-pill cache on doc swap');
   // renderQueryPill must READ through the memo, not call queryRows directly anymore
-  const rqp = _src.slice(_src.indexOf('function renderQueryPill'), _src.indexOf('function renderQueryPill') + 400);
+  // (window widened for the #541 count branch, which also routes through the memo)
+  const rqp = fnBody(_src, 'renderQueryPill');
   assert.ok(/queryRowsMemo\(expr, cookieNode\?\.id\)/.test(rqp), 'renderQueryPill must route through queryRowsMemo');
+  assert.ok(!/queryRows\(/.test(rqp.replace(/queryRowsMemo\(/g, '')), 'renderQueryPill must never call the uncached queryRows');
 });
 
 // #452: dead CSS removal — these selectors matched no DOM element (present only in their
@@ -10414,8 +10455,9 @@ test('#523: declaration forms are deliberately NOT resolved nested (top-level-on
   // the generator branches sit BEFORE the | split, so a quoted literal and alternation are untouched
   assert.equal(c.resolveBrace('"quoted | lit"', ctx), 'quoted | lit');
   assert.equal(c.resolveBrace('= 2+2', ctx), '4');
-  // src-pin: the three generator branches exist before the alternation split
-  assert.ok(/const mkp = markovParts\(body\);[\s\S]{0,700}const alts = splitTopLevel/.test(_src), 'the generator branches must precede the | split (or a |-bearing generator body shreds)');
+  // src-pin: the generator branches exist before the alternation split (window sized for
+  // the whole nested-generator block: markov/query/count/oracle/est, #541/#543 included)
+  assert.ok(/const mkp = markovParts\(body\);[\s\S]{0,1500}const alts = splitTopLevel/.test(_src), 'the generator branches must precede the | split (or a |-bearing generator body shreds)');
 });
 
 // ── #528: rollup est pills stay atomic (only constructor est unfolds) ──
