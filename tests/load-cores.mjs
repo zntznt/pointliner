@@ -226,6 +226,7 @@ export function loadCores() {
     'pickerTitle','treeRows','selectionRoots','resolveRefileTarget',   // LEAN FLOOR: /refile:title resolution
     'dueDateToday','parseDueDate','formatDueDate','formatDateConcrete','parseRepeat','nextOccurrence','describeRepeat','ordinalSuffix','buildSharePointText','collectDueDates','collectActions','priorityRank','oracleSwingBody',
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
+    'calWeekLen','calWeekHeads','calMonthTitle','calDayLabel','calDayShort',   // #527 PR-A: the render-label layer
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','isoParts','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',

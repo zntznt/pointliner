@@ -570,8 +570,9 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .cv-btn:hover{color:var(--fg);background:var(--cbg)}
 .cv-title{font-weight:600;font-size:.9em;min-width:130px;text-align:center}
 .cv-today{margin-left:auto}
-.cv-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.7em;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:0 0 2px;text-align:center}/* UXP-181: .07em, matching the .cal-dow/.agc-dow eyebrows (DL §4) */
-.cv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cv-dow{display:grid;grid-template-columns:repeat(var(--cal-cols,7),1fr);gap:2px;font-size:.7em;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:0 0 2px;text-align:center}/* UXP-181: .07em, matching the .cal-dow/.agc-dow eyebrows (DL §4) */
+.cv-grid{display:grid;grid-template-columns:repeat(var(--cal-cols,7),1fr);gap:2px}/* #527: --cal-cols is set by JS ONLY when a custom calendar is active; absent = the identical 7 */
+.mt-cal-host.cal-wide{overflow-x:auto}.mt-cal-host.cal-wide .cv-dow,.mt-cal-host.cal-wide .cv-grid{min-width:calc(var(--cal-cols,7)*44px)}/* #527: a wide fiction week scrolls past the 44px fit floor (the Timeline precedent), never shrinks below it */
 .cv-cell{min-height:58px;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 4px;min-width:0}
 .cv-out{background:color-mix(in srgb,var(--cbg) 55%,var(--bg))}/* UXP-173: an other-month cell de-emphasizes by a recessed background (role), NOT by fading its point-title chips under the contrast floor (DL §3) */
 .cv-out .cv-dom{opacity:.6}/* the day number reads dimmer for out-of-month, but the chip titles stay full-contrast */
@@ -1477,12 +1478,13 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agc-month-prev:hover,.agc-month-next:hover,.agc-month-prev:focus-visible,.agc-month-next:focus-visible{opacity:.8}
 .agc-month-prev:focus-visible,.agc-month-next:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-sm)}
 .agc-month-prev *,.agc-month-next *{cursor:pointer}
-.agc-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.agc-dow{display:grid;grid-template-columns:repeat(var(--cal-cols,7),1fr);gap:2px}
 .agc-dow span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);text-align:center;padding:2px 0}/* 11px = the small-label floor (design-language §176: no informational text below 11px); keeps the caps-eyebrow role */
 /* The month grid sizes to the WINDOW, not to the number of tasks: a fixed height split into
    6 equal rows × 7 equal columns, so every day box is the same size. Cells clip their content
    (the +N-more expander reveals overflow); the grid itself never grows past this box. */
-.agc-grid{position:relative;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(6,1fr);gap:2px;height:min(52vh,360px)}
+.agc-grid{position:relative;display:grid;grid-template-columns:repeat(var(--cal-cols,7),1fr);grid-template-rows:repeat(var(--cal-rows,6),1fr);gap:2px;height:min(52vh,360px)}/* #527: cols set per-view, rows per-month (fiction months vary); absent = the identical 7x6 */
+.ag-calendar.cal-wide .agc-months{overflow-x:auto}.ag-calendar.cal-wide .agc-month{flex:0 0 max(min(100%,520px),calc(var(--cal-cols,7)*44px))}/* #527: a wide fiction week scrolls past the 44px fit floor rather than shrinking cells below it */
 .agc-week{display:contents}
 .agc-cell{position:relative;min-height:0;min-width:0;border-radius:var(--r-sm);padding:3px 4px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--fg) 3.5%,transparent);cursor:default;overflow:hidden}
 .agc-cell:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
@@ -3293,7 +3295,7 @@ function calMonthName(cal, monthIdx) { // monthIdx is 1-based, matching epochToC
 // year (matching the label layer); `weekday` is the index into THIS calendar's week (0 = the day
 // epochDay fell on), a different origin from Gregorian's 0=Sunday because a fictional week has no
 // Sunday. cal=null → the exact Gregorian values the fns returned before. Pure.
-function calComponents(epoch, cal) {
+function calComponents(epoch, cal = activeCalendar()) {   // #527 PR-A: defaults like every other seam core — a one-arg call site must never silently fall to Gregorian under an active fiction
   const ep = Math.round(epoch);
   if (cal) {
     const c = epochToCal(ep, cal);
@@ -3313,6 +3315,54 @@ function calComponents(epoch, cal) {
     year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(),
     weekday: d.getUTCDay(), quarter: Math.floor(d.getUTCMonth() / 3) + 1,
   };
+}
+
+// ── the render-label layer (#527 PR-A): every grid/tick/aria label the calendar touches ─────
+// Five shared cores so the six render sites (agenda Month/Week, the Bases calendar view, the
+// Schedule date picker, the Gantt ticks) make ZERO calendar decisions of their own — they ask
+// these. Each has a byte-identical Gregorian arm (cal=null), pinned like the rest of the seam.
+
+// The week's column count — THE grid-geometry question, asked by CSS var setters + keyboard nav.
+function calWeekLen(cal = activeCalendar()) { return cal ? cal.week.length : 7; }
+
+// Header pairs for a day-of-week row: short = the 2-char visual eyebrow, full = the aria-label.
+// A fiction week with unnamed days flows calWeekdayName's ordinal fallback into BOTH (the RISK-1
+// contract: never let an absent name reach an aria-label as "undefined"). Pure.
+function calWeekHeads(cal = activeCalendar()) {
+  if (cal) return Array.from({ length: cal.week.length }, (_, i) => {
+    const full = calWeekdayName(cal, i);            // "Sul" or the "Day 3" fallback
+    return { short: /^Day \d+$/.test(full) ? String(i + 1) : full.slice(0, 2), full };
+  });
+  return CAL_DOW.map((d, i) => ({ short: d, full: CAL_DOW_FULL[i] }));
+}
+
+// The month-pane title: "July 2026" | "Hammer 1005" (era-display year, matching every other label).
+// Garbage epoch under a fiction → the Gregorian arm's own garbage (never throws), like calComponents.
+function calMonthTitle(epochDay, cal = activeCalendar()) {
+  const cc = cal && epochToCal(Math.round(epochDay || 0), cal);
+  if (cc) return calMonthName(cal, cc.month) + ' ' + (cal.eras.length ? calEraYear(cc.year, cal) : cc.year);
+  const d = new Date((epochDay || 0) * 86400000);
+  return CAL_MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+
+// A full spoken date for aria-labels: "Sunday, July 12, 2026" | "Sul, Hammer 12, 1005". Pure.
+function calDayLabel(epochDay, cal = activeCalendar()) {
+  const cc = cal && epochToCal(Math.round(epochDay || 0), cal);
+  if (cc) {
+    const y = cal.eras.length ? calEraYear(cc.year, cal) : cc.year;
+    return `${calWeekdayName(cal, cc.weekday)}, ${calMonthName(cal, cc.month)} ${cc.day}, ${y}`;
+  }
+  const d = new Date((epochDay || 0) * 86400000);
+  return `${CAL_DOW_FULL[d.getUTCDay()]}, ${CAL_MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+// The compact tick/hover form: "Jul 12" | "Hammer 12" (fiction month names stay whole — slicing
+// an invented name to 3 chars makes it unreadable; Gregorian keeps its familiar Jul/Aug). Pure.
+function calDayShort(epochDay, cal = activeCalendar()) {
+  const cc = cal && epochToCal(Math.round(epochDay || 0), cal);
+  if (cc) return `${calMonthName(cal, cc.month)} ${cc.day}`;
+  const d = new Date((epochDay || 0) * 86400000);
+  return `${(CAL_MONTHS[d.getUTCMonth()] || '').slice(0, 3)} ${d.getUTCDate()}`;   // || '': a garbage epoch indexes nothing — garbage out, never a throw
 }
 
 // The search-window span for `due:week` / `due:month` (QX-2). "This week / month" means today
@@ -7897,16 +7947,23 @@ function buildCalendarWidget(node, model, readOnly) {
   const { items, undated } = calBaseItems(model, di, lastRow);
   const anchor = _calMonthByNode.get(node.id) ?? dueDateToday();
   const cells = agendaMonthCells(items, anchor);
-  const monthLabel = new Date(anchor * 86400000).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  // #527: calMonthTitle speaks the active calendar ("Hammer 1005") and, under Gregorian, replaces
+  // the old toLocaleDateString title — which was LOCALE-dependent while every other month pane is
+  // CAL_MONTHS-hardcoded English (a latent P1 inconsistency, two panes could disagree). One voice now.
+  const monthLabel = calMonthTitle(anchor);
   const host = document.createElement('div');
   host.className = 'md-table-host mt-cal-host';
   host.dataset.id = node.id;
+  if (activeCalendar()) {   // fiction grid geometry; absent = the stock 7-column CSS
+    host.style.setProperty('--cal-cols', String(calWeekLen()));
+    host.classList.toggle('cal-wide', calWeekLen() > 8);
+  }
   let h = mtBaseChromeHtml(node, model, readOnly);
   h += `<div class="cv-nav"><button type="button" class="cv-btn" data-nav="-1" aria-label="Previous month">\u2039</button>`
     + `<span class="cv-title" aria-live="polite">${escHtml(monthLabel)}</span>`
     + `<button type="button" class="cv-btn" data-nav="1" aria-label="Next month">\u203A</button>`
     + `<button type="button" class="cv-btn cv-today" data-nav="0" aria-label="Jump to the current month">Today</button></div>`;
-  h += '<div class="cv-dow" aria-hidden="true">' + CAL_DOW.map(d => `<span>${d}</span>`).join('') + '</div>';
+  h += '<div class="cv-dow" aria-hidden="true">' + calWeekHeads().map(hd => `<span>${escHtml(hd.short)}</span>`).join('') + '</div>';   // #527: fiction weekday eyebrows
   h += '<div class="cv-grid">';
   for (const cell of cells) {
     h += `<div class="cv-cell${cell.inMonth ? '' : ' cv-out'}${cell.isToday ? ' cv-today-cell' : ''}">`
@@ -23277,10 +23334,12 @@ function renderAgendaGantt(host, visible, totalDated) {
   const step = layout.rangeDays <= 24 ? 1 : layout.rangeDays <= 84 ? 7 : 30;
   const axis = document.createElement('div'); axis.className = 'agg-axis'; axis.setAttribute('aria-hidden', 'true');
   for (let d = 0; d < layout.rangeDays; d += step) {
-    const date = new Date((layout.rangeStart + d) * 86400000);
+    const ep = layout.rangeStart + d;
     const tick = document.createElement('div'); tick.className = 'agg-tick'; tick.style.left = (d * px) + 'px';
-    const dom = date.getUTCDate();
-    tick.textContent = (dom === 1 || d === 0) ? CAL_MONTHS[date.getUTCMonth()].slice(0, 3) + ' ' + dom : String(dom);
+    // #527: month starts + labels in the ACTIVE calendar (calDayShort = "Jul 1" | "Hammer 1").
+    // The 1/7/30-day step buckets stay: tick SPACING is raw day counts, calendar-neutral.
+    const dom = calComponents(ep).day;
+    tick.textContent = (dom === 1 || d === 0) ? calDayShort(ep) : String(dom);
     axis.appendChild(tick);
   }
   inner.appendChild(axis);
@@ -23341,9 +23400,8 @@ function renderAgendaGantt(host, visible, totalDated) {
   scroll.addEventListener('mousemove', e => {
     const x = e.clientX - inner.getBoundingClientRect().left;     // inner-local X (scroll already folded in)
     const day = Math.max(0, Math.min(layout.rangeDays - 1, Math.floor(x / px)));
-    const date = new Date((layout.rangeStart + day) * 86400000);
     hover.style.left = (day * px + px / 2) + 'px';
-    hoverLbl.textContent = CAL_MONTHS[date.getUTCMonth()].slice(0, 3) + ' ' + date.getUTCDate();
+    hoverLbl.textContent = calDayShort(layout.rangeStart + day);   // #527: the active calendar's date, same format as the axis ticks
     hover.style.display = 'block';
   });
   scroll.addEventListener('mouseleave', () => { hover.style.display = 'none'; });
@@ -23514,10 +23572,12 @@ function renderAgendaWeek(host, visible, totalDated) {
   function paint() {
     const anchor = agendaWeek != null ? agendaWeek : dueDateToday();
     const { start, days, earlier } = agendaWeekCells(visible, anchor);
-    const endEp = start + 6;
-    const sd = new Date(start * 86400000), ed = new Date(endEp * 86400000);
-    const span = CAL_MONTHS[sd.getUTCMonth()].slice(0,3) + ' ' + sd.getUTCDate()
-      + ' – ' + (sd.getUTCMonth() === ed.getUTCMonth() ? '' : CAL_MONTHS[ed.getUTCMonth()].slice(0,3) + ' ') + ed.getUTCDate();
+    const endEp = start + days.length - 1;   // #527: the week is days.length long (a fiction week isn't 7)
+    // #527: the span title through the label cores ("Jul 5 – 11" | "Hammer 5 – 11"); the end month
+    // elides when the week stays inside one month, exactly the old CAL_MONTHS behavior.
+    const cs = calComponents(start), ce = calComponents(endEp);
+    const span = calDayShort(start) + ' – '
+      + (cs.month === ce.month && cs.year === ce.year ? String(ce.day) : calDayShort(endEp));
     title.textContent = span;
     grid.setAttribute('aria-label', 'Week of ' + span);
     grid.innerHTML = '';
@@ -23529,15 +23589,16 @@ function renderAgendaWeek(host, visible, totalDated) {
       for (const it of earlier) col.appendChild(mkItem(it));
       grid.appendChild(col);
     }
+    const heads = calWeekHeads();   // #527: fiction weekday names (was CAL_DOW[cell.dow] — out of bounds past dow 6, painting "undefined")
     for (const cell of days) {
       const st = agendaDayStats(cell.items);
       const col = document.createElement('div'); col.className = 'agw-col' + (cell.isToday ? ' today' : '') + (cell.isPast ? ' past' : '');
       col.setAttribute('role','group');
       const summary = (st.todo ? st.todo + ' to do' : '') + (st.todo && st.done ? ', ' : '') + (st.done ? st.done + ' done' : '');
-      const label = CAL_DOW_FULL[cell.dow] + ' ' + cell.dom + (cell.isToday ? ' (today)' : '') + (summary ? ', ' + summary : ', nothing');
+      const label = heads[cell.dow].full + ' ' + cell.dom + (cell.isToday ? ' (today)' : '') + (summary ? ', ' + summary : ', nothing');
       col.setAttribute('aria-label', label);
       const h = document.createElement('div'); h.className = 'agw-colhead'; h.setAttribute('aria-hidden','true');
-      h.innerHTML = `<span class="agw-dow">${CAL_DOW[cell.dow]}</span> <span class="agw-dom">${cell.dom}</span>`;
+      h.innerHTML = `<span class="agw-dow">${heads[cell.dow].short}</span> <span class="agw-dom">${cell.dom}</span>`;
       col.appendChild(h);
       fillAgendaDay(col, cell.epochDay, cell.items, mkItem, { repaint: paint });
       grid.appendChild(col);
@@ -23560,6 +23621,14 @@ function renderAgendaWeek(host, visible, totalDated) {
 
 function renderAgendaCalendar(host, visible, totalDated) {
   const wrap = document.createElement('div'); wrap.className = 'ag-calendar';
+  // #527: under a custom calendar the grid is week.length columns; the CSS var is set ONLY
+  // when a calendar is active, so a Gregorian doc never leaves the stock 7-column path. Past
+  // 8 columns the month scrolls horizontally (cal-wide) instead of shrinking below the fit floor.
+  const agCols = calWeekLen();
+  if (activeCalendar()) {
+    wrap.style.setProperty('--cal-cols', String(agCols));
+    wrap.classList.toggle('cal-wide', agCols > 8);
+  }
 
   // month-nav header: ‹‹ ‹ Month YYYY › ›› [Today]   (‹‹/›› jump a whole year)
   const head = document.createElement('div'); head.className = 'agc-head';
@@ -23594,7 +23663,7 @@ function renderAgendaCalendar(host, visible, totalDated) {
   const mkMonthBlock = (role) => {
     const block = document.createElement('div'); block.className = 'agc-month agc-month-' + role;
     const dow = document.createElement('div'); dow.className = 'agc-dow'; dow.setAttribute('aria-hidden', 'true');
-    for (const d of CAL_DOW) { const s = document.createElement('span'); s.textContent = d; dow.appendChild(s); }
+    for (const hd of calWeekHeads()) { const s = document.createElement('span'); s.textContent = hd.short; dow.appendChild(s); }   // #527: fiction weekday eyebrows (Gregorian arm = CAL_DOW exactly)
     const grid = document.createElement('div'); grid.className = 'agc-grid';
     if (role === 'cur') grid.setAttribute('role', 'grid');
     block.append(dow, grid);
@@ -23626,13 +23695,13 @@ function renderAgendaCalendar(host, visible, totalDated) {
     const idx = cells.indexOf(document.activeElement);
     if (idx === -1) return;
     e.preventDefault();
-    let next = idx;
+    let next = idx;   // #527: a row is one week of THIS calendar (agCols = 7 under Gregorian, unchanged)
     if (e.key === 'ArrowRight') next = idx + 1;
     if (e.key === 'ArrowLeft')  next = idx - 1;
-    if (e.key === 'ArrowDown')  next = idx + 7;
-    if (e.key === 'ArrowUp')    next = idx - 7;
-    if (e.key === 'Home') next = Math.floor(idx / 7) * 7;
-    if (e.key === 'End')  next = Math.floor(idx / 7) * 7 + 6;
+    if (e.key === 'ArrowDown')  next = idx + agCols;
+    if (e.key === 'ArrowUp')    next = idx - agCols;
+    if (e.key === 'Home') next = Math.floor(idx / agCols) * agCols;
+    if (e.key === 'End')  next = Math.floor(idx / agCols) * agCols + agCols - 1;
     if (next >= 0 && next < cells.length && next !== idx) {
       cells[idx].setAttribute('tabindex', '-1');
       cells[next].setAttribute('tabindex', '0');
@@ -23655,20 +23724,26 @@ function renderAgendaCalendar(host, visible, totalDated) {
   // Fill ONE month grid from `anchor`. `side` (prev/next) months are display-only: their
   // cells aren't focusable and a whole-month click switches to that month.
   function paintMonth(gridEl, anchor, side) {
-    const monthLabel = (() => { const vd = new Date(anchor * 86400000); return CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear(); })();
+    const monthLabel = calMonthTitle(anchor);   // #527: "July 2026" | "Hammer 1005" (era-display year)
     gridEl.setAttribute('aria-label', (side ? side + ' month, ' : 'Calendar for ') + monthLabel);
     gridEl.innerHTML = '';
     let firstInMonth = null, week = null;
-    agendaMonthCells(visible, anchor).forEach((cell, ci) => {
-      if (ci % 7 === 0) { week = document.createElement('div'); week.className = 'agc-week'; week.setAttribute('role', 'row'); gridEl.appendChild(week); }
+    const cells = agendaMonthCells(visible, anchor);
+    // #527: fiction months vary in week count (uneven months + first-day offset), so the row
+    // count is per-month, set on THIS grid. Gregorian never sets it (the CSS default 6 holds).
+    if (activeCalendar()) gridEl.style.setProperty('--cal-rows', String(Math.ceil(cells.length / agCols)));
+    cells.forEach((cell, ci) => {
+      if (ci % agCols === 0) { week = document.createElement('div'); week.className = 'agc-week'; week.setAttribute('role', 'row'); gridEl.appendChild(week); }
       const st = agendaDayStats(cell.items);
       const c = document.createElement('div');
       c.className = 'agc-cell' + (cell.inMonth ? '' : ' oom') + (cell.isToday ? ' today' : '') + (cell.items.length ? ' has-items' : '');
       c.setAttribute('role', 'gridcell');
       if (!side) c.setAttribute('tabindex', cell.isToday ? '0' : '-1');
-      const dt = new Date(cell.epochDay * 86400000);
       const summary = (st.todo ? st.todo + ' to do' : '') + (st.todo && st.done ? ', ' : '') + (st.done ? st.done + ' done' : '');
-      const cellLabel = CAL_DOW_FULL[dt.getUTCDay()] + ', ' + CAL_MONTHS[dt.getUTCMonth()] + ' ' + cell.dom
+      // #527: calDayLabel speaks the ACTIVE calendar ("Sul, Hammer 12, 1005"). One deliberate
+      // aria delta under Gregorian: the label now ends with the year (parity with the Schedule
+      // picker's cells), which the 3-month spread genuinely needs at year boundaries.
+      const cellLabel = calDayLabel(cell.epochDay)
         + (cell.isToday ? ' (today)' : '') + (summary ? ', ' + summary : '');
       c.setAttribute('aria-label', cellLabel);
       if (cell.inMonth && !firstInMonth) firstInMonth = c;

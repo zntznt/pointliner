@@ -7059,6 +7059,43 @@ test('root.calendar round-trips through the OPML head, validated on load (#527)'
   // No calendar → no element (mirrors headEl's empty-skip; a Gregorian doc stays clean).
   assert.ok(!c.toOpml(c.mkRoot()).includes('_calendar'), 'a Gregorian doc emits no <_calendar>');
 });
+test('calComponents defaults to the ACTIVE calendar like every other seam core (#527 PR-A regression)', () => {
+  // Caught live in the browser: calComponents predated the label cores and had NO default, so a
+  // one-arg call site (the week-span title, the Gantt month-start test) silently fell to Gregorian
+  // under an active fiction ("Uktar 21 – 19"). The default is the seam contract; pin it.
+  assert.ok(/function calComponents\(epoch, cal = activeCalendar\(\)\)/.test(_src),
+    'calComponents(epoch, cal = activeCalendar()) — a one-arg call must follow the active calendar');
+});
+test('the render-label cores: fiction labels + byte-identical Gregorian arms (#527 PR-A)', () => {
+  const named = c.normalizeCalendar({ ...HARPTOS, week: { length: 10, days: ['Sul','Mol','Dul'] } });
+  // calWeekLen: THE grid-geometry answer
+  assert.equal(c.calWeekLen(named), 10);
+  assert.equal(c.calWeekLen(null), 7);
+  // calWeekHeads: named days pair short/full; unnamed flow the ordinal fallback into BOTH,
+  // with a bare day NUMBER as the visual eyebrow (slicing "Day 10" to "Da" teaches nothing)
+  const heads = c.calWeekHeads(named);
+  assert.equal(heads.length, 10);
+  assert.deepEqual(host([heads[1].short, heads[1].full]), ['Mo', 'Mol']);
+  assert.deepEqual(host([heads[5].short, heads[5].full]), ['6', 'Day 6'], 'unnamed → number short, ordinal full — never "undefined"');
+  const g = c.calWeekHeads(null);
+  assert.deepEqual(host([g[0].short, g[0].full]), ['Su', 'Sunday'], 'Gregorian pairs unchanged');
+  // calMonthTitle: fiction month + ERA-display year; Gregorian byte-identical to CAL_MONTHS form
+  const cal = c.normalizeCalendar(HARPTOS); // era DR yearZero 1000
+  assert.equal(c.calMonthTitle(45, cal), 'M2 1001', 'fiction month name + era year');
+  assert.equal(c.calMonthTitle(20617, null), 'June 2026');
+  // calDayLabel: the spoken aria form, both arms
+  assert.equal(c.calDayLabel(45, named), 'Day 6, M2 16, 1001', 'ordinal weekday fallback reaches the aria label');
+  assert.equal(c.calDayLabel(20617, null), 'Saturday, June 13, 2026');
+  // calDayShort: fiction month stays WHOLE (an invented name sliced to 3 chars is unreadable)
+  assert.equal(c.calDayShort(45, cal), 'M2 16');
+  assert.equal(c.calDayShort(20617, null), 'Jun 13');
+  // totality: garbage epochs fall to the Gregorian arm's garbage, never throw
+  for (const bad of [NaN, Infinity]) {
+    assert.doesNotThrow(() => c.calMonthTitle(bad, cal));
+    assert.doesNotThrow(() => c.calDayLabel(bad, cal));
+    assert.doesNotThrow(() => c.calDayShort(bad, cal));
+  }
+});
 test('dueWindowDays — due:week/month spans the fiction week + current-month length (#527)', () => {
   const cal = c.normalizeCalendar(HARPTOS); // 10-day week, all months 30 days
   assert.equal(c.dueWindowDays('week', cal, 0), 10, 'a week is week.length days under a fiction');
