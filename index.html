@@ -5730,6 +5730,7 @@ const INSERT_CMDS = [
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
+  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     label:'Roll on your outline', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Random' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Random' },
@@ -14193,6 +14194,24 @@ function insertInlineArtifact(id, nodeId, content) {
         announceDebut('grammar', roll);   // UXP-110
       },
     });
+  } else if (id === 'rollpick') {
+    // {roll: query} is an anonymous grammar that reads the live outline (resolveBrace's
+    // roll branch) — reuse the query dialog: same search grammar, and its live match
+    // count doubles as a preview of the roll pool. The record built here is identical
+    // to typing the {roll: …} shorthand, so unfold/edit/reroll behave as if typed.
+    openQueryDialog({
+      title: 'Roll on your outline',
+      submitLabel: 'Roll',
+      onResult: expr => {
+        const n = nodeById(nodeId); if (!n) return;
+        const roll = makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin');
+        if (!roll) return;
+        roll.anon = true;
+        (n.grammar ||= []).push(roll);
+        applyInlineInsertion(nodeId, offset, `[[grammar:${roll.key}]]`);
+        announceDebut('grammar', roll);   // UXP-110
+      },
+    });
   } else if (id === 'grammar') {
     openGrammarDialog({
       title: 'New grammar',
@@ -14384,6 +14403,18 @@ function insertCellArtifact(id, node, r, c, offset) {
       submitLabel: 'Roll',
       tableFlavor: true,
       onResult: roll => { (node.grammar ||= []).push(roll); splice(`[[grammar:${roll.key}]]`); },
+    });
+  } else if (id === 'rollpick') {
+    // same anonymous-grammar record as the node-path rollpick branch
+    openQueryDialog({
+      title: 'Roll on your outline',
+      submitLabel: 'Roll',
+      onResult: expr => {
+        const roll = makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin');
+        if (!roll) return;
+        roll.anon = true;
+        (node.grammar ||= []).push(roll); splice(`[[grammar:${roll.key}]]`);
+      },
     });
   } else if (id === 'grammar') {
     openGrammarDialog({
@@ -16713,7 +16744,15 @@ function promoteBraceBody(node, body) {
   // the live outline is just a grammar rule that reads the tree. The `roll:` keyword is sniffed
   // before alternation (its query carries a top-level `|` for OR-clauses).
   if (rollParts(body)) {
-    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    // Freeze the first value with this brace's raw source hidden from its own query: while
+    // `{roll: #tag}` is still in node.text, the host line MATCHES the tag it queries and can
+    // be picked as its own first value (a 1-in-N lottery on every OPML load). The token
+    // replaces the source right after promotion, so the hazard exists only during this call.
+    const rawText = node.text;
+    node.text = rawText.replace(`{${body}}`, '');
+    let roll;
+    try { roll = makeGrammarRoll(`origin: {${body}}`, 'origin'); }
+    finally { node.text = rawText; }
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // {oracle: likely} → EXACTLY the anonymous Yes/No grammar the oracle dialog builds (#543):
@@ -24236,7 +24275,7 @@ const GUIDE = [
     ] },
   { id:'roll-query', cat:'generators',
     title:'Roll on your own outline',
-    body:"Pick a random point from your live outline instead of a typed list. Keep a list of open plot threads, NPCs, or ideas as ordinary points, then let one get chosen at random: great for solo tabletop play (advance a random thread, a random NPC reacts) or any \"surprise me from what I already wrote\" moment. Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}.",
+    body:"Pick a random point from your live outline instead of a typed list. Keep a list of open plot threads, NPCs, or ideas as ordinary points, then let one get chosen at random: great for solo tabletop play (advance a random thread, a random NPC reacts) or any \"surprise me from what I already wrote\" moment. Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random.",
     examples:[
       { syn:'{roll: is:todo}',          desc:'a random open thread from the points below' },
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
@@ -25316,6 +25355,12 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
   </outline>
   <outline text="## Advanced">
     <outline text="This is what no other outliner does: a generative and computational engine, all inside the {…} you already know.">
+      <outline text="Roll on your own outline: your document is the random table. Keep a list as ordinary points, then let it surprise you.">
+        <outline text="Goblin ambush #encounter"/>
+        <outline text="A wandering merchant #encounter"/>
+        <outline text="Sudden fog #encounter"/>
+        <outline text="Tonight's encounter: {roll: #encounter}. Click it to re-roll; add a point above and it joins the pool."/>
+      </outline>
       <outline text="Named tables and rules. Define a rule once, call it anywhere by name.">
         <outline text="weather: sunny | overcast | rain | fog"/>
         <outline text="Today it is: {weather}. Roll two words for a story spark: {weather} and a {sword | traveler | ruin}."/>
@@ -25329,12 +25374,11 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
       </outline>
       <outline text="A yes/no oracle for solo play, weighted toward yes: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}"/>
       <outline text="Compute over your outline, not just single numbers.">
-        <outline text="Total a property across the children below this point: {= sum(cost)}">
+        <outline text="Total a property across the children below this point: {= sum(cost)}. Average, count, min, max work the same way: {= avg(cost)}.">
           <outline text="Rope {prop cost: 4}"/>
           <outline text="Torch {prop cost: 2}"/>
-          <outline text="Rations {prop cost: 8}"/>
+          <outline text="Rations {prop cost: 9}"/>
         </outline>
-        <outline text="Average, count, min, max work too: avg is {= avg(cost)} over the same three."/>
         <outline text="Date math: days until the deadline is {= date(2026,12,31) - today}."/>
       </outline>
       <outline text="Variables tie numbers together. Change one, everything downstream updates.">
