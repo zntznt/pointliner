@@ -93,9 +93,15 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
   common irregulars shipped 2026-07-12 (curated closed dictionaries `IRREGULAR_PLURALS`/`IRREGULAR_PAST`
   checked before the regular heuristics; anything absent still falls through regular). Modifiers on
   non-references (alternation/dice/math directly) — name a rule first.
-- **F2 checks:** multiple checks per point (`evalMath` has no `&&`); upward / cross-parent references;
-  structural / existence checks (that is **F5**, enforced tree grammars). Date-valued *own*-props as
-  check variables (only *child* date props aggregate today).
+- **F2 checks:** ~~multiple checks per point~~ superseded — `and()`/`or()`/`not()` (#548) let one
+  expression assert several rules; ~~upward references~~ shipped — ancestor props resolve on the chip
+  (#461) and in `is:failing`/`is:passing` (#574). ~~Structural / existence checks (F5)~~ the F5-LITE
+  slice shipped 2026-07-12: `count("query")` (a QUOTED arg on the existing count) counts matching
+  descendants via the `expandAggExpr` substitution model, so `count("-has:hp") == 0` is an existence
+  rule and `count("is:todo") <= 5` a structural cap; full "enforced tree grammars" (schemas, required
+  child SHAPES beyond what a search can express) remain the F5 frontier. Still open: cross-parent
+  (sibling-subtree) references; date-valued *own*-props as check variables (only *child* date props
+  aggregate today).
 - **A8 knobs:** `random(lo,hi)` in `FN2`; a cycling-link pill; a user-facing RNG **seed** (pairs with C1).
 - **B3/B4/B5:** living-document line refs / running totals; deeper unit dimension-tracking; richer
   date/interval formatting.

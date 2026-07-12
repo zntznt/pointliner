@@ -2894,6 +2894,18 @@ function aggregateChildren(node, fn, prop, depth = 1) {
 function expandAggExpr(expr, node) {
   if (!expr) return expr;
   let e = String(expr);
+  // count("query") — the QUERY-count overload (F5-lite): a QUOTED argument counts the
+  // points matching a search within the node's subtree, substituted to a number here so
+  // evalMath never sees a string (the same translation model as every rollup below).
+  // Disambiguation is the quote itself (a bare identifier stays the child-prop count),
+  // mirroring the min/max numeric-vs-rollup split. With and()/or() this covers the cheap
+  // 80% of the F5 "structural / existence checks" frontier: `count("-has:hp") == 0`
+  // asserts every descendant carries hp; `count("is:todo") <= 5` caps a section's open
+  // tasks. A node-less caller (dialog validation) counts an empty scope → 0, like the
+  // rollups. v1 fence: the argument cannot contain a double quote (no "exact phrase").
+  if (/\bcount\s*\(\s*"/.test(e)) {
+    e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*\)/g, (_, q) => '(' + queryCountIn(q, node) + ')');
+  }
   // sum/avg/count are NOT evalMath functions — the rollup is their only meaning — so the
   // 2nd arg can be a keyword scope OR a numeric depth: sum(cost) = direct children (default),
   // sum(cost, subtree) = whole subtree, sum(cost, 2) = two levels. An UNRECOGNIZED scope leaves
@@ -9020,8 +9032,9 @@ function openCheckDialog(nodeId, targets = null) {
           { label: '<=',       insert: ' <= ' },
           { label: '==',       insert: ' == ' },
           { label: 'and( )',   insert: el => insertAndSelect(el, 'and(', 'test, test', ')') },
+          { label: 'count("")', insert: el => insertAndSelect(el, 'count("', 'is:todo', '")') },
         ],
-        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). Combine tests with and(…) or or(…), flip one with not(…). e.g. sum(cost) <= budget · and(hours <= 8, count(score) >= 3)',
+        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). Combine tests with and(…) or or(…), flip one with not(…). count("is:todo") counts the points matching a search below this one, so structure is testable: count("-has:hp") == 0. e.g. sum(cost) <= budget · and(hours <= 8, count(score) >= 3)',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -11042,6 +11055,26 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
 // handed — resolveBrace passes cookieNode (the current point's subtree) so `{roll: is:todo}` is
 // local; a `#tag` in the query still reaches wherever that tag lives within scope. Pure + node-based
 // (no DOM), so Node-testable like queryRows. Returns '' on no match (a visible empty, never a throw).
+// queryCountIn(expr, scope) — count the points matching a search among `scope`'s
+// DESCENDANTS (the scope point itself is excluded, matching the child-rollup family's
+// "over this point and its children" reading; full depth because a search is naturally
+// recursive). Unlike a queryRows walk rooted at the scope, sequences and variables are
+// DOC-WIDE (optional params for tests): a custom #STATE or variable declared elsewhere
+// in the document still drives the match. The F5-lite engine behind count("query") in
+// checks and math pills (see expandAggExpr). Pure when seqs/vars are passed.
+function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) {
+  const terms = parseSearchQuery(expr || '');
+  if (!terms.length || !scope) return 0;
+  let n = 0;
+  (function walk(node) {
+    for (const c of (node.children || [])) {
+      if (queryMatchesNode(terms, c, seqs, vars)) n++;
+      walk(c);
+    }
+  })(scope);
+  return n;
+}
+
 function pickFromQuery(expr, rootNode, hostId) {
   const terms = parseSearchQuery(expr || '');
   if (!terms.length) return '';
@@ -18180,7 +18213,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, sin, log, min, max, … · logic and(x>0, y>0), or(…), not(x) · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
+        hint: 'Functions: sqrt, sin, log, min, max, … · logic and(x>0, y>0), or(…), not(x) · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), count("is:todo") for a subtree query count, deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -24351,12 +24384,14 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
       { syn:'count(score) >= 3',   desc:'at least 3 scored children' },
       { syn:'and(hours <= 8, cost <= cap)', desc:'two tests in one check' },
+      { syn:'count("-has:hp") == 0', desc:'structure: every point below needs an hp' },
+      { syn:'count("is:todo") <= 5', desc:'cap the open tasks in this section' },
       { syn:'is:failing',          desc:'find everything that fails' },
     ] },
   { id:'datapacks', cat:'compute',

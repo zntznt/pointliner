@@ -6712,6 +6712,48 @@ test('#574: is:failing / is:passing see ancestor-inherited props, agreeing with 
   assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'passing' }, child, [], {}), false);
 });
 
+// ── F5-lite: count("query") — structural checks via the substitution model ──
+test('queryCountIn — counts matching descendants, any depth, scope point excluded', () => {
+  const tree = { id: 'qc-r', text: 'party #campaign', children: [
+    { id: 'qc-a', text: 'fighter', props: [{ key: 'hp', val: '10' }], children: [
+      { id: 'qc-a1', text: '- [ ] sharpen sword', children: [] },
+    ] },
+    { id: 'qc-b', text: 'wizard', props: [{ key: 'hp', val: '6' }], children: [] },
+    { id: 'qc-c', text: 'torchbearer', children: [] },              // no hp
+  ] };
+  assert.equal(c.queryCountIn('has:hp', tree, [], {}), 2);
+  assert.equal(c.queryCountIn('-has:hp', tree, [], {}), 2);          // torchbearer + the nested task point
+  assert.equal(c.queryCountIn('is:todo', tree, [], {}), 1);          // any depth, not just children
+  assert.equal(c.queryCountIn('#campaign', tree, [], {}), 0);        // the scope point itself is excluded
+  assert.equal(c.queryCountIn('nomatch', tree, [], {}), 0);
+  assert.equal(c.queryCountIn('has:hp', null, [], {}), 0);           // node-less validation counts nothing
+});
+
+test('expandAggExpr — a QUOTED count() is the query count; a bare ident stays the prop rollup', () => {
+  const tree = { id: 'qx-r', text: '', children: [
+    { id: 'qx-a', text: '- [ ] one', props: [{ key: 'score', val: '3' }], children: [] },
+    { id: 'qx-b', text: '- [x] two', props: [{ key: 'score', val: '4' }], children: [] },
+  ] };
+  assert.equal(c.evalMath(c.expandAggExpr('count("is:todo")', tree)), 1);
+  assert.equal(c.evalMath(c.expandAggExpr('count(score)', tree)), 2);          // untouched prop form
+  assert.equal(c.evalMath(c.expandAggExpr('count("is:todo") + count(score)', tree)), 3); // both in one expr
+  assert.equal(c.evalMath(c.expandAggExpr('count("nomatch")', tree)), 0);
+  assert.equal(c.evalMath(c.expandAggExpr('count("is:todo")', null)), 0);      // node-less → 0, like the rollups
+});
+
+test('evalCheck — structural assertions: existence and caps via count("query") (F5-lite)', () => {
+  const mk = (id, checkVal, kids) => ({ id, text: 'unit',
+    props: [{ key: 'check', val: checkVal }], children: kids });
+  const withHp = (id) => ({ id, text: 'member', props: [{ key: 'hp', val: '5' }], children: [] });
+  const noHp = (id) => ({ id, text: 'member', children: [] });
+  // existence: every descendant carries hp
+  assert.equal(c.evalCheck(mk('f5a', 'count("-has:hp") == 0', [withHp('e1'), withHp('e2')]), {}), 'pass');
+  assert.equal(c.evalCheck(mk('f5b', 'count("-has:hp") == 0', [withHp('e3'), noHp('e4')]), {}), 'fail');
+  // a cap, composed with and()
+  assert.equal(c.evalCheck(mk('f5c', 'and(count("is:todo") <= 1, count("-has:hp") == 0)',
+    [withHp('e5'), { id: 'e6', text: '- [ ] chore', props: [{ key: 'hp', val: '1' }], children: [] }]), {}), 'pass');
+});
+
 test('outline constraints: front-door + render + search wiring (src pins)', () => {
   assert.ok(_src.includes("id:'check'"), '/check slash verb missing from BLOCK_CMDS');
   assert.ok(_src.includes('function openCheckDialog'), 'openCheckDialog missing');
