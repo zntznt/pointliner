@@ -11703,6 +11703,9 @@ function classifyBraceBody(body, rules, vars) {
   if (dd0) return (!dd0.val || parseDueDate(dd0.val) !== null) ? 'artifact' : 'invalid';
   if (queryParts(body)) return 'artifact';                             // {query: is:todo}
   if (rollParts(body)) return 'artifact';                              // {roll: is:todo} — pick a random matching point
+  // {oracle: likely} — the band name is a closed set, so an unknown band is an ATTEMPT
+  // (typo styling), not prose; the text still stays literal on exit (#543, the #407 model).
+  if (/^oracle\s*:/i.test(body)) return oracleParts(body) ? 'artifact' : 'invalid';
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
@@ -11748,6 +11751,7 @@ function braceTypeLabel(body, rules, vars) {
   if (markovParts(body)) return ['markov', null];                      // {markov: a→b, b→c}
   if (seqDeclParts(body)) return ['seq', null];                        // {seq Flow: A B | C}
   if (queryParts(body)) return ['query', null];                        // {query: is:todo}
+  if (oracleParts(body)) return ['grammar', 'oracle'];                 // {oracle: likely} (#543)
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
@@ -15276,6 +15280,9 @@ function resolveBrace(body, ctx) {
   if (mkp) { const roll = makeTypedMarkovRoll(mkp.def); return roll ? roll.path.join(' → ') : `{markov?}`; }
   const qp = queryParts(body);
   if (qp) { const picked = pickFromQuery(qp.expr, cookieNode || root, cookieNode ? cookieNode.id : null); return picked || `{query: ${qp.expr}?}`; }
+  const orp = oracleParts(body);
+  if (orp) return expandTemplate(`{${orp.body}}`, ctx);   // #543: a Yes/No pick at the band's odds
+
   const ep = estParts(body);   // estParts returns the expr STRING (or null), not an object
   if (ep) { const s = sampleUncertain(ep, 400, ep, cookieNode || null); return s ? formatDist(s) : `{est?}`; }
   const alts = splitTopLevel(body, '|');
@@ -16206,6 +16213,22 @@ const ORACLE_SWING_BANDS = ORACLE_BANDS.map(b => {
 const ORACLE_CHIPS = ORACLE_BANDS.map(b => ({ label: b.label, insert: el => { el.value = b.body; } }));
 const ORACLE_SWING_CHIPS = ORACLE_SWING_BANDS.map(b => ({ label: b.label, insert: el => { el.value = b.body; } }));
 
+// oracleParts(body) — sniff the oracle's typed twin: {oracle: likely} / {oracle: likely + swing}
+// (#543). A reserved `oracle` keyword (like query:/roll:/markov:), then a band NAME matched
+// case-insensitively against ORACLE_BANDS — the names are the whole value of the door (nobody
+// remembers that Likely is 3:1), so the tail is a label lookup, never free-form odds (that's what
+// the plain {Yes N | No M} alternation is for). `+ swing` swaps in the six-way swing body at the
+// same likelihood, mirroring the dialog's chip rows. Returns { label, body, swing } or null
+// (unknown band → null; classifyBraceBody styles the attempt as invalid, and the text stays
+// literal on exit — the dateDeclParts model). Pure, Node-testable.
+function oracleParts(body) {
+  const m = /^oracle\s*:\s*([a-z]+)\s*(\+\s*swing)?\s*$/i.exec((body || '').trim());
+  if (!m) return null;
+  const bands = m[2] ? ORACLE_SWING_BANDS : ORACLE_BANDS;
+  const band = bands.find(b => b.label.toLowerCase() === m[1].toLowerCase());
+  return band ? { label: band.label, body: band.body, swing: !!m[2] } : null;
+}
+
 function openOracleDialog({ onResult }) {
   const build = body => makeGrammarRoll('origin: ' + body, 'origin');
   // UXP-111: two chip rows. The top row sets plain Yes/No odds; the "with complication" row
@@ -16223,7 +16246,7 @@ function openOracleDialog({ onResult }) {
     fields: [
       { key: 'body', label: 'Odds (Yes weight | No weight)', value: 'Yes 1 | No 1', chips,
         placeholder: 'Yes 3 | No 1',
-        hint: 'Pick a likelihood, or set the odds yourself. A "+ swing" chip adds the Yes-and / No-but twists (a six-way answer). The weight after each option tunes its chance, and can be a {= expression} over variables. Click the pill to ask again.',
+        hint: 'Pick a likelihood, or set the odds yourself. A "+ swing" chip adds the Yes-and / No-but twists (a six-way answer). The weight after each option tunes its chance, and can be a {= expression} over variables. Click the pill to ask again. You can also type one in a point: {oracle: likely} or {oracle: likely + swing}.',
         preview: v => {
           if (splitTopLevel(v, '|').length < 2) return `<span class="io-preview-bad">Two options, e.g. Yes 3 | No 1</span>`;
           const roll = build(v);
@@ -16485,6 +16508,14 @@ function promoteBraceBody(node, body) {
   // before alternation (its query carries a top-level `|` for OR-clauses).
   if (rollParts(body)) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  // {oracle: likely} → EXACTLY the anonymous Yes/No grammar the oracle dialog builds (#543):
+  // same record, so the pill tints via isYesNoOracle and unfolds to its true {Yes N | No M}
+  // source — the typed form is a constructor (the band name is the value), not a stored syntax.
+  const orp = oracleParts(body);
+  if (orp) {
+    const roll = makeGrammarRoll(`origin: ${orp.body}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // text modifier: {beast.cap} / {var.s} → an anonymous grammar wrapped `origin:
@@ -24040,9 +24071,11 @@ const GUIDE = [
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
-    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely, or Impossible), then click to ask. For a yes/no with a twist, pick a \"+ swing\" likelihood: it answers six ways (Yes and, Yes, Yes but, No but, No, No and) so a complication or a bonus rides along. Type @ and choose Oracle.",
+    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely, or Impossible), then click to ask. For a yes/no with a twist, pick a \"+ swing\" likelihood: it answers six ways (Yes and, Yes, Yes but, No but, No, No and) so a complication or a bonus rides along. Type @ and choose Oracle, or type the band name directly: {oracle: likely}.",
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
+      { syn:'{oracle: likely}',  desc:'type it: certain, likely, even, unlikely, impossible' },
+      { syn:'{oracle: even + swing}', desc:'the six-way answer, typed' },
       { syn:'Yes 4 | No 1',      desc:'custom odds (80% yes here)' },
     ] },
 

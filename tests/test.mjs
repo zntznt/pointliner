@@ -468,6 +468,51 @@ test('{roll:} promotes to an anonymous grammar pill (rides the grammar machinery
   assert.equal(c.classifyBraceBody('roll: is:todo', {}, {}), 'artifact');
 });
 
+// ── {oracle: band} — the oracle dialog's typed twin (#543) ──────────────────
+test('oracleParts — band names map to the exact dialog bodies, case-insensitive', () => {
+  assert.equal(c.oracleParts('oracle: likely').body, 'Yes 3 | No 1');
+  assert.equal(c.oracleParts('oracle: certain').body, 'Yes 19 | No 1');
+  assert.equal(c.oracleParts('oracle: even').body, 'Yes 1 | No 1');
+  assert.equal(c.oracleParts('oracle: unlikely').body, 'Yes 1 | No 3');
+  assert.equal(c.oracleParts('oracle: impossible').body, 'Yes 1 | No 19');
+  assert.equal(c.oracleParts('ORACLE:  Likely ').body, 'Yes 3 | No 1');   // case + whitespace
+  assert.equal(c.oracleParts('oracle: likely').swing, false);
+});
+
+test('oracleParts — + swing swaps in the six-way body at the same likelihood', () => {
+  const p = c.oracleParts('oracle: even + swing');
+  assert.equal(p.swing, true);
+  assert.match(p.body, /^Yes, and \d+ \| Yes \d+ \| Yes, but \d+ \| No, but \d+ \| No \d+ \| No, and \d+$/);
+});
+
+test('oracleParts — unknown band or malformed body is null (stays literal on exit)', () => {
+  assert.equal(c.oracleParts('oracle: maybe'), null);       // not a band
+  assert.equal(c.oracleParts('oracle:'), null);             // no band
+  assert.equal(c.oracleParts('oracle likely'), null);       // no colon → not the keyword form
+  assert.equal(c.oracleParts('oracles: likely'), null);     // not the reserved word
+  assert.equal(c.oracleParts('oracle: yes 3 | no 1'), null); // free-form odds are the plain alternation's job
+});
+
+test('promoteBraceBody — {oracle: band} builds the dialog-identical anonymous grammar (#543)', () => {
+  const node = { text: '', grammar: [] };
+  const tok = c.promoteBraceBody(node, 'oracle: likely');
+  assert.match(tok, /^\[\[grammar:/, 'promotes to a grammar pill');
+  assert.equal(node.grammar[0].def, 'origin: Yes 3 | No 1', 'the record IS what the dialog builds');
+  assert.equal(node.grammar[0].anon, true);
+  assert.match(node.grammar[0].result, /^(Yes|No)$/);
+  // classify agrees; an unknown band styles as an ATTEMPT (typo marker), not prose
+  assert.equal(c.classifyBraceBody('oracle: likely', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('oracle: maybe', {}, {}), 'invalid');
+  assert.deepEqual(host(c.braceTypeLabel('oracle: likely', {}, {})), ['grammar', 'oracle']);
+});
+
+test('resolveBrace — a nested {oracle: band} resolves to a Yes/No pick (#543)', () => {
+  const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
+  for (let i = 0; i < 10; i++) assert.match(c.resolveBrace('oracle: even', ctx), /^(Yes|No)$/);
+  c.seedSequence([0]);   // r=0 lands on the first alternative → Yes
+  try { assert.equal(c.resolveBrace('oracle: even', ctx), 'Yes'); } finally { c.resetRandom(); }
+});
+
 test('runGrammar — a braced conditional inside a rule resolves against document vars', () => {
   assert.equal(c.runGrammar('origin: The {danger > 3: dragon stirs | meadow is calm}.', 'origin', {}, { danger: 5 }), 'The dragon stirs.');
   assert.equal(c.runGrammar('origin: The {danger > 3: dragon stirs | meadow is calm}.', 'origin', {}, { danger: 1 }), 'The meadow is calm.');

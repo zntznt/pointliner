@@ -366,6 +366,16 @@ pill at a likelihood you choose (Likely, 50/50, Unlikely, …). Click to ask aga
 it's a weighted alternation (`Yes 3 | No 1`); you can tune the odds, including with a `{= expr}`
 dynamic weight.
 
+You can also **type an oracle by its band name**, no dialog needed:
+
+```
+{oracle: likely}           → the same Yes 3 | No 1 pill the dialog builds
+{oracle: even + swing}     → the six-way answer (Yes and / Yes / Yes but / No but / No / No and)
+```
+
+The bands are `certain`, `likely`, `even`, `unlikely`, `impossible` (any capitalization). The pill
+is a normal oracle: it edits back to its `{Yes N | No M}` odds, which you can then tune by hand.
+
 ---
 
 ## Putting it together: a quick NPC generator
