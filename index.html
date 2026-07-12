@@ -998,6 +998,10 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .prop-chip.prop-check-fail .prop-check-glyph,.prop-chip.prop-check-fail .prop-val{color:var(--bad);font-weight:600}
 .prop-chip.prop-check-error{background:color-mix(in srgb,var(--warn) 16%,transparent)}
 .prop-chip.prop-check-error .prop-check-glyph,.prop-chip.prop-check-error .prop-val{color:var(--warn)}
+/* #527: a due/start value the ACTIVE calendar can't read — the check-error warn recipe (a
+   permanent truth-teller after a calendar switch, not a one-time dialog warning) */
+.prop-chip.prop-date-bad{background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.prop-chip.prop-date-bad .prop-val{color:var(--warn)}
 .node-props-row>.collapse-btn,.node-props-row>.ol-num{visibility:hidden}
 .node-props-row>.bullet{cursor:default}
 /* Property chips are METADATA of the point above, not a peer/child row. The tag icon
@@ -8986,6 +8990,13 @@ function buildPropsArea(node) {
         chip.classList.add('prop-' + propK + '-' + df.state);
         chip.title = df.iso + '. Click to edit';
         chip.setAttribute('aria-label', `${propK}: ${dateLabel} (${df.iso}). Click to edit properties`);
+      } else if (String(val).trim()) {
+        // #527 (review #5, the P4 half): a date the ACTIVE calendar can't read stays visible
+        // and flagged FOREVER — the audit dialog closes, but the chip keeps telling the truth
+        // (the prop-repeat-bad precedent). Off the agenda until re-dated; never silently plain.
+        chip.classList.add('prop-date-bad');
+        chip.title = 'Not a date this calendar can read. Click to fix. ' + dateFormsHint();
+        chip.setAttribute('aria-label', `${propK}: ${val} (not readable in this calendar). Click to fix`);
       }
     }
     if (propK === ALIAS_KEY) {
@@ -9329,6 +9340,32 @@ function openCalendarAuditConfirm(next, audit, onConfirm) {
   ioCard.setAttribute('aria-label', 'Check your dates');
   ioBack.classList.add('on');
   requestAnimationFrame(() => cancelBtn.focus());
+}
+
+// The campaign-clock advance menu (#527): "time passes" in the units a table actually uses.
+// Rides the shared mt-colpanel menu chrome (the universal click/tap + Enter/Space door).
+// Advancing `current` changes NO bijection — every stored absolute date keeps its meaning —
+// so it deliberately skips the applyCalendarChange audit; it is its own undo step + flash.
+// Arbitrary jumps go through "Set the date" (the dialog's Today field).
+function showAdvanceMenu(anchorEl) {
+  const cal = activeCalendar();
+  if (!cal || !Number.isInteger(cal.current)) return;
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const advance = (n) => {
+    pushUndo();
+    root.calendar = { ...cal, current: cal.current + n };
+    markDirty(); render();
+    if (typeof renderAgenda === 'function') renderAgenda();
+    flashHint('✓ ' + (n === 1 ? 'A day passes' : n + ' days pass') + '. Today is ' + calDayShort(cal.current + n) + ', ' + calComponents(cal.current + n).year);
+  };
+  addSection('Time passes');
+  addItem('+1 day', { onApply: () => advance(1) });
+  addItem('+3 days', { onApply: () => advance(3) });
+  addItem('+1 week (' + cal.week.length + ' days)', { onApply: () => advance(cal.week.length) });
+  addItem('Set the date…', { onApply: () => openCalendarDialog() });
+  mtOpenMenu(panel, anchorEl);
 }
 
 function openCalendarDialog() {
@@ -23506,6 +23543,23 @@ function renderAgenda() {
     wT.title = 'Cycle the Timeline titles-column width (narrow, default, wide)';
     wT.setAttribute('aria-label', 'Titles column width: ' + wName + '. Activate to cycle.');
     sortRow.append(wT);
+  }
+  // #527: the campaign clock — a fiction has no wall clock, so `current` IS "today", and at
+  // the table it advances constantly ("three days pass"). The chip shows the in-world date
+  // right where it does its work (every urgency tint counts from it: cause beside effect);
+  // activating it opens the advance menu. Shown only under a calendar with a current day.
+  const calClk = activeCalendar();
+  if (calClk && Number.isInteger(calClk.current)) {
+    const clockRow = document.createElement('div'); clockRow.className = 'ag-filters';
+    clockRow.setAttribute('role', 'group'); clockRow.setAttribute('aria-label', 'The in-world date');
+    const cc = calComponents(calClk.current);
+    const clock = mkAgToggle(calDayShort(calClk.current) + ', ' + cc.year, true, () => showAdvanceMenu(clock));
+    clock.removeAttribute('aria-pressed');            // it opens a menu; it is not a pressed-state toggle
+    clock.setAttribute('aria-haspopup', 'menu');
+    clock.setAttribute('aria-label', 'Today in ' + (calClk.name || 'this calendar') + ': ' + calDayLabel(calClk.current) + '. Advance the clock');
+    clock.title = 'Today in ' + (calClk.name || 'this calendar') + '. Click to let time pass';
+    clockRow.append(mkGrpLbl('Today'), clock);
+    controls.append(clockRow);
   }
   controls.append(sw, filters, sortRow);
 
