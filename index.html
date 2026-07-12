@@ -25343,6 +25343,33 @@ scToggle.addEventListener('click', e => { e.stopPropagation(); toggleGuide('shor
 scToggle.addEventListener('keydown', e => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleGuide('shortcuts'); }
 });
+// Mark every occurrence of `q` (already lowercased) in the guide entry's text, like document
+// search's highlightContent: walk text nodes and split each into text + <mark> + rest, so it
+// operates on textContent (never innerHTML) and can't inject. Marks all hits (a guide entry is
+// short) rather than only the earliest.
+function highlightGuideMatch(root, q) {
+  if (!q) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  for (const tn of nodes) {
+    const text = tn.textContent;
+    const lo = text.toLowerCase();
+    if (!lo.includes(q)) continue;
+    const frag = document.createDocumentFragment();
+    let from = 0, i;
+    while ((i = lo.indexOf(q, from)) !== -1) {
+      if (i > from) frag.appendChild(document.createTextNode(text.slice(from, i)));
+      const mark = document.createElement('mark');
+      mark.textContent = text.slice(i, i + q.length);
+      frag.appendChild(mark);
+      from = i + q.length;
+    }
+    if (from < text.length) frag.appendChild(document.createTextNode(text.slice(from)));
+    tn.parentNode.replaceChild(frag, tn);
+  }
+}
 // The guide is the one help surface. `?` (and the help chords) toggle it: open on
 // `shortcuts` if closed, close if already open. `guideOpen()` reads the modal's own state.
 function guideOpen() { return ioBack.classList.contains('on') && ioCard.classList.contains('guide-open'); }
@@ -25433,6 +25460,10 @@ function openGuide(initialId) {
       '<div class="guide-cat-badge">' + escHtml(catLabels[e.cat] || e.cat) + '</div>' +
       '<div class="guide-entry-title">' + escHtml(e.title||'') + '</div>' +
       bodyHtml + exHtml + '</div>';
+    // When a search is active, mark the matched text in the shown entry (like document search),
+    // so a hit shows WHERE it matched, not just which entry survived the filter.
+    const q = filterQ.trim().toLowerCase();
+    if (q) highlightGuideMatch(pane, q);
     pane.scrollTop = 0;
   }
   // Selecting only flips the .active class (no nav rebuild) so keyboard focus
