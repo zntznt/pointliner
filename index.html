@@ -3315,6 +3315,54 @@ function calComponents(epoch, cal) {
   };
 }
 
+// ── the render-label layer (#527 PR-A): every grid/tick/aria label the calendar touches ─────
+// Five shared cores so the six render sites (agenda Month/Week, the Bases calendar view, the
+// Schedule date picker, the Gantt ticks) make ZERO calendar decisions of their own — they ask
+// these. Each has a byte-identical Gregorian arm (cal=null), pinned like the rest of the seam.
+
+// The week's column count — THE grid-geometry question, asked by CSS var setters + keyboard nav.
+function calWeekLen(cal = activeCalendar()) { return cal ? cal.week.length : 7; }
+
+// Header pairs for a day-of-week row: short = the 2-char visual eyebrow, full = the aria-label.
+// A fiction week with unnamed days flows calWeekdayName's ordinal fallback into BOTH (the RISK-1
+// contract: never let an absent name reach an aria-label as "undefined"). Pure.
+function calWeekHeads(cal = activeCalendar()) {
+  if (cal) return Array.from({ length: cal.week.length }, (_, i) => {
+    const full = calWeekdayName(cal, i);            // "Sul" or the "Day 3" fallback
+    return { short: /^Day \d+$/.test(full) ? String(i + 1) : full.slice(0, 2), full };
+  });
+  return CAL_DOW.map((d, i) => ({ short: d, full: CAL_DOW_FULL[i] }));
+}
+
+// The month-pane title: "July 2026" | "Hammer 1005" (era-display year, matching every other label).
+// Garbage epoch under a fiction → the Gregorian arm's own garbage (never throws), like calComponents.
+function calMonthTitle(epochDay, cal = activeCalendar()) {
+  const cc = cal && epochToCal(Math.round(epochDay || 0), cal);
+  if (cc) return calMonthName(cal, cc.month) + ' ' + (cal.eras.length ? calEraYear(cc.year, cal) : cc.year);
+  const d = new Date((epochDay || 0) * 86400000);
+  return CAL_MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+
+// A full spoken date for aria-labels: "Sunday, July 12, 2026" | "Sul, Hammer 12, 1005". Pure.
+function calDayLabel(epochDay, cal = activeCalendar()) {
+  const cc = cal && epochToCal(Math.round(epochDay || 0), cal);
+  if (cc) {
+    const y = cal.eras.length ? calEraYear(cc.year, cal) : cc.year;
+    return `${calWeekdayName(cal, cc.weekday)}, ${calMonthName(cal, cc.month)} ${cc.day}, ${y}`;
+  }
+  const d = new Date((epochDay || 0) * 86400000);
+  return `${CAL_DOW_FULL[d.getUTCDay()]}, ${CAL_MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+// The compact tick/hover form: "Jul 12" | "Hammer 12" (fiction month names stay whole — slicing
+// an invented name to 3 chars makes it unreadable; Gregorian keeps its familiar Jul/Aug). Pure.
+function calDayShort(epochDay, cal = activeCalendar()) {
+  const cc = cal && epochToCal(Math.round(epochDay || 0), cal);
+  if (cc) return `${calMonthName(cal, cc.month)} ${cc.day}`;
+  const d = new Date((epochDay || 0) * 86400000);
+  return `${(CAL_MONTHS[d.getUTCMonth()] || '').slice(0, 3)} ${d.getUTCDate()}`;   // || '': a garbage epoch indexes nothing — garbage out, never a throw
+}
+
 // The search-window span for `due:week` / `due:month` (QX-2). "This week / month" means today
 // through today + N days; N is 7 / 30 under Gregorian. Under a fiction a week is week.length days,
 // and a month is the length of the month `today` falls in (months can differ, so use the current
