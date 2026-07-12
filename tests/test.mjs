@@ -149,12 +149,24 @@ test('rollParsed — reroll composes with keep-high (4d6r1kh3)', () => {
   } finally { c.resetRandom(); }
 });
 
-test('rollParsed — total stays within bounds over many rolls', () => {
-  c.resetRandom();
-  for (let i = 0; i < 200; i++) {
+test('rollParsed — total stays within bounds, with the exact min and max pinned', () => {
+  // Deterministic boundary pins (seeded), instead of looping against the live RNG: all dice
+  // rolling their lowest face → the min (3×1+2 = 5), highest face → the max (3×6+2 = 20).
+  try {
+    c.seedSequence([0]);          // Math.random → 0 → every d6 lands on 1
+    assert.equal(c.rollParsed(c.parseDice('3d6+2')).total, 5, '3d6+2 minimum');
+    c.seedSequence([0.999999]);   // → every d6 lands on 6
+    assert.equal(c.rollParsed(c.parseDice('3d6+2')).total, 20, '3d6+2 maximum');
+  } finally {
+    c.resetRandom();
+  }
+  // and the bounds property holds across seeded mid values
+  for (const r of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+    c.seedSequence([r]);
     const total = c.rollParsed(c.parseDice('3d6+2')).total;
     assert.ok(total >= 5 && total <= 20, `3d6+2 out of range: ${total}`);
   }
+  c.resetRandom();
 });
 
 // ── math evaluator ─────────────────────────────────────────────────────────
@@ -1742,7 +1754,7 @@ test('evalMath — hoisted FN tables still dispatch (sanity after module-scope h
   assert.equal(c.evalMath('c2f(0)'), 32);    // FN1 unit conversion
   assert.ok(Math.abs(c.evalMath('km2mi(1.609344)') - 1) < 1e-9);
   assert.equal(c.evalMath('atan2(0,1)'), 0); // FN2
-  assert.equal(c.evalMath('date(2026,1,1)') + 0, c.evalMath('date(2026,1,1)')); // FN3 resolves
+  assert.equal(c.formatEpochDays(c.evalMath('date(2026,1,1)')), '2026-01-01'); // FN3 resolves to the right epoch-day
 });
 test('date — asdate() is numeric identity, so it still composes', () => {
   assert.equal(c.evalMath('asdate(date(2026,12,25))'), c.evalMath('date(2026,12,25)'));
@@ -3178,8 +3190,10 @@ test('sequenceLint: flags a whitespace-split state, quiet for single-word states
   // a parse failure is the dialog's hard error, not the lint's job → null
   assert.equal(c.sequenceLint('no pipe here'), null);
   assert.equal(c.sequenceLint('TODO | '), null);
-  // a legit multi-STATE side (the canonical default) also reports the split — accurate, not an error
-  assert.ok(c.sequenceLint('TODO NEXT WAITING | DONE'));
+  // a legit multi-STATE side (the canonical default) reports the split as an informational
+  // message (4 states enumerated), NOT a hard error — pin the actual content, not just truthiness
+  const lint = c.sequenceLint('TODO NEXT WAITING | DONE');
+  assert.match(lint, /4 states: TODO, NEXT, WAITING, DONE/);
 });
 
 // ── typed sequence declaration: {seq Flow: BACKLOG DOING | SHIPPED} ──────────
@@ -3590,7 +3604,10 @@ test('parseDice: a string-valued variable modifier fails to null', () => {
 test('formatVarValue: strings pass through, numbers format as math results', () => {
   assert.equal(c.formatVarValue('dragon'), 'dragon');
   assert.equal(c.formatVarValue(42), '42');
-  assert.equal(c.formatVarValue(2 / 3), c.formatMathResult(2 / 3));
+  // pin the literal output (a rounding regression in formatMathResult would otherwise change
+  // both sides of a self-comparison together and pass); the delegation is still verified below
+  assert.equal(c.formatVarValue(2 / 3), '0.66666667');
+  assert.equal(c.formatVarValue(2 / 3), c.formatMathResult(2 / 3)); // numbers route through formatMathResult
 });
 
 test('flattenArtifacts: a pick declaration exports its frozen value', () => {
@@ -10437,15 +10454,21 @@ test('#522: {name := "string"} classifies artifact, matching promote (the advert
 
 // ── #523: nested generators resolve in resolveBrace (no raw-source leak) ──
 test('#523: a nested markov/est body resolves instead of leaking raw source', () => {
-  c.setRandom(c.seedSequence([0.1, 0.4, 0.2, 0.7, 0.3]));
-  const ctx = { rules: {}, vars: {} };
-  const mk = c.resolveBrace('markov: a->b, b->c', ctx);
-  assert.ok(!mk.includes('markov:'), 'a nested markov must not leak its raw source');
-  assert.ok(/→/.test(mk), 'it resolves to a walked path');
-  const es = c.resolveBrace('5 to 10', ctx);
-  assert.notEqual(es, '5 to 10', 'a nested est must not leak its raw source');
-  assert.ok(/\(.*–.*\)/.test(es), 'it resolves to a distribution summary');
-  c.resetRandom();
+  // seedSequence returns undefined, so `setRandom(seedSequence(...))` would DISABLE seeding
+  // (setRandom(undefined) → real Math.random). Call seedSequence directly; reset in finally so
+  // a thrown assertion can't leak the seeded RNG into the next test.
+  c.seedSequence([0.1, 0.4, 0.2, 0.7, 0.3]);
+  try {
+    const ctx = { rules: {}, vars: {} };
+    const mk = c.resolveBrace('markov: a->b, b->c', ctx);
+    assert.ok(!mk.includes('markov:'), 'a nested markov must not leak its raw source');
+    assert.ok(/→/.test(mk), 'it resolves to a walked path');
+    const es = c.resolveBrace('5 to 10', ctx);
+    assert.notEqual(es, '5 to 10', 'a nested est must not leak its raw source');
+    assert.ok(/\(.*–.*\)/.test(es), 'it resolves to a distribution summary');
+  } finally {
+    c.resetRandom();
+  }
 });
 
 test('#523: declaration forms are deliberately NOT resolved nested (top-level-only), and the fix does not regress the working forms', () => {
