@@ -9307,30 +9307,34 @@ function applyCalendarChange(next) {
 // state, like the doc switcher's delete confirm.
 function openCalendarAuditConfirm(next, audit, onConfirm) {
   ioCard.innerHTML = '';
+  // the house destructive-confirm recipes (openConfirmDialog): the warn/bad-tinted ⚠ icon,
+  // the 13px msg body (a warning is CONTENT, never the 11px .io-hint helper voice), and a
+  // DANGER proceed button — proceeding despite the warning is the "Keep my version" class.
   const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, { fa: 'fa-solid fa-calendar-days', fb: '📅' });
+  const ic = document.createElement('div'); ic.className = 'cmd-icon';
+  ic.style.cssText = 'background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)';
+  setIcon(ic, { fa: 'fa-solid fa-triangle-exclamation', fb: '⚠' });
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Check your dates';
   head.append(ic, ttl); ioCard.appendChild(head);
 
-  const body = document.createElement('div'); body.className = 'io-field';
   const parts = [];
   if (audit.changed.length) parts.push(audit.changed.length + ' dated point' + (audit.changed.length === 1 ? '' : 's') + ' will read as a different day');
   if (audit.broken.length) parts.push(audit.broken.length + ' will be unreadable (kept as text, off the agenda until re-dated)');
-  const p = document.createElement('div'); p.className = 'io-hint';
+  const p = document.createElement('p');
+  p.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 10px;line-height:1.55';
   p.textContent = (next ? 'Under "' + (next.name || 'Calendar') + '": ' : 'Back on the regular calendar: ') + parts.join('; ') + '. Your points and their text are untouched, and undo reverses this.';
-  body.appendChild(p);
+  ioCard.appendChild(p);
   const worst = [...audit.broken, ...audit.changed];
-  const list = document.createElement('div'); list.className = 'io-hint';
+  const list = document.createElement('p');
+  list.style.cssText = 'font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.55;white-space:pre-line';
   const cap = 5;
   list.textContent = worst.slice(0, cap).map(w => '• ' + (w.title || '(untitled)').slice(0, 60) + ' (' + w.key + ': ' + w.val + ')').join('\n');
-  list.style.whiteSpace = 'pre-line';
   if (worst.length > cap) list.textContent += '\n+' + (worst.length - cap) + ' more';
-  body.appendChild(list);
-  ioCard.appendChild(body);
+  ioCard.appendChild(list);
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = next ? 'Use it anyway' : 'Remove it anyway';
+  const okBtn = document.createElement('button'); okBtn.className = 'io-btn danger'; okBtn.textContent = next ? 'Use it anyway' : 'Remove it anyway';
   cancelBtn.addEventListener('click', closeIo);
   okBtn.addEventListener('click', () => { closeIo(); onConfirm(); });
   foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
@@ -9371,26 +9375,29 @@ function showAdvanceMenu(anchorEl) {
 function openCalendarDialog() {
   const cur = activeCalendar();
   const t = calendarToText(cur);
-  // per-field previews (P4: the parse error names its line as you type)
-  const err = (msg) => '<span style="color:var(--bad)">' + escHtml(msg) + '</span>';
+  // per-field previews (P4: the parse error names its line as you type). One preview language:
+  // the shared .io-preview-note / .io-preview-bad pair the data-packs dialog defined — never
+  // ad-hoc inline error ink (design-language: one recipe per meaning).
+  const err = (msg) => '<span class="io-preview-bad">' + escHtml(msg) + '</span>';
+  const ok  = (msg) => '<span class="io-preview-note">' + escHtml(msg) + '</span>';
   const monthsPrev = v => {
     const r = parseCalMonths(v);
     if (r.error) return err(r.error);
     const days = r.value.reduce((n, m) => n + m.days, 0);
-    return escHtml(r.value.length + ' month' + (r.value.length === 1 ? '' : 's') + ', a ' + days + '-day year');
+    return ok(r.value.length + ' month' + (r.value.length === 1 ? '' : 's') + ', a ' + days + '-day year');
   };
   const weekPrev = v => {
     const r = parseCalWeek(v);
     if (r.error) return err(r.error);
     const w = r.value;
     const named = w.days.length;
-    return escHtml(w.length + '-day week' + (named ? (named === w.length ? ', all named' : ', first ' + named + ' named (the rest show as Day ' + (named + 1) + '…)') : ''));
+    return ok(w.length + '-day week' + (named ? (named === w.length ? ', all named' : ', first ' + named + ' named (the rest show as Day ' + (named + 1) + '…)') : ''));
   };
   const erasPrev = v => {
     const r = parseCalEras(v);
     if (r.error) return err(r.error);
-    if (!r.value.length) return escHtml('No era: years display as counted from year 1.');
-    return escHtml(r.value.map(e => 'year 1 shows as ' + (1 + e.yearZero) + ' ' + e.name).join(' · '));
+    if (!r.value.length) return ok('No era: years display as counted from year 1.');
+    return ok(r.value.map(e => 'year 1 shows as ' + (1 + e.yearZero) + ' ' + e.name).join(' · '));
   };
   // "today" resolves against the DRAFT built from the other fields — the one line that
   // catches every year-anchor confusion before commit.
@@ -9404,7 +9411,7 @@ function openCalendarDialog() {
   const currentPrev = v => {
     const draft = buildCalendarFromFields({ ...fieldVals(), current: v });
     if (!draft) return err('Not a day in this calendar. Use Year-Month-Day, like the placeholder.');
-    return escHtml('Today in this calendar: ' + calDayLabel(draft.current, draft));
+    return ok('Today in this calendar: ' + calDayLabel(draft.current, draft));
   };
   const fillFields = (preset) => {
     for (const k of ['name', 'months', 'week', 'eras', 'current']) {
@@ -9419,12 +9426,12 @@ function openCalendarDialog() {
     submitLabel: cur ? 'Save changes' : 'Use this calendar',
     fields: [
       { key: 'name', label: 'Calendar name', value: t.name, placeholder: 'Calendar of the Vale', required: true,
-        chips: CAL_PRESETS.map(p => ({ label: p.label, insert: () => fillFields(p) })) },
+        chips: CAL_PRESETS.map(p => ({ label: p.label, title: 'Fill every field with this example calendar', insert: () => fillFields(p) })) },
       { key: 'months', label: 'Months, one per line', type: 'textarea', rows: 6, value: t.months, required: true,
         placeholder: 'Firstfrost: 30\nDeepwinter: 30\nThawing: 30', preview: monthsPrev },
       { key: 'week', label: 'Week', value: t.week, placeholder: 'Moonday Tilday Windday Seaday Hearthday Forgeday Restday',
         preview: weekPrev, hint: 'Day names, a bare length like 10, or "10: Sul Mol" to name only the first days. Blank keeps a 7-day week.' },
-      { key: 'eras', label: 'Era, optional', type: 'textarea', rows: 1, value: t.eras, placeholder: 'AE: 1200', preview: erasPrev,
+      { key: 'eras', label: 'Era, optional', type: 'textarea', rows: 2, value: t.eras, placeholder: 'AE: 1200', preview: erasPrev,
         hint: 'Name and offset: with "AE: 1200", year 4 displays as 1204 AE.' },
       { key: 'current', label: 'Today in this world', value: t.current, placeholder: '1204-04-12', required: true, preview: currentPrev,
         hint: 'The in-world day your dates and agenda count from. Advance it as your story moves.' },
@@ -9433,13 +9440,14 @@ function openCalendarDialog() {
     onSubmit: vals => { const next = buildCalendarFromFields(vals); if (next) applyCalendarChange(next); },
   });
   // Editing an ACTIVE calendar also offers removal (the same applyCalendarChange path, so
-  // deactivation gets the same audit). Injected into the standard footer, before Cancel.
+  // deactivation gets the same audit). House footer grammar: Cancel leads, the primary commit
+  // sits last, and a DESTRUCTIVE config removal wears the io-btn danger recipe in between.
   if (cur) {
     const foot = ioCard.querySelector('.io-foot');
-    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'io-btn'; rm.textContent = 'Remove calendar';
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'io-btn danger'; rm.textContent = 'Remove calendar';
     rm.title = 'Go back to the regular calendar';
     rm.addEventListener('click', () => { closeIo(); applyCalendarChange(null); });
-    foot.insertBefore(rm, foot.firstChild);
+    foot.insertBefore(rm, foot.querySelector('.io-btn.primary'));
   }
 }
 
@@ -15406,7 +15414,7 @@ function openInsertDialog(opts) {
       const row = document.createElement('div'); row.className = 'io-chips';
       f.chips.forEach(chip => {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'io-chip'; b.textContent = chip.label;
-        b.title = 'Insert';
+        b.title = chip.title || 'Insert';   // a chip may do more than insert (the calendar presets fill the form) — let it say so (P4)
         b.addEventListener('mousedown', e => {
           e.preventDefault(); // keep the field focused / caret intact
           if (typeof chip.insert === 'function') chip.insert(inp); else insertAtCaret(inp, chip.insert);
@@ -23553,9 +23561,14 @@ function renderAgenda() {
     const clockRow = document.createElement('div'); clockRow.className = 'ag-filters';
     clockRow.setAttribute('role', 'group'); clockRow.setAttribute('aria-label', 'The in-world date');
     const cc = calComponents(calClk.current);
-    const clock = mkAgToggle(calDayShort(calClk.current) + ', ' + cc.year, true, () => showAdvanceMenu(clock));
+    // NEUTRAL chip, not the active-toggle tint: `on` means "this toggle is pressed" everywhere
+    // else in the strip, and the clock has no pressed state — it opens a menu. The visible ▾ is
+    // the menu door (the #416 precedent), aria-hidden so the accessible name stays the date.
+    const clock = mkAgToggle(calDayShort(calClk.current) + ', ' + cc.year, false, () => showAdvanceMenu(clock));
     clock.removeAttribute('aria-pressed');            // it opens a menu; it is not a pressed-state toggle
     clock.setAttribute('aria-haspopup', 'menu');
+    const caret = document.createElement('span'); caret.textContent = ' ▾'; caret.setAttribute('aria-hidden', 'true');
+    clock.appendChild(caret);
     clock.setAttribute('aria-label', 'Today in ' + (calClk.name || 'this calendar') + ': ' + calDayLabel(calClk.current) + '. Advance the clock');
     clock.title = 'Today in ' + (calClk.name || 'this calendar') + '. Click to let time pass';
     clockRow.append(mkGrpLbl('Today'), clock);
