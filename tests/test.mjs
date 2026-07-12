@@ -6928,6 +6928,23 @@ test('addMonths — clamps day to the fiction month length, wraps the year (#527
   const jan31 = c.parseDueDate('2026-01-31', null);
   assert.equal(c.formatEpochDays(c.addMonths(jan31, 1, null), null), '2026-02-28', 'Gregorian clamp intact');
 });
+test('root.calendar round-trips through the OPML head, validated on load (#527)', () => {
+  // Serialize a root carrying a calendar; the <_calendar> head element holds the JSON.
+  const root = c.mkRoot();
+  root.calendar = c.normalizeCalendar(HARPTOS);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_calendar>'), 'a root with a calendar emits the <_calendar> head element');
+  // The emitted JSON (ex() entity-encodes the quotes) parses back through normalizeCalendar — the
+  // SAME function that is the load-time validator, so a round-trip preserves the calendar identity.
+  const m = xml.match(/<_calendar>([\s\S]*?)<\/_calendar>/);
+  const decoded = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const back = c.normalizeCalendar(JSON.parse(decoded));
+  assert.equal(back.id, 'harptos');
+  assert.equal(back.current, 5000, 'the in-fiction now survives the round-trip');
+  assert.equal(back.months.length, 12);
+  // No calendar → no element (mirrors headEl's empty-skip; a Gregorian doc stays clean).
+  assert.ok(!c.toOpml(c.mkRoot()).includes('_calendar'), 'a Gregorian doc emits no <_calendar>');
+});
 test('formatDueDate unchanged when no calendar (Gregorian label regression)', () => {
   // >6 days out from the real clock → the Gregorian month-name branch ("Jan 1" style).
   const far = c.dueDateToday(null) + 40;

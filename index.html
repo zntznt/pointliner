@@ -2162,7 +2162,7 @@ let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} } };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} }, calendar: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -5689,7 +5689,7 @@ function toOpml(r) {
   // doc-level config in the head, each via the shared headEl serializer (F6)
   // #464: emit <_appearance> only when it holds at least one mapping (mirrors headEl's empty-skip)
   const appHas = r.appearance && (Object.keys(r.appearance.tags || {}).length || Object.keys(r.appearance.props || {}).length);
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + headEl('_docid', r.docId) + headEl('_journal', r.journal);
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + headEl('_docid', r.docId) + headEl('_journal', r.journal);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -5828,7 +5828,12 @@ function fromOpml(xml) {
   // #464: appearance config — validated to known swatch/icon names, never throws
   const appearanceRaw = doc.querySelector('head > _appearance')?.textContent?.trim();
   const appearance    = (() => { try { return normalizeAppearance(JSON.parse(appearanceRaw || 'null')); } catch(_) { return { tags: {}, props: {} }; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, docId, journal,
+  // #527: the custom calendar (or null). normalizeCalendar IS the load-time validator — it returns
+  // null on anything malformed, so a hostile or half-written <_calendar> can never activate a
+  // broken calendar (the whole date layer just stays Gregorian).
+  const calendarRaw   = doc.querySelector('head > _calendar')?.textContent?.trim();
+  const calendar      = (() => { try { return normalizeCalendar(JSON.parse(calendarRaw || 'null')); } catch(_) { return null; } })();
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, docId, journal,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
