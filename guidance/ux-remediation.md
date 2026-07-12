@@ -1935,6 +1935,23 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### EXPORT-1 ◐ Query pills leaked their raw [[query:KEY]] token into Markdown/plaintext export (Fixes #530) (RESOLVED pending merge)
+- **Source: second adversarial review of the {…} grammar.** MINOR — cosmetic export leak, not
+  corruption (OPML round-trips fine via the `_query` sidecar). Every OTHER newer sub-form flattens on
+  export; `query` was the lone gap.
+- **Root cause (P4 — a snapshot export must not emit a live token).** `flattenArtifacts`'s regex
+  (`dice|markov|math|var|grammar|seq|est`) omitted `query`, and `frozenTokenText` had no `query`
+  branch — so a `[[query:KEY]]` token fell through to a var lookup returning `''`, or was left verbatim.
+  The render-side `TOKEN_RE` already listed `query`; only the export side was asymmetric. Parser-parity
+  gap of the same family as #528/#494 (two sibling enumerations that drifted apart).
+- **Fix:** add `query` to the flatten alternation + a `frozenTokenText` query branch that freezes to the
+  same snapshot the pill shows — the query expr and its current matches (`queryRows` titles, capped with
+  `+N more`), `(no matches)` when empty of results, `(empty query)` when the expr is blank, `''` when the
+  record is gone (matching every other sub-form). Threaded an optional `rootNode = root` param (the
+  codebase's established make-it-testable convention) so the branch is pinnable without the live global.
+  Fixes both the whole-doc export AND the per-pill "Freeze to text" action (both route through
+  `frozenTokenText`). 985 tests (+1).
+
 ### PROP-1 ◐ Empty props row after promoting a {…} pill: the "dead space" box (Fixes #494) (RESOLVED pending merge)
 - **Source: user-reported (screenshot), then browser-reproduced with Playwright.** Promoting a `{1d6}`
   (or any `{…}`) to a pill left a bulleted, bordered but empty box below the point — not a real point

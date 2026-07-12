@@ -21155,7 +21155,7 @@ window.addEventListener('focus', () => { checkExternalChange(); });
 // UXP-137: the frozen plain-text form of ONE artifact token — the value it currently shows,
 // per type. Factored out of flattenArtifacts so the whole-doc flatten AND the per-pill "Freeze to
 // text" action stay in lockstep (P1). Returns '' when the sidecar record is missing.
-function frozenTokenText(type, key, node, varMap) {
+function frozenTokenText(type, key, node, varMap, rootNode = root) {
   type = type.toLowerCase();
   if (type === 'grammar') {
     const g = node.grammar?.find(x => x.key === key); if (!g) return '';
@@ -21180,6 +21180,18 @@ function frozenTokenText(type, key, node, varMap) {
     const mk = node.markov?.find(x => x.key === key); if (!mk) return '';
     return mk.path.join(' → ');
   }
+  if (type === 'query') {
+    // #530: freeze to the same snapshot the pill shows — the query text and its current
+    // matches (titles, capped with "+N more"), mirroring renderQueryPill's body. A live
+    // embedded search can't survive in flat text, so a snapshot is the honest export.
+    const q = node.query?.find(x => x.key === key); if (!q) return '';
+    const expr = (q.expr || '').trim();
+    if (!expr) return '(empty query)';
+    const { rows, total, truncated } = queryRows(expr, rootNode, node.id);
+    if (!total) return `${expr} → (no matches)`;
+    const titles = rows.map(r => r.title).join(', ');
+    return `${expr} → ${titles}${truncated ? ` (+${total - rows.length} more)` : ''}`;
+  }
   if (type === 'math') {
     const m = node.math?.find(x => x.key === key); if (!m) return '';
     const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
@@ -21194,7 +21206,7 @@ function frozenTokenText(type, key, node, varMap) {
 }
 
 function flattenArtifacts(text, node, varMap) {
-  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est):([a-z0-9]+)\]\]/gi,
+  const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est|query):([a-z0-9]+)\]\]/gi,
     (_, type, key) => frozenTokenText(type, key, node, varMap));
   // progress cookies freeze to their computed tally in a one-way snapshot (UXP-159: honor the depth scope)
   return flat.replace(/\[(\/|%)(self|children|subtree|\d+)?\]/g, (m, k, scope) => {
