@@ -6844,6 +6844,24 @@ test('calEraYear / calYearFromEra round-trip: display year ↔ intrinsic year (t
   // round-trip identity
   for (const y of [-100, 0, 1, 5000]) assert.equal(c.calYearFromEra(c.calEraYear(y, cal, 'DR'), cal, 'DR'), y);
 });
+test('parseDueDate ↔ formatEpochDays round-trip under a custom calendar (#527 seam)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 12×30, era DR yearZero 1000
+  for (const ep of [0, 5, 45, 359, 360, 5000, -1, -720]) {
+    const label = c.formatEpochDays(ep, cal);
+    assert.equal(c.parseDueDate(label, cal), ep, `round-trip ${ep} via "${label}"`);
+  }
+  // the label uses the ERA-display year (DR): epoch 0 = intrinsic year 1 = display 1001
+  assert.equal(c.formatEpochDays(0, cal), '1001-01-01', 'era year in the label');
+  assert.equal(c.parseDueDate('1001-01-01', cal), 0, 'parse subtracts the era offset');
+  // out-of-range for the calendar → null
+  assert.equal(c.parseDueDate('1001-13-01', cal), null, 'a month past the calendar → null');
+  assert.equal(c.parseDueDate('1001-01-31', cal), null, 'day 31 in a 30-day month → null');
+});
+test('parseDueDate / formatEpochDays unchanged when no calendar (Gregorian regression)', () => {
+  assert.equal(c.formatEpochDays(20617, null), '2026-06-13');
+  assert.equal(c.parseDueDate('2026-06-13', null), 20617);
+  assert.equal(c.parseDueDate('2026-13-01', null), null, 'Gregorian validation intact');
+});
 test('dueDateToday: uses the in-fiction `current` when a calendar has one — else falls back (#527 decision)', () => {
   // pinned as a DECISION, not an accident: current present → that integer; the wall-clock fallback
   // when current is null is a documented Tier-1 choice (a calendar with no in-fiction "now").

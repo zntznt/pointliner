@@ -3318,7 +3318,7 @@ const DATE_FORMS_HINT = 'Use YYYY-MM-DD, today, tomorrow, or today+N.';
 // Impossible calendar dates (2026-02-30, 2026-13-01, day 00) are rejected:
 // Date.UTC silently overflow-normalizes (Feb 30 → Mar 2), so we round-trip the
 // parsed epoch back to y/m/d and require an exact match.
-function parseDueDate(val) {
+function parseDueDate(val, cal = activeCalendar()) {
   if (val == null) return null;
   const s = String(val).trim().toLowerCase();
   if (s === 'today')    return dueDateToday();
@@ -3330,6 +3330,18 @@ function parseDueDate(val) {
     // garbage epoch that renders NaN-NaN-NaN in the chip/agenda. (Adversarial pass, blast: degradation.)
     // ~ epoch-days for 1900-01-01 and 2200-12-31 (day 0 = 1970-01-01).
     return (e < -25600 || e > 84100) ? null : e;
+  }
+  if (cal) {
+    // #527: a custom-calendar date "Y-M-D" where Y is the ERA-DISPLAY year (what formatEpochDays
+    // emits). Convert the display year back to intrinsic (calYearFromEra), then calToEpoch validates
+    // (m/d in range for THIS calendar) and returns the integer, or null. Digits are not month-padded
+    // (a 13-month calendar can't assume 2-digit months), so match a loose Y-M-D and let calToEpoch judge.
+    const cm = s.match(/^(-?\d+)-(\d+)-(\d+)$/);
+    if (cm) {
+      const intrinsicY = cal.eras.length ? calYearFromEra(+cm[1], cal) : +cm[1];
+      return calToEpoch(intrinsicY, +cm[2], +cm[3], cal);   // null on out-of-range for the calendar
+    }
+    return null;    // in a fictional calendar, a Gregorian ISO date is not meaningful → not parsed
   }
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) {
@@ -17505,9 +17517,17 @@ function evalMath(input, vars = {}) {
   } catch (_) { return null; }
 }
 
-function formatEpochDays(n) {
+function formatEpochDays(n, cal = activeCalendar()) {
   if (!isFinite(n)) return formatMathResult(n);
-  const d = new Date(Math.round(n) * 86400000);
+  const ep = Math.round(n);
+  if (cal) {                                     // #527: fictional calendar → its own y-m-d label
+    const d = epochToCal(ep, cal);
+    if (d) {                                     // (null only on a non-integer, already excluded by round)
+      const y = cal.eras.length ? calEraYear(d.year, cal) : d.year;
+      return `${y}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+    }
+  }
+  const d = new Date(ep * 86400000);
   const m = String(d.getUTCMonth() + 1).padStart(2, '0');
   const day = String(d.getUTCDate()).padStart(2, '0');
   return `${d.getUTCFullYear()}-${m}-${day}`;
