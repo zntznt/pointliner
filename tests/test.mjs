@@ -44,7 +44,17 @@ const host = (x) => JSON.parse(JSON.stringify(x));
 function fnBody(src, name) {
   const start = src.indexOf('function ' + name);
   if (start < 0) return '';
-  const open = src.indexOf('{', start);
+  // Skip the parameter list first: a destructuring default (e.g. `function f({a} = {})`) puts a
+  // `{` INSIDE the params, so the naive "first { after the name" grabs the param object, not the
+  // body. Brace-match the `(...)` param list, then take the first `{` after its closing `)`.
+  const paren = src.indexOf('(', start);
+  let pdepth = 0, afterParams = -1;
+  for (let i = paren; i < src.length && paren >= 0; i++) {
+    const ch = src[i];
+    if (ch === '(') pdepth++;
+    else if (ch === ')') { pdepth--; if (pdepth === 0) { afterParams = i + 1; break; } }
+  }
+  const open = src.indexOf('{', afterParams >= 0 ? afterParams : start);
   if (open < 0) return '';
   let depth = 0;
   for (let i = open; i < src.length; i++) {
@@ -3945,8 +3955,6 @@ test('braceTypeLabel: var detail shows value (string vars stay string)', () => {
 });
 
 // ── collectTags / filterTagCandidates (UXP-10: hashtag autocomplete) ─────────
-// (vm-realm arrays/objects fail deepEqual on prototype identity — JSON-normalize)
-const plainTags = x => JSON.parse(JSON.stringify(x));
 
 test('collectTags: counts #tags across the tree, most-used first then alpha', () => {
   const root = c.mkRoot();
@@ -3954,7 +3962,7 @@ test('collectTags: counts #tags across the tree, most-used first then alpha', ()
   const b = c.mkNode('#alpha again');
   a.children.push(b);
   root.children.push(a);
-  assert.deepEqual(plainTags(c.collectTags(root)), [
+  assert.deepEqual(host(c.collectTags(root)), [
     { name: 'alpha', count: 2 },
     { name: 'beta',  count: 1 },
   ]);
@@ -3965,24 +3973,24 @@ test('collectTags: link tokens, headings, and mid-word # are not tags', () => {
   // [[#abc12|x]] is a node link (token stripped before the scan); '# heading' has
   // no word right after #; 'not#tag' has the sigil mid-word (mdInline rule).
   root.children.push(c.mkNode('[[#abc12|x]] # heading not#tag #real'));
-  assert.deepEqual(plainTags(c.collectTags(root)), [{ name: 'real', count: 1 }]);
+  assert.deepEqual(host(c.collectTags(root)), [{ name: 'real', count: 1 }]);
 });
 
 test('collectTags: status keywords (#TODO) count deliberately; explicit root bypasses the cache', () => {
   const root = c.mkRoot();
   root.children.push(c.mkNode('#TODO ship it'));
-  assert.deepEqual(plainTags(c.collectTags(root)), [{ name: 'TODO', count: 1 }]);
+  assert.deepEqual(host(c.collectTags(root)), [{ name: 'TODO', count: 1 }]);
   const other = c.mkRoot();
   other.children.push(c.mkNode('#different'));
-  assert.deepEqual(plainTags(c.collectTags(other)), [{ name: 'different', count: 1 }]);
+  assert.deepEqual(host(c.collectTags(other)), [{ name: 'different', count: 1 }]);
 });
 
 test('filterTagCandidates: case-insensitive prefix; a lone exact match offers nothing', () => {
   const tags = [{ name: 'alpha', count: 2 }, { name: 'Alps', count: 1 }, { name: 'beta', count: 1 }];
   assert.deepEqual(c.filterTagCandidates(tags, 'al').map(t => t.name), ['alpha', 'Alps']);
-  assert.deepEqual(plainTags(c.filterTagCandidates(tags, '')), tags); // bare # → full list
-  assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'beta')), []);        // fully typed → dismiss
-  assert.deepEqual(plainTags(c.filterTagCandidates(tags, 'x')), []);           // no match
+  assert.deepEqual(host(c.filterTagCandidates(tags, '')), tags); // bare # → full list
+  assert.deepEqual(host(c.filterTagCandidates(tags, 'beta')), []);        // fully typed → dismiss
+  assert.deepEqual(host(c.filterTagCandidates(tags, 'x')), []);           // no match
 });
 
 test('UXP-39: rendered #hashtag is keyboard-operable (role/tabindex + Enter/Space twin)', () => {
@@ -6100,7 +6108,7 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   // Add-inbox must OPEN the modal overlay itself (the strip is no longer a modal, so the
   // tree picker needs its own ioBack.on — the "dead Add button" regression).
   {
-    const add = _src.slice(_src.indexOf('function captureAddInbox'), _src.indexOf('function captureAddInbox') + 1500);
+    const add = fnBody(_src, 'captureAddInbox');
     assert.ok(add.includes("ioBack.classList.add('on')"), 'Add-inbox must open the modal overlay');
     assert.ok(add.includes('buildTreePicker'), 'Add-inbox must use the tree picker');
   }
@@ -8131,31 +8139,31 @@ test('tab switch persists the outgoing folder-backed doc before adopting the new
   // switchWorkspaceDoc: for a folder-backed dirty doc, cancel the debounce and write it,
   // awaited, before adopting — NOT a discard prompt.
   assert.ok(_src.includes('if (workspaceFile && dirty)'), 'switch must branch on folder-backed + dirty');
-  const sw = _src.slice(_src.indexOf('async function switchWorkspaceDoc'), _src.indexOf('async function switchWorkspaceDoc') + 2200);
+  const sw = fnBody(_src, 'switchWorkspaceDoc');
   assert.ok(sw.includes('clearTimeout(autosaveTimer)'), 'switch must cancel the pending debounce');
   assert.ok(sw.includes('safeWriteOpml(workspaceDir, outName, outOpml)'), 'switch must write the outgoing file directly, awaited');
   assert.ok(sw.includes('adoptDoc('), 'switch still adopts after the flush');
   // adoptDoc cancels any pending timer so an orphaned one can't misfire against the new root.
-  const ad = _src.slice(_src.indexOf('function adoptDoc'), _src.indexOf('function adoptDoc') + 800);
+  const ad = fnBody(_src, 'adoptDoc');
   assert.ok(ad.includes('clearTimeout(autosaveTimer)'), 'adoptDoc must cancel the pending autosave');
   // newWorkspaceDoc gets the same flush-not-discard treatment for a folder-backed doc.
-  const nw = _src.slice(_src.indexOf('async function newWorkspaceDoc'), _src.indexOf('async function newWorkspaceDoc') + 700);
+  const nw = fnBody(_src, 'newWorkspaceDoc');
   assert.ok(nw.includes('safeWriteOpml(workspaceDir, fileName'), 'newWorkspaceDoc must flush the outgoing folder doc');
   // UXP-165: adoptDoc resets the snapshot throttle on a doc swap so the new doc gets a fresh window.
-  const ad2 = _src.slice(_src.indexOf('function adoptDoc'), _src.indexOf('function adoptDoc') + 1400);
+  const ad2 = fnBody(_src, 'adoptDoc');
   assert.ok(ad2.includes('_lastSnapshotAt = 0'), 'adoptDoc must reset the snapshot throttle on doc swap (UXP-165)');
 });
 
 test('Restore earlier version is doc-scoped: only the current document\'s snapshot (UXP-165, src pins)', () => {
   // the shared gate parses the prev snapshot and compares its root.docId to the live root.docId,
   // so a snapshot rolled while editing another doc is neither offered nor applied.
-  const gate = _src.slice(_src.indexOf('function earlierVersionForCurrentDoc'), _src.indexOf('function earlierVersionForCurrentDoc') + 700);
+  const gate = fnBody(_src, 'earlierVersionForCurrentDoc');
   assert.ok(gate.includes('d.root.docId') && gate.includes('root.docId'), 'the gate must compare snapshot docId to the live doc');
   assert.ok(gate.includes('!== root.docId') || gate.includes('=== root.docId'), 'the gate must guard on a docId MATCH');
   // both hasEarlierVersion and restoreEarlierVersion route through the one gate (no second raw read).
   assert.ok(_src.includes('function hasEarlierVersion() { return earlierVersionForCurrentDoc() !== null; }'),
     'hasEarlierVersion must delegate to the doc-scoped gate');
-  const rest = _src.slice(_src.indexOf('async function restoreEarlierVersion'), _src.indexOf('async function restoreEarlierVersion') + 500);
+  const rest = fnBody(_src, 'restoreEarlierVersion');
   assert.ok(rest.includes('earlierVersionForCurrentDoc()'), 'restore must apply only the current doc\'s snapshot');
 });
 
@@ -8164,7 +8172,7 @@ test('Restore earlier version is doc-scoped: only the current document\'s snapsh
 test('flashError is defined (error toasts no longer throw)', () => {
   assert.ok(_src.includes('function flashError('), 'flashError must be defined');
   // flashHint re-applies neutral styling each call so a prior error toast does not leak red.
-  const fh = _src.slice(_src.indexOf('function flashHint('), _src.indexOf('function flashHint(') + 700);
+  const fh = fnBody(_src, 'flashHint');
   assert.ok(fh.includes('el.style.cssText') && fh.indexOf('el.style.cssText') > fh.indexOf('document.body.appendChild'), 'flashHint must reset styling on every call');
 });
 
@@ -10072,7 +10080,7 @@ test('math pill scope: a node own numeric prop resolves in {= }, own props win o
 });
 
 test('renderMathPill wiring: builds the merged own+ancestor scope and uses it for both compute and error reason (backlog A / #461)', () => {
-  const fn = _src.slice(_src.indexOf('function renderMathPill'), _src.indexOf('function renderMathPill') + 1700);
+  const fn = fnBody(_src, 'renderMathPill');
   // #461: the merge now flows through resolveNodeScope with the ancestor chain (own props still win)
   assert.ok(/const scope = resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), renderVarMap\)/.test(fn), 'the pill scope inherits ancestor props via resolveNodeScope (own props win last)');
   assert.ok(/evalMath\(expr, scope\)/.test(fn), 'the fresh compute uses the merged scope');
@@ -10147,7 +10155,7 @@ test('base grid roving tabindex is wired (#443)', () => {
   assert.ok(/mtSetRovingCell\(host, host\.querySelector\('\.mt-cell\[data-r="1"\]'\) \|\| host\.querySelector\('\.mt-cell'\)\)/.test(_src),
     'buildTableWidget must seed the roving stop after render');
   // mtFocusCell moves the stop as focus moves (Tab-back returns to the remembered cell)
-  const mfc = _src.slice(_src.indexOf('function mtFocusCell'), _src.indexOf('function mtFocusCell') + 400);
+  const mfc = fnBody(_src, 'mtFocusCell');
   assert.ok(/mtSetRovingCell\(host, target\)/.test(mfc), 'mtFocusCell must update the roving stop to the focused cell');
 });
 
@@ -10426,7 +10434,7 @@ test('concept guide: the workspace-search entry now carries usage examples (idea
 
 // ── Folder-backed file naming (idea 6): rename + create-name ──
 test('folder rename (6a): commitFileName renames the folder file instead of bailing', () => {
-  const fn = _src.slice(_src.indexOf('async function commitFileName'), _src.indexOf('async function commitFileName') + 1900);
+  const fn = fnBody(_src, 'commitFileName');
   assert.ok(!/^async function commitFileName\(rawDisplay\) \{\s*if \(workspaceDir\) return;/.test(fn.replace(/\n\s*/g, ' ')) , 'the workspaceDir bail-out guard must be gone');
   assert.ok(/if \(workspaceDir\) \{/.test(fn), 'a folder-aware rename branch must exist');
   assert.ok(/workspaceFile\.move\(workspaceDir, target\)/.test(fn), 'it must move() the file within the folder');
@@ -10439,10 +10447,10 @@ test('folder rename (6a): commitFileName renames the folder file instead of bail
 });
 
 test('folder create-name (6b): newWorkspaceDoc prompts for a name, blank keeps the default', () => {
-  const fn = _src.slice(_src.indexOf('async function newWorkspaceDoc'), _src.indexOf('async function newWorkspaceDoc') + 1700);
+  const fn = fnBody(_src, 'newWorkspaceDoc');
   assert.ok(/openInsertDialog\(\{[\s\S]*title: 'New document'/.test(fn), 'it must open a name prompt, not auto-create');
   assert.ok(/onSubmit: v => createWorkspaceDocNamed\(v\.name\)/.test(fn), 'submit routes the chosen name to the create helper');
-  const helper = _src.slice(_src.indexOf('async function createWorkspaceDocNamed'), _src.indexOf('async function createWorkspaceDocNamed') + 900);
+  const helper = fnBody(_src, 'createWorkspaceDocNamed');
   assert.ok(/toFileName\(\(rawName \|\| ''\)\.trim\(\) \|\| 'outline'\)/.test(helper), 'a blank name falls back to the outline default (Enter = old one-tap behavior)');
   assert.ok(/uniqueWorkspaceName\(await listWorkspaceNames\(workspaceDir\), base\)/.test(helper), 'the create is still collision-safe');
 });
@@ -10464,7 +10472,7 @@ test('render(): captures scrollY and restores it clamped, skipping intentional s
 
 // ── Alias dialog absorbed onto the openInsertDialog harness (absorption audit) ──
 test('alias dialog rides the shared openInsertDialog harness, not a hand-rolled io-card', () => {
-  const fn = _src.slice(_src.indexOf('function openAliasDialog'), _src.indexOf('function openAliasDialog') + 1300);
+  const fn = fnBody(_src, 'openAliasDialog');
   assert.ok(/openInsertDialog\(\{/.test(fn), 'openAliasDialog must call the shared harness');
   assert.ok(/setAliasProp\(node, v\.aliases\)/.test(fn), 'onSubmit routes the field value through the shared setAliasProp core (blank clears)');
   assert.ok(!/ioCard\.innerHTML = ''/.test(fn), 'the hand-rolled io-card must be gone');
@@ -10474,7 +10482,7 @@ test('alias dialog rides the shared openInsertDialog harness, not a hand-rolled 
 });
 
 test('openInsertDialog associates each field label with its input (accessible name for all riders)', () => {
-  const fn = _src.slice(_src.indexOf('function openInsertDialog'), _src.indexOf('function openInsertDialog') + 1500);
+  const fn = fnBody(_src, 'openInsertDialog');
   assert.ok(/const _fid = 'io-fld-' \+ f\.key;/.test(fn), 'each field gets a stable id from its key');
   assert.ok(/inp\.id = _fid; lab\.setAttribute\('for', _fid\)/.test(fn), 'the label is tied to the input via for/id');
 });

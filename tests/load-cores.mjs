@@ -101,7 +101,12 @@ export function loadCores() {
     MutationObserver: stub,
     DOMParser: stub,                 // fromOpml would need a real one; not used at load
     getComputedStyle: () => stub,
-    CSS: { escape: (s) => String(s) },
+    // Faithful-enough CSS.escape: escape every char that is not an unreserved CSS identifier
+    // char. The lenient identity `(s) => String(s)` was a latent trap — a pure core that ever
+    // used CSS.escape for real escaping (not just DOM querying) would test-pass against
+    // un-escaped output that breaks in a browser. Today all CSS.escape uses are DOM-query paths
+    // that never run here, but this keeps the stub honest if that changes.
+    CSS: { escape: (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, (ch) => '\\' + ch) },
     alert: () => {},
     console,
   };
