@@ -3189,24 +3189,33 @@ function evalCheck(node, vars = {}, ancestors = []) {
 // calendar-agnostic and untouched. Only the parse/format/component seam routes here.
 // The active calendar for the live doc; a param lets the pure cores stay testable.
 function activeCalendar() { return (typeof root !== 'undefined' && root && root.calendar) || null; }
+// Every valid fiction epoch lives inside this window (±~27k years of epoch-days). Outside it,
+// integer math loses precision (breaking the bijection) and a Gantt axis over the range freezes
+// the tab — the fiction twin of the Gregorian arm's 1900–2200 typo window. (#527 review, CRIT-1.)
+const CAL_EPOCH_MAX = 1e7;
 // Validate + normalize a calendar def; returns null (= Gregorian) if unusable. Pure.
+// REJECT-WHOLE, never filter (#527 review): silently dropping one malformed month/era entry
+// CHANGES THE BIJECTION (a shorter year shifts every stored date by thousands of days) — a
+// typo'd calendar must fall back to Gregorian visibly, not corrupt quietly. Absent fields
+// default; a PRESENT-but-garbage field rejects. The size caps keep a hostile <_calendar>
+// from wedging the per-render epochToCal month walk.
 function normalizeCalendar(c) {
   if (!c || typeof c !== 'object') return null;
-  const months = Array.isArray(c.months) ? c.months.filter(m => m && typeof m.name === 'string' && Number.isInteger(m.days) && m.days > 0) : [];
-  if (!months.length) return null;                       // a calendar needs ≥1 month
-  const wl = Number.isInteger(c.week?.length) && c.week.length > 0 ? c.week.length : 7;
-  const wdays = Array.isArray(c.week?.days) ? c.week.days.map(String) : [];
-  const eras = Array.isArray(c.eras) ? c.eras.filter(e => e && typeof e.name === 'string' && Number.isInteger(e.yearZero)) : [];
-  // clamp integer axis values to the safe-integer range — a garbage epochDay/current from a
-  // hand-edited OPML must not silently break the bijection (Math.floor loses precision past 2^53).
-  const safe = (v, dflt) => (Number.isSafeInteger(v) ? v : dflt);
+  const validMonth = m => m && typeof m.name === 'string' && Number.isInteger(m.days) && m.days > 0 && m.days <= 1e6;
+  const validEra   = e => e && typeof e.name === 'string' && Number.isInteger(e.yearZero);
+  if (!Array.isArray(c.months) || !c.months.length || c.months.length > 1000 || !c.months.every(validMonth)) return null;
+  if (c.eras != null && (!Array.isArray(c.eras) || c.eras.length > 100 || !c.eras.every(validEra))) return null;
+  if (c.week != null && !(Number.isInteger(c.week.length) && c.week.length > 0 && c.week.length <= 1000)) return null;
+  if (c.epochDay != null && !(Number.isSafeInteger(c.epochDay) && Math.abs(c.epochDay) <= CAL_EPOCH_MAX)) return null;
+  if (c.current  != null && !(Number.isSafeInteger(c.current)  && Math.abs(c.current)  <= CAL_EPOCH_MAX)) return null;
+  const wl = c.week ? c.week.length : 7;
   return {
     id: String(c.id || 'custom'), name: String(c.name || 'Calendar'),
-    epochDay: safe(c.epochDay, 0),
-    months: months.map(m => ({ name: m.name, days: m.days })),
-    week: { length: wl, days: wdays },
-    eras: eras.map(e => ({ name: e.name, yearZero: e.yearZero })),
-    current: Number.isSafeInteger(c.current) ? c.current : null,
+    epochDay: c.epochDay ?? 0,
+    months: c.months.map(m => ({ name: m.name, days: m.days })),
+    week: { length: wl, days: Array.isArray(c.week?.days) ? c.week.days.slice(0, wl).map(String) : [] },
+    eras: (c.eras || []).map(e => ({ name: e.name, yearZero: e.yearZero })),
+    current: c.current ?? null,
   };
 }
 // Days in one full year of a fixed-table calendar. Pure.
@@ -3244,7 +3253,11 @@ function calToEpoch(year, month, day, cal) {
   let days = (year - 1) * calYearLength(cal);
   for (let i = 0; i < month - 1; i++) days += cal.months[i].days;
   days += day - 1;
-  return cal.epochDay + days;
+  const ep = cal.epochDay + days;
+  // overflow window (#527 review CRIT-1): a huge typed year makes a non-safe-integer epoch —
+  // precision-lossy (breaks the bijection round-trip) and, once in a prop, a rangeDays that
+  // freezes the Gantt axis loop. Outside ±CAL_EPOCH_MAX → null (unparseable, visibly).
+  return (Number.isSafeInteger(ep) && Math.abs(ep) <= CAL_EPOCH_MAX) ? ep : null;
 }
 // The display year for a given era (default = the calendar's intrinsic year). Pure.
 function calEraYear(year, cal, eraName) {
@@ -3372,13 +3385,17 @@ const DATE_FORMS_HINT = 'Use YYYY-MM-DD, today, tomorrow, or today+N.';
 function parseDueDate(val, cal = activeCalendar()) {
   if (val == null) return null;
   const s = String(val).trim().toLowerCase();
-  if (s === 'today')    return dueDateToday();
-  if (s === 'tomorrow') return dueDateToday() + 1;
+  // relative forms resolve against the SAME calendar this parse renders under (#527 review:
+  // a bare dueDateToday() here reads the global, mixing calendars for any explicit-cal caller).
+  if (s === 'today')    return dueDateToday(cal);
+  if (s === 'tomorrow') return dueDateToday(cal) + 1;
   const rel = s.match(/^today([+-]\d+)$/);
   if (rel) {
-    const e = dueDateToday() + parseInt(rel[1], 10);
-    // bound to the same 1900-2200 window the ISO arm enforces — an unbounded today+1e11 makes a
-    // garbage epoch that renders NaN-NaN-NaN in the chip/agenda. (Adversarial pass, blast: degradation.)
+    const e = dueDateToday(cal) + parseInt(rel[1], 10);
+    // Bound the result — an unbounded today+1e11 makes a garbage epoch that renders NaN-NaN-NaN
+    // in the chip/agenda. Gregorian keeps its 1900-2200 typo window; a fiction bounds to the
+    // calendar epoch window instead (its `current` can legitimately sit far outside 1900-2200).
+    if (cal) return (Number.isSafeInteger(e) && Math.abs(e) <= CAL_EPOCH_MAX) ? e : null;
     // ~ epoch-days for 1900-01-01 and 2200-12-31 (day 0 = 1970-01-01).
     return (e < -25600 || e > 84100) ? null : e;
   }
@@ -25466,6 +25483,7 @@ function applyAutosaveData(data) {
   if (treeDepthExceeds(data.root)) return false;
   root = data.root;
   root.appearance = normalizeAppearance(root.appearance); // #464: a pre-feature autosave has none; guarantee the {tags,props} shape
+  root.calendar = normalizeCalendar(root.calendar); // #527: same hole as appearance — a tampered/stale autosave calendar must re-validate here or every date-chip render throws
   migrateNodePrefixes(root);
   buildIndex(root, null); resetDocCaches();
   focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;

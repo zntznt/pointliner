@@ -6830,12 +6830,48 @@ test('calendar cores are total: null on non-integer input, never throw (#527 rev
   assert.equal(c.calToEpoch(1.5, 1, 1, cal), null, 'fractional year → null');
   assert.doesNotThrow(() => c.calToEpoch(1, NaN, 1, cal), 'never throws on bad input');
 });
-test('normalizeCalendar clamps a garbage epochDay/current to safe-integer range (#527 review)', () => {
-  const c1 = c.normalizeCalendar({ months: [{ name: 'M', days: 30 }], epochDay: 9e18, current: 9e18 });
-  assert.equal(c1.epochDay, 0, 'an unsafe epochDay falls back to 0');
-  assert.equal(c1.current, null, 'an unsafe current falls back to null (no in-fiction today)');
-  // a valid large-but-safe value is kept
-  assert.equal(c.normalizeCalendar({ months: [{ name: 'M', days: 30 }], epochDay: 1000000 }).epochDay, 1000000);
+test('normalizeCalendar REJECTS a present-but-garbage field whole — never filters/corrects (#527 hardening)', () => {
+  // The review's key argument: silently dropping one malformed month entry CHANGES THE BIJECTION
+  // (a 360-day year becomes 330 and every stored date shifts). A typo'd calendar must fall back
+  // to Gregorian visibly, not corrupt quietly. So: absent fields default; garbage rejects.
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'M1', days: 30 }, { name: 'M2', days: '30' }] }), null,
+    'ONE string-days month rejects the whole calendar (was: silently dropped, shifting every date)');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, eras: [{ name: 'DR', yearZero: '1000' }] }), null,
+    'a garbage era rejects (was: dropped, silently changing the display-year offset)');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, week: { length: '10', days: [] } }), null,
+    'a present-but-garbage week.length rejects (was: silent fallback to 7)');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, epochDay: 9e18 }), null, 'unsafe epochDay rejects');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, current: 9e18 }), null, 'unsafe current rejects');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, current: 2e7 }), null, 'current outside ±CAL_EPOCH_MAX rejects');
+  // absent fields still default (a minimal calendar is fine)
+  const min = c.normalizeCalendar({ months: [{ name: 'Only', days: 10 }] });
+  assert.equal(min.week.length, 7); assert.equal(min.epochDay, 0); assert.equal(min.current, null);
+  // hostile-size caps: a wedge-the-render months array rejects
+  assert.equal(c.normalizeCalendar({ months: Array.from({ length: 1001 }, () => ({ name: 'm', days: 1 })) }), null);
+});
+test('calToEpoch bounds the epoch to ±CAL_EPOCH_MAX — a huge typed year is unparseable, not garbage (#527 CRIT-1)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  assert.equal(c.calToEpoch(1e15, 1, 1, cal), null, 'a non-safe-integer epoch → null (was 3.6e17 flowing into props)');
+  assert.equal(c.calToEpoch(1e6, 1, 1, cal), null, 'past the window → null (a rangeDays this size freezes the Gantt)');
+  assert.equal(c.parseDueDate('999999999999999-1-1', cal), null, 'the parse arm inherits the bound');
+  assert.ok(c.calToEpoch(27000, 1, 1, cal) !== null, 'a deep-but-sane fiction year still parses');
+});
+test('applyAutosaveData re-validates root.calendar through normalizeCalendar (#527 review #4)', () => {
+  // DOM-bound, so pinned structurally like dueDateToday: the restore path must normalize the
+  // calendar exactly as it normalizes appearance — a raw restore of a tampered/stale autosave
+  // calendar makes every date-chip render throw.
+  const fn = fnBody(_src, 'applyAutosaveData');
+  assert.ok(fn.includes('normalizeCalendar(root.calendar)'), 'autosave restore normalizes the calendar');
+});
+test('parseDueDate relative forms resolve against the PASSED calendar (#527 seam contract)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // current: 5000
+  assert.equal(c.parseDueDate('today', cal), 5000, 'today = the fiction current, not the wall clock');
+  assert.equal(c.parseDueDate('tomorrow', cal), 5001);
+  assert.equal(c.parseDueDate('today+10', cal), 5010);
+  // a fiction whose `current` sits outside the Gregorian 1900-2200 window keeps today+N working
+  const far = c.normalizeCalendar({ ...HARPTOS, current: 100000 });
+  assert.equal(c.parseDueDate('today+1', far), 100001, 'the Gregorian typo window must not bound a fiction');
+  assert.equal(c.parseDueDate('today+' + 2e7, cal), null, 'but the fiction window still bounds garbage');
 });
 test('calEraYear / calYearFromEra round-trip: display year ↔ intrinsic year (the parse contract)', () => {
   const cal = c.normalizeCalendar(HARPTOS); // era DR, yearZero 1000
