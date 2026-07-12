@@ -68,7 +68,8 @@ irrelevant here.
   None touch the no-code-execution security invariant or add authoring syntax.
 - **Current sequencing:** **#1 + #4 (grammar + variable packs) are done** — the `<_plugins>` store
   and the `collectRules`/`collectVars` collect-time merge (with `_varsVer` honored) shipped together.
-  **Next:** the **emoji-pack follow-on** — `applyPlugins(root)` for the *apply-once-at-load* mutable
+  The **pack-authoring / management UI** (the first *user-facing*, UX-gated layer) also **shipped, `#487`**
+  — `openDataPackManager` behind the File menu's `#btn-datapacks` row.
+  **Still next:** the **emoji-pack follow-on** — `applyPlugins(root)` for the *apply-once-at-load* mutable
   `EMOJI` registry (with `escHtml` on pack values since emoji substitution runs *after* the escape
-  pass, and a per-load rebuild so pack emoji don't leak across documents). Then the **pack-authoring /
-  management UI** (the first *user-facing*, UX-gated layer).
+  pass, and a per-load rebuild so pack emoji don't leak across documents).

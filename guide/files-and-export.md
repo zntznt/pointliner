@@ -27,8 +27,12 @@ tab. Tabs are the documents you have opened (not the whole folder),
 and they reappear after a reload. From the **File** menu:
 
 - **Switch document** to see all the documents in the folder, jump to one, add a fresh **+ New
-  document**, or delete an old one.
+  document** (it asks you to name it), or delete an old one.
+- **Rename** the current document by clicking its name at the top left and typing a new one.
 - **Disconnect folder** steps back out to single-file mode.
+
+Switching between documents keeps your place in each: when you come back to one, it restores the zoom
+and scroll position you left it at, not just after a reload but every time you switch away and return.
 
 One file opens in one tab: you cannot open two tabs of the same document (they would share an identity and
 fight over the same file on disk).

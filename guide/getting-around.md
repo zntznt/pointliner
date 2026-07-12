@@ -95,6 +95,12 @@ Type words in the search box and **every word must appear**. The operators:
   `has:seq`) find a specific kind; `has:children` / `has:footnote` find sub-points or a footnote.
 - `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date, and
   `due:week` / `due:month` catch anything due within the next 7 or 30 days (also `start:week` / `start:month`).
+- `is:scheduled` / `is:unscheduled` split points by whether they have a date at all; `is:overdue`
+  finds points past their deadline and not done (the due date, or the start if there is no due).
+  `is:held` finds points in their sequence's held band (blocked or waiting, like `#WAITING`).
+- `is:empty` finds a point with no text; `is:orphan` finds one nothing links to; `is:duplicate-title`
+  finds a point whose title collides with another; `is:recently-edited` finds points changed in the
+  last 48 hours.
 - `var:strength` finds the point that declares a variable.
 - `has:link` / `has:backlink` find points that contain a link or are linked to by another point
   (within this document); `is:broken` finds points holding a link whose target no longer exists.

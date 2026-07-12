@@ -142,8 +142,8 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Broken-links report.** File menu, Broken links: rounds up every link whose target is gone, in
   this document and across the folder, and jumps you to the point that holds each one.
   ([find broken links](links-and-references.md#find-broken-links))
-- **Capture inbox.** A quick-capture box that drops a note into your inbox from anywhere, without
-  navigating away. ([capture](tasks-and-organizing.md#capture-and-quick-inbox))
+- **Capture inbox.** A quick-capture strip that drops a note into any of up to 10 inboxes from
+  anywhere, without navigating away. ([capture](tasks-and-organizing.md#capture-and-quick-inbox))
 - **Capture from a link.** Opening Pointliner (installed or on the web) with `?append=your text`
   in the address adds that text to your inbox as a point; sharing a page or selection to it from
   your system share menu does the same, as plain text.

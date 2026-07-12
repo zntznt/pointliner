@@ -548,21 +548,23 @@ Implemented:
   `renderTreeRows` (row builder) + `buildTreePicker` (modal wrapper) are decoupled from
   the modal so a future structural sidebar can reuse the same two halves. Label via
   `pickerTitle`; mover `refileNodeTo(moveId, targetId)`. No new syntax.
-- **Capture / quick inbox** — fast-add a point into a designated inbox **from
-  anywhere, without navigating there**. **Door:** the toolbar inbox button
-  (`#btn-capture`) opens a **Capture dialog** that overlays wherever you are — so a
-  capture never moves you off what you're doing. The **inbox** is a doc-level pointer
-  (`root.inboxId` → a point's id, persisted as the `<_inbox>` **OPML head element**;
-  node ids round-trip via `_id`, so the pointer survives reload; a deleted inbox is
-  treated as unset). You pick / change the inbox via an **inline tree navigator** (the
-  same `buildTreePicker`) that swaps into the same card and returns with your draft
-  preserved. Each **Capture** appends **one markdown-aware point** —
-  type derived from the text, so a typed `- [ ]` lands as a to-do, `# x` a heading — as
-  the inbox's **last child**, then **clears and keeps the dialog open** (the brain-dump
-  flow) with a running **"✓ Captured N"** confirmation and a toast. **Enter** captures,
-  **Shift+Enter** is a line break. Until an inbox is set the Capture button is disabled
-  and the action routes to the picker (no silent no-op — P4). Helpers `openCaptureDialog`
-  / `doCapture` / `resolveInbox`. No new syntax.
+- **Capture / quick inbox** — fast-add a point into an inbox **from anywhere, without
+  navigating there**. **Door:** `Ctrl/Cmd+Shift+I` (or the toolbar button) toggles the
+  **Capture strip** (`#capture-strip`), a toolbar band — **not** a modal — so a capture
+  never moves you off what you're doing. Inboxes are a doc-level **ordered list** of up
+  to **10** slots (`root.inboxes` → point ids, persisted as the `<_inboxes>` **OPML head
+  element**; node ids round-trip via `_id`, so the pointers survive reload; a deleted
+  inbox is dropped). `Ctrl/Cmd+Shift+1…0` opens the strip **targeting slot N** (0 =
+  slot 10); while it's open the same keys **switch the destination in place**, and an
+  empty slot **adopts the selected point**. `Ctrl/Cmd+Alt+1…0` (or the bullet menu's
+  "Set as inbox") sets the current point as slot N. Each capture appends **one
+  markdown-aware point** — type derived from the text, so a typed `- [ ]` lands as a
+  to-do, `# x` a heading — as that inbox's **last child**, then **clears and keeps the
+  strip open** (the brain-dump flow) with a running **"✓ Captured N"** confirmation.
+  **Enter** captures, **Shift+Enter** is a line break. Plus **`?append=text`** on the URL
+  and the **PWA share-target** append to slot 1 without opening the app (#465). Helpers
+  `openCaptureDialog` / `doCapture` / `setInboxSlot` / `reorderInboxList` /
+  `handleUrlAppend`. No new syntax.
 ### Dates, journal & agenda
 
 - **Journal / daily notes** — open or create today's dated entry from anywhere. **Four P2 doors:**
@@ -881,8 +883,8 @@ Implemented:
     polling detector is built. **Manual single-file mode is unchanged** — a doc opened via
     Open or saved via Save As (not in the workspace) keeps manual-Save behavior; continuous
     write is the workspace tier only. *(Done in step 5b: New lands in
-    the folder and a Switch-document list. Not yet: rename (FSA has no atomic rename),
-    nested subfolders, and external-edit conflict detection.)*
+    the folder and a Switch-document list; rename shipped too, `#486`. Not yet:
+    nested subfolders and external-edit conflict detection.)*
   - **Reopen on load — the folder is the source of truth** (Phase 1, step 5a): on every
     load after the initial connect, `reopenStoredWorkspace` reads the stored `{ dir, name }`
     from IndexedDB, verifies reachability (`reopenWorkspaceDoc` — `requestPermission`

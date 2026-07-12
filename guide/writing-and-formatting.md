@@ -26,6 +26,9 @@ work on **any line of any point**, including headings and quotes.
 ~~strikethrough~~               ++underline++
 ```
 
+You can also skip the marks: select some text and press **Cmd/Ctrl+B**, **I**, or **U** to wrap it in
+bold, italic, or underline. It is the same result as typing the marks yourself.
+
 **Code marks also keep pills literal.** Anything inside backticks stays plain text, so if you want to
 *write about* a pill, for example a note that says "type `` `{2d6}` `` to roll dice", wrap it in
 backticks and it shows the literal `{2d6}` instead of turning into a rolled pill. Without the
