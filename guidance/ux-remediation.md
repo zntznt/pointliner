@@ -1935,6 +1935,30 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### FMENU-1 ◐ File-menu a11y + consistency cluster (Fixes #503 #504 #505 #506 #507) (RESOLVED pending merge)
+- **Source: adversarial File-menu review.** The menu is otherwise solid (scrolls, roves, Escape restores
+  the caret). Five Minor defects, all in `#file-menu` + `openFileMenu`/`closeFileMenu`/its keydown handler.
+  Browser-verified each fix with Playwright.
+- **#503 (dialog contract):** `role="dialog"` but no `aria-modal` and Tab walked straight out into the
+  live outline. The codebase's own stance (the keydown comment) is "settings dialog, not a menu" — so
+  MADE it a real dialog rather than demoting to `role=menu`: added `aria-modal="true"` + a Tab-wrap arm
+  (Tab/Shift+Tab rove within `fmItems()`, the same list the arrows use). Verified: Tab from the last item
+  wraps to the first, focus stays contained.
+- **#504 (toggle state):** the three cycle rows had `role=button` but no programmatic state. Binary
+  `#btn-width` now sets `aria-pressed`; the tri-state Theme announces its new label via `#a11y-live` on
+  change; Verbosity was already announced (its `flashHint` routes through `announce`). No `menuitemradio`
+  (that would contradict the "rows are buttons" decision).
+- **#505 (copy coherence):** Width labeled the NEXT action ("Full width" while narrow) while Theme/Verbosity
+  label the CURRENT state. Width now reads "Width: Full" / "Width: Narrow" — state visible without clicking.
+- **#506 (stale caret-return):** `chromeReturn` armed on every open but only Escape cleared it, so
+  edit A → menu → sub-surface → close → reopen → Escape yanked the caret back into A. Escape now
+  restores-BEFORE-close (reads a live arm), and `closeFileMenu` clears `chromeReturn` on every other
+  close path — the ghost is gone. (Sub-surface dialogs use their own `ioReturnFocus`, unaffected.)
+- **#507 (role over-stamp):** the stamp forEach applied `role=button` to EVERY `.cmd-item`, clobbering
+  the link semantics of the two external `<a>` rows and re-roling the native `<button>`. Gated to
+  `tagName === 'DIV'` — anchors keep "opens in new window", the button keeps its native role.
+- No pure core (all DOM-bound); browser-verified. 982 tests unchanged.
+
 ### SEQ-1 ◐ Finish absorbing the hardcoded to-do layer into the sequence system (Fixes #510 #509) (RESOLVED pending merge)
 - **Source: adversarial architectural review of the to-do layer vs the sequence system.** Verdict up
   front: they are NOT two parallel systems — `DEFAULT_SEQUENCE` IS the built-in to-do set expressed as a
