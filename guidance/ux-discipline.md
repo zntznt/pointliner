@@ -236,6 +236,7 @@ The standard the corpus is missing entirely. Every block type conforms; there ar
 | `Ctrl/⌘ + /` · `?` | Open the keyboard shortcuts panel | `?` only when not typing; the panel is the keyboard cheat-sheet |
 | `Ctrl/⌘ + Shift + /` | Open the Concept guide | The "bigger help": the full feature reference (vs the shortcuts panel). Works mid-edit. The File menu's Concept guide row and the panel's "Concept guide ›" footer are the pointer doors (UXP-125) |
 | `Ctrl/⌘ + Z` / `Y` / `Shift+Z` | Undo / redo | — |
+| `Ctrl/⌘ + B / I / U` | Bold / italic / underline the selection (edit mode) | The standard editor chords: `FORMAT_SHORTCUTS` → `applyInlineFormat`, which wraps the selection in `**…**` / `*…*` / `++…++` (#459). `preventDefault` always (so native `⌘B` never injects a raw `<b>`); a no-op on a collapsed selection. Unshifted, so no collision with the shifted capture/link chords |
 | `Ctrl/⌘ + Shift + L` | Copy link to point | — |
 | `Ctrl/⌘ + Shift + I` | Toggle the Capture strip | Global; opening focuses the strip input, the same chord closes it |
 | `Ctrl/⌘ + Shift + 1–0` | Capture to inbox N (0 = inbox 10) | Opens the strip targeting slot N; while open the same keys switch the destination in place; an empty slot adopts the selected point |

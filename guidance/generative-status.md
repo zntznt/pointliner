@@ -116,5 +116,6 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
 multi-document workspace itself, and whole-folder search. Once flagged here as the next frontier,
 this chapter has since **shipped** — same-document node links + the `[[` picker, then the connected
 workspace folder (FSA + IndexedDB), cross-document `[[docId#nodeId]]` links + backlinks, and
-folder-wide search (CF-1…CF-5 / WS-1…WS-2). See `features.md` and `roadmap.md`. What remains genuinely
-open lives in `backlog.md` (e.g. clocking, board/Kanban, tag inheritance) — not here.
+folder-wide search (CF-1…CF-5 / WS-1…WS-2). The board/Kanban view has since shipped too (BV-1 —
+`buildBoardWidget`/`bvMoveCard`). See `features.md` and `roadmap.md`. What remains genuinely
+open lives in `backlog.md` (e.g. clocking, tag inheritance) — not here.

@@ -104,7 +104,7 @@ Templates and saved searches are already doc-level config — no pack machinery 
 | | Item |
 |---|---|
 | **Prime now** | the **emoji merge** (`applyPlugins` apply-at-load into the mutable `EMOJI` map) — the remaining pack kind |
-| **Done** | FN-table hoist — `evalMath` tables to module scope (PR #82) · the `<_plugins>` store + `collectRules`/`collectVars` collect-time mergeability for **grammar + variable packs** (+ `_varsVer` honored) |
+| **Done** | FN-table hoist — `evalMath` tables to module scope (PR #82) · the `<_plugins>` store + `collectRules`/`collectVars` collect-time mergeability for **grammar + variable packs** (+ `_varsVer` honored) · the **pack management UI** — `openDataPackManager` behind the File menu's `#btn-datapacks` (#487) |
 | **Dropped** | single-source theme / theme packs (color palettes — product call) |
 | **Out (gated)** | code plugins · functions-as-data · executable code nodes · remote/marketplace fetch (network) · arbitrary-JS sandboxes — all under §0 |
 

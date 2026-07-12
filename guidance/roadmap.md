@@ -124,8 +124,8 @@ assumptions into a workspace + current-document model.
    disk + `degradeWorkspace`/verified-reconnect on lost access (`#103`–`#106`).
 3. ✅ **Stable per-doc id** — `_docid` in the OPML head, `ensureDocId`, migrate-on-load (`#100`).
 4. ✅ **Document switcher UI** — open / create-in-folder / switch / delete `.opml` files; document-
-   aware menu; reopen-the-last-doc across reloads (`#107`). *(Rename deferred — FSA has no atomic
-   rename.)*
+   aware menu; reopen-the-last-doc across reloads (`#107`). *(Rename shipped, `#486` — click the file
+   name; `commitFileName` renames via `workspaceFile.move` to a collision-safe target.)*
 5. ✅ **Continuous auto-write** — every edit debounced to its file (`flushWorkspaceFile`); localStorage
    autosave kept as the crash buffer; the last-open note persisted + reopened (`#105`).
    *(Plus the `adoptDoc` runtime document-swap chokepoint, `#101`, and the `Ctrl+S` double-fire

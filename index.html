@@ -23641,7 +23641,7 @@ const GUIDE = [
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',
-    body:"Make key words stand out, mark something as code, highlight a phrase for review, or drop in a clickable link to a source, all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes.",
+    body:"Make key words stand out, mark something as code, highlight a phrase for review, or drop in a clickable link to a source, all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Cmd/Ctrl+B, I, or U to wrap it in bold, italic, or underline for you.",
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
       { syn:'*italic* or _italic_',     desc:'italic' },
@@ -23962,7 +23962,7 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
@@ -24030,11 +24030,12 @@ const GUIDE = [
     ] },
   { id:'workspace-documents', cat:'files',
     title:'Working with a folder of notes',
-    body:"Keep a whole library of notes in one folder on your computer and move between them the way you would tabs: a project note, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge, or a similar browser only) and every note saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the notes in the folder, jump to one, add a fresh + New document or delete an old one. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
+    body:"Keep a whole library of notes in one folder on your computer and move between them the way you would tabs: a project note, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge, or a similar browser only) and every note saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the notes in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a note any time by clicking its name at the top left and typing a new one. Each note also remembers where you were: switch away and come back and it restores your zoom and scroll position. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
     examples:[
       { syn:'File → Connect folder…',   desc:'link a folder of notes (Chromium only)' },
       { syn:'File → Switch document…',  desc:'list, open, create or delete notes' },
-      { syn:'+ New document',           desc:'start a fresh note in the folder' },
+      { syn:'+ New document',           desc:'start a fresh note, named as you like' },
+      { syn:'Click the file name',      desc:'rename the current note' },
       { syn:'File → Disconnect folder', desc:'return to a single file' },
     ] },
   { id:'appearance-controls', cat:'files',
