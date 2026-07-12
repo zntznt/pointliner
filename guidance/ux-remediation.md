@@ -1935,6 +1935,23 @@ framework, (2) the `/`+`@` blind-render branch, (3) table/base keyed twins, (4) 
   props) verified; a smoke test should Add the tour on a NON-empty doc and confirm the doc survives + undo
   removes just the tour.
 
+### PROP-1 ◐ Empty props row after promoting a {…} pill: the "dead space" box (Fixes #494) (RESOLVED pending merge)
+- **Source: user-reported (screenshot), then browser-reproduced with Playwright.** Promoting a `{1d6}`
+  (or any `{…}`) to a pill left a bulleted, bordered but empty box below the point — not a real point
+  (not in the outline model, no caret), pure dead space.
+- **Root cause (P4 — hiding must not be silent, inverted: showing-nothing must not reserve space).**
+  The outline row and the zoom view both gated the props row on `node.props?.length`. But `buildPropsArea`
+  **skips** the app-maintained timestamp keys (`created`/`edited`, per #467) and renders `check` only as a
+  live verdict chip — so a point whose props are *only* timestamps yields an **empty** `.props-area`. The
+  gate ("has props") is strictly wider than the content ("renders a chip"). Promotion auto-stamps
+  `created`/`edited`, so a just-promoted pill is exactly the timestamp-only case → an empty
+  `node-props-row` (bullet gutter + zero-chip area) painted as the dead box. Same latent bug in the zoom
+  `zoom-props-row`. Same shape as #528 (creation gate wider than the promote gate).
+- **Fix:** a `hasVisibleProps(node)` predicate that mirrors buildPropsArea's own skip logic (a
+  non-timestamp non-`check` prop exists, OR `checkExprOf(node) != null`); both gates use it. The row now
+  appears only when a chip will. Browser-verified: 0 empty props rows post-repro, the `cost:30` control
+  still renders its row. Pinned pure-core (984 tests, +1) — the suite had no timestamp-only props case.
+
 ### CQ-1 ◐ Code-quality audit: derived-hint desync + folder-write data loss + query sidecar drop (RESOLVED pending merge)
 - **Source: a 7-lens static code-quality audit fleet** (no runtime; every major+ finding adversarially
   verified against source, then re-verified by me line-by-line before fixing). Verdict up front: **for a

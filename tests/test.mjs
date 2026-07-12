@@ -10305,3 +10305,21 @@ test('#508: cycleTodoState cycles a custom-sequence keyword within its sequence,
   assert.equal(c.cycleTodoState('#DONE ship', 1, seqs), 'ship');
   assert.equal(c.cycleTodoState('plain point', 1, seqs), '#TODO plain point', 'no keyword → first default state');
 });
+
+// ── #494: hasVisibleProps — the props row is gated on VISIBLE chips, not props?.length ──
+// A point auto-stamped with created/edited (every promoted {…} pill) has props but renders
+// no chip → the old props?.length gate emitted an empty bulleted "dead space" box below it.
+test('#494: hasVisibleProps is false for a timestamp-only point, true when a real chip renders', () => {
+  const mk = (props, extra = {}) => ({ id: 'n', props, ...extra });
+  // the bug: props exist but none are visible (created/edited are skipped in buildPropsArea)
+  assert.equal(c.hasVisibleProps(mk([{ key: 'created', val: '2026-07-11T23:50' }, { key: 'edited', val: '2026-07-11T23:50' }])), false, 'timestamp-only → no row');
+  assert.equal(c.hasVisibleProps(mk([])), false, 'no props → no row');
+  assert.equal(c.hasVisibleProps(mk(undefined)), false, 'missing props array → no row');
+  // a genuine property still shows
+  assert.equal(c.hasVisibleProps(mk([{ key: 'cost', val: '30' }])), true, 'real prop → row');
+  assert.equal(c.hasVisibleProps(mk([{ key: 'created', val: 'x' }, { key: 'cost', val: '30' }])), true, 'timestamp + real prop → row');
+  // a check renders as its own verdict chip even though `check` is skipped in the prop loop
+  assert.equal(c.hasVisibleProps(mk([{ key: 'check', val: 'sum(cost) <= 12' }])), true, 'check expr → verdict chip → row');
+  assert.equal(c.hasVisibleProps(mk([{ key: 'created', val: 'x' }, { key: 'check', val: 'sum(cost)<=12' }])), true, 'timestamp + check → row');
+  assert.equal(c.hasVisibleProps(mk([{ key: 'Check', val: 'sum(cost)<=12' }])), true, 'CHECK_KEY match is case-insensitive');
+});
