@@ -225,8 +225,9 @@ export function loadCores() {
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'pickerTitle','treeRows','selectionRoots','resolveRefileTarget',   // LEAN FLOOR: /refile:title resolution
     'dueDateToday','parseDueDate','formatDueDate','formatDateConcrete','parseRepeat','nextOccurrence','describeRepeat','ordinalSuffix','buildSharePointText','collectDueDates','collectActions','priorityRank','oracleSwingBody',
+    'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
-    'todayISO','journalFileName','findOrCreateChild','findOrCreateDatedEntry',
+    'todayISO','journalFileName','isoParts','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
     'propDeclParts','setProp','parsePropSlash','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC
     'splitForSibling', 'inFence', 'mergeUpText',

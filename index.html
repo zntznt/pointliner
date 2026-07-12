@@ -2162,7 +2162,7 @@ let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} } };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} }, calendar: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -3179,7 +3179,162 @@ function evalCheck(node, vars = {}, ancestors = []) {
 // carry a start→due range. Epoch-day numbers are the internal currency — the same
 // integer unit evalMath uses for `today`. Both keys parse through parseDueDate.
 
-function dueDateToday() {
+// ─── custom calendars (#527, Tier 1) ──────────────────────────────────────────
+// The epoch-day INTEGER is always the source of truth; a calendar only changes the
+// integer↔(year,month,day) bijection + the display labels + the in-fiction "now".
+// root.calendar (null = Gregorian) is a regular fixed-table calendar:
+//   { id, name, epochDay, months:[{name,days}], week:{length,days:[]}, eras:[{name,yearZero}], current }
+// `epochDay` is the epoch-day integer that == this calendar's year 1, month 1, day 1.
+// So arithmetic, sort, agendaGantt, due:< — everything on the raw integer — is
+// calendar-agnostic and untouched. Only the parse/format/component seam routes here.
+// The active calendar for the live doc; a param lets the pure cores stay testable.
+function activeCalendar() { return (typeof root !== 'undefined' && root && root.calendar) || null; }
+// Every valid fiction epoch lives inside this window (±~27k years of epoch-days). Outside it,
+// integer math loses precision (breaking the bijection) and a Gantt axis over the range freezes
+// the tab — the fiction twin of the Gregorian arm's 1900–2200 typo window. (#527 review, CRIT-1.)
+const CAL_EPOCH_MAX = 1e7;
+// Validate + normalize a calendar def; returns null (= Gregorian) if unusable. Pure.
+// REJECT-WHOLE, never filter (#527 review): silently dropping one malformed month/era entry
+// CHANGES THE BIJECTION (a shorter year shifts every stored date by thousands of days) — a
+// typo'd calendar must fall back to Gregorian visibly, not corrupt quietly. Absent fields
+// default; a PRESENT-but-garbage field rejects. The size caps keep a hostile <_calendar>
+// from wedging the per-render epochToCal month walk.
+function normalizeCalendar(c) {
+  if (!c || typeof c !== 'object') return null;
+  const validMonth = m => m && typeof m.name === 'string' && Number.isInteger(m.days) && m.days > 0 && m.days <= 1e6;
+  const validEra   = e => e && typeof e.name === 'string' && Number.isInteger(e.yearZero);
+  if (!Array.isArray(c.months) || !c.months.length || c.months.length > 1000 || !c.months.every(validMonth)) return null;
+  if (c.eras != null && (!Array.isArray(c.eras) || c.eras.length > 100 || !c.eras.every(validEra))) return null;
+  if (c.week != null && !(Number.isInteger(c.week.length) && c.week.length > 0 && c.week.length <= 1000)) return null;
+  if (c.epochDay != null && !(Number.isSafeInteger(c.epochDay) && Math.abs(c.epochDay) <= CAL_EPOCH_MAX)) return null;
+  if (c.current  != null && !(Number.isSafeInteger(c.current)  && Math.abs(c.current)  <= CAL_EPOCH_MAX)) return null;
+  const wl = c.week ? c.week.length : 7;
+  return {
+    id: String(c.id || 'custom'), name: String(c.name || 'Calendar'),
+    epochDay: c.epochDay ?? 0,
+    months: c.months.map(m => ({ name: m.name, days: m.days })),
+    week: { length: wl, days: Array.isArray(c.week?.days) ? c.week.days.slice(0, wl).map(String) : [] },
+    eras: (c.eras || []).map(e => ({ name: e.name, yearZero: e.yearZero })),
+    current: c.current ?? null,
+  };
+}
+// Days in one full year of a fixed-table calendar. Pure.
+function calYearLength(cal) { return cal.months.reduce((n, m) => n + m.days, 0); }
+// epoch-day integer → { year, month (1-based), day (1-based), weekday (0-based) } for a
+// fixed-table calendar. year is relative to the calendar's own year 1 (era offsets are a
+// display concern). Uses div/mod over a cumulative month table — no leap branching. Pure.
+// NOTE (contract for the format layer, #527 review RISK-1): `weekday` is in [0, week.length),
+// which may EXCEED week.days.length (the two are validated independently). A weekday-NAME lookup
+// MUST fall back to String(weekday) when week.days[weekday] is absent — never assume a name exists.
+// NOTE (#527 review, deliberate): there IS a year 0 (the day before year 1 day 1 is year 0), and
+// years go negative below the epoch. This is internally consistent and round-trips; a "1 BR / 1 AR"
+// (no-year-zero) era convention, if ever wanted, is the era-display layer's job, not the bijection's.
+function epochToCal(ep, cal) {
+  if (!Number.isInteger(ep)) return null;                // null on invalid input (house rule): never emit a NaN/fractional label
+  const yearLen = calYearLength(cal);
+  let rel = ep - cal.epochDay;                           // days since year 1, day 1 (day 0 = that day)
+  const weekday = ((rel % cal.week.length) + cal.week.length) % cal.week.length;
+  let year = Math.floor(rel / yearLen) + 1;              // year 1 is the epoch year
+  let doy = rel - (year - 1) * yearLen;                  // 0-based day of year
+  let month = 1;
+  for (const m of cal.months) { if (doy < m.days) break; doy -= m.days; month++; }
+  return { year, month, day: doy + 1, weekday };
+}
+// { year, month, day } → epoch-day integer for a fixed-table calendar, or null if the
+// (month, day) is out of range for this calendar. Inverse of epochToCal. Pure.
+function calToEpoch(year, month, day, cal) {
+  // guard EVERY arg with Number.isInteger first — a NaN month slips past `< 1 || > length`
+  // (NaN compares false both ways) and would index cal.months[NaN] → throw; a float day would
+  // return a fractional epoch that poisons sort/timeline. Null on any non-integer (house rule).
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (month < 1 || month > cal.months.length) return null;
+  const md = cal.months[month - 1].days;
+  if (day < 1 || day > md) return null;
+  let days = (year - 1) * calYearLength(cal);
+  for (let i = 0; i < month - 1; i++) days += cal.months[i].days;
+  days += day - 1;
+  const ep = cal.epochDay + days;
+  // overflow window (#527 review CRIT-1): a huge typed year makes a non-safe-integer epoch —
+  // precision-lossy (breaks the bijection round-trip) and, once in a prop, a rangeDays that
+  // freezes the Gantt axis loop. Outside ±CAL_EPOCH_MAX → null (unparseable, visibly).
+  return (Number.isSafeInteger(ep) && Math.abs(ep) <= CAL_EPOCH_MAX) ? ep : null;
+}
+// The display year for a given era (default = the calendar's intrinsic year). Pure.
+function calEraYear(year, cal, eraName) {
+  const era = cal.eras.find(e => e.name === eraName) || cal.eras[0];
+  return era ? year + era.yearZero : year;
+}
+// Inverse of calEraYear — a user TYPES a display year ("1005 DR"); the parse layer MUST convert
+// it back to the calendar-intrinsic year (subtract yearZero) before calling calToEpoch, or the
+// bijection is off by the era offset. This is that contract, as a core so the parse layer can't
+// get it wrong. Pure.
+function calYearFromEra(displayYear, cal, eraName) {
+  const era = cal.eras.find(e => e.name === eraName) || cal.eras[0];
+  return era ? displayYear - era.yearZero : displayYear;
+}
+
+// Name resolvers for the LABEL layer (RISK-1). A custom calendar may name none, some, or all of
+// its weekdays/months — week.days can be shorter than week.length, and months always have names but
+// a bad index must not throw. Both fall back to a bare ordinal string ("Day 3", "Month 5") so a
+// half-configured calendar still prints something legible instead of "undefined". Pure.
+function calWeekdayName(cal, wd) {
+  const nm = cal.week.days[wd];
+  return (typeof nm === 'string' && nm) ? nm : 'Day ' + (wd + 1);
+}
+function calMonthName(cal, monthIdx) { // monthIdx is 1-based, matching epochToCal's .month
+  const m = cal.months[monthIdx - 1];
+  return (m && m.name) ? m.name : 'Month ' + monthIdx;
+}
+
+// The COMPUTE seam for evalMath's date component fns (year/month/day/weekday/quarter). Pulling a
+// component is COMPUTE, not display: under a fictional calendar it must read the fiction's own
+// values. This is the whole branch as a pure fn of (epoch, cal) so it's Node-testable — the FN1
+// lambdas are then one-line field picks that read the global calendar. `year` is the ERA-display
+// year (matching the label layer); `weekday` is the index into THIS calendar's week (0 = the day
+// epochDay fell on), a different origin from Gregorian's 0=Sunday because a fictional week has no
+// Sunday. cal=null → the exact Gregorian values the fns returned before. Pure.
+function calComponents(epoch, cal) {
+  const ep = Math.round(epoch);
+  if (cal) {
+    const c = epochToCal(ep, cal);
+    // totality (#527 review #6): a NaN/Infinity epoch → null here; fall through to the Gregorian
+    // arm, which yields the same NaN-field garbage the no-calendar twin always produced — the
+    // contract is "garbage in, garbage out, NEVER throw" (these run naked at chip-render sites).
+    if (c) return {
+      year: cal.eras.length ? calEraYear(c.year, cal) : c.year,
+      month: c.month, day: c.day, weekday: c.weekday,
+      // quarter is bounded 1..4 for any month count; for a tiny calendar (< 4 months) the
+      // quarters are sparse/jumpy (a 2-month year yields Q1/Q3) — documented, not clamped.
+      quarter: Math.floor((c.month - 1) / (cal.months.length / 4)) + 1,
+    };
+  }
+  const d = new Date(ep * 86400000);
+  return {
+    year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(),
+    weekday: d.getUTCDay(), quarter: Math.floor(d.getUTCMonth() / 3) + 1,
+  };
+}
+
+// The search-window span for `due:week` / `due:month` (QX-2). "This week / month" means today
+// through today + N days; N is 7 / 30 under Gregorian. Under a fiction a week is week.length days,
+// and a month is the length of the month `today` falls in (months can differ, so use the current
+// one — the honest "roughly a month out"). cal=null → the Gregorian 7 / 30. Pure.
+function dueWindowDays(unit, cal, today) {
+  if (cal) {
+    if (unit === 'week') return cal.week.length;
+    const c = epochToCal(today, cal);
+    if (c) return cal.months[c.month - 1].days;
+    // totality (#527 review #6): a garbage `today` falls back to the Gregorian span, never throws
+  }
+  return unit === 'week' ? 7 : 30;
+}
+
+function dueDateToday(cal = activeCalendar()) {
+  // #527: in a fictional calendar there is no wall-clock "today" — use the document's
+  // in-fiction `current` when a calendar with one is active, else the real clock.
+  // The `cal` arg is the SAME calendar its caller renders against, so "today" and the
+  // date being labelled always come from one calendar (a pure function of its input).
+  if (cal && Number.isInteger(cal.current)) return cal.current;
   const d = new Date();
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
 }
@@ -3190,6 +3345,15 @@ function todayISO() { return formatEpochDays(dueDateToday()); }
 
 // journalFileName(iso) — pure, Node-testable. One file per day: iso + '.opml'.
 function journalFileName(iso) { return iso + '.opml'; }
+
+// Split a 'Y-M-D' label into its three rungs. A NEGATIVE display year is legal under a fiction
+// era ("-1004-01-01", before the era's yearZero) and breaks a naive split('-') into a leading
+// empty rung (#527 review #11) — so anchor the match instead. Non-date input falls back to a
+// plain split (same as before). Pure.
+function isoParts(iso) {
+  const m = String(iso).match(/^(-?\d+)-(\d+)-(\d+)$/);
+  return m ? [m[1], m[2], m[3]] : String(iso).split('-');
+}
 
 // findOrCreateChild(parent, label, mk, fuzzy) — find-or-create one direct child.
 // Matches a child whose first line is exactly `label` (or, when fuzzy, starts with
@@ -3212,7 +3376,7 @@ function findOrCreateChild(parent, label, mk, fuzzy) {
 // ('16 Tuesday') is reused. `created` is true if any rung was newly made (so the
 // caller knows to render). mk(text) is called for each created node.
 function findOrCreateDatedEntry(home, iso, mk) {
-  const [y, mo, d] = iso.split('-');
+  const [y, mo, d] = isoParts(iso);   // negative-year-safe (#527: a fiction era below yearZero)
   let parent = home, anyCreated = false, entry = home;
   const segs = [[y, false], [mo, false], [d, true]];
   for (const [label, fuzzy] of segs) {
@@ -3233,18 +3397,34 @@ const DATE_FORMS_HINT = 'Use YYYY-MM-DD, today, tomorrow, or today+N.';
 // Impossible calendar dates (2026-02-30, 2026-13-01, day 00) are rejected:
 // Date.UTC silently overflow-normalizes (Feb 30 → Mar 2), so we round-trip the
 // parsed epoch back to y/m/d and require an exact match.
-function parseDueDate(val) {
+function parseDueDate(val, cal = activeCalendar()) {
   if (val == null) return null;
   const s = String(val).trim().toLowerCase();
-  if (s === 'today')    return dueDateToday();
-  if (s === 'tomorrow') return dueDateToday() + 1;
+  // relative forms resolve against the SAME calendar this parse renders under (#527 review:
+  // a bare dueDateToday() here reads the global, mixing calendars for any explicit-cal caller).
+  if (s === 'today')    return dueDateToday(cal);
+  if (s === 'tomorrow') return dueDateToday(cal) + 1;
   const rel = s.match(/^today([+-]\d+)$/);
   if (rel) {
-    const e = dueDateToday() + parseInt(rel[1], 10);
-    // bound to the same 1900-2200 window the ISO arm enforces — an unbounded today+1e11 makes a
-    // garbage epoch that renders NaN-NaN-NaN in the chip/agenda. (Adversarial pass, blast: degradation.)
+    const e = dueDateToday(cal) + parseInt(rel[1], 10);
+    // Bound the result — an unbounded today+1e11 makes a garbage epoch that renders NaN-NaN-NaN
+    // in the chip/agenda. Gregorian keeps its 1900-2200 typo window; a fiction bounds to the
+    // calendar epoch window instead (its `current` can legitimately sit far outside 1900-2200).
+    if (cal) return (Number.isSafeInteger(e) && Math.abs(e) <= CAL_EPOCH_MAX) ? e : null;
     // ~ epoch-days for 1900-01-01 and 2200-12-31 (day 0 = 1970-01-01).
     return (e < -25600 || e > 84100) ? null : e;
+  }
+  if (cal) {
+    // #527: a custom-calendar date "Y-M-D" where Y is the ERA-DISPLAY year (what formatEpochDays
+    // emits). Convert the display year back to intrinsic (calYearFromEra), then calToEpoch validates
+    // (m/d in range for THIS calendar) and returns the integer, or null. Digits are not month-padded
+    // (a 13-month calendar can't assume 2-digit months), so match a loose Y-M-D and let calToEpoch judge.
+    const cm = s.match(/^(-?\d+)-(\d+)-(\d+)$/);
+    if (cm) {
+      const intrinsicY = cal.eras.length ? calYearFromEra(+cm[1], cal) : +cm[1];
+      return calToEpoch(intrinsicY, +cm[2], +cm[3], cal);   // null on out-of-range for the calendar
+    }
+    return null;    // in a fictional calendar, a Gregorian ISO date is not meaningful → not parsed
   }
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) {
@@ -3263,23 +3443,41 @@ function parseDueDate(val) {
 
 // Turn an epoch-day into { iso, label, state } for display.
 // state: 'overdue' | 'today' | 'soon' (≤6 days) | 'future'
-function formatDueDate(epochDay) {
-  const today = dueDateToday();
+function formatDueDate(epochDay, cal = activeCalendar()) {
+  const today = dueDateToday(cal);
   const diff = epochDay - today;
-  const iso = formatEpochDays(epochDay);
+  const iso = formatEpochDays(epochDay, cal);
   let label, state;
+  // The relative words (Today/Tomorrow/overdue) are pure diff arithmetic — calendar-neutral, since
+  // epoch-days are the unit. Only the day-of-week and month-name lookups need the calendar; a custom
+  // one supplies both via calWeekdayName/calMonthName (Gregorian is just the default calendar here).
   if (diff < -1)      { label = Math.abs(diff) + 'd overdue'; state = 'overdue'; }
   else if (diff === -1) { label = 'Yesterday';  state = 'overdue'; }
   else if (diff === 0)  { label = 'Today';      state = 'today';   }
   else if (diff === 1)  { label = 'Tomorrow';   state = 'soon';    }
-  else if (diff <= 6)   {
-    const d = new Date(epochDay * 86400000);
-    label = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
+  // the weekday-name window is ONE WEEK OUT in the active calendar's own week (#527 review #10):
+  // hardcoded <=6 left days 7..9 of a 10-day fiction week unnamed, and made a 3-day week's
+  // names ambiguous inside the window. Gregorian keeps its exact diff <= 6.
+  else if (cal ? diff < cal.week.length : diff <= 6) {
+    // totality (#527 review #6): epochToCal → null on a garbage epoch; fall back to the iso
+    // label (same garbage-not-throw contract as the Gregorian arm's undefined-name behavior).
+    const cc = cal && epochToCal(epochDay, cal);
+    if (cc)      { label = calWeekdayName(cal, cc.weekday); }
+    else if (cal) { label = iso; }
+    else {
+      const d = new Date(epochDay * 86400000);
+      label = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
+    }
     state = 'soon';
   } else {
-    const d = new Date(epochDay * 86400000);
-    const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
-    label = mo + ' ' + d.getUTCDate();
+    const cc = cal && epochToCal(epochDay, cal);
+    if (cc)      { label = calMonthName(cal, cc.month) + ' ' + cc.day; }
+    else if (cal) { label = iso; }
+    else {
+      const d = new Date(epochDay * 86400000);
+      const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+      label = mo + ' ' + d.getUTCDate();
+    }
     state = 'future';
   }
   return { iso, label, state };
@@ -3289,12 +3487,20 @@ function formatDueDate(epochDay) {
 // pending-due chip): unlike formatDueDate's urgency label ("Wed" — ambiguous when several
 // Wednesdays are visible), this always carries the day number. "Today"/"Tomorrow" keep their
 // friendly word but still show the date, so the user sees exactly which day they picked.
-function formatDateConcrete(epochDay) {
-  const d = new Date(epochDay * 86400000);
-  const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
-  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
-  const date = `${wd} ${mo} ${d.getUTCDate()}`;
-  const rel = formatDueDate(epochDay).label;
+function formatDateConcrete(epochDay, cal = activeCalendar()) {
+  // totality (#527 review #6): the cal arm guards the epochToCal null (garbage epoch) and falls
+  // through to the Gregorian arm's garbage-not-throw output, matching the no-calendar twin.
+  let date;
+  const cc = cal && epochToCal(epochDay, cal);
+  if (cc) {
+    date = `${calWeekdayName(cal, cc.weekday)} ${calMonthName(cal, cc.month)} ${cc.day}`;
+  } else {
+    const d = new Date(epochDay * 86400000);
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
+    const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+    date = `${wd} ${mo} ${d.getUTCDate()}`;
+  }
+  const rel = formatDueDate(epochDay, cal).label;
   return (rel === 'Today' || rel === 'Tomorrow') ? `${rel} (${date})` : date;
 }
 
@@ -3494,7 +3700,25 @@ function collectActions(rootNode = root, seqs = allSequences()) {
 // Pure: given any epoch-day, return the 42 epoch-days (6 weeks × 7 columns) of
 // that month's calendar grid, starting on the Sunday on/before the 1st. Used by
 // the date-picker calendar; Node-testable without the DOM.
-function calendarMonthGrid(epochDay) {
+function calendarMonthGrid(epochDay, cal = activeCalendar()) {
+  // totality (#527 review #6): a garbage anchor epoch nulls the decomposition — fall through to
+  // the Gregorian arm (same garbage-not-throw NaN grid the no-calendar twin produces).
+  const c = cal && epochToCal(Math.round(epochDay || 0), cal);  // c.year is the INTRINSIC year
+  if (c) {
+    // A fictional month grid: `cols` = the calendar's week length, `rows` = enough weeks to hold
+    // the month's days after the first-of-month's weekday offset. So a 10-day-week / 30-day-month
+    // calendar yields a 10-col × N-row grid, not the Gregorian 7×6. Cells outside the month are
+    // still real epoch-days (leading/trailing spill), matching the Gregorian behavior.
+    const first = calToEpoch(c.year, c.month, 1, cal);      // first-of-this-month epoch
+    const firstWd = epochToCal(first, cal).weekday;         // 0..week.length-1
+    const cols = cal.week.length;
+    const monthDays = cal.months[c.month - 1].days;
+    const rows = Math.ceil((firstWd + monthDays) / cols);
+    const start = first - firstWd;
+    const grid = [];
+    for (let i = 0; i < cols * rows; i++) grid.push(start + i);
+    return grid;
+  }
   const d = new Date((epochDay || 0) * 86400000);
   const first = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 86400000);
   const firstDow = new Date(first * 86400000).getUTCDay(); // 0=Sun … 6=Sat
@@ -3539,7 +3763,22 @@ function agendaGantt(items, today = dueDateToday()) {
 
 // Pure: shift an epoch-day by whole months, clamping the day to the target
 // month's length (Jan 31 + 1 → Feb 28/29, not Mar 3). Used for calendar month nav.
-function addMonths(epochDay, delta) {
+function addMonths(epochDay, delta, cal = activeCalendar()) {
+  const _cc = cal && epochToCal(Math.round(epochDay || 0), cal);
+  if (_cc) {
+    // Walk `delta` months through the calendar's own month list (wrapping the year), then clamp
+    // the day to the target month's length — Harptos month N day 30 + 1 → next month day ≤30.
+    // (Totality #527 review #6: a garbage epoch nulls the decomposition → fall through to the
+    // Gregorian arm's garbage-not-throw NaN, matching the no-calendar twin.)
+    const c = _cc;
+    const nMonths = cal.months.length;
+    let idx = (c.month - 1) + delta;                       // 0-based target month, may be out of range
+    const yearShift = Math.floor(idx / nMonths);
+    idx = ((idx % nMonths) + nMonths) % nMonths;           // wrap into 0..nMonths-1
+    const targetMonth = idx + 1, targetYear = c.year + yearShift;
+    const clampedDay = Math.min(c.day, cal.months[idx].days);
+    return calToEpoch(targetYear, targetMonth, clampedDay, cal);
+  }
   const d = new Date((epochDay || 0) * 86400000);
   const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
   const lastOfTarget = new Date(Date.UTC(y, m + delta + 1, 0)).getUTCDate();
@@ -3551,15 +3790,32 @@ function addMonths(epochDay, delta) {
 // all items that fall on its day. Returns 42 cells (6 weeks × 7 cols, Sunday-
 // aligned — see calendarMonthGrid): [{ epochDay, dom, inMonth, isToday, isPast,
 // items:[…] }]. `monthEpoch` is any day in the month to show. Node-testable.
-function agendaMonthCells(items, monthEpoch, today = dueDateToday()) {
+function agendaMonthCells(items, monthEpoch, today = null, cal = activeCalendar()) {
+  if (today == null) today = dueDateToday(cal);   // resolved here so it reads the SAME calendar
   const byDay = new Map();
   for (const it of (items || [])) {
     if (it.epochDay == null) continue;
     if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
     byDay.get(it.epochDay).push(it);
   }
+  // #527 review #2 (half-routing): the grid was fiction-shaped but dom/inMonth read Gregorian —
+  // a 30-cell fiction month stamped with the wrong day numbers. Both now come from ONE calendar.
+  const anchor = cal && epochToCal(Math.round(monthEpoch || 0), cal);
+  if (anchor) {
+    return calendarMonthGrid(monthEpoch, cal).map(ep => {
+      const cc = epochToCal(ep, cal);
+      return {
+        epochDay: ep,
+        dom: cc.day,
+        inMonth: cc.month === anchor.month && cc.year === anchor.year,
+        isToday: ep === today,
+        isPast: ep < today,
+        items: byDay.get(ep) || [],
+      };
+    });
+  }
   const vm = new Date((monthEpoch || 0) * 86400000).getUTCMonth();
-  return calendarMonthGrid(monthEpoch).map(ep => {
+  return calendarMonthGrid(monthEpoch, null).map(ep => {
     const d = new Date(ep * 86400000);
     return {
       epochDay: ep,
@@ -3576,23 +3832,34 @@ function agendaMonthCells(items, monthEpoch, today = dueDateToday()) {
 // plus an `earlier` bucket for still-relevant items dated BEFORE this week (overdue
 // deadlines and started-but-not-done ranges) so nothing hides off the left edge. Each
 // item is placed by its primary date (it.epochDay). Node-testable.
-function agendaWeekCells(items, weekEpoch, today = dueDateToday()) {
+function agendaWeekCells(items, weekEpoch, today = null, cal = activeCalendar()) {
+  if (today == null) today = dueDateToday(cal);   // resolved here so it reads the SAME calendar
   const base = (weekEpoch == null ? today : weekEpoch);
-  const start = base - new Date(base * 86400000).getUTCDay();   // back up to Sunday
+  // #527 review #2 (half-routing): the week is the ACTIVE calendar's week — its own length, its
+  // own weekday-0 anchor — not a hardcoded Gregorian Sunday-aligned 7. One calendar throughout.
+  const bc = cal && epochToCal(base, cal);
+  const len = bc ? cal.week.length : 7;
+  const start = base - (bc ? bc.weekday : new Date(base * 86400000).getUTCDay());   // back up to weekday 0
   const byDay = new Map();
   const earlier = [];
   for (const it of (items || [])) {
     if (it.epochDay == null) continue;
     if (it.epochDay < start) { if (!it.done) earlier.push(it); continue; }   // spilled off the left
-    if (it.epochDay >= start + 7) continue;                                  // next week or later
+    if (it.epochDay >= start + len) continue;                                // next week or later
     if (!byDay.has(it.epochDay)) byDay.set(it.epochDay, []);
     byDay.get(it.epochDay).push(it);
   }
   earlier.sort((a, b) => a.epochDay - b.epochDay);   // most-overdue first
   const days = [];
-  for (let i = 0; i < 7; i++) {
-    const ep = start + i, d = new Date(ep * 86400000);
-    days.push({ epochDay: ep, dom: d.getUTCDate(), dow: d.getUTCDay(), isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
+  for (let i = 0; i < len; i++) {
+    const ep = start + i;
+    if (bc) {
+      const cc = epochToCal(ep, cal);
+      days.push({ epochDay: ep, dom: cc.day, dow: cc.weekday, isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
+    } else {
+      const d = new Date(ep * 86400000);
+      days.push({ epochDay: ep, dom: d.getUTCDate(), dow: d.getUTCDay(), isToday: ep === today, isPast: ep < today, items: byDay.get(ep) || [] });
+    }
   }
   return { start, days, earlier };
 }
@@ -3609,8 +3876,11 @@ function agendaDayStats(items) {
   const ordered = list.slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0));
   return { ordered, todo: list.length - done, done };
 }
-// Pure: shift a week by `delta` weeks (7-day steps). Node-testable.
-function addWeeks(epochDay, delta) { return (epochDay == null ? dueDateToday() : epochDay) + delta * 7; }
+// Pure: shift a week by `delta` weeks — 7-day steps under Gregorian, week.length-day steps
+// under the active calendar (#527 review #3: a 10-day fiction week must advance 10). Node-testable.
+function addWeeks(epochDay, delta, cal = activeCalendar()) {
+  return (epochDay == null ? dueDateToday(cal) : epochDay) + delta * (cal ? cal.week.length : 7);
+}
 
 // ─── recurring tasks (#462) ───────────────────────────────────────────────────
 // A reserved `repeat` property (same model as due/start/check) holds a tiny recurrence
@@ -3655,16 +3925,35 @@ function parseRepeat(val) {
 // completion doesn't drift the schedule; but if that next date is still ≤ today (task was very
 // overdue), snap forward until it lands strictly after today so it never reschedules to the past.
 // Pure + Node-testable. `today` is injectable for tests.
-function nextOccurrence(desc, fromEpochDay, today = dueDateToday()) {
+function nextOccurrence(desc, fromEpochDay, today = null, cal = activeCalendar()) {
   if (!desc || fromEpochDay == null) return null;
+  if (today == null) today = dueDateToday(cal);   // resolved here so it reads the SAME calendar
   const step = (from) => {
     if (desc.kind === 'interval') {
       if (desc.unit === 'day')   return from + desc.n;
-      if (desc.unit === 'week')  return addWeeks(from, desc.n);
-      if (desc.unit === 'month') return addMonths(from, desc.n);
-      if (desc.unit === 'year')  return addMonths(from, desc.n * 12);
+      if (desc.unit === 'week')  return addWeeks(from, desc.n, cal);
+      if (desc.unit === 'month') return addMonths(from, desc.n, cal);
+      // a fiction year is its OWN length (#527 review #3: addMonths(n*12) walked 12 fiction
+      // months — 1.2 years on a 10-month calendar). All fiction years are equal (no leap in
+      // Tier 1), so a whole-year step preserves the month/day exactly.
+      if (desc.unit === 'year')  return cal ? from + desc.n * calYearLength(cal) : addMonths(from, desc.n * 12, null);
     }
     if (desc.kind === 'weekday') {
+      if (cal) {
+        // fiction weekdays: desc.days are indices into THIS calendar's week (a fiction has no
+        // "Monday"). An index past week.length can never occur — skipped; none valid → null
+        // (the caller reads null as "no next occurrence"), never a garbage +8.
+        const cc = epochToCal(from, cal);
+        if (!cc) return null;
+        const len = cal.week.length;
+        let best = Infinity;
+        for (const d of desc.days) {
+          if (!Number.isInteger(d) || d < 0 || d >= len) continue;
+          const off = ((d - cc.weekday) % len + len) % len || len;
+          if (off < best) best = off;
+        }
+        return Number.isFinite(best) ? from + best : null;
+      }
       const wd = new Date(from * 86400000).getUTCDay();
       // smallest positive offset to one of the target weekdays
       let best = 8;
@@ -3672,6 +3961,15 @@ function nextOccurrence(desc, fromEpochDay, today = dueDateToday()) {
       return from + best;
     }
     if (desc.kind === 'monthday') {
+      if (cal) {
+        // next fiction month's clamped Nth (wrapping the year), same shape as the Gregorian arm
+        const cc = epochToCal(from, cal);
+        if (!cc) return null;
+        const n = cal.months.length;
+        const mIdx = cc.month % n;                                   // 0-based index of the NEXT month
+        const yr = cc.year + (cc.month === n ? 1 : 0);
+        return calToEpoch(yr, mIdx + 1, Math.min(desc.day, cal.months[mIdx].days), cal);
+      }
       // next month's clamped Nth (from the 1st of the month AFTER `from`, then set the day)
       const d = new Date(from * 86400000);
       const y = d.getUTCFullYear(), mo = d.getUTCMonth();
@@ -3690,13 +3988,15 @@ function nextOccurrence(desc, fromEpochDay, today = dueDateToday()) {
 
 // Human-readable phrase for a repeat descriptor (dialog preview + toast). Pure.
 const _WD_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-function describeRepeat(desc) {
+function describeRepeat(desc, cal = activeCalendar()) {
   if (!desc) return '';
   if (desc.kind === 'interval') {
     const u = desc.unit;
     return desc.n === 1 ? `every ${u}` : `every ${desc.n} ${u}s`;
   }
-  if (desc.kind === 'weekday') return 'every ' + desc.days.map(d => _WD_NAME[d]).join(', ');
+  // weekday NAMES come from the active calendar (#527): a fiction has no "Monday"; unnamed
+  // fiction weekdays fall back to calWeekdayName's ordinal ("Day 3"), never undefined.
+  if (desc.kind === 'weekday') return 'every ' + desc.days.map(d => cal ? calWeekdayName(cal, d) : _WD_NAME[d]).join(', ');
   if (desc.kind === 'monthday') {
     const ord = ordinalSuffix(desc.day);
     return `monthly on the ${desc.day}${ord}`;
@@ -5509,7 +5809,7 @@ function toOpml(r) {
   // doc-level config in the head, each via the shared headEl serializer (F6)
   // #464: emit <_appearance> only when it holds at least one mapping (mirrors headEl's empty-skip)
   const appHas = r.appearance && (Object.keys(r.appearance.tags || {}).length || Object.keys(r.appearance.props || {}).length);
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + headEl('_docid', r.docId) + headEl('_journal', r.journal);
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + headEl('_docid', r.docId) + headEl('_journal', r.journal);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -5648,7 +5948,12 @@ function fromOpml(xml) {
   // #464: appearance config — validated to known swatch/icon names, never throws
   const appearanceRaw = doc.querySelector('head > _appearance')?.textContent?.trim();
   const appearance    = (() => { try { return normalizeAppearance(JSON.parse(appearanceRaw || 'null')); } catch(_) { return { tags: {}, props: {} }; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, docId, journal,
+  // #527: the custom calendar (or null). normalizeCalendar IS the load-time validator — it returns
+  // null on anything malformed, so a hostile or half-written <_calendar> can never activate a
+  // broken calendar (the whole date layer just stays Gregorian).
+  const calendarRaw   = doc.querySelector('head > _calendar')?.textContent?.trim();
+  const calendar      = (() => { try { return normalizeCalendar(JSON.parse(calendarRaw || 'null')); } catch(_) { return null; } })();
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, docId, journal,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -10510,7 +10815,7 @@ function renderJournalStrip() {
   const strip = document.getElementById('journal-strip');
   strip.innerHTML = '';
   if (!journalOpen) return;
-  const iso = todayISO(), [y, mo, d] = iso.split('-');
+  const iso = todayISO(), [y, mo, d] = isoParts(iso);   // negative-year-safe (#527)
   const row = document.createElement('div'); row.className = 'cap-row';
 
   const input = document.createElement('textarea');
@@ -10552,7 +10857,7 @@ function openJournalLevel(depth) {
   // the strip stays open across the jump, same as the agenda when zooming from a chip
   const mode = root.journal?.mode || 'append';
   if (mode === 'file' && workspaceDir) { openJournalEntry(); return; }
-  const iso = todayISO(), segs = iso.split('-');
+  const iso = todayISO(), segs = isoParts(iso);   // negative-year-safe (#527)
   pushUndo();
   const home = findOrCreateJournalHome();
   let parent = home, entry = home;
@@ -10778,7 +11083,7 @@ function parseSearchQuery(q) {
       // QX-2: forward relative windows (this week / month). op:'window' matches a
       // date from today through today+N inclusive. A recorded value-vocabulary growth of
       // the date arm (no new sigil), reusing the epoch-day machinery. `< / >` don't apply.
-      else if ((lc === 'week' || lc === 'month') && op === '=') { terms.push({ neg, kind, op: 'window', epochDay: dueDateToday() + (lc === 'week' ? 7 : 30) }); }
+      else if ((lc === 'week' || lc === 'month') && op === '=') { const cal = activeCalendar(), tod = dueDateToday(cal); terms.push({ neg, kind, op: 'window', epochDay: tod + dueWindowDays(lc, cal, tod) }); }
       else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
     }
     else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });
@@ -17226,13 +17531,18 @@ const FN1 = Object.assign(Object.create(null), {
   kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
   kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
   l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
-  // date math — dates are integer epoch-days (date(y,m,d)/today); these pull
-  // components or pass through (asdate marks a value for ISO display)
-  year:    x => new Date(Math.round(x) * DAY_MS).getUTCFullYear(),
-  month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
-  day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
-  weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
-  quarter: x => Math.floor(new Date(Math.round(x) * DAY_MS).getUTCMonth() / 3) + 1, // 1–4
+  // date math — dates are integer epoch-days (date(y,m,d)/today); these pull COMPONENTS,
+  // so they are COMPUTE, not display: under a fictional calendar they must read the fiction's
+  // own year/month/day/weekday (via epochToCal), not the Gregorian wall-calendar. `year` reports
+  // the ERA-display year (matching the label layer) when the calendar defines eras. `weekday` is
+  // the index into THIS calendar's week (0=the weekday epochDay fell on) — a different origin from
+  // Gregorian's 0=Sunday, because a fictional week has no "Sunday"; the contract is "index into
+  // this calendar's week". Gregorian stays byte-identical when no calendar is active.
+  year:    x => calComponents(x, activeCalendar()).year,
+  month:   x => calComponents(x, activeCalendar()).month,     // 1–12
+  day:     x => calComponents(x, activeCalendar()).day,
+  weekday: x => calComponents(x, activeCalendar()).weekday,   // Gregorian: 0=Sun … 6=Sat; custom: index into its week
+  quarter: x => calComponents(x, activeCalendar()).quarter,   // 1–4
   daysuntil: d => Math.round(d) - dueDateToday(),                     // days from today to date d (negative if past)
   asdate:  x => x,
   // logic — not() flips a truth value (nonzero → 0, zero → 1). The NaN guard keeps a
@@ -17247,7 +17557,10 @@ const FN2 = Object.assign(Object.create(null), {
   pctchange: (from, to) => (to - from) / from * 100,               // percent change from→to (÷0 → ∞)
 });
 const FN3 = Object.assign(Object.create(null), {
-  date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS),
+  // Inverse of the component fns: build an epoch from y/m/d. Under a fictional calendar the y the
+  // user types is the era-DISPLAY year (matching year() above), so convert to intrinsic then
+  // calToEpoch; null (out-of-range for that calendar) → NaN so evalMath fails visibly, not silently.
+  date: (y, m, d) => { const cal = activeCalendar(); if (cal) { const ep = calToEpoch(cal.eras.length ? calYearFromEra(y, cal) : y, m, d, cal); return ep == null ? NaN : ep; } return Math.floor(Date.UTC(y, m - 1, d) / DAY_MS); },
   clamp: (x, lo, hi) => Math.min(Math.max(x, lo), hi),            // bound x to [lo, hi]
 });
 
@@ -17420,9 +17733,17 @@ function evalMath(input, vars = {}) {
   } catch (_) { return null; }
 }
 
-function formatEpochDays(n) {
+function formatEpochDays(n, cal = activeCalendar()) {
   if (!isFinite(n)) return formatMathResult(n);
-  const d = new Date(Math.round(n) * 86400000);
+  const ep = Math.round(n);
+  if (cal) {                                     // #527: fictional calendar → its own y-m-d label
+    const d = epochToCal(ep, cal);
+    if (d) {                                     // (null only on a non-integer, already excluded by round)
+      const y = cal.eras.length ? calEraYear(d.year, cal) : d.year;
+      return `${y}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+    }
+  }
+  const d = new Date(ep * 86400000);
   const m = String(d.getUTCMonth() + 1).padStart(2, '0');
   const day = String(d.getUTCDate()).padStart(2, '0');
   return `${d.getUTCFullYear()}-${m}-${day}`;
@@ -23419,7 +23740,7 @@ function renderAgendaCalendar(host, visible, totalDated) {
     requestAnimationFrame(() => requestAnimationFrame(() => { _switching = false; centreCurrent(); }));
   }
   const navMonth = (delta) => switchTo(addMonths(curM(), delta));
-  const jumpYear = (delta) => switchTo(addMonths(curM(), delta * 12));   // ‹‹/›› = one year
+  const jumpYear = (delta) => switchTo(addMonths(curM(), delta * (activeCalendar()?.months.length ?? 12)));   // ‹‹/›› = one year OF THE ACTIVE CALENDAR (#527: 12 months is only a Gregorian year)
   const goToday  = () => switchTo(dueDateToday());
   // clicking a side month switches to it (guarded so it can't race a pending switch)
   prevBlk.block.addEventListener('mousedown', e => { e.preventDefault(); switchTo(addMonths(curM(), -1)); });
@@ -25252,6 +25573,7 @@ function applyAutosaveData(data) {
   if (treeDepthExceeds(data.root)) return false;
   root = data.root;
   root.appearance = normalizeAppearance(root.appearance); // #464: a pre-feature autosave has none; guarantee the {tags,props} shape
+  root.calendar = normalizeCalendar(root.calendar); // #527: same hole as appearance — a tampered/stale autosave calendar must re-validate here or every date-chip render throws
   migrateNodePrefixes(root);
   buildIndex(root, null); resetDocCaches();
   focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;

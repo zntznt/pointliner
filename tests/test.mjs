@@ -6763,6 +6763,331 @@ test('outline constraints: front-door + render + search wiring (src pins)', () =
   assert.ok(_src.includes("openCheckDialog(chip.dataset.propsId)"), 'check chip not routed in openPropChip');
 });
 
+// ── custom calendars (#527, Tier 1): the pure bijection ─────────────────────────
+// A fictional Calendar of Harptos-ish: 12 30-day months, a 10-day week, epoch at day 0.
+const HARPTOS = {
+  id: 'harptos', name: 'Harptos', epochDay: 0,
+  months: Array.from({ length: 12 }, (_, i) => ({ name: 'M' + (i + 1), days: 30 })),
+  week: { length: 10, days: [] }, eras: [{ name: 'DR', yearZero: 1000 }], current: 5000,
+};
+test('normalizeCalendar — keeps a valid def, rejects a malformed one (null = Gregorian)', () => {
+  assert.ok(c.normalizeCalendar(HARPTOS), 'a well-formed calendar survives');
+  assert.equal(c.normalizeCalendar(null), null, 'null → Gregorian');
+  assert.equal(c.normalizeCalendar({ months: [] }), null, 'a calendar needs at least one month');
+  assert.equal(c.normalizeCalendar({ months: [{ name: 'x', days: 0 }] }), null, 'a month needs a positive length');
+  // defaults: week length falls back to 7, epoch to 0
+  const min = c.normalizeCalendar({ months: [{ name: 'Only', days: 10 }] });
+  assert.equal(min.week.length, 7); assert.equal(min.epochDay, 0);
+});
+test('calYearLength — sums the month lengths', () => {
+  assert.equal(c.calYearLength(c.normalizeCalendar(HARPTOS)), 360, '12 × 30');
+});
+test('epochToCal / calToEpoch — round-trip is identity across a wide range', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  for (const ep of [0, 1, 29, 30, 359, 360, 361, 5000, -1, -360, -361, 12345]) {
+    const d = c.epochToCal(ep, cal);
+    assert.equal(c.calToEpoch(d.year, d.month, d.day, cal), ep, `round-trip at ${ep}`);
+  }
+  // spot-check the decomposition: day 0 = year 1, month 1, day 1, weekday 0
+  assert.deepEqual(host(c.epochToCal(0, cal)), { year: 1, month: 1, day: 1, weekday: 0 });
+  assert.deepEqual(host(c.epochToCal(30, cal)), { year: 1, month: 2, day: 1, weekday: 0 }, '10-day week: day 30 is weekday 0');
+  assert.deepEqual(host(c.epochToCal(360, cal)), { year: 2, month: 1, day: 1, weekday: 0 }, 'day 360 rolls to year 2');
+  assert.equal(c.epochToCal(35, cal).weekday, 5, 'weekday wraps at the custom week length (10)');
+});
+test('calToEpoch — rejects an out-of-range month/day (the bijection has no gaps to fake)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  assert.equal(c.calToEpoch(1, 13, 1, cal), null, 'month 13 does not exist in a 12-month calendar');
+  assert.equal(c.calToEpoch(1, 1, 31, cal), null, 'day 31 does not exist in a 30-day month');
+  assert.equal(c.calToEpoch(1, 1, 0, cal), null, 'day 0 is invalid');
+});
+test('calEraYear — an era offsets the display year; the epoch integer is unchanged', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  assert.equal(c.calEraYear(5, cal, 'DR'), 1005, 'year 5 in DR (yearZero 1000) shows as 1005');
+  assert.equal(c.calEraYear(5, cal, undefined), 1005, 'no era name → the first era');
+});
+test('cross-calendar identity: the same epoch-day sorts identically, labels differently', () => {
+  // Two calendars over the SAME integer axis — sort is on the integer, so it is calendar-agnostic.
+  const a = c.normalizeCalendar(HARPTOS);
+  const b = c.normalizeCalendar({ id: 'b', epochDay: 0, months: [{ name: 'Long', days: 40 }, { name: 'Short', days: 20 }], week: { length: 5, days: [] } });
+  const eps = [100, 5, 380, 42];
+  const sortedByInt = [...eps].sort((x, y) => x - y);
+  // the decomposition differs per calendar, but ordering by the raw integer is shared truth
+  assert.notDeepEqual(host(c.epochToCal(42, a)), host(c.epochToCal(42, b)), 'same day, different (m,d) per calendar');
+  assert.deepEqual(sortedByInt, [5, 42, 100, 380], 'ordering is on the integer, independent of calendar');
+});
+
+// review fixes (BUG-1/2/3): the cores must return null on invalid input, NEVER throw or emit
+// a fractional/NaN-laced result (the "null on invalid input" house rule the parse layer relies on).
+test('calendar cores are total: null on non-integer input, never throw (#527 review)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  // epochToCal
+  assert.equal(c.epochToCal(1.5, cal), null, 'fractional epoch → null (was a fractional day/weekday)');
+  assert.equal(c.epochToCal(NaN, cal), null, 'NaN epoch → null (was a malformed object)');
+  assert.equal(c.epochToCal(Infinity, cal), null);
+  // calToEpoch — a NaN month used to throw (indexing cal.months[NaN]); a float day used to return 0.5
+  assert.equal(c.calToEpoch(1, NaN, 1, cal), null, 'NaN month → null (was a TypeError throw)');
+  assert.equal(c.calToEpoch(1, 1, 1.5, cal), null, 'fractional day → null (was a fractional epoch-day)');
+  assert.equal(c.calToEpoch(1.5, 1, 1, cal), null, 'fractional year → null');
+  assert.doesNotThrow(() => c.calToEpoch(1, NaN, 1, cal), 'never throws on bad input');
+});
+test('normalizeCalendar REJECTS a present-but-garbage field whole — never filters/corrects (#527 hardening)', () => {
+  // The review's key argument: silently dropping one malformed month entry CHANGES THE BIJECTION
+  // (a 360-day year becomes 330 and every stored date shifts). A typo'd calendar must fall back
+  // to Gregorian visibly, not corrupt quietly. So: absent fields default; garbage rejects.
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'M1', days: 30 }, { name: 'M2', days: '30' }] }), null,
+    'ONE string-days month rejects the whole calendar (was: silently dropped, shifting every date)');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, eras: [{ name: 'DR', yearZero: '1000' }] }), null,
+    'a garbage era rejects (was: dropped, silently changing the display-year offset)');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, week: { length: '10', days: [] } }), null,
+    'a present-but-garbage week.length rejects (was: silent fallback to 7)');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, epochDay: 9e18 }), null, 'unsafe epochDay rejects');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, current: 9e18 }), null, 'unsafe current rejects');
+  assert.equal(c.normalizeCalendar({ ...HARPTOS, current: 2e7 }), null, 'current outside ±CAL_EPOCH_MAX rejects');
+  // absent fields still default (a minimal calendar is fine)
+  const min = c.normalizeCalendar({ months: [{ name: 'Only', days: 10 }] });
+  assert.equal(min.week.length, 7); assert.equal(min.epochDay, 0); assert.equal(min.current, null);
+  // hostile-size caps: a wedge-the-render months array rejects
+  assert.equal(c.normalizeCalendar({ months: Array.from({ length: 1001 }, () => ({ name: 'm', days: 1 })) }), null);
+});
+test('calToEpoch bounds the epoch to ±CAL_EPOCH_MAX — a huge typed year is unparseable, not garbage (#527 CRIT-1)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  assert.equal(c.calToEpoch(1e15, 1, 1, cal), null, 'a non-safe-integer epoch → null (was 3.6e17 flowing into props)');
+  assert.equal(c.calToEpoch(1e6, 1, 1, cal), null, 'past the window → null (a rangeDays this size freezes the Gantt)');
+  assert.equal(c.parseDueDate('999999999999999-1-1', cal), null, 'the parse arm inherits the bound');
+  assert.ok(c.calToEpoch(27000, 1, 1, cal) !== null, 'a deep-but-sane fiction year still parses');
+});
+test('applyAutosaveData re-validates root.calendar through normalizeCalendar (#527 review #4)', () => {
+  // DOM-bound, so pinned structurally like dueDateToday: the restore path must normalize the
+  // calendar exactly as it normalizes appearance — a raw restore of a tampered/stale autosave
+  // calendar makes every date-chip render throw.
+  const fn = fnBody(_src, 'applyAutosaveData');
+  assert.ok(fn.includes('normalizeCalendar(root.calendar)'), 'autosave restore normalizes the calendar');
+});
+test('parseDueDate relative forms resolve against the PASSED calendar (#527 seam contract)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // current: 5000
+  assert.equal(c.parseDueDate('today', cal), 5000, 'today = the fiction current, not the wall clock');
+  assert.equal(c.parseDueDate('tomorrow', cal), 5001);
+  assert.equal(c.parseDueDate('today+10', cal), 5010);
+  // a fiction whose `current` sits outside the Gregorian 1900-2200 window keeps today+N working
+  const far = c.normalizeCalendar({ ...HARPTOS, current: 100000 });
+  assert.equal(c.parseDueDate('today+1', far), 100001, 'the Gregorian typo window must not bound a fiction');
+  assert.equal(c.parseDueDate('today+' + 2e7, cal), null, 'but the fiction window still bounds garbage');
+});
+test('calEraYear / calYearFromEra round-trip: display year ↔ intrinsic year (the parse contract)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // era DR, yearZero 1000
+  assert.equal(c.calEraYear(5, cal, 'DR'), 1005, 'intrinsic 5 → display 1005');
+  assert.equal(c.calYearFromEra(1005, cal, 'DR'), 5, 'display 1005 → intrinsic 5 (parse must do this before calToEpoch)');
+  // round-trip identity
+  for (const y of [-100, 0, 1, 5000]) assert.equal(c.calYearFromEra(c.calEraYear(y, cal, 'DR'), cal, 'DR'), y);
+});
+test('parseDueDate ↔ formatEpochDays round-trip under a custom calendar (#527 seam)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 12×30, era DR yearZero 1000
+  for (const ep of [0, 5, 45, 359, 360, 5000, -1, -720]) {
+    const label = c.formatEpochDays(ep, cal);
+    assert.equal(c.parseDueDate(label, cal), ep, `round-trip ${ep} via "${label}"`);
+  }
+  // the label uses the ERA-display year (DR): epoch 0 = intrinsic year 1 = display 1001
+  assert.equal(c.formatEpochDays(0, cal), '1001-01-01', 'era year in the label');
+  assert.equal(c.parseDueDate('1001-01-01', cal), 0, 'parse subtracts the era offset');
+  // out-of-range for the calendar → null
+  assert.equal(c.parseDueDate('1001-13-01', cal), null, 'a month past the calendar → null');
+  assert.equal(c.parseDueDate('1001-01-31', cal), null, 'day 31 in a 30-day month → null');
+});
+test('parseDueDate / formatEpochDays unchanged when no calendar (Gregorian regression)', () => {
+  assert.equal(c.formatEpochDays(20617, null), '2026-06-13');
+  assert.equal(c.parseDueDate('2026-06-13', null), 20617);
+  assert.equal(c.parseDueDate('2026-13-01', null), null, 'Gregorian validation intact');
+});
+test('formatDueDate / formatDateConcrete use calendar names, fall back on gaps (#527 label seam)', () => {
+  // HARPTOS names months M0..M11 but leaves ALL weekdays unnamed (week.days is []).
+  const cal = c.normalizeCalendar(HARPTOS); // current:5000
+  const far = cal.current + 400; // well past "today" → the month-name branch, not overdue
+  const concrete = c.formatDateConcrete(far, cal);
+  const back = c.epochToCal(far, cal);
+  assert.ok(concrete.includes(c.calMonthName(cal, back.month)), `custom month name: ${concrete}`);
+  assert.ok(/Day \d/.test(concrete), `unnamed weekday falls back to an ordinal, not "undefined": ${concrete}`);
+  // A calendar WITH named weekdays: the <=6d branch of formatDueDate prints the name.
+  const named = { ...HARPTOS, current: 0, week: { length: 10, days: ['Sul','Mol','Dul','Fol','Sic','Til','Kel','Tar','Lok','Vel'] } };
+  const cal2 = c.normalizeCalendar(named);
+  const soon = c.formatDueDate(3, cal2); // 3 days after current=0, within the week window
+  assert.ok(cal2.week.days.includes(soon.label), `named weekday in the soon label: ${soon.label}`);
+});
+test('the cal-branch date fns are total: garbage epochs never throw under a calendar (#527 review #6)', () => {
+  // The Gregorian twins return garbage on NaN/Infinity but never throw; the cal branches used to
+  // throw (epochToCal → null → property read). Contract: garbage in, garbage out, NEVER throw —
+  // these run naked at chip-render sites, where a throw kills the whole render.
+  const cal = c.normalizeCalendar(HARPTOS);
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    assert.doesNotThrow(() => c.calComponents(bad, cal), `calComponents(${bad})`);
+    assert.doesNotThrow(() => c.formatDueDate(bad, cal), `formatDueDate(${bad})`);
+    assert.doesNotThrow(() => c.formatDateConcrete(bad, cal), `formatDateConcrete(${bad})`);
+    assert.doesNotThrow(() => c.addMonths(bad, 1, cal), `addMonths(${bad})`);
+    assert.doesNotThrow(() => c.calendarMonthGrid(bad, cal), `calendarMonthGrid(${bad})`);
+    assert.doesNotThrow(() => c.dueWindowDays('month', cal, bad), `dueWindowDays(${bad})`);
+  }
+  assert.equal(c.dueWindowDays('month', cal, NaN), 30, 'garbage today → the Gregorian span fallback');
+});
+test('formatDueDate weekday-name window spans the fiction week, not the Gregorian 7 (#527 review #10)', () => {
+  const cal = c.normalizeCalendar({ ...HARPTOS, current: 0, week: { length: 10, days: ['D0','D1','D2','D3','D4','D5','D6','D7','D8','D9'] } });
+  // days 7..9 sit inside the coming 10-day fiction week: they get weekday names now (were month-day)
+  assert.equal(c.formatDueDate(8, cal).label, 'D8', 'day 8 of a 10-day week is a named weekday');
+  assert.equal(c.formatDueDate(9, cal).label, 'D9');
+  assert.equal(c.formatDueDate(10, cal).state, 'future', 'one full week out falls to the month-day label');
+  // Gregorian window unchanged: diff 7 is a month-day label, exactly as before
+  const g = c.formatDueDate(c.dueDateToday(null) + 7, null);
+  assert.equal(g.state, 'future', 'Gregorian diff=7 stays outside the weekday window');
+});
+test('calComponents — evalMath date-fn COMPUTE seam: fiction values vs Gregorian identity (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 12×30, era DR yearZero 1000, week length 10
+  // epoch 45 = intrinsic year 1, month 2, day 16 (30 + 15); era-year 1001; weekday = 45 % 10 = 5.
+  const k = c.calComponents(45, cal);
+  assert.equal(k.year, 1001, 'year() is the era-display year under a calendar');
+  assert.equal(k.month, 2);
+  assert.equal(k.day, 16);
+  assert.equal(k.weekday, 5, 'weekday is the index into THIS calendar 10-day week, not 0=Sunday');
+  assert.equal(k.quarter, 1, '12 months / 4 = 3 per quarter; month 2 → Q1');
+  // month 7 (index 6) → quarter 3 boundary check
+  assert.equal(c.calComponents(45 + 30 * 5, cal).quarter, 3, 'month 7 → Q3');
+  // Gregorian identity when no calendar: exactly what the old lambdas returned.
+  const ep = 20617; // 2026-06-13, a Saturday
+  const g = c.calComponents(ep, null);
+  assert.deepEqual([g.year, g.month, g.day, g.weekday, g.quarter], [2026, 6, 13, 6, 2],
+    'no calendar → Gregorian year/month/day/weekday(0=Sun,6=Sat)/quarter unchanged');
+});
+test('calendarMonthGrid — fiction week length + month length shape the grid (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 10-day week, 30-day months, epochDay 0
+  // Month 1 of year 1: epoch 0. First-of-month weekday = 0 (epochDay 0). 30 days, 10-col week →
+  // exactly 3 rows of 10, no offset. Grid should be 30 cells, first cell epoch 0.
+  const grid = c.calendarMonthGrid(0, cal);
+  assert.equal(grid.length, 30, '10 cols × 3 rows for a 30-day month with no leading offset');
+  assert.equal(grid[0], 0, 'grid starts at first-of-month when it lands on weekday 0');
+  assert.equal(grid[29], 29, 'last cell is the 30th day');
+  // A month whose first day is mid-week: month 2 (epoch 30), weekday 30%10 = 0 → also aligned.
+  // Force an offset by using a calendar whose epochDay makes weekday nonzero.
+  const off = c.normalizeCalendar({ ...HARPTOS, epochDay: 3 }); // shifts all weekdays by -3
+  const g2 = c.calendarMonthGrid(0, off);
+  assert.equal(c.epochToCal(g2[0], off).weekday, 0, 'grid always starts on weekday 0 (leading spill)');
+  // Gregorian unchanged: 42 cells (6×7).
+  assert.equal(c.calendarMonthGrid(20617, null).length, 42, 'no calendar → the Gregorian 6×7 grid');
+});
+test('addMonths — clamps day to the fiction month length, wraps the year (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // all months 30 days
+  // epoch 29 = year 1 month 1 day 30; +1 month → month 2 day 30 (both 30-day, no clamp).
+  const plus1 = c.addMonths(29, 1, cal);
+  const p = c.epochToCal(plus1, cal);
+  assert.deepEqual([p.year, p.month, p.day], [1, 2, 30], 'month 1 day 30 + 1 → month 2 day 30');
+  // Wrap the year: month 12 + 1 → month 1 of next year.
+  const dec = c.calToEpoch(1, 12, 15, cal);
+  const wrapped = c.epochToCal(c.addMonths(dec, 1, cal), cal);
+  assert.deepEqual([wrapped.year, wrapped.month, wrapped.day], [2, 1, 15], 'month 12 + 1 wraps to next year month 1');
+  // Clamp: a calendar with an uneven short month.
+  const uneven = c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'Long', days: 31 }, { name: 'Short', days: 20 }, ...HARPTOS.months.slice(2)] });
+  const day31 = c.calToEpoch(1, 1, 31, uneven);           // Long day 31
+  const clamped = c.epochToCal(c.addMonths(day31, 1, uneven), uneven);
+  assert.deepEqual([clamped.month, clamped.day], [2, 20], 'day 31 + 1 → Short day 20 (clamped to month length)');
+  // Gregorian unchanged: Jan 31 + 1 → Feb 28 (2026 not leap).
+  const jan31 = c.parseDueDate('2026-01-31', null);
+  assert.equal(c.formatEpochDays(c.addMonths(jan31, 1, null), null), '2026-02-28', 'Gregorian clamp intact');
+});
+test('recurrence + week cores step in the fiction units (#527 review #3 routing)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 10-day week, 12×30-day months, year = 360
+  assert.equal(c.addWeeks(5000, 1, cal), 5010, 'a 10-day fiction week advances 10');
+  assert.equal(c.addWeeks(100, 2, null), 114, 'Gregorian stays 7-day');
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'week', n: 1 }, 5000, 5000, cal), 5010);
+  const tenMonth = c.normalizeCalendar({ ...HARPTOS, months: HARPTOS.months.slice(0, 10) }); // year = 300
+  assert.equal(c.nextOccurrence({ kind: 'interval', unit: 'year', n: 1 }, 5000, 5000, tenMonth), 5300,
+    'a fiction year is ITS OWN length (was addMonths n*12 = 1.2 years on a 10-month calendar)');
+  // weekday kind: epoch 5000 is fiction weekday 0; the indices are into THIS calendar's week
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [3] }, 5000, 5000, cal), 5003);
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [0] }, 5000, 5000, cal), 5010, 'same weekday → a full fiction week');
+  assert.equal(c.nextOccurrence({ kind: 'weekday', days: [12] }, 5000, 5000, cal), null, 'an index past week.length can never occur → null');
+  // monthday kind: year 2 month 12 wraps to year 3 month 1; day 40 clamps to the 30-day month
+  const from = c.calToEpoch(2, 12, 15, cal);
+  const nx = c.epochToCal(c.nextOccurrence({ kind: 'monthday', day: 40 }, from, from, cal), cal);
+  assert.deepEqual([nx.year, nx.month, nx.day], [3, 1, 30]);
+});
+test('agendaMonthCells / agendaWeekCells stamp fiction day numbers, not Gregorian (#527 review #2)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  const cells = c.agendaMonthCells([], 5000, 5000, cal);
+  assert.equal(cells.length, 30, 'fiction month grid');
+  assert.equal(cells[0].dom, 1, 'first cell is FICTION day 1 (was stamping the Gregorian date)');
+  assert.equal(cells[29].dom, 30);
+  assert.ok(cells.every(x => x.inMonth), 'an aligned month has no spill');
+  // an uneven first month shifts month 2 off the week boundary → a real leading-spill cell
+  const uneven = c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'Long', days: 31 }, ...HARPTOS.months.slice(1)] });
+  const m2 = c.calToEpoch(1, 2, 1, uneven);   // epoch 31, weekday 1
+  const oc = c.agendaMonthCells([], m2, 5000, uneven);
+  assert.ok(!oc[0].inMonth && oc[0].dom === 31, 'the leading spill cell is the PRIOR month day 31, fiction-numbered');
+  assert.ok(oc[1].inMonth && oc[1].dom === 1);
+  // week bar: fiction length, fiction weekday-0 anchor, fiction dow indices
+  const wk = c.agendaWeekCells([], 5005, 5000, cal);
+  assert.equal(wk.days.length, 10, 'a fiction week bar has week.length cells');
+  assert.equal(wk.start, 5000, 'the week backs up to fiction weekday 0, not a Gregorian Sunday');
+  assert.deepEqual(host(wk.days.map(d => d.dow)), [0,1,2,3,4,5,6,7,8,9]);
+  assert.equal(c.agendaWeekCells([], 20617, 20615, null).days.length, 7, 'Gregorian week unchanged');
+});
+test('isoParts / findOrCreateDatedEntry survive a negative fiction display year (#527 review #11)', () => {
+  assert.deepEqual(host(c.isoParts('-1004-01-11')), ['-1004', '01', '11'], 'the year rung keeps its minus');
+  assert.deepEqual(host(c.isoParts('2026-06-13')), ['2026', '06', '13'], 'a plain date splits as before');
+  // the dated-entry walk builds year > month > day with the negative year INTACT
+  const home = { children: [] };
+  const mk = t => ({ text: t, children: [] });
+  const { entry } = c.findOrCreateDatedEntry(home, '-1004-01-11', mk);
+  assert.equal(home.children[0].text, '-1004', 'the year node is "-1004", not an empty rung');
+  assert.equal(entry.text, '11');
+});
+test('describeRepeat names fiction weekdays through the calendar (#527)', () => {
+  const named = c.normalizeCalendar({ ...HARPTOS, week: { length: 10, days: ['Sul','Mol','Dul'] } });
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [1] }, named), 'every Mol');
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [5] }, named), 'every Day 6', 'unnamed fiction weekday → the ordinal fallback');
+  assert.equal(c.describeRepeat({ kind: 'weekday', days: [1] }, null), 'every Monday', 'Gregorian names unchanged');
+});
+test('root.calendar round-trips through the OPML head, validated on load (#527)', () => {
+  // Serialize a root carrying a calendar; the <_calendar> head element holds the JSON.
+  const root = c.mkRoot();
+  root.calendar = c.normalizeCalendar(HARPTOS);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('<_calendar>'), 'a root with a calendar emits the <_calendar> head element');
+  // The emitted JSON (ex() entity-encodes the quotes) parses back through normalizeCalendar — the
+  // SAME function that is the load-time validator, so a round-trip preserves the calendar identity.
+  const m = xml.match(/<_calendar>([\s\S]*?)<\/_calendar>/);
+  const decoded = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const back = c.normalizeCalendar(JSON.parse(decoded));
+  assert.equal(back.id, 'harptos');
+  assert.equal(back.current, 5000, 'the in-fiction now survives the round-trip');
+  assert.equal(back.months.length, 12);
+  // No calendar → no element (mirrors headEl's empty-skip; a Gregorian doc stays clean).
+  assert.ok(!c.toOpml(c.mkRoot()).includes('_calendar'), 'a Gregorian doc emits no <_calendar>');
+});
+test('dueWindowDays — due:week/month spans the fiction week + current-month length (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 10-day week, all months 30 days
+  assert.equal(c.dueWindowDays('week', cal, 0), 10, 'a week is week.length days under a fiction');
+  assert.equal(c.dueWindowDays('month', cal, 0), 30, 'a month is the current month length');
+  // A calendar with uneven months: the window uses the month `today` falls in.
+  const uneven = c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'Long', days: 40 }, { name: 'Short', days: 12 }, ...HARPTOS.months.slice(2)] });
+  assert.equal(c.dueWindowDays('month', uneven, 0), 40, 'today in Long → 40-day window');
+  assert.equal(c.dueWindowDays('month', uneven, 40), 12, 'today in Short → 12-day window');
+  // Gregorian unchanged: 7 / 30 regardless of the day.
+  assert.equal(c.dueWindowDays('week', null, 20617), 7);
+  assert.equal(c.dueWindowDays('month', null, 20617), 30);
+});
+test('formatDueDate unchanged when no calendar (Gregorian label regression)', () => {
+  // >6 days out from the real clock → the Gregorian month-name branch ("Jan 1" style).
+  const far = c.dueDateToday(null) + 40;
+  const r = c.formatDueDate(far, null);
+  assert.equal(r.iso, c.formatEpochDays(far, null), 'ISO still Gregorian');
+  assert.ok(/^[A-Z][a-z]{2} \d/.test(r.label), `Gregorian month label intact: ${r.label}`);
+  assert.equal(r.state, 'future');
+});
+test('dueDateToday: uses the in-fiction `current` when a calendar has one — else falls back (#527 decision)', () => {
+  // pinned as a DECISION, not an accident: current present → that integer; the wall-clock fallback
+  // when current is null is a documented Tier-1 choice (a calendar with no in-fiction "now").
+  const fn = fnBody(_src, 'dueDateToday');
+  assert.ok(/Number\.isInteger\(cal\.current\)/.test(fn) && /return cal\.current/.test(fn),
+    'returns the in-fiction current when the active calendar defines one');
+  assert.ok(/Date\.UTC/.test(fn), 'falls back to the wall clock otherwise (documented Tier-1 choice)');
+});
+
 // ── due dates ─────────────────────────────────────────────────────────────────
 
 test('parseDueDate — ISO date parses to epoch day', () => {
