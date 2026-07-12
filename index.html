@@ -9308,7 +9308,7 @@ function applyCalendarChange(next) {
 function openCalendarAuditConfirm(next, audit, onConfirm) {
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, 'fa-solid fa-calendar-days');
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, { fa: 'fa-solid fa-calendar-days', fb: '📅' });
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Check your dates';
   head.append(ic, ttl); ioCard.appendChild(head);
 
@@ -9413,7 +9413,7 @@ function openCalendarDialog() {
     }
   };
   openInsertDialog({
-    icon: 'fa-solid fa-calendar-days',
+    icon: { fa: 'fa-solid fa-calendar-days', fb: '📅' },
     title: 'Custom calendar',
     guideId: 'custom-calendars',
     submitLabel: cur ? 'Save changes' : 'Use this calendar',

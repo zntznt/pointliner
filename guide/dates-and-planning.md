@@ -84,6 +84,46 @@ journal can instead write one file per day on disk.)
 
 ---
 
+## Custom calendars
+
+Run a campaign or write a world on its own calendar instead of the real one: your months, your week,
+your era. Open **File then Custom calendar** and type the calendar as text:
+
+- **Months**, one per line, name and day count: `Firstfrost: 30`. Multi-word names work
+  (`The Fading: 28`).
+- **Week**: day names (`Moonday Tilday Windday...`), a bare length like `10`, or `10: Sul Mol` to
+  name just the first days. Blank keeps a 7-day week.
+- **Era**, optional: `AE: 1200` makes year 4 display as `1204 AE`.
+- **Today in this world**: the current in-world date, like `1204-04-12`. A fictional world has no
+  wall clock, so this is the day your dates, urgency colors, and agenda count from.
+
+Two example chips fill the fields with a complete working calendar to edit; the live preview under
+each field checks your lines as you type and shows what "today" resolves to before you commit.
+
+Once active, the whole document speaks that calendar: due and start dates read and write the
+calendar's own year-month-day (`due: 1204-04-12`), the agenda's month and week views take its shape
+(a 10-day week really shows ten columns), the date picker in the Schedule dialog renders its months,
+date math like `{= daysuntil(due)}` counts its days, and the [journal](#daily-journal) files entries
+under the in-world date, so a campaign log accumulates in campaign time. Relative dates (`today+3`,
+`tomorrow`) mean in-world days.
+
+**Let time pass** from the agenda: with a calendar active, a **Today** chip shows the in-world date;
+click it to advance the clock (+1 day, +3 days, +1 week) or set an exact date. Advancing never
+touches your points, it just moves "now", and every date label follows.
+
+**Changing or removing a calendar re-reads every stored date.** Dates are saved as the text you
+typed, so a date written under one calendar can mean a different day (or nothing) under another. The
+dialog checks first and tells you how many dates would read differently or become unreadable; your
+text is never modified, undo reverses the switch, and an unreadable date stays visible on its point
+with a warning tint until you re-date it.
+
+To use a published setting's calendar (Harptos, Golarion, and friends), keep its wiki open and type
+the month list in; it takes about two minutes. One honest caveat: calendars with leap days or
+festival days that sit outside any month (Harptos' Midwinter, for example) can't be represented
+exactly yet; the usual workaround is folding each festival into the preceding month as an extra day.
+
+---
+
 ## Doing math with dates
 
 Dates are not just labels, they are numbers you can compute with. `{= daysuntil(due)}` counts down to
