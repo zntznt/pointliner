@@ -5976,7 +5976,12 @@ function toOpml(r) {
   // doc-level config in the head, each via the shared headEl serializer (F6)
   // #464: emit <_appearance> only when it holds at least one mapping (mirrors headEl's empty-skip)
   const appHas = r.appearance && (Object.keys(r.appearance.tags || {}).length || Object.keys(r.appearance.props || {}).length);
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + headEl('_docid', r.docId) + headEl('_journal', r.journal);
+  // #613: <_journal> must be JSON like the other object elements — headEl's String() arm wrote
+  // "[object Object]", which the parse side's JSON.parse threw away, silently reverting a
+  // file-per-day journal (or a custom home point) to the defaults on EVERY OPML save/load.
+  // Emit only when non-default (the _appearance/_calendar empty-skip), so a plain doc stays clean.
+  const journalHas = r.journal && (r.journal.mode !== 'append' || r.journal.targetId != null);
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>

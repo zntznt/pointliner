@@ -7200,6 +7200,27 @@ test('auditCalendarSwitch classifies every stored date under the candidate calen
   assert.equal(ch.changed.length, 1, 'month 2 day 5 lands on a different epoch when month 1 grows');
   assert.notEqual(ch.changed[0].oldEp, ch.changed[0].newEp);
 });
+test('root.journal round-trips through the OPML head as JSON (#613)', () => {
+  // headEl's String() arm wrote "[object Object]", which fromOpml's JSON.parse threw away —
+  // a file-per-day journal (or a custom home point) silently reverted to defaults on every
+  // OPML save/load. Now: JSON like _appearance/_calendar, emitted only when non-default.
+  const r = c.mkRoot();
+  r.journal = { mode: 'file', targetId: null };
+  const xml = c.toOpml(r);
+  assert.ok(xml.includes('<_journal>'), 'a non-default journal emits the element');
+  assert.ok(!xml.includes('[object Object]'), 'never the String() garbage');
+  const m = xml.match(/<_journal>([\s\S]*?)<\/_journal>/);
+  const decoded = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const j = JSON.parse(decoded);   // must parse — this line IS what fromOpml does
+  assert.equal(j.mode, 'file', 'the mode survives the round-trip');
+  assert.ok(j && typeof j.mode === 'string', 'passes the fromOpml validator');
+  // a custom home point survives too
+  const r2 = c.mkRoot(); r2.journal = { mode: 'append', targetId: 'abc123' };
+  const m2 = c.toOpml(r2).match(/<_journal>([\s\S]*?)<\/_journal>/);
+  assert.equal(JSON.parse(m2[1].replace(/&quot;/g, '"')).targetId, 'abc123');
+  // the default config emits NOTHING (the _appearance/_calendar empty-skip; a plain doc stays clean)
+  assert.ok(!c.toOpml(c.mkRoot()).includes('_journal'), 'a default journal emits no element');
+});
 test('dueWindowDays — due:week/month spans the fiction week + current-month length (#527)', () => {
   const cal = c.normalizeCalendar(HARPTOS); // 10-day week, all months 30 days
   assert.equal(c.dueWindowDays('week', cal, 0), 10, 'a week is week.length days under a fiction');
