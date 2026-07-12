@@ -262,7 +262,16 @@ count(score) >= 3          at least three scored children
 hours <= 8                 the point's own `hours` property
 max(due) <= deadline       no child due after the deadline
 and(hours <= 8, cost <= cap)   two rules in one check (or(…) / not(…) work too)
+count("-has:hp") == 0      structure: every point below must carry an hp property
+count("is:todo") <= 5      no more than five open tasks in this section
 ```
+
+**Quote the argument and `count` changes meaning**: a bare name (`count(score)`) counts children
+carrying that property, while a quoted search (`count("is:todo #urgent")`) counts every point
+below this one matching it, any depth, with all the usual operators. Existence rules fall out of
+the negation: `count("-has:owner") == 0` reads "nothing below is missing an owner". (One limit:
+the quoted search can't itself contain a `"quoted phrase"`.) The same form works in `{= …}` math
+pills for a live subtree tally.
 
 The point grows a small chip: a muted **✓** when it passes, a visible flag when it **fails** or
 can't evaluate. To sweep the whole document for problems, search **`is:failing`**, which lists every

@@ -81,7 +81,8 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 - **Uncertain estimates.** `{5 to 10}` models a range with a little distribution sparkline, and the
   uncertainty propagates through math. ([estimates](computing-numbers.md#uncertain-values-estimates))
 - **Self-checking outlines.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
-  it breaks. ([constraints](computing-numbers.md#make-the-outline-check-itself-constraints))
+  it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
+  ([constraints](computing-numbers.md#make-the-outline-check-itself-constraints))
 - **Progress cookies.** Drop `[/]` or `[%]` for a live tally of checkboxes and child to-dos.
   ([progress](computing-numbers.md#progress-bars))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
