@@ -308,6 +308,16 @@ The {w} deals {w.damage} damage and weighs {w.weight} lb.
 (`w = {weapon}` is a random-pick variable, see [variables](#store-a-value-and-reuse-it-variables),
 so `{w}` stays one weapon.)
 
+A field read takes [modifiers](#shape-the-words-modifiers) too, chained after the field:
+
+```
+{w.name.cap}       → "Sword"      (capitalize the field)
+{weapon.damage.ord}
+```
+
+One field, then any number of modifiers. (Two fields deep, like `{a.b.c}` where `b` and `c` are
+both fields, isn't a thing; you'll get the `{…?}` marker.)
+
 ---
 
 ## Roll tables
