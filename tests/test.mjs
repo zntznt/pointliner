@@ -7096,6 +7096,110 @@ test('the render-label cores: fiction labels + byte-identical Gregorian arms (#5
     assert.doesNotThrow(() => c.calDayShort(bad, cal));
   }
 });
+test('the Calendar dialog line grammars: value or a line-naming error (#527 PR-C)', () => {
+  // months: "Name: days" | "Name days"; multi-word names survive; the LAST number is the count
+  const m = c.parseCalMonths('Hammer: 30\n\nThe Fading 28');
+  assert.equal(m.error, null);
+  assert.deepEqual(host(m.value), [{ name: 'Hammer', days: 30 }, { name: 'The Fading', days: 28 }]);
+  assert.match(c.parseCalMonths('Hammer: 30\nFrostfall').error, /Line 2.*Frostfall/, 'the bad LINE is named');
+  assert.match(c.parseCalMonths('Hammer: 0').error, /at least 1/, 'zero-day month rejected');
+  assert.match(c.parseCalMonths('').error, /at least one month/i);
+  // week: bare length | names (length = count) | "N: partial names"
+  assert.deepEqual(host(c.parseCalWeek('').value), { length: 7, days: [] }, 'blank = the 7-day default');
+  assert.deepEqual(host(c.parseCalWeek('10').value), { length: 10, days: [] });
+  assert.deepEqual(host(c.parseCalWeek('Sul Mol Dul').value), { length: 3, days: ['Sul', 'Mol', 'Dul'] });
+  assert.deepEqual(host(c.parseCalWeek('10: Sul Mol Dul').value), { length: 10, days: ['Sul', 'Mol', 'Dul'] }, 'partial naming: the rest fall back to ordinals downstream');
+  assert.ok(c.parseCalWeek('0').error, 'zero-length week rejected');
+  // eras: "Name: yearZero", negative offsets legal
+  assert.deepEqual(host(c.parseCalEras('DR: 1000\nBR: -5').value), [{ name: 'DR', yearZero: 1000 }, { name: 'BR', yearZero: -5 }]);
+  assert.equal(c.parseCalEras('').error, null, 'no eras is fine');
+  assert.match(c.parseCalEras('DR: x').error, /Line 1/);
+  // the whole pipeline: parsed fields → normalizeCalendar accepts them
+  const built = c.normalizeCalendar({
+    id: 'custom', name: 'Test',
+    months: c.parseCalMonths('Hammer: 30\nAlturiak: 30').value,
+    week: c.parseCalWeek('10: Sul Mol Dul').value,
+    eras: c.parseCalEras('DR: 1000').value,
+    current: 5,
+  });
+  assert.ok(built, 'dialog output is normalizeCalendar-clean by construction');
+});
+test('calendarToText round-trips a calendar into editable field text (#527 PR-C)', () => {
+  const cal = c.normalizeCalendar({ ...HARPTOS, week: { length: 10, days: ['Sul', 'Mol', 'Dul'] } });
+  const t = c.calendarToText(cal);
+  assert.match(t.months, /^M1: 30\n/);
+  assert.equal(t.week, '10: Sul Mol Dul', 'partial names keep the explicit length');
+  assert.equal(t.eras, 'DR: 1000');
+  assert.equal(t.current, c.formatEpochDays(5000, cal), 'current renders as the fiction date');
+  // re-parse the emitted text: identity
+  assert.deepEqual(host(c.parseCalMonths(t.months).value), host(cal.months));
+  assert.deepEqual(host(c.parseCalWeek(t.week).value), host(cal.week));
+  assert.deepEqual(host(c.parseCalEras(t.eras).value), host(cal.eras));
+  // full-name week emits bare names; unnamed emits the bare number
+  assert.equal(c.calendarToText(c.normalizeCalendar({ months: [{ name: 'M', days: 30 }], week: { length: 2, days: ['A', 'B'] } })).week, 'A B');
+  assert.equal(c.calendarToText(c.normalizeCalendar({ months: [{ name: 'M', days: 30 }] })).week, '7');
+  assert.deepEqual(host(c.calendarToText(null)), { name: '', months: '', week: '', eras: '', current: '' });
+});
+test('buildCalendarFromFields — the dialog pipeline: five strings in, a normalized calendar out (#527 PR-C)', () => {
+  const v = { name: 'Vale', months: 'Firstfrost: 30\nDeepwinter: 30', week: '10: Sul Mol', eras: 'AE: 1200', current: '1204-01-05' };
+  const cal = c.buildCalendarFromFields(v, null);
+  assert.ok(cal, 'valid fields build');
+  assert.equal(cal.name, 'Vale');
+  assert.equal(cal.months.length, 2);
+  assert.equal(cal.week.length, 10);
+  // current: "1204" is the ERA-display year (AE offset 1200) → intrinsic year 4 → epoch
+  assert.equal(cal.current, c.calToEpoch(4, 1, 5, { ...cal, current: null }), 'today parses as the era-display year against the draft');
+  assert.equal(c.formatEpochDays(cal.current, cal), '1204-01-05', 'and formats back identically');
+  // any bad field → null (the dialog validate)
+  assert.equal(c.buildCalendarFromFields({ ...v, months: 'Frostfall' }, null), null, 'bad months line');
+  assert.equal(c.buildCalendarFromFields({ ...v, current: 'today' }, null), null, 'relatives make no sense while DEFINING today');
+  assert.equal(c.buildCalendarFromFields({ ...v, current: '1204-01-31' }, null), null, 'day 31 in a 30-day month');
+  // editing keeps the previous anchor
+  const prev = c.normalizeCalendar({ months: [{ name: 'M', days: 30 }], epochDay: 500 });
+  assert.equal(c.buildCalendarFromFields(v, prev).epochDay, 500, 'epochDay carries over so editing never shifts the anchor');
+});
+test('dateFormsHint follows the active calendar (P1: the hint must teach the accepted form) (#527)', () => {
+  assert.equal(c.dateFormsHint(null), 'Use YYYY-MM-DD, today, tomorrow, or today+N.', 'Gregorian wording unchanged');
+  const cal = c.normalizeCalendar({ ...HARPTOS, name: 'Harptos' });
+  const h = c.dateFormsHint(cal);
+  assert.ok(h.includes('Harptos'), 'names the calendar');
+  assert.ok(h.includes(c.formatEpochDays(5000, cal)), 'shows a real example in the fiction form');
+});
+test('auditCalendarSwitch classifies every stored date under the candidate calendar (#527 review #5)', () => {
+  const cal = c.normalizeCalendar(HARPTOS);
+  const mkP = (text, key, val) => ({ id: 'n-' + text, text, props: [{ key, val }], children: [] });
+  const tree = { id: 'root', text: '', props: [], children: [
+    // THE review-#5 trap, pinned as the classification the review described: a Gregorian date
+    // that FITS the fiction's ranges doesn't break — it silently re-dates ~950 years out (CHANGED,
+    // the "worse" case). Only a date the fiction can't express at all (day 31 in a 30-day month)
+    // goes unreadable (BROKEN).
+    mkP('a', 'due', '2026-01-15'),        // fits the fiction's ranges → CHANGED (re-dated, not lost)
+    mkP('g', 'due', '2026-01-31'),        // day 31 > the 30-day month → BROKEN under the fiction
+    mkP('b', 'due', 'today+3'),           // relative → floats, informational only
+    mkP('c', 'start', '1014-11-21'),      // fiction-form → ADOPTED (null under Gregorian's 1900+ window)
+    mkP('d', 'due', 'someday'),           // garbage under both → ok (unchanged garbage)
+    mkP('e', 'repeat', 'every 2 weeks'),  // repeat → its own bucket (reinterprets silently)
+    mkP('f', 'due', '2026-13-40'),        // impossible under both → ok
+  ]};
+  const a = c.auditCalendarSwitch(tree, null, cal);   // ACTIVATING over a Gregorian doc
+  assert.equal(a.changed.length, 1);  assert.equal(a.changed[0].val, '2026-01-15');
+  assert.equal(a.broken.length, 1);   assert.equal(a.broken[0].val, '2026-01-31');
+  assert.equal(a.relative.length, 1); assert.equal(a.relative[0].val, 'today+3');
+  assert.equal(a.adopted.length, 1);  assert.equal(a.adopted[0].val, '1014-11-21');
+  assert.equal(a.repeats.length, 1);  assert.equal(a.repeats[0].kind, 'interval');
+  assert.equal(a.total, 6, 'repeat is not a date prop; the other six count');
+  // DEACTIVATION is the same core with the args swapped, mirrored classifications
+  const d = c.auditCalendarSwitch(tree, cal, null);
+  assert.equal(d.broken.length, 1);  assert.equal(d.broken[0].val, '1014-11-21', 'the fiction date is unreadable under Gregorian');
+  assert.equal(d.changed.length, 1); assert.equal(d.changed[0].val, '2026-01-15', 'parses under BOTH, different day');
+  assert.equal(d.adopted.length, 1); assert.equal(d.adopted[0].val, '2026-01-31', 'unreadable now, readable after');
+  // CHANGED: a padded string that parses under two different calendars to different days
+  const two = c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'Long', days: 40 }, ...HARPTOS.months.slice(1)] });
+  const t2 = { id: 'r', text: '', props: [], children: [mkP('x', 'due', '1001-02-05')] };
+  const ch = c.auditCalendarSwitch(t2, cal, two);
+  assert.equal(ch.changed.length, 1, 'month 2 day 5 lands on a different epoch when month 1 grows');
+  assert.notEqual(ch.changed[0].oldEp, ch.changed[0].newEp);
+});
 test('dueWindowDays — due:week/month spans the fiction week + current-month length (#527)', () => {
   const cal = c.normalizeCalendar(HARPTOS); // 10-day week, all months 30 days
   assert.equal(c.dueWindowDays('week', cal, 0), 10, 'a week is week.length days under a fiction');
@@ -10272,7 +10376,9 @@ test('classifyBraceBody: an unparseable date value is invalid LIVE, matching the
 });
 
 test('promoteBraceBody: the invalid-date decline flashes the shared message (#407)', () => {
-  assert.ok(_src.includes("flashHint('Not a valid date: ' + dd.val + '. ' + DATE_FORMS_HINT)"),
+  // #527 updated the shared wording source: DATE_FORMS_HINT became dateFormsHint() so the hint
+  // follows the active calendar. The P4 contract is unchanged — one shared message, both twins.
+  assert.ok(_src.includes("flashHint('Not a valid date: ' + dd.val + '. ' + dateFormsHint())"),
     'the exit decline must give the same P4 feedback as the /due:value twin');
 });
 
