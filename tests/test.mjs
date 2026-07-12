@@ -10323,3 +10323,31 @@ test('#494: hasVisibleProps is false for a timestamp-only point, true when a rea
   assert.equal(c.hasVisibleProps(mk([{ key: 'created', val: 'x' }, { key: 'check', val: 'sum(cost)<=12' }])), true, 'timestamp + check → row');
   assert.equal(c.hasVisibleProps(mk([{ key: 'Check', val: 'sum(cost)<=12' }])), true, 'CHECK_KEY match is case-insensitive');
 });
+
+// ── #530: query pills freeze to a snapshot on export, not the raw [[query:KEY]] token ──
+// The flatten regex omitted `query` (the lone newer sub-form) and frozenTokenText had no
+// query branch, so a query token leaked verbatim into Markdown/plaintext exports.
+test('#530: frozenTokenText freezes a query pill to its expr + matching titles', () => {
+  const mk = (o) => ({ dice:[],markov:[],math:[],vars:[],grammar:[],est:[],seq:[],query:[],props:[],children:[], ...o });
+  const root = mk({ id:'root', children: [
+    mk({ id:'host', text:'See [[query:q1]] here', query:[{ key:'q1', expr:'is:todo' }] }),
+    mk({ id:'a', text:'#TODO buy rope' }),
+    mk({ id:'b', text:'#TODO light torch' }),
+  ]});
+  const host = root.children[0];
+  // the snapshot mirrors the pill body: expr → matched titles (markers stripped)
+  assert.equal(c.frozenTokenText('query', 'q1', host, {}, root), 'is:todo → buy rope, light torch');
+  // a query that matches nothing is honest about it, not empty
+  const r2 = mk({ id:'root', children:[ mk({ id:'h', query:[{ key:'q2', expr:'is:done' }] }) ]});
+  assert.equal(c.frozenTokenText('query', 'q2', r2.children[0], {}, r2), 'is:done → (no matches)');
+  // an empty query freezes to a labeled placeholder, never a raw token
+  const r3 = mk({ id:'root', children:[ mk({ id:'h', query:[{ key:'q3', expr:'  ' }] }) ]});
+  assert.equal(c.frozenTokenText('query', 'q3', r3.children[0], {}, r3), '(empty query)');
+  // a missing sidecar returns '' like every other sub-form (the token drops out)
+  assert.equal(c.frozenTokenText('query', 'gone', host, {}, root), '');
+  // "+N more" tail past the row cap (QUERY_ROW_CAP = 10)
+  const many = mk({ id:'root', children:[ mk({ id:'h', query:[{ key:'qm', expr:'is:todo' }] }) ]});
+  for (let i = 0; i < 13; i++) many.children.push(mk({ id:'t'+i, text:'#TODO item '+i }));
+  const frozen = c.frozenTokenText('query', 'qm', many.children[0], {}, many);
+  assert.match(frozen, /^is:todo → .+ \(\+3 more\)$/, 'caps at 10 titles, tallies the rest');
+});
