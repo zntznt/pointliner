@@ -3260,10 +3260,48 @@ function calYearFromEra(displayYear, cal, eraName) {
   return era ? displayYear - era.yearZero : displayYear;
 }
 
-function dueDateToday() {
+// Name resolvers for the LABEL layer (RISK-1). A custom calendar may name none, some, or all of
+// its weekdays/months — week.days can be shorter than week.length, and months always have names but
+// a bad index must not throw. Both fall back to a bare ordinal string ("Day 3", "Month 5") so a
+// half-configured calendar still prints something legible instead of "undefined". Pure.
+function calWeekdayName(cal, wd) {
+  const nm = cal.week.days[wd];
+  return (typeof nm === 'string' && nm) ? nm : 'Day ' + (wd + 1);
+}
+function calMonthName(cal, monthIdx) { // monthIdx is 1-based, matching epochToCal's .month
+  const m = cal.months[monthIdx - 1];
+  return (m && m.name) ? m.name : 'Month ' + monthIdx;
+}
+
+// The COMPUTE seam for evalMath's date component fns (year/month/day/weekday/quarter). Pulling a
+// component is COMPUTE, not display: under a fictional calendar it must read the fiction's own
+// values. This is the whole branch as a pure fn of (epoch, cal) so it's Node-testable — the FN1
+// lambdas are then one-line field picks that read the global calendar. `year` is the ERA-display
+// year (matching the label layer); `weekday` is the index into THIS calendar's week (0 = the day
+// epochDay fell on), a different origin from Gregorian's 0=Sunday because a fictional week has no
+// Sunday. cal=null → the exact Gregorian values the fns returned before. Pure.
+function calComponents(epoch, cal) {
+  const ep = Math.round(epoch);
+  if (cal) {
+    const c = epochToCal(ep, cal);
+    return {
+      year: cal.eras.length ? calEraYear(c.year, cal) : c.year,
+      month: c.month, day: c.day, weekday: c.weekday,
+      quarter: Math.floor((c.month - 1) / (cal.months.length / 4)) + 1,
+    };
+  }
+  const d = new Date(ep * 86400000);
+  return {
+    year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(),
+    weekday: d.getUTCDay(), quarter: Math.floor(d.getUTCMonth() / 3) + 1,
+  };
+}
+
+function dueDateToday(cal = activeCalendar()) {
   // #527: in a fictional calendar there is no wall-clock "today" — use the document's
   // in-fiction `current` when a calendar with one is active, else the real clock.
-  const cal = activeCalendar();
+  // The `cal` arg is the SAME calendar its caller renders against, so "today" and the
+  // date being labelled always come from one calendar (a pure function of its input).
   if (cal && Number.isInteger(cal.current)) return cal.current;
   const d = new Date();
   return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
@@ -3360,23 +3398,34 @@ function parseDueDate(val, cal = activeCalendar()) {
 
 // Turn an epoch-day into { iso, label, state } for display.
 // state: 'overdue' | 'today' | 'soon' (≤6 days) | 'future'
-function formatDueDate(epochDay) {
-  const today = dueDateToday();
+function formatDueDate(epochDay, cal = activeCalendar()) {
+  const today = dueDateToday(cal);
   const diff = epochDay - today;
-  const iso = formatEpochDays(epochDay);
+  const iso = formatEpochDays(epochDay, cal);
   let label, state;
+  // The relative words (Today/Tomorrow/overdue) are pure diff arithmetic — calendar-neutral, since
+  // epoch-days are the unit. Only the day-of-week and month-name lookups need the calendar; a custom
+  // one supplies both via calWeekdayName/calMonthName (Gregorian is just the default calendar here).
   if (diff < -1)      { label = Math.abs(diff) + 'd overdue'; state = 'overdue'; }
   else if (diff === -1) { label = 'Yesterday';  state = 'overdue'; }
   else if (diff === 0)  { label = 'Today';      state = 'today';   }
   else if (diff === 1)  { label = 'Tomorrow';   state = 'soon';    }
   else if (diff <= 6)   {
-    const d = new Date(epochDay * 86400000);
-    label = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
+    if (cal) { label = calWeekdayName(cal, epochToCal(epochDay, cal).weekday); }
+    else {
+      const d = new Date(epochDay * 86400000);
+      label = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
+    }
     state = 'soon';
   } else {
-    const d = new Date(epochDay * 86400000);
-    const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
-    label = mo + ' ' + d.getUTCDate();
+    if (cal) {
+      const c = epochToCal(epochDay, cal);
+      label = calMonthName(cal, c.month) + ' ' + c.day;
+    } else {
+      const d = new Date(epochDay * 86400000);
+      const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+      label = mo + ' ' + d.getUTCDate();
+    }
     state = 'future';
   }
   return { iso, label, state };
@@ -3386,12 +3435,18 @@ function formatDueDate(epochDay) {
 // pending-due chip): unlike formatDueDate's urgency label ("Wed" — ambiguous when several
 // Wednesdays are visible), this always carries the day number. "Today"/"Tomorrow" keep their
 // friendly word but still show the date, so the user sees exactly which day they picked.
-function formatDateConcrete(epochDay) {
-  const d = new Date(epochDay * 86400000);
-  const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
-  const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
-  const date = `${wd} ${mo} ${d.getUTCDate()}`;
-  const rel = formatDueDate(epochDay).label;
+function formatDateConcrete(epochDay, cal = activeCalendar()) {
+  let date;
+  if (cal) {
+    const c = epochToCal(epochDay, cal);
+    date = `${calWeekdayName(cal, c.weekday)} ${calMonthName(cal, c.month)} ${c.day}`;
+  } else {
+    const d = new Date(epochDay * 86400000);
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getUTCDay()];
+    const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+    date = `${wd} ${mo} ${d.getUTCDate()}`;
+  }
+  const rel = formatDueDate(epochDay, cal).label;
   return (rel === 'Today' || rel === 'Tomorrow') ? `${rel} (${date})` : date;
 }
 
@@ -17323,13 +17378,18 @@ const FN1 = Object.assign(Object.create(null), {
   kg2lb: x => x / 0.45359237,          lb2kg: x => x * 0.45359237,           // mass
   kmh2mph: x => x / 1.609344,          mph2kmh: x => x * 1.609344,           // speed
   l2gal: x => x / 3.785411784,         gal2l: x => x * 3.785411784,          // volume (US gal)
-  // date math — dates are integer epoch-days (date(y,m,d)/today); these pull
-  // components or pass through (asdate marks a value for ISO display)
-  year:    x => new Date(Math.round(x) * DAY_MS).getUTCFullYear(),
-  month:   x => new Date(Math.round(x) * DAY_MS).getUTCMonth() + 1,   // 1–12
-  day:     x => new Date(Math.round(x) * DAY_MS).getUTCDate(),
-  weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
-  quarter: x => Math.floor(new Date(Math.round(x) * DAY_MS).getUTCMonth() / 3) + 1, // 1–4
+  // date math — dates are integer epoch-days (date(y,m,d)/today); these pull COMPONENTS,
+  // so they are COMPUTE, not display: under a fictional calendar they must read the fiction's
+  // own year/month/day/weekday (via epochToCal), not the Gregorian wall-calendar. `year` reports
+  // the ERA-display year (matching the label layer) when the calendar defines eras. `weekday` is
+  // the index into THIS calendar's week (0=the weekday epochDay fell on) — a different origin from
+  // Gregorian's 0=Sunday, because a fictional week has no "Sunday"; the contract is "index into
+  // this calendar's week". Gregorian stays byte-identical when no calendar is active.
+  year:    x => calComponents(x, activeCalendar()).year,
+  month:   x => calComponents(x, activeCalendar()).month,     // 1–12
+  day:     x => calComponents(x, activeCalendar()).day,
+  weekday: x => calComponents(x, activeCalendar()).weekday,   // Gregorian: 0=Sun … 6=Sat; custom: index into its week
+  quarter: x => calComponents(x, activeCalendar()).quarter,   // 1–4
   daysuntil: d => Math.round(d) - dueDateToday(),                     // days from today to date d (negative if past)
   asdate:  x => x,
   // logic — not() flips a truth value (nonzero → 0, zero → 1). The NaN guard keeps a
@@ -17344,7 +17404,10 @@ const FN2 = Object.assign(Object.create(null), {
   pctchange: (from, to) => (to - from) / from * 100,               // percent change from→to (÷0 → ∞)
 });
 const FN3 = Object.assign(Object.create(null), {
-  date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS),
+  // Inverse of the component fns: build an epoch from y/m/d. Under a fictional calendar the y the
+  // user types is the era-DISPLAY year (matching year() above), so convert to intrinsic then
+  // calToEpoch; null (out-of-range for that calendar) → NaN so evalMath fails visibly, not silently.
+  date: (y, m, d) => { const cal = activeCalendar(); if (cal) { const ep = calToEpoch(cal.eras.length ? calYearFromEra(y, cal) : y, m, d, cal); return ep == null ? NaN : ep; } return Math.floor(Date.UTC(y, m - 1, d) / DAY_MS); },
   clamp: (x, lo, hi) => Math.min(Math.max(x, lo), hi),            // bound x to [lo, hi]
 });
 

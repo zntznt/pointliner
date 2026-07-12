@@ -6862,6 +6862,45 @@ test('parseDueDate / formatEpochDays unchanged when no calendar (Gregorian regre
   assert.equal(c.parseDueDate('2026-06-13', null), 20617);
   assert.equal(c.parseDueDate('2026-13-01', null), null, 'Gregorian validation intact');
 });
+test('formatDueDate / formatDateConcrete use calendar names, fall back on gaps (#527 label seam)', () => {
+  // HARPTOS names months M0..M11 but leaves ALL weekdays unnamed (week.days is []).
+  const cal = c.normalizeCalendar(HARPTOS); // current:5000
+  const far = cal.current + 400; // well past "today" → the month-name branch, not overdue
+  const concrete = c.formatDateConcrete(far, cal);
+  const back = c.epochToCal(far, cal);
+  assert.ok(concrete.includes(c.calMonthName(cal, back.month)), `custom month name: ${concrete}`);
+  assert.ok(/Day \d/.test(concrete), `unnamed weekday falls back to an ordinal, not "undefined": ${concrete}`);
+  // A calendar WITH named weekdays: the <=6d branch of formatDueDate prints the name.
+  const named = { ...HARPTOS, current: 0, week: { length: 10, days: ['Sul','Mol','Dul','Fol','Sic','Til','Kel','Tar','Lok','Vel'] } };
+  const cal2 = c.normalizeCalendar(named);
+  const soon = c.formatDueDate(3, cal2); // 3 days after current=0, within the week window
+  assert.ok(cal2.week.days.includes(soon.label), `named weekday in the soon label: ${soon.label}`);
+});
+test('calComponents — evalMath date-fn COMPUTE seam: fiction values vs Gregorian identity (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 12×30, era DR yearZero 1000, week length 10
+  // epoch 45 = intrinsic year 1, month 2, day 16 (30 + 15); era-year 1001; weekday = 45 % 10 = 5.
+  const k = c.calComponents(45, cal);
+  assert.equal(k.year, 1001, 'year() is the era-display year under a calendar');
+  assert.equal(k.month, 2);
+  assert.equal(k.day, 16);
+  assert.equal(k.weekday, 5, 'weekday is the index into THIS calendar 10-day week, not 0=Sunday');
+  assert.equal(k.quarter, 1, '12 months / 4 = 3 per quarter; month 2 → Q1');
+  // month 7 (index 6) → quarter 3 boundary check
+  assert.equal(c.calComponents(45 + 30 * 5, cal).quarter, 3, 'month 7 → Q3');
+  // Gregorian identity when no calendar: exactly what the old lambdas returned.
+  const ep = 20617; // 2026-06-13, a Saturday
+  const g = c.calComponents(ep, null);
+  assert.deepEqual([g.year, g.month, g.day, g.weekday, g.quarter], [2026, 6, 13, 6, 2],
+    'no calendar → Gregorian year/month/day/weekday(0=Sun,6=Sat)/quarter unchanged');
+});
+test('formatDueDate unchanged when no calendar (Gregorian label regression)', () => {
+  // >6 days out from the real clock → the Gregorian month-name branch ("Jan 1" style).
+  const far = c.dueDateToday(null) + 40;
+  const r = c.formatDueDate(far, null);
+  assert.equal(r.iso, c.formatEpochDays(far, null), 'ISO still Gregorian');
+  assert.ok(/^[A-Z][a-z]{2} \d/.test(r.label), `Gregorian month label intact: ${r.label}`);
+  assert.equal(r.state, 'future');
+});
 test('dueDateToday: uses the in-fiction `current` when a calendar has one — else falls back (#527 decision)', () => {
   // pinned as a DECISION, not an accident: current present → that integer; the wall-clock fallback
   // when current is null is a documented Tier-1 choice (a calendar with no in-fiction "now").
