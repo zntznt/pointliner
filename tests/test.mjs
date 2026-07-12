@@ -7140,6 +7140,31 @@ test('calendarToText round-trips a calendar into editable field text (#527 PR-C)
   assert.equal(c.calendarToText(c.normalizeCalendar({ months: [{ name: 'M', days: 30 }] })).week, '7');
   assert.deepEqual(host(c.calendarToText(null)), { name: '', months: '', week: '', eras: '', current: '' });
 });
+test('buildCalendarFromFields — the dialog pipeline: five strings in, a normalized calendar out (#527 PR-C)', () => {
+  const v = { name: 'Vale', months: 'Firstfrost: 30\nDeepwinter: 30', week: '10: Sul Mol', eras: 'AE: 1200', current: '1204-01-05' };
+  const cal = c.buildCalendarFromFields(v, null);
+  assert.ok(cal, 'valid fields build');
+  assert.equal(cal.name, 'Vale');
+  assert.equal(cal.months.length, 2);
+  assert.equal(cal.week.length, 10);
+  // current: "1204" is the ERA-display year (AE offset 1200) → intrinsic year 4 → epoch
+  assert.equal(cal.current, c.calToEpoch(4, 1, 5, { ...cal, current: null }), 'today parses as the era-display year against the draft');
+  assert.equal(c.formatEpochDays(cal.current, cal), '1204-01-05', 'and formats back identically');
+  // any bad field → null (the dialog validate)
+  assert.equal(c.buildCalendarFromFields({ ...v, months: 'Frostfall' }, null), null, 'bad months line');
+  assert.equal(c.buildCalendarFromFields({ ...v, current: 'today' }, null), null, 'relatives make no sense while DEFINING today');
+  assert.equal(c.buildCalendarFromFields({ ...v, current: '1204-01-31' }, null), null, 'day 31 in a 30-day month');
+  // editing keeps the previous anchor
+  const prev = c.normalizeCalendar({ months: [{ name: 'M', days: 30 }], epochDay: 500 });
+  assert.equal(c.buildCalendarFromFields(v, prev).epochDay, 500, 'epochDay carries over so editing never shifts the anchor');
+});
+test('dateFormsHint follows the active calendar (P1: the hint must teach the accepted form) (#527)', () => {
+  assert.equal(c.dateFormsHint(null), 'Use YYYY-MM-DD, today, tomorrow, or today+N.', 'Gregorian wording unchanged');
+  const cal = c.normalizeCalendar({ ...HARPTOS, name: 'Harptos' });
+  const h = c.dateFormsHint(cal);
+  assert.ok(h.includes('Harptos'), 'names the calendar');
+  assert.ok(h.includes(c.formatEpochDays(5000, cal)), 'shows a real example in the fiction form');
+});
 test('auditCalendarSwitch classifies every stored date under the candidate calendar (#527 review #5)', () => {
   const cal = c.normalizeCalendar(HARPTOS);
   const mkP = (text, key, val) => ({ id: 'n-' + text, text, props: [{ key, val }], children: [] });
@@ -10351,7 +10376,9 @@ test('classifyBraceBody: an unparseable date value is invalid LIVE, matching the
 });
 
 test('promoteBraceBody: the invalid-date decline flashes the shared message (#407)', () => {
-  assert.ok(_src.includes("flashHint('Not a valid date: ' + dd.val + '. ' + DATE_FORMS_HINT)"),
+  // #527 updated the shared wording source: DATE_FORMS_HINT became dateFormsHint() so the hint
+  // follows the active calendar. The P4 contract is unchanged — one shared message, both twins.
+  assert.ok(_src.includes("flashHint('Not a valid date: ' + dd.val + '. ' + dateFormsHint())"),
     'the exit decline must give the same P4 feedback as the /due:value twin');
 });
 

@@ -2022,6 +2022,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
   <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
   <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
+  <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
   <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
@@ -3547,7 +3548,13 @@ function findOrCreateDatedEntry(home, iso, mk) {
 // Parse a due-property value string → epoch-day number, or null on failure.
 // The accepted date forms, in one place so every "invalid date" message stays
 // in sync with what parseDueDate actually accepts (P1: one error, one wording).
-const DATE_FORMS_HINT = 'Use YYYY-MM-DD, today, tomorrow, or today+N.';
+// The one wording for "what date forms are accepted" (P1: one error, one wording) — and under a
+// custom calendar the accepted form CHANGES (fiction Year-Month-Day, not Gregorian ISO), so the
+// hint must follow the active calendar or it teaches a format parseDueDate would reject. (#527)
+function dateFormsHint(cal = activeCalendar()) {
+  if (cal) return `Use Year-Month-Day in ${cal.name} (like ${formatEpochDays(dueDateToday(cal), cal)}), today, tomorrow, or today+N.`;
+  return 'Use YYYY-MM-DD, today, tomorrow, or today+N.';
+}
 
 // Pure for absolute dates; depends on current time only for relative forms.
 // Impossible calendar dates (2026-02-30, 2026-13-01, day 00) are rejected:
@@ -9182,7 +9189,7 @@ function openPropsDialog(nodeId, targets = null) {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
     const badIdx = props.findIndex(p => DATE_KEYS.has(p.key.trim().toLowerCase()) && p.val.trim() && parseDueDate(p.val.trim()) === null);
     if (badIdx >= 0) {
-      errDiv.textContent = 'Not a valid date. ' + DATE_FORMS_HINT;
+      errDiv.textContent = 'Not a valid date. ' + dateFormsHint();
       errDiv.style.display = '';
       list.querySelectorAll('.val-in')[badIdx]?.focus();
       return;
@@ -9220,6 +9227,183 @@ function openPropsDialog(nodeId, targets = null) {
     if (!props.length) addBtn.focus();
     else list.querySelector('.props-input')?.focus();
   });
+}
+
+// ─── the Custom calendar dialog (#527 PR-C) ──────────────────────────────────
+// File → Custom calendar. Text-first authoring on the openInsertDialog scaffold (the
+// seq/qbase/data-pack pattern): months one per line, one week line, era lines, and the
+// in-fiction "today". A preset chip FILLS the fields (it never commits — the audit still
+// stands between fill and apply); the placeholder teaches the same format. Every change
+// to root.calendar — activate, edit-in-place, switch, remove — funnels through ONE path,
+// applyCalendarChange, which runs the review-#5 audit and warns proportionally.
+
+// Two generic, original example calendars (P2: a preset is the field-format tutorial).
+// Named campaign settings are deliberately NOT shipped: the repo line is "credited and
+// linked, not reproduced" — the guide walks entering one from its wiki instead.
+const CAL_PRESETS = [
+  { label: 'Example: 12 months', name: 'Calendar of the Vale',
+    months: 'Firstfrost: 30\nDeepwinter: 30\nThawing: 30\nSeedfall: 30\nGreening: 30\nHighsun: 30\nGoldencrest: 30\nEmberwane: 30\nHarvestide: 30\nFallowmoon: 30\nMistfall: 30\nLongnight: 30',
+    week: 'Moonday Tilday Windday Seaday Hearthday Forgeday Restday', eras: 'AE: 1200', current: '1204-04-12' },
+  { label: 'Example: 10-day week', name: 'Turning of the Deep',
+    months: 'Drowning: 36\nStillwater: 36\nUndertow: 36\nAbyssal: 36\nUpwelling: 36\nBreaking: 36\nSpray: 36\nCalming: 36\nGlassdark: 36\nSounding: 36',
+    week: '10: Firstday Middleday Lastday', eras: 'AC: 500', current: '512-06-15' },
+];
+
+// Assemble a calendar object from the dialog's five field strings, or null when any field
+// can't parse (the dialog's validate). `current` is a strict fiction Y-M-D (era-display year,
+// matching what formatEpochDays emits) — relatives make no sense while DEFINING "today".
+// epochDay carries over from the active calendar so editing never shifts the anchor. Pure.
+function buildCalendarFromFields(v, prevCal = activeCalendar()) {
+  const months = parseCalMonths(v.months); if (months.error) return null;
+  const week = parseCalWeek(v.week);       if (week.error) return null;
+  const eras = parseCalEras(v.eras);       if (eras.error) return null;
+  const draft = normalizeCalendar({
+    id: prevCal?.id || 'custom', name: String(v.name || '').trim() || 'Calendar',
+    epochDay: prevCal?.epochDay ?? 0,
+    months: months.value, week: week.value, eras: eras.value, current: null,
+  });
+  if (!draft) return null;
+  const m = String(v.current || '').trim().match(/^(-?\d+)-(\d+)-(\d+)$/);
+  if (!m) return null;
+  const ep = calToEpoch(draft.eras.length ? calYearFromEra(+m[1], draft) : +m[1], +m[2], +m[3], draft);
+  if (ep == null) return null;
+  return { ...draft, current: ep };
+}
+
+// THE one path for every root.calendar change (#527 review: gating the audit on the Activate
+// button alone ships the bug one level away — editing an active calendar's months is the same
+// bijection hazard). Zero-impact changes apply with a toast; nonzero shows the proportional
+// confirm. pushUndo first: snapshot() carries root.calendar, so undo reverts atomically.
+function applyCalendarChange(next) {
+  const audit = auditCalendarSwitch(root, activeCalendar(), next);
+  const impact = audit.changed.length + audit.broken.length;
+  const commit = () => {
+    pushUndo();
+    root.calendar = next;
+    markDirty(); render();
+    if (typeof renderAgenda === 'function') renderAgenda();
+    const bits = [];
+    if (audit.changed.length) bits.push(audit.changed.length + ' date' + (audit.changed.length === 1 ? ' reads' : 's read') + ' differently');
+    if (audit.broken.length) bits.push(audit.broken.length + ' unreadable');
+    flashHint((next ? '✓ ' + (next.name || 'Calendar') + ' is this document\'s calendar' : '✓ Back to the regular calendar') + (bits.length ? '. ' + bits.join(', ') : ''));
+  };
+  if (!impact) { commit(); return; }
+  openCalendarAuditConfirm(next, audit, commit);
+}
+
+// The proportional warning (P4: never a silent reinterpretation). Counts, the first few
+// affected points, the honest guarantees, and outcome-named buttons. A second io-card
+// state, like the doc switcher's delete confirm.
+function openCalendarAuditConfirm(next, audit, onConfirm) {
+  ioCard.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, 'fa-solid fa-calendar-days');
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Check your dates';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const body = document.createElement('div'); body.className = 'io-field';
+  const parts = [];
+  if (audit.changed.length) parts.push(audit.changed.length + ' dated point' + (audit.changed.length === 1 ? '' : 's') + ' will read as a different day');
+  if (audit.broken.length) parts.push(audit.broken.length + ' will be unreadable (kept as text, off the agenda until re-dated)');
+  const p = document.createElement('div'); p.className = 'io-hint';
+  p.textContent = (next ? 'Under "' + (next.name || 'Calendar') + '": ' : 'Back on the regular calendar: ') + parts.join('; ') + '. Your points and their text are untouched, and undo reverses this.';
+  body.appendChild(p);
+  const worst = [...audit.broken, ...audit.changed];
+  const list = document.createElement('div'); list.className = 'io-hint';
+  const cap = 5;
+  list.textContent = worst.slice(0, cap).map(w => '• ' + (w.title || '(untitled)').slice(0, 60) + ' (' + w.key + ': ' + w.val + ')').join('\n');
+  list.style.whiteSpace = 'pre-line';
+  if (worst.length > cap) list.textContent += '\n+' + (worst.length - cap) + ' more';
+  body.appendChild(list);
+  ioCard.appendChild(body);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
+  const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = next ? 'Use it anyway' : 'Remove it anyway';
+  cancelBtn.addEventListener('click', closeIo);
+  okBtn.addEventListener('click', () => { closeIo(); onConfirm(); });
+  foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
+
+  ioCancel = closeIo;
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Check your dates');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => cancelBtn.focus());
+}
+
+function openCalendarDialog() {
+  const cur = activeCalendar();
+  const t = calendarToText(cur);
+  // per-field previews (P4: the parse error names its line as you type)
+  const err = (msg) => '<span style="color:var(--bad)">' + escHtml(msg) + '</span>';
+  const monthsPrev = v => {
+    const r = parseCalMonths(v);
+    if (r.error) return err(r.error);
+    const days = r.value.reduce((n, m) => n + m.days, 0);
+    return escHtml(r.value.length + ' month' + (r.value.length === 1 ? '' : 's') + ', a ' + days + '-day year');
+  };
+  const weekPrev = v => {
+    const r = parseCalWeek(v);
+    if (r.error) return err(r.error);
+    const w = r.value;
+    const named = w.days.length;
+    return escHtml(w.length + '-day week' + (named ? (named === w.length ? ', all named' : ', first ' + named + ' named (the rest show as Day ' + (named + 1) + '…)') : ''));
+  };
+  const erasPrev = v => {
+    const r = parseCalEras(v);
+    if (r.error) return err(r.error);
+    if (!r.value.length) return escHtml('No era: years display as counted from year 1.');
+    return escHtml(r.value.map(e => 'year 1 shows as ' + (1 + e.yearZero) + ' ' + e.name).join(' · '));
+  };
+  // "today" resolves against the DRAFT built from the other fields — the one line that
+  // catches every year-anchor confusion before commit.
+  const fieldVals = () => ({
+    name: document.getElementById('io-fld-name')?.value || '',
+    months: document.getElementById('io-fld-months')?.value || '',
+    week: document.getElementById('io-fld-week')?.value || '',
+    eras: document.getElementById('io-fld-eras')?.value || '',
+    current: document.getElementById('io-fld-current')?.value || '',
+  });
+  const currentPrev = v => {
+    const draft = buildCalendarFromFields({ ...fieldVals(), current: v });
+    if (!draft) return err('Not a day in this calendar. Use Year-Month-Day, like the placeholder.');
+    return escHtml('Today in this calendar: ' + calDayLabel(draft.current, draft));
+  };
+  const fillFields = (preset) => {
+    for (const k of ['name', 'months', 'week', 'eras', 'current']) {
+      const inp = document.getElementById('io-fld-' + k);
+      if (inp) { inp.value = preset[k]; inp.dispatchEvent(new Event('input', { bubbles: false })); }
+    }
+  };
+  openInsertDialog({
+    icon: 'fa-solid fa-calendar-days',
+    title: 'Custom calendar',
+    guideId: 'custom-calendars',
+    submitLabel: cur ? 'Save changes' : 'Use this calendar',
+    fields: [
+      { key: 'name', label: 'Calendar name', value: t.name, placeholder: 'Calendar of the Vale', required: true,
+        chips: CAL_PRESETS.map(p => ({ label: p.label, insert: () => fillFields(p) })) },
+      { key: 'months', label: 'Months, one per line', type: 'textarea', rows: 6, value: t.months, required: true,
+        placeholder: 'Firstfrost: 30\nDeepwinter: 30\nThawing: 30', preview: monthsPrev },
+      { key: 'week', label: 'Week', value: t.week, placeholder: 'Moonday Tilday Windday Seaday Hearthday Forgeday Restday',
+        preview: weekPrev, hint: 'Day names, a bare length like 10, or "10: Sul Mol" to name only the first days. Blank keeps a 7-day week.' },
+      { key: 'eras', label: 'Era, optional', type: 'textarea', rows: 1, value: t.eras, placeholder: 'AE: 1200', preview: erasPrev,
+        hint: 'Name and offset: with "AE: 1200", year 4 displays as 1204 AE.' },
+      { key: 'current', label: 'Today in this world', value: t.current, placeholder: '1204-04-12', required: true, preview: currentPrev,
+        hint: 'The in-world day your dates and agenda count from. Advance it as your story moves.' },
+    ],
+    validate: vals => buildCalendarFromFields(vals) != null,
+    onSubmit: vals => { const next = buildCalendarFromFields(vals); if (next) applyCalendarChange(next); },
+  });
+  // Editing an ACTIVE calendar also offers removal (the same applyCalendarChange path, so
+  // deactivation gets the same audit). Injected into the standard footer, before Cancel.
+  if (cur) {
+    const foot = ioCard.querySelector('.io-foot');
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'io-btn'; rm.textContent = 'Remove calendar';
+    rm.title = 'Go back to the regular calendar';
+    rm.addEventListener('click', () => { closeIo(); applyCalendarChange(null); });
+    foot.insertBefore(rm, foot.firstChild);
+  }
 }
 
 // ─── inline date-picker calendar ─────────────────────────────────────────────
@@ -9392,7 +9576,7 @@ function openDueDateDialog(nodeId, targets = null) {
       const v = inp.value.trim();
       if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank to clear'; return; }
       const ep = parseDueDate(v);
-      if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date. ' + DATE_FORMS_HINT; return; }
+      if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date. ' + dateFormsHint(); return; }
       const df = formatDueDate(ep);
       preview.style.color = df.state === 'overdue' ? 'var(--bad)' : df.state === 'today' ? 'var(--ok)' : 'var(--muted)';
       preview.textContent = df.label + ' · ' + df.iso;
@@ -14300,7 +14484,7 @@ function slashApply() {
     const ds = parseDateSlash(query);
     if (ds) {
       if (parseDueDate(ds.raw) === null) {                     // P4: invalid value isn't silently dropped
-        flashHint('Not a valid date: ' + ds.raw + '. ' + DATE_FORMS_HINT);
+        flashHint('Not a valid date: ' + ds.raw + '. ' + dateFormsHint());
         return;
       }
       // LEAVE edit mode before mutating + rendering: a still-editing node's
@@ -17210,7 +17394,7 @@ function promoteBraceBody(node, body) {
   if (dd) {
     if (!dd.val) { setDateProp(node, dd.key, ''); return ''; }        // empty → clear
     if (parseDueDate(dd.val) === null) {                               // invalid → stays literal {date …}
-      flashHint('Not a valid date: ' + dd.val + '. ' + DATE_FORMS_HINT); // P4 parity with /due:value (#407)
+      flashHint('Not a valid date: ' + dd.val + '. ' + dateFormsHint()); // P4 parity with /due:value (#407)
       return null;
     }
     setDateProp(node, dd.key, dd.val); return '';
@@ -24099,6 +24283,7 @@ document.getElementById('btn-starters')?.addEventListener('click', () => { openS
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
+document.getElementById('btn-calendar')?.addEventListener('click', () => { closeFileMenu(); openCalendarDialog(); });   // #527
 document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
 // the File-menu row is a CYCLE button (guided → standard → lean → …): the label names where the next
 // press lands + the desc names the current tier, so the user always sees both. Refreshed on menu open.
@@ -24752,6 +24937,14 @@ const GUIDE = [
     ] },
 
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
+  { id:'custom-calendars', cat:'dates',
+    title:'Custom calendars',
+    body:"Give a document its own fictional calendar: your world's months, week length, day names, and era, plus the current in-world date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, every date in the document speaks that calendar: due dates, the agenda month and week, the date picker, date math, and the journal. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as your story moves. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.",
+    examples:[
+      { syn:'File → Custom calendar', desc:"define or edit this document's calendar" },
+      { syn:'Firstfrost: 30',         desc:'a month line: name and day count' },
+      { syn:'due: 1204-04-12',        desc:"dates use the calendar's own year-month-day" },
+    ] },
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
     body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday, or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.",
