@@ -240,7 +240,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #file-menu .cmd-item.is-status{opacity:.62}
 #file-menu .cmd-item.is-status .cmd-icon{color:var(--ok)}
 #file-menu .cmd-sep{margin:5px 8px}
-.cmd-key,#search-key,.sc-panel kbd{margin-left:auto;align-self:center;font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;white-space:nowrap;flex-shrink:0;line-height:1.5}
+.cmd-key,#search-key,.guide-sc kbd{margin-left:auto;align-self:center;font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;white-space:nowrap;flex-shrink:0;line-height:1.5}
 /* accent picker row */
 #accent-row{display:flex;align-items:center;gap:8px;padding:5px 9px 8px 45px}
 .acc-row-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;flex-shrink:0}
@@ -285,7 +285,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    (cross-doc matches) stay — they're user data + controls, not helpers. So the panel still opens for those. */
 body:not(.v-guided) #search-hint .sh-row{display:none}
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap}
-.sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.sc-panel kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
+.sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.guide-sc kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
 .sh-row code{font-family:var(--mono);font-size:11px}/* #414: the info-text floor (UXP-78 raised the sibling kbd chips; the code examples lagged) */
 /* saved searches: the one interactive island in the otherwise inert hint panel */
 #sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
@@ -1289,35 +1289,20 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-preview-note{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
 
 /* shortcuts / syntax reference */
-.sc-panel{position:fixed;bottom:54px;right:16px;width:338px;max-width:calc(100vw - 32px);max-height:calc(100vh - 90px);overflow-y:auto;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:14px 16px 16px;font-size:12px;color:var(--fg);box-shadow:var(--sh-2);display:none;z-index:100;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
-.sc-panel.on{display:block;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
-.sc-panel::-webkit-scrollbar{width:5px}
-.sc-panel::-webkit-scrollbar-thumb{background:var(--cb);border-radius:4px}
-.sc-head{font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--fg);margin-bottom:10px}
-/* Filter box: a sticky header block (head + this input) stays pinned so you can keep typing
-   while the list scrolls. Section headers stick just below it. */
-#sc-filter{position:sticky;top:-14px;z-index:2;box-sizing:border-box;width:100%;margin:0 0 4px;padding:6px 10px;font:inherit;font-size:12.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-sm)}
-#sc-filter:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px var(--ring)}
-#sc-filter::placeholder{color:var(--muted)}
-.sc-sec{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:13px 0 5px;position:sticky;top:22px;background:var(--hbg);padding:5px 0 4px;z-index:1}
+/* Shortcut rows — used inside the guide's Shortcuts entry (.guide-sc). Section eyebrow,
+   two-column key/label grid, wrapping keycap group. (These were the retired corner panel's
+   row styles; kept because the guide reuses them for one shortcut-row styling.) */
+.sc-sec{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:13px 0 5px;padding:5px 0 4px}
 .sc-row{display:grid;grid-template-columns:minmax(96px,124px) 1fr;gap:10px;align-items:baseline;padding:2.5px 0}
-.sc-row[hidden],.sc-sec[hidden]{display:none}
 .sc-keys{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
 .sc-or{color:var(--muted);font-size:10px;margin:0 1px}/* #414: no opacity fade on muted ink (DL §3); size stands under the UXP-118 connective-punctuation carve-out */
 .sc-desc{color:var(--muted);line-height:1.45}
-.sc-empty{color:var(--muted);font-size:12px;padding:10px 0 4px}
+/* The ? help button — the single door to the guide. Kept above any open bottom panel
+   (footnotes AND backlinks, which stack) by syncHelpBtnBottom() in JS. */
 #sc-toggle{position:fixed;bottom:16px;right:16px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--bdr);background:var(--hbg);border-radius:50%;z-index:99;box-shadow:var(--sh-1);transition:color .12s,border-color .12s,background .12s}
 #sc-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #sc-toggle:hover{color:var(--fg);border-color:var(--acc)}
 #sc-toggle.on{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--acc)}
-/* The help button + its panel are kept above any open bottom panel (footnotes AND
-   backlinks, which stack) by syncHelpBtnBottom() in JS — it measures the live stack
-   height, so it handles either panel alone or both open. (Was a fn-panel-only CSS rule
-   that missed the backlinks panel, letting the ? button cover its Link buttons.) */
-.sc-footer{border-top:1px solid var(--bdr);margin-top:10px;padding-top:8px}
-.sc-guide-btn{background:none;border:none;color:var(--acc);cursor:pointer;font-size:12px;padding:2px 0;font-weight:500}
-.sc-guide-btn:hover{opacity:.8}
-.sc-guide-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #io-card.guide-open{width:min(760px,calc(100vw - 32px));max-height:min(88vh,680px);padding:0;overflow:hidden}
 .guide-wrap{display:flex;flex-direction:column;height:min(88vh,680px)}
 .guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0}
@@ -1343,7 +1328,6 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .guide-entry-body{font-size:12.5px;line-height:1.57;margin:0 0 8px;color:var(--fg)}
 /* Shortcuts entry reuses the panel's .sc-sec/.sc-row rows inside the guide pane: drop the
    panel-scroll sticky and the leading section's top margin so it sits flush in the entry. */
-.guide-sc .sc-sec{position:static;top:auto}
 .guide-sc>.sc-sec:first-child{margin-top:0}
 .guide-ex{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12px}
 .guide-ex dt code{background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:1px 5px;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
@@ -1619,7 +1603,6 @@ html{-webkit-text-size-adjust:100%}
 body{padding-top:calc(44px + env(safe-area-inset-top))}
 #fn-panel{padding-bottom:env(safe-area-inset-bottom)}
 #sc-toggle{bottom:calc(16px + env(safe-area-inset-bottom))}
-.sc-panel{bottom:calc(54px + env(safe-area-inset-bottom))}
 #node-sel-bar{bottom:calc(72px + env(safe-area-inset-bottom))}
 
 /* ── narrow screens: reflow toolbar so search can't overlap the level control ── */
@@ -2023,8 +2006,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-width" aria-pressed="false"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Width: Narrow</span><span class="cmd-desc">Widen the editing column</span></div></div>
 
   <div class="cmd-sep"></div>
-  <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, Markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
-  <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
+  <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Help &amp; guide</span><span class="cmd-desc">Shortcuts and every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
   <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Start from an example</span><span class="cmd-desc">Drop in a ready-made solo-RPG oracle, character sheet, or campaign</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
@@ -2117,8 +2099,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <button id="storage-warn-close" class="close-btn" data-fa="fa-solid fa-xmark" data-fb="✕" title="Dismiss" aria-label="Dismiss">✕</button>
 </div>
 
-<span id="sc-toggle" role="button" tabindex="0" title="Keyboard shortcuts &amp; syntax" aria-label="Keyboard shortcuts and syntax" aria-expanded="false" aria-controls="sc-panel">?</span>
-<div class="sc-panel" id="sc-panel" role="region" aria-label="Shortcuts &amp; syntax" tabindex="0"></div>
+<span id="sc-toggle" role="button" tabindex="0" title="Help &amp; guide" aria-label="Open help and guide" aria-haspopup="dialog" aria-expanded="false">?</span>
 <script>
 'use strict';
 
@@ -22929,13 +22910,11 @@ function syncBlPanelBottom() {
 function syncHelpBtnBottom() {
   const tog = document.getElementById('sc-toggle');
   if (!tog) return;
-  const panel = document.querySelector('.sc-panel');
   const on = id => { const el = document.getElementById(id); return el?.classList.contains('on') ? el.offsetHeight : 0; };
   const stack = on('fn-panel') + on('bl-panel');   // 0 when neither is open
   const safe = 'env(safe-area-inset-bottom)';
-  // 16px = the toggle's resting bottom; +16px gap above the panel stack.
+  // 16px = the toggle's resting bottom; +16px gap above the footnote/backlink panel stack.
   tog.style.bottom = stack ? `calc(${stack + 16}px + ${safe})` : `calc(16px + ${safe})`;
-  if (panel) panel.style.bottom = stack ? `calc(${stack + 16 + 44}px + ${safe})` : '';
 }
 
 function showBlPanel(nodeId) {
@@ -24451,8 +24430,7 @@ document.getElementById('workspace-invite').addEventListener('click', () => {
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
 document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenu(); });
-document.getElementById('btn-shortcuts').addEventListener('click', () => { closeFileMenu(); toggleShortcuts(true); });
-document.getElementById('btn-guide').addEventListener('click', () => { closeFileMenu(); openGuide(); });
+document.getElementById('btn-guide').addEventListener('click', () => { closeFileMenu(); openGuide('shortcuts'); });
 
 // outline level control — collapse to first N levels / expand all
 document.getElementById('level-ctl').addEventListener('click', e => {
@@ -24719,8 +24697,7 @@ const GUIDE = [
   { id:'nav-search',  essential:true, essSection:'Navigate', keys:[`${MOD}+F`],      essLabel:'Search' },
   { id:'nav-jump',    essential:true, essSection:'Navigate', keys:['↓ from search'],   essLabel:'Jump to first match' },
   { id:'nav-link',    essential:true, essSection:'Navigate', keys:[`${MOD}+⇧+Enter`],  essLabel:'Follow link under caret' },
-  { id:'nav-help',    essential:true, essSection:'Navigate', keys:[`${MOD}+/`,'?'],     essLabel:'Open this shortcuts panel' },
-  { id:'nav-guide',   essential:true, essSection:'Navigate', keys:[`${MOD}+⇧+/`],       essLabel:'Open the Concept guide (every feature, explained)' },
+  { id:'nav-help',    essential:true, essSection:'Navigate', keys:[`${MOD}+/`,`${MOD}+⇧+/`,'?'], essLabel:'Open help and the guide (this reference, and every feature)' },
 
   // ── Edit structure (essentials only) ──────────────────────────────────────
   { id:'edit-enter',   essential:true, essSection:'Edit', keys:['Enter'],               essLabel:'New point' },
@@ -25326,11 +25303,14 @@ const GUIDE = [
       { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable file that reopens as the live app' },
     ] },
 ];
+// GUIDE-END — stable boundary marker: tests slice the GUIDE array from `const GUIDE = [` to
+// here. Keep this line right after the array's closing `];`. (Replaces the old
+// `(function buildShortcutsPanel` boundary, retired with the shortcuts panel.)
 
-// The Shortcuts guide entry's body: the same essential-shortcut rows the corner panel
-// shows, grouped by essSection, reusing the panel's .sc-sec/.sc-row/.sc-keys markup and CSS
-// (so there is one styling for shortcut rows). Built from the same GUIDE essential rows —
-// one source, so the guide and the essential registry never drift.
+// The Shortcuts guide entry's body: the same essential-shortcut rows the guide's Shortcuts
+// entry shows, grouped by essSection, reusing the .sc-sec/.sc-row/.sc-keys markup and CSS.
+// Built from the GUIDE essential rows — one source, so the guide and the essential registry
+// never drift.
 function shortcutsGuideBody() {
   const sections = [];
   const secMap = Object.create(null);
@@ -25356,106 +25336,23 @@ function shortcutsSearchText() {
     .map(e => e.keys.join(' ') + ' ' + e.essLabel + ' ' + e.essSection).join(' ');
 }
 
-(function buildShortcutsPanel() {
-  const panel = document.getElementById('sc-panel');
-  // Group essential entries by essSection, in declaration order
-  const sections = [];
-  const secMap = Object.create(null);
-  for (const e of GUIDE) {
-    if (!e.essential) continue;
-    if (e.touchOnly && !IS_TOUCH) continue;   // gesture rows only make sense on touch
-    if (!secMap[e.essSection]) { secMap[e.essSection] = []; sections.push(e.essSection); }
-    secMap[e.essSection].push(e);
-  }
-  // Head + a filter box: at ~38 rows the list is a scroll-and-scan, so typing narrows it.
-  let html = '<div class="sc-head">Shortcuts &amp; syntax</div>'
-    + '<input id="sc-filter" type="text" placeholder="Filter shortcuts…" aria-label="Filter shortcuts" autocomplete="off" spellcheck="false">'
-    + '<div id="sc-list" role="list">';
-  for (const sec of sections) {
-    // Sections and rows carry data-sc (lowercased keys + label + section) so the filter can
-    // hide non-matching rows, and a section header hides when all its rows are filtered out.
-    html += `<div class="sc-sec" data-sec="${escHtml(sec)}">${escHtml(sec)}</div>`;
-    for (const e of secMap[sec]) {
-      // Multiple keys on one row are ALTERNATIVES (e.g. ⌘+. / ⌘+,); join with a "/" so the
-      // row doesn't read as a single chord. A shared-modifier shorthand (Alt+↑ then a bare ↓)
-      // still reads as "or" this way.
-      const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('<span class="sc-or">/</span>');
-      const hay = escHtml((e.keys.join(' ') + ' ' + e.essLabel + ' ' + sec).toLowerCase());
-      html += `<div class="sc-row" role="listitem" data-sc="${hay}"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
-    }
-  }
-  html += '</div><div id="sc-empty" class="sc-empty" hidden>No shortcuts match.</div>'
-    + '<div class="sc-footer"><button class="sc-guide-btn" id="sc-guide-open">Concept guide ›</button></div>';
-  panel.innerHTML = html;
-
-  // Live filter: hide rows whose haystack doesn't contain every typed word (AND, like the
-  // outline search), then hide any section header left with no visible rows.
-  const filterEl = document.getElementById('sc-filter');
-  const listEl = document.getElementById('sc-list');
-  const emptyEl = document.getElementById('sc-empty');
-  function applyScFilter() {
-    const q = filterEl.value.trim().toLowerCase();
-    const words = q ? q.split(/\s+/) : [];
-    let anyVisible = false;
-    for (const row of listEl.querySelectorAll('.sc-row')) {
-      const hay = row.dataset.sc || '';
-      const show = words.every(w => hay.includes(w));
-      row.hidden = !show;
-      if (show) anyVisible = true;
-    }
-    // A section header shows only if a following row (before the next header) is visible.
-    let sec = null, secHasVisible = false;
-    const flush = () => { if (sec) sec.hidden = !secHasVisible; };
-    for (const el of listEl.children) {
-      if (el.classList.contains('sc-sec')) { flush(); sec = el; secHasVisible = false; }
-      else if (el.classList.contains('sc-row') && !el.hidden) secHasVisible = true;
-    }
-    flush();
-    emptyEl.hidden = anyVisible;
-  }
-  filterEl.addEventListener('input', applyScFilter);
-  // Esc in the field clears the filter first; a second Esc (empty field) closes the panel
-  // via the global handler.
-  filterEl.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && filterEl.value) { e.preventDefault(); e.stopPropagation(); filterEl.value = ''; applyScFilter(); }
-  });
-  // Expose a reset so opening the panel starts unfiltered + focuses the field.
-  panel._resetFilter = () => { filterEl.value = ''; applyScFilter(); };
-  panel._focusFilter = () => filterEl.focus({ preventScroll: true });
-})();
+// The `?` chrome button opens the one help surface — the Concept guide, on its Shortcuts
+// home entry. It is a toggle (press again to close); the guide handles click-away/Escape.
 const scToggle = document.getElementById('sc-toggle');
-const scPanel  = document.getElementById('sc-panel');
-function toggleShortcuts(force) {
-  const on = force === undefined ? !scPanel.classList.contains('on') : force;
-  if (on) armChromeReturn(); // before the panel steals focus from a live edit
-  scPanel.classList.toggle('on', on);
-  scToggle.classList.toggle('on', on);
-  scToggle.setAttribute('aria-expanded', String(on));
-  if (on) {
-    scPanel._resetFilter?.();          // start unfiltered each open
-    // Focus the filter field so you can type-to-find immediately; the field is at the top,
-    // and arrows/PgDn still scroll the panel from there.
-    scPanel._focusFilter ? scPanel._focusFilter() : scPanel.focus({ preventScroll: true });
-  }
-}
-scToggle.addEventListener('click', e => { e.stopPropagation(); toggleShortcuts(); });
+scToggle.addEventListener('click', e => { e.stopPropagation(); toggleGuide('shortcuts'); });
 scToggle.addEventListener('keydown', e => {
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleShortcuts(); }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleGuide('shortcuts'); }
 });
-// click anywhere outside the panel (and not the toggle) closes it; selecting text
-// inside the panel no longer dismisses it
-document.addEventListener('mousedown', e => {
-  if (!scPanel.classList.contains('on')) return;
-  if (scPanel.contains(e.target) || scToggle.contains(e.target)) return;
-  toggleShortcuts(false);
-});
-// Wire the "Concept guide ›" footer button. Uses the same io-back/io-card modal
-// infra as dialogs; backdrop mousedown now dispatches ioCancel so close() fires.
-document.getElementById('sc-panel').addEventListener('click', e => {
-  if (e.target.id === 'sc-guide-open') { toggleShortcuts(false); openGuide(); }
-});
+// The guide is the one help surface. `?` (and the help chords) toggle it: open on
+// `shortcuts` if closed, close if already open. `guideOpen()` reads the modal's own state.
+function guideOpen() { return ioBack.classList.contains('on') && ioCard.classList.contains('guide-open'); }
+function toggleGuide(initialId) {
+  if (guideOpen()) { ioCancel ? ioCancel() : closeIo(); return; }
+  openGuide(initialId || 'shortcuts');
+}
 function openGuide(initialId) {
   armChromeReturn();
+  document.getElementById('sc-toggle')?.setAttribute('aria-expanded', 'true');
   const CATS = [
     { id:'shortcuts',      label:'Shortcuts' },
     { id:'getting-around', label:'Getting around' },
@@ -25478,7 +25375,6 @@ function openGuide(initialId) {
       '<div class="guide-header" role="search">' +
         '<span class="guide-title">Concept guide</span>' +
         '<input class="guide-search" type="search" placeholder="Search guide…" aria-label="Search guide" data-first>' +
-        '<button class="guide-close close-btn" data-fa="fa-solid fa-xmark" data-fb="✕" aria-label="Close guide">✕</button>' +
       '</div>' +
       '<div class="guide-body">' +
         '<nav class="guide-nav" aria-label="Guide topics"></nav>' +
@@ -25487,11 +25383,10 @@ function openGuide(initialId) {
     '</div>';
   ioBack.classList.add('on');
   ioReturnFocus = document.getElementById('sc-toggle');
-  function close() { restoreChromeReturn(); closeIo(); }
+  // No X button: the guide closes by clicking away, Escape, or pressing ? again (it is a toggle).
+  function close() { restoreChromeReturn(); document.getElementById('sc-toggle')?.setAttribute('aria-expanded', 'false'); closeIo(); }
   ioCancel = close;
   const searchEl = ioCard.querySelector('.guide-search');
-  const closeBtn = ioCard.querySelector('.guide-close');
-  setIcon(closeBtn, { fa: 'fa-solid fa-xmark', fb: '✕' }); // dynamic DOM: boot-time refreshIcons never sees it
   const nav      = ioCard.querySelector('.guide-nav');
   const pane     = ioCard.querySelector('.guide-pane');
   function matchEntry(e, q) {
@@ -25581,28 +25476,22 @@ function openGuide(initialId) {
     }
     if (e.key === 'Escape') { e.stopPropagation(); close(); }
   });
-  closeBtn.addEventListener('click', close);
-  closeBtn.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); }
-  });
   requestAnimationFrame(() => { searchEl.focus(); });
 }
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); restoreChromeReturn(); closeFileMenu(); return; }
-  if (e.key==='Escape' && scPanel.classList.contains('on')) { e.preventDefault(); toggleShortcuts(false); restoreChromeReturn(); return; }
-  // Open the shortcuts panel from the keyboard (it's the keyboard reference; it should have a
-  // key). ⌘/Ctrl+/ works anywhere, including mid-edit. A bare ? (the universal help key) also
-  // toggles it, but only when NOT typing into a point/field, so it never eats a literal "?".
-  // ⌘/Ctrl+Shift+/ opens the Concept guide (the "bigger help": the full feature reference, vs the
-  // ⌘/Ctrl+/ keyboard cheat-sheet). Works mid-edit. Shift+/ is ? on most layouts, so accept either
-  // key char under ctrl+shift (UXP-125). Kept before the bare ⌘/Ctrl+/ so the shift form wins.
-  if (ctrl && e.shiftKey && (e.key==='/' || e.key==='?')) { e.preventDefault(); openGuide(); return; }
-  if (ctrl && e.key==='/') { e.preventDefault(); toggleShortcuts(); return; }
+  // Help chords all open the ONE help surface, the Concept guide, on its Shortcuts home entry
+  // (the corner shortcuts panel was retired — one surface, one set of doors). ⌘/Ctrl+/ and
+  // ⌘/Ctrl+Shift+/ work mid-edit; a bare ? (the universal help key) also toggles it, but only
+  // when NOT typing into a point/field, so it never eats a literal "?". All three toggle: press
+  // again (or Escape / click away) to close. Shift+/ is ? on most layouts, so accept either char.
+  if (ctrl && e.shiftKey && (e.key==='/' || e.key==='?')) { e.preventDefault(); toggleGuide('shortcuts'); return; }
+  if (ctrl && e.key==='/') { e.preventDefault(); toggleGuide('shortcuts'); return; }
   if (e.key==='?' && !ctrl && !e.altKey) {
     const t = e.target;
     const typing = activeContentId != null || (t && (t.isContentEditable || t.tagName==='INPUT' || t.tagName==='TEXTAREA'));
-    if (!typing) { e.preventDefault(); toggleShortcuts(); return; }
+    if (!typing) { e.preventDefault(); toggleGuide('shortcuts'); return; }
   }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }

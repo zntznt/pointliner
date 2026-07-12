@@ -5296,7 +5296,7 @@ test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
   const BLOCK_IDS = ['ul','ol','todo','h1','h2','h3','para','code','divider','quote',
     'base','template','due','check','alias','journal'];
   // Extract all id:' and covers:[' values from the GUIDE source block
-  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('(function buildShortcutsPanel()'));
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
   const coveredIds = new Set();
   // Match covers:['id1','id2',...] patterns
   for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
@@ -5311,7 +5311,7 @@ test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
 test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
   const INSERT_IDS = ['footnote','image','link','table','progress','dice','markov',
     'rolltable','grammar','deck','oracle','math','var','est','sequence','query','count'];
-  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('(function buildShortcutsPanel()'));
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
   const coveredIds = new Set();
   for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
     for (const id of m[1].matchAll(/'([^']+)'/g)) coveredIds.add(id[1]);
@@ -5486,7 +5486,7 @@ test('shipped-syntax guard: every promotable {…} form is documented in a canon
   // for users.
   const guideArr = (() => {
     const i = _src.indexOf('const GUIDE = [');
-    return _src.slice(i, _src.indexOf('(function buildShortcutsPanel', i));
+    return _src.slice(i, _src.indexOf('// GUIDE-END', i));
   })();
   const documented = (sig) => guideArr.includes(sig);
 
@@ -5522,11 +5522,15 @@ test('shipped-syntax guard: every promotable {…} form is documented in a canon
     `(This is the guard that would have caught the {name := expr} gap.)`);
 });
 
-test('GUIDE drift guard: openGuide function is wired to the Concept guide button', () => {
-  assert.ok(_src.includes('openGuide()'), 'openGuide() call missing — Concept guide button is not wired');
+test('GUIDE drift guard: the guide is the one help surface, wired to the ? button and the menu row', () => {
   assert.ok(_src.includes('function openGuide('), 'openGuide function declaration missing');
-  assert.ok(_src.includes('sc-guide-open'), 'sc-guide-open button id missing in panel HTML');
-  assert.ok(_src.includes("'Concept guide'") || _src.includes('"Concept guide"') || _src.includes('Concept guide ›'), 'Concept guide footer link text missing');
+  // The ? chrome button and the help chords open the guide via toggleGuide('shortcuts')
+  // (the corner shortcuts panel + its "Concept guide ›" footer were retired; one surface).
+  assert.ok(_src.includes('function toggleGuide('), 'toggleGuide (the ? toggle) missing');
+  assert.ok(_src.includes("toggleGuide('shortcuts')"), 'the ? / chords must open the guide on its Shortcuts home');
+  // The File-menu "Help & guide" row opens the guide too.
+  assert.ok(_src.includes("openGuide('shortcuts')"), 'the Help & guide menu row is not wired to openGuide');
+  assert.ok(_src.includes('Help &amp; guide') || _src.includes('Help & guide'), 'Help & guide menu label missing');
 });
 
 test('GUIDE: the guide nav is a two-level list (category header per group, each topic its own item)', () => {
@@ -5537,7 +5541,7 @@ test('GUIDE: the guide nav is a two-level list (category header per group, each 
   assert.ok(_src.includes('guide-nav-group'), 'category header class missing — nav is not grouped');
   assert.ok(_src.includes('data-id="'), 'per-topic data-id missing — entries are not individual items');
   // every cat entry must carry a title (it is the left-list label)
-  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('(function buildShortcutsPanel()'));
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
   const catEntries = [...guideBlock.matchAll(/cat:'[^']+'/g)].length;
   const titles = [...guideBlock.matchAll(/title:'[^']*'|title:"[^"]*"/g)].length;
   assert.ok(titles >= catEntries,
