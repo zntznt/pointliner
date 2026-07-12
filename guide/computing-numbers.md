@@ -48,6 +48,16 @@ Call a function with parentheses. The big ones:
 
 Comparisons (`> >= < <= == !=`) return `1`/`0`, so they compose with arithmetic.
 
+**Logic:** combine comparisons with `and(…)` / `or(…)` (two or more args, like `min`/`max`) and
+flip one with `not(x)`. Nonzero counts as true; the result is `1`/`0`, so logic nests anywhere a
+number goes:
+
+```
+{= and(hp > 0, gold > 0)}         → 1 only when both hold
+{= if(or(hp < 5, cursed), 0, 1)}  works inside if(…) too
+{= not(done)}                     → 1 when done is 0
+```
+
 ---
 
 ## Units
@@ -251,6 +261,7 @@ sum(cost) <= budget        the kids' costs must fit a `budget` property
 count(score) >= 3          at least three scored children
 hours <= 8                 the point's own `hours` property
 max(due) <= deadline       no child due after the deadline
+and(hours <= 8, cost <= cap)   two rules in one check (or(…) / not(…) work too)
 ```
 
 The point grows a small chip: a muted **✓** when it passes, a visible flag when it **fails** or
