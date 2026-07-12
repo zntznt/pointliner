@@ -8962,8 +8962,9 @@ function openCheckDialog(nodeId, targets = null) {
           { label: 'count( )', insert: el => insertAndSelect(el, 'count(', 'prop', ')') },
           { label: '<=',       insert: ' <= ' },
           { label: '==',       insert: ' == ' },
+          { label: 'and( )',   insert: el => insertAndSelect(el, 'and(', 'test, test', ')') },
         ],
-        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). e.g. sum(cost) <= budget · count(score) >= 3',
+        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). Combine tests with and(…) or or(…), flip one with not(…). e.g. sum(cost) <= budget · and(hours <= 8, count(score) >= 3)',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -16792,7 +16793,8 @@ function checkInlineHighlight(content, node) {
 // preview — the expression is evaluated in place, no randomness involved.
 // Supports: +−×/^%, unary −, parentheses, named constants (pi/π, e, tau),
 // the most common functions (sqrt, abs, sin, cos, tan, log, ln, …),
-// comparison operators (>, >=, <, <=, ==, !=) returning 0/1, and
+// comparison operators (>, >=, <, <=, ==, !=) returning 0/1, logical
+// and(…)/or(…)/not(x) over those 0/1 values (variadic like min/max), and
 // conditionals: ternary  a > b ? x : y  or function form  if(cond, then, else).
 // Uses a recursive-descent parser — no eval(), safe to run on user input.
 
@@ -16831,6 +16833,10 @@ const FN1 = Object.assign(Object.create(null), {
   quarter: x => Math.floor(new Date(Math.round(x) * DAY_MS).getUTCMonth() / 3) + 1, // 1–4
   daysuntil: d => Math.round(d) - dueDateToday(),                     // days from today to date d (negative if past)
   asdate:  x => x,
+  // logic — not() flips a truth value (nonzero → 0, zero → 1). The NaN guard keeps a
+  // failed sub-expression from reading as a verdict; and()/or() are the variadic arm
+  // beside min/max inside evalMath.
+  not: x => (isNaN(x) ? NaN : (x ? 0 : 1)),
 });
 const FN2 = Object.assign(Object.create(null), {
   atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot,
@@ -16913,7 +16919,7 @@ function evalMath(input, vars = {}) {
       expect(')');
       return cond ? thenV : elseV;
     }
-    if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max') {
+    if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max' || name === 'and' || name === 'or') {
       expect('(');
       const args = [];
       if (peek() !== ')') {
@@ -16925,7 +16931,13 @@ function evalMath(input, vars = {}) {
       if (name in FN2) { if (args.length !== 2) throw 0; return FN2[name](args[0], args[1]); }
       if (name in FN3) { if (args.length !== 3) throw 0; return FN3[name](args[0], args[1], args[2]); }
       if (args.length < 2) throw 0;
-      return name === 'min' ? Math.min(...args) : Math.max(...args);
+      if (name === 'min' || name === 'max') return name === 'min' ? Math.min(...args) : Math.max(...args);
+      // and/or — variadic like min/max, returning 0/1 over nonzero-is-true operands.
+      // Eager on purpose: operands are pure numbers, there is nothing to short-circuit.
+      // A NaN operand propagates (→ the final isNaN gate → null) so a failed
+      // sub-expression fails the whole test instead of reading as false.
+      if (args.some(a => isNaN(a))) return NaN;
+      return (name === 'and' ? args.every(a => a !== 0) : args.some(a => a !== 0)) ? 1 : 0;
     }
     throw 0;
   }
@@ -17846,7 +17858,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, sin, log, min, max, … · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
+        hint: 'Functions: sqrt, sin, log, min, max, … · logic and(x>0, y>0), or(…), not(x) · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -23950,11 +23962,12 @@ const GUIDE = [
     ] },
   { id:'math-fns', cat:'compute',
     title:'Math functions',
-    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, compute a percentage change or run a scientific calculation. Call any function by name; they mix freely with variables, dice and other functions.",
+    body:"Do the things arithmetic alone can't easily express: round a price to a whole number, clamp a score to a valid range (never below 0, never above 100), find the smallest or largest from a set of values, combine several comparisons into one test with and, or and not, compute a percentage change or run a scientific calculation. Call any function by name; they mix freely with variables, dice and other functions.",
     examples:[
       { syn:'{= round(3.7)}',     desc:'round (also floor, ceil, trunc)' },
       { syn:'{= abs(-5)}',        desc:'absolute value; sign(x) for the sign' },
       { syn:'{= min(a, b, c)}',   desc:'smallest (max for the largest)' },
+      { syn:'{= and(a > 0, b > 0)}', desc:'1 when every test holds (or, not)' },
       { syn:'{= clamp(x, 0, 100)}', desc:'keep a value within a range' },
       { syn:'{= sqrt(16)}',       desc:'square root (cbrt, log, ln, sin…)' },
       { syn:'{= pctof(20, 80)}',  desc:'20 is what percent of 80' },
@@ -24008,11 +24021,12 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
       { syn:'count(score) >= 3',   desc:'at least 3 scored children' },
+      { syn:'and(hours <= 8, cost <= cap)', desc:'two tests in one check' },
       { syn:'is:failing',          desc:'find everything that fails' },
     ] },
   { id:'datapacks', cat:'compute',
