@@ -3297,6 +3297,19 @@ function calComponents(epoch, cal) {
   };
 }
 
+// The search-window span for `due:week` / `due:month` (QX-2). "This week / month" means today
+// through today + N days; N is 7 / 30 under Gregorian. Under a fiction a week is week.length days,
+// and a month is the length of the month `today` falls in (months can differ, so use the current
+// one — the honest "roughly a month out"). cal=null → the Gregorian 7 / 30. Pure.
+function dueWindowDays(unit, cal, today) {
+  if (cal) {
+    if (unit === 'week') return cal.week.length;
+    const c = epochToCal(today, cal);
+    return cal.months[c.month - 1].days;
+  }
+  return unit === 'week' ? 7 : 30;
+}
+
 function dueDateToday(cal = activeCalendar()) {
   // #527: in a fictional calendar there is no wall-clock "today" — use the document's
   // in-fiction `current` when a calendar with one is active, else the real clock.
@@ -10963,7 +10976,7 @@ function parseSearchQuery(q) {
       // QX-2: forward relative windows (this week / month). op:'window' matches a
       // date from today through today+N inclusive. A recorded value-vocabulary growth of
       // the date arm (no new sigil), reusing the epoch-day machinery. `< / >` don't apply.
-      else if ((lc === 'week' || lc === 'month') && op === '=') { terms.push({ neg, kind, op: 'window', epochDay: dueDateToday() + (lc === 'week' ? 7 : 30) }); }
+      else if ((lc === 'week' || lc === 'month') && op === '=') { const cal = activeCalendar(), tod = dueDateToday(cal); terms.push({ neg, kind, op: 'window', epochDay: tod + dueWindowDays(lc, cal, tod) }); }
       else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
     }
     else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });

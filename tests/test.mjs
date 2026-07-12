@@ -6945,6 +6945,18 @@ test('root.calendar round-trips through the OPML head, validated on load (#527)'
   // No calendar → no element (mirrors headEl's empty-skip; a Gregorian doc stays clean).
   assert.ok(!c.toOpml(c.mkRoot()).includes('_calendar'), 'a Gregorian doc emits no <_calendar>');
 });
+test('dueWindowDays — due:week/month spans the fiction week + current-month length (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 10-day week, all months 30 days
+  assert.equal(c.dueWindowDays('week', cal, 0), 10, 'a week is week.length days under a fiction');
+  assert.equal(c.dueWindowDays('month', cal, 0), 30, 'a month is the current month length');
+  // A calendar with uneven months: the window uses the month `today` falls in.
+  const uneven = c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'Long', days: 40 }, { name: 'Short', days: 12 }, ...HARPTOS.months.slice(2)] });
+  assert.equal(c.dueWindowDays('month', uneven, 0), 40, 'today in Long → 40-day window');
+  assert.equal(c.dueWindowDays('month', uneven, 40), 12, 'today in Short → 12-day window');
+  // Gregorian unchanged: 7 / 30 regardless of the day.
+  assert.equal(c.dueWindowDays('week', null, 20617), 7);
+  assert.equal(c.dueWindowDays('month', null, 20617), 30);
+});
 test('formatDueDate unchanged when no calendar (Gregorian label regression)', () => {
   // >6 days out from the real clock → the Gregorian month-name branch ("Jan 1" style).
   const far = c.dueDateToday(null) + 40;
