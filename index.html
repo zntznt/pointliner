@@ -1249,9 +1249,10 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cal-nav{flex:0 0 auto;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;border-radius:var(--r-sm);font-size:15px;line-height:1;user-select:none}
 .cal-nav:hover{color:var(--fg);background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .cal-nav:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
-.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px}
+.cal-dow{display:grid;grid-template-columns:repeat(var(--cal-cols,7),1fr);gap:2px;margin-bottom:2px}/* #527: --cal-cols set only under a custom calendar; absent = the identical 7 */
 .cal-dow span{text-align:center;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:2px 0}/* UXP-154: eyebrow recipe (a caps day-of-week label) */
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-grid{display:grid;grid-template-columns:repeat(var(--cal-cols,7),1fr);gap:2px}
+.cal.cal-wide{overflow-x:auto}.cal.cal-wide .cal-dow,.cal.cal-wide .cal-grid{min-width:calc(var(--cal-cols,7)*24px)}/* #527: inside the width-capped io-card a wide fiction week shrinks to the 24px tap floor FIRST, then scrolls (10 cols ≈ 280px still fits without scrolling) */
 .cal-week{display:contents}
 .cal-day{min-width:0;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:var(--r-sm);font-size:12.5px;color:var(--fg);cursor:pointer;font-variant-numeric:tabular-nums;user-select:none}
 .cal-day.oom{color:var(--muted)}
@@ -9146,30 +9147,36 @@ function buildDatePicker(opts) {
   next.setAttribute('role', 'button'); next.setAttribute('tabindex', '0'); next.setAttribute('aria-label', 'Next month');
   head.append(prev, title, next);
 
+  // #527: the picker asks the label cores (fiction weekday headers, month title, day numbers,
+  // spoken aria) and lays out in the active week's column count. Every Gregorian arm is the
+  // byte-identical string this code emitted before; the CSS var is set only under a fiction.
+  const cols = calWeekLen();
+  if (activeCalendar()) {
+    el.style.setProperty('--cal-cols', String(cols));
+    el.classList.toggle('cal-wide', cols > 8);
+  }
   const dow = document.createElement('div'); dow.className = 'cal-dow'; dow.setAttribute('role', 'row');
-  CAL_DOW.forEach((d, i) => { const s = document.createElement('span'); s.textContent = d; s.setAttribute('role', 'columnheader'); s.setAttribute('aria-label', CAL_DOW_FULL[i]); dow.appendChild(s); });
+  calWeekHeads().forEach(hd => { const s = document.createElement('span'); s.textContent = hd.short; s.setAttribute('role', 'columnheader'); s.setAttribute('aria-label', hd.full); dow.appendChild(s); });
 
   const grid = document.createElement('div'); grid.className = 'cal-grid'; grid.setAttribute('role', 'grid'); grid.setAttribute('aria-label', 'Choose a date');
   el.append(head, dow, grid);
 
   function renderGrid() {
-    const vd = new Date(view * 86400000);
-    title.textContent = CAL_MONTHS[vd.getUTCMonth()] + ' ' + vd.getUTCFullYear();
-    const vm = vd.getUTCMonth();
+    title.textContent = calMonthTitle(view);
+    const vc = calComponents(view);   // the shown month's (month, year) — the in-month test
     const today = dueDateToday();
     grid.innerHTML = '';
     let row;
     calendarMonthGrid(view).forEach((ep, i) => {
-      if (i % 7 === 0) { row = document.createElement('div'); row.className = 'cal-week'; row.setAttribute('role', 'row'); grid.appendChild(row); }
-      const d = new Date(ep * 86400000);
+      if (i % cols === 0) { row = document.createElement('div'); row.className = 'cal-week'; row.setAttribute('role', 'row'); grid.appendChild(row); }
+      const cc = calComponents(ep);
       const cell = document.createElement('div');
-      cell.className = 'cal-day' + (d.getUTCMonth() !== vm ? ' oom' : '') + (ep === sel ? ' sel' : '') + (ep === today ? ' today' : '');
-      cell.textContent = String(d.getUTCDate());
+      cell.className = 'cal-day' + (cc.month !== vc.month || cc.year !== vc.year ? ' oom' : '') + (ep === sel ? ' sel' : '') + (ep === today ? ' today' : '');
+      cell.textContent = String(cc.day);
       cell.dataset.ep = String(ep);
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('tabindex', ep === focusEp ? '0' : '-1');
-      const df = formatDueDate(ep);
-      cell.setAttribute('aria-label', CAL_DOW_FULL[d.getUTCDay()] + ', ' + CAL_MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear() + (ep === today ? ' (today)' : ''));
+      cell.setAttribute('aria-label', calDayLabel(ep) + (ep === today ? ' (today)' : ''));
       if (ep === sel) cell.setAttribute('aria-selected', 'true');
       row.appendChild(cell);
     });
@@ -9180,13 +9187,13 @@ function buildDatePicker(opts) {
 
   grid.addEventListener('mousedown', e => { const cell = e.target.closest('.cal-day'); if (!cell) return; e.preventDefault(); pick(+cell.dataset.ep); });
   grid.addEventListener('keydown', e => {
-    const cur = focusEp; let nx = null;
+    const cur = focusEp; let nx = null;   // #527: a row is one week of THIS calendar (cols = 7 under Gregorian, unchanged)
     if (e.key === 'ArrowRight') nx = cur + 1;
     else if (e.key === 'ArrowLeft') nx = cur - 1;
-    else if (e.key === 'ArrowDown') nx = cur + 7;
-    else if (e.key === 'ArrowUp') nx = cur - 7;
-    else if (e.key === 'Home') nx = cur - new Date(cur * 86400000).getUTCDay();
-    else if (e.key === 'End') nx = cur + (6 - new Date(cur * 86400000).getUTCDay());
+    else if (e.key === 'ArrowDown') nx = cur + cols;
+    else if (e.key === 'ArrowUp') nx = cur - cols;
+    else if (e.key === 'Home') nx = cur - calComponents(cur).weekday;
+    else if (e.key === 'End') nx = cur + (cols - 1 - calComponents(cur).weekday);
     else if (e.key === 'PageUp') nx = addMonths(cur, -1);
     else if (e.key === 'PageDown') nx = addMonths(cur, 1);
     else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(cur); return; }
