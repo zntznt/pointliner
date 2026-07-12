@@ -192,6 +192,54 @@ test('evalMath — malformed input returns null (callers branch on null)', () =>
   assert.equal(c.evalMath('2+2x'), null); // unconsumed trailing token
 });
 
+test('evalMath — and/or/not: 0/1 logic over nonzero-is-true operands (#539)', () => {
+  assert.equal(c.evalMath('and(1,1)'), 1);
+  assert.equal(c.evalMath('and(1,0)'), 0);
+  assert.equal(c.evalMath('or(0,0)'), 0);
+  assert.equal(c.evalMath('or(0,2)'), 1);
+  assert.equal(c.evalMath('not(0)'), 1);
+  assert.equal(c.evalMath('not(3)'), 0);
+  assert.equal(c.evalMath('not(-2)'), 0);            // any nonzero is true, sign irrelevant
+  // variadic like min/max
+  assert.equal(c.evalMath('and(1,2,3)'), 1);
+  assert.equal(c.evalMath('and(1,0,3)'), 0);
+  assert.equal(c.evalMath('or(0,0,5)'), 1);
+  // composition with comparisons, ternary, if(), and variables
+  assert.equal(c.evalMath('and(2>1, 3<5)'), 1);
+  assert.equal(c.evalMath('and(a>1, b>1)', { a: 2, b: 3 }), 1);
+  assert.equal(c.evalMath('or(a>9, b>9)', { a: 2, b: 3 }), 0);
+  assert.equal(c.evalMath('if(and(x>0, y>0), 7, 9)', { x: 1, y: 2 }), 7);
+  assert.equal(c.evalMath('not(x==5)', { x: 5 }), 0);
+});
+
+test('evalMath — and/or/not: arity errors and NaN operands fail to null (#539)', () => {
+  assert.equal(c.evalMath('and(1)'), null);          // < 2 args, like min/max
+  assert.equal(c.evalMath('or(1)'), null);
+  assert.equal(c.evalMath('and()'), null);
+  assert.equal(c.evalMath('not()'), null);           // not is strictly unary
+  assert.equal(c.evalMath('not(1,2)'), null);
+  // a NaN operand must fail the whole test, never read as a false/true verdict
+  assert.equal(c.evalMath('and(sqrt(-1), 1)'), null);
+  assert.equal(c.evalMath('or(sqrt(-1), 1)'), null);
+  assert.equal(c.evalMath('not(sqrt(-1))'), null);
+  // an unknown name inside still fails the expression (existing contract)
+  assert.equal(c.evalMath('and(nope>1, 1)'), null);
+});
+
+test('evalCheck — a compound and(…) check passes the comparison gate and verdicts correctly (#539)', () => {
+  const node = { text: 'x', props: [{ key: 'check', val: 'and(sum(cost) <= 10, count(cost) >= 2)' }],
+    children: [
+      { text: 'a', props: [{ key: 'cost', val: '4' }], children: [] },
+      { text: 'b', props: [{ key: 'cost', val: '5' }], children: [] },
+    ] };
+  assert.equal(c.evalCheck(node, {}), 'pass');
+  node.children[1].props[0].val = '9';               // sum 13 > 10 → the and() fails
+  assert.equal(c.evalCheck(node, {}), 'fail');
+  // a compound with no comparison anywhere is still not a test (P4 gate unchanged)
+  const bare = { text: 'x', props: [{ key: 'check', val: 'and(1, 2)' }], children: [] };
+  assert.equal(c.evalCheck(bare, {}), 'error');
+});
+
 test('evalMath — names colliding with Object.prototype fail to null, not the inherited member', () => {
   // On plain-object tables `'constructor' in MATH_CONSTS` was true via the prototype, so
   // `constructor*2` resolved to the Object function (NaN) and `constructor(5)`

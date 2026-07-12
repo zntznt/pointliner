@@ -70,6 +70,8 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 
 - **Expressions.** `{= 2 * 19}` shows **38**; the usual arithmetic, powers, roots, functions.
   ([expressions](computing-numbers.md#expressions))
+- **Logic.** Combine comparisons with `and(…)` / `or(…)` / `not(x)`; one check can assert several
+  rules at once. ([functions](computing-numbers.md#functions))
 - **Units and dates.** Convert units (`{= c2f(20)}`), do date math (`{= daysuntil(due)}`).
   ([units](computing-numbers.md#units) · [dates](computing-numbers.md#dates))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
