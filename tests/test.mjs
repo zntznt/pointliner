@@ -6893,6 +6893,41 @@ test('calComponents — evalMath date-fn COMPUTE seam: fiction values vs Gregori
   assert.deepEqual([g.year, g.month, g.day, g.weekday, g.quarter], [2026, 6, 13, 6, 2],
     'no calendar → Gregorian year/month/day/weekday(0=Sun,6=Sat)/quarter unchanged');
 });
+test('calendarMonthGrid — fiction week length + month length shape the grid (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // 10-day week, 30-day months, epochDay 0
+  // Month 1 of year 1: epoch 0. First-of-month weekday = 0 (epochDay 0). 30 days, 10-col week →
+  // exactly 3 rows of 10, no offset. Grid should be 30 cells, first cell epoch 0.
+  const grid = c.calendarMonthGrid(0, cal);
+  assert.equal(grid.length, 30, '10 cols × 3 rows for a 30-day month with no leading offset');
+  assert.equal(grid[0], 0, 'grid starts at first-of-month when it lands on weekday 0');
+  assert.equal(grid[29], 29, 'last cell is the 30th day');
+  // A month whose first day is mid-week: month 2 (epoch 30), weekday 30%10 = 0 → also aligned.
+  // Force an offset by using a calendar whose epochDay makes weekday nonzero.
+  const off = c.normalizeCalendar({ ...HARPTOS, epochDay: 3 }); // shifts all weekdays by -3
+  const g2 = c.calendarMonthGrid(0, off);
+  assert.equal(c.epochToCal(g2[0], off).weekday, 0, 'grid always starts on weekday 0 (leading spill)');
+  // Gregorian unchanged: 42 cells (6×7).
+  assert.equal(c.calendarMonthGrid(20617, null).length, 42, 'no calendar → the Gregorian 6×7 grid');
+});
+test('addMonths — clamps day to the fiction month length, wraps the year (#527)', () => {
+  const cal = c.normalizeCalendar(HARPTOS); // all months 30 days
+  // epoch 29 = year 1 month 1 day 30; +1 month → month 2 day 30 (both 30-day, no clamp).
+  const plus1 = c.addMonths(29, 1, cal);
+  const p = c.epochToCal(plus1, cal);
+  assert.deepEqual([p.year, p.month, p.day], [1, 2, 30], 'month 1 day 30 + 1 → month 2 day 30');
+  // Wrap the year: month 12 + 1 → month 1 of next year.
+  const dec = c.calToEpoch(1, 12, 15, cal);
+  const wrapped = c.epochToCal(c.addMonths(dec, 1, cal), cal);
+  assert.deepEqual([wrapped.year, wrapped.month, wrapped.day], [2, 1, 15], 'month 12 + 1 wraps to next year month 1');
+  // Clamp: a calendar with an uneven short month.
+  const uneven = c.normalizeCalendar({ ...HARPTOS, months: [{ name: 'Long', days: 31 }, { name: 'Short', days: 20 }, ...HARPTOS.months.slice(2)] });
+  const day31 = c.calToEpoch(1, 1, 31, uneven);           // Long day 31
+  const clamped = c.epochToCal(c.addMonths(day31, 1, uneven), uneven);
+  assert.deepEqual([clamped.month, clamped.day], [2, 20], 'day 31 + 1 → Short day 20 (clamped to month length)');
+  // Gregorian unchanged: Jan 31 + 1 → Feb 28 (2026 not leap).
+  const jan31 = c.parseDueDate('2026-01-31', null);
+  assert.equal(c.formatEpochDays(c.addMonths(jan31, 1, null), null), '2026-02-28', 'Gregorian clamp intact');
+});
 test('formatDueDate unchanged when no calendar (Gregorian label regression)', () => {
   // >6 days out from the real clock → the Gregorian month-name branch ("Jan 1" style).
   const far = c.dueDateToday(null) + 40;
