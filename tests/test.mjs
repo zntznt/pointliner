@@ -9660,18 +9660,27 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
   assert.equal(dead.length, 0, `every {…} in the Examples doc must be a live pill; dead: ${JSON.stringify(dead)}`);
 });
 
-// ── openExamples MUST insert non-destructively (never adoptDoc/replace the user's document) ──
-test('openExamples: inserts the Welcome tour into the current doc, does NOT overwrite it', () => {
+// ── The example insert MUST be non-destructive (never adoptDoc/replace the user's document) ──
+// #565 factored the append-and-zoom body out of openExamples into insertStarterSubtree, shared
+// by the Welcome tour AND the starter gallery. openExamples now delegates; the data-loss guard
+// lives on the shared insert function.
+test('insertStarterSubtree: appends a fresh-id clone, undo-able, never overwrites the document', () => {
+  const fn = _src.match(/function insertStarterSubtree\([^)]*\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(fn, 'insertStarterSubtree not found');
+  const body = fn[0];
+  assert.ok(body.includes('deepCloneNodeNewIds('), 'must clone the subtree with fresh ids');
+  assert.ok(body.includes('root.children.push(clone)'), 'must APPEND the subtree, not replace the document');
+  assert.ok(body.includes('pushUndo()'), 'the insert must be undo-able');
+  assert.ok(body.includes('promoteLoadedShorthand('), 'must promote the inserted {…} shorthand or pills render as raw source (#565)');
+  assert.ok(!body.includes('adoptDoc('), 'must NOT adoptDoc (that overwrote the user document)');
+});
+test('openExamples: delegates to the non-destructive insert (no direct adoptDoc)', () => {
   const fn = _src.match(/function openExamples\(\)\s*\{[\s\S]*?\n\}/);
   assert.ok(fn, 'openExamples not found');
   const body = fn[0];
-  // it APPENDS a fresh-id clone to the live document
-  assert.ok(body.includes('deepCloneNodeNewIds(welcome)'), 'openExamples must clone the welcome subtree with fresh ids');
-  assert.ok(body.includes('root.children.push(clone)'), 'openExamples must APPEND the tour, not replace the document');
-  assert.ok(body.includes('pushUndo()'), 'the insert must be undo-able');
-  // it must NOT replace the document (the old data-loss path) and needs no discard-confirm anymore
-  assert.ok(!body.includes('adoptDoc('), 'openExamples must NOT adoptDoc (that overwrote the user document)');
-  assert.ok(!/Discard unsaved/i.test(body), 'the destructive discard confirm should be gone (the insert is non-destructive)');
+  assert.ok(body.includes('insertStarterSubtree('), 'openExamples routes through the shared insert');
+  assert.ok(!body.includes('adoptDoc('), 'openExamples must NOT adoptDoc (the old data-loss path)');
+  assert.ok(!/Discard unsaved/i.test(body), 'no destructive discard confirm (the insert is non-destructive)');
 });
 
 // ── Backtick code spans are the promotion escape hatch: `{2d6}` stays literal, not a pill ──

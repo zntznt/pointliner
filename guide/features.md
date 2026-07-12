@@ -170,6 +170,10 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Data packs.** Bundle grammar rules and formula variables into a named, reusable pack (File then
   Data packs): every rule and variable becomes callable across the document, and you can enable,
   disable, edit, import, or export packs. Pure data, no code, so opening any file stays safe.
+- **Start from an example.** File then **Start from an example** drops a ready-made, fully live
+  example into your document: a campaign oracle that rolls on your own cast and threads, an
+  oracle-driven scene loop, or a self-computing character sheet. Click any pill inside to play, then
+  delete it when you are done. More worked examples live in the [solo RPG guides](solo-rpg/README.md).
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.
 - **Verbosity dial.** `Ctrl/Cmd+Shift+.` cycles Guided (all hints shown), Standard (beginner hints and
   tooltips off, menus and pencils kept), and Lean (the keyboard canvas: menus and pencils hidden, still
