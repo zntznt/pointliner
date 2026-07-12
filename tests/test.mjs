@@ -192,6 +192,50 @@ test('evalMath — malformed input returns null (callers branch on null)', () =>
   assert.equal(c.evalMath('2+2x'), null); // unconsumed trailing token
 });
 
+test('evalMath — #544 numeric menu: gcd, lcm, roundto, variadic avg', () => {
+  assert.equal(c.evalMath('gcd(12, 18)'), 6);
+  assert.equal(c.evalMath('gcd(-12, 18)'), 6);          // sign-insensitive
+  assert.equal(c.evalMath('gcd(7, 0)'), 7);
+  assert.equal(c.evalMath('lcm(4, 6)'), 12);
+  assert.equal(c.evalMath('lcm(0, 5)'), 0);
+  assert.equal(c.evalMath('roundto(7.3, 0.5)'), 7.5);
+  assert.equal(c.evalMath('roundto(7.6, 0.5)'), 7.5);
+  assert.equal(c.evalMath('roundto(112, 25)'), 100);
+  assert.equal(c.evalMath('roundto(5, 0)'), 5);          // zero step is identity, not ÷0
+  assert.equal(c.evalMath('avg(2, 4, 6)'), 4);
+  assert.equal(c.evalMath('avg(a, b)', { a: 1, b: 3 }), 2);
+  // single-arg avg stays the B1 child-aggregation form, an error in pure numeric context
+  // (the min/max precedent: ≥2 args required in the variadic arm)
+  assert.equal(c.evalMath('avg(5)'), null);
+});
+
+test('evalMath — #544 date menu: weeknum, eom, age, addmonths, workdaysbetween', () => {
+  // ISO week numbers: 2026-01-01 is a Thursday → week 1; 2021-01-01 (Fri) → week 53 of
+  // 2020; 2024-12-30 (Mon) → week 1 of 2025 (the two classic year-boundary traps).
+  assert.equal(c.evalMath('weeknum(date(2026,1,1))'), 1);
+  assert.equal(c.evalMath('weeknum(date(2021,1,1))'), 53);
+  assert.equal(c.evalMath('weeknum(date(2024,12,30))'), 1);
+  // eom: month ends, incl. a leap February
+  assert.equal(c.evalMath('eom(date(2026,2,10)) == date(2026,2,28)'), 1);
+  assert.equal(c.evalMath('eom(date(2028,2,1)) == date(2028,2,29)'), 1);
+  assert.equal(c.evalMath('eom(date(2026,12,5)) == date(2026,12,31)'), 1);
+  // addmonths: EDATE day-clamping across month lengths and leap years, and year rollover
+  assert.equal(c.evalMath('addmonths(date(2026,1,31), 1) == date(2026,2,28)'), 1);
+  assert.equal(c.evalMath('addmonths(date(2028,1,31), 1) == date(2028,2,29)'), 1);
+  assert.equal(c.evalMath('addmonths(date(2026,3,15), -1) == date(2026,2,15)'), 1);
+  assert.equal(c.evalMath('addmonths(date(2026,12,15), 1) == date(2027,1,15)'), 1);
+  // workdaysbetween: [min, max) exclusive end, weekends skipped, order-insensitive
+  assert.equal(c.evalMath('workdaysbetween(date(2026,7,6), date(2026,7,10))'), 4);  // Mon→Fri excl
+  assert.equal(c.evalMath('workdaysbetween(date(2026,7,6), date(2026,7,13))'), 5);  // Mon→next Mon
+  assert.equal(c.evalMath('workdaysbetween(date(2026,7,10), date(2026,7,13))'), 1); // Fri→Mon over a weekend
+  assert.equal(c.evalMath('workdaysbetween(date(2026,7,13), date(2026,7,6))'), 5);  // reversed args
+  assert.equal(c.evalMath('workdaysbetween(date(2026,7,8), date(2026,7,8))'), 0);   // same day
+  assert.equal(c.evalMath('workdaysbetween(date(2026,7,11), date(2026,7,12))'), 0); // Sat→Sun
+  // age: relative to today, so pin only the stable anchors
+  assert.equal(c.evalMath('age(today)'), 0);
+  assert.equal(c.evalMath('age(today - 400)'), 1);
+});
+
 test('evalMath — and/or/not: 0/1 logic over nonzero-is-true operands (#539)', () => {
   assert.equal(c.evalMath('and(1,1)'), 1);
   assert.equal(c.evalMath('and(1,0)'), 0);

@@ -34,8 +34,9 @@ You can use `×` `÷` `−` and `√` if you like typing them; `pi`, `e`, `tau` 
 Call a function with parentheses. The big ones:
 
 **Math:** `sqrt abs floor ceil round trunc sign cbrt exp` · `sin cos tan asin acos atan atan2` ·
-`ln log log2 log10` · `deg rad` · `pow(x,y) hypot(a,b)` · `min(…) max(…)` (two or more args) ·
-`clamp(x, lo, hi)`.
+`ln log log2 log10` · `deg rad` · `pow(x,y) hypot(a,b)` · `min(…) max(…) avg(…)` (two or more args) ·
+`clamp(x, lo, hi)` · `gcd(a,b) lcm(a,b)` · `roundto(x, step)` rounds to the nearest step
+(`roundto(7.3, 0.5)` → 7.5, `roundto(112, 25)` → 100).
 
 **Percentages:** `pctof(part, whole)` → part as a % of whole; `pctchange(from, to)` → % change.
 
@@ -83,7 +84,11 @@ constant **`today`** is the anchor:
 {= date(2026, 12, 25)}     a specific calendar date
 {= daysuntil(due)}         days from today to a `due` value (negative if past)
 {= daysbetween(a, b)}      whole days between two dates
+{= workdaysbetween(a, b)}  Mon–Fri days only (no holiday awareness, by design)
+{= addmonths(due, 3)}      3 calendar months later; Jan 31 + 1 month clamps to Feb 28/29
 {= weekday(today)}         0 = Sunday … 6 = Saturday
+{= weeknum(today)}         ISO week number · {= eom(due)} last day of that month
+{= age(date(2000, 5, 14))} whole years since a date (birthdays, anniversaries)
 {= year(due)}  month(due)  day(due)  quarter(due)
 ```
 

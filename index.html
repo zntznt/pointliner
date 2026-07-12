@@ -2829,12 +2829,13 @@ function aggregateChildren(node, fn, prop, depth = 1) {
 }
 // Substitute every sum|avg|count|min|max(propName) in a math expression with its
 // computed value over `node`'s direct children. A SINGLE bare-identifier argument is
-// required (a property name shaped like an identifier). sum/avg/count are not evalMath
-// names, so no clash; min/max ARE evalMath's numeric variadics, but those require ≥2
-// args — single-arg `min(ident)` is already an error there, so this overload is purely
-// additive (a comma'd `min(a, b)` keeps the numeric path; the regex needs one ident,
-// no comma). The spreadsheet MIN(col) vs MIN(a,b) split. Pure; a null node aggregates
-// over an empty child set, which is how node-less validation stays valid.
+// required (a property name shaped like an identifier). sum/count are not evalMath
+// names, so no clash; min/max (and avg since #544) ARE evalMath's numeric variadics,
+// but those require ≥2 args — single-arg `min(ident)` is already an error there, so
+// this overload is purely additive (a comma'd `min(a, b)` keeps the numeric path; the
+// regex needs one ident, no comma). The spreadsheet MIN(col) vs MIN(a,b) split. Pure;
+// a null node aggregates over an empty child set, which is how node-less validation
+// stays valid.
 function expandAggExpr(expr, node) {
   if (!expr) return expr;
   let e = String(expr);
@@ -16832,6 +16833,25 @@ const FN1 = Object.assign(Object.create(null), {
   weekday: x => new Date(Math.round(x) * DAY_MS).getUTCDay(),         // 0=Sun … 6=Sat
   quarter: x => Math.floor(new Date(Math.round(x) * DAY_MS).getUTCMonth() / 3) + 1, // 1–4
   daysuntil: d => Math.round(d) - dueDateToday(),                     // days from today to date d (negative if past)
+  // #544 date additions (epoch-day in, number out — the B5 lane)
+  weeknum: x => {                                                     // ISO 8601 week number (Mon-start weeks; week 1 holds Jan 4)
+    const d = new Date(Math.round(x) * DAY_MS);
+    d.setUTCDate(d.getUTCDate() + 3 - ((d.getUTCDay() + 6) % 7));     // → this date's week-Thursday
+    const jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+    jan4.setUTCDate(jan4.getUTCDate() + 3 - ((jan4.getUTCDay() + 6) % 7)); // → week 1's Thursday
+    return 1 + Math.round((d - jan4) / (7 * DAY_MS));
+  },
+  eom: x => {                                                         // last day of x's month, as a date
+    const d = new Date(Math.round(x) * DAY_MS);
+    return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0) / DAY_MS);
+  },
+  age: x => {                                                         // whole years from date x to today (birthdays, campaign years)
+    const b = new Date(Math.round(x) * DAY_MS), t = new Date(dueDateToday() * DAY_MS);
+    let a = t.getUTCFullYear() - b.getUTCFullYear();
+    const m = t.getUTCMonth() - b.getUTCMonth();
+    if (m < 0 || (m === 0 && t.getUTCDate() < b.getUTCDate())) a--;
+    return a;
+  },
   asdate:  x => x,
   // logic — not() flips a truth value (nonzero → 0, zero → 1). The NaN guard keeps a
   // failed sub-expression from reading as a verdict; and()/or() are the variadic arm
@@ -16843,6 +16863,26 @@ const FN2 = Object.assign(Object.create(null), {
   daysbetween: (a, b) => Math.abs(Math.round(b) - Math.round(a)),  // whole days between two dates
   pctof: (part, whole) => part / whole * 100,                      // part as a percentage of whole (÷0 → ∞)
   pctchange: (from, to) => (to - from) / from * 100,               // percent change from→to (÷0 → ∞)
+  // #544 additions
+  addmonths: (d, n) => {                                           // calendar-aware month shift, day clamped (EDATE: Jan 31 +1mo → Feb 28/29)
+    const dt = new Date(Math.round(d) * DAY_MS);
+    const y = dt.getUTCFullYear(), m = dt.getUTCMonth() + Math.round(n);
+    const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return Math.floor(Date.UTC(y, m, Math.min(dt.getUTCDate(), last)) / DAY_MS);
+  },
+  workdaysbetween: (a, b) => {                                     // Mon–Fri days in [min, max) — exclusive end like daysbetween's whole-day model; no holidays by design
+    const lo = Math.round(Math.min(a, b)), hi = Math.round(Math.max(a, b));
+    const weeks = Math.floor((hi - lo) / 7);
+    let n = weeks * 5;
+    for (let d = lo + weeks * 7; d < hi; d++) {
+      const w = ((d + 4) % 7 + 7) % 7;                             // epoch day 0 = Thu → weekday without a Date object
+      if (w !== 0 && w !== 6) n++;
+    }
+    return n;
+  },
+  gcd: (a, b) => { a = Math.abs(Math.round(a)); b = Math.abs(Math.round(b)); while (b) { const t = a % b; a = b; b = t; } return a; },
+  lcm: (a, b) => { const g = FN2.gcd(a, b); return g ? Math.abs(Math.round(a) * Math.round(b)) / g : 0; },
+  roundto: (x, s) => s ? Number((Math.round(x / s) * s).toFixed(10)) : x,  // nearest step (0.5, 25, …); toFixed trims float dust
 });
 const FN3 = Object.assign(Object.create(null), {
   date: (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / DAY_MS),
@@ -16919,7 +16959,7 @@ function evalMath(input, vars = {}) {
       expect(')');
       return cond ? thenV : elseV;
     }
-    if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max' || name === 'and' || name === 'or') {
+    if (name in FN1 || name in FN2 || name in FN3 || name === 'min' || name === 'max' || name === 'and' || name === 'or' || name === 'avg') {
       expect('(');
       const args = [];
       if (peek() !== ')') {
@@ -16932,6 +16972,9 @@ function evalMath(input, vars = {}) {
       if (name in FN3) { if (args.length !== 3) throw 0; return FN3[name](args[0], args[1], args[2]); }
       if (args.length < 2) throw 0;
       if (name === 'min' || name === 'max') return name === 'min' ? Math.min(...args) : Math.max(...args);
+      // avg — variadic like min/max (#544). ≥2 args keeps the single-bare-ident form
+      // (`avg(cost)`) meaning the B1 child aggregation, exactly the min/max precedent.
+      if (name === 'avg') return args.reduce((s, v) => s + v, 0) / args.length;
       // and/or — variadic like min/max, returning 0/1 over nonzero-is-true operands.
       // Eager on purpose: operands are pure numbers, there is nothing to short-circuit.
       // A NaN operand propagates (→ the final isNaN gate → null) so a failed
@@ -17858,7 +17901,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, sin, log, min, max, … · logic and(x>0, y>0), or(…), not(x) · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
+        hint: 'Functions: sqrt, sin, log, min, max, avg, gcd, lcm, roundto(x, step), … · logic and(x>0, y>0), or(…), not(x) · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90), addmonths(d, n), workdaysbetween(a, b), weeknum(d), eom(d), age(d) · roll up children with sum/avg/count/min/max(prop), deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';
@@ -23970,6 +24013,8 @@ const GUIDE = [
       { syn:'{= and(a > 0, b > 0)}', desc:'1 when every test holds (or, not)' },
       { syn:'{= clamp(x, 0, 100)}', desc:'keep a value within a range' },
       { syn:'{= sqrt(16)}',       desc:'square root (cbrt, log, ln, sin…)' },
+      { syn:'{= avg(a, b, c)}',   desc:'average (also gcd, lcm)' },
+      { syn:'{= roundto(7.3, 0.5)}', desc:'round to the nearest step' },
       { syn:'{= pctof(20, 80)}',  desc:'20 is what percent of 80' },
       { syn:'{= pctchange(50, 75)}', desc:'percent change (here +50%)' },
     ] },
@@ -23981,7 +24026,9 @@ const GUIDE = [
       { syn:'{= asdate(today+30)}',desc:'show that as a calendar date' },
       { syn:'{= date(2026, 1, 1)}',desc:'a fixed date' },
       { syn:'{= daysbetween(start, due)}', desc:'whole days apart' },
-      { syn:'{= weekday(today)}',  desc:'0=Sun…6=Sat (also year, month, quarter)' },
+      { syn:'{= workdaysbetween(start, due)}', desc:'Mon–Fri days only' },
+      { syn:'{= asdate(addmonths(today, 3))}', desc:'3 calendar months out (day clamped)' },
+      { syn:'{= weekday(today)}',  desc:'0=Sun…6=Sat (also year, month, quarter, weeknum, eom, age)' },
       { syn:'{= c2f(20)}',         desc:'°C to °F (also f2c)' },
       { syn:'{= km2mi(10)}',       desc:'km to miles (mi2km, kg2lb, l2gal…)' },
     ] },
