@@ -90,6 +90,20 @@ test('parseDice — rejects malformed / out-of-range input', () => {
   assert.equal(c.parseDice('5'), null);      // no dice term → null
 });
 
+test('parseDice — accepts the exact boundary values (guards against an off-by-one clamp)', () => {
+  // The reject test above pins that 1000/100001 are refused; without pinning that the LAST
+  // valid values are ACCEPTED, a clamp tightened one too far (< 999 / < 100000) passes silently.
+  const maxCount = c.parseDice('999d6');
+  assert.ok(maxCount, '999 dice is the max valid count');
+  assert.equal(maxCount[0].count, 999);
+  const maxSides = c.parseDice('1d100000');
+  assert.ok(maxSides, '100000 is the max valid sides');
+  assert.equal(maxSides[0].sides, 100000);
+  // and the just-over values are still refused (the reject side of the same boundary)
+  assert.equal(c.parseDice('1000d6'), null);
+  assert.equal(c.parseDice('1d100001'), null);
+});
+
 test('parseDice — variable identifier as a modifier', () => {
   const t = c.parseDice('2d6+str', { str: 3 });
   assert.equal(t[1].kind, 'mod');
@@ -10627,4 +10641,85 @@ test('escHtml neutralizes an img-onerror payload from a hostile sidecar', () => 
   const out = c.escHtml('<img src=x onerror=alert(document.domain)>');
   assert.ok(!/[<>]/.test(out), 'angle brackets escaped, so no live element is injected');
   assert.equal(out, '&lt;img src=x onerror=alert(document.domain)&gt;');
+});
+
+// ── coverage: previously-untested pure cores (Tier-2 audit gaps) ──────────────
+
+test('weightedPick — cumulative-weight bucket boundary is exact', () => {
+  // targets [{w:1,to:a},{w:3,to:b}], total 4. r = Math.random()*4; a wins while r < 1.
+  const tg = [{ w: 1, to: 'a' }, { w: 3, to: 'b' }];
+  try {
+    c.seedSequence([0]);      assert.equal(c.weightedPick(tg), 'a');            // r=0 → a
+    c.seedSequence([0.24]);   assert.equal(c.weightedPick(tg), 'a');            // r=0.96 (<1) → a
+    c.seedSequence([0.25]);   assert.equal(c.weightedPick(tg), 'b');            // r=1.0  (not <1) → b, the boundary
+    c.seedSequence([0.999]);  assert.equal(c.weightedPick(tg), 'b');            // r≈4 → b
+  } finally {
+    c.resetRandom();
+  }
+  // total weight ≤ 0 → null (all-zero weights, and the empty list)
+  assert.equal(c.weightedPick([{ w: 0, to: 'x' }, { w: 0, to: 'y' }]), null);
+  assert.equal(c.weightedPick([]), null);
+});
+
+test('shuffledIndices — always a permutation of 0..n-1, incl. the n=0 and n=1 edges', () => {
+  try {
+    c.seedSequence([0.5, 0.5, 0.5, 0.5, 0.5]);
+    const sh = c.shuffledIndices(5);
+    assert.equal(sh.length, 5, 'length preserved');
+    assert.deepEqual(host([...sh].sort((a, b) => a - b)), [0, 1, 2, 3, 4], 'every index present exactly once');
+  } finally {
+    c.resetRandom();
+  }
+  assert.deepEqual(host(c.shuffledIndices(0)), []);   // empty deck
+  assert.deepEqual(host(c.shuffledIndices(1)), [0]);  // single item
+});
+
+test('makeTypedMarkovRoll — builds a walkable record flagged typed, null on unparseable def', () => {
+  try {
+    c.seedSequence([0]);  // deterministic walk
+    const roll = c.makeTypedMarkovRoll('a->b\nb->c');
+    assert.ok(roll, 'a valid def builds a record');
+    assert.equal(roll.typed, true, 'flagged typed (anonymous inline markov, not a named dialog pill)');
+    assert.ok('path' in roll && 'def' in roll, 'carries the walk path + its source def');
+  } finally {
+    c.resetRandom();
+  }
+  assert.equal(c.makeTypedMarkovRoll(''), null, 'an unparseable def returns null (caller branches on null)');
+});
+
+test('mtModelText — parses a pipe table to rows+aligns, falls back to a starter table', () => {
+  const m = c.mtModelText('| A | B |\n|---|---|\n| 1 | 2 |');
+  assert.deepEqual(host(m.rows), [['A', 'B'], ['1', '2']], 'header + data rows');
+  // a non-table string falls back to the starter table (never null), so a base always has a model
+  const fallback = c.mtModelText('not a table at all');
+  assert.ok(fallback && Array.isArray(fallback.rows) && fallback.rows.length > 0, 'starter-table fallback, never null');
+});
+
+test('mtSetColRole — sets one column role index-aligned, clears to undefined when all null', () => {
+  const node = { type: 'base', text: '| A | B |\n|---|---|\n| 1 | 2 |', colRole: undefined };
+  c.mtSetColRole(node, 1, 'number');
+  assert.deepEqual(host(node.colRole), [null, 'number'], 'role written at the right index, others untouched');
+  c.mtSetColRole(node, 0, 'status');
+  assert.deepEqual(host(node.colRole), ['status', 'number'], 'a second role does not disturb the first (index alignment)');
+  c.mtSetColRole(node, 0, null);
+  c.mtSetColRole(node, 1, null);
+  assert.equal(node.colRole, undefined, 'clearing every role drops the array back to undefined (no empty [null,null] left behind)');
+});
+
+test('findOrCreateChild — creates once, then finds the same child (no duplicate journal days)', () => {
+  let n = 0;
+  const mk = (label, parent) => ({ id: 'n' + (n++), text: label, children: [] });
+  const parent = { children: [] };
+  const first = c.findOrCreateChild(parent, '2026-07-12', mk, false);
+  assert.equal(first.created, true);
+  assert.equal(parent.children.length, 1);
+  const second = c.findOrCreateChild(parent, '2026-07-12', mk, false);
+  assert.equal(second.created, false, 'the second call FINDS, it does not create a second day node');
+  assert.equal(second.entry, first.entry, 'same node returned');
+  assert.equal(parent.children.length, 1, 'still exactly one child');
+  // fuzzy: a title carrying a suffix (e.g. a day node "2026-07-12 Sunday") still matches
+  const withSuffix = { children: [{ id: 'x', text: '2026-07-12 Sunday', children: [] }] };
+  const fuzzy = c.findOrCreateChild(withSuffix, '2026-07-12', mk, true);
+  assert.equal(fuzzy.created, false, 'fuzzy match reuses the suffixed day node');
+  assert.equal(fuzzy.entry.id, 'x');
 });
