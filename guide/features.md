@@ -49,8 +49,8 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
   ([dice](generating-text.md#roll-dice-ndm))
 - **Named rules.** Build a name generator or loot table once, reuse it anywhere.
   ([rules](generating-text.md#name-things-youll-reuse-rules))
-- **Shape words.** `{beast.a}` becomes "an ogre"; pluralize, capitalize, past tense.
-  ([modifiers](generating-text.md#shape-the-words-modifiers))
+- **Shape words.** `{beast.a}` becomes "an ogre"; pluralize, capitalize, past tense, possessive,
+  present participle. ([modifiers](generating-text.md#shape-the-words-modifiers))
 - **Conditionals.** Say different things in different cases: `{hp>0: still standing | defeated}`.
   ([conditionals](generating-text.md#say-different-things-in-different-cases-conditionals))
 - **Crit checks on a captured roll.** `{r := 1d20}` freezes one die; nested conditionals then judge

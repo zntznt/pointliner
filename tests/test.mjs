@@ -599,6 +599,31 @@ test('applyMods — .ed (regular past tense) and .ord (ordinal) follow-ons', () 
   assert.deepEqual(host(c.modParts('n.ord.cap')), { base: 'n', mods: ['ord', 'cap'] });
 });
 
+test('applyMods — .poss (possessive) and .ing (present participle), the #545 additions', () => {
+  // possessive: AP style, trailing s takes a bare apostrophe
+  assert.equal(c.applyMods('ogre', ['poss']), "ogre's");
+  assert.equal(c.applyMods('foxes', ['poss']), "foxes'");
+  assert.equal(c.applyMods('boss', ['poss']), "boss'");        // documented heuristic (AP singular-s stays bare here)
+  // present participle: drop-e, keep-ee, ie → ying, CVC doubling, plain +ing
+  assert.equal(c.applyMods('walk', ['ing']), 'walking');
+  assert.equal(c.applyMods('love', ['ing']), 'loving');
+  assert.equal(c.applyMods('see', ['ing']), 'seeing');
+  assert.equal(c.applyMods('die', ['ing']), 'dying');
+  assert.equal(c.applyMods('run', ['ing']), 'running');
+  assert.equal(c.applyMods('sit', ['ing']), 'sitting');
+  assert.equal(c.applyMods('play', ['ing']), 'playing');       // y is never doubled
+  assert.equal(c.applyMods('row', ['ing']), 'rowing');         // w is never doubled
+  // documented ceiling: naive CVC doubling ignores stress (the pluralize child→childs honesty)
+  assert.equal(c.applyMods('visit', ['ing']), 'visitting');
+  // chaining and sniffing work like every other token
+  assert.equal(c.applyMods('ogre', ['poss', 'cap']), "Ogre's");
+  assert.deepEqual(host(c.modParts('verb.ing')), { base: 'verb', mods: ['ing'] });
+  assert.deepEqual(host(c.modParts('owner.poss.cap')), { base: 'owner', mods: ['poss', 'cap'] });
+  // shadowing: a 2-segment ref whose suffix is now a modifier no longer reads as a field
+  assert.equal(c.fieldParts('owner.poss'), null);
+  assert.equal(c.fieldParts('verb.ing'), null);
+});
+
 test('resolveBrace — a modified reference resolves the base then shapes it', () => {
   const ctx = (rules, vars) => ({ rules, vars, depth: 0, stack: [] });
   assert.equal(c.resolveBrace('beast.cap', ctx({ beast: [{ template: 'dragon', weight: 1 }] }, {})), 'Dragon');
