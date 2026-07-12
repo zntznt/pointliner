@@ -24,6 +24,10 @@ when you click away, it turns into a small live widget:
 | `{= sum(cost)}` | the total of a `cost` property across child points |
 | `{5 to 10}` | an estimate: **7.2 (5 to 10)** with a distribution sparkline |
 | `{shuffle: a \| b \| c}` | a deck you draw from without replacement |
+| `{roll: #npc}` | a random point from your own outline (tag some points, roll on them) |
+
+That last one is the pill no other tool has: the table it rolls on is your own living
+document, so your campaign, backlog, or idea list surprises you with its own contents.
 
 That's the whole idea: **type in braces, get a live pill.** To edit one, click the text
 next to it. The pill unfolds back to the `{…}` you typed; fix it and click away.
