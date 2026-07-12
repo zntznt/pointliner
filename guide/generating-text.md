@@ -238,6 +238,16 @@ Emit a template several times, **re-rolled independently each time**:
 The count is 1 to 99; results are joined by spaces. (For draw-*without*-repeat, use a deck:
 `{shuffle 3: …}` deals three distinct items in one go.)
 
+**The count can be a dice roll.** `{2d4x: template}` first rolls 2d4, then repeats that many
+times, a new count on every re-roll:
+
+```
+{1d4x: a goblin (HP {1d6})}   → one to four goblins, each with its own HP
+```
+
+Any pure dice expression works (`{2d4+1x: …}`); a roll that lands on 0 (like `1d4-2`) emits
+nothing, honestly. A *variable* count isn't a thing; the head must be plain dice.
+
 ---
 
 ## Store a value and reuse it (variables)

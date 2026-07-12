@@ -892,6 +892,29 @@ test('resolveBrace — {3x: ★} expands the template N times, joined by space',
   assert.equal(c.resolveBrace('1x: hi', ctx), 'hi');
 });
 
+test('repeatParts — a dice-shaped count is recognized; anything impure stays out (#545)', () => {
+  assert.deepEqual(host(c.repeatParts('2d4x: goblin')), { dice: '2d4', template: 'goblin' });
+  assert.deepEqual(host(c.repeatParts('2d4+1X: {beast}')), { dice: '2d4+1', template: '{beast}' });
+  assert.deepEqual(host(c.repeatParts('1d4-2x: wolf')), { dice: '1d4-2', template: 'wolf' });
+  assert.equal(c.repeatParts('2d4+bonusx: g'), null);   // a var-modified count stays literal (pure sniffer)
+  assert.equal(c.repeatParts('box: label'), null);      // prose x before a colon is not a repeat (head must be digit-led)
+  assert.equal(c.repeatParts('2d6 max: t'), null);      // dice + trailing junk is not a count
+});
+
+test('resolveBrace — a dice count rolls fresh per expansion, 0 emits nothing (#545)', () => {
+  const mkCtx = () => ({ rules: Object.create(null), vars: Object.create(null), depth: 0, stack: [] });
+  c.seedSequence([0, 0]);   // 2d4 → 1+1 = 2
+  try { assert.equal(c.resolveBrace('2d4x: ★', mkCtx()), '★ ★'); } finally { c.resetRandom(); }
+  c.seedSequence([0.99, 0.99]);   // 2d4 → 4+4 = 8
+  try { assert.equal(c.resolveBrace('2d4x: ★', mkCtx()).split(' ').length, 8); } finally { c.resetRandom(); }
+  c.seedSequence([0]);   // 1d4-2 → 1-2 = -1 → clamped to 0 → empty, honestly
+  try { assert.equal(c.resolveBrace('1d4-2x: wolf', mkCtx()), ''); } finally { c.resetRandom(); }
+  // classify agrees the typed form is a valid artifact; an impure head reads as an
+  // ATTEMPTED roll (the pre-existing dice-looking-but-unparseable typo styling), not prose
+  assert.equal(c.classifyBraceBody('2d4x: goblin', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('2d4+bonusx: g', {}, {}), 'invalid');
+});
+
 test('resolveBrace — {3x: {2d6}} re-rolls each repetition independently', () => {
   c.seedSequence([0, 0, 0.5, 0, 0, 0.99]);  // two d6 per roll → rolls: 1+1=2, 1+4=5, 1+6=7
   try {

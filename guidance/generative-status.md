@@ -72,7 +72,8 @@ two correctness footguns, now closed:
   dialog and `#ERR` pills name the boundary. The math dialog also now shows the reason (was a bare
   "Invalid expression").
 - **In-app help** clarified for the remaining silent/startling behaviors: `{Nx}` takes a **literal**
-  N (a roll in the count slot, e.g. a `{2d4}`-based count, isn't supported); a non-numeric weight
+  N or — since the #545 sign-off (2026-07-12) — a **dice** count (`{2d4x: goblin}`, rolled fresh per
+  expansion, clamped 0–99; a variable count is still out); a non-numeric weight
   (`rare 1d6`) is read as entry text, not a weight; `min/max` over no matching child shows `∞`/`−∞`;
   estimate `lo to hi` bounds are order-insensitive.
 

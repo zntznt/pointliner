@@ -15320,11 +15320,18 @@ function resolveBrace(body, ctx) {
     // Emit the template N times (each expansion is independent — dice re-roll,
     // rules re-pick), joined by a single space. Nested {…} braces in the template
     // are each re-expanded by expandTemplate, so {3x: {2d6}} rolls three times.
+    // #545: a dice-shaped count ({2d4x: goblin}) rolls N fresh per expansion —
+    // clamped to [0, 99]; a 0 roll honestly emits nothing ("1d4-2 wolves: none").
+    let n = rp.n;
+    if (rp.dice) {
+      const terms = parseDice(rp.dice, ctx.vars);
+      n = terms ? Math.max(0, Math.min(99, rollParsed(terms).total)) : 0;
+    }
     const out = [];
     // stop the fan-out the moment the shared output budget is blown, so a nested {Nx:{Nx:…}} bomb
     // can't keep multiplying after the cap is hit (the per-frame check in expandTemplate catches the
     // depth; this catches the width). (Adversarial pass, blast: data-loss.)
-    for (let i = 0; i < rp.n; i++) {
+    for (let i = 0; i < n; i++) {
       if (ctx && ctx.emitted !== undefined && ctx.emitted > GRAMMAR_OUTPUT_CAP) { out.push('…'); break; }
       out.push(expandTemplate(rp.template, ctx));
     }
@@ -16058,17 +16065,29 @@ function makeSeqGen(mode, items, key, count) {
 
 // ─── repeat (Nx) ─────────────────────────────────────────────────────────────
 // {Nx: template} — emit `template` N times, re-expanded each time, joined by
-// spaces (e.g. {3x: {beast}} → "ogre wyrm ogre"). N is a literal integer 1–99.
-// Detection is syntactic: a digit run followed by x/X, then a top-level colon.
+// spaces (e.g. {3x: {beast}} → "ogre wyrm ogre"). N is a literal integer 1–99
+// OR — the #545 sign-off reopening the recorded literal-only decision — a DICE
+// expression ({2d4x: goblin}): the count is rolled FRESH per expansion (each
+// re-roll deals a new N), clamped to [0, 99] (a negative-modifier roll like
+// 1d4-2 can honestly land on "none"). The dice head must parse with no document
+// variables — a var-modified count ({(n)x:}) stays literal, keeping the sniffer
+// pure. Detection is syntactic: a digit-led head + x/X + a top-level colon.
 // Disjoint from condParts (no comparison), seqParts (not a deck mode keyword),
 // and modParts (Nx isn't a bare identifier + dot suffix). Recorded P5 decision
 // (ux-discipline §2): a new sub-form inside the existing {…} authoring language.
 function repeatParts(body) {
-  const m = (body || '').match(/^\s*(\d+)\s*[xX]\s*:([\s\S]*)$/);
+  const m = (body || '').match(/^\s*(\d[^:]*?)\s*[xX]\s*:([\s\S]*)$/);
   if (!m) return null;
-  const n = parseInt(m[1], 10);
-  if (n < 1 || n > 99) return null;
-  return { n, template: m[2].trim() };
+  const head = m[1].trim();
+  if (/^\d+$/.test(head)) {
+    const n = parseInt(head, 10);
+    if (n < 1 || n > 99) return null;
+    return { n, template: m[2].trim() };
+  }
+  if (DICE_SNIFF.test(head.replace(/\s/g, '')) && parseDice(head)) {
+    return { dice: head, template: m[2].trim() };
+  }
+  return null;
 }
 
 // A stateful-sequence pill (deck / cycle / once / stopping). Reuses the grammar
@@ -24145,6 +24164,7 @@ const GUIDE = [
       { syn:'{once: a|b|c}',    desc:'go through once, then stop' },
       { syn:'{stopping: a|b|c}',desc:'advance, then stay on the last' },
       { syn:'{3x: {beast}}',    desc:'repeat 3 times, each may repeat' },
+      { syn:'{1d4x: goblin}',   desc:'roll the count itself (1 to 4 here)' },
     ] },
   { id:'markov', cat:'generators', covers:['markov'],
     title:'Markov chains',
