@@ -10289,3 +10289,19 @@ test('#529: parseUncertain returns null on a pathologically nested body instead 
   assert.ok(c.parseUncertain('normal(3, 1)'), 'normal() still parses');
   assert.equal(c.parseUncertain('garbage'), null);
 });
+
+// ── #508: state-cycle chord is sequence-aware (custom keywords cycle within their own sequence) ──
+test('#508: cycleTodoState cycles a custom-sequence keyword within its sequence, not into the default', () => {
+  const flow = { key: 'f1', name: 'Flow', states: ['BACKLOG', 'DOING', 'SHIPPED'], doneFrom: 2, heldFrom: -1 };
+  const def = { key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3, heldFrom: 2 };
+  const seqs = [def, flow];
+  // the bug: a custom keyword jumped to #TODO (and left the old keyword: "#TODO #DOING …")
+  assert.equal(c.cycleTodoState('#BACKLOG [#A] ship it', 1, seqs), '#DOING [#A] ship it', 'advances within Flow, priority kept');
+  assert.equal(c.cycleTodoState('#DOING work', 1, seqs), '#SHIPPED work');
+  assert.equal(c.cycleTodoState('#SHIPPED done', 1, seqs), 'done', 'past the last state clears the keyword');
+  assert.equal(c.cycleTodoState('#DOING work', -1, seqs), '#BACKLOG work', 'backward stays in Flow');
+  // the default sequence still cycles exactly as before
+  assert.equal(c.cycleTodoState('#TODO ship', 1, seqs), '#NEXT ship');
+  assert.equal(c.cycleTodoState('#DONE ship', 1, seqs), 'ship');
+  assert.equal(c.cycleTodoState('plain point', 1, seqs), '#TODO plain point', 'no keyword → first default state');
+});

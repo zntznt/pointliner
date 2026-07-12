@@ -2625,9 +2625,17 @@ function cyclePriority(current, dir = 1) { return cycleIn(PRIO_CYCLE, current ||
 // Text-level mutators the DOM calls. Clearing the keyword also drops the priority
 // (a bare [#A] without a state is meaningless); priority cycling is a no-op when
 // there's no keyword.
-function cycleTodoState(text, dir = 1) {
-  const t = parseTodo(text);
-  const keyword = cycleTodoKeyword(t.keyword, dir);
+function cycleTodoState(text, dir = 1, seqs = allSequences()) {
+  // Parse against the states of ALL these sequences (not just knownStates()/root) so a custom
+  // keyword like #DOING is recognized as the current state, then cycle within its OWN sequence
+  // (#508): a custom-sequence state must advance to the next state of ITS sequence, not get
+  // ripped into the default To-do cycle (list.indexOf(-1) → TODO, which also left the old keyword
+  // in the body → "#TODO #DOING …"). The badge-click picker + Enter-continuation were already
+  // sequence-aware; this keyboard cycle was the one state control that wasn't.
+  const states = new Set(seqs.flatMap(sq => sq.states));
+  const t = parseTodo(text, states);
+  const sq = sequenceForKeyword(t.keyword, seqs) || DEFAULT_SEQUENCE;
+  const keyword = cycleIn(['', ...sq.states], t.keyword || '', dir);
   return formatTodo({ keyword, priority: keyword ? t.priority : null, body: t.body });
 }
 function cycleTodoPriority(text, dir = 1) {
