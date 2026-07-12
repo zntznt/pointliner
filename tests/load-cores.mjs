@@ -197,7 +197,7 @@ export function loadCores() {
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates',
-    'classifyBraceBody','isQuotedLiteral','braceTypeLabel','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
+    'classifyBraceBody','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
