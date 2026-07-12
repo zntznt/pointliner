@@ -6091,7 +6091,7 @@ function render() {
     } else if (vp.note) {
       appendNoteIndicator(te, vp);
     }
-    if (vp.props?.length) {
+    if (hasVisibleProps(vp)) { // #494: timestamp-only props would emit an empty zoom-props-row
       const zpRow = document.createElement('div');
       zpRow.className = 'zoom-props-row';
       const zmark = document.createElement('span');
@@ -8254,7 +8254,7 @@ function renderRow(r) {
     // the content from node.text, so it can never leak into the edit buffer.
     appendNoteIndicator(content, node);
   }
-  if (node.props?.length) {
+  if (hasVisibleProps(node)) { // #494: not just props?.length — timestamp-only props render nothing
     div.appendChild(buildPropsRow(node, opts));
   }
   return div;
@@ -8386,6 +8386,21 @@ function openNoteEditor(nodeId) {
 }
 
 // ─── properties ──────────────────────────────────────────────────────────────
+
+// #494: does this node produce ANY visible props chip? buildPropsArea skips the
+// app-maintained timestamp keys and renders `check` only as a live verdict chip, so a
+// point whose only props are created/edited yields an EMPTY area. Callers used to gate
+// the props row on node.props?.length, which is true for such a point — emitting a
+// bulleted, ring-bearing but empty row (the "dead space" box after promoting a {…} pill,
+// since promotion auto-stamps created/edited). Gate on this instead so the row appears
+// only when a chip will. Mirrors buildPropsArea's own skip logic.
+function hasVisibleProps(node) {
+  const hasChip = (node.props || []).some(({ key }) => {
+    const k = key.toLowerCase();
+    return k !== CHECK_KEY && !TIMESTAMP_KEYS.has(k);
+  });
+  return hasChip || checkExprOf(node) != null; // check renders as its own verdict chip
+}
 
 // Build just the .props-area chip list (shared by outline row and zoom view).
 function buildPropsArea(node) {
