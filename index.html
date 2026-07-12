@@ -2015,6 +2015,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-shortcuts"><div class="cmd-icon" data-fa="fa-solid fa-keyboard" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Shortcuts &amp; syntax</span><span class="cmd-desc">Keys, Markdown, and pill shorthand</span></div><span class="cmd-key">?</span></div>
   <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Concept guide</span><span class="cmd-desc">Every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
   <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
+  <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Start from an example</span><span class="cmd-desc">Drop in a ready-made solo-RPG oracle, character sheet, or campaign</span></div></div>
   <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
   <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
   <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
@@ -2099,6 +2100,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 
 <div id="storage-warn" role="alert">
   <span id="storage-warn-msg"></span>
+  <button id="storage-warn-examples" style="display:none">Start from an example</button>
   <button id="storage-warn-save">Save to file</button>
   <button id="storage-warn-close" class="close-btn" data-fa="fa-solid fa-xmark" data-fb="✕" title="Dismiss" aria-label="Dismiss">✕</button>
 </div>
@@ -23585,6 +23587,7 @@ document.addEventListener('click', closeFileMenu);
 document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
+document.getElementById('btn-starters')?.addEventListener('click', () => { openStarterGallery(); });   // #565 (closes the menu itself)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
@@ -25027,6 +25030,11 @@ storageWarnBtn.addEventListener('click', () => {
   else saveFile();
 });
 document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
+// #565: a second action shown ONLY on the first-run examples banner, beside "Start a blank outline".
+// It has its own handler (not routed through _warnAction) and is hidden by default + on every other
+// banner state, so it never leaks into the save/reconnect/snapshot banners that share this element.
+const storageWarnExamples = document.getElementById('storage-warn-examples');
+storageWarnExamples.addEventListener('click', () => { hideExamplesBanner(); openStarterGallery(); });
 
 // A folder was connected in a previous session and its handle is still stored, but the
 // browser dropped the permission on relaunch (File System Access re-gates persisted
@@ -25036,6 +25044,7 @@ document.getElementById('storage-warn-close').addEventListener('click', hideStor
 // set by the boot reopen path; reconnectWorkspace() re-requests permission on the click.
 function showReconnectBanner() {
   if (!pendingDir) return;
+  storageWarnExamples.style.display = 'none';   // #565: examples-only door
   _warnAction = 'reconnect';
   storageWarnBtn.textContent = 'Reconnect';
   storageWarnMsg.textContent = 'Reconnect “' + (pendingDir.name || 'your folder') + '” to keep auto-saving to it. It was not moved, the browser just needs permission again.';
@@ -25050,6 +25059,7 @@ function showReconnectBanner() {
 // holds the stored handle; reopenPendingFile() re-requests permission on the click.
 let pendingFile = null;
 function showReopenFileBanner(name) {
+  storageWarnExamples.style.display = 'none';   // #565: examples-only door
   _warnAction = 'reopenfile';
   storageWarnBtn.textContent = 'Reopen';
   storageWarnMsg.textContent = 'Reopen “' + displayName(name) + '” to save back to it. It was not moved, the browser just needs permission again.';
@@ -25068,6 +25078,7 @@ function showExamplesBanner() {
   storageWarn.classList.remove('soft');
   storageWarn.classList.add('invite');
   storageWarn.setAttribute('role', 'status');
+  storageWarnExamples.style.display = '';   // #565: the second door, examples-banner only
   storageWarn.classList.add('on');
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
 }
@@ -25090,6 +25101,7 @@ async function reopenPendingFile() {
 // disk target, so the one-time boot flash is too weak a warning. Show a persistent, dismissible
 // soft banner whose action exports a fresh copy — the recovery path. Independent of storageWarnState.
 function showSnapshotBanner() {
+  storageWarnExamples.style.display = 'none';   // #565: examples-only door, never on this banner
   _warnAction = 'export';
   storageWarnBtn.textContent = 'Export a copy';
   storageWarnMsg.textContent = "You're editing a shared snapshot. Reloading this page loses your changes. Export a copy to keep them.";
@@ -25101,6 +25113,7 @@ function showSnapshotBanner() {
 function showStorageWarn(kind, msg) {
   if (storageWarnState === kind) return; // already showing this level
   storageWarnState = kind;
+  storageWarnExamples.style.display = 'none';   // #565: examples-only door, never on the save/reconnect banners
   _warnAction = 'save'; storageWarnBtn.textContent = 'Save to file';   // not the reconnect banner
   storageWarnMsg.textContent = msg;
   storageWarn.classList.toggle('soft', kind === 'soft');
@@ -25108,6 +25121,7 @@ function showStorageWarn(kind, msg) {
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
 }
 function hideStorageWarn() {
+  storageWarnExamples.style.display = 'none';   // #565: never outlives the examples banner
   storageWarn.classList.remove('on');
   storageWarn.classList.remove('invite');           // the invite variant never outlives its banner (#404)
   storageWarn.setAttribute('role', 'alert');        // restore the default for the caution variants
@@ -25418,6 +25432,125 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
   </outline>
 </outline>
 </body></opml>`;
+
+// #565: "Start from an example" gallery. The turnkey solo-RPG content already exists in
+// guide/solo-rpg/ (eleven worked demos), but from inside the app the only bridge is the
+// "Full guide online" link — leave, browse GitHub, download, File → Open. These embedded
+// starters are the front door: each is a self-contained OPML (plain {…} source that promotes
+// to live pills on load, exactly like FIRST_RUN_EXAMPLES) whose first child is a `# heading`
+// subtree, so openStarter clones + appends it additively the same way openExamples does. Kept
+// to a small flagship set to respect the single-file constraint; the rest live in guide/solo-rpg/
+// and are linked, not embedded. Each uses ONLY shipped syntax — no new pill, no new delimiter.
+const STARTERS = [
+  { id: 'campaign-oracle',
+    name: 'Campaign oracle',
+    desc: 'Roll on your own outline: your NPCs and threads become the tables.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Campaign oracle</title></head><body>
+<outline text="# Campaign oracle">
+  <outline text="The one thing no other tool does: the random table IS your own campaign. Keep your cast and open threads as ordinary points, then let a pill draw from them. Every {…} is live, click it to re-roll. Add a point to a list and it joins the pool automatically.">
+    <outline text="&gt; New here? Type a point, then Tab to nest it under the one above. That is how these lists are built."/>
+  </outline>
+  <outline text="## Your cast">
+    <outline text="Mara the smuggler, owes everyone #npc"/>
+    <outline text="Rusty the innkeep, hears everything #npc"/>
+    <outline text="Sergeant Voss, a guard on the take #npc"/>
+    <outline text="Sister Present, asks too many questions #npc"/>
+  </outline>
+  <outline text="## Open threads">
+    <outline text="The torn letter no one will explain #thread"/>
+    <outline text="The caravan that never arrived #thread"/>
+    <outline text="A debt the merchant is hiding #thread"/>
+  </outline>
+  <outline text="## Draw from your world (click any pill)">
+    <outline text="Who walks into the scene? {roll: #npc}"/>
+    <outline text="What complication surfaces? {roll: #thread}"/>
+    <outline text="Advance a random thread instead: {roll: #thread}"/>
+    <outline text="A yes/no oracle for the in-between, weighted toward yes: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}"/>
+  </outline>
+  <outline text="## How it works">
+    <outline text="A roll pill takes a normal search and picks one random point that matches it. The cast above is tagged with the npc label and the threads with the thread label, so a roll aimed at either draws from that list. Add a fifth NPC above and the next roll can land on it, no setup."/>
+    <outline text="Nothing here is new syntax: a roll is just a search, and the yes/no oracle is a weighted list. Edit any list by clicking the text next to a pill; delete a line you do not want and keep the rest."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+  { id: 'oracle-play',
+    name: 'Oracle-driven scene play',
+    desc: 'A swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Oracle-driven scene play</title></head><body>
+<outline text="# Oracle-driven scene play">
+  <outline text="The solo-play loop in one page: a swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck. Every {…} pill is live, click one to run it."/>
+  <outline text="## Generators">
+    <outline text="Chaos factor (1 calm to 5 chaos): {chaos := 3}"/>
+    <outline text="Interrupt check (click to roll): {proceed | interrupted {= chaos}}"/>
+    <outline text="Meaning table (click for two words): {action} {subject}">
+      <outline text="action: hide | reveal | pursue | abandon | protect | betray"/>
+      <outline text="subject: a secret | an ally | a debt | a route | a rumor | a relic"/>
+    </outline>
+    <outline text="Thread deck (click to pull one): {shuffle: the torn letter | the missing sister | the merchant's debt}"/>
+  </outline>
+  <outline text="## Scene: a yes with a catch">
+    <outline text="Will the merchant help me? (likely, with a swing)"/>
+    <outline text="Answer: {Yes, and 3 | Yes 9 | Yes, but 3 | No, but 3 | No 3 | No, and 1}"/>
+    <outline text="If it needs a spark, pull two words: {action} {subject}"/>
+    <outline text="Result: he will help, but only to settle a debt he owes someone worse. #thread"/>
+  </outline>
+  <outline text="## How to use it">
+    <outline text="Click any pill to run it. The interrupt check reads {= chaos} live, so edit chaos above and the odds shift. The thread deck draws each thread once, then reshuffles (it says when)."/>
+    <outline text="Nothing here is new syntax: the swing oracle is a weighted list, the interrupt is dynamic odds, the meaning table is a two-rule grammar, and the thread deck is a shuffle deck."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+  { id: 'character-sheet',
+    name: 'Living character sheet',
+    desc: 'Stats are variables, derived rows read them, and a check flags an overloaded pack.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Living character sheet</title></head><body>
+<outline text="# Living character sheet">
+  <outline text="A character whose numbers compute themselves. Stats are variables, derived rows read those variables, the pack total adds up its own contents, and the encumbrance check flags overload the moment you carry too much. Every {…} is a live pill."/>
+  <outline text="## Kestrel Vane, hedge-scout">
+    <outline text="A wary tracker who works the forest edge. Change a number below and watch the rows that depend on it move."/>
+    <outline text="## Core stats (edit these)">
+      <outline text="Level: {level := 3}"/>
+      <outline text="Might: {might := 2}"/>
+      <outline text="Grace: {grace := 3}"/>
+      <outline text="Wits: {wits := 1}"/>
+    </outline>
+    <outline text="## Derived numbers (these compute themselves)">
+      <outline text="Hit points, eight per level: {= level * 8}"/>
+      <outline text="Defense, ten plus grace: {= 10 + grace}"/>
+      <outline text="Proficiency, half your level rounded up: {= ceil(level / 2)}"/>
+    </outline>
+    <outline text="## Rolls that read the sheet">
+      <outline text="Attack (2d6 plus might): {2d6+might}"/>
+      <outline text="Sneak (2d6 plus grace): {2d6+grace}"/>
+      <outline text="Study a clue (2d6 plus wits): {2d6+wits}"/>
+    </outline>
+    <outline text="## Pack (the total adds itself, load ten or under)">
+      <outline text="Carried load (green while the total is ten or under)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(weight) &lt;= 10&quot;}]">
+        <outline text="Total carried right now: {= sum(weight)}"/>
+        <outline text="Short bow {prop weight: 2}"/>
+        <outline text="Quiver, twenty arrows {prop weight: 1}"/>
+        <outline text="Hunting knife {prop weight: 1}"/>
+        <outline text="Leather jerkin {prop weight: 3}"/>
+        <outline text="Bedroll and cloak {prop weight: 2}"/>
+        <outline text="Rations, three days {prop weight: 1}"/>
+      </outline>
+      <outline text="Add a heavy item to see the check flip: type a new child here, like Iron cook pot {prop weight: 2}. The sum crosses ten and the Carried load chip turns red."/>
+    </outline>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="Change a stat and the sheet moves: set Level to 5 and the hit points row ({= level * 8}) jumps to forty on its own. Search is:failing to find every check that is currently red."/>
+    <outline text="Nothing here is new syntax: stats are variables, derived rows are math that reads them, the pack total is a child rollup, and the encumbrance rule is a check on the Carried load point."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+];
+
 let _showingExamples = false;
 let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
 function startBlankOutline() {
@@ -25452,23 +25585,92 @@ function maybeShowFirstRun() {
 // zooms you to the inserted tour so it's obvious where it landed. (First-run still shows the examples
 // AS the empty doc via maybeShowFirstRun; only this menu re-entry inserts.)
 function openExamples() {
-  const parsed = fromOpml(FIRST_RUN_EXAMPLES);
-  const welcome = parsed && parsed.children && parsed.children[0];   // the single "# Welcome" root subtree
-  if (!welcome) return;
-  // if the active point is mid-edit, blur first so a render-time blur can't clobber its text
-  if (activeContentId != null) {
+  closeFileMenu();
+  insertStarterSubtree(FIRST_RUN_EXAMPLES, 'the Welcome tour');
+}
+
+// #565: insert one starter's `# heading` subtree additively — the same additive-append-and-zoom
+// path openExamples uses, factored so both share it. Returns false if the OPML won't parse
+// (guarded like openExamples; a malformed embedded starter should no-op, never throw).
+function insertStarterSubtree(opml, label) {
+  const parsed = fromOpml(opml);
+  const top = parsed && parsed.children && parsed.children[0];   // the single "# heading" root subtree
+  if (!top) return false;
+  if (activeContentId != null) {   // blur a mid-edit point first (a render-time blur must not clobber it)
     const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
     if (el) el.blur();
   }
-  const clone = deepCloneNodeNewIds(welcome);   // fresh ids so it never collides with the live doc
+  const clone = deepCloneNodeNewIds(top);
   pushUndo();
-  root.children.push(clone);                     // append at the end of the document — purely additive
+  root.children.push(clone);
+  // The OPML source carries typed {…} shorthand ({roll:}, {2d6}, {level := 3}); fromOpml does
+  // NOT promote it (only adoptDoc's load path does, via promoteLoadedShorthand). Promote the
+  // inserted subtree here or its pills render as raw source. Run AFTER append so doc-wide names
+  // resolve against the full tree.
+  promoteLoadedShorthand(clone);
   buildIndex(root, null);
   markDirty();
   render();
-  focusNode(clone.id);                           // zoom to the inserted tour so it's clear where it went
-  flashHint(`Added the Welcome tour (${ptsLabel(countPoints(clone))}). Delete it when you are done exploring.`);
+  focusNode(clone.id);
+  flashHint(`Added "${label}" (${ptsLabel(countPoints(clone))}). Delete it when you are done exploring.`);
+  return true;
+}
+
+// #565: the "Start from an example" gallery. A picker over the embedded STARTERS (each inserts
+// its subtree additively via insertStarterSubtree) plus a link to the full worked-examples set
+// online. Reuses the openTemplatePicker component shape (io-card head + pick rows + footer) so it
+// looks and keyboard-behaves like every other picker. The link is the sanctioned egress that
+// already exists as the File menu's "Full guide online" row.
+const STARTER_ICON = { fa: 'fa-solid fa-dice-d20', fb: '🎲' };
+function openStarterGallery() {
   closeFileMenu();
+  ioCard.innerHTML = '';
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
+  setIcon(ic, STARTER_ICON);
+  const ttl = document.createElement('div'); ttl.className = 'io-title';
+  ttl.textContent = 'Start from an example';
+  head.append(ic, ttl); ioCard.appendChild(head);
+
+  const intro = document.createElement('p');
+  intro.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 12px;line-height:1.55';
+  intro.textContent = 'Drop a ready-made, fully live example into this document. Click any pill inside it to play, then delete it when you are done.';
+  ioCard.appendChild(intro);
+
+  const tlist = document.createElement('div'); tlist.className = 'tpl-list';
+  STARTERS.forEach(st => {
+    const pick = document.createElement('button');
+    pick.className = 'tpl-pick'; pick.type = 'button';
+    pick.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%';
+    pick.setAttribute('aria-label', `Insert the ${st.name} example`);
+    const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = st.name;
+    const ds = document.createElement('span');
+    ds.style.cssText = 'font-size:12px;color:var(--muted);line-height:1.4;font-weight:400';
+    ds.textContent = st.desc;
+    pick.append(nm, ds);
+    pick.addEventListener('click', () => { closeIo(); insertStarterSubtree(st.opml, st.name); });
+    tlist.appendChild(pick);
+  });
+  ioCard.appendChild(tlist);
+
+  const more = document.createElement('a');
+  more.href = 'https://github.com/zntznt/pointliner/tree/main/guide/solo-rpg';
+  more.target = '_blank'; more.rel = 'noopener';
+  more.style.cssText = 'display:block;font-size:12px;color:var(--muted);margin:12px 0 2px;line-height:1.5;text-decoration:none';
+  more.textContent = 'More worked examples online: Ironsworn, Maze Rats, hex crawls, campaign clocks, and more ↗';
+  ioCard.appendChild(more);
+
+  const foot = document.createElement('div'); foot.className = 'io-foot';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', closeIo);
+  foot.append(closeBtn); ioCard.appendChild(foot);
+  ioCancel = closeIo;
+
+  ioReturnFocus = document.activeElement;
+  ioCard.setAttribute('aria-label', 'Start from an example');
+  ioBack.classList.add('on');
+  requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
 }
 maybeShowFirstRun();
 
