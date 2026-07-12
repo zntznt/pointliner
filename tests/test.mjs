@@ -6645,6 +6645,24 @@ test('termMatchesNode: is:failing matches a failing OR errored check, not a pass
   assert.equal(c.termMatchesNode(term, c.mkNode('plain'), [], {}), false);
 });
 
+test('#574: is:failing / is:passing see ancestor-inherited props, agreeing with the chip', () => {
+  // budget lives on the PARENT; the child's check resolves only through #461 inheritance.
+  // Before the fix the chip said pass while is:failing matched (the search saw `error`).
+  const child = { id: 'x574c', text: 'work', props: [{ key: 'hours', val: '5' }, { key: 'check', val: 'hours <= budget' }], children: [] };
+  const tree = { id: 'x574r', text: 'proj', props: [{ key: 'budget', val: '12' }], children: [child] };
+  c.buildIndex(tree);   // register in the live index so ancestorsOf can climb the chain
+  // the chip's verdict…
+  assert.equal(c.evalCheck(child, {}, c.ancestorsOf(child)), 'pass');
+  // …and the search's verdict agree
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'passing' }, child, [], {}), true);
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'failing' }, child, [], {}), false);
+  // flip the inherited cap → both surfaces flip together
+  tree.props[0].val = '3';
+  assert.equal(c.evalCheck(child, {}, c.ancestorsOf(child)), 'fail');
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'failing' }, child, [], {}), true);
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'passing' }, child, [], {}), false);
+});
+
 test('outline constraints: front-door + render + search wiring (src pins)', () => {
   assert.ok(_src.includes("id:'check'"), '/check slash verb missing from BLOCK_CMDS');
   assert.ok(_src.includes('function openCheckDialog'), 'openCheckDialog missing');

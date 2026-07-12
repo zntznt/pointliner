@@ -10836,13 +10836,18 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     if (term.value === 'failing') {
       // the lint filter: a failing OR errored check is a violation to surface (a
       // check you can't evaluate is itself a defect — P4, never silently passed).
-      const v = evalCheck(node, vars);
+      // #574: pass the ancestor chain so the search verdict matches the CHIP verdict
+      // (#461 inheritance) — `hours <= budget` with budget on a parent passes on the
+      // chip and must not read as an error here. ancestorsOf degrades to [] for a
+      // node outside the live index (an explicit test tree, a foreign workspace
+      // doc), which keeps this matcher's pure own-node behavior for those callers.
+      const v = evalCheck(node, vars, ancestorsOf(node));
       return v === 'fail' || v === 'error';
     }
     // QX-1: is:passing is the symmetry fill for is:failing. NOT the same as
     // -is:failing: evalCheck returns null for a check-less point, so -is:failing also
     // matches un-checked points; is:passing requires an actual passing check.
-    if (term.value === 'passing') return evalCheck(node, vars) === 'pass';
+    if (term.value === 'passing') return evalCheck(node, vars, ancestorsOf(node)) === 'pass';   // #574: same scope as the chip
     // QX-1: structural + artifact axes — all pure reads of the node object.
     if (term.value === 'leaf')      return !(node.children || []).length;
     if (term.value === 'parent')    return (node.children || []).length > 0;
