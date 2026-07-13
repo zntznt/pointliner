@@ -5,8 +5,23 @@ Derived from the feature-gap backlog and the direction decisions below. This is 
 discoverability / UX strategy in `guidance/ux.md`.
 
 ## Decisions locked
-1. **Direction: balance both** — interleave PKM/networked-notes features with generative
-   ones (dice/grammar/math), rather than committing to one.
+1. **Positioning: lead with solo-RPG; the engine stays two-family (#515, decided 2026-07-13).**
+   The `{…}`→pill engine keeps both families — GENERATE (dice/grammar/oracles/decks) and COMPUTE
+   (math/rollups/estimates/checks) — and the build order may still interleave them (that is a
+   build-order question, not a pitch). But the **pitch is single-customer**: the README and the
+   first-run framing name the **solo-RPG player** as THE customer, because solo-RPG is the one
+   surface where every feature (dice, oracle, grammar, decks, rollups, checks, journal, agenda) is
+   wanted by the same person at the same moment. The general-outliner framing is **demoted from
+   headline to substrate** ("it is also a sharp computational outliner" as the pleasant surprise).
+   Rationale: two independent product reviews converged on this as the top finding — "balance both"
+   was a build-order instruction masquerading as positioning, and the two-identity pitch is the PKM
+   graveyard (capable, the default for no one). The evidence already leans this way: 13 solo-RPG
+   worked cases in `guide/solo-rpg/` vs zero PKM-specific content, and the PKM flank
+   (outliner + links + search) is commoditized parity against Obsidian/Logseq/Roam, not preference.
+   Costs almost nothing (both engines + the corpus exist); it is a pitch change, not a feature cut.
+   *(Supersedes the former "Direction: balance both" — which conflated build order with positioning.
+   Build-order interleaving of PKM and generative features is unchanged; only the customer the pitch
+   names is now decided.)*
 2. **Link scope: multi-document Zettelkasten** — a workspace of many notes/files, with
    **cross-file *and* same-file** linking on top.
 3. **Mirrors / cloned items: shelved** — hardest item, conflicts with the strict
@@ -192,10 +207,11 @@ adds the pure `searchWorkspace` (reusing `parseSearchQuery`/`queryMatchesNode` v
 language, exact `is:` across docs); **WS-2** shows a "Found in other notes · N" results list under
 the search box, click to switch+zoom. See `guidance/features.md`.
 
-### Interleaving (the "balance")
+### Interleaving (build order)
 Drop a contained generative feature between the heavy phases — e.g. another `evalMath`
-primitive, a dice/oracle variant, or a grammar feature — so both identities keep moving and
-Phase 1's weight is broken up.
+primitive, a dice/oracle variant, or a grammar feature — so both engine FAMILIES keep moving and
+Phase 1's weight is broken up. (This is a build-order convenience, not a positioning statement:
+per decision #1 the PITCH leads with solo-RPG even while the engine stays two-family.)
 
 ### Next directions (June 2026)
 With Phases 0–3 + cross-file links + whole-folder search delivered, the planned roadmap is
