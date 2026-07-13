@@ -12301,3 +12301,111 @@ test('spoiler (#645) — SOURCE PIN: the spoiler branch precedes the blockquote 
   assert.ok(spoilerAt > -1 && bqAt > -1, 'both branches present in mdToHtml');
   assert.ok(spoilerAt < bqAt, 'the SPOILER_RE branch MUST come before the BQ_RE branch (the ordering trap)');
 });
+
+// ── progress clocks [o N/M] (#646) ─────────────────────────────────────────
+// A manually-advanced segmented clock in the [/] cookie family. The glyph is a
+// quarter-fill ring in the same unicode-string idiom as the sparkline (never SVG),
+// so these pins guard the pure cores that both the pill and the export string use.
+
+test('clock (#646) — parseClock accepts a valid [o N/M] and rejects out-of-bounds', () => {
+  assert.deepEqual(host(c.parseClock('3', '6')), { done: 3, total: 6, computed: false }, 'a valid manual clock parses');
+  assert.deepEqual(host(c.parseClock('0', '4')), { done: 0, total: 4, computed: false }, 'empty clock ok');
+  assert.deepEqual(host(c.parseClock('4', '4')), { done: 4, total: 4, computed: false }, 'full clock ok');
+  assert.equal(c.parseClock('7', '6'), null, 'done > total is rejected (stays literal)');
+  assert.equal(c.parseClock('3', '0'), null, 'total 0 is rejected');
+  assert.equal(c.parseClock('3', '100'), null, 'total over 99 is rejected');
+  assert.equal(c.parseClock('-1', '6'), null, 'negative done is rejected');
+});
+
+test('clock (#646) — parseClock reads [o /M] as a COMPUTED clock (empty count slot)', () => {
+  assert.deepEqual(host(c.parseClock('', '6')), { done: null, total: 6, computed: true },
+    'an empty count means "tally from children"; done is resolved at render');
+  assert.deepEqual(host(c.parseClock('', '4')), { done: null, total: 4, computed: true }, 'any size');
+  assert.equal(c.parseClock('', '0'), null, 'a computed clock still needs a valid total');
+  assert.equal(c.parseClock('', '100'), null, 'total bound still applies to computed');
+});
+
+test('clock (#646) — clockFillFor tallies done children, capped at the clock total', () => {
+  const kid = (text) => ({ id: text, text, children: [] });
+  const parent = { id: 'p', text: 'Escape [o /6]', children: [
+    kid('- [x] cut bars'), kid('- [x] bribe guard'), kid('- [x] cross moat'),
+    kid('- [ ] not yet'), kid('#DONE one'), kid('#DONE two'),
+  ] };
+  assert.equal(c.progressCount(parent).done, 5, '3 checked + 2 done-keyword = 5 done');
+  assert.equal(c.clockFillFor(parent, 6), 5, 'fill is the done count when under total');
+  assert.equal(c.clockFillFor(parent, 3), 3, 'fill is capped at the clock total (never overfills the ring)');
+  assert.equal(c.clockFillFor(null, 6), 0, 'no node → empty');
+});
+
+test('clock (#646) — completingChildIndex marks the child whose done-ness fills the clock', () => {
+  const kid = (text) => ({ id: text, text, children: [] });
+  const parent = { id: 'p', text: 'Escape [o /6]', children: [
+    kid('- [x] a'), kid('- [x] b'), kid('- [x] c'), kid('- [ ] d'), kid('#DONE e'), kid('#DONE f'),
+  ] };
+  assert.equal(c.completingChildIndex(parent, 5), 5, 'the 6th child (2nd #DONE) tips done to 5');
+  assert.equal(c.completingChildIndex(parent, 3), 2, 'the 3rd checked child tips done to 3');
+  assert.equal(c.completingChildIndex(parent, 6), -1, 'only 5 done, a 6-clock never fills → no cue');
+  // a single child with several checkboxes can cross the line by itself
+  const multi = { id: 'm', text: '[o /2]', children: [ kid('- [x] x\n- [x] y'), kid('- [ ] z') ] };
+  assert.equal(c.completingChildIndex(multi, 2), 0, 'one child with 2 checked boxes completes a 2-clock');
+});
+
+test('clock (#646) — clockCompletionCue is true only for the completing child of a computed clock', () => {
+  const kid = (text) => ({ id: text, text, children: [] });
+  const c1 = kid('- [x] a'), c2 = kid('- [x] b'), c3 = kid('- [ ] c');
+  const parent = { id: 'p', text: 'Doom [o /2]', children: [c1, c2, c3] };
+  assert.equal(c.clockCompletionCue(parent, c2), true, 'c2 fills the 2-clock → cued');
+  assert.equal(c.clockCompletionCue(parent, c1), false, 'c1 does not complete it');
+  assert.equal(c.clockCompletionCue(parent, c3), false, 'an undone child is never the completer');
+  // a manual clock has no completing-child concept (its N is clicked, not child-derived)
+  const manual = { id: 'q', text: 'Doom [o 1/2]', children: [c1, c2, c3] };
+  assert.equal(c.clockCompletionCue(manual, c2), false, 'a manual clock produces no cue');
+});
+
+test('clock (#646) — SOURCE PIN: advanceClockAt repaints in display mode, not via the edit-focusing rerenderNode', () => {
+  // Clicking a manual clock must repaint the pill in place (repaintNodeContent, the dice-reroll
+  // path), NOT rerenderNode — which calls focusNode → enterEdit and would drop the point into
+  // edit mode (showing raw [o N/M]) on every click. This regression was caught in the browser.
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const body = fnBody(src, 'advanceClockAt');
+  assert.match(body, /repaintNodeContent\(node\)/, 'advanceClockAt uses the display-mode repaint');
+  assert.doesNotMatch(body, /rerenderNode/, 'advanceClockAt must NOT use rerenderNode (it enters edit mode)');
+  assert.match(body, /content\.dataset\.editing/, 'it also declines to advance while the node is being edited');
+});
+
+test('clock (#646) — clockGlyph fills in quarters, never empty/full for a partial', () => {
+  // A 4-clock maps cleanly to the 5 ring states.
+  assert.equal(['○','◔','◑','◕','●'].map((_,d) => c.clockGlyph(d, 4)).join(''), '○◔◑◕●',
+    'a 4-clock is the exact ring ramp');
+  // Boundaries hold for any size: 0 is always ○, full is always ●.
+  assert.equal(c.clockGlyph(0, 6), '○', '0/6 is the empty ring');
+  assert.equal(c.clockGlyph(6, 6), '●', '6/6 is the full ring');
+  // A partial clock never rounds to empty or full (would misread as done/not-started).
+  assert.notEqual(c.clockGlyph(1, 6), '○', '1/6 is not the empty ring');
+  assert.notEqual(c.clockGlyph(5, 6), '●', '5/6 is not the full ring');
+  assert.equal(c.clockGlyph(3, 6), '◑', '3/6 is the half ring');
+});
+
+test('clock (#646) — formatClock is the export/display string (glyph + exact count)', () => {
+  assert.equal(c.formatClock(3, 6), '◑ 3/6', 'the number is exact even when the ring rounds');
+  assert.equal(c.formatClock(0, 4), '○ 0/4', 'empty');
+  assert.equal(c.formatClock(4, 4), '● 4/4', 'full');
+});
+
+test('clock (#646) — advanceClock ticks up/down and clamps at both ends', () => {
+  assert.equal(c.advanceClock(3, 6, 1), '[o 4/6]', 'tick up');
+  assert.equal(c.advanceClock(3, 6, -1), '[o 2/6]', 'tick down');
+  assert.equal(c.advanceClock(6, 6, 1), '[o 6/6]', 'a full clock does not overflow');
+  assert.equal(c.advanceClock(0, 6, -1), '[o 0/6]', 'an empty clock does not go negative');
+});
+
+test('clock (#646) — advanceClockInText rewrites the Nth VALID clock, counting past invalid ones', () => {
+  // ordinal picks which clock in the line; DOM pill order == this text order.
+  assert.equal(c.advanceClockInText('a [o 3/6] b [o 1/4]', 0, 1), 'a [o 4/6] b [o 1/4]', 'the 0th advances');
+  assert.equal(c.advanceClockInText('a [o 3/6] b [o 1/4]', 1, 1), 'a [o 3/6] b [o 2/4]', 'the 1st advances');
+  assert.equal(c.advanceClockInText('a [o 3/6] b [o 1/4]', 1, -1), 'a [o 3/6] b [o 0/4]', 'Shift steps the 1st back');
+  // an out-of-bounds token is not a pill, so it is not counted — ordinal 0 is the [o 1/4].
+  assert.equal(c.advanceClockInText('a [o 9/6] b [o 1/4]', 0, 1), 'a [o 9/6] b [o 2/4]',
+    'the invalid [o 9/6] is skipped; pill and text ordinals stay aligned');
+  assert.equal(c.advanceClockInText('a [o 3/6]', 5, 1), 'a [o 3/6]', 'an out-of-range ordinal is a no-op');
+});

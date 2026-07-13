@@ -995,6 +995,22 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 /* progress cookie [/]/[%] — a muted monospace tally; goes success-hued when complete */
 .cookie{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 5px;border-radius:4px;vertical-align:baseline;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
 .cookie-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+/* progress clock [o N/M]: the cookie's compact bracket look, but CLICKABLE (advances a
+   manual counter). The ring glyph is content, the mono count is truth. #646. */
+.clock{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 6px;border-radius:999px;vertical-align:baseline;line-height:1.5;cursor:pointer;user-select:none;background:color-mix(in srgb,var(--acc) 10%,transparent);color:var(--acc);transition:background .12s,box-shadow .12s}
+.clock:hover{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.clock:active{transform:translateY(.5px)}
+.clock:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.clock-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+/* a computed clock [o /M] fills from its sub-points — a display value like a cookie, not a
+   control: no pointer affordance, no hover-advance tint. #646 */
+.clock-computed{cursor:default}
+.clock-computed:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.clock-computed.clock-full:hover{background:color-mix(in srgb,var(--ok) 18%,transparent)}
+/* the inline cue on the sub-point whose done-ness fills a parent's computed clock. A muted
+   filled ring (the clock glyph), a content glyph exempt from the contrast floor (DL §4). #646 */
+.clock-done-cue{margin-left:.4em;font-size:.72em;vertical-align:super;color:var(--ok);user-select:none}
+@media(prefers-reduced-motion:reduce){.clock{transition:none}}
 /* per-node properties — a row of key:value chips below the content */
 .props-area{display:flex;flex-wrap:wrap;gap:4px;padding:1px 3px 3px;flex:1;min-width:0}
 .prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:4px;padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
@@ -2958,6 +2974,97 @@ function progressCount(node, seqs = allSequences(), depth = 1) {
 function formatProgressCookie(kind, done, total) {
   if (kind === 'pct') return '[' + (total ? Math.round(100 * done / total) : 0) + '%]';
   return '[' + done + '/' + total + ']';
+}
+
+// ── progress clocks ([o N/M]) ─────────────────────────────────────────────────
+// A manually-advanced segmented tension clock (Blades/Ironsworn). It joins the [/]
+// progress-cookie authoring family (the [...] bracket home): the token [o N/M] is
+// plain text in node.text (no sidecar, OPML round-trips for free), but UNLIKE the
+// cookie its N is authored/clicked, not computed. The glyph is a quarter-fill ring
+// in the same unicode-string idiom as the sparkline — export-safe, DOM-free, pure.
+const CLOCK_RE = /\[o (\d*)\/(\d+)\]/g;   // [o 3/6] manual · [o /6] computed (empty count = tally from children)
+const CLOCK_RING = '○◔◑◕●';               // 0,1,2,3,4 quarters filled
+// Parse one clock body → {done, total, computed}, or null (→ the token stays literal
+// text, the [...] escape-hatch rule). An EMPTY count ("[o /6]") is a COMPUTED clock:
+// done is null here and resolved at render from the parent's done-tally (like [/]). A
+// digit count is a MANUAL clock (done authored/clicked). Strict bounds either way.
+function parseClock(done, total) {
+  const t = Number(total);
+  if (!Number.isInteger(t) || t < 1 || t > 99) return null;
+  if (done === '' || done == null) return { done: null, total: t, computed: true };
+  const d = Number(done);
+  if (!Number.isInteger(d) || d < 0 || d > t) return null;
+  return { done: d, total: t, computed: false };
+}
+// The ring glyph for a fill: 0 is always ○ and a full clock always ●; the middle
+// rounds to the nearest quarter (a 6-clock's 1/6 shows ◔, 3/6 ◑, and so on).
+function clockGlyph(done, total) {
+  if (total < 1) return CLOCK_RING[0];
+  if (done <= 0) return CLOCK_RING[0];
+  if (done >= total) return CLOCK_RING[4];
+  const q = Math.round(done / total * 4);
+  return CLOCK_RING[Math.min(3, Math.max(1, q))];   // never ○ or ● for a partial clock
+}
+// The display / export string: "◕ 3/6". Same string in the pill and in flattenArtifacts.
+function formatClock(done, total) {
+  return clockGlyph(done, total) + ' ' + done + '/' + total;
+}
+// Advance (dir=+1) or step back (dir=-1) a clock, clamped to [0,total]. Returns the
+// new "[o N/M]" token text (pure — the caller splices it into node.text).
+function advanceClock(done, total, dir) {
+  const n = Math.min(total, Math.max(0, done + (dir < 0 ? -1 : 1)));
+  return '[o ' + n + '/' + total + ']';
+}
+// Rewrite the ORDINAL-th valid clock token in `text` by dir (+1/-1). Pure; returns the
+// new text (unchanged if the ordinal is out of range or that token is out-of-bounds).
+// The ordinal counts only VALID clocks, matching the render (an invalid [o 9/6] is not a
+// pill, so it is skipped here too — the pill ordinals and text ordinals stay aligned).
+function advanceClockInText(text, ordinal, dir) {
+  let seen = -1;
+  return String(text || '').replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    if (!pc || pc.computed) return m;  // invalid or computed: not an advanceable manual clock
+    seen++;
+    return seen === ordinal ? advanceClock(pc.done, pc.total, dir) : m;
+  });
+}
+// A COMPUTED clock's fill = the parent's done-tally (the same count [/] shows), capped at
+// the clock's total. Reuses progressCount verbatim, so add/check a done child and the fill
+// rises; delete/uncheck one and it drops — stateless recomputation, no advance/regress state.
+function clockFillFor(node, total, seqs = allSequences()) {
+  if (!node || total < 1) return 0;
+  return Math.min(total, progressCount(node, seqs).done);
+}
+// The child that COMPLETES a computed clock: walking node.children in order, the index of
+// the child at which the running done-count first reaches `total`. Its done-ness is what
+// tipped the clock full, so it gets the inline ● cue. Returns -1 if the clock never fills.
+// Pure, DOM-free. Same done-unit accounting as progressCount (checkbox markers, else a
+// done keyword/sequenced child = 1), so the cue and the fill agree.
+function completingChildIndex(node, total, seqs = allSequences()) {
+  if (!node || !node.children || total < 1) return -1;
+  let run = tallyMarkers(node.text || '').done;   // own-text done markers count first (as in progressCount)
+  if (run >= total) return -1;                     // the parent's own text already filled it: no child completes it
+  for (let i = 0; i < node.children.length; i++) {
+    const c = node.children[i];
+    const t = tallyMarkers(c.text || '');
+    let inc = 0;
+    if (t.total > 0) inc = t.done;
+    else { const km = (c.text || '').match(LEAD_WORD_RE); if (km && keywordIsDone(km[1], seqs)) inc = 1; }
+    run += inc;
+    if (run >= total && inc > 0) return i;          // this child crossed the line (and actually contributed)
+  }
+  return -1;
+}
+// True if `child` is the point whose done-ness completes `parent`'s (first) computed clock.
+// Drives the inline ● cue in renderRow. Parses the parent's first [o /M], maps its completing
+// index to a child, and compares identity. DOM-free except the identity check.
+function clockCompletionCue(parent, child) {
+  const m = /\[o \/(\d+)\]/.exec(parent && parent.text || '');
+  if (!m) return false;
+  const pc = parseClock('', m[1]);
+  if (!pc) return false;
+  const idx = completingChildIndex(parent, pc.total);
+  return idx >= 0 && parent.children[idx] === child;
 }
 
 // ── depth scope: the shared "how deep" vocabulary (UXP-159) ───────────────────
@@ -5114,6 +5221,22 @@ function mdInline(s) {
     const full = total > 0 && done === total ? ' cookie-full' : '';
     return stash(`<span class="cookie${full}" aria-label="${done} of ${total} done">${txt}</span>`);
   });
+  // progress clock: two forms sharing the [o …/M] token. A MANUAL [o N/M] carries a literal
+  // N (click to advance); a COMPUTED [o /M] tallies its done from the render node like the
+  // cookie ([/]) and is a display value, not a control. Manual clocks stamp no index: the
+  // click handler counts a clicked pill's position among the node's clickable clocks (DOM
+  // order == text order) to reach the matching manual [o N/M] in node.text. Bad token → literal.
+  s = s.replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    if (!pc) return m;
+    if (pc.computed) {
+      const done = clockFillFor(cookieNode, pc.total);   // cookieNode = the render node, like the cookie
+      const full = done === pc.total ? ' clock-full' : '';
+      return stash(`<span class="clock clock-computed${full}" aria-label="Clock, ${done} of ${pc.total} filled from sub-points">${formatClock(done, pc.total)}</span>`);
+    }
+    const full = pc.done === pc.total ? ' clock-full' : '';
+    return stash(`<span class="clock${full}" role="button" tabindex="0" aria-label="Clock, ${pc.done} of ${pc.total} filled">${formatClock(pc.done, pc.total)}</span>`);
+  });
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
@@ -6411,6 +6534,7 @@ const INSERT_CMDS = [
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Insert' },
+  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back. Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
@@ -8983,6 +9107,20 @@ function renderRow(r) {
     content.appendChild(buildTableWidget(node, !!opts.searchCtx || isQueryBase(node)));
   } else {
     content.innerHTML = renderContentHTML(node);
+    // completion cue (#646): if this row's parent owns a COMPUTED clock ([o /M]) and this
+    // point's done-ness is what fills it, append a muted ● — "this is the one that finished
+    // it." Render-only (a relationship, never in node.text), so it is not exported. Cheap:
+    // guarded on the parent text carrying "[o /" before any tally work.
+    if (!opts.searchCtx && parent && /\[o \//.test(parent.text || '')) {
+      const cued = clockCompletionCue(parent, node);
+      if (cued) {
+        const cue = document.createElement('span');
+        cue.className = 'clock-done-cue';
+        cue.textContent = CLOCK_RING[4];
+        cue.setAttribute('aria-label', 'Completes the clock');
+        content.appendChild(cue);
+      }
+    }
   }
 
   if (!opts.searchCtx) attachContentEvents(content, node);
@@ -13411,6 +13549,10 @@ function onKeyDown(e, id, content) {
     // spoiler block: Enter/Space reveals/re-conceals it (the keyboard twin of its click)
     const spoil = e.target.closest?.('.md-spoiler');
     if (spoil && e.target === spoil) { e.preventDefault(); toggleSpoiler(spoil); return; }
+    // progress clock: Enter/Space advances it, Shift+Enter steps back (the keyboard twin of its
+    // click). Only a MANUAL clock is focusable/actionable; a computed [o /M] is a display value.
+    const clk = e.target.closest?.('.clock:not(.clock-computed)');
+    if (clk && e.target === clk) { e.preventDefault(); advanceClockAt(clk, e.shiftKey ? -1 : 1); return; }
     const pchip = e.target.closest?.('.prop-chip');
     if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
     // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
@@ -15581,6 +15723,10 @@ function insertInlineArtifact(id, nodeId, content) {
     // a cookie is plain computed text (no sidecar) — insert the [/] recipe; it
     // renders as a live [done/total] tally. Type [%] by hand for the percent form.
     applyInlineInsertion(nodeId, offset, '[/]');
+  } else if (id === 'clock') {
+    // a clock is plain text in the same [...] family (no sidecar) — insert [o 0/6],
+    // the Blades default; edit the 6 for any size, click a segment to advance. #646.
+    applyInlineInsertion(nodeId, offset, '[o 0/6]');
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -23176,7 +23322,15 @@ function flattenArtifacts(text, node, varMap) {
     const { done, total } = progressCount(node, allSequences(), depth);
     return formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
   });
-  return flattenSpoilers(cooked);
+  // progress clocks freeze to their ring + count string ("◑ 3/6"), export-safe unicode like
+  // the sparkline; an out-of-bounds token stays literal (parseClock → null). #646.
+  const clocked = cooked.replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    if (!pc) return m;
+    const done = pc.computed ? clockFillFor(node, pc.total) : pc.done;   // computed freezes to its live tally
+    return formatClock(done, pc.total);
+  });
+  return flattenSpoilers(clocked);
 }
 
 // A one-way export can't conceal, so a spoiler line ">! text" exports as "(spoiler) text"
@@ -23587,16 +23741,20 @@ document.getElementById('outline').addEventListener('click', e => {
   searchHashtag(tag);
 });
 
-// hidden-note indicator + spoiler-block reveals (same delegated pattern as hashtags:
-// mousedown is swallowed so the caret never moves — the caret invariant — and click acts)
+// hidden-note indicator + spoiler-block reveals + clock advance (same delegated pattern as
+// hashtags: mousedown is swallowed so the caret never moves — the caret invariant — and click acts)
 document.getElementById('outline').addEventListener('mousedown', e => {
-  if (e.target.closest('.note-ind') || e.target.closest('.md-spoiler')) { e.preventDefault(); e.stopPropagation(); }
+  // .clock-computed is a display value (like a cookie), not a control — let its mousedown
+  // fall through to normal caret placement; only a manual clock swallows it.
+  if (e.target.closest('.note-ind') || e.target.closest('.md-spoiler') || e.target.closest('.clock:not(.clock-computed)')) { e.preventDefault(); e.stopPropagation(); }
 }, true);
 document.getElementById('outline').addEventListener('click', e => {
   const ind = e.target.closest('.note-ind');
   if (ind) openNoteEditor(ind.dataset.noteId);
   const sp = e.target.closest('.md-spoiler');
   if (sp) toggleSpoiler(sp);
+  const clk = e.target.closest('.clock:not(.clock-computed)');
+  if (clk) advanceClockAt(clk, e.shiftKey ? -1 : 1);   // Shift-click steps back (computed clocks are not clickable)
   const chip = e.target.closest('.prop-chip');
   if (chip) openPropChip(chip);
 });
@@ -23607,6 +23765,28 @@ document.getElementById('outline').addEventListener('click', e => {
 function toggleSpoiler(sp) {
   const shown = sp.classList.toggle('revealed');
   sp.setAttribute('aria-expanded', shown ? 'true' : 'false');
+}
+
+// Advance the clicked clock by dir (+1/-1). The clock's ORDINAL is its position among
+// the node's manual .clock pills (DOM order == text order, both from mdInline), which maps
+// to the Nth manual [o N/M] token in node.text via the pure advanceClockInText. Writes text,
+// saves, and repaints the one node's content IN DISPLAY MODE (repaintNodeContent, the dice-
+// reroll path) — NOT rerenderNode, which would focus the node into edit mode on every click.
+function advanceClockAt(clk, dir) {
+  const content = clk.closest('.node-content');
+  if (!content || content.dataset.editing) return;   // never advance while the node is being edited
+  const node = nodeById(content.dataset.id);
+  if (!node) return;
+  // count only MANUAL clocks: advanceClockInText skips computed [o /M], so the DOM ordinal
+  // must skip them too or a computed clock before a manual one would misalign the index.
+  const pills = [...content.querySelectorAll('.clock:not(.clock-computed)')];
+  const ordinal = pills.indexOf(clk);
+  if (ordinal < 0) return;
+  const next = advanceClockInText(node.text, ordinal, dir);
+  if (next === node.text) return;      // no-op (clamped at an end) — nothing to save
+  node.text = next;
+  markDirty();
+  repaintNodeContent(node);            // display-mode repaint, like a dice re-roll — no edit-mode entry
 }
 
 // A property chip opens its editor: a date chip (due/start) → the Schedule
@@ -26062,6 +26242,14 @@ const GUIDE = [
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
+    ] },
+  { id:'clock', cat:'todos', covers:['clock'],
+    title:'Progress clocks',
+    body:"A clock you fill in segments, for tracking a rising danger, a countdown or any fuse that fills as a situation develops. It comes in two forms. A manual clock, [o 0/6], is yours to advance whenever the story says so: click it to advance one segment, or Shift+click to step it back (from the keyboard, focus it and press Enter, or Shift+Enter to step back). A counting clock, [o /6] with the count left empty, fills itself from the checked sub-points and #DONE children beneath it, exactly the way a progress bar counts. Add or finish a sub-point and it advances, delete or reopen one and it drops back. On a counting clock, the sub-point whose completion fills the last segment is marked with a small filled ring, so you can see which one finished it. Change the 6 for any size, such as a 4 or an 8. Either form shows as a ring that fills up, with the exact count beside it, and exports as that ring and count (a half-full six-clock reads as a filled half-ring next to 3/6).",
+    examples:[
+      { syn:'[o 0/6]',        desc:'a manual clock, click to advance (Shift+click steps back)' },
+      { syn:'[o /6]',         desc:'a counting clock, fills from your checked sub-points' },
+      { syn:'[o 4/4]',        desc:'a full clock (a filled ring)' },
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
