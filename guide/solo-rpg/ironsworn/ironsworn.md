@@ -6,7 +6,7 @@
 
 Ironsworn is a solo-and-co-op tabletop RPG by Shawn Tomkin. Its rules are released free under
 a Creative Commons licence, which is what makes this guide possible: it adapts the game's system
-into Pointliner's outline and live pills, so your action rolls, momentum, progress tracks, and
+into Pointliner's outline and live pills, so your action rolls, momentum, progress tracks and
 oracles all live and compute in the same file you write your journal in.
 
 This guide is a **Pointliner workflow**, not a replacement for the rulebook. It shows you how to
@@ -29,8 +29,8 @@ game and want it running in Pointliner.
 ## The action roll
 
 Ironsworn's core move is the **action roll**: you roll one six-sided **action die**, add a **stat**
-(and any adds), and compare that total against **two ten-sided challenge dice**, read separately.
-The outcome is a **strong hit** (beat both challenge dice), a **weak hit** (beat one), or a **miss**
+(and any adds) and compare that total against **two 10-sided challenge dice**, read separately.
+The outcome is a **strong hit** (beat both challenge dice), a **weak hit** (beat one) or a **miss**
 (beat neither). In Pointliner that is three pills side by side:
 
 ```
@@ -38,7 +38,7 @@ Action die + stat: {1d6+2}        (edit the +2 to your stat + adds)
 Challenge dice: {1d10} and {1d10}
 ```
 
-Click the action pill to roll, click each challenge pill to roll, and read the three numbers by the
+Click the action pill to roll, click each challenge pill to roll and read the three numbers by the
 strong/weak/miss rule above. To keep it to one click, you can roll both challenge dice at once with a
 repeat: `{2x: {1d10}}` shows two challenge results together.
 
@@ -67,10 +67,10 @@ if it beats them.
 
 ## Progress tracks (vows, journeys, fights)
 
-A **progress track** is Ironsworn's box-ticking meter for a vow, a journey, or a fight: you mark
+A **progress track** is Ironsworn's box-ticking meter for a vow, a journey or a fight: you mark
 progress as you go, then make a **progress move** by rolling the challenge dice against the number of
 filled boxes. Pointliner's **progress cookie** is the natural fit: a parent point with a `[/]` (or a
-manual `[3/10]`) over ten checkbox children, one per box.
+manual `[3/10]`) over 10 checkbox children, one per box.
 
 ```
 Swear an iron vow: reach the drowned tower  [/]
@@ -105,10 +105,10 @@ percentages; convert them to weights, for example an even chance is `{Yes 1 | No
 
 ## Putting the moves in
 
-Each Ironsworn **move** (Face Danger, Secure an Advantage, Compel, Strike, and so on) has its own
+Each Ironsworn **move** (Face Danger, Secure an Advantage, Compel, Strike and so on) has its own
 trigger and its strong/weak/miss outcomes. In the demo, each move is its own point: the move's text
 sits in the point (from the SRD), with an action-roll pill ready beneath it. To play a move, read its
-trigger, roll the action pill, and read the outcome the SRD lists for your result.
+trigger, roll the action pill and read the outcome the SRD lists for your result.
 
 > **This is where the SRD content lands.** The demo ships the move triggers and outcome text and the
 > oracle table entries taken from the Ironsworn SRD under CC BY 4.0 (attributed above). If you are

@@ -1,13 +1,13 @@
 # The Pointliner guide
 
 Pointliner is an **outliner**: a document of nested bullet points (each one is called a
-**point**), with markdown, to-dos, dates, and search. That part is self-explanatory, you just
+**point**), with markdown, to-dos, dates and search. That part is self-explanatory, you just
 type. What makes Pointliner different is the **pill**.
 
 ## The one big idea: `{curly braces}` become pills
 
 Type something inside `{…}` in a point and, **when you click away**, it turns into a **pill**: a
-little live widget you can click.
+little live element you can click.
 
 | You type | It becomes |
 |---|---|
@@ -40,15 +40,15 @@ That is the entire interaction model. Everything else is just more kinds of `{�
 - **[What Pointliner can do](features.md)** is the scannable feature map: every capability in one
   line, with links to where you learn it. Skim this if you just want to know "can it do X?"
 - **[Writing and formatting](writing-and-formatting.md)** is headings and point types, inline
-  styling, tables, footnotes, images, and per-point notes.
+  styling, tables, footnotes, images and per-point notes.
 - **[Getting around](getting-around.md)** is the everyday outliner: navigating, searching, nesting,
   zoom, hashtags. The plain outliner moves, no pills involved.
 - **[Tasks and organizing](tasks-and-organizing.md)** is to-dos, custom workflows, properties,
-  progress bars, templates, quick capture, and aliases.
+  progress bars, templates, quick capture and aliases.
 - **[Dates and planning](dates-and-planning.md)** is scheduling points, the agenda and calendar,
   and the daily journal.
 - **[Links and references](links-and-references.md)** is `[[` links with live titles, backlinks,
-  unlinked mentions, and links across a folder of documents.
+  unlinked mentions and links across a folder of documents.
 - **[Files and export](files-and-export.md)** is saving, a folder of documents, appearance, and sharing
   or exporting (Markdown, plain text, self-contained HTML).
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
@@ -67,7 +67,7 @@ The rest of this page is the friendly introduction to how pills behave.
   the deck, re-samples the estimate. Math and variables **recompute on their own** when something
   they depend on changes.
 - **A roll stays put.** A dice/table/deck pill *freezes* its result so your document is stable; it
-  only changes when **you** click it. (Math, variables, and rollups are the live ones.)
+  only changes when **you** click it. (Math, variables and rollups are the live ones.)
 - **Edit the text, not the pill.** Click the words next to a pill to enter the point; the pill
   unfolds to its `{…}` source so you can retype it. Click away to re-pill.
 - **Keyboard:** a focused pill responds to **Enter / Space** (same as a click).
@@ -79,7 +79,7 @@ The rest of this page is the friendly introduction to how pills behave.
 1. **Just type it.** `{2d6}`, `{a | b}`, `{= 5 * 8}` is the fastest path once you know the syntax.
 2. **The `@` menu** (type `@` in a point). A menu of inserters with **dialogs that teach the
    syntax** and show a live preview: Dice, Grammar, Roll table, Deck, Oracle, Markov, Math,
-   Variable, Estimate, and more. Great when you're learning or building something fiddly.
+   Variable, Estimate and more. Great when you're learning or building something fiddly.
 3. **The `/` menu** for point-level things, e.g. **`/check`** (add a pass/fail constraint) and
    **`/due`** (schedule dates).
 
@@ -88,7 +88,7 @@ The rest of this page is the friendly introduction to how pills behave.
 > **Concept guide** (the "Concept guide ›" button at the bottom of that panel, also in the
 > File menu). This guide is the *learn-it*; the `?` panel and Concept guide are the *look-it-up*.
 > When the hints start to feel like noise, `Ctrl/Cmd+Shift+.` dials the app down through
-> [Guided, Standard, and Lean](getting-around.md#quiet-the-guidance-the-verbosity-dial).
+> [Guided, Standard and Lean](getting-around.md#quiet-the-guidance-the-verbosity-dial).
 
 ---
 

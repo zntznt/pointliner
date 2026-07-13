@@ -94,7 +94,7 @@ When the check says something is there, a second pill tells you what:
 
 That is a plain one-off pick (a `{a | b | c}` list), the fast way to get an idea when you do
 not need a deck's no-repeats discipline. There is a `{1d6}` in the file too, used for how far
-you can travel before dusk. Mix `{2d6}`, `{1d6}`, and any modifier you like; the dice are the
+you can travel before dusk. Mix `{2d6}`, `{1d6}` and any modifier you like; the dice are the
 same ones the rest of the guide covers.
 
 ---
@@ -147,7 +147,7 @@ real outline with every pill live. A few things to try:
   and watch the region's `{= sum(supplies)}` total jump. That live re-total is the whole point
   of putting the number in a property instead of adding it up by hand.
 - **Extend the map.** Add a new hex under a region (Tab to indent), give it a terrain draw, an
-  encounter check, and a `{prop supplies: N}`. Add a whole new region as a sibling. The outline
+  encounter check and a `{prop supplies: N}`. Add a whole new region as a sibling. The outline
   is the map, so it grows by outlining.
 - **Tag a thread.** The demo tags a beat `#thread/the-pass`. Click the tag to pull every beat
   that touches it, the same queryable-journal payoff the other solo-RPG examples lean on.
@@ -162,7 +162,7 @@ that the map **computes and folds**:
 - the terrain deck deals without repeats and reshuffles itself, so you get variety for free
 - the dice are real and freeze once rolled, so the log is a trustworthy record
 - the supply total is live math over the hexes, not mental arithmetic you redo every leg
-- the whole map folds and unfolds, so a fifty-hex crawl stays a navigable tree
+- the whole map folds and unfolds, so a 50-hex crawl stays a navigable tree
 - tags and links turn the log into something you can interrogate later, every hex on this
   ridge, every open thread, every hard encounter
 

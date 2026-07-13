@@ -1,7 +1,7 @@
 # Getting around
 
 *Part of the [Pointliner guide](README.md). The everyday outliner moves: navigating, searching,
-nesting, and reshaping a document once it grows past one screen. None of this is about pills; it is
+nesting and reshaping a document once it grows past one screen. None of this is about pills; it is
 the plain outliner you use without thinking about it.*
 
 A Pointliner document is a tree of nested **points** (bullet points). The pages on
@@ -25,14 +25,14 @@ Reshape the outline as your thinking changes: reorder points and change how deep
   right to indent (nest it under the point above), left to outdent (pop it out to its parent's
   level). A small direction chip appears as you swipe, and the move commits when you release past it.
   While you are editing a point, a **bar above the keyboard** gives one-tap **outdent, indent, move
-  up, and move down**, the easiest way to reshape on a phone. To reorder by dragging, press and hold
+  up and move down**, the easiest way to reshape on a phone. To reorder by dragging, press and hold
   the bullet and drag up or down, or use **Move up** / **Move down** in the bullet's menu. Swiping
   straight up or down just scrolls the page as usual.
 
 ## Zoom into a point
 
 Work on one branch full-screen with the rest of the outline out of sight: drill into a single
-project, a chapter, or a busy task list so only it and its children fill the page.
+project, a chapter or a busy task list so only it and its children fill the page.
 
 To zoom in: press `Ctrl/Cmd+Enter` while editing a point, click a point's **bullet**, or open the
 point's menu and choose **Zoom into**. The zoomed point becomes a large editable title with its note
@@ -46,13 +46,13 @@ exiting all the way.
 ## Selecting many points
 
 Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole
-group, set a state, date, check, or property across all of them, turn them all into another type, or
+group, set a state, date, check or property across all of them, turn them all into another type, or
 delete the lot.
 
 Start a selection by `Shift`-clicking a point (a contiguous range), `Ctrl`/`Cmd`-clicking points to
-pick them out of order, or pressing `Shift+Up` / `Shift+Down` from the keyboard. A selection bar
+pick them out of order or pressing `Shift+Up` / `Shift+Down` from the keyboard. A selection bar
 appears at the bottom showing how many points are selected, with a button
-for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into, and Delete.
+for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete.
 From the keyboard, `Ctrl/Cmd+C` copies, `Ctrl/Cmd+X` cuts, and `Ctrl/Cmd+V` pastes the points;
 `Tab` / `Shift+Tab` indent or outdent the selection; `Delete` removes it and `Esc` clears it.
 `Ctrl/Cmd+Shift+S` cycles the to-do state and `Ctrl/Cmd+Shift+P` cycles the priority across every
@@ -61,7 +61,7 @@ selected point at once (the same two chords cycle a single point while you are e
 ## Refile a point
 
 Move a point and everything under it to a new home far across the outline: drop a stray idea into the
-right project, tuck a finished item under an archive, or pull a buried note up to the top.
+right project, tuck a finished item under an archive or pull a buried note up to the top.
 
 Open the point's menu and choose **Refile** to browse the whole outline as a searchable tree: type to
 filter to a destination, walk it with the arrow keys, then press `Enter` to move the point there as
@@ -76,7 +76,7 @@ Keyboard-first: type `/refile` for the searchable tree, or name the destination 
 
 ## Searching and filtering
 
-Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks, or
+Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks or
 spot everything that is overdue.
 
 Type words in the search box and **every word must appear**. The operators:
@@ -94,7 +94,7 @@ Type words in the search box and **every word must appear**. The operators:
   generators). `has:dice` (and `has:math`, `has:est`, `has:grammar`, `has:markov`, `has:var`,
   `has:seq`) find a specific kind; `has:children` / `has:footnote` find sub-points or a footnote.
 - `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date, and
-  `due:week` / `due:month` catch anything due within the next 7 or 30 days (also `start:week` / `start:month`).
+  `due:week` / `due:month` catch anything due within the next seven or 30 days (also `start:week` / `start:month`).
 - `is:scheduled` / `is:unscheduled` split points by whether they have a date at all; `is:overdue`
   finds points past their deadline and not done (the due date, or the start if there is no due).
   `is:held` finds points in their sequence's held band (blocked or waiting, like `#WAITING`).
@@ -113,7 +113,7 @@ Anything malformed stays a literal text term, so a stray `:` or `#` never breaks
 ## Saved searches
 
 Keep a search you run often within one click instead of retyping it. Pin filters like open tasks
-tagged a project, everything overdue, or notes mentioning a person, then bring any of them back later.
+tagged a project, everything overdue or notes mentioning a person, then bring any of them back later.
 
 Type your search, then click the **star** at the right of the search box to save it. The star fills
 in once it is kept. Saved searches show as chips under the **Saved** heading whenever the search box
@@ -129,7 +129,7 @@ the document changes: a this-week view, an open-questions roundup, everything ta
 Type `@` and choose **Query**, or write it inline: `{query: is:todo | due:week}`. The part after
 `query:` is a normal search, so every operator works (`#tag`, `is:todo`, `due:week`, `key:value`,
 `-` to exclude, `|` for OR). Click any result to jump to it, or the pencil to change the search. A
-long list shows the first ten with a `+N more`. The query never lists its own point.
+long list shows the first 10 with a `+N more`. The query never lists its own point.
 
 ### Just the number (count)
 
@@ -152,21 +152,21 @@ property like `due` or `cost`, or a formula computed for each row (`= daysuntil(
 nothing is stored, it is always a view of the live outline.
 
 Type `/` and choose **Query base** (or `/querybase`), then give it a search and one column per line
-(`title`, a property key, or `= formula`; put `Name:` in front to label a column). The strip above the grid
+(`title`, a property key or `= formula`; put `Name:` in front to label a column). The strip above the grid
 shows the search and the live match count; click it (or press `Enter` on it) to change the query or
 columns. The grid itself is read-only: edit the matching points and the rows follow. Click any
 title to jump to that point.
 
 ## Searching all your documents
 
-When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-notes)),
+When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-documents)),
 search covers all of them at once, not just the one you are reading. Useful when you know something is
 in your documents but cannot remember which file. Matches from other documents appear in a **Found in other
 notes** list; click one to jump straight there.
 
 ## Hashtags
 
-Label points by topic, status, or project so related ones are easy to round up later. Type `#`
+Label points by topic, status or project so related ones are easy to round up later. Type `#`
 followed by a word anywhere in a point (like `#idea` or `#urgent`) and it becomes a clickable tag.
 
 **Nest tags** with a slash to build a little hierarchy, like `#thread/torn-letter` under `#thread`: a
@@ -178,20 +178,20 @@ each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and pre
 typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every
 point that shares it.
 
-**Give a tag a color.** Open **File then Tag & property styling**, type a tag name, and click one of
+**Give a tag a color.** Open **File then Tag & property styling**, type a tag name and click one of
 the color swatches. Every `#tag` with that name then shows in that color, and nested tags inherit it
 (coloring `#thread` also colors `#thread/idea`). To change a color, type the same name and pick a
 different swatch; to remove it, clear it from the list in that dialog. The colors are a curated set
 chosen to stay readable in light and dark mode. It is purely visual: the color is stored with the
 document and changes nothing about the tag's text or how search works.
 
-Working inside an interactive base entirely from the keyboard (moving, inserting, and resizing columns
+Working inside an interactive base entirely from the keyboard (moving, inserting and resizing columns
 and rows) is covered on the [writing and formatting](writing-and-formatting.md#tables) page with the
 rest of the table controls.
 
 ## Quiet the guidance: the verbosity dial
 
-Pointliner starts chatty, with hints, tooltips, and menus that teach you the syntax. Once you know the
+Pointliner starts chatty, with hints, tooltips and menus that teach you the syntax. Once you know the
 commands, you can turn the explaining down and keep just the app. Press `Ctrl/Cmd+Shift+.` to move to a
 quieter level and `Ctrl/Cmd+Shift+,` to move back toward more guidance (or open the File menu and use the
 verbosity row, which shows the current level as a dot track). Three levels cycle:

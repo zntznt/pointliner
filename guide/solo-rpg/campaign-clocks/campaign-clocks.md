@@ -16,7 +16,7 @@ tool they are, no setting text borrowed. A thread is just an open question you h
 yourself to return to.
 
 This guide shows how to run both inside Pointliner using pieces the outliner already has:
-a **progress cookie** for the clock, a **due date** for the thread, and a **saved search**
+a **progress cookie** for the clock, a **due date** for the thread and a **saved search**
 for the board that holds them all. Nothing here is a new notation. It is the same `{…}` and
 `[…]` you already type, pointed at pressure instead of prose.
 
@@ -77,7 +77,7 @@ The debt to the moneylender comes due #thread {date due: today+7}
 The comet the star-priests fear #thread {date due: 2026-12-21}
 ```
 
-The value is flexible: `today`, `tomorrow`, `today+3`, `today+7`, or a fixed calendar date
+The value is flexible: `today`, `tomorrow`, `today+3`, `today+7` or a fixed calendar date
 like `2026-12-21`. A relative date is perfect for "check back in a few sessions," a fixed date
 for a thread that lands on a specific in-world occasion.
 
@@ -121,7 +121,7 @@ in the search bar, one embedded in the outline. Use whichever fits how you play.
 ## Run it yourself
 
 Open the [demo file](campaign-clocks-demo.opml) and it drops you into a small campaign already
-under pressure: three clocks partway filled, three threads with dates set, and a board that
+under pressure: three clocks partway filled, three threads with dates set and a board that
 lists them.
 
 - **Tick a clock.** Click the bullet of "The Ashguild moves against you" to open it, then check
@@ -135,8 +135,8 @@ lists them.
   the chip. Click any result to jump straight to that thread and advance its clock. The embedded
   `{query: #thread}` pill in the demo shows the same list without leaving the page.
 
-To build your own from scratch: make a point for a danger, put `[/]` at the end of its text, and
-add a few `- [ ]` segment lines under it. Make a point for an open question, tag it `#thread`, and
+To build your own from scratch: make a point for a danger, put `[/]` at the end of its text and
+add a few `- [ ]` segment lines under it. Make a point for an open question, tag it `#thread` and
 give it a `{date due: today+3}`. Search `#thread`, star it, and you have a campaign board. That is
 the whole system.
 

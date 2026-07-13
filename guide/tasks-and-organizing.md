@@ -1,24 +1,24 @@
 # Tasks and organizing
 
 *Part of the [Pointliner guide](README.md). Turn an outline into a working system: to-dos and
-custom workflows, structured properties, progress bars, reusable templates, quick capture, and
+custom workflows, structured properties, progress bars, reusable templates, quick capture and
 aliases. Like [getting around](getting-around.md), this is the plain outliner, no pills required.*
 
 ---
 
 ## To-dos and tasks
 
-Track a shopping list, a reading list, a project backlog, or a daily to-do, all in the same outline.
+Track a shopping list, a reading list, a project backlog or a daily to-do, all in the same outline.
 
 Turn any point into a task two ways:
 
 - A **checkbox**: type `- [ ]` at the start of a point (or use `/todo`).
 - A **status word**: start the point with an UPPERCASE keyword prefixed by `#`, like `#TODO`,
-  `#NEXT`, or `#DONE`. The `#` and the capitals are required: plain `TODO` stays text, and lowercase
+  `#NEXT` or `#DONE`. The `#` and the capitals are required: plain `TODO` stays text, and lowercase
   `#todo` is a [tag](getting-around.md#hashtags) that filters by status rather than a badge.
 
 The easiest path is **`/todo`**, which writes the status for you. Click the colored badge to change
-the status or set a **priority** (`A`, `B`, or `C`), or from the keyboard press `Ctrl/Cmd+Shift+S` to
+the status or set a **priority** (`A`, `B` or `C`), or from the keyboard press `Ctrl/Cmd+Shift+S` to
 cycle the state and `Ctrl/Cmd+Shift+P` to cycle the priority (the same chords work across a whole
 [selection](getting-around.md#selecting-many-points)). Press `Enter` on a task and the next point is a
 task too, so running off a list is fast.
@@ -26,7 +26,7 @@ task too, so running off a list is fast.
 ## Custom workflows
 
 Define a workflow that matches the way you actually work: move articles through
-`DRAFT → REVIEW → PUBLISHED`, support requests through `OPEN → IN PROGRESS → RESOLVED`, or any
+`DRAFT → REVIEW → PUBLISHED`, support requests through `OPEN → IN PROGRESS → RESOLVED` or any
 process with distinct stages.
 
 Give the workflow a name and its states. Type `{seq Flow: BACKLOG DOING | SHIPPED}` to declare one
@@ -40,7 +40,7 @@ Actions row with a muted "Waiting" badge, the same way the built-in `WAITING` st
 
 ## Progress bars
 
-Put a live progress bar on a project, a checklist, or any parent point and see how much is done at a
+Put a live progress bar on a project, a checklist or any parent point and see how much is done at a
 glance. As you check off the tasks underneath, the count updates automatically, with no manual
 tracking.
 
@@ -73,7 +73,7 @@ properties inherit **down** the outline: a pill or a [check](computing-numbers.m
 on a child point can read a property set on any ancestor (a scene under a `budget: 12` project sees
 `budget`). The nearest value wins, so the point's own property beats an ancestor's.
 
-**Give a property an icon.** Open **File then Tag & property styling**, type a property key, and pick
+**Give a property an icon.** Open **File then Tag & property styling**, type a property key and pick
 an icon (a dollar sign for `cost`, a calendar for `due`). Every chip for that key then shows the icon
 before its name, so a property is recognizable at a glance. To change or remove it, revisit the same
 dialog. Like tag colors, it is purely visual and stored with the document; the property's text and
@@ -82,7 +82,7 @@ searchability are untouched.
 ## Templates
 
 Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly
-review layout, a bug-report checklist, or any subtree you use repeatedly, then stamp a fresh copy in
+review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in
 one step.
 
 Save a template from any point's menu, or keyboard-first with `/savetemplate:weekly review` to save
@@ -92,7 +92,7 @@ list.
 
 ## Capture and quick inbox
 
-Jot down a task, an idea, or a quick note the moment it strikes, without leaving what you are doing or
+Jot down a task, an idea or a quick note the moment it strikes, without leaving what you are doing or
 hunting for the right spot.
 
 It works with nothing set up: with no inbox chosen, captures land at the **top level** of the

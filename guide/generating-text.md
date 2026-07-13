@@ -57,7 +57,7 @@ animal: fox | owl | dragon | toad
   plain text.
 
 **Rule names are document-wide.** Once a grammar pill defines `color`, you can write `{color}` in
-*any* point in the document and get a colour. (If two pills define the same name, the document
+*any* point in the document and get a color. (If two pills define the same name, the document
 wins over a plugin pack; otherwise last definition wins, so keep names unique.)
 
 A rule's choices can include **anything on this page**: dice, other rules, even math:
@@ -90,7 +90,7 @@ The dice engine speaks the common tabletop notations:
 | `{4d6dh1}` | roll 4, **drop highest 1** |
 | `{4d6r1}`  | roll 4, **reroll any die ≤ 1 once** |
 | `{2d6!}`   | **exploding** (a max-value die rolls again and adds) |
-| `{4dF}`    | **Fate/Fudge dice** (each −1, 0, or +1) |
+| `{4dF}`    | **Fate/Fudge dice** (each −1, 0 or +1) |
 | `{6d10>=7}`| **success pool** (count dice that meet the target) |
 
 Click the pill to re-roll. (All of this is also in the **`@` → Dice** dialog.)
@@ -360,7 +360,7 @@ Every generator so far draws from a list you typed. `{roll: SEARCH}` draws from 
 outline** instead: it picks one random point matching a search, so you can roll on the notes you
 already keep.
 
-Keep a list of open threads, NPCs, or ideas as ordinary points, then roll:
+Keep a list of open threads, NPCs or ideas as ordinary points, then roll:
 
 ```
 Open threads
@@ -422,7 +422,7 @@ Because the names are document-wide, you can also drop `{role}` or `{trait}` int
 ---
 
 **Next:** [Computing numbers](computing-numbers.md), the math side: expressions, dates, sums that
-roll up your outline, and uncertain estimates. Or jump to the [Cookbook](cookbook.md) for
+roll up your outline and uncertain estimates. Or jump to the [Cookbook](cookbook.md) for
 ready-made recipes.
 
 **Back to:** [the guide](README.md).

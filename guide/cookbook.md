@@ -1,7 +1,7 @@
 # Cookbook
 
 *Part of the [generative & computational guide](README.md). Copy a recipe, paste it into a point,
-tweak. Each one notes which door (`@` menu, `/` command, or just typing) it uses.*
+tweak. Each one notes which door (`@` menu, `/` command or just typing) it uses.*
 
 The conventions:
 - Lines like `name: a | b` go in the **`@` → Grammar** dialog (one rule per line).
@@ -229,7 +229,7 @@ Both `{w}` mentions are the **same** weapon, and `{w.dmg}` is *its* damage die.
 sunny → sunny → cloudy → rainy → cloudy → sunny
 ```
 
-The chain favours transitions you list more often. Reference `{weather}` to generate a plausible
+The chain favors transitions you list more often. Reference `{weather}` to generate a plausible
 run of days; click to re-walk.
 
 ---

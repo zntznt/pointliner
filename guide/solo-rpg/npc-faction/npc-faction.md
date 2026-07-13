@@ -5,18 +5,18 @@
 **Demo file:** [npc-faction-demo.opml](npc-faction-demo.opml) (open it in Pointliner via File, Open)
 
 Solo campaigns live and die by their cast. After a dozen sessions you have a Fence who owes
-you, a Prior who wants you dead, and three factions whose loyalties keep sliding. A flat list
+you, a Prior who wants you dead and three factions whose loyalties keep sliding. A flat list
 of names stops being enough. This example turns the cast into an **interactive base** (a live
 table) you can flip to a **kanban board** grouped by faction, and shows the habit of **linking**
 scene notes to the people in them so every mention finds its way back.
 
 It leans on the parts of Pointliner the journaling examples do not: the base, its board and
-column roles, properties, and links with backlinks.
+column roles, properties and links with backlinks.
 
 ## The roster is a base
 
 Open the demo and you will see a `/base`: an editable grid of NPCs, one row each, with columns
-for **NPC, Faction, Disposition, and Tie**. Click any cell to edit it. Add a row by typing at
+for **NPC, Faction, Disposition and Tie**. Click any cell to edit it. Add a row by typing at
 the bottom, or press `Alt+Shift+Down` on a cell to insert one. This is your living roster:
 everyone the character has met, in one place you can sort and search.
 
