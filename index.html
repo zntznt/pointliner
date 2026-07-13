@@ -1202,7 +1202,6 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .cap-dest-btn:hover{border-color:var(--muted)}
 .cap-dest-btn.open{border-color:color-mix(in srgb,var(--acc) 35%,transparent);background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .cap-dest-btn.open .cap-dest-name-btn{color:var(--acc)}/* #421: the name is the manager toggle now, so it carries the open accent */
-.cap-dest-btn.unset{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 38%,transparent)}  /* the semantic tint recipe, warn-routed (same mix as .ag-toggle.ag-focus.on) */
 .cap-dest-name-btn{display:inline-flex;align-items:center;gap:5px;font:inherit;color:inherit;background:none;border:none;padding:2px 4px 2px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;min-width:0;flex-shrink:1}/* flex-shrink:1 overrides the global button{flex-shrink:0} so a long inbox name truncates instead of pushing the ↗ out (same root cause as .cap-chip-pick) */
 .cap-dest-name-btn:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}
 .cap-dest-jump{flex-shrink:0;display:inline-flex;align-items:center;font-size:11px;color:var(--muted);background:none;border:none;border-left:1px solid var(--bdr-ui);padding:0 7px;cursor:pointer}  /* #421: the ↗ jump segment (navigation moved OFF the big name zone); left-divider + shrink-proof like .cap-chip-rm */
@@ -10910,14 +10909,19 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   // (second strip) to change, add, remove, or reorder inboxes. Navigation to the inbox point
   // moves to the small trailing ↗ jump segment, so "capturing never navigates you" holds for
   // every large click zone. (The pencil is retired: the name now does its job.)
-  const dest = document.createElement('div'); dest.className = 'cap-dest-btn' + (captureManage ? ' open' : '') + (inbox ? '' : ' unset');
+  const dest = document.createElement('div'); dest.className = 'cap-dest-btn' + (captureManage ? ' open' : '');
   const name = document.createElement('button'); name.type = 'button'; name.className = 'cap-dest-name-btn';
-  name.innerHTML = `<span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${inbox ? escHtml(crumbLabel(inbox)) : 'set an inbox…'}</span>`;
+  // #559: no inbox is a WORKING state, not a gate — captures land at the top level, and the
+  // chip names that destination honestly (no slot number: the slot is empty, top level is
+  // the fallback, not the slot's value). Neutral ink: a working default is not a warning.
+  name.innerHTML = inbox
+    ? `<span class="cap-slot-n">${captureSlot === 10 ? '0' : captureSlot}</span> <span class="cap-dest-name">${escHtml(crumbLabel(inbox))}</span>`
+    : `<span class="cap-dest-name">top level</span>`;
   name.setAttribute('aria-expanded', String(captureManage));
-  name.title = inbox ? 'Choose or manage inboxes' : 'Set an inbox';
+  name.title = inbox ? 'Choose or manage inboxes' : 'Captures land at the top level. Click to set an inbox.';
   name.setAttribute('aria-label', inbox
     ? `Capture destination: inbox ${captureSlot === 10 ? '0' : captureSlot}, ${crumbLabel(inbox)}. Click to choose or manage inboxes.`
-    : 'No inbox set. Click to choose one.');
+    : 'Capture destination: top level (no inbox set). Click to choose or manage inboxes.');
   name.addEventListener('click', () => { captureManage = !captureManage; renderCaptureStrip(); });
   dest.appendChild(name);
   if (inbox) {
@@ -10931,10 +10935,10 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
 
   const input = document.createElement('textarea');
   input.id = 'cap-input'; input.className = 'cap-input'; input.rows = 1; input.value = captureDraft;
-  input.placeholder = inbox ? 'Type a point to capture…' : 'Set an inbox first…';
+  input.placeholder = 'Type a point to capture…';
   input.setAttribute('aria-label', 'Text to capture');
   input.spellcheck = true;
-  input.addEventListener('input', () => { captureDraft = input.value; capBtn.disabled = !inbox || !input.value.trim(); autoGrowCapInput(input); });
+  input.addEventListener('input', () => { captureDraft = input.value; capBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', capInputKeydown);
   // pending agenda-"+" due date: a removable chip so the target date is visible and dismissable (#463, P2/P4)
   if (captureDue !== null) {
@@ -10950,7 +10954,7 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   row.appendChild(dest); // input leads on every width (content before chrome); destination, commit, dismiss follow
 
   const capBtn = document.createElement('button'); capBtn.type = 'button'; capBtn.className = 'cap-go'; capBtn.textContent = 'Capture';
-  capBtn.disabled = !inbox || !(captureDraft || '').trim(); capBtn.addEventListener('click', () => doCapture());
+  capBtn.disabled = !(captureDraft || '').trim(); capBtn.addEventListener('click', () => doCapture());
   row.appendChild(capBtn);
 
   // no in-strip close: the toolbar toggle is the open AND close door (aria-pressed), same as the agenda strip; Esc and the chord also close
@@ -11087,9 +11091,11 @@ function captureAddInbox() {
 }
 
 function doCapture() {
-  const inbox = inboxAt(captureSlot) || resolveInbox();
+  // #559: capture works with ZERO setup. No inbox configured → the top level is the
+  // working default (the link-and-create locked default, `resolveInbox() || root`);
+  // setting an inbox is the refinement, never the gate. Config must not precede value.
+  const inbox = inboxAt(captureSlot) || resolveInbox() || root;
   const text = (captureDraft || '').replace(/\s+$/, ''); // drop trailing blank lines/space
-  if (!inbox) { captureManage = true; renderCaptureStrip(); return; }  // no destination → open the picker
   if (!text.trim()) { flashHint('Type something to capture'); return; } // P4: never silent (UXP-83); the toast is the one feedback channel
   pushUndo();
   const n = mkNode(text);
@@ -11106,18 +11112,18 @@ function doCapture() {
   const dueLabel = captureDue !== null ? ` · due ${formatDateConcrete(captureDue)}` : '';
   captureDue = null; // one capture consumes the pending date; the next is an ordinary capture
   // the running count rides the canonical toast (§6 one-pattern rule); no in-strip feedback line
-  flashHint(`✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'} · ${crumbLabel(inbox)}${dueLabel}`);
+  flashHint(`✓ Captured ${captureCount === 1 ? '1 point' : captureCount + ' points'} · ${inbox === root ? 'top level' : crumbLabel(inbox)}${dueLabel}`);
   renderCaptureStrip(); // clear + keep the strip open for the next capture (brain-dump flow)
 }
 
-// Append one markdown-aware point (like doCapture) to the resolved inbox. Returns the node,
-// or null if there is no inbox / the text is blank. Shared by the URL-append route (#465);
-// the text is PLAIN TEXT into node.text — never evaluated, no pill promotion from the source.
+// Append one markdown-aware point (like doCapture) to the resolved inbox, or to the top
+// level when no inbox is set (#559: the same zero-setup default as the strip). Returns the
+// node, or null if the text is blank. Shared by the URL-append route (#465); the text is
+// PLAIN TEXT into node.text — never evaluated, no pill promotion from the source.
 function appendTextToInbox(text) {
   const t = String(text || '').replace(/\s+$/, '');
   if (!t.trim()) return null;
-  const inbox = resolveInbox();
-  if (!inbox) return null;
+  const inbox = resolveInbox() || root;
   pushUndo();
   const n = mkNode(t);
   n.type = deriveTypeFromText(t) || 'ul';
@@ -11164,10 +11170,11 @@ function handleUrlAppend() {
   // combine into one point's text: the shared body, then a title/url if they add info
   const text = buildSharePointText(params.get('append'), params.get('title'), params.get('url'));
   if (!text) return;
-  const n = appendTextToInbox(text);
-  if (!n) { flashHint('Set a point as your inbox to capture from a link (a point’s bullet menu → Set as inbox).'); return; }
+  const n = appendTextToInbox(text);   // never null for non-blank text (#559: top level is the zero-setup default)
+  if (!n) return;
   render();
-  flashHint(`✓ Captured to ${crumbLabel(resolveInbox())}: ${textForDisplay(n).slice(0, 40)}`);
+  const dest = resolveInbox();
+  flashHint(`✓ Captured to ${dest ? crumbLabel(dest) : 'top level'}: ${textForDisplay(n).slice(0, 40)}`);
 }
 
 // ─── journal / daily-notes ────────────────────────────────────────────────────
@@ -24980,7 +24987,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the destination name) to pick a slot, add or remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes. When Pointliner is installed as an app (or open on the web), you can also capture from a link: opening it with ?append=your%20text in the address adds that text as a point to your inbox, and sharing a page or selection to Pointliner from your system share menu does the same. It is added as plain text (never run as a pill), and the address is cleaned up so a reload will not add it twice; if you have no inbox set, it tells you and adds nothing.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. It works with nothing set up: with no inbox chosen, captures land at the top level of the document. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the destination name) to pick a slot, add or remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes. When Pointliner is installed as an app (or open on the web), you can also capture from a link: opening it with ?append=your%20text in the address adds that text as a point to your inbox, and sharing a page or selection to Pointliner from your system share menu does the same. It is added as plain text (never run as a pill), and the address is cleaned up so a reload will not add it twice; with no inbox set it lands at the top level, like any capture.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
