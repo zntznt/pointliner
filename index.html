@@ -7975,7 +7975,7 @@ function openFormulaDialog(node, lhs, kindLabel, disp) {
         { label: 'cell above @-1', insert: `@-1$${col1}` },
         { label: 'row № @#', insert: '@#' },
       ],
-      hint: 'References: $N = column N in this row · @R$C = a cell · @-1 = the row above · @2 / @> = first data / last row · vsum/vmean/vcount/vmin/vmax over a range like @2$' + col1 + '..@-1$' + col1 + '. Document variables and the full math grammar work. Leave empty to clear the formula.',
+      hint: 'A column or row formula for this table. References like $N and @R$C are in the concept guide. Leave empty to clear the formula.',
       preview: src => {
         src = (src || '').trim();
         if (!src) return cur != null ? '<span class="io-preview-bad">Empty. Saving clears this formula</span>' : '';
@@ -10359,7 +10359,7 @@ function openCheckDialog(nodeId, targets = null) {
           { label: 'and( )',   insert: el => insertAndSelect(el, 'and(', 'test, test', ')') },
           { label: 'count("")', insert: el => insertAndSelect(el, 'count("', 'is:todo', '")') },
         ],
-        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children with sum/avg/count(prop). Combine tests with and(…) or or(…), flip one with not(…). count("is:todo") counts the points matching a search below this one, so structure is testable: count("-has:hp") == 0. e.g. sum(cost) <= budget · and(hours <= 8, count(score) >= 3)',
+        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children and combine with and/or/not, see the concept guide. e.g. sum(cost) <= budget',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -16487,7 +16487,7 @@ function openDiceDialog({ title, submitLabel, expr = '', existing = null, onResu
     submitLabel: submitLabel || 'Roll',
     fields: [
       { key:'expr', label:'Formula', placeholder:'e.g. 2d6+3  4d6kh3  2d6!  4dF', value: (expr || '').replace(/\s+/g,''), chips: DICE_CHIPS,
-        hint:'kh/kl = keep high/low · ! = exploding · rK = reroll dice ≤K once (4d6r1kh3) · dF = Fate die · >=,<=,>,<,= = success pool (6d10>=7) · @var modifiers supported' },
+        hint:'A dice expression like 2d6+3. Keep/reroll, exploding, Fate and success-pool syntax are in the concept guide.' },
     ],
     validate: v => !!parseDice(v.expr, collectVars()),
     onSubmit: v => {
@@ -18410,7 +18410,7 @@ function openOracleDialog({ onResult }) {
     fields: [
       { key: 'body', label: 'Odds (Yes weight | No weight)', value: 'Yes 1 | No 1', chips,
         placeholder: 'Yes 3 | No 1',
-        hint: 'Pick a likelihood, or set the odds yourself. A "+ swing" chip adds the Yes-and / No-but twists (a six-way answer). The weight after each option tunes its chance, and can be a {= expression} over variables. Click the pill to ask again. You can also type one in a point: {oracle: likely} or {oracle: likely + swing}.',
+        hint: 'Pick a likelihood, or set the odds yourself. A "+ swing" chip adds the Yes-and / No-but twists (a six-way answer). The weight after each option tunes its chance, and can be a {= expression} over variables. Click the pill to ask again.',
         preview: v => {
           if (splitTopLevel(v, '|').length < 2) return `<span class="io-preview-bad">Two options, e.g. Yes 3 | No 1</span>`;
           const roll = build(v);
@@ -20221,7 +20221,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
         chips: MATH_CHIPS,
-        hint: 'Functions: sqrt, sin, log, min, max, … · logic and(x>0, y>0), or(…), not(x) · constants π/e/today · units c2f, km2mi · dates date(2026,12,31), daysuntil(due), asdate(today+90) · roll up children with sum/avg/count/min/max(prop), count("is:todo") for a subtree query count, deeper with a scope: sum(cost, subtree) or sum(cost, 2) · words(subtree). Full reference in the concept guide.',
+        hint: 'A live calculation over variables and child points. Full reference in the concept guide.',
         // live preview rendered right below the input as the user types
         preview: v => {
           if (!v) return '';

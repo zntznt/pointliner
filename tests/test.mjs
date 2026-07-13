@@ -7431,7 +7431,10 @@ test('subtree aggregation: render + export + front-door wiring (src pins)', () =
   assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
   assert.ok(_src.includes("id:'rollups'") && _src.includes("syn:'{= sum(cost)}'"), 'GUIDE rollups entry or sum example missing');
   assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
-  assert.ok(_src.includes('sum/avg/count/min/max(prop)'), 'math dialog hint missing min/max aggregation');
+  // #610 trimmed the math dialog hint (it duplicated the guide); the front door for the min/max
+  // rollup is now the concept-guide `rollups` entry, reached via the dialog's ? button. Pin the
+  // guide body, not the hint, so the feature keeps a discoverable home after the trim.
+  assert.ok(_src.includes('sum, avg, count, min or max'), 'concept-guide rollups entry must document min/max (the front door after #610 trimmed the math hint)');
 });
 
 test('#557 firstEmptyRollup — flags a sum/avg over an empty prop scope; excludes count; ignores non-rollups', () => {
