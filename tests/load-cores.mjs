@@ -216,7 +216,7 @@ export function loadCores() {
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText',
     'clockFillFor','completingChildIndex','clockCompletionCue','progressCount','tallyMarkers',
-    'parseMeter','resolveMeter','meterBar','formatMeter','childPropNumber',
+    'parseMeter','resolveMeter','meterBar','formatMeter','meterPool','childPropNumber',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
