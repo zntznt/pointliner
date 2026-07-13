@@ -54,6 +54,25 @@ with the rest of the math.)
 
 ---
 
+## Progress clocks
+
+A clock you fill by hand, one segment at a time, for a rising danger, a countdown or any fuse that
+fills as a situation develops. Where a progress bar counts your tasks for you, a clock is yours to
+advance whenever the story says so. It is a staple of solo and tabletop play.
+
+```
+[o 0/6]     a fresh six-segment clock (change the 6 for any size, a 4, an 8)
+```
+
+It shows as a ring that fills up, with the exact count beside it. **Click** the clock to advance it
+one segment, or **Shift+click** to step it back. From the keyboard, focus it and press **Enter** to
+advance or **Shift+Enter** to step back. Insert one from the menu with `@clock`.
+
+In an exported Markdown or text file the clock is written as its ring and count, so a half-full
+six-clock reads as a filled half-ring next to `3/6`.
+
+---
+
 ## Properties
 
 Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and

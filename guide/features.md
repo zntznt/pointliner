@@ -89,6 +89,8 @@ A live calculator that can see your outline. Math pills recompute on their own. 
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
   ([constraints](computing-numbers.md#make-the-outline-check-itself-constraints))
 - **Progress cookies.** Drop `[/]` or `[%]` for a live tally of checkboxes and child to-dos.
+- **Progress clocks.** Drop `[o 0/6]` for a segmented tension clock you fill by hand, click to
+  advance. ([progress clocks](tasks-and-organizing.md#progress-clocks))
   ([progress](computing-numbers.md#progress-bars))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
   ([variables](computing-numbers.md#variables-in-math))

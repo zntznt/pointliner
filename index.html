@@ -995,6 +995,14 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 /* progress cookie [/]/[%] — a muted monospace tally; goes success-hued when complete */
 .cookie{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 5px;border-radius:4px;vertical-align:baseline;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
 .cookie-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+/* progress clock [o N/M]: the cookie's compact bracket look, but CLICKABLE (advances a
+   manual counter). The ring glyph is content, the mono count is truth. #646. */
+.clock{display:inline-flex;align-items:baseline;gap:3px;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 6px;border-radius:999px;vertical-align:baseline;line-height:1.5;cursor:pointer;user-select:none;background:color-mix(in srgb,var(--acc) 10%,transparent);color:var(--acc);transition:background .12s,box-shadow .12s}
+.clock:hover{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.clock:active{transform:translateY(.5px)}
+.clock:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.clock-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+@media(prefers-reduced-motion:reduce){.clock{transition:none}}
 /* per-node properties — a row of key:value chips below the content */
 .props-area{display:flex;flex-wrap:wrap;gap:4px;padding:1px 3px 3px;flex:1;min-width:0}
 .prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:4px;padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
@@ -2958,6 +2966,56 @@ function progressCount(node, seqs = allSequences(), depth = 1) {
 function formatProgressCookie(kind, done, total) {
   if (kind === 'pct') return '[' + (total ? Math.round(100 * done / total) : 0) + '%]';
   return '[' + done + '/' + total + ']';
+}
+
+// ── progress clocks ([o N/M]) ─────────────────────────────────────────────────
+// A manually-advanced segmented tension clock (Blades/Ironsworn). It joins the [/]
+// progress-cookie authoring family (the [...] bracket home): the token [o N/M] is
+// plain text in node.text (no sidecar, OPML round-trips for free), but UNLIKE the
+// cookie its N is authored/clicked, not computed. The glyph is a quarter-fill ring
+// in the same unicode-string idiom as the sparkline — export-safe, DOM-free, pure.
+const CLOCK_RE = /\[o (\d+)\/(\d+)\]/g;   // e.g. [o 3/6]; global for the render/flatten walks
+const CLOCK_RING = '○◔◑◕●';               // 0,1,2,3,4 quarters filled
+// Parse one "[o N/M]" body → {done,total}, or null (→ the token stays literal text,
+// the [...] escape-hatch rule). Strict bounds so a stray "[o 9/6]" never miscounts.
+function parseClock(done, total) {
+  const d = Number(done), t = Number(total);
+  if (!Number.isInteger(d) || !Number.isInteger(t)) return null;
+  if (t < 1 || t > 99) return null;
+  if (d < 0 || d > t) return null;
+  return { done: d, total: t };
+}
+// The ring glyph for a fill: 0 is always ○ and a full clock always ●; the middle
+// rounds to the nearest quarter (a 6-clock's 1/6 shows ◔, 3/6 ◑, and so on).
+function clockGlyph(done, total) {
+  if (total < 1) return CLOCK_RING[0];
+  if (done <= 0) return CLOCK_RING[0];
+  if (done >= total) return CLOCK_RING[4];
+  const q = Math.round(done / total * 4);
+  return CLOCK_RING[Math.min(3, Math.max(1, q))];   // never ○ or ● for a partial clock
+}
+// The display / export string: "◕ 3/6". Same string in the pill and in flattenArtifacts.
+function formatClock(done, total) {
+  return clockGlyph(done, total) + ' ' + done + '/' + total;
+}
+// Advance (dir=+1) or step back (dir=-1) a clock, clamped to [0,total]. Returns the
+// new "[o N/M]" token text (pure — the caller splices it into node.text).
+function advanceClock(done, total, dir) {
+  const n = Math.min(total, Math.max(0, done + (dir < 0 ? -1 : 1)));
+  return '[o ' + n + '/' + total + ']';
+}
+// Rewrite the ORDINAL-th valid clock token in `text` by dir (+1/-1). Pure; returns the
+// new text (unchanged if the ordinal is out of range or that token is out-of-bounds).
+// The ordinal counts only VALID clocks, matching the render (an invalid [o 9/6] is not a
+// pill, so it is skipped here too — the pill ordinals and text ordinals stay aligned).
+function advanceClockInText(text, ordinal, dir) {
+  let seen = -1;
+  return String(text || '').replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    if (!pc) return m;                 // invalid token: not a pill, not counted
+    seen++;
+    return seen === ordinal ? advanceClock(pc.done, pc.total, dir) : m;
+  });
 }
 
 // ── depth scope: the shared "how deep" vocabulary (UXP-159) ───────────────────
@@ -5114,6 +5172,17 @@ function mdInline(s) {
     const full = total > 0 && done === total ? ' cookie-full' : '';
     return stash(`<span class="cookie${full}" aria-label="${done} of ${total} done">${txt}</span>`);
   });
+  // progress clock [o N/M]: a quarter-fill ring + the exact count. Unlike the cookie its
+  // numbers are LITERAL in the token (not computed), so it renders regardless of cookieNode.
+  // No index is stamped: the click handler counts a clicked pill's position among the node's
+  // .clock spans (DOM order == text order) to reach the matching Nth [o ] in node.text — the
+  // same "Nth marker" model as task checkboxes. An out-of-bounds token stays literal text.
+  s = s.replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    if (!pc) return m;
+    const full = pc.done === pc.total ? ' clock-full' : '';
+    return stash(`<span class="clock${full}" role="button" tabindex="0" aria-label="Clock, ${pc.done} of ${pc.total} filled">${formatClock(pc.done, pc.total)}</span>`);
+  });
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
@@ -6411,6 +6480,7 @@ const INSERT_CMDS = [
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Insert' },
+  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock you fill by hand: click a segment to advance, Shift+click to step back. Edit the 6 for a bigger or smaller clock (a 4, 8, and so on).', ex:'[o 0/6]', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
@@ -13411,6 +13481,9 @@ function onKeyDown(e, id, content) {
     // spoiler block: Enter/Space reveals/re-conceals it (the keyboard twin of its click)
     const spoil = e.target.closest?.('.md-spoiler');
     if (spoil && e.target === spoil) { e.preventDefault(); toggleSpoiler(spoil); return; }
+    // progress clock: Enter/Space advances it, Shift+Enter steps back (the keyboard twin of its click)
+    const clk = e.target.closest?.('.clock');
+    if (clk && e.target === clk) { e.preventDefault(); advanceClockAt(clk, e.shiftKey ? -1 : 1); return; }
     const pchip = e.target.closest?.('.prop-chip');
     if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
     // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
@@ -15581,6 +15654,10 @@ function insertInlineArtifact(id, nodeId, content) {
     // a cookie is plain computed text (no sidecar) — insert the [/] recipe; it
     // renders as a live [done/total] tally. Type [%] by hand for the percent form.
     applyInlineInsertion(nodeId, offset, '[/]');
+  } else if (id === 'clock') {
+    // a clock is plain text in the same [...] family (no sidecar) — insert [o 0/6],
+    // the Blades default; edit the 6 for any size, click a segment to advance. #646.
+    applyInlineInsertion(nodeId, offset, '[o 0/6]');
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -23176,7 +23253,13 @@ function flattenArtifacts(text, node, varMap) {
     const { done, total } = progressCount(node, allSequences(), depth);
     return formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
   });
-  return flattenSpoilers(cooked);
+  // progress clocks freeze to their ring + count string ("◑ 3/6"), export-safe unicode like
+  // the sparkline; an out-of-bounds token stays literal (parseClock → null). #646.
+  const clocked = cooked.replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    return pc ? formatClock(pc.done, pc.total) : m;
+  });
+  return flattenSpoilers(clocked);
 }
 
 // A one-way export can't conceal, so a spoiler line ">! text" exports as "(spoiler) text"
@@ -23587,16 +23670,18 @@ document.getElementById('outline').addEventListener('click', e => {
   searchHashtag(tag);
 });
 
-// hidden-note indicator + spoiler-block reveals (same delegated pattern as hashtags:
-// mousedown is swallowed so the caret never moves — the caret invariant — and click acts)
+// hidden-note indicator + spoiler-block reveals + clock advance (same delegated pattern as
+// hashtags: mousedown is swallowed so the caret never moves — the caret invariant — and click acts)
 document.getElementById('outline').addEventListener('mousedown', e => {
-  if (e.target.closest('.note-ind') || e.target.closest('.md-spoiler')) { e.preventDefault(); e.stopPropagation(); }
+  if (e.target.closest('.note-ind') || e.target.closest('.md-spoiler') || e.target.closest('.clock')) { e.preventDefault(); e.stopPropagation(); }
 }, true);
 document.getElementById('outline').addEventListener('click', e => {
   const ind = e.target.closest('.note-ind');
   if (ind) openNoteEditor(ind.dataset.noteId);
   const sp = e.target.closest('.md-spoiler');
   if (sp) toggleSpoiler(sp);
+  const clk = e.target.closest('.clock');
+  if (clk) advanceClockAt(clk, e.shiftKey ? -1 : 1);   // Shift-click steps back
   const chip = e.target.closest('.prop-chip');
   if (chip) openPropChip(chip);
 });
@@ -23607,6 +23692,25 @@ document.getElementById('outline').addEventListener('click', e => {
 function toggleSpoiler(sp) {
   const shown = sp.classList.toggle('revealed');
   sp.setAttribute('aria-expanded', shown ? 'true' : 'false');
+}
+
+// Advance the clicked clock by dir (+1/-1). The clock's ORDINAL is its position among
+// the node's .clock pills (DOM order == text order, both from mdInline), which maps to
+// the Nth [o ] token in node.text via the pure advanceClockInText. Writes text, saves,
+// re-renders the one node (the same edit-raw/render-pretty round trip as the cookie).
+function advanceClockAt(clk, dir) {
+  const content = clk.closest('.node-content');
+  if (!content) return;
+  const node = nodeById(content.dataset.id);
+  if (!node) return;
+  const pills = [...content.querySelectorAll('.clock')];
+  const ordinal = pills.indexOf(clk);
+  if (ordinal < 0) return;
+  const next = advanceClockInText(node.text, ordinal, dir);
+  if (next === node.text) return;      // no-op (clamped at an end) — nothing to save
+  node.text = next;
+  markDirty();
+  rerenderNode(node.id);
 }
 
 // A property chip opens its editor: a date chip (due/start) → the Schedule
@@ -26062,6 +26166,14 @@ const GUIDE = [
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
+    ] },
+  { id:'clock', cat:'todos', covers:['clock'],
+    title:'Progress clocks',
+    body:"A clock you fill by hand, one segment at a time, for tracking a rising danger, a countdown or any fuse that fills as a situation develops. Unlike a progress bar, which counts your tasks for you, a clock is yours to advance whenever the story says so. Type [o 0/6] for a six-segment clock (change the 6 for any size, such as a 4 or an 8). It shows as a ring that fills up, with the exact count beside it. Click the clock to advance it one segment, or Shift+click to step it back. From the keyboard, focus it and press Enter to advance or Shift+Enter to step back. In an exported file the clock is written as its ring and count, for example a half-full six-clock reads as a filled half-ring next to 3/6.",
+    examples:[
+      { syn:'[o 0/6]',        desc:'a fresh six-segment clock' },
+      { syn:'click',          desc:'advance one segment (Shift+click steps back)' },
+      { syn:'[o 4/4]',        desc:'a full clock (a filled ring)' },
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
