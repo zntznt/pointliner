@@ -24,7 +24,9 @@ The everyday outliner. This is the part you use without thinking about it.
 - **Secret and spoiler blocks.** Start a line with `>!` to hide it behind a blur until you click
   or press it to reveal. ([secret blocks](writing-and-formatting.md#secret-and-spoiler-blocks))
 - **Emoji.** Type `:` and a name (`:fire`, `:tada`) to pick from a menu, or type the full
-  `:shortcode:`. ([emoji](writing-and-formatting.md#emoji))
+  `:shortcode:`. Around 500 names, including a solo-RPG set for a game journal (`:dragon:`,
+  `:sword:`, `:dice:`). ([emoji](writing-and-formatting.md#emoji), full
+  [reference](emoji-shortcodes.md))
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
   with `[#A]` priorities. ([to-dos](tasks-and-organizing.md#to-dos-and-tasks))
 - **Collapse and zoom.** Fold any branch; click a bullet to zoom in and work on just that subtree.

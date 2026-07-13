@@ -40,7 +40,8 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
 - **[What Pointliner can do](features.md)** is the scannable feature map: every capability in one
   line, with links to where you learn it. Skim this if you just want to know "can it do X?"
 - **[Writing and formatting](writing-and-formatting.md)** is headings and point types, inline
-  styling, tables, footnotes, images and per-point notes.
+  styling, tables, footnotes, images, emoji and per-point notes. (The full
+  [emoji shortcode reference](emoji-shortcodes.md) lists every `:name:`.)
 - **[Getting around](getting-around.md)** is the everyday outliner: navigating, searching, nesting,
   zoom, hashtags. The plain outliner moves, no pills involved.
 - **[Tasks and organizing](tasks-and-organizing.md)** is to-dos, custom workflows, properties,
