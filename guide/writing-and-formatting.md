@@ -67,8 +67,10 @@ also just type the full shortcode (`:sparkles:`) and it turns into the emoji whe
 There are around 500 shortcodes covering the everyday set (faces, hands, `:fire:`, `:star:`,
 `:rocket:`, `:warning:`, `:check:`, weather, food, travel) plus a solo-RPG lean for a game journal:
 `:dice:` 🎲, `:sword:` ⚔️, `:shield:` 🛡️, `:dragon:` 🐉, `:skull:` 💀, `:wizard:` 🧙, `:castle:` 🏰,
-`:scroll:` 📜, `:potion:` ⚗️, `:crown:` 👑 and more. For the exhaustive set, your operating system's
-own emoji picker (`Ctrl/Cmd+.` on most systems) browses everything.
+`:scroll:` 📜, `:potion:` ⚗️, `:crown:` 👑 and more. The
+[emoji shortcode reference](emoji-shortcodes.md) lists every name, grouped by theme. For anything
+outside the set, your operating system's own emoji picker (`Ctrl/Cmd+.` on most systems) browses
+everything.
 
 ## Tables
 

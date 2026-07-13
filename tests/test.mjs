@@ -12694,3 +12694,32 @@ test('clock (#646) — advanceClockInText rewrites the Nth VALID clock, counting
     'the invalid [o 9/6] is skipped; pill and text ordinals stay aligned');
   assert.equal(c.advanceClockInText('a [o 3/6]', 5, 1), 'a [o 3/6]', 'an out-of-range ordinal is a no-op');
 });
+
+// #594 — the emoji shortcode reference (guide/emoji-shortcodes.md) is generated from the live
+// EMOJI map, so it must not drift. This is the drift guard: every shortcode you can TYPE must be
+// documented. If someone adds an emoji to EMOJI in index.html without regenerating the guide, this
+// fails and names the missing shortcodes. Regenerate the page (the scratch generator reads EMOJI and
+// re-emits the grouped tables) rather than hand-editing it.
+test('#594 — the emoji reference guide covers every EMOJI shortcode (drift guard)', () => {
+  const EMOJI = vm.runInContext("typeof EMOJI === 'object' && EMOJI ? EMOJI : null", c._context);
+  assert.ok(EMOJI && typeof EMOJI === 'object', 'the EMOJI map is reachable from index.html');
+  const names = Object.keys(EMOJI);
+  assert.ok(names.length > 400, `EMOJI has a real dictionary (found ${names.length})`);
+
+  const guidePath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'emoji-shortcodes.md');
+  const guide = readFileSync(guidePath, 'utf8');
+  // Every code-spanned `:name:` in the guide (both the primary column and the "Also" aliases).
+  const inGuide = new Set([...guide.matchAll(/`:([^:`]+):`/g)].map(m => m[1]));
+
+  const missing = names.filter(n => !inGuide.has(n));
+  assert.equal(missing.length, 0,
+    `guide/emoji-shortcodes.md is missing ${missing.length} shortcode(s) present in EMOJI: ` +
+    missing.slice(0, 25).map(n => ':' + n + ':').join(' ') +
+    '\nRegenerate the guide from the EMOJI map instead of editing it by hand.');
+
+  // Anchors: a structurally-broken guide (empty tables) must fail loudly, and the solo-RPG lean the
+  // page is built around must always be present.
+  for (const anchor of ['dragon', 'fire', 'dice', 'sword', 'crown']) {
+    assert.ok(inGuide.has(anchor), `the guide lists :${anchor}:`);
+  }
+});
