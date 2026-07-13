@@ -1127,6 +1127,31 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .sf-tip{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--muted);line-height:1.4;border-top:1px solid var(--bdr);padding-top:4px;margin-top:1px}
 .slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.07em}
 
+/* link graph overlay (#516): a near-full-viewport panel, same scrim token as the dialogs */
+#graph-back{position:fixed;inset:0;z-index:790;background:var(--scrim);display:none;align-items:center;justify-content:center}
+#graph-back.on{display:flex;animation:io-fade .14s ease}
+#graph-panel{position:relative;width:calc(100vw - 48px);height:calc(100dvh - 48px);max-width:1200px;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);display:flex;flex-direction:column;overflow:hidden;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
+.graph-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.graph-title{font-size:14px;font-weight:600}
+.graph-count{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+.graph-close{margin-left:auto;flex-shrink:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--muted);background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-sm);cursor:pointer;transition:color .12s,border-color .12s}
+.graph-close:hover{color:var(--fg);border-color:var(--acc)}
+.graph-close:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.graph-canvas{flex:1;position:relative;overflow:hidden;min-height:0}
+.graph-canvas svg{display:block;width:100%;height:100%}
+.graph-edge{stroke:var(--bdr);stroke-width:1.2}
+.graph-edge.graph-edge-broken{stroke:color-mix(in srgb,var(--bad) 45%,transparent);stroke-dasharray:3 3}
+.graph-node{cursor:pointer}
+.graph-node circle{fill:color-mix(in srgb,var(--acc) 22%,var(--bg));stroke:var(--acc);stroke-width:1.4;transition:fill .1s}
+.graph-node:hover circle,.graph-node:focus circle{fill:color-mix(in srgb,var(--acc) 40%,var(--bg))}
+.graph-node:focus{outline:none}
+.graph-node:focus circle{stroke-width:2.4}
+.graph-node.graph-node-broken circle{fill:color-mix(in srgb,var(--bad) 16%,var(--bg));stroke:var(--bad)}
+.graph-node text{fill:var(--fg);font-size:11px;font-family:var(--font);pointer-events:none;dominant-baseline:middle}
+.graph-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--muted);text-align:center;padding:24px}
+.graph-empty-title{font-size:14px;font-weight:600;color:var(--fg)}
+.graph-empty-hint{font-size:12.5px;line-height:1.55;max-width:380px}
+
 /* inline-insert dialog (links / images) */
 #io-back{position:fixed;inset:0;z-index:800;background:var(--scrim);display:none;align-items:flex-start;justify-content:center}
 #io-back.on{display:flex;animation:io-fade .14s ease}
@@ -1992,6 +2017,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
+    <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
     <button id="btn-notes" class="tbtn-toggle active" title="Notes" aria-label="Notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
@@ -2080,6 +2106,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="brace-preview" aria-hidden="true"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card" role="dialog" aria-modal="true"></div></div>
+<!-- link graph overlay (#516): a full-viewport browsable web of the document's internal links -->
+<div id="graph-back"><div id="graph-panel" role="dialog" aria-modal="true" aria-label="Link graph"></div></div>
 <!-- drag indicator -->
 <div id="drop-line"></div>
 <!-- multi-select action bar -->
@@ -16707,6 +16735,153 @@ function collectLinks(rootNode) {
   return result;
 }
 
+// ── relationship graph (#516: the browsable recognition surface) ──────────────
+// The outline is recallable by QUERYING (search/tag/link); the graph is the
+// RECOGNITION half — look at the web of links and find "that NPC we met" without
+// naming it. Pure + Node-testable: consumes the collectLinks() index and a titleOf
+// callback (the brokenLinksReport pattern), never touches the DOM.
+
+// A clean label for a graph node: the point's OWN identity, not its rendered-with-
+// mirrors text. displayTitle expands a mirror link `[[#id|]]` into the target's title
+// (right for the outline, noise on a graph label — "The Prior" would read "The Prior
+// Torn Letter"), so here link tokens collapse to their caption or vanish, never to the
+// target's content. Pure + Node-testable: takes the raw first line, no tree read.
+function graphNodeLabel(firstLine) {
+  let t = String(firstLine || '');
+  // drop block prefixes the same way textForDisplay does (heading #, quote >, task/ol markers)
+  t = t.replace(/^\s*(#{1,6}\s+|>\s+|-\s+\[[ xX]\]\s+|\d+\.\s+|[-*+]\s+)/, '');
+  // collapse links to their caption; a mirror/plain link (no caption) drops out entirely
+  t = t.replace(/\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|([^\]\n]*))?\]\]/gi, (_, cap) => cap || '');
+  // strip inline emphasis markers so a bolded title reads plain
+  t = t.replace(/(\*\*|__|\*|_|`|~~|\+\+)(.+?)\1/g, '$2');
+  return t.replace(/\s+/g, ' ').trim();
+}
+
+// Build the undirected graph from the link index: one node per point that
+// PARTICIPATES in at least one internal link (isolated points are excluded so the
+// view is a web, not a starfield), one edge per linked pair (A→B and B→A and a
+// repeated A→B all collapse to a single undirected edge). Broken targets (a link to
+// a deleted point) become their own nodes flagged `broken`, so a dangling reference
+// is visible, not silently dropped. `deg` is the connection count, used to size a
+// node (a hub reads bigger). Returns { nodes:[{id,title,deg,broken}], edges:[{a,b}] }.
+function graphModel(links, titleOf, brokenSet) {
+  const broken = brokenSet || new Set(links?.broken || []);
+  const deg = new Map();               // id -> connection count
+  const edgeSet = new Set();           // "a\x00b" (a<b) to dedup undirected pairs
+  const edges = [];
+  const bump = id => deg.set(id, (deg.get(id) || 0) + 1);
+  for (const src of Object.keys(links?.outgoing || {})) {
+    for (const { target } of links.outgoing[src]) {
+      if (target === src) continue;                          // no self-loops in the view
+      const [a, b] = src < target ? [src, target] : [target, src];
+      const key = a + '\x00' + b;
+      if (edgeSet.has(key)) continue;
+      edgeSet.add(key);
+      edges.push({ a, b });
+      bump(src); bump(target);
+    }
+  }
+  const nodes = [...deg.keys()].map(id => ({
+    id,
+    title: (broken.has(id) ? null : (titleOf(id) ?? null)) || '(untitled)',
+    deg: deg.get(id),
+    broken: broken.has(id),
+  }));
+  return { nodes, edges };
+}
+
+// Deterministic force-directed layout (Fruchterman-Reingold, seeded). PURE: the same
+// model always lays out to the same coordinates, because the initial placement is a
+// hash of each node id (never Math.random, which is unavailable in the test realm and
+// would break resume anyway), and the simulation runs a FIXED iteration count. Returns
+// a Map(id -> {x,y}) inside [0,width]×[0,height] with a small margin. Node ids drive
+// the seed, so adding a node shifts only local positions, not the whole board.
+function graphLayout(model, opts = {}) {
+  const width = opts.width || 800, height = opts.height || 600;
+  const margin = opts.margin ?? 24;
+  const iters = opts.iterations || 300;
+  const nodes = model?.nodes || [], edges = model?.edges || [];
+  const pos = new Map();
+  if (!nodes.length) return pos;
+  // seed: a stable hash of the id → an angle+radius on a spiral, so initial placement
+  // is deterministic and spread out (not all stacked at one point).
+  const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  const cx = width / 2, cy = height / 2;
+  nodes.forEach((n, i) => {
+    const h = hash(n.id);
+    const ang = (h % 1000) / 1000 * Math.PI * 2;
+    const rad = (0.15 + ((h >>> 10) % 1000) / 1000 * 0.35) * Math.min(width, height);
+    pos.set(n.id, { x: cx + Math.cos(ang) * rad, y: cy + Math.sin(ang) * rad });
+  });
+  if (nodes.length === 1) { pos.set(nodes[0].id, { x: cx, y: cy }); return clampPositions(pos, width, height, margin); }
+  const area = width * height;
+  const k = Math.sqrt(area / nodes.length) * 0.75;     // ideal edge length
+  const k2 = k * k;
+  let temp = Math.min(width, height) / 8;               // cooling schedule
+  const cool = temp / (iters + 1);
+  const disp = new Map(nodes.map(n => [n.id, { x: 0, y: 0 }]));
+  for (let it = 0; it < iters; it++) {
+    for (const n of nodes) disp.set(n.id, { x: 0, y: 0 });
+    // repulsion (every pair pushes apart)
+    for (let i = 0; i < nodes.length; i++) {
+      const pi = pos.get(nodes[i].id);
+      for (let j = i + 1; j < nodes.length; j++) {
+        const pj = pos.get(nodes[j].id);
+        let dx = pi.x - pj.x, dy = pi.y - pj.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 0.01) { dx = ((hash(nodes[i].id + nodes[j].id) % 100) - 50) / 100; dy = ((hash(nodes[j].id + nodes[i].id) % 100) - 50) / 100; d2 = dx * dx + dy * dy || 0.01; }
+        const f = k2 / d2;                               // repulsive force ~ k^2 / d
+        const di = disp.get(nodes[i].id), dj = disp.get(nodes[j].id);
+        di.x += dx * f; di.y += dy * f;
+        dj.x -= dx * f; dj.y -= dy * f;
+      }
+    }
+    // attraction along edges (a spring pulls linked nodes together)
+    for (const e of edges) {
+      const pa = pos.get(e.a), pb = pos.get(e.b);
+      if (!pa || !pb) continue;
+      const dx = pa.x - pb.x, dy = pa.y - pb.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+      const f = (dist * dist) / k;                       // attractive force ~ d^2 / k
+      const ux = dx / dist, uy = dy / dist;
+      const da = disp.get(e.a), db = disp.get(e.b);
+      da.x -= ux * f; da.y -= uy * f;
+      db.x += ux * f; db.y += uy * f;
+    }
+    // weak gravity toward center: without it, DISCONNECTED components (a doc with several
+    // unlinked clusters) drift to opposite corners under pure repulsion and waste the canvas.
+    // A gentle pull keeps every cluster on screen without collapsing the layout's shape.
+    for (const n of nodes) {
+      const p = pos.get(n.id), d = disp.get(n.id);
+      d.x += (cx - p.x) * 0.04;
+      d.y += (cy - p.y) * 0.04;
+    }
+    // integrate, capped by temperature, then cool
+    for (const n of nodes) {
+      const p = pos.get(n.id), d = disp.get(n.id);
+      const dl = Math.sqrt(d.x * d.x + d.y * d.y) || 0.01;
+      p.x += (d.x / dl) * Math.min(dl, temp);
+      p.y += (d.y / dl) * Math.min(dl, temp);
+    }
+    temp = Math.max(temp - cool, 1);
+  }
+  return clampPositions(pos, width, height, margin);
+}
+
+// Rescale a position map to fit [margin, dim-margin] on each axis, preserving the
+// layout's shape (a uniform-per-axis fit). Pure helper for graphLayout.
+function clampPositions(pos, width, height, margin) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of pos.values()) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
+  const spanX = maxX - minX || 1, spanY = maxY - minY || 1;
+  const iw = Math.max(width - margin * 2, 1), ih = Math.max(height - margin * 2, 1);
+  for (const p of pos.values()) {
+    p.x = margin + (p.x - minX) / spanX * iw;
+    p.y = margin + (p.y - minY) / spanY * ih;
+  }
+  return pos;
+}
+
 // Broken-links report (backlog #4). Pure: enumerate every link whose target is missing, same-doc AND
 // cross-doc, from data already computed elsewhere — collectLinks().{outgoing,broken} for same-doc, and
 // the (built-but-until-now-unread) workspaceIndex.outgoing for cross-doc. Returns a flat list of
@@ -24350,6 +24525,140 @@ document.getElementById('agenda-strip').addEventListener('keydown', e => {
   if (e.key !== 'Tab') e.stopPropagation();
 });
 
+// ─── link graph (#516: the browsable recognition surface) ─────────────────────
+// A full-viewport overlay drawing the document's internal links as a node-link web,
+// so a long campaign / large note set is recallable by LOOKING, not only searching.
+// SVG (not the app's usual divs) because edges are lines — the one place SVG earns
+// its keep over positioned divs; it stays self-contained (no library, CSP-clean).
+// The layout is the pure graphModel/graphLayout cores; this function is only paint +
+// interaction. Click or Enter/Space a node to zoom the outline to that point.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+let graphOpen = false, graphReturnFocus = null;
+function openGraph() {
+  const back = document.getElementById('graph-back');
+  const panel = document.getElementById('graph-panel');
+  graphReturnFocus = document.activeElement;
+  graphOpen = true;
+  back.classList.add('on');
+  const btn = document.getElementById('btn-graph');
+  btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+  renderGraph(panel);
+  // move focus into the panel so Escape/Tab are trapped here (P3) and a keyboard user
+  // starts on a control, not stranded on the now-hidden toolbar button
+  requestAnimationFrame(() => panel.querySelector('.graph-close')?.focus());
+}
+function closeGraph() {
+  graphOpen = false;
+  document.getElementById('graph-back').classList.remove('on');
+  const btn = document.getElementById('btn-graph');
+  btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
+  const rf = graphReturnFocus; graphReturnFocus = null;
+  if (rf && rf.isConnected) rf.focus(); else btn.focus();
+}
+function toggleGraph() { if (graphOpen) closeGraph(); else openGraph(); }
+
+function renderGraph(panel) {
+  panel.innerHTML = '';
+  // header: title, live count, close
+  const head = document.createElement('div'); head.className = 'graph-head';
+  const ttl = document.createElement('div'); ttl.className = 'graph-title'; ttl.textContent = 'Link graph';
+  const model = graphModel(collectLinks(), id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; });
+  const cnt = document.createElement('div'); cnt.className = 'graph-count';
+  cnt.textContent = model.nodes.length ? `${model.nodes.length} points, ${model.edges.length} links` : '';
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'graph-close';
+  close.setAttribute('aria-label', 'Close link graph'); setIcon(close, { fa: 'fa-solid fa-xmark', fb: '×' });
+  close.addEventListener('click', closeGraph);
+  head.append(ttl, cnt, close);
+  panel.appendChild(head);
+
+  const canvas = document.createElement('div'); canvas.className = 'graph-canvas';
+  panel.appendChild(canvas);
+
+  if (!model.nodes.length) {
+    const empty = document.createElement('div'); empty.className = 'graph-empty';
+    const et = document.createElement('div'); et.className = 'graph-empty-title'; et.textContent = 'No links yet';
+    const eh = document.createElement('div'); eh.className = 'graph-empty-hint';
+    eh.textContent = 'Link points together and they appear here as a web you can browse. Type [[ inside a point to link it to another, then reopen the graph.';
+    empty.append(et, eh); canvas.appendChild(empty);
+    return;
+  }
+
+  // size the layout to the canvas box (measured after it is in the DOM)
+  const rect = canvas.getBoundingClientRect();
+  const W = Math.max(rect.width, 320), H = Math.max(rect.height, 240);
+  const pos = graphLayout(model, { width: W, height: H, margin: 40, iterations: 320 });
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.setAttribute('role', 'group');
+  svg.setAttribute('aria-label', `Link graph: ${model.nodes.length} points`);
+
+  // edges first (under the nodes)
+  for (const e of model.edges) {
+    const pa = pos.get(e.a), pb = pos.get(e.b);
+    if (!pa || !pb) continue;
+    const ln = document.createElementNS(SVG_NS, 'line');
+    ln.setAttribute('x1', pa.x); ln.setAttribute('y1', pa.y);
+    ln.setAttribute('x2', pb.x); ln.setAttribute('y2', pb.y);
+    const na = model.nodes.find(n => n.id === e.a), nb = model.nodes.find(n => n.id === e.b);
+    ln.setAttribute('class', 'graph-edge' + ((na?.broken || nb?.broken) ? ' graph-edge-broken' : ''));
+    svg.appendChild(ln);
+  }
+
+  // nodes: radius scales gently with degree; label truncated to keep the web legible
+  const maxDeg = Math.max(...model.nodes.map(n => n.deg), 1);
+  const go = (id) => { closeGraph(); zoomInto(id); };
+  for (const n of model.nodes) {
+    const p = pos.get(n.id); if (!p) continue;
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('class', 'graph-node' + (n.broken ? ' graph-node-broken' : ''));
+    g.setAttribute('transform', `translate(${p.x},${p.y})`);
+    g.setAttribute('tabindex', '0');
+    g.setAttribute('role', 'button');
+    const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title;
+    g.setAttribute('aria-label', (n.broken ? 'Broken link target' : label) + `, ${n.deg} link${n.deg === 1 ? '' : 's'}. Activate to open.`);
+    const r = 4 + Math.round((n.deg / maxDeg) * 7);
+    const c = document.createElementNS(SVG_NS, 'circle');
+    c.setAttribute('r', r);
+    g.appendChild(c);
+    const t = document.createElementNS(SVG_NS, 'text');
+    // flip the label to the LEFT for nodes in the right ~30% of the canvas, so a label
+    // never runs off the right edge (the margin reserves room for the circle, not the text)
+    if (p.x > W * 0.7) { t.setAttribute('x', -(r + 4)); t.setAttribute('text-anchor', 'end'); }
+    else t.setAttribute('x', r + 4);
+    t.textContent = label;
+    g.appendChild(t);
+    // mousedown+preventDefault keeps the caret invariant; the click twin fires navigation
+    g.addEventListener('mousedown', ev => ev.preventDefault());
+    if (!n.broken) {
+      g.addEventListener('click', () => go(n.id));
+      g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(n.id); } });
+    } else {
+      g.style.cursor = 'default';
+    }
+    svg.appendChild(g);
+  }
+  canvas.appendChild(svg);
+}
+
+document.getElementById('btn-graph').addEventListener('click', toggleGraph);
+document.getElementById('graph-back').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeGraph(); return; }
+  // trap Tab within the panel (a modal), like the io-card dialogs
+  if (e.key !== 'Tab') return;
+  const panel = document.getElementById('graph-panel');
+  const focusable = [...panel.querySelectorAll('[tabindex="0"],button:not(:disabled)')];
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+// click the scrim (outside the panel) closes, matching the dialog dismissal idiom
+document.getElementById('graph-back').addEventListener('mousedown', e => {
+  if (e.target.id === 'graph-back') closeGraph();
+});
+
 // ─── boot ─────────────────────────────────────────────────────────────────────
 
 // file menu
@@ -25393,6 +25702,16 @@ const GUIDE = [
       { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
       { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
       { syn:'…in other notes',      desc:'mentions in your other folder documents; click to open' },
+    ] },
+
+  { id:'link-graph', cat:'links',
+    title:'Link graph',
+    body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long campaign or a big set of notes: the town near the coast, the character who betrayed you, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.",
+    examples:[
+      { syn:'Toolbar graph button', desc:'open the link graph (the linked-dots icon)' },
+      { syn:'Click a dot',          desc:'jump to that point in the outline' },
+      { syn:'A larger dot',         desc:'a hub: a point many others link to' },
+      { syn:'A red dot',            desc:'a link whose target point was deleted' },
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across notes',

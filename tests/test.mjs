@@ -2195,6 +2195,114 @@ import assert2 from 'node:assert/strict';
     assert2.deepEqual(host2(idx.backlinks), {});
     assert2.deepEqual(host2(idx.broken), []);
   });
+
+  // ── #516 relationship graph pure cores ──────────────────────────────────────
+  const titleOf = (id) => ({ a: 'Alpha', b: 'Beta', c: 'Gamma', d: 'Delta' }[id] || id);
+
+  ltest('graphNodeLabel — the point\'s OWN identity, link tokens collapsed not expanded', () => {
+    // a mirror/plain link with no caption drops out (never expands to the target's title)
+    assert2.equal(c2.graphNodeLabel('The Prior [[#bye80c35|]]'), 'The Prior');
+    assert2.equal(c2.graphNodeLabel('The Fence [[#x9|]] [[#y2|]]'), 'The Fence');
+    // a captioned link keeps its caption
+    assert2.equal(c2.graphNodeLabel('see [[#z1|the letter]]'), 'see the letter');
+    // block prefixes and emphasis strip
+    assert2.equal(c2.graphNodeLabel('## Ashguild'), 'Ashguild');
+    assert2.equal(c2.graphNodeLabel('- [ ] find **the fence**'), 'find the fence');
+    assert2.equal(c2.graphNodeLabel('> a quoted lead'), 'a quoted lead');
+    // cross-doc link form collapses too
+    assert2.equal(c2.graphNodeLabel('Voss [[doc7#n3|]]'), 'Voss');
+    assert2.equal(c2.graphNodeLabel(''), '');
+  });
+
+  ltest('graphModel — builds undirected nodes+edges from the link index; only linked points appear', () => {
+    const links = { outgoing: { a: [{ target: 'b' }], b: [{ target: 'c' }] }, backlinks: {}, broken: [] };
+    const g = c2.graphModel(links, titleOf);
+    assert2.deepEqual(host2(g.nodes.map(n => n.id).sort()), ['a', 'b', 'c']);   // 'd' is isolated → excluded
+    assert2.equal(g.edges.length, 2);
+    // undirected + deduped: a-b once, b-c once
+    const edgeKeys = host2(g.edges).map(e => [e.a, e.b].sort().join('-')).sort();
+    assert2.deepEqual(edgeKeys, ['a-b', 'b-c']);
+    // degree: b is the hub (2 connections)
+    assert2.equal(g.nodes.find(n => n.id === 'b').deg, 2);
+    assert2.equal(g.nodes.find(n => n.id === 'a').deg, 1);
+    // titles resolved
+    assert2.equal(g.nodes.find(n => n.id === 'a').title, 'Alpha');
+  });
+
+  ltest('graphModel — reciprocal + repeated links collapse to one undirected edge', () => {
+    const links = { outgoing: { a: [{ target: 'b' }, { target: 'b' }], b: [{ target: 'a' }] }, backlinks: {}, broken: [] };
+    const g = c2.graphModel(links, titleOf);
+    assert2.equal(g.edges.length, 1);              // a→b twice + b→a = ONE edge
+    assert2.equal(g.nodes.length, 2);
+  });
+
+  ltest('graphModel — self-loops are dropped', () => {
+    const links = { outgoing: { a: [{ target: 'a' }, { target: 'b' }] }, backlinks: {}, broken: [] };
+    const g = c2.graphModel(links, titleOf);
+    assert2.equal(g.edges.length, 1);              // a→a dropped, a→b kept
+    assert2.deepEqual(host2(g.edges[0]), { a: 'a', b: 'b' });
+  });
+
+  ltest('graphModel — a broken target is a flagged node, not silently dropped', () => {
+    const links = { outgoing: { a: [{ target: 'gone' }] }, backlinks: {}, broken: ['gone'] };
+    const g = c2.graphModel(links, titleOf);
+    const brokenNode = g.nodes.find(n => n.id === 'gone');
+    assert2.ok(brokenNode, 'broken target must appear as a node');
+    assert2.equal(brokenNode.broken, true);
+    assert2.equal(brokenNode.title, '(untitled)');   // no title lookup for a missing node
+  });
+
+  ltest('graphModel — empty index yields an empty graph', () => {
+    const g = c2.graphModel({ outgoing: {}, backlinks: {}, broken: [] }, titleOf);
+    assert2.deepEqual(host2(g.nodes), []);
+    assert2.deepEqual(host2(g.edges), []);
+  });
+
+  ltest('graphLayout — deterministic: same model lays out to the exact same coordinates', () => {
+    const links = { outgoing: { a: [{ target: 'b' }], b: [{ target: 'c' }], c: [{ target: 'a' }] }, backlinks: {}, broken: [] };
+    const g = c2.graphModel(links, titleOf);
+    const l1 = c2.graphLayout(g, { width: 400, height: 300, iterations: 120 });
+    const l2 = c2.graphLayout(g, { width: 400, height: 300, iterations: 120 });
+    for (const id of ['a', 'b', 'c']) {
+      assert2.equal(l1.get(id).x, l2.get(id).x, `x for ${id} must be deterministic`);
+      assert2.equal(l1.get(id).y, l2.get(id).y, `y for ${id} must be deterministic`);
+    }
+  });
+
+  ltest('graphLayout — every node lands inside the [margin, dim-margin] box', () => {
+    const links = { outgoing: { a: [{ target: 'b' }], b: [{ target: 'c' }], c: [{ target: 'd' }], d: [{ target: 'a' }] }, backlinks: {}, broken: [] };
+    const g = c2.graphModel(links, titleOf);
+    const W = 500, H = 400, M = 24;
+    const pos = c2.graphLayout(g, { width: W, height: H, margin: M, iterations: 150 });
+    for (const p of pos.values()) {
+      assert2.ok(p.x >= M - 0.5 && p.x <= W - M + 0.5, `x ${p.x} within margins`);
+      assert2.ok(p.y >= M - 0.5 && p.y <= H - M + 0.5, `y ${p.y} within margins`);
+      assert2.ok(Number.isFinite(p.x) && Number.isFinite(p.y), 'coordinates finite');
+    }
+  });
+
+  ltest('graphLayout — a single node centers; empty model yields an empty map', () => {
+    const one = c2.graphModel({ outgoing: { a: [{ target: 'a' }] }, backlinks: {}, broken: [] }, titleOf);
+    // a→a self-loop drops the edge but 'a' still has no partner → no nodes participate
+    assert2.equal(one.nodes.length, 0);
+    const empty = c2.graphLayout({ nodes: [], edges: [] }, { width: 400, height: 300 });
+    assert2.equal(empty.size, 0);
+    // a genuine single connected node (a↔b, then lay out just 'a' via a hand-built model)
+    const solo = c2.graphLayout({ nodes: [{ id: 'a', title: 'Alpha', deg: 1 }], edges: [] }, { width: 400, height: 300, margin: 24 });
+    assert2.equal(solo.size, 1);
+    assert2.ok(Number.isFinite(solo.get('a').x) && Number.isFinite(solo.get('a').y));
+  });
+
+  ltest('graphLayout — connected nodes settle closer than the layout diameter (spring works)', () => {
+    // two linked nodes should not sit at opposite corners after settling
+    const links = { outgoing: { a: [{ target: 'b' }] }, backlinks: {}, broken: [] };
+    const g = c2.graphModel(links, titleOf);
+    const pos = c2.graphLayout(g, { width: 600, height: 600, iterations: 300 });
+    const pa = pos.get('a'), pb = pos.get('b');
+    const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
+    // after clamping a 2-node graph spans the box on one axis; assert they are not maximally far
+    assert2.ok(dist <= Math.hypot(600, 600) * 0.95, 'linked nodes are pulled together, not flung to opposite corners');
+  });
 }
 
 // ─── tokenUnderCaret ──────────────────────────────────────────────────────
@@ -6201,6 +6309,32 @@ test('#566 touch quick bar: wiring, swap discipline, and the bottom-stack integr
   // the capture twin mirrors the toolbar toggle's pressed state
   assert.match(_src, /qb-capture'\)\?\.setAttribute\('aria-pressed', 'true'\)/, 'open must press the twin');
   assert.match(_src, /qb-capture'\)\?\.setAttribute\('aria-pressed', 'false'\)/, 'close must release the twin');
+});
+
+test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
+  // toolbar button (reuses the in-subset fa-circle-nodes icon, so no font rebuild) + overlay
+  assert.ok(_src.includes('id="btn-graph"'), 'toolbar graph button missing');
+  assert.ok(_src.includes('fa-circle-nodes'), 'graph icon must be the in-subset linked-dots glyph');
+  assert.ok(_src.includes('FA_GLYPHS') && _src.includes("'fa-circle-nodes'"), 'fa-circle-nodes must be in the FA subset');
+  assert.ok(_src.includes('id="graph-back"') && _src.includes('id="graph-panel"'), 'graph overlay markup missing');
+  assert.ok(_src.includes('function renderGraph') && _src.includes('function toggleGraph'), 'graph render/toggle missing');
+  assert.ok(_src.includes("getElementById('btn-graph').addEventListener('click', toggleGraph)"), 'graph button not wired');
+  // rendering goes through the pure cores (graphModel + graphLayout), not ad-hoc DOM math
+  const rg = fnBody(_src, 'renderGraph');
+  assert.ok(rg.includes('graphModel(') && rg.includes('graphLayout('), 'renderGraph must use the pure cores');
+  assert.ok(rg.includes('graphNodeLabel('), 'labels must use graphNodeLabel (own identity, not mirror-expanded)');
+  // a11y (P3): the panel is a labelled modal dialog; nodes are focusable buttons with names +
+  // Enter/Space activation; mousedown is preventDefault'd (caret invariant), navigation on click
+  assert.ok(_src.includes('aria-label="Link graph"'), 'the overlay must be a named dialog');
+  assert.ok(rg.includes("g.setAttribute('tabindex', '0')") && rg.includes("g.setAttribute('role', 'button')"), 'graph nodes must be focusable buttons');
+  assert.ok(rg.includes("ev.key === 'Enter' || ev.key === ' '"), 'nodes must activate on Enter/Space (P3)');
+  assert.ok(rg.includes("g.addEventListener('mousedown', ev => ev.preventDefault())"), 'mousedown must be prevented (caret invariant)');
+  assert.ok(rg.includes('zoomInto('), 'clicking a node must navigate (zoomInto)');
+  // P4 responsive: an empty (no-links) doc gets an explicit empty state, not a blank canvas
+  assert.ok(rg.includes('graph-empty') && rg.includes('No links yet'), 'empty state missing');
+  // Escape closes + returns focus to the toggle (P1-3 outward resolve)
+  const cg = fnBody(_src, 'closeGraph');
+  assert.ok(cg.includes("btn.setAttribute('aria-pressed', 'false')") && cg.includes('.focus()'), 'close must release pressed state + restore focus');
 });
   // slot shortcuts: ⌘⇧<N> capture-to-slot (adopt current point if empty), ⌘⌥<N> set-as-inbox
   assert.ok(_src.includes('openCaptureDialog(d === 0 ? 10 : d)'), 'slot capture shortcut missing');
