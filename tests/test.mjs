@@ -5322,6 +5322,23 @@ test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
     `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
 });
 
+test('GUIDE drift guard: every essSection has its own Shortcuts page entry', () => {
+  // The Shortcuts nav group is one page per essSection (built by shortcutsSectionBody).
+  // A new essSection value with no matching page entry would silently vanish from the
+  // guide nav, so pin the two sets against each other in the source.
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const sections = new Set([...guideBlock.matchAll(/essSection:\s*'([^']+)'/g)].map(m => m[1]));
+  const pages = new Set([...guideBlock.matchAll(/shortcutsSectionBody\('([^']+)'\)/g)].map(m => m[1]));
+  assert.ok(sections.size >= 5, `expected the essential sections, parsed only: ${[...sections].join(', ')}`);
+  assert.deepEqual([...sections].filter(s => !pages.has(s)), [],
+    'essSection values with no Shortcuts page entry (add the page to GUIDE)');
+  assert.deepEqual([...pages].filter(s => !sections.has(s)), [],
+    'Shortcuts page entries whose essSection no longer exists (remove or rename the page)');
+  // the ? button's landing id stays on the first Shortcuts page
+  assert.ok(/id:'shortcuts',\s*cat:'shortcuts'/.test(guideBlock),
+    "the id 'shortcuts' entry (the ? landing page) is missing from the Shortcuts group");
+});
+
 // ── User-guide drift guards ───────────────────────────────────────────────────
 // The user guide (guide/**) restates a few CLOSED enumerated lists that also live
 // in the live code (MODIFIERS, the is: search operators). Those lists are the kind

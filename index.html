@@ -1289,10 +1289,9 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-preview-note{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
 
 /* shortcuts / syntax reference */
-/* Shortcut rows — used inside the guide's Shortcuts entry (.guide-sc). Section eyebrow,
-   two-column key/label grid, wrapping keycap group. (These were the retired corner panel's
-   row styles; kept because the guide reuses them for one shortcut-row styling.) */
-.sc-sec{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:13px 0 5px;padding:5px 0 4px}
+/* Shortcut rows — used inside the guide's Shortcuts pages (.guide-sc): a two-column
+   key/label grid with a wrapping keycap group. (These were the retired corner panel's
+   row styles; kept because the guide reuses them for the shortcut-row styling.) */
 .sc-row{display:grid;grid-template-columns:minmax(96px,124px) 1fr;gap:10px;align-items:baseline;padding:2.5px 0}
 .sc-keys{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
 .sc-or{color:var(--muted);font-size:10px;margin:0 1px}/* #414: no opacity fade on muted ink (DL §3); size stands under the UXP-118 connective-punctuation carve-out */
@@ -1326,14 +1325,24 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .guide-cat-badge{font-size:10px;font-weight:600;color:var(--acc);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
 .guide-entry-title{font-size:13px;font-weight:600;margin-bottom:5px}
 .guide-entry-body{font-size:12.5px;line-height:1.57;margin:0 0 8px;color:var(--fg)}
-/* Shortcuts entry reuses the panel's .sc-sec/.sc-row rows inside the guide pane: drop the
-   panel-scroll sticky and the leading section's top margin so it sits flush in the entry. */
-.guide-sc>.sc-sec:first-child{margin-top:0}
 .guide-ex{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12px}
 .guide-ex dt code{background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:1px 5px;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
 .guide-ex dd{color:var(--muted);align-self:center;margin:0}
 .guide-no-results{color:var(--muted);font-size:12.5px;padding:16px 12px;text-align:center}
-@media(max-width:540px){.guide-nav{width:150px}.guide-pane{padding:12px 14px}}
+@media(max-width:540px){
+  .guide-nav{width:150px}.guide-pane{padding:12px 14px}
+  /* #561: side-by-side term/definition clips at the right edge on phones (the card is
+     overflow:hidden, so a wide nowrap term overflows the auto|1fr grid and the definition
+     column is cut mid-word). Stack each pair: term above, definition wrapping below. */
+  .guide-ex{grid-template-columns:1fr;gap:2px}
+  .guide-ex dt code{white-space:normal;overflow-wrap:anywhere}
+  .guide-ex dd{align-self:start;margin:0 0 7px}
+  /* same stack for the Shortcuts pages' key/description rows (.sc-row is the same
+     two-column shape and squeezes its description into a word-per-line sliver here);
+     the keycaps drop their right-align (margin-left:auto is a column-layout look) */
+  .sc-row{grid-template-columns:1fr;gap:1px;padding:4px 0}
+  .guide-sc kbd{margin-left:0}
+}
 /* ── agenda strip (sits inside the toolbar) ──
    A vertical stack: the TOP bar holds the controls (a single Week/Month/Timeline view
    switcher + Done/Running filters) beside the always-present List, and the one active
@@ -1679,8 +1688,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* keep floating menus inside the viewport */
   #slash-menu{width:min(204px,calc(100vw - 16px))}
   #bpop{min-width:0;width:min(248px,calc(100vw - 16px))}
-  #file-menu{min-width:0;width:min(290px,calc(100vw - 16px))}
-  #io-card{margin-top:8vh}
+  /* #604: the narrow-sheet envelope. Below this breakpoint the content-heavy overlays stop
+     holding desktop pixel sizes (290px menu, 400px dialog, 680px guide cap, 8-16vh top
+     margins) and fill the screen minus an 8px gutter: full width, near-full-height cap,
+     minimal top margin. One shared behavior, not per-surface pixel tweaks (DL §4). */
+  #file-menu{min-width:0;width:calc(100vw - 16px);max-width:calc(100vw - 16px)}
+  #io-card{margin-top:8px;width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  #io-card.guide-open{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  .guide-wrap{height:calc(100dvh - 16px)}
   /* Agenda on phones: the desktop side-by-side (controls | rows) leaves the Due/Running
      rows only ~250px, so dated chips overflow into a hidden horizontal scroll. Stack the
      controls ABOVE the rows so the chips get the full width; the divider becomes a bottom
@@ -24748,12 +24763,21 @@ const GUIDE = [
   // Each cat entry is its own item in the guide's left list, grouped by category.
   // Bodies are written plainly: lead with what you can DO, then how, no jargon.
 
-  // Shortcuts: the guide's home entry (the Shortcuts category leads CATS). Its body is
-  // built by shortcutsGuideBody() from the same essential rows above, so the keyboard
-  // reference lives inside the guide, not a separate panel — one help surface.
-  { id:'shortcuts', cat:'shortcuts',
-    title:'Keyboard shortcuts',
-    bodyHtml: shortcutsGuideBody, searchText: shortcutsSearchText },
+  // Shortcuts: the guide's home group (the Shortcuts category leads CATS). One page per
+  // section, each built by shortcutsSectionBody() from the same essential rows above, so
+  // the keyboard reference lives inside the guide, not a separate panel — one help
+  // surface. The first page keeps the id 'shortcuts': it is the ? button's landing entry.
+  // A new essSection needs its page entry added here (the drift-guard test trips if not).
+  { id:'shortcuts', cat:'shortcuts', title:'Navigate',
+    bodyHtml: () => shortcutsSectionBody('Navigate'), searchText: () => shortcutsSectionText('Navigate') },
+  { id:'shortcuts-edit', cat:'shortcuts', title:'Edit',
+    bodyHtml: () => shortcutsSectionBody('Edit'), searchText: () => shortcutsSectionText('Edit') },
+  { id:'shortcuts-insert', cat:'shortcuts', title:'Insert',
+    bodyHtml: () => shortcutsSectionBody('Insert'), searchText: () => shortcutsSectionText('Insert') },
+  { id:'shortcuts-file', cat:'shortcuts', title:'File',
+    bodyHtml: () => shortcutsSectionBody('File'), searchText: () => shortcutsSectionText('File') },
+  { id:'shortcuts-select', cat:'shortcuts', title:'Select',
+    bodyHtml: () => shortcutsSectionBody('Select'), searchText: () => shortcutsSectionText('Select') },
 
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
@@ -25307,33 +25331,25 @@ const GUIDE = [
 // here. Keep this line right after the array's closing `];`. (Replaces the old
 // `(function buildShortcutsPanel` boundary, retired with the shortcuts panel.)
 
-// The Shortcuts guide entry's body: the same essential-shortcut rows the guide's Shortcuts
-// entry shows, grouped by essSection, reusing the .sc-sec/.sc-row/.sc-keys markup and CSS.
-// Built from the GUIDE essential rows — one source, so the guide and the essential registry
-// never drift.
-function shortcutsGuideBody() {
-  const sections = [];
-  const secMap = Object.create(null);
-  for (const e of GUIDE) {
-    if (!e.essential) continue;
-    if (!secMap[e.essSection]) { secMap[e.essSection] = []; sections.push(e.essSection); }
-    secMap[e.essSection].push(e);
-  }
+// One Shortcuts page's body: the essential-shortcut rows of ONE essSection, reusing the
+// .sc-row/.sc-keys markup and CSS (no section eyebrow — the page title carries it).
+// Built from the GUIDE essential rows — one source, so the pages and the essential
+// registry never drift.
+function shortcutsSectionBody(sec) {
   let html = '<div class="guide-sc">';
-  for (const sec of sections) {
-    html += `<div class="sc-sec">${escHtml(sec)}</div>`;
-    for (const e of secMap[sec]) {
-      const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('<span class="sc-or">/</span>');
-      html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
-    }
+  for (const e of GUIDE) {
+    if (!e.essential || e.essSection !== sec) continue;
+    const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('<span class="sc-or">/</span>');
+    html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
   }
   return html + '</div>';
 }
-// The searchable text for the Shortcuts entry: its keys + labels + section names, so the
-// guide search matches a shortcut (e.g. "bold", "indent") even though the entry has no plain body.
-function shortcutsSearchText() {
-  return GUIDE.filter(e => e.essential)
-    .map(e => e.keys.join(' ') + ' ' + e.essLabel + ' ' + e.essSection).join(' ');
+// The searchable text for one Shortcuts page: its keys + labels (+ the words a user
+// types to find the reference), so the guide search matches a shortcut (e.g. "bold",
+// "indent") even though the page has no plain body.
+function shortcutsSectionText(sec) {
+  return GUIDE.filter(e => e.essential && e.essSection === sec)
+    .map(e => e.keys.join(' ') + ' ' + e.essLabel).join(' ') + ' ' + sec + ' keyboard shortcuts';
 }
 
 // The `?` chrome button opens the one help surface — the Concept guide, on its Shortcuts
