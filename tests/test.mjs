@@ -12379,15 +12379,29 @@ test('clock (#646) — SOURCE PIN: advanceClockAt repaints in display mode, not 
 
 test('meter (#648) — parseMeter reads prop/prop, prop/lit, bare percent, and rejects garbage', () => {
   assert.deepEqual(host(c.parseMeter('meter: hp/hpmax')),
-    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'prop', v: 'hpmax' } }, 'prop over prop');
+    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'prop', v: 'hpmax' }, style: 'bar' }, 'prop over prop');
   assert.deepEqual(host(c.parseMeter('meter: hp/20')),
-    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 20 } }, 'prop over a literal max');
+    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 20 }, style: 'bar' }, 'prop over a literal max');
   assert.deepEqual(host(c.parseMeter('meter: 8/12')),
-    { value: { kind: 'lit', v: 8 }, max: { kind: 'lit', v: 12 } }, 'two literals');
+    { value: { kind: 'lit', v: 8 }, max: { kind: 'lit', v: 12 }, style: 'bar' }, 'two literals');
   assert.deepEqual(host(c.parseMeter('meter: hp')),
-    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 100 } }, 'bare value defaults max to 100 (percent)');
+    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 100 }, style: 'bar' }, 'bare value defaults max to 100 (percent)');
   assert.equal(c.parseMeter('meter: hp+/x'), null, 'a non-ref side is rejected');
   assert.equal(c.parseMeter('shuffle: a|b'), null, 'a non-meter brace body is not a meter');
+});
+
+test('meter (#648) — parseMeter reads an icon-pool style word; pool caps at 10 with bar fallback', () => {
+  assert.equal(host(c.parseMeter('meter: hp/5 hearts')).style, 'hearts', 'a trailing style word is captured');
+  assert.deepEqual(host(c.parseMeter('meter: hp/5 hearts')).max, { kind: 'lit', v: 5 }, 'the ratio still parses with a style word');
+  assert.equal(host(c.parseMeter('meter: slots/3 dots')).style, 'dots', 'dots style');
+  assert.equal(host(c.parseMeter('meter: hp/12')).style, 'bar', 'no style word defaults to bar');
+  assert.equal(c.parseMeter('meter: hp/5 wibble'), null, 'an unknown style word is not stripped, so the ratio no longer parses → null (shows {meter?})');
+  // the cap: a pool up to 10 renders as a pool; over 10 falls back to the bar (null).
+  assert.deepEqual(host(c.meterPool(3, 5)), { filled: 3, empty: 2 }, '3/5 → 3 filled, 2 empty');
+  assert.deepEqual(host(c.meterPool(10, 10)), { filled: 10, empty: 0 }, 'exactly 10 is the largest pool');
+  assert.equal(c.meterPool(5, 11), null, '11 exceeds the cap → bar fallback (the UI-safety guard)');
+  assert.equal(c.meterPool(5, 500), null, 'a huge max never renders 500 icons → bar fallback');
+  assert.equal(c.meterPool(5, 5.5), null, 'a non-integer max is not a pool');
 });
 
 test('meter (#648) — meterBar fills to round(value/max), clamped both ends', () => {
@@ -12418,6 +12432,21 @@ test('meter (#648) — a meter freezes to its bar string on export; unresolvable
   const node = { id: 'n', props: [{ key: 'hp', val: '8' }, { key: 'hpmax', val: '12' }], children: [] };
   assert.equal(c.flattenArtifacts('HP {meter: hp/hpmax} left', node, {}), 'HP ███████░░░ 8/12 left', 'resolved meter freezes to its bar');
   assert.equal(c.flattenArtifacts('{meter: mana/manamax}', node, {}), '{meter?}', 'a missing property exports the visible marker, not a wrong bar');
+});
+
+test('meter (#648) — every icon-pool glyph is in the FA subset AND has a ::before codepoint (font integrity)', () => {
+  // A pool style references an FA glyph. If that glyph is not in FA_GLYPHS + a ::before rule +
+  // the embedded solid woff2, it paints blank (the exact regression the woff2 re-subset had to
+  // avoid). This pins the reachable half: the style-map glyphs are all wired in code.
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const faSet = new Set(src.match(/FA_GLYPHS\s*=\s*new Set\(\[([^\]]*)\]/)[1].replace(/'/g, '').split(',').map(s => s.trim()));
+  const styleMap = fnBody(src, 'parseMeter'); // METER_POOL_STYLES is declared just above; grab the whole const
+  const poolGlyphs = [...src.match(/const METER_POOL_STYLES = \{([^}]*)\}/)[1].matchAll(/'(fa-[a-z-]+)'/g)].map(m => m[1]);
+  assert.ok(poolGlyphs.length >= 7, 'the seven pool styles are present');
+  for (const g of poolGlyphs) {
+    assert.ok(faSet.has(g), `${g} (a pool style glyph) must be in FA_GLYPHS or it paints blank`);
+    assert.ok(new RegExp(`\\.${g}::before\\{content:"\\\\[0-9a-f]+"\\}`).test(src), `${g} must have a ::before codepoint rule`);
+  }
 });
 
 test('clock (#646) — clockGlyph fills in quarters, never empty/full for a partial', () => {

@@ -96,8 +96,18 @@ The bar updates live as the properties change. You can fix the maximum with a nu
 can be a plain number, so `{meter: 8/12}` draws a fixed bar. If a property is missing or is not a
 number, the meter shows a small `{meter?}` marker instead of a wrong bar.
 
+Add a style word at the end for a row of icons instead of a bar:
+
+```
+{meter: hp/5 hearts}     →    a row of five hearts, three filled and two dimmed
+```
+
+The styles are `dots`, `boxes`, `hearts`, `skulls`, `stars`, `shields` and `droplets`. Filled
+icons show the current value, dimmed ones the rest. An icon row is capped at 10, so a larger
+maximum falls back to the bar rather than drawing a runaway row.
+
 A meter is a display only, so it is not clickable. Insert one from the menu with `@meter`. It
-exports as its bar and count.
+exports as its bar and count (an icon row exports as the bar, since a flat file has no icons).
 
 ---
 
