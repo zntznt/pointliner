@@ -102,6 +102,8 @@ Turn the outline into a lightweight planner.
   ([recurring](dates-and-planning.md#recurring-tasks))
 - **Agenda.** A built-in calendar, timeline (Gantt), and due-list view of your dated points.
   ([agenda](dates-and-planning.md#agenda-and-calendar))
+- **Timeline.** Browse every dated point in chronological order, grouped by month, as the history of
+  your document; calendar-aware. ([timeline](dates-and-planning.md#timeline))
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
   ([journal](dates-and-planning.md#daily-journal))
 - **Custom calendars.** Give a document a fictional calendar (your months, week, and era) and every

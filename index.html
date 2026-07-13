@@ -1152,6 +1152,26 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .graph-empty-title{font-size:14px;font-weight:600;color:var(--fg)}
 .graph-empty-hint{font-size:12.5px;line-height:1.55;max-width:380px}
 
+/* timeline overlay (#516): same overlay envelope as the graph, but a scrollable
+   chronological list body (grouped by month) instead of an SVG canvas */
+#timeline-back{position:fixed;inset:0;z-index:790;background:var(--scrim);display:none;align-items:center;justify-content:center}
+#timeline-back.on{display:flex;animation:io-fade .14s ease}
+#timeline-panel{position:relative;width:calc(100vw - 48px);height:calc(100dvh - 48px);max-width:820px;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);display:flex;flex-direction:column;overflow:hidden;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
+.tl-body{flex:1;overflow-y:auto;padding:4px 0 16px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+/* a month group: a sticky header, then its dated points down a spine */
+.tl-group{padding:0}
+.tl-month{position:sticky;top:0;background:var(--hbg);z-index:1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 18px 6px;border-bottom:1px solid var(--bdr)}
+.tl-item{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:baseline;padding:6px 18px;border:none;background:none;width:100%;text-align:left;font:inherit;color:var(--fg);cursor:pointer;position:relative;transition:background .09s}
+.tl-item:hover{background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.tl-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.tl-date{font-size:11.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tl-title{font-size:13px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl-item.tl-done .tl-title{opacity:.55;text-decoration:line-through}
+/* an urgency dot before the date, using the agenda's date-chip tint recipe */
+.tl-item.tl-overdue .tl-date{color:var(--bad)}
+.tl-item.tl-today .tl-date{color:var(--ok)}
+.tl-start .tl-date::before{content:'▸ '}
+
 /* inline-insert dialog (links / images) */
 #io-back{position:fixed;inset:0;z-index:800;background:var(--scrim);display:none;align-items:flex-start;justify-content:center}
 #io-back.on{display:flex;animation:io-fade .14s ease}
@@ -2018,6 +2038,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
+    <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
     <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
     <button id="btn-notes" class="tbtn-toggle active" title="Notes" aria-label="Notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
   </div>
@@ -2108,6 +2129,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 <div id="io-back"><div id="io-card" role="dialog" aria-modal="true"></div></div>
 <!-- link graph overlay (#516): a full-viewport browsable web of the document's internal links -->
 <div id="graph-back"><div id="graph-panel" role="dialog" aria-modal="true" aria-label="Link graph"></div></div>
+<!-- timeline overlay (#516): a full-viewport chronological browse of every dated point -->
+<div id="timeline-back"><div id="timeline-panel" role="dialog" aria-modal="true" aria-label="Timeline"></div></div>
 <!-- drag indicator -->
 <div id="drop-line"></div>
 <!-- multi-select action bar -->
@@ -16882,6 +16905,36 @@ function clampPositions(pos, width, height, margin) {
   return pos;
 }
 
+// ── timeline (#516: recognition-by-time) ──────────────────────────────────────
+// A chronological narrative of every dated point across the WHOLE date range,
+// grouped by month, so a long campaign or notebook is browsable by time ("that
+// was around when the war started") instead of only by an exact date search. This
+// is distinct from the agenda's Gantt, which is a near-term task scheduler: the
+// timeline spans the full archive and reads as history, not a work plan.
+//
+// Pure + Node-testable: consumes the collectDueDates() items and a `monthOf(epoch)`
+// callback that returns { key, label, sort } under the ACTIVE calendar (so a
+// fictional calendar's months and years drive the grouping without this core
+// touching activeCalendar). Returns chronological month groups, each with its
+// items in date order:
+//   [{ key, label, sort, items: [ {…item, epochDay} ] }]  sorted by `sort` asc.
+function timelineModel(items, monthOf) {
+  const groups = new Map();   // key -> { key, label, sort, items:[] }
+  for (const it of (items || [])) {
+    const ep = it.epochDay;
+    if (ep == null || !Number.isFinite(ep)) continue;   // undated / garbage epoch → skip
+    const m = monthOf(ep);
+    let g = groups.get(m.key);
+    if (!g) { g = { key: m.key, label: m.label, sort: m.sort, items: [] }; groups.set(m.key, g); }
+    g.items.push(it);
+  }
+  const out = [...groups.values()];
+  out.sort((a, b) => a.sort - b.sort);
+  // within a month, order by the point's own date, then done sinks under active
+  for (const g of out) g.items.sort((a, b) => (a.epochDay - b.epochDay) || ((a.done ? 1 : 0) - (b.done ? 1 : 0)));
+  return out;
+}
+
 // Broken-links report (backlog #4). Pure: enumerate every link whose target is missing, same-doc AND
 // cross-doc, from data already computed elsewhere — collectLinks().{outgoing,broken} for same-doc, and
 // the (built-but-until-now-unread) workspaceIndex.outgoing for cross-doc. Returns a flat list of
@@ -24659,6 +24712,109 @@ document.getElementById('graph-back').addEventListener('mousedown', e => {
   if (e.target.id === 'graph-back') closeGraph();
 });
 
+// ─── timeline (#516: recognition-by-time) ─────────────────────────────────────
+// The graph's chronological twin: a full-viewport overlay listing every dated point
+// down a spine, grouped by month under the ACTIVE calendar, so a campaign or notebook
+// is browsable as history ("that was around when the war started") instead of only by
+// an exact date search. Distinct from the agenda Gantt, which schedules the near term;
+// this spans the whole archive. The grouping/order is the pure timelineModel core.
+let timelineOpen = false, timelineReturnFocus = null;
+function openTimeline() {
+  const panel = document.getElementById('timeline-panel');
+  timelineReturnFocus = document.activeElement;
+  timelineOpen = true;
+  document.getElementById('timeline-back').classList.add('on');
+  const btn = document.getElementById('btn-timeline');
+  btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+  renderTimeline(panel);
+  requestAnimationFrame(() => panel.querySelector('.graph-close')?.focus());
+}
+function closeTimeline() {
+  timelineOpen = false;
+  document.getElementById('timeline-back').classList.remove('on');
+  const btn = document.getElementById('btn-timeline');
+  btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
+  const rf = timelineReturnFocus; timelineReturnFocus = null;
+  if (rf && rf.isConnected) rf.focus(); else btn.focus();
+}
+function toggleTimeline() { if (timelineOpen) closeTimeline(); else openTimeline(); }
+
+function renderTimeline(panel) {
+  panel.innerHTML = '';
+  const items = collectDueDates();
+  // month grouping under the active calendar: calComponents gives the (era-adjusted) year
+  // + month for a stable key, calMonthTitle the human header; sort by the raw month index
+  // so a fictional calendar's own months order correctly and Gregorian is byte-unchanged.
+  const monthOf = (ep) => {
+    const c = calComponents(ep);
+    return { key: c.year + ':' + c.month, label: calMonthTitle(ep), sort: c.year * 100 + c.month };
+  };
+  const groups = timelineModel(items, monthOf);
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+
+  const head = document.createElement('div'); head.className = 'graph-head';
+  const ttl = document.createElement('div'); ttl.className = 'graph-title'; ttl.textContent = 'Timeline';
+  const cnt = document.createElement('div'); cnt.className = 'graph-count';
+  cnt.textContent = total ? `${total} dated point${total === 1 ? '' : 's'}` : '';
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'graph-close';
+  close.setAttribute('aria-label', 'Close timeline'); setIcon(close, { fa: 'fa-solid fa-xmark', fb: '×' });
+  close.addEventListener('click', closeTimeline);
+  head.append(ttl, cnt, close);
+  panel.appendChild(head);
+
+  if (!total) {
+    const empty = document.createElement('div'); empty.className = 'graph-empty';
+    const et = document.createElement('div'); et.className = 'graph-empty-title'; et.textContent = 'No dated points yet';
+    const eh = document.createElement('div'); eh.className = 'graph-empty-hint';
+    eh.textContent = 'Give points a start or due date and they line up here in time order. Type /due on a point, or use the bullet menu, then reopen the timeline.';
+    empty.append(et, eh); panel.appendChild(empty);
+    return;
+  }
+
+  const body = document.createElement('div'); body.className = 'tl-body';
+  const go = (id) => { closeTimeline(); zoomInto(id); };
+  for (const g of groups) {
+    const grp = document.createElement('div'); grp.className = 'tl-group';
+    const mh = document.createElement('div'); mh.className = 'tl-month'; mh.textContent = g.label;
+    grp.appendChild(mh);
+    for (const it of g.items) {
+      const row = document.createElement('button'); row.type = 'button';
+      // a due-only urgency tint (start-only points read as neutral "▸ begins" markers)
+      const urg = it.due != null ? (it.state === 'overdue' ? ' tl-overdue' : it.state === 'today' ? ' tl-today' : '') : ' tl-start';
+      row.className = 'tl-item' + (it.done ? ' tl-done' : '') + urg;
+      const dt = document.createElement('span'); dt.className = 'tl-date'; dt.textContent = calDayShort(it.epochDay);
+      const ti = document.createElement('span'); ti.className = 'tl-title'; ti.textContent = it.title;
+      row.append(dt, ti);
+      row.setAttribute('aria-label', `${calDayLabel(it.epochDay)}: ${it.title}${it.done ? ', done' : ''}. Activate to open.`);
+      row.addEventListener('mousedown', ev => ev.preventDefault());   // caret invariant
+      row.addEventListener('click', () => go(it.id));
+      grp.appendChild(row);
+    }
+    body.appendChild(grp);
+  }
+  panel.appendChild(body);
+  // land the scroll near TODAY so a long history opens at "now", not year one
+  requestAnimationFrame(() => {
+    const todayGroup = groups.findIndex(g => g.items.some(it => it.epochDay >= dueDateToday()));
+    if (todayGroup > 0) body.querySelectorAll('.tl-month')[todayGroup]?.scrollIntoView({ block: 'start' });
+  });
+}
+
+document.getElementById('btn-timeline').addEventListener('click', toggleTimeline);
+document.getElementById('timeline-back').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeTimeline(); return; }
+  if (e.key !== 'Tab') return;
+  const panel = document.getElementById('timeline-panel');
+  const focusable = [...panel.querySelectorAll('[tabindex="0"],button:not(:disabled)')];
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+document.getElementById('timeline-back').addEventListener('mousedown', e => {
+  if (e.target.id === 'timeline-back') closeTimeline();
+});
+
 // ─── boot ─────────────────────────────────────────────────────────────────────
 
 // file menu
@@ -25478,6 +25634,16 @@ const GUIDE = [
       { syn:'Month',      desc:'a month grid' },
       { syn:'Timeline',   desc:'bars across a scrolling day axis' },
       { syn:'Done / Running', desc:'filters: include done, show/hide started work' },
+    ] },
+
+  { id:'timeline', cat:'dates',
+    title:'Timeline',
+    body:"See the whole story of your document in time order, so you can find something by when it happened rather than by its exact date. Every point with a start or due date lines up in one chronological list, grouped by month, from the earliest to the far future. This is the history view for a long campaign or a big set of notes: the war, the treaty, the comet, in the order they land, so you can browse the arc instead of searching a date you half-remember. Open it from the hourglass button in the toolbar. Each entry shows its date and title, colored by urgency (overdue in red), with done points struck through and start-only points marked with a small arrow; click any entry to jump to that point. It opens scrolled near today, so a long history starts at 'now'. When a custom calendar is active, the months and years are your world's own, so a campaign reads in campaign time. This is different from the agenda's Timeline (a Gantt of the near-term schedule): this one spans the whole archive and reads as a chronicle, not a work plan.",
+    examples:[
+      { syn:'Toolbar hourglass button', desc:'open the timeline' },
+      { syn:'A month header',           desc:'groups the points dated in that month' },
+      { syn:'Click an entry',           desc:'jump to that point in the outline' },
+      { syn:'A red date',               desc:'a due date now past' },
     ] },
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',
