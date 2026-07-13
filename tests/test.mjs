@@ -12723,3 +12723,54 @@ test('#594 — the emoji reference guide covers every EMOJI shortcode (drift gua
     assert.ok(inGuide.has(anchor), `the guide lists :${anchor}:`);
   }
 });
+
+// ── #596 — GUIDE drift guard: every / and @ command is documented ─────────────
+// Every command in the two registries (BLOCK_CMDS = the / verbs, INSERT_CMDS = the @ inserts)
+// MUST appear in some concept-guide entry's covers:[…]. The original guard hardcoded the two id
+// lists in the test, which rotted: a command (rollpick, #579) shipped uncovered because nobody
+// updated the list. These tests DERIVE the id lists from the live registries, so a forgotten-in-
+// two-places command is structurally impossible. The guard-of-the-guard: each test asserts it
+// found a non-empty registry block, so a renamed/moved const can't make the guard pass vacuously.
+const GUIDE_SRC = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+
+// Every `id:'…'` inside a `const NAME = [ … ];` registry block. Throws (empty) if the block moved.
+function registryIds(src, name) {
+  const start = src.indexOf('const ' + name + ' = [');
+  if (start < 0) return [];
+  const end = src.indexOf('];', start);
+  return [...src.slice(start, end).matchAll(/\bid:'([^']+)'/g)].map(m => m[1]);
+}
+// Every id listed in any GUIDE entry's covers:[…] (a command is "documented" iff it is here).
+// Sliced between `const GUIDE = [` and the stable `GUIDE-END` boundary marker (index.html leaves
+// that marker specifically for this slice). A missing marker returns an empty slice, which the
+// caller's covers.size guard catches as a loud failure rather than a vacuous pass.
+function guideCoveredIds(src) {
+  const start = src.indexOf('const GUIDE = [');
+  const end = src.indexOf('// GUIDE-END', start);
+  const guide = end > start ? src.slice(start, end) : '';
+  const ids = new Set();
+  for (const m of guide.matchAll(/covers:\[([^\]]+)\]/g))
+    for (const id of m[1].matchAll(/'([^']+)'/g)) ids.add(id[1]);
+  return ids;
+}
+
+test('#596 — GUIDE drift guard: every BLOCK_CMDS (/ verb) id is covered', () => {
+  const ids = registryIds(GUIDE_SRC, 'BLOCK_CMDS');
+  assert.ok(ids.length > 15, `BLOCK_CMDS block found and non-empty (got ${ids.length}) — did the const move/rename?`);
+  const covered = guideCoveredIds(GUIDE_SRC);
+  assert.ok(covered.size > 20, `GUIDE covers tokens found (got ${covered.size}) — did the GUIDE block move?`);
+  const missing = ids.filter(id => !covered.has(id));
+  assert.deepEqual(missing, [],
+    `these / commands have no concept-guide entry: ${missing.join(', ')}\n` +
+    `(add each id to some GUIDE entry's covers:[…], or write a new entry)`);
+});
+
+test('#596 — GUIDE drift guard: every INSERT_CMDS (@ insert) id is covered', () => {
+  const ids = registryIds(GUIDE_SRC, 'INSERT_CMDS');
+  assert.ok(ids.length > 15, `INSERT_CMDS block found and non-empty (got ${ids.length}) — did the const move/rename?`);
+  const covered = guideCoveredIds(GUIDE_SRC);
+  const missing = ids.filter(id => !covered.has(id));
+  assert.deepEqual(missing, [],
+    `these @ commands have no concept-guide entry: ${missing.join(', ')}\n` +
+    `(add each id to some GUIDE entry's covers:[…], or write a new entry)`);
+});

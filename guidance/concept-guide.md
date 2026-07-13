@@ -64,23 +64,26 @@ Adding a ninth means adding to `CATS` too, or its entries render orphaned.
 
 Two tests in `tests/test.mjs` enforce that **every slash and @-menu command is documented**:
 
-- `GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE`
-- `GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE`
+- `#596 — GUIDE drift guard: every BLOCK_CMDS (/ verb) id is covered`
+- `#596 — GUIDE drift guard: every INSERT_CMDS (@ insert) id is covered`
 
-They extract every `covers:[…]` token from the `GUIDE` source block and assert that a
-hardcoded list of command ids is a subset. **When you add a `/` verb (`BLOCK_CMDS`) or
-an `@` insert (`INSERT_CMDS`):**
+Each test **derives** its id list from the live registry (it parses `id:'…'` out of the
+`const BLOCK_CMDS = [` / `const INSERT_CMDS = [` source block) and asserts every id appears
+in some GUIDE entry's `covers:[…]`. Because the list is derived, not hardcoded, a command
+you forget to document **cannot** slip past the guard. **When you add a `/` verb
+(`BLOCK_CMDS`) or an `@` insert (`INSERT_CMDS`):**
 
-1. Add the command's id to some entry's `covers:[…]` (existing or a new entry).
-2. **Add the id to the matching hardcoded list inside the test** (`BLOCK_IDS` /
-   `INSERT_IDS`). The test lists are NOT derived from the live registries — that's a
-   known gap. A new command id that you forget to add to the test list will pass the
-   guard while genuinely missing from the guide. If you want to find *all* gaps, diff
-   the live `BLOCK_CMDS`/`INSERT_CMDS` ids against the union of `covers:[…]` yourself —
-   the test alone won't surface a command the test author never listed.
+1. Add the command's id to some entry's `covers:[…]` (existing or a new entry). That is the
+   whole obligation — there is no second list to update.
 
-Two more guide tests to keep green: the `GUIDE registry declaration is present` pin and
-the `guide nav is a two-level list` pin (every `cat` entry needs a `title`).
+The tests slice the GUIDE array between `const GUIDE = [` and the stable `// GUIDE-END`
+boundary marker (kept in `index.html` right after the array's closing `];`), and each asserts
+it found a non-empty registry block and a non-empty covers set, so a renamed/moved const fails
+loudly instead of letting the guard pass vacuously.
+
+(Historical note: the guard once hardcoded the two id lists, which rotted — `rollpick` (#579)
+shipped uncovered because nobody updated the list, and the guard was later lost entirely in a
+refactor. #596 rebuilt it deriving from the registries so neither can recur.)
 
 Beyond commands, several shipped features are **bullet-menu / toolbar only** (no command
 id): capture/inbox, refile, properties, per-point notes, saved searches, hashtags,
@@ -126,9 +129,10 @@ ships, leave it out. A wrong keybind in the guide is worse than an absent entry.
 2. Pick the right `cat`; find a sensible insertion point in the array (entries display in
    array order within their category).
 3. Write the entry — AP style, verified facts, `point`/`pill` vocabulary.
-4. If it documents a `/` or `@` command, add the id to `covers:[…]` **and** to the test's
-   `BLOCK_IDS`/`INSERT_IDS` list.
-5. Run `node --test tests/test.mjs` — the GUIDE drift/nav pins must stay green.
+4. If it documents a `/` or `@` command, add the id to some entry's `covers:[…]`. That is the
+   only step; the drift guard derives its id list from the registry, so there is no test list to
+   update.
+5. Run `node --test tests/test.mjs` — the GUIDE drift pins must stay green.
 6. Boot the file in a browser (or headless) and open the Concept guide to eyeball the new
    entry renders, searches, and reads right. Verification artifacts stay out of the repo.
 

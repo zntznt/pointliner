@@ -26653,7 +26653,7 @@ const GUIDE = [
       { syn:'a {2d6} gold purse',     desc:'mix in a dice roll' },
       { syn:'{= 1 + 1} apples',       desc:'mix in a calculation' },
     ] },
-  { id:'roll-query', cat:'generators',
+  { id:'roll-query', cat:'generators', covers:['rollpick'],
     title:'Roll on your own outline',
     body:"Pick a random point from your live outline instead of a typed list. Keep a list of open plot threads, NPCs or ideas as ordinary points, then let one get chosen at random: great for solo tabletop play (advance a random thread, a random NPC reacts) or any \"surprise me from what I already wrote\" moment. Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random.",
     examples:[
