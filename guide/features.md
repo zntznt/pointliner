@@ -113,7 +113,7 @@ Turn the outline into a lightweight planner.
   `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` / `is:held` flags, structure and artifact flags
   (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus
   `has:children` / `has:footnote` and `has:dice` / `has:math` / `has:est` / `has:grammar` / `has:markov`
-  / `has:var` / `has:seq`, link and tag presence via `has:link` / `has:backlink` / `has:tag` /
+  / `has:var` / `has:seq` / `has:query`, link and tag presence via `has:link` / `has:backlink` / `has:tag` /
   `is:broken`, hygiene flags `is:empty` / `is:orphan` / `is:duplicate-title`, the recency flag
   `is:recently-edited`), date and property operators (`due:overdue`, `due:week` / `due:month`,
   `priority:a`, `var:name`, `has:key`, `key:value`, numeric compares `key:>N` / `key:<=N`), exact

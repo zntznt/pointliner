@@ -6312,6 +6312,37 @@ test('properties: queryMatchesNode — has: and key:value matching', () => {
   assert.equal(c.queryMatchesNode(q('has:status'), bare), false);
 });
 
+test('#589 is:pill and has:query see a query pill (the newest artifact family)', () => {
+  const q = s => c.parseSearchQuery(s);
+  // a point whose ONLY artifact is a query pill
+  const qn = c.mkNode('[[query:abc]]');
+  qn.query = [{ key: 'abc', expr: 'is:todo' }];
+  assert.equal(c.queryMatchesNode(q('is:pill'), qn), true, 'is:pill must match a query-only point');
+  assert.equal(c.queryMatchesNode(q('has:query'), qn), true, 'has:query must match a query pill');
+  // and negation flips
+  assert.equal(c.queryMatchesNode(q('-has:query'), qn), false);
+  // a point with no query pill does not match has:query...
+  const other = c.mkNode('plain');
+  assert.equal(c.queryMatchesNode(q('has:query'), other), false);
+  // ...unless it literally has a property named "query" (the has:<propkey> fall-through is preserved)
+  other.props = [{ key: 'query', val: 'x' }];
+  assert.equal(c.queryMatchesNode(q('has:query'), other), true, 'a literal query property still matches via fall-through');
+});
+
+test('#589 drift guard: features.md lists every has: sidecar word from the code', () => {
+  // The has: sidecar family (HAS_SIDECAR_FIELD) had no doc pin, which is exactly how `query` went
+  // silently missing when the query artifact shipped. Derive the words from source and require each
+  // to appear as has:<word> in the user-facing features.md, so the next artifact can't hide.
+  const m = _src.match(/const HAS_SIDECAR_FIELD = \{([^}]+)\}/);
+  assert.ok(m, 'HAS_SIDECAR_FIELD not found (renamed?)');
+  const words = [...m[1].matchAll(/(\w+)\s*:/g)].map(x => x[1]);
+  assert.ok(words.length >= 7, `parsed too few has: words: ${words.join(',')}`);
+  const doc = readFileSync(_guidePath('features.md'), 'utf8');
+  const missing = words.filter(w => !doc.includes(`has:${w}`));
+  assert.deepEqual(missing, [],
+    `features.md is missing these shipped has: operators: ${missing.map(w => 'has:' + w).join(', ')}`);
+});
+
 test('properties: key:value search is case-insensitive on both sides', () => {
   const q = s => c.parseSearchQuery(s);
   const n = c.mkNode('x');
@@ -6402,6 +6433,36 @@ test('saved searches: UI wiring + parse-side present (src pins)', () => {
   assert.ok(_src.includes("e.key === 'Delete' || e.key === 'Backspace'"), 'chip Delete branch missing');
   // P1/caret: star + chips swallow mousedown so the box keeps its caret
   assert.ok(_src.includes("getElementById('search-save').addEventListener('mousedown', e => e.preventDefault())"), 'star mousedown guard missing');
+});
+
+test('search panel a11y: clear button + workspace rows follow the caret-safe pattern (#588, #590, #591)', () => {
+  // #588: the ✕ clear swallows mousedown (caret invariant) and refocuses the box after clearing,
+  // so it never drops focus to <body> when the .on display-driver class is removed.
+  assert.ok(_src.includes("getElementById('search-clear').addEventListener('mousedown', e => e.preventDefault())"),
+    '#588: the clear button must swallow mousedown like the star');
+  assert.ok(/getElementById\('search-clear'\)\.addEventListener\('click'[\s\S]{0,160}sb\.focus\(\);/.test(_src),
+    '#588: the clear handler must refocus the search box after clearing');
+  // #590: workspace result rows act on click (with a mousedown swallow), not on mousedown.
+  assert.ok(_src.includes("row.addEventListener('mousedown', e => e.preventDefault());\n    row.addEventListener('click', () => go());"),
+    '#590: workspace rows must swallow mousedown and act on click, matching the saved chips');
+  assert.ok(!/row\.addEventListener\('mousedown', e => \{ e\.preventDefault\(\); go\(\); \}\)/.test(_src),
+    '#590: the old act-on-mousedown row wiring must be gone');
+  // #591: the workspace list is an honest role=list/listitem, not a listbox it never implemented.
+  assert.ok(_src.includes('id="sh-workspace-list" role="list"'), '#591: the container must be role=list');
+  assert.ok(_src.includes("row.setAttribute('role', 'listitem')"), '#591: rows must be role=listitem');
+  assert.ok(!/id="sh-workspace-list" role="listbox"/.test(_src), '#591: the lying role=listbox must be gone');
+});
+
+test('search cheatsheet is viewport-bounded and scrollable (#587, src pins)', () => {
+  // #587: the panel clamps to the viewport at every size and scrolls a tall cheatsheet instead of
+  // hanging off-screen; pointer-events moves off the panel (so it scrolls) onto the inert .sh-row.
+  const hint = _src.match(/#search-hint\{[^}]*\}/)[0];
+  assert.ok(/max-width:calc\(100vw - 16px\)/.test(hint), '#587: max-width must clamp to the viewport');
+  assert.ok(/max-height:calc\(100vh - 60px\)/.test(hint) && /overflow-y:auto/.test(hint),
+    '#587: a tall cheatsheet must be height-bounded and scrollable');
+  assert.ok(!/pointer-events:none/.test(hint), '#587: the panel itself must be interactive (scrollable)');
+  assert.ok(/\.sh-row\{[^}]*pointer-events:none/.test(_src),
+    '#587: the inert teaching rows keep pointer-events:none so they never steal focus');
 });
 
 // ─── templates ─────────────────────────────────────────────────────────────────
@@ -10640,9 +10701,18 @@ test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill 
   // 1. empty-state hints strip in standard AND lean (isStandardOrLean), not just lean
   assert.ok(_src.includes("const entryHint = isStandardOrLean() ? '' :"), 'the entry-point hint must strip in standard + lean');
   assert.ok(_src.includes("const paraHint = isStandardOrLean() ? '…' :"), 'the para keyboard-hint must strip in standard + lean');
-  // 2. the search legend rows strip whenever NOT guided; saved searches / cross-doc matches (data) stay
-  assert.ok(_src.includes('body:not(.v-guided) #search-hint .sh-row{display:none}'), 'the legend rows must strip in standard + lean (body:not(.v-guided))');
-  assert.ok(!/body:not\(\.v-guided\)\s+#sh-saved/.test(_src), 'must NOT hide saved searches — only the .sh-row legend');
+  // 2. the search legend rows strip in standard + lean; saved searches / cross-doc matches (data) stay.
+  // #586: the gate is written fail-OPEN (name the tiers that hide, not "not guided"), so a classless
+  // fresh boot shows the guided aid instead of hiding all rows on a body that has no v-* class yet.
+  assert.ok(_src.includes('body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:none}'),
+    'the legend rows must strip in standard + lean, via the fail-open v-standard/v-lean gate (#586)');
+  assert.ok(!/#search-hint \.sh-row\{display:none\}/.test(_src.replace('body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:none}', '')),
+    'the strip gate must be tier-scoped, never an unconditional hide');
+  assert.ok(!/\.v-(standard|lean)\s+#sh-saved/.test(_src), 'must NOT hide saved searches — only the .sh-row legend');
+  // #586: the default (guided) verbosity class is painted at boot, so the cheatsheet shows on a
+  // fresh boot (no autosave to trigger the restore-arm sync). Pin the boot call.
+  assert.ok(/ensureDocId\(root\);\s*\n\s*syncVerbosityClass\(\);/.test(_src),
+    'syncVerbosityClass() must run at boot (next to ensureDocId), or a fresh boot has no v-* class');
   // 3. pill tooltips (title=) strip in standard + lean via the post-render sweep; scoped to PILL classes
   assert.ok(_src.includes('if (isStandardOrLean()) {') && _src.includes("[class$=\"-edit\"][title]"), 'the pill-tooltip strip sweep is missing');
   assert.ok(_src.includes('.node-content .dice-roll[title]'), 'the tooltip sweep must target the pill classes');

@@ -275,16 +275,27 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 /* operator legend: a non-interactive cheat sheet shown while the box has focus
    (the front door that teaches the typed syntax — P2). pointer-events:none keeps
    it from stealing the caret; it's purely informational. */
-#search-hint{display:none;position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
-  min-width:max-content;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
-  padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted);pointer-events:none}
+/* #587: the panel must never exceed the viewport. It is fixed and centered on the VIEWPORT (not
+   the thin absolutely-positioned #search-wrap parent), so a box clamped to max-width:calc(100vw-16px)
+   can never hang off either edge, however narrow the window — the blind wrap-centering used to push
+   it ~90px off-screen left at 900px wide. max-height + overflow-y scroll a tall cheatsheet instead of
+   running off the bottom, and pointer-events moves off the PANEL (so it can scroll and its islands be
+   clicked) onto the inert .sh-row teaching rows, so those still never steal focus from the search box.
+   The toolbar is a fixed 44px row, so a fixed top aligns the panel just under it like the old absolute one. */
+#search-hint{display:none;position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);
+  min-width:min(max-content,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 60px);overflow-y:auto;
+  overscroll-behavior:contain;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
+  padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted)}
 #search-wrap:focus-within #search-hint{display:block}
 /* DIAL: the search legend TEACHES the query operators (is:done, #tag, "phrase") via the .sh-row cheatsheet
    rows. Standard AND Lean strip those rows (teaching text off once you know the commands); Guided keeps
    them. The operators still work, the cheatsheet just doesn't pop. #sh-saved (saved searches) + #sh-workspace
    (cross-doc matches) stay — they're user data + controls, not helpers. So the panel still opens for those. */
-body:not(.v-guided) #search-hint .sh-row{display:none}
-.sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap}
+/* #586: fail OPEN — name the tiers that hide the rows (Standard, Lean) rather than "not guided".
+   A classless body (a fresh boot before syncVerbosityClass runs) then shows the guided-tier aid,
+   the safe default, instead of silently hiding all 25 rows and floating an empty nub. */
+body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:none}
+.sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap;pointer-events:none}/* #587: inert teaching rows never steal the click/focus from the search box (the panel itself is now interactive so it can scroll); the saved-chip + workspace islands re-enable pointer-events */
 .sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.guide-sc kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
 .sh-row code{font-family:var(--mono);font-size:11px}/* #414: the info-text floor (UXP-78 raised the sibling kbd chips; the code examples lagged) */
 /* saved searches: the one interactive island in the otherwise inert hint panel */
@@ -322,7 +333,9 @@ body:not(.v-guided) #search-hint .sh-row{display:none}
    the narrow, absolutely-positioned #search-wrap parent — otherwise left+right insets
    would size the hint to the thin search box, making it extremely narrow). It sizes to
    its content down to a floor, capped at the viewport width. */
-@media(max-width:720px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px)}}
+/* #587: fixed to the top on mobile; bound the height from that offset so a 25-row cheatsheet
+   scrolls within the viewport instead of running 1344px tall off a 667px screen. */
+@media(max-width:720px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 44px - env(safe-area-inset-top) - 12px)}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
 #search-clear.on{display:block}
@@ -2007,7 +2020,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <div id="search-hint" role="group" aria-label="Search filters">
         <div id="sh-workspace" hidden>
           <div class="sh-saved-title" id="sh-workspace-title">Found in other documents</div>
-          <div id="sh-workspace-list" role="listbox" aria-label="Matches in other documents"></div>
+          <div id="sh-workspace-list" role="list" aria-label="Matches in other documents"></div>
         </div>
         <div id="sh-saved" hidden>
           <div class="sh-saved-title">Saved</div>
@@ -2020,7 +2033,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>is:overdue</kbd><span>past its deadline and not done (due, or start if no due)</span></div>
         <div class="sh-row"><kbd>is:held</kbd><span>in its sequence's held band (blocked / waiting, e.g. #WAITING)</span></div>
         <div class="sh-row"><kbd>is:leaf</kbd><kbd>is:parent</kbd><kbd>is:collapsed</kbd><kbd>is:expanded</kbd><span>structure and fold state</span></div>
-        <div class="sh-row"><kbd>is:pill</kbd><kbd>is:random</kbd><kbd>has:dice</kbd><span>carries a pill / a re-rollable one; <code>has:</code> also takes <code>math est grammar markov var seq</code></span></div>
+        <div class="sh-row"><kbd>is:pill</kbd><kbd>is:random</kbd><kbd>has:dice</kbd><span>carries a pill / a re-rollable one; <code>has:</code> also takes <code>math est grammar markov var seq query</code></span></div>
         <div class="sh-row"><kbd>has:children</kbd><kbd>has:footnote</kbd><span>has sub-points / a footnote</span></div>
         <div class="sh-row"><kbd>has:link</kbd><kbd>has:backlink</kbd><kbd>is:broken</kbd><span>contains a link / is linked to (this document) / has a broken link</span></div>
         <div class="sh-row"><kbd>is:empty</kbd><kbd>is:orphan</kbd><kbd>is:duplicate-title</kbd><span>no text / nothing links to it / its title collides with another point</span></div>
@@ -11668,8 +11681,8 @@ function cycleJournalMode() {
 // QX-1: the artifact sidecar arrays (mkNode), and the has:<word> -> field map
 // (`var` reads `vars`; every other word is its own field). Pruned on exitEdit, so a
 // non-empty array means a live pill. Shared by is:pill/is:random and has:<sidecar>.
-const SIDECAR_KEYS = ['dice', 'markov', 'math', 'grammar', 'est', 'vars', 'seq'];
-const HAS_SIDECAR_FIELD = { dice: 'dice', markov: 'markov', math: 'math', grammar: 'grammar', est: 'est', var: 'vars', seq: 'seq' };
+const SIDECAR_KEYS = ['dice', 'markov', 'math', 'grammar', 'est', 'vars', 'seq', 'query'];   // #589: query pills count as pills
+const HAS_SIDECAR_FIELD = { dice: 'dice', markov: 'markov', math: 'math', grammar: 'grammar', est: 'est', var: 'vars', seq: 'seq', query: 'query' };   // #589: has:query
 
 function parseSearchQuery(q) {
   const terms = [];
@@ -23104,9 +23117,16 @@ document.getElementById('search-box').addEventListener('input', function() {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => applySearch(q), 140);
 });
+// #588: the same caret-safe pattern as the save star and the saved chips. Swallow mousedown so
+// clicking ✕ never blurs the box, and refocus the box after clearing — otherwise clearing removes
+// the .on class that is the button's only display driver, the focused control vanishes, and the
+// browser drops focus to <body>. Refocusing also keeps the panel open, matching the star.
+document.getElementById('search-clear').addEventListener('mousedown', e => e.preventDefault());
 document.getElementById('search-clear').addEventListener('click', () => {
-  document.getElementById('search-box').value = '';
+  const sb = document.getElementById('search-box');
+  sb.value = '';
   applySearch('');
+  sb.focus();
 });
 document.getElementById('search-box').addEventListener('focus', () => {
   armChromeReturn();
@@ -23193,7 +23213,7 @@ function renderWorkspaceSearchResults(query) {
   results.forEach(({ docId, nodeId, title, docName, snippet }) => {
     const row = document.createElement('div');
     row.className = 'sh-ws-item';
-    row.setAttribute('role', 'option');
+    row.setAttribute('role', 'listitem');   // #591: an honest list (the container is role=list); it never implemented the listbox keyboard contract
     row.setAttribute('tabindex', '0');
     row.setAttribute('aria-label', `${title}, in ${docName || 'another document'}`);
     const t = document.createElement('span'); t.className = 'sh-ws-title'; t.textContent = title;
@@ -23203,7 +23223,11 @@ function renderWorkspaceSearchResults(query) {
       const s = document.createElement('div'); s.className = 'sh-ws-snip'; s.textContent = snippet; row.appendChild(s);
     }
     const go = () => openWorkspaceSearchHit(docId, nodeId);
-    row.addEventListener('mousedown', e => { e.preventDefault(); go(); });   // act before blur (the saved-chip pattern)
+    // #590: the saved-chip activation model — swallow mousedown so the caret stays in the search
+    // box (no blur, panel stays open), then act on click. A mouse user can now drag off to cancel,
+    // and the panel's two islands (saved chips + these rows) finally teach the same muscle memory.
+    row.addEventListener('mousedown', e => e.preventDefault());
+    row.addEventListener('click', () => go());
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     list.appendChild(row);
   });
@@ -25571,7 +25595,7 @@ const GUIDE = [
       { syn:'is:empty / is:orphan',   desc:'has no text (a blank stub) / nothing links to it' },
       { syn:'is:duplicate-title',     desc:'its title collides with another point (find accidental dupes)' },
       { syn:'is:recently-edited',     desc:'changed in the last 48 hours' },
-      { syn:'has:dice (math, est, grammar, markov, var, seq)', desc:'carries that kind of pill' },
+      { syn:'has:dice (math, est, grammar, markov, var, seq, query)', desc:'carries that kind of pill' },
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'key:>N / key:<=N',       desc:'numeric property compare (cost:>100, score:<=3.5)' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
@@ -27301,6 +27325,9 @@ maybeShowFirstRun();
 migrateNodePrefixes(root);
 buildIndex(root, null); resetDocCaches();
 ensureDocId(root);
+syncVerbosityClass();   // #586: paint the default (guided) verbosity class at boot — a fresh boot has no
+                        // autosave-restore call, so without this body carries no v-* class and the guided
+                        // search cheatsheet stays hidden until the first edit + autosave + reload.
 render();
 updateTitle();
 refreshIcons();
