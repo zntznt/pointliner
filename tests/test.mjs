@@ -6141,6 +6141,15 @@ test('#656/#661 guide sizing: scales with the viewport, no 680px cap, balanced t
     'the guide must use a 5vh top margin + a 100dvh-10vh height so the top and bottom gaps match');
 });
 
+test('#657 the selection toolbar clamps its center to the viewport (no off-screen right edge)', () => {
+  // #sel-tb is transform:translateX(-50%) so `left` is its center; updateSelToolbar must clamp it
+  // to [half+8, innerWidth-half-8] so a selection near an edge never pushes it off-screen.
+  const fn = fnBody(_src, 'updateSelToolbar');
+  assert.ok(fn.includes('selTb.offsetWidth / 2'), 'the clamp must measure the toolbar half-width');
+  assert.ok(fn.includes('window.innerWidth - half - m') && fn.includes('Math.min(maxX, Math.max(minX'),
+    'the toolbar center must be clamped between the viewport edges');
+});
+
 test('#560 the guide sets its own accessible name; closeIo clears it so no reuser inherits a stale one', () => {
   // openGuide must set ioCard's aria-label to "Concept guide" (the shared io-card is reused across
   // dialogs, each setting its own on open), so a screen reader is never told it is in "New document".

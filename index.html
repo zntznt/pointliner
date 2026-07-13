@@ -14521,7 +14521,14 @@ function updateSelToolbar() {
     if (!rect.width) { hideSelTb(); return; }
     selTb.classList.toggle('cell-sel', !!cellOk);
     selTb.classList.add('on');
-    selTb.style.left = (rect.left + rect.width/2) + 'px';
+    // #657: #sel-tb is transform:translateX(-50%) so `left` is its CENTER. Anchored on the
+    // selection center with no clamp, a selection near the right (or left) edge pushed half the
+    // toolbar off-screen. Clamp the center so the whole toolbar stays within an 8px viewport margin
+    // (its width is known now that .on is set). If it is wider than the viewport, center it.
+    const half = selTb.offsetWidth / 2, m = 8;
+    const wantX = rect.left + rect.width / 2;
+    const minX = half + m, maxX = window.innerWidth - half - m;
+    selTb.style.left = (minX > maxX ? window.innerWidth / 2 : Math.min(maxX, Math.max(minX, wantX))) + 'px';
     // #sel-tb is position:fixed, so use viewport-relative coords (no scrollY).
     // Flip below the selection when it would collide with the fixed top bar.
     const tbH = document.getElementById('toolbar').offsetHeight;
