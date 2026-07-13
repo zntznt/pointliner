@@ -11362,6 +11362,20 @@ test('#654/#655 the toast sizes to content and dwells by length (src pins)', () 
   assert.ok(_src.includes('el.style.opacity = \'0\'; }, hintDwell(msg))'), 'the hint dwell must come from hintDwell(msg)');
 });
 
+test('#658/#659/#660 toast + banner positioning (src pins)', () => {
+  // #660: the touch onboarding hint routes through flashHint (gate-aware, styling-reset) instead of
+  // hand-writing the shared element (which clobbered an active error toast and inherited its tint).
+  const th = fnBody(_src, 'maybeShowTouchHint');
+  assert.match(th, /flashHint\('Tip: swipe a point right/, 'the touch hint must go through flashHint');
+  assert.ok(!th.includes("_hintTimer = setTimeout"), 'the touch hint must not hand-roll its own timer/paint anymore');
+  // #659: flashBottom counts the edit bar, so a mid-edit touch toast clears it instead of sitting under it.
+  const fb = fnBody(_src, 'flashBottom');
+  assert.ok(fb.includes("on('edit-bar')"), 'flashBottom must include the edit-bar height in the bottom stack');
+  // #658: the toolbar height is published as --toolbar-h and the top banner tracks it (not a fixed 52px).
+  assert.ok(_src.includes("setProperty('--toolbar-h'"), 'syncBodyPad must publish the live toolbar height');
+  assert.match(_src, /#storage-warn\{[^}]*top:calc\(var\(--toolbar-h/, 'the banner top must track --toolbar-h, not a fixed 52px');
+});
+
 // ── Docked-stack viewport ceiling (#389): the toolbar can never exceed the screen ──
 test('docked stack failsafe: #toolbar clamps to the viewport and the agenda pane scrolls (#389)', () => {
   assert.ok(/#toolbar\{[^}]*max-height:100dvh/.test(_src), '#toolbar must clamp to 100dvh (was unbounded: 123% of a landscape phone)');
