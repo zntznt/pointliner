@@ -59,12 +59,16 @@ backticks, a `{2d6}` you type becomes a live pill when you click away; with them
 
 ## Emoji
 
-Type a colon to drop in an emoji. As you type `:` and the start of a name (`:fire`, `:tada`,
-`:check`), a small menu opens at your cursor listing the matches with their glyphs; use the arrow
-keys and `Enter` (or click) to pick one, the same as the tag and link menus. You can also just type
-the full shortcode (`:sparkles:`) and it turns into the emoji when you finish it. There are around 100
-common shortcodes: faces, hearts, hands, `:fire:`, `:star:`, `:rocket:`, `:warning:`,
-`:check:` and the rest.
+Type a colon to drop in an emoji. As you type `:` and part of a name (`:fire`, `:tada`, `:check`),
+a small menu opens at your cursor listing the matches with their glyphs; use the arrow keys and
+`Enter` (or click) to pick one, the same as the tag and link menus. The menu matches anywhere in the
+name, not just the start, so `:face` finds every face and `:sword` finds `:crossed_swords:`. You can
+also just type the full shortcode (`:sparkles:`) and it turns into the emoji when you finish it.
+There are around 500 shortcodes covering the everyday set (faces, hands, `:fire:`, `:star:`,
+`:rocket:`, `:warning:`, `:check:`, weather, food, travel) plus a solo-RPG lean for a game journal:
+`:dice:` 🎲, `:sword:` ⚔️, `:shield:` 🛡️, `:dragon:` 🐉, `:skull:` 💀, `:wizard:` 🧙, `:castle:` 🏰,
+`:scroll:` 📜, `:potion:` ⚗️, `:crown:` 👑 and more. For the exhaustive set, your operating system's
+own emoji picker (`Ctrl/Cmd+.` on most systems) browses everything.
 
 ## Tables
 

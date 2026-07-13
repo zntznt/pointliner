@@ -10090,6 +10090,22 @@ test('#592 filterEmojiCandidates — mid-name substring matches, with prefix mat
   assert.deepEqual(host(c.filterEmojiCandidates('fire', EMOJI_FIXTURE)), [], 'exact full name still dismisses');
 });
 
+test('#593 the expanded dictionary resolves through the render substitution; a bogus shortcode stays literal', () => {
+  // A representative sample of the new curated + solo-RPG glyphs must render (mdInline runs the
+  // :name: → glyph substitution over the live EMOJI map). Correctness of the glyph, not just presence.
+  const cases = { dragon: '🐉', sword: '⚔️', shield: '🛡️', dice: '🎲', skull: '💀', wizard: '🧙',
+    castle: '🏰', scroll: '📜', potion: '⚗️', crown: '👑', dagger: '🗡️', map: '🗺️', crossbones: '☠️' };
+  for (const [name, glyph] of Object.entries(cases)) {
+    assert.equal(c.mdInline(':' + name + ':'), glyph, `:${name}: must render as ${glyph}`);
+  }
+  // the escape-hatch contract: an unknown shortcode passes through as literal text, never dropped.
+  assert.equal(c.mdInline(':notareal:'), ':notareal:', 'a bogus shortcode stays literal');
+  // a source-side floor so the dictionary can only grow, not silently shrink under a refactor.
+  const block = _src.slice(_src.indexOf('const EMOJI = {'), _src.indexOf('};', _src.indexOf('const EMOJI = {')));
+  const names = block.match(/[a-z0-9_+-]+\s*:/gi) || [];
+  assert.ok(names.length > 300, `the EMOJI dictionary should carry 300+ shortcodes (parsed ${names.length})`);
+});
+
 // ── priority: search + agenda rollup (UXP-109) ───────────────────────────────
 const SEQS = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'], heldFrom: 2, doneFrom: 3 }];  // the default sequence shape: active(TODO,NEXT) | held(WAITING) | done(DONE)  (UXP-158)
 
