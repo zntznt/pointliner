@@ -1,19 +1,19 @@
-# Generators: names, places, and loot in Pointliner
+# Generators: names, places and loot in Pointliner
 
 *Part of the [solo-RPG guides](../README.md).*
 
 **Demo file:** [generators-demo.opml](generators-demo.opml) (open it in Pointliner via File, Open)
 
-Every solo player hits the same wall: the fiction asks for a name, a place, or a fistful
+Every solo player hits the same wall: the fiction asks for a name, a place or a fistful
 of treasure, and your mind goes blank. A generator is the fix. You draw one instead of
 inventing one, the scene keeps moving, and half the time the random result is better than
 what you would have reached for anyway.
 
 This example is the one where Pointliner's **grammar engine** does the heavy lifting. The
 other cases lean on dice and oracles; this one is built almost entirely out of `{…}` pills
-that compose small lists into names, taverns, and loot tables. Three generators, three
+that compose small lists into names, taverns and loot tables. Three generators, three
 tricks: a **Markov chain** that grows a name syllable by syllable, a **rule-based place
-generator** that references named rules and reshapes them with modifiers, and a **weighted
+generator** that references named rules and reshapes them with modifiers and a **weighted
 loot table** whose items carry their own fields. Nothing here is a new notation to learn.
 It is the same `{…}` grammar as the rest of the guide, pointed at the blank-page problem.
 
@@ -24,7 +24,7 @@ It is the same `{…}` grammar as the rest of the guide, pointed at the blank-pa
 A Markov chain is the fancy-sounding trick behind most good name generators, and it fits in
 one pill. You give it a list of **syllable transitions**, each written `source→next`, and it
 walks them: start on the first syllable, hop to a random syllable that can follow it, hop
-again, and stop when it runs out of exits. The path it took, joined up, is the name.
+again and stop when it runs out of exits. The path it took, joined up, is the name.
 
 ```
 {markov: ka→la, la→sh, sh→ka, ka→ra, ra→n, n→dor, dor→a, a→ka}
@@ -52,7 +52,7 @@ whole namespace lives in two lists you can read at a glance.
 
 ## The place generator: named rules and modifiers
 
-Taverns, temples, and towns are where **named rules** earn their keep. A named rule is just a
+Taverns, temples and towns are where **named rules** earn their keep. A named rule is just a
 point whose text reads `rulename: option | option | option` at the line start. Once it exists,
 `{rulename}` picks one of its options anywhere in the document. Rules can reference each other,
 so you build a place out of layers:
@@ -80,7 +80,7 @@ capitalized-and-articled version of every list.
 {animal.lower.s} lowercase, then pluralize (otters)
 ```
 
-The closed set is `cap`, `title`, `upper`, `lower`, `a`, `s`, `ed`, and `ord`, and you can
+The closed set is `cap`, `title`, `upper`, `lower`, `a`, `s`, `ed` and `ord`, and you can
 **chain them left to right**, as `{animal.lower.s}` does: lowercase first, then pluralize the
 result. So "you push open the door to `{animal.a}`" reads naturally whether the walk lands on a
 consonant or a vowel, and you never keep two copies of a list in sync by hand.
@@ -143,8 +143,8 @@ real outline with every pill live. A few things to try:
   path each time. Then click the `{prefix}{suffix}` pair a few times to feel the difference
   between a chain and a snap-together builder.
 - **Roll a street of taverns.** Click `{tavern}` repeatedly. Every roll reaches down through
-  `adjective`, `animal`, and `noun`, so you get a fresh sign each time, and the modifier line
-  shows the same lists capitalized, articled, and pluralized.
+  `adjective`, `animal` and `noun`, so you get a fresh sign each time, and the modifier line
+  shows the same lists capitalized, articled and pluralized.
 - **Reweight the loot.** Click `{loot}` to feel the odds, then click into the `loot:` list and
   change a number. Bump the wand's weight up and watch it start showing. The whole economy is
   the numbers in that one line.
@@ -152,7 +152,7 @@ real outline with every pill live. A few things to try:
   pill until it lands on a spear: `{weapon.damage}` goes undefined, which is exactly how you
   learn that a field lives or dies with its sub-rule. Put the line back and it heals.
 - **Edit the lists to make them yours.** Click the text next to any pill (say
-  `animal: Kraken | Wyrm | ...`) and add, remove, or reweight options. Every `{animal}` pill in
+  `animal: Kraken | Wyrm | ...`) and add, remove or reweight options. Every `{animal}` pill in
   the file reads the same rule, so one edit ripples through names and places alike.
 - **Add a whole new generator.** Write a point `spell: {adjective} {noun} of {animal}` at a line
   start and reference it with `{spell}`. That is the entire recipe: a named rule is a point, a
@@ -166,12 +166,12 @@ A binder of random tables on paper is a wonderful thing, and this does not repla
 grammar engine adds is that the tables **compose and live in one file**:
 
 - one `{animal}` list feeds every generator that references it, so a single edit updates names,
-  taverns, and loot at once, no copies to keep in sync
+  taverns and loot at once, no copies to keep in sync
 - the Markov chain and the weighted table roll fresh on click, so the file is a generator, not a
   static list you read down
 - modifiers (`.cap`, `.a`, `.s`) and hierarchical fields (`{item.field}`) let a small set of
   lists produce natural, detailed results without a combinatorial pile of pre-written entries
-- rules are document-wide, so your name lists, place lists, and loot tables all live in the same
+- rules are document-wide, so your name lists, place lists and loot tables all live in the same
   outline as the campaign they feed, one search away
 
 It is one offline file you own, and the generators you build open and re-roll on anyone's machine

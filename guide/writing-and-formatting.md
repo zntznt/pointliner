@@ -1,23 +1,23 @@
 # Writing and formatting
 
 *Part of the [Pointliner guide](README.md). Give your outline real document structure: headings and
-other point types, inline styling, tables, footnotes, links, images, and per-point notes. Like
+other point types, inline styling, tables, footnotes, links, images and per-point notes. Like
 [getting around](getting-around.md), this is the plain outliner, no pills required.*
 
 ---
 
 ## Point types
 
-Give your outline real document structure: add headings to divide a long note into sections,
+Give your outline real document structure: add headings to divide a long document into sections,
 numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a
-passage, or a table for data you would otherwise put in a spreadsheet.
+passage or a table for data you would otherwise put in a spreadsheet.
 
 Type **`/`** at the start of a point to open the menu and pick a type. (Markdown prefixes work too:
 start a line with `#` for a heading, `>` for a quote, `` ``` `` for a code fence.)
 
 ## Styling text
 
-Make key words stand out, mark something as code, highlight a phrase for review, or drop in a
+Make key words stand out, mark something as code, highlight a phrase for review or drop in a
 clickable link, all without leaving the outline. Wrap words in these marks to apply the style; they
 work on **any line of any point**, including headings and quotes.
 
@@ -26,8 +26,8 @@ work on **any line of any point**, including headings and quotes.
 ~~strikethrough~~               ++underline++
 ```
 
-You can also skip the marks: select some text and press **Cmd/Ctrl+B**, **I**, or **U** to wrap it in
-bold, italic, or underline. It is the same result as typing the marks yourself.
+You can also skip the marks: select some text and press **Cmd/Ctrl+B**, **I** or **U** to wrap it in
+bold, italic or underline. It is the same result as typing the marks yourself.
 
 **Code marks also keep pills literal.** Anything inside backticks stays plain text, so if you want to
 *write about* a pill, for example a note that says "type `` `{2d6}` `` to roll dice", wrap it in
@@ -39,13 +39,13 @@ backticks, a `{2d6}` you type becomes a live pill when you click away; with them
 Type a colon to drop in an emoji. As you type `:` and the start of a name (`:fire`, `:tada`,
 `:check`), a small menu opens at your cursor listing the matches with their glyphs; use the arrow
 keys and `Enter` (or click) to pick one, the same as the tag and link menus. You can also just type
-the full shortcode (`:sparkles:`) and it turns into the emoji when you finish it. There are around a
-hundred common shortcodes: faces, hearts, hands, `:fire:`, `:star:`, `:rocket:`, `:warning:`,
-`:check:`, and the rest.
+the full shortcode (`:sparkles:`) and it turns into the emoji when you finish it. There are around 100
+common shortcodes: faces, hearts, hands, `:fire:`, `:star:`, `:rocket:`, `:warning:`,
+`:check:` and the rest.
 
 ## Tables
 
-Put information in columns to compare options, lay out a small dataset, or present a schedule. Type
+Put information in columns to compare options, lay out a small dataset or present a schedule. Type
 rows separated by `|` bars with a row of dashes under the header, and it formats as a grid
 automatically:
 
@@ -62,7 +62,7 @@ Static tables can also carry a spreadsheet formula line; see
 
 A base column can also be given a **display role** from its Column menu (**Show as**): a **Status**
 column renders known state keywords as colored chips (including states from your own
-[sequences](tasks-and-organizing.md#sequences), so `PLANNED ACTIVE | CLEARED` becomes chips with the
+[sequences](tasks-and-organizing.md#custom-workflows), so `PLANNED ACTIVE | CLEARED` becomes chips with the
 done side muted), a **Date** column shows each date as a color-coded urgency chip, and a **Number**
 column right-aligns and formats. The cell text stays plain (edit it and you see the raw value); the
 role only changes how it is shown, and a value that does not fit its role just renders as text.
@@ -75,7 +75,7 @@ the same data. A board sourced from a [query base](getting-around.md#query-bases
 
 In the outline (when you are not zoomed into it), a base can be **collapsed** to a single line
 with the chevron in its header strip, and its **row count capped** (the **Rows** control: All, 5,
-10, or 20) so a long base does not stretch the page. When rows are hidden, a **Zoom in to see N
+10 or 20) so a long base does not stretch the page. When rows are hidden, a **Zoom in to see N
 more** line appears at the bottom; click it (or zoom into the base) to see everything. Collapse and
 the cap only apply in the outline; a zoomed-in base always shows in full. **Cards** is the third
 view: every row becomes a card in a grid, with the first column as the title and images as covers.
@@ -99,18 +99,18 @@ around.
 Deleting a column or row stays in the column menu (open it with `Shift+F10` on a cell), so a stray
 keystroke never destroys data.
 
-## Footnotes, links, and images
+## Footnotes, links and images
 
-Annotate a claim without cluttering the main text, link out to a source, or embed an image.
+Annotate a claim without cluttering the main text, link out to a source or embed an image.
 Footnotes are useful for research notes and annotated reading: the mark stays small while the note
 stays out of the way.
 
-Type **`@`** and choose **Footnote**, **Link**, or **Image**. (For links *between points* in your
+Type **`@`** and choose **Footnote**, **Link** or **Image**. (For links *between points* in your
 own document, see [Links and references](links-and-references.md#linking-points) instead.)
 
 ## Per-point notes
 
-Tuck a bit of context under any point without cluttering the line: a source, a reminder, a caption,
+Tuck a bit of context under any point without cluttering the line: a source, a reminder, a caption
 or a few sentences of background. The note sits below the point as a quiet plain-text block you click
 to edit in place. Press `Enter` for a line break, `Esc` or click away to save, and clearing all the
 text removes it.

@@ -2,7 +2,7 @@
 
 *Part of the [generative & computational guide](README.md). This is the **Compute** family:
 pills that do math, including arithmetic, dates, sums that roll up your outline, uncertain
-estimates, and pass/fail checks.*
+estimates and pass/fail checks.*
 
 The core is one syntax: **`{= expression}`**. The leading `=` says "compute this." Type it, click
 away, and you get a math pill showing the result. Unlike a dice roll, **a math pill is live**: it
@@ -164,7 +164,7 @@ Character
 
 The **nearest** value wins: a point's own property overrides the same key on an ancestor, and a
 nearer ancestor overrides a farther one. So a scene with its own `STR: 20` reads **22**, not 16. This
-is the natural way to keep a character sheet, a per-section config, or any set of values that a
+is the natural way to keep a character sheet, a per-section config or any set of values that a
 subtree should share. (Only numbers inherit, and only *down* the tree; a value on a sibling or a
 child is not in scope.)
 
@@ -195,7 +195,7 @@ By default a roll-up counts the **direct children**. Add a scope to reach deeper
 {= sum(cost, children)}  the direct children (same as no scope)
 ```
 
-It recomputes **live** as you add, remove, or edit children, like a spreadsheet column total.
+It recomputes **live** as you add, remove or edit children, like a spreadsheet column total.
 You can combine aggregations with the rest of math: `{= sum(cost) / count(cost)}` is the average
 the long way; `{= sum(hours) * rate}` mixes a rollup with a variable.
 
@@ -253,7 +253,7 @@ estimate. That's how you Fermi-estimate a whole project from uncertain parts (se
 ## Make the outline check itself (constraints)
 
 A **check** is a pass/fail rule you attach to a point. Type **`/check:sum(cost) <= budget`** to set it
-inline, or **`/check`** on its own (or bullet menu → Add check) for the dialog. It's an `evalMath`
+inline, or **`/check`** on its own (or bullet menu → Add check) for the dialog. It's a math-expression
 boolean over the point and its children:
 
 ```
@@ -314,7 +314,7 @@ topic; this is just the pointer.)
 ---
 
 **Next:** the [Cookbook](cookbook.md), ready-to-paste recipes that combine generate + compute: a
-budget that rolls up and lints itself, a deadline countdown, a Fermi estimate, and more. Or revisit
+budget that rolls up and lints itself, a deadline countdown, a Fermi estimate and more. Or revisit
 [Generating text](generating-text.md).
 
 **Back to:** [the guide](README.md).

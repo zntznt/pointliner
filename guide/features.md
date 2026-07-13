@@ -48,7 +48,7 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 
 - **Pick from a list.** `{sword | shield | potion}` shows one at random, click to re-pick.
   ([weights too](generating-text.md#pick-one-of-several-alternation): make some choices rarer.)
-- **Roll dice.** `{2d6}`, `{1d20+5}`, plus exploding, keep-highest, Fate, and success pools.
+- **Roll dice.** `{2d6}`, `{1d20+5}`, plus exploding, keep-highest, Fate and success pools.
   ([dice](generating-text.md#roll-dice-ndm))
 - **Named rules.** Build a name generator or loot table once, reuse it anywhere.
   ([rules](generating-text.md#name-things-youll-reuse-rules))
@@ -91,16 +91,16 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
   ([variables](computing-numbers.md#variables-in-math))
 
-## Dates, planning, and journaling
+## Dates, planning and journaling
 
 Turn the outline into a lightweight planner.
 
-- **Start and due dates.** Schedule any point with a start, a deadline, or both; color-coded chips
-  show what is due, soon, or overdue. ([scheduling](dates-and-planning.md#scheduling-dates))
+- **Start and due dates.** Schedule any point with a start, a deadline or both; color-coded chips
+  show what is due, soon or overdue. ([scheduling](dates-and-planning.md#scheduling-dates))
 - **Recurring tasks.** Give a task a Repeat schedule (`every week`, `every Monday`, `monthly on the
   1st`); completing it rolls the date forward and re-opens it.
   ([recurring](dates-and-planning.md#recurring-tasks))
-- **Agenda.** A built-in calendar, timeline (Gantt), and due-list view of your dated points.
+- **Agenda.** A built-in calendar, timeline (Gantt) and due-list view of your dated points.
   ([agenda](dates-and-planning.md#agenda-and-calendar))
 - **Timeline.** Browse every dated point in chronological order, grouped by month, as the history of
   your document; calendar-aware. ([timeline](dates-and-planning.md#timeline))
@@ -110,7 +110,7 @@ Turn the outline into a lightweight planner.
   date, agenda view, and journal entry speaks it; advance the in-world clock from the agenda.
   ([custom calendars](dates-and-planning.md#custom-calendars))
 - **Search and filter.** Filter with `#tag`, the `is:todo` / `is:done` / `is:note` / `is:failing` /
-  `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` / `is:held` flags, structure and artifact flags
+  `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` / `is:held` flags, structure and pill flags
   (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus
   `has:children` / `has:footnote` and `has:dice` / `has:math` / `has:est` / `has:grammar` / `has:markov`
   / `has:var` / `has:seq` / `has:query`, link and tag presence via `has:link` / `has:backlink` / `has:tag` /
@@ -124,9 +124,9 @@ Turn the outline into a lightweight planner.
   shows just the live number instead.
   ([embedded queries](getting-around.md#embedded-queries))
 - **Query bases.** Turn a live search into a table: rows are the matching points, columns show the
-  title, a property, or a formula computed per point (`= daysuntil(due)`, `= sum(cost)`), always in
+  title, a property or a formula computed per point (`= daysuntil(due)`, `= sum(cost)`), always in
   sync with the outline. ([query bases](getting-around.md#query-bases))
-- **Column display roles.** Mark a base column as Status, Date, or Number (Column menu, Show as):
+- **Column display roles.** Mark a base column as Status, Date or Number (Column menu, Show as):
   state keywords become colored chips (your own sequences included), dates become urgency chips,
   numbers align and format. ([tables](writing-and-formatting.md#tables))
 - **Board view.** Show any base with a Status column as a kanban board: your sequence's states
@@ -143,7 +143,7 @@ Turn the outline into a lightweight planner.
   cycle a column role with `Alt+R`, resize with `Alt+,` / `Alt+.`, and move a board card between lanes
   with `Alt+Left` / `Alt+Right`. ([tables](writing-and-formatting.md#tables))
 
-## Linking and connecting notes
+## Linking and connecting documents
 
 Build a connected notebook (Zettelkasten style), not just a single document.
 
@@ -152,8 +152,8 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Link graph.** See your document as a browsable web of its links instead of a list, and jump to
   any point by recognizing it. ([link graph](links-and-references.md#link-graph))
 - **Multi-document folders.** Connect a folder of documents on disk; switch between them, link
-  across them, and search the whole folder at once.
-  ([links across notes](links-and-references.md#links-across-notes) · [folder of documents](files-and-export.md#working-with-a-folder-of-documents))
+  across them and search the whole folder at once.
+  ([links across documents](links-and-references.md#links-across-documents) · [folder of documents](files-and-export.md#working-with-a-folder-of-documents))
 - **Broken-links report.** File menu, Broken links: rounds up every link whose target is gone, in
   this document and across the folder, and jumps you to the point that holds each one.
   ([find broken links](links-and-references.md#find-broken-links))
@@ -168,10 +168,10 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   elsewhere with a searchable picker.
   ([templates](tasks-and-organizing.md#templates) · [refile](getting-around.md#refile-a-point))
 
-## Files, sharing, and offline
+## Files, sharing and offline
 
 - **One file, fully offline.** The whole app is a single `index.html`. No account, no network, no
-  install. Your filesystem is the storage; your choice of sync (Dropbox, iCloud, git, or none) is
+  install. Your filesystem is the storage; your choice of sync (Dropbox, iCloud, git or none) is
   the sync. ([saving](files-and-export.md#saving-your-work))
 - **Open formats.** The native save format is a plain outline file; export to Markdown or plain text for sharing.
   ([exporting](files-and-export.md#exporting-and-sharing))
@@ -181,7 +181,7 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Data packs.** Bundle grammar rules, variables (formulas, or random picks like `strength: 3d6`
   rolled once and frozen), and reusable subtree templates into a named, reusable pack (File then Data
   packs): every rule and variable becomes callable across the document, imported templates appear in
-  the `/template` picker, and you can enable, disable, edit, import, or export packs. Pure data, no
+  the `/template` picker, and you can enable, disable, edit, import or export packs. Pure data, no
   code, so opening any file stays safe.
 - **Start from an example.** File then **Start from an example** drops a ready-made, fully live
   example into your document: a campaign oracle that rolls on your own cast and threads, an
@@ -202,8 +202,8 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides.
 - **[Cookbook](cookbook.md)** has copy-paste recipes: a name generator, a dungeon stocker, a
-  self-linting budget, a Fermi estimate, and more.
-- **[Solo RPG guides](solo-rpg/README.md)** show the generators, oracle, and journal
+  self-linting budget, a Fermi estimate and more.
+- **[Solo RPG guides](solo-rpg/README.md)** show the generators, oracle and journal
   working together at the table, with importable demo files.
 
 > Inside the app, the **`?` button** (bottom-right) is the always-there cheat sheet, and the

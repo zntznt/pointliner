@@ -6,14 +6,14 @@
 
 Every solo session begins the same hard way: you open the file and stare at nothing. What is
 the scene? What is still unresolved from last time? What might walk in and complicate it? And
-then, ten minutes into play, an idea for something else arrives at the worst possible moment,
+then, 10 minutes into play, an idea for something else arrives at the worst possible moment,
 and you either lose it or you follow it and lose the scene you were in.
 
 This example is about those two friction points, starting and interrupting, and the three
 built-in doors Pointliner gives you for them. Unlike the rest of the solo cases, most of what
 matters here is not a `{…}` pill you type but a button you click or a slash verb you run:
 **templates** to stamp a fresh session structure, **capture** to log a stray idea without
-leaving your place, and **journal mode** to drop into today's dated entry. A few live pills
+leaving your place and **journal mode** to drop into today's dated entry. A few live pills
 ride along inside the template (an oracle, an event deck, a random-event roll), but the point of
 this case is the plumbing that gets you from a blank page to a running session.
 
@@ -38,7 +38,7 @@ journal) plus the one that closes the loop (refile a capture into the fiction la
 ## Stamp a fresh session with a template
 
 A **template** is a named snapshot of a subtree that lives on the document. You build the shape
-once, save it, and stamp copies of it whenever you want.
+once, save it and stamp copies of it whenever you want.
 
 Build a "Session" point with the prep slots you always want under it: scene seeds, threads to
 chase from last time, an oracle on hand, a session-start event, a random-event roll. Then save
@@ -50,7 +50,7 @@ it two ways:
 
 At the start of your next session, stamp a fresh copy:
 
-- `/template:session` drops a fresh, deep-copied Session subtree in with new ids, so it is a
+- `/template:session` drops a fresh, independent copy of the Session subtree in, so it is a
   clean slate you can fill without touching the original.
 - Bare `/template` opens a picker if you keep more than one template (a session template, a
   scene template, an NPC template) and you want to choose.
@@ -58,7 +58,7 @@ At the start of your next session, stamp a fresh copy:
 The stamped copy replaces the empty point you invoked it on, or lands as the next sibling if
 that point already has content. Either way the blank page is gone: you are looking at your own
 prompts, ready to answer them. In the demo, the `Session 2026-07-04` subtree is that template
-already filled in, so you can see what a stamped session looks like, oracle, event deck, and
+already filled in, so you can see what a stamped session looks like, oracle, event deck and
 random-event roll included.
 
 ---
@@ -79,7 +79,7 @@ Enter captures, Shift+Enter adds a line break.
 
 In the demo, the "Capture: a mid-play inbox" point is marked as the inbox, and it already holds
 three captured ideas as children so you can see the shape. The habit is: capture cheap, capture
-often, and sort it out later, which is exactly what refile (below) is for.
+often and sort it out later, which is exactly what refile (below) is for.
 
 ---
 
@@ -88,17 +88,17 @@ often, and sort it out later, which is exactly what refile (below) is for.
 The **journal** door gives every play session one dated home without you typing a date header.
 A toolbar **journal button** (or the `/journal` slash verb, or the `journal` block command from
 the `/` menu's Organize group) opens **today's entry**. Under the hood it finds or creates a
-top-level **Journal** home point, then finds or creates a **dated day node** under it in
-`YYYY-MM-DD` form, and lands you there ready to write.
+top-level **Journal** home point, then finds or creates a **dated day point** under it in
+`YYYY-MM-DD` form and lands you there ready to write.
 
 This is the piece the [Lonelog case](../lonelog/lonelog.md) never mentions. That case teaches a
 hand-rolled session log, you type a `Scene:` header, you type the date, you nest your beats by
 hand, and it works. But Pointliner has this built in: the journal button is the real feature
-that automates the dated-entry part of that workflow. One click lands you in today's node under
+that automates the dated-entry part of that workflow. One click lands you in today's point under
 a tidy `Journal` tree, so the "start a new dated entry" step is done for you and your day-to-day
 logs stack up in date order on their own.
 
-In the demo, the `Journal` point holds a `2026-07-04` day node with a few beats already written,
+In the demo, the `Journal` point holds a `2026-07-04` day point with a few beats already written,
 oracle and random-event pills live inside them, so you can see what today's entry looks like once
 you are in it.
 
@@ -112,7 +112,7 @@ menu and pick **Refile** (or type `/refile`, or `/refile:TITLE` to jump straight
 and a point-tree navigator opens: search or browse the outline, pick the scene the idea belongs
 under, and the captured subtree moves out of the inbox and becomes that scene's last child.
 
-So the full rhythm is: **capture** cheap and often mid-play, keep the scene moving, and **refile**
+So the full rhythm is: **capture** cheap and often mid-play, keep the scene moving and **refile**
 when you reach a natural pause, moving each idea into the fiction where it now has a home. The
 inbox stays a scratchpad, not a graveyard.
 
@@ -127,18 +127,18 @@ real outline. A few things to try:
   template** (name it `session`). Then add an empty point and run `/template:session`, a fresh
   session structure drops in, no blank page.
 - **Set the inbox and capture.** Open the bullet menu on the "Capture: a mid-play inbox" point and
-  pick **Set as inbox**. Then click the toolbar inbox button, type an idea, press Enter, and watch
+  pick **Set as inbox**. Then click the toolbar inbox button, type an idea, press Enter and watch
   it land as a child of that point while the dialog stays open for the next one. You never left
   your scene.
 - **Open today's entry.** Click the toolbar journal button (or type `/journal`). It jumps you to
-  today's dated node under the `Journal` home, creating both if they are not there yet. Compare
+  today's dated point under the `Journal` home, creating both if they are not there yet. Compare
   that to the hand-typed date headers in the Lonelog case, this is the same idea, automated.
 - **Refile a capture.** On one of the captured children, open the bullet menu and pick **Refile**,
-  then send it under the `Journal` day node or the Session subtree. The idea leaves the inbox and
+  then send it under the `Journal` day point or the Session subtree. The idea leaves the inbox and
   joins the fiction.
 - **Run the pills.** Click `{Yes 6 | No 6}` to ask the oracle, `{shuffle: complication | ally
   appears | clock ticks | quiet}` to draw a session-start event (a deck, so it draws each once
-  before it reshuffles), and `{2d6}` for a random-event roll. Each freezes its result, click again
+  before it reshuffles) and `{2d6}` for a random-event roll. Each freezes its result, click again
   to re-run.
 
 ---

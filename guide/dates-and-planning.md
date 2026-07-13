@@ -9,7 +9,7 @@ is the scheduling side; for date arithmetic (`{= daysuntil(due)}` and friends) s
 
 ## Scheduling dates
 
-Track when things need to happen: set a deadline on a deliverable, a start date on a project phase,
+Track when things need to happen: set a deadline on a deliverable, a start date on a project phase
 or both on a running task.
 
 Once a point has a date it shows up in the [agenda](#agenda-and-calendar), turns red when overdue,
@@ -47,14 +47,14 @@ A compact **List** is always shown, ordered by urgency (most overdue and soonest
 done items sunk to the end) so nothing gets lost. Beside it, a single **view switcher** opens one
 deeper view at a time below the List (click the active one again to return to just the List):
 
-- **Week** , a 7-day planner spread; overdue items are gathered in a leading **Earlier** column.
+- **Week** , a seven-day planner spread; overdue items are gathered in a leading **Earlier** column.
 - **Month** , a full month calendar. Hover a day (or, on touch, look for the corner **+**) to schedule a new point for that day: it opens the capture bar with the due date preloaded (a **due …** chip you can dismiss), so you type the point, pick or confirm the inbox it lands in, and press Capture without leaving the calendar.
 - **Timeline** , a Gantt-style view of overlapping tasks. A Titles chip cycles the name-column width (narrow, default, wide); on desktop you can also drag the dotted separator.
 
 In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
 do, y done**) and lists the active ones first; when a day has more than fit, click its **more** to
 expand that day in place and see them all. On a wide screen the **Month** view also shows the
-previous and next months peeking in at the sides (the same size as the centred one); click either to
+previous and next months peeking in at the sides (the same size as the centered one); click either to
 jump to it. The **‹‹** and **››** buttons jump a whole month (Week) or year (Month).
 
 Turn on **Done** to include completed points; toggle **Running** to show or hide started work; turn
@@ -88,16 +88,16 @@ whole archive and reads as a chronicle.
 
 ## Daily journal
 
-Keep a running log of what you worked on, decisions you made, or anything worth noting each day.
+Keep a running log of what you worked on, decisions you made or anything worth noting each day.
 
 Entries file themselves by date under a **Journal** point, nested year then month then day
 (`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your outline. The
 toolbar book button toggles the **Journal bar**: type a point and press Enter to file it under
 today's entry without leaving your place. The bar shows the date it is saving to; click the
-year, month, or day to jump to that part of the journal. Type **`/journal`** to open today's
+year, month or day to jump to that part of the journal. Type **`/journal`** to open today's
 entry directly.
 
-(When a folder of documents is connected (a [folder](features.md#linking-and-connecting-notes)), the
+(When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
 journal can instead write one file per day on disk.)
 
 ---

@@ -1,11 +1,11 @@
 # Pointliner for solo RPGs
 
 Pointliner started life as a solo-RPG tool: the idea was to roll the dice, ask the
-oracle, and write the journal all in one file, so the playing and the record live in
+oracle and write the journal all in one file, so the playing and the record live in
 the same place. It grew into a general outliner, but the solo-play roots never left.
 
 This folder collects **worked examples** of using Pointliner at the table: real
-journaling styles, generators, and trackers, each with a written walkthrough and a
+journaling styles, generators and trackers, each with a written walkthrough and a
 ready-to-open demo file you can poke at.
 
 No coding required. If you can type `{` you can use everything here. If you are new to
@@ -37,25 +37,25 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 - **Tools (beat the blank page):** Generators, Session prep.
 - **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log, The campaign calendar.
 - **Computing (let the numbers run themselves):** Living character sheet, Campaign clocks and threads.
-- **A full system:** Ironsworn, Cairn, and Maze Rats (their rules wired into pills, adapted from their open licences).
+- **A full system:** Ironsworn, Cairn and Maze Rats (their rules wired into pills, adapted from their open licences).
 
 | Case | What it shows | Guide | Demo |
 |---|---|---|---|
 | **Lonelog notation** | A compact, system-agnostic session-log style, adapted to Pointliner's outline + live dice | [lonelog/lonelog.md](lonelog/lonelog.md) | [lonelog/lonelog-demo.opml](lonelog/lonelog-demo.opml) |
-| **Oracle-driven scene play** | The engine under the journal: a swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck | [oracle-play/oracle-play.md](oracle-play/oracle-play.md) | [oracle-play/oracle-play-demo.opml](oracle-play/oracle-play-demo.opml) |
+| **Oracle-driven scene play** | The engine under the journal: a swing oracle, a chaos-weighted interrupt check, a meaning table and a thread deck | [oracle-play/oracle-play.md](oracle-play/oracle-play.md) | [oracle-play/oracle-play-demo.opml](oracle-play/oracle-play-demo.opml) |
 | **The living oracle** | Roll on your own campaign: `{roll: #npc}` and `{roll: #thread}` draw a random point from your live cast and open threads, so the world surprises you with its own contents (the one thing no curated oracle app can do) | [living-oracle/living-oracle.md](living-oracle/living-oracle.md) | [living-oracle/living-oracle-demo.opml](living-oracle/living-oracle-demo.opml) |
-| **Generators (names, places, loot)** | Pointliner's grammar engine as a content generator: a Markov name chain, a rule-based place generator with text modifiers, and a weighted loot table with a hierarchical item | [generators/generators.md](generators/generators.md) | [generators/generators-demo.opml](generators/generators-demo.opml) |
-| **Session prep and quick capture** | Beat the blank page: stamp a session from a template, capture a mid-play idea to the inbox without leaving the scene, and keep today's entry with journal mode | [session-prep/session-prep.md](session-prep/session-prep.md) | [session-prep/session-prep-demo.opml](session-prep/session-prep-demo.opml) |
+| **Generators (names, places, loot)** | Pointliner's grammar engine as a content generator: a Markov name chain, a rule-based place generator with text modifiers and a weighted loot table with a hierarchical item | [generators/generators.md](generators/generators.md) | [generators/generators-demo.opml](generators/generators-demo.opml) |
+| **Session prep and quick capture** | Beat the blank page: stamp a session from a template, capture a mid-play idea to the inbox without leaving the scene and keep today's entry with journal mode | [session-prep/session-prep.md](session-prep/session-prep.md) | [session-prep/session-prep-demo.opml](session-prep/session-prep-demo.opml) |
 | **NPC and faction tracker** | The cast as an interactive base you flip to a faction board, plus linking scene beats to the people in them | [npc-faction/npc-faction.md](npc-faction/npc-faction.md) | [npc-faction/npc-faction-demo.opml](npc-faction/npc-faction-demo.opml) |
-| **Hex-crawl travel log** | A map that IS the outline: nested regions and hexes, a self-reshuffling terrain deck, dice encounters, and supplies totaled up each region | [hex-crawl/hex-crawl.md](hex-crawl/hex-crawl.md) | [hex-crawl/hex-crawl-demo.opml](hex-crawl/hex-crawl-demo.opml) |
-| **Living character sheet** | Stats as variables that feed derived numbers, an inventory that totals its own weight, and an encumbrance check that flips red when overloaded | [character-sheet/character-sheet.md](character-sheet/character-sheet.md) | [character-sheet/character-sheet-demo.opml](character-sheet/character-sheet-demo.opml) |
-| **Campaign clocks and threads** | Progress-cookie clocks that fill as you check segments, threads that tick on a date and surface in the agenda, and a live query pulling every open thread | [campaign-clocks/campaign-clocks.md](campaign-clocks/campaign-clocks.md) | [campaign-clocks/campaign-clocks-demo.opml](campaign-clocks/campaign-clocks-demo.opml) |
+| **Hex-crawl travel log** | A map that IS the outline: nested regions and hexes, a self-reshuffling terrain deck, dice encounters and supplies totaled up each region | [hex-crawl/hex-crawl.md](hex-crawl/hex-crawl.md) | [hex-crawl/hex-crawl-demo.opml](hex-crawl/hex-crawl-demo.opml) |
+| **Living character sheet** | Stats as variables that feed derived numbers, an inventory that totals its own weight and an encumbrance check that flips red when overloaded | [character-sheet/character-sheet.md](character-sheet/character-sheet.md) | [character-sheet/character-sheet-demo.opml](character-sheet/character-sheet-demo.opml) |
+| **Campaign clocks and threads** | Progress-cookie clocks that fill as you check segments, threads that tick on a date and surface in the agenda and a live query pulling every open thread | [campaign-clocks/campaign-clocks.md](campaign-clocks/campaign-clocks.md) | [campaign-clocks/campaign-clocks-demo.opml](campaign-clocks/campaign-clocks-demo.opml) |
 | **The campaign calendar** | The world on its own calendar: months, week, and era you define, threads due in world time, a clock you advance from the agenda, and a journal that chronicles in campaign dates | [campaign-calendar/campaign-calendar.md](campaign-calendar/campaign-calendar.md) | [campaign-calendar/campaign-calendar-demo.opml](campaign-calendar/campaign-calendar-demo.opml) |
-| **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks, and oracles, with the SRD's moves and tables dropped into the pill structure (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
-| **Cairn in Pointliner** | A rules-light OSR system in pills: 3d6 attributes as variables, d20 roll-under saves, a slot inventory with an overload check, HP-then-Strength damage, and the game's tables (CC BY-SA 4.0, Yochai Gal) | [cairn/cairn.md](cairn/cairn.md) | [cairn/cairn-demo.opml](cairn/cairn-demo.opml) |
+| **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks and oracles, with the SRD's moves and tables dropped into the pill structure (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
+| **Cairn in Pointliner** | A rules-light OSR system in pills: 3d6 attributes as variables, d20 roll-under saves, a slot inventory with an overload check, HP-then-Strength damage and the game's tables (CC BY-SA 4.0, Yochai Gal) | [cairn/cairn.md](cairn/cairn.md) | [cairn/cairn-demo.opml](cairn/cairn-demo.opml) |
 | **Maze Rats in Pointliner** | A table-driven OSR generator in pills: 2d6 saves off modifier variables, and the game's many random tables as one-click picks, including its two-list improvised-spell trick (CC BY 4.0, Ben Milton) | [maze-rats/maze-rats.md](maze-rats/maze-rats.md) | [maze-rats/maze-rats-demo.opml](maze-rats/maze-rats-demo.opml) |
 
-Each is one nested branch you can open, poke at, and rebuild into your own.
+Each is one nested branch you can open, poke at and rebuild into your own.
 
 ---
 
@@ -93,7 +93,7 @@ licence's terms and with its attribution:
 - The **Maze Rats** example adapts **Maze Rats** by **Ben Milton**, used under **CC BY 4.0**
   (<https://creativecommons.org/licenses/by/4.0/>).
 
-Each carries the required attribution, notes that changes were made, and uses the game's name
+Each carries the required attribution, notes that changes were made and uses the game's name
 descriptively (no logo or artwork). Please support the creators whose work these examples point to.
 
 Pointliner itself is MIT licensed (see [LICENSE](../../LICENSE)).

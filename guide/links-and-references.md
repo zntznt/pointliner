@@ -1,15 +1,15 @@
 # Links and references
 
 *Part of the [Pointliner guide](README.md). Connect points to each other to build a personal wiki:
-internal links with live titles, backlinks, unlinked mentions, and links that reach across a whole
-folder of notes.*
+internal links with live titles, backlinks, unlinked mentions and links that reach across a whole
+folder of documents.*
 
 ---
 
 ## Linking points
 
 Build a personal wiki where ideas refer to each other, create a table of contents that links to
-sections, or connect a task to its full context note.
+sections or connect a task to its full context note.
 
 Type **`[[`** and pick the point to link to. Two things make these links low-maintenance:
 
@@ -53,12 +53,12 @@ rather than silently missing. Points with no links do not appear, keeping the gr
 scatter of unconnected dots. The graph is a live rendering of your links, so it is always current: link
 two points and they join the next time you open it.
 
-## Links across notes
+## Links across documents
 
-Weave together a network of notes: link a project note to a person note, connect a meeting note to an
-action item in another file, or build a topic index that points to pages across your whole library.
+Weave together a network of documents: link a project document to a person document, connect a meeting document to an
+action item in another file or build a topic index that points to pages across your whole library.
 
-In a [connected folder](features.md#linking-and-connecting-notes) the `[[` picker searches **all**
+In a [connected folder](features.md#linking-and-connecting-documents) the `[[` picker searches **all**
 your documents, not just the one you are in, so a link can reach a point in any file.
 
 ## Find broken links

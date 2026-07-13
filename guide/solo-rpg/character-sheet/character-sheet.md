@@ -95,7 +95,7 @@ Carried load          (with a check: sum(weight) <= 10)
 Two things are happening on that pack point.
 
 First, `{= sum(weight)}` is a **child-property rollup**. It walks the point's direct children,
-reads each one's `weight` property, and adds them. It is live: add an item, remove one, or edit a
+reads each one's `weight` property and adds them. It is live: add an item, remove one or edit a
 weight, and the total recomputes. There is no cell you maintain and no formula to drag down. The
 list *is* the data, and the sum reads the list.
 
@@ -113,13 +113,13 @@ test; it is not a property you type inline, it gets its own small pass/fail chip
 
 A **check** is a linter for your outline. It carries a comparison (a check *must* have one:
 `<=`, `<`, `>`, `>=`, `==`, `!=`), and it evaluates that comparison over the point and its
-children. Here it asks: **is the total carried weight ten or under?** While it is, the chip sits
-quiet as a small muted tick. The moment the total crosses ten, the chip turns **red** and the point
+children. Here it asks: **is the total carried weight 10 or under?** While it is, the chip sits
+quiet as a small muted tick. The moment the total crosses 10, the chip turns **red** and the point
 is flagged.
 
-Try it. The starting pack sums to ten, so the check passes. The demo has a spare line telling you
+Try it. The starting pack sums to 10, so the check passes. The demo has a spare line telling you
 to add an `Iron cook pot {prop weight: 2}` into the pack. Do that (or bump any weight up by one) and
-the total climbs to eleven, `sum(weight) <= 10` becomes false, and the Carried load chip goes red.
+the total climbs to 11, `sum(weight) <= 10` becomes false, and the Carried load chip goes red.
 Drop something and it clears. The rule is written once and enforces itself forever after, exactly
 like the derived math, except the answer it computes is *pass or fail* instead of a number.
 
@@ -139,7 +139,7 @@ Open the [demo file](character-sheet-demo.opml) and poke at it:
 - **Raise a stat and re-roll.** Bump `{might := 2}` to `4`, then click the attack roll
   (`{2d6+might}`) a few times. The modifier followed the stat.
 - **Overload the pack.** Add the cook-pot line, or edit any `{prop weight: N}` upward, until
-  `{= sum(weight)}` passes ten. The Carried load check flips to red. Remove the weight and it clears.
+  `{= sum(weight)}` passes 10. The Carried load check flips to red. Remove the weight and it clears.
 - **Find every problem at once.** Search `is:failing`. While the pack is overloaded, the check
   shows up in the results; fix it and it drops out.
 

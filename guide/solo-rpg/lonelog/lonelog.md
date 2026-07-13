@@ -12,7 +12,7 @@ works as well in a paper notebook as on a screen.
 This guide is **not** the Lonelog specification, and it does not reproduce it. It shows how to
 take the *idea* behind Lonelog, keeping mechanics and fiction cleanly separated in one running
 log, and run it inside Pointliner, where the dice are live and the log is an outline you can
-link, tag, and search later. For the real notation, its full rules, and the people behind it,
+link, tag and search later. For the real notation, its full rules and the people behind it,
 go to the source:
 
 - Lonelog by Roberto Bisceglie / Loreseed Workshop: <https://lonelog.itch.io/lonelog>
