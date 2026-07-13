@@ -598,7 +598,11 @@ reflects them; any *future* mutation of `root.plugins` must `markDirty()`. Robus
 `headJSONArray` load validator and the collector guard, and malformed `rules`/`vars`
 inside a kept pack are neutralized defensively at use (`parseRules`→`null`,
 `evalMath`→`null`, non-array `vars` skipped) — a hostile `<_plugins>` never throws or
-executes. Pick-vars, emoji packs, and any authoring/management UI are out of v1.
+executes. A pack var may be a **formula** (`{name, expr}`, evalMath) or a **random pick**
+(`{name, kind:'pick', expr:source, rolled}` — rolled once at author/import time via
+`rollPickSource`, frozen in the pack, resolved by `collectVars` through the same `pickVals`
+path as a document pick var; #585). The pack manager (`openDataPackManager`, #487) is the
+authoring UI. Emoji packs, and packs carrying stateful decks/sequences/templates, stay out.
 
 **Node links** are a third document-wide index, same shape as the above — and
 **hashtags** a fourth: `collectTags(rootNode = root)` walks the tree with mdInline's

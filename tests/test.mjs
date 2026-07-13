@@ -1539,6 +1539,49 @@ test('plugin packs — packVarDefs flattens only well-formed {name,expr} entries
   assert.deepEqual(defs, [{ name: 'x', expr: '1' }]);
 });
 
+test('#585 parsePackVarLines — classifies name=formula and name:pick (no rolling in parse)', () => {
+  const p = c.parsePackVarLines('tax = 0.2\nstrength: 3d6\ncolor: red | blue');
+  assert.deepEqual(host(p.vars), [
+    { name: 'tax', expr: '0.2' },
+    { name: 'strength', kind: 'pick', source: '3d6' },
+    { name: 'color', kind: 'pick', source: 'red | blue' },
+  ]);
+  assert.deepEqual(host(p.bad), []);
+  // `=` before the first `:` stays a formula (a pick's own value may contain a colon)
+  assert.deepEqual(host(c.parsePackVarLines('r = a:b').vars), [{ name: 'r', expr: 'a:b' }]);
+  // a bad name is reported
+  assert.deepEqual(host(c.parsePackVarLines('9bad: 1').bad), ['9bad: 1']);
+});
+
+test('#585 packVarDefs — carries a pick var {kind,rolled}; drops a pick missing its frozen roll', () => {
+  const defs = host(c.packVarDefs([
+    { id: 'a', vars: [
+      { name: 'tax', expr: '0.2' },                                  // formula
+      { name: 'str', kind: 'pick', expr: '3d6', rolled: '14' },      // frozen pick, kept
+      { name: 'broken', kind: 'pick', expr: '3d6' },                 // no rolled → dropped
+    ] },
+  ]));
+  assert.deepEqual(defs, [
+    { name: 'tax', expr: '0.2' },
+    { name: 'str', kind: 'pick', expr: '3d6', rolled: '14' },
+  ]);
+});
+
+test('#585 rollPackPickVars — freezes each pick to a rolled value; formulas pass through', () => {
+  const frozen = host(c.rollPackPickVars([
+    { name: 'tax', expr: '0.2' },
+    { name: 'str', kind: 'pick', source: '3d6' },
+  ]));
+  const tax = frozen.find(v => v.name === 'tax');
+  const str = frozen.find(v => v.name === 'str');
+  assert.deepEqual(tax, { name: 'tax', expr: '0.2' });               // formula unchanged
+  assert.equal(str.kind, 'pick');
+  assert.equal(str.expr, '3d6');                                     // source kept for re-display/edit
+  assert.equal(typeof str.rolled, 'string');
+  const n = Number(str.rolled);
+  assert.ok(Number.isFinite(n) && n >= 3 && n <= 18, `3d6 rolled ${str.rolled} in [3,18]`);
+});
+
 test('plugin packs — a pack rule is callable document-wide', () => {
   const root = c.mkRoot();
   root.plugins = [{ id: 'p', rules: 'color: red | blue' }];
@@ -1549,6 +1592,31 @@ test('plugin packs — a pack rule is callable document-wide', () => {
     const out = c.runGrammar('o: {color}', 'o', rules, {});
     assert.ok(out === 'red' || out === 'blue', `pack rule expanded to ${out}`);
   } finally { c.resetRandom(); }
+});
+
+test('#585 plugin packs — a pack pick var resolves to its frozen roll via collectVars', () => {
+  const root = c.mkRoot();
+  // a frozen numeric pick (a "rolled once" stat) and a frozen string pick (a rolled name)
+  root.plugins = [{ id: 'p', vars: [
+    { name: 'strength', kind: 'pick', expr: '3d6', rolled: '14' },
+    { name: 'sigil', kind: 'pick', expr: 'star | moon', rolled: 'moon' },
+    { name: 'tax', expr: '0.2' },
+  ] }];
+  const vars = c.collectVars(root);
+  assert.equal(vars.strength, 14, 'a numeric pick resolves AS a number (composes with math)');
+  assert.equal(vars.sigil, 'moon', 'a string pick resolves as its frozen string');
+  assert.equal(vars.tax, 0.2, 'a formula pack var still resolves live');
+  // the pick value does NOT re-roll across passes (the frozen contract)
+  assert.equal(c.collectVars(root).strength, 14, 'a pick var never re-rolls on a collect pass');
+});
+
+test('#585 plugin packs — a document var of the same name overrides a pack pick var', () => {
+  const root = c.mkRoot();
+  root.plugins = [{ id: 'p', vars: [{ name: 'strength', kind: 'pick', expr: '3d6', rolled: '5' }] }];
+  // a document var is only gathered when its [[var:key]] token is in the node text
+  const n = c.mkNode(''); n.text = '[[var:k1]]'; n.vars = [{ key: 'k1', name: 'strength', expr: '18', kind: undefined }];
+  root.children.push(n);
+  assert.equal(c.collectVars(root).strength, 18, 'the document formula var wins over the pack pick (last-wins)');
 });
 
 test('plugin packs — a document rule OVERRIDES a pack rule on a name collision', () => {
@@ -6533,6 +6601,23 @@ test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger
   assert.ok(_src.includes('maybeNudgeSum(node, p.key)'), 'props-dialog save must offer the sum nudge');
   assert.ok(_src.includes('maybeNudgeSum(cur, ps.key)'), 'the /prop slash must offer the sum nudge');
   assert.ok(_src.includes('maybeNudgeRoll()'), 'a tag edit must offer the roll nudge');
+});
+
+test('#585 pack pick vars: editor wiring (parse classifies, save rolls, seeds pickVals) (src pins)', () => {
+  // the collectVars/varMapAt seeds must route a pick var's frozen roll into pickVals
+  assert.ok(_src.includes("if (pv.kind === 'pick') pickVals[nm] = String(pv.rolled ?? '')"), 'collectVars must seed a pack pick into pickVals');
+  assert.ok(_src.includes("pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined"), 'varMapAt must seed a pack pick into its pick slot');
+  // the save path rolls the classified picks (freeze on save, not per-keystroke)
+  assert.ok(_src.includes('rollPackPickVars(vp.vars)'), 'the pack editor save must freeze picks via rollPackPickVars');
+  assert.ok(_src.includes('vars: frozen'), 'the saved pack must store the frozen vars');
+  // the parse stays roll-free (a pick line carries source, not a rolled value)
+  const pv = fnBody(_src, 'parsePackVarLines');
+  assert.ok(pv.includes("kind: 'pick', source: rhs") && !pv.includes('rollPickSource'), 'parse must classify without rolling');
+  // rollPackPickVars is the roll seam and drops a pick that will not roll
+  const rp = fnBody(_src, 'rollPackPickVars');
+  assert.ok(rp.includes('rollPickSource(v.source)') && rp.includes('rolled != null'), 'rollPackPickVars must roll and drop a non-rolling pick');
+  // the edit round-trip re-displays a pick as `name: source`
+  assert.ok(_src.includes("v.kind === 'pick' ? `${v.name}: ${v.expr}` : `${v.name} = ${v.expr}`"), 'a saved pick must re-display in its authoring form');
 });
 
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
