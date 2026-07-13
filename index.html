@@ -10174,9 +10174,15 @@ function buildPackEditView() {
   // Canonical dialog fields (design-language §4): .io-field { label, input/textarea.io-mono }
   // appended straight to #io-card (which owns the padding), with an .io-preview live line — the
   // exact shape openInsertDialog uses. No inline styles; all tokens/focus/anti-zoom via the class.
+  // #634: associate the label with its control (a `for`/`id` pair) so a screen reader announces
+  // each pack field by its label, matching the openInsertDialog pattern. Give the control a stable
+  // id if it lacks one; the label points at it.
+  let _fldSeq = 0;
   const mkField = (labelText, control) => {
     const f = document.createElement('div'); f.className = 'io-field';
     const lbl = document.createElement('label'); lbl.textContent = labelText;
+    if (!control.id) control.id = 'pack-fld-' + (_fldSeq++);
+    lbl.setAttribute('for', control.id);
     f.append(lbl, control); ioCard.appendChild(f); return f;
   };
   // .io-preview-note = the muted helper-line variant; .io-preview-bad flips it to the error ink.
@@ -16933,8 +16939,15 @@ function graphNodeLabel(firstLine) {
   t = t.replace(/^\s*(#{1,6}\s+|>\s+|-\s+\[[ xX]\]\s+|\d+\.\s+|[-*+]\s+)/, '');
   // collapse links to their caption; a mirror/plain link (no caption) drops out entirely
   t = t.replace(/\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|([^\]\n]*))?\]\]/gi, (_, cap) => cap || '');
-  // strip inline emphasis markers so a bolded title reads plain
-  t = t.replace(/(\*\*|__|\*|_|`|~~|\+\+)(.+?)\1/g, '$2');
+  // strip inline emphasis markers so a bolded title reads plain. Chained longest-first (triple
+  // then double then single, like stripInlineMd) so the app's own combined ***bold-italic*** /
+  // ___both___ syntax strips CLEANLY — the old single `(\*\*|_|…)(.+?)\1` matched only the outer
+  // pair and left a stray `*` on each side (`***x***` → `*x*`).
+  t = t
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '$1').replace(/___([^_]+)___/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1').replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1')
+    .replace(/`([^`]+)`/g, '$1').replace(/~~([^~]+)~~/g, '$1').replace(/\+\+([^+]+)\+\+/g, '$1');
   return t.replace(/\s+/g, ' ').trim();
 }
 

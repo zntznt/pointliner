@@ -2379,6 +2379,10 @@ import assert2 from 'node:assert/strict';
     assert2.equal(c2.graphNodeLabel('## Ashguild'), 'Ashguild');
     assert2.equal(c2.graphNodeLabel('- [ ] find **the fence**'), 'find the fence');
     assert2.equal(c2.graphNodeLabel('> a quoted lead'), 'a quoted lead');
+    // #635: combined ***bold-italic*** / ___both___ strips CLEANLY (no stray marker left)
+    assert2.equal(c2.graphNodeLabel('***Dragon Lord***'), 'Dragon Lord');
+    assert2.equal(c2.graphNodeLabel('___Ancient One___'), 'Ancient One');
+    assert2.equal(c2.graphNodeLabel('The *sly* ++Fence++ and `Rusty`'), 'The sly Fence and Rusty');
     // cross-doc link form collapses too
     assert2.equal(c2.graphNodeLabel('Voss [[doc7#n3|]]'), 'Voss');
     assert2.equal(c2.graphNodeLabel(''), '');
@@ -6682,6 +6686,12 @@ test('#583 pack templates: reads use mergedTemplates, writes stay doc-only, pack
   // deepClone now copies est + query (a pack template may carry them)
   const dc = fnBody(_src, 'deepCloneNodeNewIds');
   assert.ok(dc.includes('est:') && dc.includes('query:'), 'the clone must deep-copy est and query');
+});
+
+test('#634 pack editor: mkField associates each label with its control (src pin)', () => {
+  // the pack-manager field helper gives the control an id and points the label at it (WCAG 1.3.1 / P3)
+  assert.ok(_src.includes("lbl.setAttribute('for', control.id)"), 'the label must point at its control');
+  assert.ok(_src.includes("control.id = 'pack-fld-'"), 'a control without an id gets a stable one');
 });
 
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
