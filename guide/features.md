@@ -37,6 +37,9 @@ The everyday outliner. This is the part you use without thinking about it.
   on-brand color (nested tags inherit it) and a property key a small icon. Purely visual, stored
   with the document.
 - **Click anywhere to edit.** Click any empty part of a point and you are typing there.
+- **Touch quick bar.** On a phone or tablet, a bottom bar keeps the essentials under your
+  thumb: capture, a new point, a new point with the `@` insert menu, and help. While you
+  edit, it swaps for a bar of structural controls (indent, move, insert).
 
 ## Generating text
 

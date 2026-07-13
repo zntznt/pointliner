@@ -1588,6 +1588,12 @@ body.agg-resizing{cursor:col-resize;user-select:none}
    single point on touch. */
 #edit-bar{position:fixed;left:0;right:0;bottom:0;z-index:650;display:none;align-items:center;gap:4px;padding:6px 10px calc(6px + env(safe-area-inset-bottom));background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up)}
 #edit-bar.on{display:flex}
+/* touch quick bar (#566): the edit bar's display-mode twin — same envelope, same .eb-btn
+   controls, they swap with edit state (JS gates both on IS_TOUCH). The capture button is
+   a toggle and shows its pressed state with the strip-chip tint recipe. */
+#quick-bar{position:fixed;left:0;right:0;bottom:0;z-index:640;display:none;align-items:center;gap:4px;padding:6px 10px calc(6px + env(safe-area-inset-bottom));background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up)}
+#quick-bar.on{display:flex}
+#quick-bar .eb-btn[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .eb-btn{flex:0 0 auto;min-width:44px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:17px;line-height:1;transition:background .1s}
 .eb-btn:active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .eb-btn:disabled{opacity:.35;pointer-events:none}
@@ -1839,6 +1845,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .mt-base-more{padding:11px 8px}
   .nt-ol>.node-row>.bullet .bullet-dot,.nt-divider>.node-row>.bullet .bullet-dot{opacity:.45}
   .md-task{gap:.6em}
+  /* #566: the corner ? folds into the quick bar on touch — one bottom surface, and the
+     bar occupies exactly where the FAB floated. The bottom-docked panels sit ON the bar
+     (--qbar-h is set by updateQuickBar: the bar's height while shown, 0 while editing);
+     the backlinks panel and the toast get the same lift in their JS stack sums. */
+  #sc-toggle{display:none}
+  #fn-panel,#var-panel{bottom:var(--qbar-h,0px)}
   /* anti-zoom: iOS auto-zooms inputs/contenteditable whose font-size < 16px */
   .io-field input,.io-field textarea,.props-input{font-size:16px}
   #search-box{font-size:16px}
@@ -2073,6 +2085,17 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <button class="eb-btn" id="eb-down" title="Move down" aria-label="Move point down">↓</button>
   <span class="eb-spacer"></span>
   <button class="eb-btn" id="eb-done" title="Done editing" aria-label="Done editing">Done</button>
+</div>
+<!-- touch quick bar (#566): the one-handed play loop. Bottom-anchored on touch while in
+     DISPLAY mode (the edit bar takes its place while editing, so there is one bottom bar
+     at a time): capture, new point, new point + the @ insert menu, help. The corner ?
+     button folds in here on touch, so the bottom edge holds one surface, not two. -->
+<div id="quick-bar" role="toolbar" aria-label="Quick actions" aria-hidden="true">
+  <button class="eb-btn" id="qb-capture" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox" aria-hidden="true"></i></button>
+  <button class="eb-btn" id="qb-new" title="New point" aria-label="New point at the end">+</button>
+  <button class="eb-btn" id="qb-insert" title="New point with the insert menu" aria-label="New point with the insert menu">@</button>
+  <span class="eb-spacer"></span>
+  <button class="eb-btn" id="qb-help" title="Help &amp; guide" aria-label="Help and concept guide">?</button>
 </div>
 <!-- footnote panel -->
 <div id="fn-panel">
@@ -6364,7 +6387,7 @@ let _pendingHint = null;  // the LAST hint deferred during an error dwell; repla
 // location never becomes context-dependent (P1). Returns a CSS length for `bottom`.
 function flashBottom() {
   const on = id => { const el = document.getElementById(id); return el?.classList.contains('on') ? el.offsetHeight : 0; };
-  const stack = on('fn-panel') + on('bl-panel') + on('var-panel');   // 0 when none open
+  const stack = on('fn-panel') + on('bl-panel') + on('var-panel') + quickBarHeight();   // 0 when none open (#566: the bar is part of the stack)
   const safe = 'env(safe-area-inset-bottom)';
   return stack ? `calc(${stack + 20}px + ${safe})` : `calc(20px + ${safe})`;
 }
@@ -6788,6 +6811,16 @@ function renderWindow(force) {
   // (forceIncludeId), so scroll/resize re-renders don't destroy the caret.
   const liveId = activeContentId ?? forceIncludeId;
   const activeEl = liveId != null ? vlist.querySelector(`.node[data-id="${liveId}"]`) : null;
+  // Removing a row that HOLDS focus fires blur synchronously, and the blur handler
+  // exitEdits: the "preserved" element came back as a dead display row and the caret died
+  // with it (any mid-edit rebuild; the quick bar's fresh-point flow trips it reliably).
+  // For a focused .node-content: hold the blur handlers off for the rebuild's duration,
+  // then restore focus + caret to the re-appended element. Table cells keep their own
+  // commit-on-blur semantics untouched.
+  const _ae = document.activeElement;
+  const focusedInner = activeEl && activeEl.contains(_ae) && _ae.classList?.contains('node-content') ? _ae : null;
+  const caretOff = focusedInner?.dataset.editing ? getCaretOffset(focusedInner) : null;
+  if (focusedInner) _vlPreservingFocus = true;
   if (activeEl) activeEl.remove();
 
   vlist.innerHTML = '';
@@ -6806,6 +6839,13 @@ function renderWindow(force) {
   }
   vlist.appendChild(vBot);
   winStart = s; winEnd = e;
+  if (focusedInner) {
+    if (focusedInner.isConnected) {
+      focusedInner.focus();
+      if (caretOff != null) setCaretByOffset(focusedInner, caretOff);
+    }
+    _vlPreservingFocus = false;   // cleared unconditionally: the guard must never outlive the rebuild
+  }
 
   vTop.style.height = (e >= s ? rowTops[s] : 0) + 'px';
   vBot.style.height = (e >= 0 ? totalHeight - rowTops[e + 1] : 0) + 'px';
@@ -6851,6 +6891,9 @@ function scheduleReconcile() {
 
 // scroll the page so a given row sits comfortably in view, then re-window
 let forceIncludeId = null;
+// true only WHILE renderWindow rebuilds around a focused editor: the removal-blur must not
+// exitEdit (renderWindow restores the focus + caret right after the re-append)
+let _vlPreservingFocus = false;
 function ensureRowVisible(id) {
   const i = flatIndex.get(id);
   if (i == null || !vlist) return false;
@@ -10848,6 +10891,7 @@ function openCaptureDialog(slot) {   // name kept: still the single entry point 
   document.getElementById('capture-strip').classList.add('on');
   const btn = document.getElementById('btn-capture');
   btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+  document.getElementById('qb-capture')?.setAttribute('aria-pressed', 'true');   // #566: the quick-bar twin mirrors
   renderCaptureStrip();
   requestAnimationFrame(() => document.getElementById('cap-input')?.focus());
 }
@@ -10857,6 +10901,7 @@ function closeCapture() {
   document.getElementById('capture-strip').classList.remove('on');
   const btn = document.getElementById('btn-capture');
   btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
+  document.getElementById('qb-capture')?.setAttribute('aria-pressed', 'false');   // #566: the quick-bar twin mirrors
   const rf = captureReturnFocus; captureReturnFocus = null;
   if (rf && rf.isConnected) rf.focus(); else document.getElementById('btn-capture').focus();
 }
@@ -12073,6 +12118,7 @@ function attachContentEvents(content, node) {
       content.focus();
     });
     content.addEventListener('blur', () => {
+      if (_vlPreservingFocus) return;   // the virtual-list rebuild restores this focus itself
       if (content.dataset.editing) exitEdit(content, node);
     });
     content.addEventListener('keydown', e => {
@@ -12285,6 +12331,7 @@ function attachContentEvents(content, node) {
     updateBlPanel(node.id);
   });
   content.addEventListener('blur', () => {
+    if (_vlPreservingFocus) return;   // the virtual-list rebuild restores this focus itself
     if (content.dataset.editing) exitEdit(content, node);
     fnLocked = false;
     scheduleFnHide();
@@ -13469,6 +13516,7 @@ function updateEditBar() {
   const show = IS_TOUCH && node && node.type !== 'base';
   editBar.classList.toggle('on', !!show);
   editBar.setAttribute('aria-hidden', show ? 'false' : 'true');
+  updateQuickBar();   // #566: the quick bar and the edit bar swap — one bottom bar at a time
   if (!show) return;
   positionEditBar();
   // Disable dead-end directions (P4: a control that would do nothing is disabled, not silently inert).
@@ -13561,6 +13609,47 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', track);
   window.visualViewport.addEventListener('scroll', track);
 }
+
+// ── touch quick bar (#566): the one-handed play loop ──────────────────────────
+// A bottom-anchored bar of display-mode actions on touch: capture, new point, new
+// point + the @ insert menu, help. The edit bar and this bar SWAP with edit state
+// (updateEditBar calls updateQuickBar), so the bottom edge holds one bar at a time;
+// the corner ? FAB is hidden on touch (the bar's ? replaces it). The bar's height is
+// published as --qbar-h so the bottom-docked panels (footnotes/variables in CSS,
+// backlinks + the toast in their JS stack sums) sit ON the bar instead of under it.
+const quickBar = document.getElementById('quick-bar');
+// element lookup, not the const: flashBottom/syncBlPanelBottom may run during boot,
+// before this block's const initializes (hoisted fn + TDZ would throw there)
+function quickBarHeight() { const qb = document.getElementById('quick-bar'); return qb?.classList.contains('on') ? qb.offsetHeight : 0; }
+function updateQuickBar() {
+  const show = IS_TOUCH && !editBar.classList.contains('on');
+  quickBar.classList.toggle('on', show);
+  quickBar.setAttribute('aria-hidden', show ? 'false' : 'true');
+  document.documentElement.style.setProperty('--qbar-h', quickBarHeight() + 'px');
+  syncBlPanelBottom();
+}
+// The bar's + is the ghost row's twin ("New point" means the same thing everywhere, P1):
+// append a continuation-aware sibling after the view's last point via insertSiblingAfter
+// (an empty view gets its first child) — the same call the ghost row makes, which renders
+// and focusNode's the fresh point itself. withAt then types '@' at the new caret — the
+// eb-insert path (UXP-105), so one tap goes from nothing to the pill palette mid-scene.
+function quickNewPoint(withAt) {
+  let container = (focusedId && nodeById(focusedId)) || root;
+  if (container.type === 'base') container = root;   // a base's children are its rows, never a free point
+  const kids = container.children;
+  if (kids.length) insertSiblingAfter(kids[kids.length - 1].id);
+  else { pushUndo(); const n = createChildModel(container); render(); focusNode(n.id); }
+  if (withAt) requestAnimationFrame(() => requestAnimationFrame(() => {   // after focusNode's frame: the caret exists by now
+    if (document.querySelector('.node-content[data-editing]')) document.execCommand('insertText', false, '@');
+  }));
+}
+// Plain click wiring (no ebBtn caret guard: the bar acts from display mode, there is no
+// caret to protect, and focusable buttons keep the keyboard path (P3) for free).
+document.getElementById('qb-capture').addEventListener('click', () => toggleCapture());
+document.getElementById('qb-new').addEventListener('click', () => quickNewPoint(false));
+document.getElementById('qb-insert').addEventListener('click', () => quickNewPoint(true));
+document.getElementById('qb-help').addEventListener('click', e => { e.stopPropagation(); toggleGuide('shortcuts'); });
+updateQuickBar();
 
 // Bulk edit a multi-selection the same way the bullet popup edits one point: the
 // per-point dialogs/pickers take an optional targets[] list and apply to all of them.
@@ -22898,7 +22987,8 @@ function syncBlPanelBottom() {
   if (!bl) return;
   const fn = document.getElementById('fn-panel');
   const fnH = (fn?.classList.contains('on')) ? fn.offsetHeight : 0;
-  bl.style.bottom = (bl.classList.contains('on') && fnH > 0) ? fnH + 'px' : '0';
+  const base = fnH + quickBarHeight();   // #566: the quick bar is the stack floor on touch
+  bl.style.bottom = (bl.classList.contains('on') && base > 0) ? base + 'px' : '0';
   syncHelpBtnBottom();
 }
 
