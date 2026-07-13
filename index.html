@@ -16263,6 +16263,7 @@ function closeIo() {
   ioBack.classList.remove('on');
   ioCard.classList.remove('guide-open');
   ioCard.innerHTML = ''; ioCancel = null;
+  ioCard.removeAttribute('aria-label');   // #560: don't let the next reuser inherit this dialog's stale accessible name
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }
@@ -26866,6 +26867,10 @@ function openGuide(initialId) {
                : (entries[0] && entries[0].id);
   let filterQ  = '';
   ioCard.classList.add('guide-open');
+  // #560: the shared io-card is reused across dialogs, each of which sets its own aria-label on open
+  // (see openInsertDialog / the Properties, Schedule, template dialogs). The guide skipped this, so a
+  // screen reader announced whatever the LAST dialog set ("New document", etc.) while hosting the guide.
+  ioCard.setAttribute('aria-label', 'Concept guide');
   ioCard.innerHTML =
     '<div class="guide-wrap">' +
       '<div class="guide-header" role="search">' +
