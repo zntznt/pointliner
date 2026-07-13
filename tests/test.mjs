@@ -12362,6 +12362,17 @@ test('clock (#646) — clockCompletionCue is true only for the completing child 
   assert.equal(c.clockCompletionCue(manual, c2), false, 'a manual clock produces no cue');
 });
 
+test('clock (#646) — SOURCE PIN: advanceClockAt repaints in display mode, not via the edit-focusing rerenderNode', () => {
+  // Clicking a manual clock must repaint the pill in place (repaintNodeContent, the dice-reroll
+  // path), NOT rerenderNode — which calls focusNode → enterEdit and would drop the point into
+  // edit mode (showing raw [o N/M]) on every click. This regression was caught in the browser.
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const body = fnBody(src, 'advanceClockAt');
+  assert.match(body, /repaintNodeContent\(node\)/, 'advanceClockAt uses the display-mode repaint');
+  assert.doesNotMatch(body, /rerenderNode/, 'advanceClockAt must NOT use rerenderNode (it enters edit mode)');
+  assert.match(body, /content\.dataset\.editing/, 'it also declines to advance while the node is being edited');
+});
+
 test('clock (#646) — clockGlyph fills in quarters, never empty/full for a partial', () => {
   // A 4-clock maps cleanly to the 5 ring states.
   assert.equal(['○','◔','◑','◕','●'].map((_,d) => c.clockGlyph(d, 4)).join(''), '○◔◑◕●',

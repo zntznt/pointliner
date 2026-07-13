@@ -23768,12 +23768,13 @@ function toggleSpoiler(sp) {
 }
 
 // Advance the clicked clock by dir (+1/-1). The clock's ORDINAL is its position among
-// the node's .clock pills (DOM order == text order, both from mdInline), which maps to
-// the Nth [o ] token in node.text via the pure advanceClockInText. Writes text, saves,
-// re-renders the one node (the same edit-raw/render-pretty round trip as the cookie).
+// the node's manual .clock pills (DOM order == text order, both from mdInline), which maps
+// to the Nth manual [o N/M] token in node.text via the pure advanceClockInText. Writes text,
+// saves, and repaints the one node's content IN DISPLAY MODE (repaintNodeContent, the dice-
+// reroll path) — NOT rerenderNode, which would focus the node into edit mode on every click.
 function advanceClockAt(clk, dir) {
   const content = clk.closest('.node-content');
-  if (!content) return;
+  if (!content || content.dataset.editing) return;   // never advance while the node is being edited
   const node = nodeById(content.dataset.id);
   if (!node) return;
   // count only MANUAL clocks: advanceClockInText skips computed [o /M], so the DOM ordinal
@@ -23785,7 +23786,7 @@ function advanceClockAt(clk, dir) {
   if (next === node.text) return;      // no-op (clamped at an end) — nothing to save
   node.text = next;
   markDirty();
-  rerenderNode(node.id);
+  repaintNodeContent(node);            // display-mode repaint, like a dice re-roll — no edit-mode entry
 }
 
 // A property chip opens its editor: a date chip (due/start) → the Schedule
