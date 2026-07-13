@@ -7817,7 +7817,7 @@ test('buildCalendarFromFields — the dialog pipeline: five strings in, a normal
   assert.equal(c.buildCalendarFromFields(v, prev).epochDay, 500, 'epochDay carries over so editing never shifts the anchor');
 });
 test('dateFormsHint follows the active calendar (P1: the hint must teach the accepted form) (#527)', () => {
-  assert.equal(c.dateFormsHint(null), 'Use YYYY-MM-DD, today, tomorrow, or today+N.', 'Gregorian wording unchanged');
+  assert.equal(c.dateFormsHint(null), 'Use YYYY-MM-DD, today, tomorrow or today+N.', 'Gregorian wording (AP: no serial comma, #616)');
   const cal = c.normalizeCalendar({ ...HARPTOS, name: 'Harptos' });
   const h = c.dateFormsHint(cal);
   assert.ok(h.includes('Harptos'), 'names the calendar');
@@ -10718,6 +10718,25 @@ test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill 
   assert.ok(_src.includes('.node-content .dice-roll[title]'), 'the tooltip sweep must target the pill classes');
   // 4. the 'Section label…' placeholder is a LABEL not a helper — it survives every tier (over-strip guard)
   assert.ok(_src.includes("isDivider ? 'Section label…' : node.type === 'para' ? paraHint"), 'the Section label placeholder must survive (it names the field, not a helper)');
+});
+
+test('#616 real bugs: platform MOD in verbosity toasts, conjugated rename announce, Ctrl/Cmd order', () => {
+  // Bug 1: VERBOSITY_FLASH builds the chord from the platform MOD, never a hardcoded Mac glyph a
+  // non-Mac user can't press. MOD is defined ABOVE the object so the template can reference it.
+  assert.ok(_src.includes('${MOD}+⇧+. to quiet them.'), 'the guided toast must use the platform MOD chord');
+  assert.ok(_src.includes('${MOD}+⇧+. for Lean.') && _src.includes('${MOD}+⇧+. cycles.'), 'all three toasts use MOD');
+  assert.ok(!/'[^']*⌘⇧\. (to quiet them|for Lean|cycles)/.test(_src), 'no hardcoded ⌘⇧. chord survives in a flash string');
+  const modAt = _src.indexOf("const MOD = IS_MAC");
+  const flashAt = _src.indexOf('const VERBOSITY_FLASH');
+  assert.ok(modAt !== -1 && modAt < flashAt, 'MOD must be defined before VERBOSITY_FLASH (no TDZ)');
+  // Bug 2: the variable-rename announcements conjugate the verb on the count (no "1 reference now show").
+  assert.ok(_src.includes("now show${refs === 1 ? 's' : ''}"), 'the "Updated" announce must conjugate show/shows');
+  assert.ok(_src.includes("that reference${refs === 1 ? 's' : ''} ${nm} now show${refs === 1 ? 's' : ''}"),
+    'the confirm message must conjugate reference/references and show/shows');
+  // Bug 3: cross-platform keybind order is Ctrl/Cmd, not Cmd/Ctrl, in every user-facing string.
+  // (Comments may still say Cmd/Ctrl; the guard is on quoted UI copy and outline demo text.)
+  assert.ok(!/Ctrl\/Cmd\+B, I or U[\s\S]*?Cmd\/Ctrl/.test(_src), 'the inline-md GUIDE body uses Ctrl/Cmd order');
+  assert.ok(!/text="[^"]*Cmd\/Ctrl\+/.test(_src), 'no demo-outline text uses the Cmd/Ctrl order');
 });
 
 // ── LEAN FLOOR phase 3: Alt+Arrow moves a base column/row (keyboard, no menu; DOM-bound → src-pinned) ──
