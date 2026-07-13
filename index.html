@@ -817,6 +817,11 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-roll.math-bad:hover{box-shadow:none;border-color:var(--bdr)}
 .math-roll.math-err{border-color:var(--bad);border-style:dashed}
 .math-roll.math-err .math-result{color:var(--bad);font-weight:600}
+/* #557: a sum/avg that matched nothing — a muted WARNING (not an error): the 0 is real but likely
+   unintended (pill on the wrong point / typo'd prop). Dashed warm border + a small muted tag. */
+.math-roll.math-empty{border-color:var(--warn);border-style:dashed}
+.math-roll.math-empty .math-result{color:var(--muted)}
+.math-empty-mark{font-size:11px;color:var(--muted);font-style:normal}
 @keyframes math-pop{0%{opacity:.35;transform:scale(.88)}60%{transform:scale(1.05)}100%{opacity:1;transform:scale(1)}}
 .math-roll.math-edited .math-result{display:inline-block;animation:math-pop .25s cubic-bezier(.2,.8,.3,1)}
 /* estimate pill (B2 — uncertain value: mean ± range + a unicode sparkline) */
@@ -3318,6 +3323,25 @@ function expandAggExpr(expr, node) {
       (_, scope) => '(' + subtreeWords(node, scope) + ')');
   }
   return e;
+}
+
+// #557: the prop name of the FIRST sum/avg rollup in `expr` whose scope matched ZERO values, or
+// null. A sum/avg of nothing is 0, pixel-identical to a genuine computed 0, so a pill pointed at
+// the wrong subtree (or a typo'd prop) shows a confident wrong number. count() is excluded (0 is
+// its honest answer) and min/max already return ±∞ (visibly not a plain 0). Pure; mirrors the
+// sum/avg parse in expandAggExpr so the detection and the computation agree on scope/depth.
+function firstEmptyRollup(expr, node) {
+  if (!expr || !/\b(?:sum|avg)\s*\(/.test(String(expr))) return null;
+  const re = /\b(?:sum|avg)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g;
+  let m;
+  while ((m = re.exec(String(expr)))) {
+    const prop = m[1];
+    const depth = m[2] === undefined ? 1 : resolveScopeDepth(m[2]);
+    if (depth === null) continue;   // a bad scope is an #ERR concern, not an empty-match one
+    const any = collectScoped(node || {}, depth).some(c => childPropNumber(c, prop) !== null);
+    if (!any) return prop;
+  }
+  return null;
 }
 
 // Pure: an estimate-grade word count of prose — block + inline markdown, artifact tokens,
@@ -19701,6 +19725,23 @@ function renderMathPill(key, m) {
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
+  // #557: a sum/avg that matched no property renders 0, indistinguishable from a real computed 0
+  // (a pill placed as a sibling instead of a parent, or a typo'd prop). Surface it as a muted
+  // "nothing matched" state with the prop name, instead of a confident wrong number. Display-only:
+  // the computed value is unchanged; count() (honest 0) and min/max (±∞) are excluded by the core.
+  const emptyProp = firstEmptyRollup(m.expr, cookieNode);
+  if (emptyProp) {
+    const tip = `No ${emptyProp} below this point. Move the pill onto the parent, or check the property name.`;
+    return `<span class="math-roll math-empty" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
+      + ` aria-label="Math ${escQ(m.expr)}: nothing matched. ${escQ(tip)}">`
+      + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
+      + `<span class="math-expr">${escHtml(m.expr)}</span>`
+      + `<span class="math-eq">=</span>`
+      + `<span class="math-result">${escHtml(display)}</span>`
+      + `<span class="math-empty-mark" aria-hidden="true">nothing matched</span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `</span>`;
+  }
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
