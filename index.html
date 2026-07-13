@@ -2026,7 +2026,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
         </div>
-        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><kbd>has:tag</kbd><span>points with a tag (nested ok; <code>#tag</code> also matches <code>#tag/sub</code>, states like <code>#todo</code> count); <code>has:tag</code> matches any tag at all</span></div>
+        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><kbd>has:tag</kbd><span>points with a tag (nested OK; <code>#tag</code> also matches <code>#tag/sub</code>, states like <code>#todo</code> count); <code>has:tag</code> matches any tag at all</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><kbd>is:passing</kbd><span>points whose <code>check</code> constraint fails / passes (the lint filter)</span></div>
         <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
@@ -2039,7 +2039,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>is:empty</kbd><kbd>is:orphan</kbd><kbd>is:duplicate-title</kbd><span>no text / nothing links to it / its title collides with another point</span></div>
         <div class="sh-row"><kbd>is:recently-edited</kbd><span>changed in the last 48 hours (points remember when you last edited them)</span></div>
         <div class="sh-row"><kbd>due:today</kbd><kbd>due:overdue</kbd><kbd>start:&lt;date</kbd><span>dated points; use <code>YYYY-MM-DD</code> or <code>today±N</code></span></div>
-        <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next 7 / 30 days, not overdue (add <code>| due:overdue</code> for both)</span></div>
+        <div class="sh-row"><kbd>due:week</kbd><kbd>due:month</kbd><span>due within the next seven / 30 days, not overdue (add <code>| due:overdue</code> for both)</span></div>
         <div class="sh-row"><kbd>-term</kbd><span>exclude matches</span></div>
         <div class="sh-row"><kbd>"a b"</kbd><span>exact phrase; terms combine with AND</span></div>
         <div class="sh-row"><kbd>a | b</kbd><span>either side matches (OR); spaces around the pipe, AND binds tighter</span></div>
@@ -2050,7 +2050,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
         <div class="sh-row"><kbd>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
         <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from the points below this one (rolls on your live outline)</span></div>
-        <div class="sh-row"><kbd>/querybase</kbd><span>a live grid of matching points: title, properties, or a per-point formula as columns</span></div>
+        <div class="sh-row"><kbd>/querybase</kbd><span>a live grid of matching points: title, properties or a per-point formula as columns</span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -2086,14 +2086,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 
   <div class="fm-group">File</div>
   <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh document</span></div></div>
-  <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open</span><span class="cmd-desc">Open an outline file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
+  <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open…</span><span class="cmd-desc">Open an outline file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
   <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
   <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
   <div class="cmd-item" id="btn-restore" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-clock-rotate-left" data-fb="↺">↺</div><div class="cmd-info"><span class="cmd-label">Restore earlier version</span><span class="cmd-desc">Roll back to the last auto-saved snapshot</span></div></div>
   <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" id="workspace-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect a folder…</span><span class="cmd-desc" id="workspace-desc">Auto-save every document, switch between them, reopen later</span></div></div>
-  <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open, and create documents in the folder</span></div></div>
+  <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open and create documents in the folder</span></div></div>
   <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-minus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Stop auto-saving. Your documents stay on disk</span></div></div>
-  <div class="cmd-item" id="workspace-invite" role="button" tabindex="-1" style="display:none" title="Copy this page's link to open in Chrome, Edge, or a similar browser" aria-label="Folders need Chrome, Edge, or a similar browser. Click to copy this page's link"><div class="cmd-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Folders need Chrome, Edge, or similar</span><span class="cmd-desc">Click to copy this page’s link</span></div></div>
+  <div class="cmd-item" id="workspace-invite" role="button" tabindex="-1" style="display:none" title="Copy this page's link to open in Chrome, Edge or a similar browser" aria-label="Folders need Chrome, Edge or a similar browser. Click to copy this page's link"><div class="cmd-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Folders need Chrome, Edge or similar</span><span class="cmd-desc">Click to copy this page’s link</span></div></div>
 
   <div class="fm-group">Export a copy</div>
   <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot, pills frozen to text</span></div></div>
@@ -2127,7 +2127,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
   <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
   <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
-  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.</span></div><span class="cmd-key">⌘⇧.</span></div>
+  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips and the search cheatsheet all shown. Next: Standard</span></div><span class="cmd-key">⌘⇧.</span></div>
   <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
   <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
@@ -3701,7 +3701,7 @@ function findOrCreateDatedEntry(home, iso, mk) {
 // hint must follow the active calendar or it teaches a format parseDueDate would reject. (#527)
 function dateFormsHint(cal = activeCalendar()) {
   if (cal) return `Use Year-Month-Day in ${cal.name} (like ${formatEpochDays(dueDateToday(cal), cal)}), today, tomorrow, or today+N.`;
-  return 'Use YYYY-MM-DD, today, tomorrow, or today+N.';
+  return 'Use YYYY-MM-DD, today, tomorrow or today+N.';
 }
 
 // Pure for absolute dates; depends on current time only for relative forms.
@@ -4499,7 +4499,7 @@ function warnVarDeclRipple(node, before, prevText) {
   for (const nm of Object.keys(after)) {
     if (nm in before && before[nm] !== after[nm]) {
       const refs = countVarRefs(nm);
-      if (refs > 0) announce(`Updated ${nm}. ${refs} reference${refs === 1 ? '' : 's'} now show ${after[nm]}.`);
+      if (refs > 0) announce(`Updated ${nm}. ${refs} reference${refs === 1 ? '' : 's'} now show${refs === 1 ? 's' : ''} ${after[nm]}.`);   // #616: conjugate the verb on the count
     }
   }
   // RENAMES: a name present before but gone after, whose references are now orphaned. Only
@@ -4515,7 +4515,7 @@ function warnVarDeclRipple(node, before, prevText) {
     // Confirm-after with revert. The edit already stands; offer a keyboard-solvable undo.
     openConfirmDialog({
       title: newName ? 'Rename variable?' : 'Remove variable?',
-      message: `${what} ${refs} point${refs === 1 ? '' : 's'} that reference ${nm} now show an undefined variable. Keep this change, or undo it?`,
+      message: `${what} ${refs} point${refs === 1 ? '' : 's'} that reference${refs === 1 ? 's' : ''} ${nm} now show${refs === 1 ? 's' : ''} an undefined variable. Keep this change or undo it?`,
       confirmLabel: 'Keep', cancelLabel: 'Undo',
     }).then(keep => {
       if (keep) return;
@@ -5010,7 +5010,7 @@ function renderCrossLinkPill(docId, target, label) {
   // embedded) named itself "link" when it had no label and no resolvable title — a cluster of
   // identical dead pills. Fall back to the DOC NAME instead: "in <doc>" reads as a real destination.
   const docName = workspaceIndex?.nameByDocId?.get(docId);
-  const capText = label || title || (docName ? 'in ' + docName : 'another note');
+  const capText = label || title || (docName ? 'in ' + docName : 'another document');
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another document)')}">${cap}</span>`;
@@ -6297,7 +6297,7 @@ const BLOCK_CMDS = [
   { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate, and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
   { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A grid whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-stamp',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
@@ -6357,17 +6357,17 @@ const INSERT_CMDS = [
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Insert' },
   // Random — generators
-  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to reroll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
+  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Random' },
   { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     label:'Roll on your outline', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Random' },
-  { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice, and math.', ex:'origin: a {color} {animal}', section:'Random' },
+  { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math.', ex:'origin: a {color} {animal}', section:'Random' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Random' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Random' },
   // Math & variables
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Math' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Math' },
-  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
+  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Math' },
   // Organize — document-wide state sets
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
   { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
@@ -8920,7 +8920,7 @@ function renderRow(r) {
   // the user is past that, so they strip to a bare '…' (ux.md dial table: empty-state hints "hidden" in
   // Lean). The 'Section label…' placeholder stays — it NAMES what the field is, a label, not a helper.
   const paraHint = isStandardOrLean() ? '…' : 'Prose block. Enter = line break · ⇧+Enter = new point';
-  const entryHint = isStandardOrLean() ? '' : 'Type / for blocks, @ to insert, or just write';
+  const entryHint = isStandardOrLean() ? '' : 'Type / for blocks, @ to insert or just write';
   content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? paraHint : (isEntryPoint ? entryHint : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
@@ -9841,7 +9841,7 @@ function openDueDateDialog(nodeId, targets = null) {
       const v = inp.value.trim();
       if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank for a one-off task'; return; }
       const desc = parseRepeat(v);
-      if (!desc) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a repeat phrase. Try "every week", "every Monday", or "monthly on the 1st".'; return; }
+      if (!desc) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a repeat phrase. Try "every week", "every Monday" or "monthly on the 1st".'; return; }
       preview.style.color = 'var(--muted)';
       preview.textContent = '⟳ ' + describeRepeat(desc) + '. Advances when you complete it.';
     }
@@ -10588,9 +10588,9 @@ function showBrokenLinksReport() {
       nm.textContent = r.srcTitle;
       const tag = document.createElement('span'); tag.className = 'tpl-count';
       // the target id is opaque; the cross-doc name is the useful locator, so show it when we have it
-      tag.textContent = r.scope === 'cross' ? ('in ' + (r.dstDocName || 'another note')) : 'missing';
+      tag.textContent = r.scope === 'cross' ? ('in ' + (r.dstDocName || 'another document')) : 'missing';
       pick.append(nm, tag);
-      const where = r.scope === 'cross' ? (r.dstDocName ? ' in ' + r.dstDocName : ' in another note') : '';
+      const where = r.scope === 'cross' ? (r.dstDocName ? ' in ' + r.dstDocName : ' in another document') : '';
       pick.setAttribute('aria-label', `Broken link in “${r.srcTitle}” pointing to a missing target${where}. Jump to the source point.`);
       pick.addEventListener('click', () => {
         closeIo();
@@ -14330,7 +14330,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
               const tn = nodeById(tid);
               return (tn && stripMd(textForDisplay(tn))) || '(untitled)';
             });
-          copyTextToClipboard(md, 'Copied as markdown'); hideBpop();
+          copyTextToClipboard(md, 'Copied as Markdown'); hideBpop();
         } },
     );
   } else if (isBase) {
@@ -14343,8 +14343,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
           if (content) { enterEdit(content, node); content.focus(); }
         } },
       { sec:'Table', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
-        fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as markdown'); hideBpop(); } },
-      { sec:'Table', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with TBLFM',
+        fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as Markdown'); hideBpop(); } },
+      { sec:'Table', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with formulas',
         fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
     );
   }
@@ -14370,7 +14370,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   if (node.children.length >= 2) {
     actions.push({
       sec:'Organize', icon: { fa:'fa-solid fa-arrow-down-wide-short', fb:'⇅' },
-      label: 'Sort children by state/priority',
+      label: 'Sort children by state / priority',
       fn: () => { pushUndo(); node.children.sort((a,b) => compareTodo(a.text, b.text)); markDirty(); render(); hideBpop(); },
     });
   }
@@ -14599,7 +14599,7 @@ function slashFooterHTML(cmd, trigger) {
   if (!cmd) return '';
   let html = `<span class="sf-desc">${escHtml(cmd.desc || '')}</span>`;
   if (cmd.ex) html += `<span class="sf-ex">${escHtml(cmd.ex)}</span>`;
-  if (trigger === '/') html += `<span class="sf-tip">Type @ to insert a pill like dice, links, or variables…</span>`;
+  if (trigger === '/') html += `<span class="sf-tip">Type @ to insert a pill like dice, links or variables…</span>`;
   else if (trigger === '@') html += `<span class="sf-tip">Type / to change what this point is</span>`;
   return html;
 }
@@ -15082,7 +15082,7 @@ function createBaseAt(nodeId, rows, cols) {
 // the original text lands somewhere, and the whole move is one undo step.
 function promoteStaticTable(node, l0, l1) {
   const plan = planTablePromote(node.text, l0, l1);
-  if (!plan) { flashHint('Couldn’t locate that table. Edit the point and try again'); return; }
+  if (!plan) { flashHint('Couldn’t locate that table. Edit the point and try again.'); return; }
   // normalize the grid + bake computed cells, exactly like the markdown-editor exit path
   const tblfm = extractTblfm(plan.table);
   const baseText = serializeTable(parseTable(stripTblfm(plan.table))) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
@@ -15865,7 +15865,7 @@ function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = ''
     fields: [
       { key:'def', label:'States & transitions', type:'textarea', rows:5, value:def, chips: MARKOV_CHIPS,
         placeholder:'Sunny  -> Sunny 0.6, Cloudy 0.3, Rainy 0.1\nCloudy -> Sunny 0.4, Rainy 0.4, Cloudy 0.2\nRainy  -> Cloudy 0.5, Rainy 0.5',
-        hint:'One rule per line: State -> Target weight, … (weights need not sum to 1)' },
+        hint:'One rule per line: State -> Target weight, … (weights need not sum to 1).' },
       { key:'start', label:'Start state', placeholder:'defaults to the first state', value:start },
       { key:'steps', label:'Steps', placeholder:'5', value:steps === '' ? '' : String(steps) },
       { key:'name', label:'Name (optional)', placeholder:'e.g. weather, so {weather} calls this chain', value:name,
@@ -17611,7 +17611,7 @@ function openGrammarDialog({ title, submitLabel, def = '', origin = '', existing
           : 'origin: A wild {monster} appears! (HP {2d6})\nmonster: goblin | orc 2 | dragon',
         hint: tableFlavor
           ? 'A table is one rule: name: entry | entry | entry. A number after an entry weights it. Entries may use {2d6}, {= expr}, {rule}; the name is callable anywhere as {name}.'
-          : 'One named rule per line. {rule} calls a rule · | picks an alternative (a trailing number weights it: sword | shield 2) · {2d6} dice · {= expr} math · {name.cap} text modifier. See the concept guide for conditionals, repeats, and item fields.',
+          : 'One named rule per line. {rule} calls a rule · | picks an alternative (a trailing number weights it: sword | shield 2) · {2d6} dice · {= expr} math · {name.cap} text modifier. See the concept guide for conditionals, repeats and item fields.',
         preview: v => {
           const r = runGrammar(v, origin || undefined);
           if (r === null) return `<span class="io-preview-bad">Invalid grammar</span>`;
@@ -17768,7 +17768,7 @@ function rerollGrammar(node, key) {
     // celebratory pop on a non-event. Short-circuit: no state change, no pop, just say it's spent.
     // Only `once` can be truly exhausted (shuffle recycles, cycle loops, stopping stays), so the
     // guard is scoped to it, keyed on pos past the last item.
-    if (g.mode === 'once' && (g.pos || 0) >= (g.items?.length || 0)) { flashHint('Deck spent. Edit it to reshuffle'); return; }   // UXP-150: point at the reset door (the .gr-edit pencil)
+    if (g.mode === 'once' && (g.pos || 0) >= (g.items?.length || 0)) { flashHint('Deck spent. Edit it to reshuffle.'); return; }   // UXP-150: point at the reset door (the .gr-edit pencil)
     if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
     // UXP-120: a shuffle deck reshuffles silently when its bag empties. Detect the wrap BEFORE
     // the draw (empty bag + we've drawn before, so not the first-ever draw) and flash a courtesy
@@ -19091,7 +19091,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
     submitLabel: submitLabel || 'Add',
     fields: [
       { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,
-        hint:'An uncertain value: a 90% range lo to hi, or normal(mean, sd), or uniform(lo, hi). Combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
+        hint:'An uncertain value: a 90% range lo to hi, normal(mean, sd) or uniform(lo, hi). Combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
         preview: v => {
           const ex = (v.expr || '').trim();
           if (!ex) return '';
@@ -19230,7 +19230,7 @@ function renderVarPill(key, v) {
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-val">${escHtml(display)}</span>`
-      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit variable reference" title="Edit"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit variable reference" title="Edit variable reference"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
@@ -19316,8 +19316,8 @@ function renderQueryPill(key, q) {
   if (q.show === 'count') {
     const total = expr.trim() ? queryRowsMemo(expr, cookieNode?.id).total : 0;
     return `<span class="query-pill query-pill-count" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
-      + ` title="Count of: ${escQ(expr || 'empty query')}. Click to edit."`
-      + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}. Click to edit the search.">`
+      + ` title="Count of: ${escQ(expr || 'empty query')}. Click to edit"`
+      + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}. Click to edit the search">`
       + `<span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
       + `<span class="query-count">${total}</span>`
       + `<span class="query-edit" role="button" tabindex="-1" aria-label="Edit query" title="Edit query"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -19392,7 +19392,7 @@ function openQueryDialog({ title, submitLabel, expr = '', onResult }) {
           const { total } = queryRows(v, root, null);
           return `<span class="io-preview-ok">${total} matching point${total === 1 ? '' : 's'} right now</span>`;
         },
-        hint: 'Any search the box accepts: words, #tag, is:todo, due:week, key:value, and | for OR. The list updates itself as the document changes.' },
+        hint: 'Any search the box accepts: words, #tag, is:todo, due:week, key:value and | for OR. The list updates itself as the document changes.' },
     ],
     validate: (v) => !!v.expr.trim(),
     onSubmit: (v) => onResult(v.expr.trim()),
@@ -19433,7 +19433,7 @@ function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: tit
         placeholder: 'Title: title\ndue\nCost: = sum(cost)',
         preview: v => {
           const cols = parseQBaseCols(v);
-          if (!cols) return '<span class="io-preview-bad">One column per line: title, a property key, or = a formula</span>';
+          if (!cols) return '<span class="io-preview-bad">One column per line: title, a property key or = a formula</span>';
           return cols.map(cd => `<span class="todo-state">${escHtml(cd.name)}</span>`).join(' ');
         },
         hint: 'Each line is a column: "title" shows the point (clickable), a property key like due or cost shows that value, and "= formula" computes per point (rollups like sum(cost) work). Put "Name:" in front to label a column.' },
@@ -19715,7 +19715,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
       ? 'e.g. dragon|wyrm 2|drake · 2d6 · {color} {beast} · a table name'
       : 'e.g. 5, 2*pi, sqrt(16); leave blank to just display';
     exprHint.textContent = pick
-      ? 'Options split on | (weights: dragon 2), dice (2d6), a rule/table name, or a template like {color} {beast}. Rolled once; every {name} reference shows the same value until you re-roll the pill.'
+      ? 'Options split on | (weights: dragon 2), dice (2d6), a rule/table name or a template like {color} {beast}. Rolled once; every {name} reference shows the same value until you re-roll the pill.'
       : 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
     chipsRow.style.display = pick ? 'none' : '';
     // D2 two-verb rule: a random-pick var is generative → create=Roll, edit=Save;
@@ -20041,8 +20041,8 @@ async function lpApply() {
   content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(content, triggerOffset + token.length); } catch(_) {}
   markDirty();
-  if (activeIdx === noteIdx) flashHint(`Created document "${createNote.title}"`);       // P4
-  else if (activeIdx === pointIdx) flashHint(`Created "${create.title}"`);           // P4
+  if (activeIdx === noteIdx) flashHint(`Created document “${createNote.title}”`);       // P4
+  else if (activeIdx === pointIdx) flashHint(`Created “${create.title}”`);           // P4
 }
 
 function positionLinkMenu(content, offset) {
@@ -22563,7 +22563,7 @@ async function createWorkspaceNote(title) {
     await safeWriteOpml(workspaceDir, name, toOpml(doc));   // sync-safety: atomic create (no torn new file on crash)
     refreshWorkspaceIndex();                        // background — ready by the time the point exits edit
     return { docId: doc.docId, nodeId: pt.id, name };
-  } catch (e) { flashError('Could not create note: ' + (e.message || e)); return null; }
+  } catch (e) { flashError('Could not create document: ' + (e.message || e)); return null; }
 }
 
 // File the CURRENT (detached) document into the folder under a collision-safe name and
@@ -23547,7 +23547,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     hint.className = 'bl-doc-hint';
     hint.textContent = ` · ${docName || 'another document'}`;
     item.appendChild(hint);
-    item.title = 'Open this note';
+    item.title = 'Open this document';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable cross-doc backlink rows
     item.setAttribute('tabindex', '0');
     item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another document'}. Open`);
@@ -23615,7 +23615,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   if (!crossUnlinked.length) return;
   const xsub = document.createElement('div');
   xsub.className = 'bl-subhd';
-  xsub.textContent = `Unlinked references in other notes · ${crossUnlinked.length}`;
+  xsub.textContent = `Unlinked references in other documents · ${crossUnlinked.length}`;
   inner.appendChild(xsub);
   crossUnlinked.forEach(({ docId, docName, nodeId, title }) => {
     const row = document.createElement('div');
@@ -24074,7 +24074,7 @@ function renderAgenda() {
   const mkGrpLbl = t => { const l = document.createElement('span'); l.className = 'ag-grp-lbl'; l.textContent = t; l.setAttribute('aria-hidden', 'true'); return l; };
   sw.append(
     mkGrpLbl('Views'),
-    mkView('week', 'Week', 'Show the week planner (7 day columns) on its own bar below'),
+    mkView('week', 'Week', 'Show the week planner (seven day columns) on its own bar below'),
     mkView('month', 'Month', 'Show the month calendar on its own bar below'),
     mkView('timeline', 'Timeline', 'Show the Gantt timeline (start → due bars) on its own bar below'),
   );
@@ -25154,7 +25154,7 @@ document.getElementById('btn-verbosity')?.addEventListener('click', () => { clos
 // the next press does. A capitalized tier name for the label.
 const VERBOSITY_DOTS = { guided: '●○○', standard: '○●○', lean: '○○●' };
 const VERBOSITY_CUR_DESC = {
-  guided:   'Now Guided: point hints, pill tooltips, and the search cheatsheet all shown. Next: Standard.',
+  guided:   'Now Guided: point hints, pill tooltips and the search cheatsheet all shown. Next: Standard',
   standard: 'Now Standard: those three teaching aids are off, but the menus and edit pencils stay. Next: Lean.',
   lean:     'Now Lean: the / and @ menus show only the match you type, and pencils appear on focus. Next: Guided.',
 };
@@ -25464,10 +25464,15 @@ document.getElementById('btn-notes').addEventListener('click', () => {
 // (the old separate `lean-mode` class was a dual source of truth, retired per the panel review). Each
 // tier's strips: guided = all on; standard = teaching text off (hints/legend/tooltips) but menus + hover
 // pencils on; lean = also blind menus (a one-line match tip instead) + hide pencils.
+// The modifier key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
+const IS_MAC = /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || '');
+const MOD = IS_MAC ? '⌘' : 'Ctrl';
+// #616: build the verbosity toasts with the platform MOD, not a hardcoded Mac ⌘ that non-Mac
+// users can't press. Serial commas dropped to house AP style.
 const VERBOSITY_FLASH = {
-  guided:   'Guided: point hints, pill tooltips, and the search cheatsheet shown. ⌘⇧. to quiet them.',
-  standard: 'Standard: those three teaching aids off; menus and edit pencils stay. ⌘⇧. for Lean.',
-  lean:     'Lean: the / and @ menus show only what you type; pencils appear on focus. ⌘⇧. cycles.',
+  guided:   `Guided: point hints, pill tooltips and the search cheatsheet shown. ${MOD}+⇧+. to quiet them.`,
+  standard: `Standard: those three teaching aids off; menus and edit pencils stay. ${MOD}+⇧+. for Lean.`,
+  lean:     `Lean: the / and @ menus show only what you type; pencils appear on focus. ${MOD}+⇧+. cycles.`,
 };
 function syncVerbosityClass() {
   const b = document.body.classList;
@@ -25487,10 +25492,8 @@ document.getElementById('capture-strip').addEventListener('keydown', e => {
 });
 document.getElementById('btn-journal').addEventListener('click', () => toggleJournalStrip());
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
-// Grouped, data-driven so it stays in sync as features are added. The modifier
-// key is shown as ⌘ on Mac and Ctrl elsewhere to match what actually fires.
-const IS_MAC = /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || '');
-const MOD = IS_MAC ? '⌘' : 'Ctrl';
+// Grouped, data-driven so it stays in sync as features are added. IS_MAC/MOD are defined
+// above (moved up so the verbosity toasts can use MOD); the modifier renders ⌘ on Mac, Ctrl elsewhere.
 // Single registry: essential:true entries drive the corner panel; cat entries
 // drive the Concept guide. One source, two views, no drift.
 const GUIDE = [
@@ -25574,7 +25577,7 @@ const GUIDE = [
 
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
-    body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks, or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.",
+    body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.",
     examples:[
       { syn:'word word',              desc:'all terms must match' },
       { syn:'-term',                  desc:'exclude matches' },
@@ -25602,7 +25605,7 @@ const GUIDE = [
       { syn:'var:name',               desc:'the point that declares a variable (var:strength)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b); priority:none = unprioritized, priority:any = has one' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
-      { syn:'due:week / due:month',   desc:'due within the next 7 / 30 days, not overdue (add | due:overdue to include past-due)' },
+      { syn:'due:week / due:month',   desc:'due within the next seven / 30 days, not overdue (add | due:overdue to include past-due)' },
       { syn:'start:<date',            desc:'started before date (YYYY-MM-DD or today±N)' },
     ] },
   { id:'saved-searches', cat:'getting-around',
@@ -25618,7 +25621,7 @@ const GUIDE = [
     title:'Searching all your documents',
     body:"When several documents are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your documents but can't remember which one. Matches from other documents appear in a 'Found in other documents' list; click one to jump straight there.",
     examples:[
-      { syn:'connect a folder', desc:'File → Connect folder: cross-document search turns on once a folder holds your notes' },
+      { syn:'connect a folder', desc:'File → Connect folder: cross-document search turns on once a folder holds your documents' },
       { syn:'type in the search box', desc:'matches in the current document filter it live, as always' },
       { syn:'Found in other documents', desc:'a list below the outline of matches in your OTHER folder documents' },
       { syn:'click a result', desc:'jumps straight to that point in the other document' },
@@ -25654,7 +25657,7 @@ const GUIDE = [
     ] },
   { id:'move-nest', cat:'getting-around',
     title:'Moving and nesting points',
-    body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point (it becomes a child of the point above) and Shift+Tab outdents it (it pops out to its parent's level); Alt+up/down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it. On a phone or tablet there is no Tab key, so swipe a point sideways instead: swipe right to indent, left to outdent (a chip shows the direction). And while you are editing a point, a bar above the keyboard gives one-tap outdent, indent, move up, and move down. To reorder by dragging, press and hold the bullet and drag up or down. Swiping straight up or down just scrolls the page as usual.",
+    body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point (it becomes a child of the point above) and Shift+Tab outdents it (it pops out to its parent's level); Alt+up/down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it. On a phone or tablet there is no Tab key, so swipe a point sideways instead: swipe right to indent, left to outdent (a chip shows the direction). And while you are editing a point, a bar above the keyboard gives one-tap outdent, indent, move up and move down. To reorder by dragging, press and hold the bullet and drag up or down. Swiping straight up or down just scrolls the page as usual.",
     examples:[
       { syn:'Tab / Shift+Tab',  desc:'indent / outdent (keyboard)' },
       { syn:'Alt+↑ / Alt+↓',    desc:'move a point among its siblings' },
@@ -25662,7 +25665,7 @@ const GUIDE = [
     ] },
   { id:'zoom', cat:'getting-around',
     title:'Zoom into a point',
-    body:"Work on one branch full-screen with the rest of the outline out of sight: drill into a single project, a chapter or a busy task list so only it and its children fill the page. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet, or open the point's menu and choose Zoom into. The zoomed point becomes a large editable title with its note and children below. A breadcrumb row appears at the top, showing Home then each ancestor then the current point, separated by ›, and you climb back out through it: click or press Enter on any ancestor crumb to jump to that level, or the Home crumb to return to the full outline. Press Esc to step up just one level toward the parent rather than exiting all the way.",
+    body:"Work on one branch full-screen with the rest of the outline out of sight: drill into a single project, a chapter or a busy task list so only it and its children fill the page. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet or open the point's menu and choose Zoom into. The zoomed point becomes a large editable title with its note and children below. A breadcrumb row appears at the top, showing Home then each ancestor then the current point, separated by ›, and you climb back out through it: click or press Enter on any ancestor crumb to jump to that level, or the Home crumb to return to the full outline. Press Esc to step up just one level toward the parent rather than exiting all the way.",
     examples:[
       { syn:'Ctrl/Cmd+Enter',  desc:"zoom into the point you're editing" },
       { syn:'click the bullet', desc:'zoom into that point' },
@@ -25685,7 +25688,7 @@ const GUIDE = [
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',
-    body:"Make key words stand out, mark something as code, highlight a phrase for review, or drop in a clickable link to a source, all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Cmd/Ctrl+B, I, or U to wrap it in bold, italic, or underline for you.",
+    body:"Make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you.",
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
       { syn:'*italic* or _italic_',     desc:'italic' },
@@ -25698,7 +25701,7 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets, and the rest.",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets and the rest.",
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
@@ -25711,7 +25714,7 @@ const GUIDE = [
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
   { id:'base-views', cat:'writing',
     title:'Base views',
-    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery), or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },
       { syn:'Alt + R',        desc:'mark a column Status or Date (so Board / Calendar can use it)' },
@@ -25719,7 +25722,7 @@ const GUIDE = [
     ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
-    body:"Annotate a claim without cluttering the main text, link out to a source or a website, or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
+    body:"Annotate a claim without cluttering the main text, link out to a source or a website or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
     examples:[
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
@@ -25748,7 +25751,7 @@ const GUIDE = [
     ] },
   { id:'sequences', cat:'todos', covers:['sequence'],
     title:'Custom workflows',
-    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED, or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Give it a name and its states: type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, or use the @ Sequence dialog. States to the right of | count as done, then apply any state with / (like /BACKLOG). Need a blocked stage? Add a second | for a held band, like DOING | BLOCKED | SHIPPED; points in that middle band read as waiting (not a live next-action), the same way the built-in WAITING does.",
+    body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Give it a name and its states: type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, or use the @ Sequence dialog. States to the right of | count as done, then apply any state with / (like /BACKLOG). Need a blocked stage? Add a second | for a held band, like DOING | BLOCKED | SHIPPED; points in that middle band read as waiting (not a live next-action), the same way the built-in WAITING does.",
     examples:[
       { syn:'{seq Flow: BACKLOG DOING | SHIPPED}', desc:'declare a workflow by typing' },
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },
@@ -25772,7 +25775,7 @@ const GUIDE = [
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
-    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (rollups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, it is always a view of the live outline. Type / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. The grid is read-only; edit the matching points themselves and the rows follow.",
+    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost or a formula computed for each row (rollups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, it is always a view of the live outline. Type / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. The grid is read-only; edit the matching points themselves and the rows follow.",
     examples:[
       { syn:'/querybase',            desc:'create one from the / menu' },
       { syn:'is:todo | due:week',    desc:'any search works as the row source' },
@@ -25780,7 +25783,7 @@ const GUIDE = [
     ] },
   { id:'query', cat:'todos', covers:['query','count'],
     title:'Embedded queries',
-    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project, or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more. Want just the number? {count: is:todo} (or @ then Count) shows a live count instead of the list, handy for a dashboard line like open bugs: 7.",
+    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more. Want just the number? {count: is:todo} (or @ then Count) shows a live count instead of the list, handy for a dashboard line like open bugs: 7.",
     examples:[
       { syn:'{query: is:todo}',        desc:'every open task, live' },
       { syn:'{query: #idea -is:done}', desc:'combine any search operators' },
@@ -25825,7 +25828,7 @@ const GUIDE = [
     ] },
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday, or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.",
     examples:[
       { syn:'/due:tomorrow',    desc:'set the due date inline' },
       { syn:'/start:2026-07-01',desc:'set the start date inline' },
@@ -25836,10 +25839,10 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centred one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a seven-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar) or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centered one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
-      { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
+      { syn:'Week',       desc:'a seven-day planner spread, with an Earlier column' },
       { syn:'Month',      desc:'a month grid' },
       { syn:'Timeline',   desc:'bars across a scrolling day axis' },
       { syn:'Done / Running', desc:'filters: include done, show/hide started work' },
@@ -25865,18 +25868,18 @@ const GUIDE = [
   // ── Generators (guide) ────────────────────────────────────────────────────
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
-    body:"Roll dice for tabletop RPGs, random generation, decision-making, or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. The braces are what make it a pill, so bare 2d6 stays plain text, and an unclosed {2d6 waits until you type the closing brace. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
+    body:"Roll dice for tabletop RPGs, random generation, decision-making or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. The braces are what make it a pill, so bare 2d6 stays plain text, and an unclosed {2d6 waits until you type the closing brace. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
     examples:[
       { syn:'{2d6}',      desc:'roll two six-sided dice' },
       { syn:'{4d6kh3}',   desc:'roll 4, keep the highest 3' },
       { syn:'{2d6!}',     desc:'exploding dice (a max rolls again)' },
       { syn:'{4d6r1}',    desc:'reroll any die 1 or lower, once' },
-      { syn:'{dF}',       desc:'Fate dice (−1, 0, or +1)' },
+      { syn:'{dF}',       desc:'Fate dice (−1, 0 or +1)' },
       { syn:'{2d6>=4}',   desc:'count how many roll 4 or more' },
     ] },
   { id:'grammar', cat:'generators', covers:['grammar','rolltable'],
     title:'Random picks & tables',
-    body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts, or make a raffle picker. Write choices in CURLY braces and one is picked at random each click: {red|blue|green}. Square brackets [red|blue] are not a pill, they stay plain text, so use { } not [ ]. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
+    body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts or make a raffle picker. Write choices in CURLY braces and one is picked at random each click: {red|blue|green}. Square brackets [red|blue] are not a pill, they stay plain text, so use { } not [ ]. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
     examples:[
       { syn:'{red|blue|green}',       desc:'pick one at random' },
       { syn:'{sword|gem 5}',          desc:'weighted: gem 5x as likely as sword' },
@@ -25885,7 +25888,7 @@ const GUIDE = [
     ] },
   { id:'roll-query', cat:'generators',
     title:'Roll on your own outline',
-    body:"Pick a random point from your live outline instead of a typed list. Keep a list of open plot threads, NPCs, or ideas as ordinary points, then let one get chosen at random: great for solo tabletop play (advance a random thread, a random NPC reacts) or any \"surprise me from what I already wrote\" moment. Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random.",
+    body:"Pick a random point from your live outline instead of a typed list. Keep a list of open plot threads, NPCs or ideas as ordinary points, then let one get chosen at random: great for solo tabletop play (advance a random thread, a random NPC reacts) or any \"surprise me from what I already wrote\" moment. Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random.",
     examples:[
       { syn:'{roll: is:todo}',          desc:'a random open thread from the points below' },
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
@@ -25918,7 +25921,7 @@ const GUIDE = [
     ] },
   { id:'gen-conditions', cat:'generators',
     title:'Conditions & item details',
-    body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat, or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
+    body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
     examples:[
       { syn:'{hp>0: alive|dead}', desc:'show the first if true, else the second' },
       { syn:'{luck>=10: lucky!}', desc:'the else part is optional' },
@@ -25952,7 +25955,7 @@ const GUIDE = [
     ] },
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
-    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely, or Impossible), then click to ask. For a yes/no with a twist, pick a \"+ swing\" likelihood: it answers six ways (Yes and, Yes, Yes but, No but, No, No and) so a complication or a bonus rides along. Type @ and choose Oracle, or type the band name directly: {oracle: likely}.",
+    body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely or Impossible), then click to ask. For a yes/no with a twist, pick a \"+ swing\" likelihood: it answers six ways (Yes and, Yes, Yes but, No but, No, No and) so a complication or a bonus rides along. Type @ and choose Oracle, or type the band name directly: {oracle: likely}.",
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
       { syn:'{oracle: likely}',  desc:'type it: certain, likely, even, unlikely, impossible' },
@@ -25963,7 +25966,7 @@ const GUIDE = [
   // ── Compute (guide) ───────────────────────────────────────────────────────
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
-    body:"Build a budget where every line total adds to a running sum, track a project cost that recalculates when you change a rate, or convert a measurement, all live in the outline. Write {= expression} and the result appears inline. Change a variable the expression uses and it updates instantly. You get arithmetic, parentheses, percentages, comparisons (>, <, ==) and a ternary if-this-then-that.",
+    body:"Build a budget where every line total adds to a running sum, track a project cost that recalculates when you change a rate or convert a measurement, all live in the outline. Write {= expression} and the result appears inline. Change a variable the expression uses and it updates instantly. You get arithmetic, parentheses, percentages, comparisons (>, <, ==) and a ternary if-this-then-that.",
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },
       { syn:'{= 2 ^ 10}',        desc:'powers (^) and remainder (%)' },
@@ -25987,7 +25990,7 @@ const GUIDE = [
     ] },
   { id:'math-dates', cat:'compute',
     title:'Dates & units in math',
-    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed, or convert between units for a recipe, a travel plan or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date.",
+    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed or convert between units for a recipe, a travel plan or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date.",
     examples:[
       { syn:'{= today + 30}',      desc:'30 days from today' },
       { syn:'{= asdate(today+30)}',desc:'show that as a calendar date' },
@@ -25999,7 +26002,7 @@ const GUIDE = [
     ] },
   { id:'variables', cat:'compute', covers:['var'],
     title:'Variables',
-    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text, or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, and options split on the bar like `{tone := warm | cool}` make a random pick.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the outline, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
+    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, and options split on the bar like `{tone := warm | cool}` make a random pick.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the outline, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
     examples:[
       { syn:'{rate := 0.2}', desc:'a number, by typing' },
       { syn:'{company := "Acme Corp"}', desc:'a text value (quote it)' },
@@ -26021,7 +26024,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min, or max. By default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point (a live writing target), and reading time is just words(subtree) / 200.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max. By default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point (a live writing target), and reading time is just words(subtree) / 200.",
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
       { syn:'{= sum(cost, subtree)}', desc:'total the cost of every descendant, all the way down' },
@@ -26056,7 +26059,7 @@ const GUIDE = [
     ] },
   { id:'appearance', cat:'todos',
     title:'Tag colors & property icons',
-    body:"Make your outline easier to scan at a glance. Open File then Tag & property styling to give a tag its own color and a property key a small icon. Type a tag name and click a color swatch: every #tag with that name shows in that color, and nested tags inherit it (a color on #thread also colors #thread/idea). Type a property key and pick an icon: that property's chip shows the icon before its name (a dollar sign on cost, a calendar on due). Both are purely visual, stored with the document, and change nothing about the text or how search works. The colors are a curated on-brand set that stays legible in light and dark mode; the icons are drawn from the built-in set.",
+    body:"Make your outline easier to scan at a glance. Open File then Tag & property styling to give a tag its own color and a property key a small icon. Type a tag name and click a color swatch: every #tag with that name shows in that color, and nested tags inherit it (a color on #thread also colors #thread/idea). Type a property key and pick an icon: that property's chip shows the icon before its name (a dollar sign on cost, a calendar on due). Both are purely visual, stored with the document and change nothing about the text or how search works. The colors are a curated on-brand set that stays legible in light and dark mode; the icons are drawn from the built-in set.",
     examples:[
       { syn:'File → Tag & property styling', desc:'color tags and icon properties' },
       { syn:'#urgent → red',       desc:'a tag color (nested tags inherit it)' },
@@ -26074,11 +26077,11 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your notes that links to it. Useful in a personal wiki or research notes when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
     examples:[
       { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
       { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
-      { syn:'…in other notes',      desc:'mentions in your other folder documents; click to open' },
+      { syn:'…in other documents',  desc:'mentions in your other folder documents; click to open' },
     ] },
 
   { id:'link-graph', cat:'links',
@@ -26091,7 +26094,7 @@ const GUIDE = [
       { syn:'A red dot',            desc:'a link whose target point was deleted' },
     ] },
   { id:'cross-doc-links', cat:'links',
-    title:'Links across notes',
+    title:'Links across documents',
     body:"Weave together a network of documents: link a project to a person page, connect a meeting document to an action item in another file or build a topic index that points to pages across your whole library. In a connected folder the [[ picker searches all your documents, not just the one you're in.",
     examples:[
       { syn:'[[…]]',                desc:'pick a point in another document' },
@@ -26115,13 +26118,13 @@ const GUIDE = [
       { syn:'File → Restore earlier version', desc:'roll back to the last auto-saved snapshot' },
     ] },
   { id:'workspace-documents', cat:'files',
-    title:'Working with a folder of notes',
-    body:"Keep a whole library of notes in one folder on your computer and move between them the way you would tabs: a project note, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge, or a similar browser only) and every note saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the notes in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a note any time by clicking its name at the top left and typing a new one. Each note also remembers where you were: switch away and come back and it restores your zoom and scroll position. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
+    title:'Working with a folder of documents',
+    body:"Keep a whole library of documents in one folder on your computer and move between them the way you would tabs: a project document, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge or a similar browser only) and every document saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the documents in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a document any time by clicking its name at the top left and typing a new one. Each document also remembers where you were: switch away and come back and it restores your zoom and scroll position. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
     examples:[
-      { syn:'File → Connect folder…',   desc:'link a folder of notes (Chromium only)' },
-      { syn:'File → Switch document…',  desc:'list, open, create or delete notes' },
-      { syn:'+ New document',           desc:'start a fresh note, named as you like' },
-      { syn:'Click the file name',      desc:'rename the current note' },
+      { syn:'File → Connect folder…',   desc:'link a folder of documents (Chromium only)' },
+      { syn:'File → Switch document…',  desc:'list, open, create or delete documents' },
+      { syn:'+ New document',           desc:'start a fresh document, named as you like' },
+      { syn:'Click the file name',      desc:'rename the current document' },
       { syn:'File → Disconnect folder', desc:'return to a single file' },
     ] },
   { id:'appearance-controls', cat:'files',
@@ -27026,7 +27029,7 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
       <outline text="Give a point a date and it shows up in the agenda (toolbar calendar button). {date due: today+3}"/>
       <outline text="Tag points with #hashtags. Click a tag to filter to it. Tags can nest: #gear/weapon."/>
     </outline>
-    <outline text="Search is powerful: press Cmd/Ctrl+F and try operators.">
+    <outline text="Search is powerful: press Ctrl/Cmd+F and try operators.">
       <outline text="Type is:todo to find open tasks, is:done for finished ones, #gear for a tag, or cost:&gt;10 to compare a property. Combine them; a space is AND, a bare | is OR. Star a search to save it."/>
     </outline>
     <outline text="Link points together to build a web, not just a tree.">
@@ -27075,7 +27078,7 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
       <outline text="A base is an editable, interactive table. Type /base on a blank point to make one, then its top-left switcher turns the same rows into a Board (kanban), Cards, or Calendar. Mark a column as Status or Date (Alt+R on a cell, or the column menu) to power the Board and Calendar."/>
     </outline>
     <outline text="Make it yours.">
-      <outline text="Duplicate any branch as a template (bullet menu, Save as template) and stamp it later with /template. Move a point anywhere with Refile in its bullet menu. And press Cmd/Ctrl+Shift+. to cycle the verbosity dial (Guided, Standard, Lean) as you get comfortable and want less hand-holding."/>
+      <outline text="Duplicate any branch as a template (bullet menu, Save as template) and stamp it later with /template. Move a point anywhere with Refile in its bullet menu. And press Ctrl/Cmd+Shift+. to cycle the verbosity dial (Guided, Standard, Lean) as you get comfortable and want less hand-holding."/>
     </outline>
   </outline>
 </outline>
