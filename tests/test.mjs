@@ -1088,10 +1088,13 @@ test('mdToHtml — empty `- [ ]` / `- [x]` render as checkboxes, not literal bra
   assert.ok(emptyX.includes('md-task-check') && emptyX.includes('checked'), 'empty - [x] is a checked checkbox');
   // GFM still needs the space: `- [ ]bar` (no space) stays a plain list item
   assert.ok(!c.mdToHtml('- [ ]bar').includes('md-task-check'), '- [ ]bar (no space) is not a task');
-  // data-task numbering is contiguous across an empty middle task (render↔toggle align)
+  // data-task numbering is contiguous across an empty middle task (render↔toggle align).
+  // Each task emits the index TWICE — on the .md-task-pad touch hit extender and on the
+  // checkbox itself (#439) — so pin the pairs: same index within a task, contiguous across.
   const mixed = c.mdToHtml('- [ ] first\n- [ ]\n- [x] third');
   const tasks = [...mixed.matchAll(/data-task="(\d+)"/g)].map(m => m[1]);
-  assert.deepEqual(host(tasks), ['0', '1', '2']);
+  assert.deepEqual(host(tasks), ['0', '0', '1', '1', '2', '2']);
+  assert.ok(mixed.includes('md-task-pad'), 'each task carries its touch hit extender');
   // the toggle path shares the checkbox token with render via TASK_LINE_RE (F4), so
   // its data-task index can't desync from the rendered checkboxes
   assert.ok(_src.includes('const TASK_LINE_RE'), 'TASK_LINE_RE must be defined in the grammar block');
@@ -5320,6 +5323,23 @@ test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
   assert.deepEqual(missing, [],
     `GUIDE missing covers for INSERT_CMDS ids: ${missing.join(', ')}\n` +
     `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
+});
+
+test('GUIDE drift guard: every essSection has its own Shortcuts page entry', () => {
+  // The Shortcuts nav group is one page per essSection (built by shortcutsSectionBody).
+  // A new essSection value with no matching page entry would silently vanish from the
+  // guide nav, so pin the two sets against each other in the source.
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const sections = new Set([...guideBlock.matchAll(/essSection:\s*'([^']+)'/g)].map(m => m[1]));
+  const pages = new Set([...guideBlock.matchAll(/shortcutsSectionBody\('([^']+)'\)/g)].map(m => m[1]));
+  assert.ok(sections.size >= 5, `expected the essential sections, parsed only: ${[...sections].join(', ')}`);
+  assert.deepEqual([...sections].filter(s => !pages.has(s)), [],
+    'essSection values with no Shortcuts page entry (add the page to GUIDE)');
+  assert.deepEqual([...pages].filter(s => !sections.has(s)), [],
+    'Shortcuts page entries whose essSection no longer exists (remove or rename the page)');
+  // the ? button's landing id stays on the first Shortcuts page
+  assert.ok(/id:'shortcuts',\s*cat:'shortcuts'/.test(guideBlock),
+    "the id 'shortcuts' entry (the ? landing page) is missing from the Shortcuts group");
 });
 
 // ── User-guide drift guards ───────────────────────────────────────────────────
