@@ -7395,6 +7395,23 @@ test('subtree aggregation: render + export + front-door wiring (src pins)', () =
   assert.ok(_src.includes('sum/avg/count/min/max(prop)'), 'math dialog hint missing min/max aggregation');
 });
 
+test('#557 firstEmptyRollup — flags a sum/avg over an empty prop scope; excludes count; ignores non-rollups', () => {
+  const withCost = c.mkNode('p'); const ch = c.mkNode('c'); ch.props.push({ key: 'cost', val: '10' }); withCost.children.push(ch);
+  const noCost = c.mkNode('p'); noCost.children.push(c.mkNode('x'));
+  assert.equal(c.firstEmptyRollup('sum(cost)', withCost), null, 'a matched scope is not flagged');
+  assert.equal(c.firstEmptyRollup('avg(cost)', noCost), 'cost', 'avg over nothing → flagged with the prop name');
+  assert.equal(c.firstEmptyRollup('sum(cost) + 5', noCost), 'cost', 'still flagged inside a larger expression');
+  assert.equal(c.firstEmptyRollup('count(cost)', noCost), null, 'count is excluded (0 is its honest answer)');
+  assert.equal(c.firstEmptyRollup('2 + 2', noCost), null, 'no rollup → null');
+  assert.equal(c.firstEmptyRollup('sum(cost)', null), 'cost', 'a null node is an empty scope');
+});
+
+test('#557 renderMathPill wires the empty-rollup "nothing matched" state (src pin)', () => {
+  assert.ok(_src.includes('firstEmptyRollup(m.expr, cookieNode)'), 'renderMathPill must check for an empty rollup');
+  assert.ok(_src.includes('math-empty'), 'the muted nothing-matched pill class is missing');
+  assert.ok(_src.includes('No ${emptyProp} below this point'), 'the empty-rollup hint (naming the prop) is missing');
+});
+
 // ── outline constraints / lint (F2) ─────────────────────────────────────────
 // A reserved `check` property carries an evalMath boolean over the point + its
 // direct children (B1 aggregation) + the point's own numeric props. evalCheck →

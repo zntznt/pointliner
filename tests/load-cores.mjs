@@ -225,7 +225,7 @@ export function loadCores() {
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','queryRows','queryParts','countParts','pickFromQuery','stripQueryTags','queryCountIn','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','cycleColRole','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
-    'childPropNumber','aggregateChildren','expandAggExpr','countWords','subtreeWords',
+    'childPropNumber','aggregateChildren','expandAggExpr','firstEmptyRollup','countWords','subtreeWords',
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','resolveNodeScope','checkExprOf','hasVisibleProps','buildIndex','ancestorsOf',
     'nowStamp','parseStamp','timestampOf','stampEdit','formatStampDisplay',
