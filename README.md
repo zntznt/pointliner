@@ -1,6 +1,6 @@
 # Pointliner
 
-**The single-file solo-RPG toolkit where the dice, the oracle, and the journal live in
+**The single-file RPG toolkit where the dice, the oracle, and the journal live in
 one place.** Roll `{2d6}` in the middle of a scene, ask a `{roll: #npc}` oracle that draws
 from your own cast, keep the log right beside it, and let the same document quietly total
 your inventory and flag your overloaded sheet while you play. It is all one `index.html`,
