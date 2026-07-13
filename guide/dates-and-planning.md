@@ -68,6 +68,24 @@ the agenda is where you come to check what is due, rather than something that pi
 dated point stays where it is once done; a [recurring task](#recurring-tasks) rolls its date forward
 and re-opens when you complete it.
 
+## Timeline
+
+See the whole story of your document in time order. Where the agenda is a planner for what is coming
+up, the **timeline** is the history: every point with a start or due date, laid out in one
+chronological list from the earliest to the far future, grouped by month. It is the view for a long
+campaign or a big set of notes, where you want to browse the arc ("the war, the treaty, the comet, in
+the order they landed") instead of searching for a date you only half-remember.
+
+Open it from the **hourglass button** in the toolbar. Each entry shows its date and title, colored by
+urgency (a past-due date reads red), with done points struck through and start-only points marked with
+a small `▸`. Click any entry to jump to that point; press `Esc` to close. It opens scrolled near
+today, so a long history starts at "now" rather than at year one.
+
+When a [custom calendar](#custom-calendars) is active, the month headers and dates are your world's
+own (Firstfrost, Longnight, the era year), so a campaign reads in campaign time. This is distinct from
+the agenda's own **Timeline** view, which is a Gantt of the near-term schedule; this one spans the
+whole archive and reads as a chronicle.
+
 ## Daily journal
 
 Keep a running log of what you worked on, decisions you made, or anything worth noting each day.

@@ -169,6 +169,7 @@ export function loadCores() {
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
+    'timelineModel',   // #516 timeline pure core
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'parseLinkToken', 'buildWorkspaceIndex',   // CF-1: cross-doc link index pure cores
     'linkText',                                 // render link tokens to legible plain text (breadcrumb/backlinks)

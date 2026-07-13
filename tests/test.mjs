@@ -2303,6 +2303,51 @@ import assert2 from 'node:assert/strict';
     // after clamping a 2-node graph spans the box on one axis; assert they are not maximally far
     assert2.ok(dist <= Math.hypot(600, 600) * 0.95, 'linked nodes are pulled together, not flung to opposite corners');
   });
+
+  // ── #516 timeline pure core ─────────────────────────────────────────────────
+  // a monthOf callback that buckets by a fixed 30-day "month" so the test is
+  // calendar-agnostic (the real callback wraps calComponents/calMonthTitle)
+  const monthOf = (ep) => { const m = Math.floor(ep / 30); return { key: 'm' + m, label: 'Month ' + m, sort: m * 30 }; };
+
+  ltest('timelineModel — groups items into chronological month buckets, ordered', () => {
+    const items = [
+      { id: 'c', epochDay: 65, done: false },  // month 2
+      { id: 'a', epochDay: 5,  done: false },  // month 0
+      { id: 'b', epochDay: 35, done: false },  // month 1
+      { id: 'a2', epochDay: 2, done: false },  // month 0 (earlier)
+    ];
+    const groups = c2.timelineModel(items, monthOf);
+    assert2.deepEqual(host2(groups.map(g => g.key)), ['m0', 'm1', 'm2']);  // chronological
+    // within month 0, the earlier date comes first
+    assert2.deepEqual(host2(groups[0].items.map(i => i.id)), ['a2', 'a']);
+    assert2.equal(groups[0].label, 'Month 0');
+  });
+
+  ltest('timelineModel — undated / non-finite epochs are skipped, never grouped', () => {
+    const items = [
+      { id: 'ok', epochDay: 10, done: false },
+      { id: 'nul', epochDay: null, done: false },
+      { id: 'nan', epochDay: NaN, done: false },
+      { id: 'inf', epochDay: Infinity, done: false },
+    ];
+    const groups = c2.timelineModel(items, monthOf);
+    const ids = host2(groups.flatMap(g => g.items.map(i => i.id)));
+    assert2.deepEqual(ids, ['ok']);
+  });
+
+  ltest('timelineModel — within a month, done points sink under active ones at the same date', () => {
+    const items = [
+      { id: 'done1', epochDay: 10, done: true },
+      { id: 'active', epochDay: 10, done: false },
+    ];
+    const groups = c2.timelineModel(items, monthOf);
+    assert2.deepEqual(host2(groups[0].items.map(i => i.id)), ['active', 'done1']);
+  });
+
+  ltest('timelineModel — empty input yields no groups', () => {
+    assert2.deepEqual(host2(c2.timelineModel([], monthOf)), []);
+    assert2.deepEqual(host2(c2.timelineModel(null, monthOf)), []);
+  });
 }
 
 // ─── tokenUnderCaret ──────────────────────────────────────────────────────
@@ -6352,6 +6397,31 @@ test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
   // Escape closes + returns focus to the toggle (P1-3 outward resolve)
   const cg = fnBody(_src, 'closeGraph');
   assert.ok(cg.includes("btn.setAttribute('aria-pressed', 'false')") && cg.includes('.focus()'), 'close must release pressed state + restore focus');
+});
+
+test('#516 timeline: UI wiring + front doors + a11y (src pins)', () => {
+  // toolbar button (in-subset fa-hourglass-half, no font rebuild) + overlay + toggle/close
+  assert.ok(_src.includes('id="btn-timeline"'), 'toolbar timeline button missing');
+  assert.ok(_src.includes('fa-hourglass-half'), 'timeline icon must be the in-subset hourglass glyph');
+  assert.ok(_src.includes('id="timeline-back"') && _src.includes('id="timeline-panel"'), 'timeline overlay markup missing');
+  assert.ok(_src.includes('function renderTimeline') && _src.includes('function toggleTimeline'), 'timeline render/toggle missing');
+  assert.ok(_src.includes("getElementById('btn-timeline').addEventListener('click', toggleTimeline)"), 'timeline button not wired');
+  // rendering goes through the pure timelineModel core, grouped under the ACTIVE calendar
+  const rt = fnBody(_src, 'renderTimeline');
+  assert.ok(rt.includes('timelineModel(') && rt.includes('collectDueDates('), 'renderTimeline must use timelineModel over collectDueDates');
+  assert.ok(rt.includes('calComponents(') && rt.includes('calMonthTitle('), 'month grouping must be calendar-aware (calComponents/calMonthTitle)');
+  assert.ok(rt.includes('calDayShort(') && rt.includes('calDayLabel('), 'date labels must be calendar-aware');
+  // a11y (P3): the panel is a named modal; each entry is a real <button> (Enter fires natively) with
+  // an accessible name; mousedown is preventDefault'd (caret invariant); click navigates
+  assert.ok(_src.includes('aria-label="Timeline"'), 'the overlay must be a named dialog');
+  assert.ok(rt.includes("document.createElement('button')") && rt.includes("row.setAttribute('aria-label'"), 'entries must be named buttons');
+  assert.ok(rt.includes("row.addEventListener('mousedown', ev => ev.preventDefault())"), 'mousedown must be prevented (caret invariant)');
+  assert.ok(rt.includes('zoomInto('), 'clicking an entry must navigate (zoomInto)');
+  // P4: an undated doc gets an explicit empty state, not a blank panel
+  assert.ok(rt.includes('graph-empty') && rt.includes('No dated points'), 'empty state missing');
+  // Escape closes + restores focus
+  const ct = fnBody(_src, 'closeTimeline');
+  assert.ok(ct.includes("btn.setAttribute('aria-pressed', 'false')") && ct.includes('.focus()'), 'close must release pressed state + restore focus');
 });
 
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
