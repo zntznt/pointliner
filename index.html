@@ -27976,6 +27976,11 @@ if (_showingExamples) showExamplesBanner();   // UXP-126: surface the Start-blan
       // hasn't already typed something new since boot.
       if (data && data.root && opfsSavedAt >= localSavedAt && opfsSavedAt > 0 && !userTypedSinceBoot) {
         applyAutosaveData(data);
+        // #563: boot showed the Examples doc + banner from an empty localStorage; the OPFS copy is
+        // the user's REAL doc. applyAutosaveData (unlike adoptDoc) doesn't clear the first-run state,
+        // so without this the "these are live examples" banner floats over the restored doc AND the
+        // _showingExamples gate keeps autosave suppressed. Clear it exactly as adoptDoc does.
+        if (_showingExamples) { _showingExamples = false; hideExamplesBanner(); }
         render(); refreshIcons();
       }
     } else if (localSavedAt > 0) {
