@@ -1011,6 +1011,11 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
    filled ring (the clock glyph), a content glyph exempt from the contrast floor (DL §4). #646 */
 .clock-done-cue{margin-left:.4em;font-size:.72em;vertical-align:super;color:var(--ok);user-select:none}
 @media(prefers-reduced-motion:reduce){.clock{transition:none}}
+/* meter {meter: value/max}: a segmented bar of a numeric property. A computed display value,
+   not a control (no pointer, no hover). The bar glyphs ride the accent; the count reads muted. #648 */
+.meter{font-family:var(--mono);font-size:.82em;letter-spacing:-.5px;color:var(--acc);user-select:none;white-space:nowrap}
+.meter-full{color:var(--ok)}
+.meter-bad{color:var(--bad)}
 /* per-node properties — a row of key:value chips below the content */
 .props-area{display:flex;flex-wrap:wrap;gap:4px;padding:1px 3px 3px;flex:1;min-width:0}
 .prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:4px;padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
@@ -3120,6 +3125,53 @@ function childPropNumber(child, prop) {
   const n = Number(raw);
   if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
   return parseDueDate(raw);                          // else a date-shaped value aggregates as its epoch-day (strict; non-dates → null)
+}
+
+// ── meter pills: {meter: value/max} → a segmented bar of a numeric property ──────
+// LegendKeeper's Meter Block, for HP / spell slots / stress. A COMPUTED display (like the
+// [/] cookie): it reads the render node's properties live, holds no state, is not clickable,
+// and renders as a unicode-block bar string — export-safe, DOM-free, pure. The token stays
+// verbatim in node.text (no sidecar) and recomputes every render against cookieNode. #648
+const METER_FILL = '█', METER_EMPTY = '░', METER_CELLS = 10;
+// Parse a {meter: …} body → {value, max} refs, each {kind:'prop'|'lit', v}, or null.
+// Forms: "hp/hpmax" (prop/prop) · "hp/20" (prop/lit) · "8/12" (lit/lit) · "hp" (bare → /100).
+function parseMeter(body) {
+  const m = /^meter\s*:\s*(.+)$/is.exec(String(body || '').trim());
+  if (!m) return null;
+  const spec = m[1].trim();
+  const ref = (t) => {
+    t = t.trim();
+    if (t === '') return null;
+    if (/^-?\d+(\.\d+)?$/.test(t)) return { kind: 'lit', v: Number(t) };
+    if (/^[A-Za-z][\w-]*$/.test(t)) return { kind: 'prop', v: t };
+    return null;                                     // anything else is not a valid ref
+  };
+  const slash = spec.indexOf('/');
+  if (slash < 0) { const v = ref(spec); return v ? { value: v, max: { kind: 'lit', v: 100 } } : null; }
+  const value = ref(spec.slice(0, slash)), max = ref(spec.slice(slash + 1));
+  return value && max ? { value, max } : null;
+}
+// Resolve a parsed meter's refs against a node (props read via childPropNumber). Returns
+// {value, max} numbers, or null if either side can't resolve to a finite number or max<=0.
+function resolveMeter(node, parsed) {
+  if (!parsed) return null;
+  const val = (r) => r.kind === 'lit' ? r.v : childPropNumber(node, r.v);
+  const value = val(parsed.value), max = val(parsed.max);
+  if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return null;
+  return { value, max };
+}
+// The bar string: `cells` glyphs, filled = round(value/max * cells) clamped to [0,cells]
+// (a value over max clamps to full, a negative to empty). Pure.
+function meterBar(value, max, cells = METER_CELLS) {
+  if (!(max > 0)) return METER_EMPTY.repeat(cells);
+  const filled = Math.max(0, Math.min(cells, Math.round(value / max * cells)));
+  return METER_FILL.repeat(filled) + METER_EMPTY.repeat(cells - filled);
+}
+// The display / export string: bar + the exact count, e.g. "██████░░░░ 8/12". Same string
+// in the pill and in flattenArtifacts. Numbers formatted through the math formatter so a
+// 8.5/12 reads cleanly and a whole number stays whole.
+function formatMeter(value, max) {
+  return meterBar(value, max) + ' ' + formatMathResult(value) + '/' + formatMathResult(max);
 }
 // ── depth nudges (#519): point-of-relevance discovery ────────────────────────
 // The pure PREDICATE half — decides IF a nudge is warranted, given plain data. The
@@ -5237,6 +5289,17 @@ function mdInline(s) {
     const full = pc.done === pc.total ? ' clock-full' : '';
     return stash(`<span class="clock${full}" role="button" tabindex="0" aria-label="Clock, ${pc.done} of ${pc.total} filled">${formatClock(pc.done, pc.total)}</span>`);
   });
+  // meter — {meter: value/max} → a segmented bar of a numeric property. A COMPUTED display
+  // (like the cookie): resolved live against the render node (cookieNode), no sidecar, not a
+  // control. An unresolvable meter (missing/non-numeric prop) shows a visible {meter?} marker
+  // (P4), never a silently wrong bar. Text-is-truth: the {meter: …} recipe stays in node.text. #648
+  s = s.replace(/\{meter\s*:\s*[^{}]*\}/gi, (m) => {
+    const parsed = parseMeter(m.slice(1, -1));
+    const r = parsed && resolveMeter(cookieNode, parsed);
+    if (!r) return stash(`<span class="meter meter-bad" aria-label="Meter, cannot resolve">{meter?}</span>`);
+    const full = r.value >= r.max ? ' meter-full' : '';
+    return stash(`<span class="meter${full}" aria-label="Meter, ${formatMathResult(r.value)} of ${formatMathResult(r.max)}">${formatMeter(r.value, r.max)}</span>`);
+  });
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
@@ -6535,6 +6598,7 @@ const INSERT_CMDS = [
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Insert' },
   { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back. Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Insert' },
+  { id:'meter',    icon:'▰',  fa:'fa-solid fa-bars-progress',   label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Reads the point’s own properties: {meter: hp/hpmax}, or a fixed max like {meter: hp/20}, or bare {meter: hp} for a percentage.', ex:'{meter: hp/hpmax}', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Random' },
@@ -15727,6 +15791,10 @@ function insertInlineArtifact(id, nodeId, content) {
     // a clock is plain text in the same [...] family (no sidecar) — insert [o 0/6],
     // the Blades default; edit the 6 for any size, click a segment to advance. #646.
     applyInlineInsertion(nodeId, offset, '[o 0/6]');
+  } else if (id === 'meter') {
+    // a meter is plain text (no sidecar), computed live from the point's props — insert the
+    // {meter: hp/hpmax} recipe; edit the prop names, or use a literal max / bare percent. #648.
+    applyInlineInsertion(nodeId, offset, '{meter: hp/hpmax}');
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -23330,7 +23398,13 @@ function flattenArtifacts(text, node, varMap) {
     const done = pc.computed ? clockFillFor(node, pc.total) : pc.done;   // computed freezes to its live tally
     return formatClock(done, pc.total);
   });
-  return flattenSpoilers(clocked);
+  // meters freeze to their bar + count string ("██████░░ 8/12"), resolved against the node;
+  // an unresolvable one freezes to the {meter?} marker like the render. #648
+  const metered = clocked.replace(/\{meter\s*:\s*[^{}]*\}/gi, (m) => {
+    const r = resolveMeter(node, parseMeter(m.slice(1, -1)));
+    return r ? formatMeter(r.value, r.max) : '{meter?}';
+  });
+  return flattenSpoilers(metered);
 }
 
 // A one-way export can't conceal, so a spoiler line ">! text" exports as "(spoiler) text"
@@ -26250,6 +26324,14 @@ const GUIDE = [
       { syn:'[o 0/6]',        desc:'a manual clock, click to advance (Shift+click steps back)' },
       { syn:'[o /6]',         desc:'a counting clock, fills from your checked sub-points' },
       { syn:'[o 4/4]',        desc:'a full clock (a filled ring)' },
+    ] },
+  { id:'meter', cat:'todos', covers:['meter'],
+    title:'Meters',
+    body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change. You can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. If a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
+    examples:[
+      { syn:'{meter: hp/hpmax}', desc:'a bar of one property over another' },
+      { syn:'{meter: hp/20}',    desc:'a fixed maximum' },
+      { syn:'{meter: hp}',       desc:'a percentage (out of 100)' },
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',

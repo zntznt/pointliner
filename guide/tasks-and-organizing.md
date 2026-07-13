@@ -80,6 +80,27 @@ to `3/6`.
 
 ---
 
+## Meters
+
+A meter shows a number against its maximum as a bar, for hit points, spell slots, stress or any
+gauge on a character or an item. Give the point the numbers as properties, then write a meter that
+reads them.
+
+```
+hp: 8   hpmax: 12
+{meter: hp/hpmax}    →    ██████░░░░ 8/12
+```
+
+The bar updates live as the properties change. You can fix the maximum with a number,
+`{meter: hp/20}`, or leave it off, `{meter: hp}`, to read as a percentage out of 100. Either side
+can be a plain number, so `{meter: 8/12}` draws a fixed bar. If a property is missing or is not a
+number, the meter shows a small `{meter?}` marker instead of a wrong bar.
+
+A meter is a display only, so it is not clickable. Insert one from the menu with `@meter`. It
+exports as its bar and count.
+
+---
+
 ## Properties
 
 Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and
