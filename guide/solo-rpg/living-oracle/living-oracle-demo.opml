@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>The living oracle (Pointliner demo)</title></head>
+  <body>
+    <outline text="The living oracle" _id="lorc0001">
+      <outline text="Roll on your own campaign: your cast and your open threads ARE the tables. Every {…} pill below is live, click one to draw. Add a point to a list and it joins the pool automatically. See living-oracle.md for the walkthrough." _id="lorc0002"/>
+      <outline text="Your cast" _id="lorc0010">
+        <outline text="Mara the smuggler, owes everyone #npc" _id="lorc0011"/>
+        <outline text="Rusty the innkeep, hears everything #npc" _id="lorc0012"/>
+        <outline text="Sergeant Voss, a guard on the take #npc" _id="lorc0013"/>
+        <outline text="Sister Present, asks too many questions #npc" _id="lorc0014"/>
+      </outline>
+      <outline text="Open threads" _id="lorc0020">
+        <outline text="The torn letter no one will explain #thread" _id="lorc0021"/>
+        <outline text="The caravan that never arrived #thread" _id="lorc0022"/>
+        <outline text="A debt the merchant is hiding #thread" _id="lorc0023"/>
+      </outline>
+      <outline text="Clues (some still open)" _id="lorc0030">
+        <outline text="- [ ] A wax seal with a broken crest #clue" _id="lorc0031"/>
+        <outline text="- [ ] Fresh cart tracks leaving the north gate #clue" _id="lorc0032"/>
+        <outline text="- [x] The innkeep's ledger, a page torn out #clue" _id="lorc0033"/>
+      </outline>
+      <outline text="Draw from your world (click any pill)" _id="lorc0040">
+        <outline text="Who walks into the scene? {roll: #npc}" _id="lorc0041"/>
+        <outline text="Which thread pushes forward? {roll: #thread}" _id="lorc0042"/>
+        <outline text="A clue you have not chased yet: {roll: #clue is:todo}" _id="lorc0043"/>
+        <outline text="A yes/no oracle for the in-between, weighted toward yes: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}" _id="lorc0044"/>
+      </outline>
+      <outline text="Freeze one for the whole scene" _id="lorc0050">
+        <outline text="Tonight's contact: {contact := {roll: #npc}}" _id="lorc0051"/>
+        <outline text="{contact} leans in and lowers their voice. Later in the scene, {contact} is still the same person. Click the frozen pill to draw a new contact." _id="lorc0052"/>
+      </outline>
+      <outline text="How it works" _id="lorc0060">
+        <outline text="A roll pill takes a normal search and picks one random point that matches it. The cast above carries the npc label and the threads the thread label, so a roll aimed at either draws from that list, wherever the points live." _id="lorc0061"/>
+        <outline text="Because the pool is your notes, it stays current: add a fifth cast member above and the next npc roll can land on it, no setup. Resolve a thread by deleting its tag and it leaves the pool." _id="lorc0062"/>
+        <outline text="Nothing here is new syntax. A roll is just a search, the freeze is the ordinary name-equals-value variable, and the yes/no oracle is a weighted list. Edit any list by clicking the text next to a pill." _id="lorc0063"/>
+      </outline>
+    </outline>
+  </body>
+</opml>
