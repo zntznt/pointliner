@@ -13684,6 +13684,14 @@ function deepCloneNodeNewIds(node) {
     props:     (node.props     || []).map(p => ({ ...p })),
     est:       (node.est       || []).map(e => ({ ...e })),   // #583: were spread-by-reference, so a
     query:     (node.query     || []).map(q => ({ ...q })),   // stamped estimate/query shared the source's sidecar
+    // #518 Piece 2: the interactive-base config (colW/colRole/view/qbase) was carried only by the
+    // {...node} spread, i.e. by REFERENCE — so a stamped base aliased the source's columns/view, and
+    // editing one copy mutated the template's / pack's stored base (and any sibling stamp). Deep-copy
+    // them when present. qbase.cols is a nested array, so it needs its own copy.
+    ...(node.colW    ? { colW:    [...node.colW] }    : {}),
+    ...(node.colRole ? { colRole: [...node.colRole] } : {}),
+    ...(node.view    ? { view:    { ...node.view } }  : {}),
+    ...(node.qbase   ? { qbase:   { ...node.qbase, ...(node.qbase.cols ? { cols: node.qbase.cols.map(c => ({ ...c })) } : {}) } } : {}),
     children: (node.children   || []).map(c => deepCloneNodeNewIds(c)),
   };
 }

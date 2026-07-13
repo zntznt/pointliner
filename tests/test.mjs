@@ -1664,6 +1664,24 @@ test('#583 deepCloneNodeNewIds — est and query sidecars are deep-copied, not s
   assert.equal(src.est[0].expr, '5 to 10', 'source est untouched by clone mutation');
 });
 
+test('#518 Piece 2 deepCloneNodeNewIds — interactive-base config (colW/colRole/view/qbase) is deep-copied', () => {
+  const src = c.mkNode('base'); src.type = 'base';
+  src.colW = [80, 120]; src.colRole = ['status', 'number'];
+  src.view = { kind: 'board', groupBy: 'status' };
+  src.qbase = { expr: 'is:todo', cols: [{ name: 'Title', field: 'title' }] };
+  const clone = c.deepCloneNodeNewIds(src);
+  assert.notEqual(clone.colW, src.colW, 'colW is a distinct array');
+  assert.notEqual(clone.colRole, src.colRole, 'colRole is a distinct array');
+  assert.notEqual(clone.view, src.view, 'view is a distinct object');
+  assert.notEqual(clone.qbase, src.qbase, 'qbase is a distinct object');
+  assert.notEqual(clone.qbase.cols, src.qbase.cols, 'qbase.cols (nested array) is a distinct copy');
+  // editing the stamped base must never mutate the source (template / pack corruption guard)
+  clone.view.groupBy = 'CHANGED'; clone.qbase.cols[0].field = 'EDITED'; clone.colW[0] = 999;
+  assert.equal(src.view.groupBy, 'status', 'source view untouched by a stamped-base edit');
+  assert.equal(src.qbase.cols[0].field, 'title', 'source qbase cols untouched');
+  assert.equal(src.colW[0], 80, 'source colW untouched');
+});
+
 // ── #518 Piece 0: pin the pack template + deck round-trip (the vision leans on it) ──
 // A stateful deck ships inside a pack TEMPLATE and must survive JSON export -> import -> stamp
 // as a working deck. Before this, deepCloneNodeNewIds copied a grammar record with {...g} (shallow),
