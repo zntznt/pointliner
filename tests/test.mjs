@@ -12805,3 +12805,98 @@ test('#612 — parity chips: estimate avg(), query operator chips, trimmed var c
   assert.ok(!varc.includes("label:'÷2'") && !varc.includes("label:'½'"), 'the weak ÷2 / ½ var chips must be gone');
   assert.ok(varc.includes("label:'π'") && varc.includes("label:'e'"), 'π and e stay in VAR_CHIPS');
 });
+
+// #603 — the logo/file menu is now a centered two-pane overlay (like the concept guide): a category
+// nav + a search box, opened over the shared #io-back scrim. Src-pins over GUIDE_SRC lock the
+// structure and, critically, that NO action was dropped in the restructure (every row id survives).
+test('#603 — the file menu uses the two-pane overlay shell (nav + search + categories)', () => {
+  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  assert.ok(menu.includes('id="fm-search"'), 'the menu search box is missing');
+  assert.ok(menu.includes('id="fm-nav"') && menu.includes('class="guide-nav"'), 'the category nav (reusing .guide-nav) is missing');
+  const cats = ['document', 'export', 'settings', 'learn', 'tools'];
+  for (const c of cats) {
+    assert.ok(menu.includes(`data-cat="${c}"`), `the ${c} category is missing from the menu`);
+  }
+  // openFileMenu opens over the scrim, not as a corner dropdown.
+  assert.ok(GUIDE_SRC.includes("ioBack.classList.add('on')") && GUIDE_SRC.includes('ioCancel = closeFileMenu'),
+    'openFileMenu must show the #io-back scrim and route cancel through ioCancel');
+  assert.ok(!/fileMenu\.style\.(top|left)\s*=/.test(GUIDE_SRC), 'the old corner-positioning of the menu must be gone');
+  // Adversarial-review fixes that must not regress:
+  assert.ok(GUIDE_SRC.includes('id="fm-noresults"'), 'the search no-results state (P4) is missing');   // F2
+  const showCat = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function fmShowCategory('), GUIDE_SRC.indexOf('function fmApplySearch('));
+  assert.ok(/search\.value = ''/.test(showCat), 'switching category must clear the search box so it never lies about what shows');   // F1
+  assert.ok(GUIDE_SRC.includes('#accent-row') && GUIDE_SRC.includes("querySelector('#accent-row')?.classList.add('fm-search-hidden')"),
+    'the color swatches must hide during search (they have no searchable text)');   // F3
+});
+
+test('#603 — every menu action survived the restructure (no dropped rows)', () => {
+  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  // The full inventory of action rows + their special controls, as before the restructure.
+  const ids = [
+    'btn-new', 'btn-open', 'btn-save', 'btn-save-as', 'btn-restore', 'btn-workspace',
+    'btn-workspace-switch', 'btn-workspace-disconnect', 'workspace-invite',
+    'btn-export-md', 'btn-export-txt', 'btn-export-html',
+    'btn-theme', 'accent-row', 'btn-width', 'btn-verbosity', 'btn-appearance', 'btn-datapacks',
+    'btn-calendar', 'btn-install',
+    'btn-guide', 'btn-examples', 'btn-starters', 'btn-webguide', 'btn-github',
+    'btn-brokenlinks', 'fm-levels-row', 'fm-levels',
+  ];
+  const missing = ids.filter(id => !menu.includes(`id="${id}"`));
+  assert.deepEqual(missing, [], `these menu actions were lost in the #603 restructure: ${missing.join(', ')}`);
+});
+
+// #603 — CONSISTENCY: the file menu and the concept guide must share ONE visual structure — the
+// `.guide-*` class family (header, search, nav, pane) plus the no-results pattern — so a restyle of
+// the guide's overlay carries to the menu and neither can fork into its own skin. This pins the
+// shared-CSS decision; the behavioral JS is intentionally separate (different data models: the guide
+// filters entry objects, the menu filters DOM rows) and is NOT asserted to be shared.
+test('#603 — menu and concept guide share the guide-* overlay classes (consistency)', () => {
+  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  const guideFn = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function openGuide('), GUIDE_SRC.indexOf('function openGuide(') + 3000);
+  for (const cls of ['guide-header', 'guide-search', 'guide-nav', 'guide-pane']) {
+    assert.ok(menu.includes(cls), `the menu must reuse .${cls}, not a bespoke skin`);
+    assert.ok(guideFn.includes(cls), `the concept guide must use .${cls} (the shared structure)`);
+  }
+  // Both implement the same no-results state via the shared class.
+  assert.ok(menu.includes('id="fm-noresults"') && menu.includes('guide-no-results'),
+    'the menu no-results element must reuse the shared .guide-no-results class');
+});
+
+// #603 regression: closeFileMenu is bound to EVERY document click (for click-away), and it removes the
+// shared #io-back scrim. That scrim also hosts the concept guide and every dialog, so closeFileMenu
+// MUST early-return when the menu is not open — otherwise a click inside the guide tears its scrim down
+// and the guide vanishes. (Found live during review; this pins the guard.)
+test('#603 — closeFileMenu no-ops when the menu is closed (does not kill the shared scrim)', () => {
+  const fn = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function closeFileMenu('),
+                            GUIDE_SRC.indexOf('function closeFileMenu(') + 500);
+  const guardAt = fn.search(/if \(!fileMenu\.classList\.contains\('on'\)\) return/);
+  assert.ok(guardAt >= 0, 'closeFileMenu must early-return when the menu is not open');
+  const scrimAt = fn.indexOf("ioBack.classList.remove('on')");
+  assert.ok(scrimAt > guardAt, 'the not-open guard must come BEFORE removing the shared scrim');
+});
+
+// #603 — the menu is a SINGLE scrollable page: all categories stacked with section headings, and a
+// nav that SCROLLS to a section (docs-sidebar style) with scroll-spy, rather than hiding the others.
+test('#603 — single-page menu: nav scrolls to sections (not hide-others)', () => {
+  const showCat = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function fmShowCategory('),
+                              GUIDE_SRC.indexOf('function fmApplySearch('));
+  assert.ok(/scrollTop/.test(showCat), 'fmShowCategory must scroll to the section (single-page model)');
+  assert.ok(!/sec\.hidden = sec\.dataset\.cat !== cat/.test(showCat),
+    'fmShowCategory must NOT hide the other categories (that was the old show-one model)');
+  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  assert.ok((menu.match(/class="fm-cat-head"/g) || []).length >= 4, 'each non-document category needs a section heading');
+  assert.ok(GUIDE_SRC.includes('function fmScrollSpy('), 'a scroll-spy must highlight the section currently in view');
+});
+
+// #603 regression: the file menu is centered via transform:translate(-50%,-50%) and needs its OWN pop
+// keyframe. The shared `menu-pop` keyframe is used by #io-card (the concept guide + dialogs) and the
+// graph/timeline panels, which are flex/margin-centered — folding a -50% translate into menu-pop made
+// the GUIDE animate from the top-left then snap to center. (Found live; this pins the split.)
+test('#603 — shared menu-pop keyframe carries no centering transform; the menu uses its own fm-pop', () => {
+  const mp = GUIDE_SRC.slice(GUIDE_SRC.indexOf('@keyframes menu-pop{'), GUIDE_SRC.indexOf('@keyframes menu-pop{') + 160);
+  assert.ok(mp.length > 20, 'menu-pop keyframe not found');
+  assert.ok(!/translate\(-50%/.test(mp),
+    'the shared menu-pop (used by #io-card/guide/graph/timeline) must NOT carry a -50% centering transform');
+  assert.ok(GUIDE_SRC.includes('@keyframes fm-pop{'), 'the file menu must have its own fm-pop keyframe');
+  assert.ok(/#file-menu\.on\{[^}]*animation:\s*fm-pop/.test(GUIDE_SRC), '#file-menu.on must animate with fm-pop, not menu-pop');
+});
