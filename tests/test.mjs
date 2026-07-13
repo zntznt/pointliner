@@ -1664,6 +1664,77 @@ test('#583 deepCloneNodeNewIds — est and query sidecars are deep-copied, not s
   assert.equal(src.est[0].expr, '5 to 10', 'source est untouched by clone mutation');
 });
 
+// ── #518 Piece 0: pin the pack template + deck round-trip (the vision leans on it) ──
+// A stateful deck ships inside a pack TEMPLATE and must survive JSON export -> import -> stamp
+// as a working deck. Before this, deepCloneNodeNewIds copied a grammar record with {...g} (shallow),
+// so a deck's items/bag ARRAYS aliased the source: drawing from a stamped deck spliced the source's
+// bag and corrupted the template's / pack's stored deck. These pins lock the fix + the whole round-trip.
+
+test('#518 deepCloneNodeNewIds — a deck grammar record deep-copies its items/bag arrays (no aliasing)', () => {
+  const src = c.mkNode('deck');
+  src.grammar = [{ key: 'g1', mode: 'shuffle', items: ['a', 'b', 'c'], bag: [2, 0], result: 'b' }];
+  const clone = c.deepCloneNodeNewIds(src);
+  assert.notEqual(clone.grammar[0], src.grammar[0], 'record is a fresh object');
+  assert.notEqual(clone.grammar[0].bag, src.grammar[0].bag, 'bag is a distinct array, not aliased');
+  assert.notEqual(clone.grammar[0].items, src.grammar[0].items, 'items is a distinct array, not aliased');
+  // simulate a draw on the stamped deck: mutate its bag; the source deck must be untouched
+  clone.grammar[0].bag.splice(0, 1);
+  assert.deepEqual(host(src.grammar[0].bag), [2, 0], 'drawing from the stamped deck does not corrupt the source deck');
+  assert.deepEqual(host(clone.grammar[0].items), ['a', 'b', 'c'], 'values still copy correctly');
+});
+
+test('#518 packTemplateDefs — extracts {name,node} from active packs, stamps _pack, drops malformed + disabled', () => {
+  const good = { name: 'Sheet', node: c.mkNode('sheet') };
+  const packs = [
+    { id: 'p1', templates: [good, { name: 'x' }, { node: {} }, null] },   // only `good` is well-formed
+    { id: 'p2', enabled: false, templates: [{ name: 'Skip', node: c.mkNode('skip') }] },   // disabled → skipped
+    { id: 'p3' },   // no templates → skipped
+  ];
+  const defs = c.packTemplateDefs(packs);
+  assert.equal(defs.length, 1, 'only the one valid template from the active pack');
+  assert.equal(defs[0].name, 'Sheet');
+  assert.equal(defs[0]._pack, true, 'pack templates are badged _pack:true');
+});
+
+test('#518 mergedTemplates — pack templates join the picker; a document template wins on a name tie', () => {
+  const packs = [{ id: 'p1', templates: [{ name: 'Session', node: c.mkNode('pack session') }, { name: 'Oracle', node: c.mkNode('pack oracle') }] }];
+  const docTemplates = [{ name: 'Session', node: c.mkNode('doc session') }];
+  const merged = c.mergedTemplates(packs, docTemplates);
+  const byName = Object.fromEntries(merged.map(t => [t.name, t]));
+  assert.ok(byName.Session && byName.Oracle, 'both pack + doc template names present');
+  assert.equal(byName.Session.node.text, 'doc session', 'the document template wins the name tie');
+  assert.equal(byName.Oracle._pack, true, 'the pack-only template stays badged _pack:true');
+});
+
+test('#518 parsePackImport — accepts a bare array AND a {plugins:[]} wrapper, drops non-packs, [] on bad JSON', () => {
+  const pack = { id: 'p1', name: 'Sys', templates: [] };
+  assert.equal(c.parsePackImport([pack]).length, 1, 'bare array');
+  assert.equal(c.parsePackImport({ plugins: [pack] }).length, 1, 'wrapped {plugins}');
+  assert.equal(c.parsePackImport(JSON.stringify({ plugins: [pack] })).length, 1, 'JSON string of the wrapper');
+  assert.equal(c.parsePackImport([pack, { no: 'id' }, null, 5]).length, 1, 'drops entries with no string id');
+  assert.equal(c.parsePackImport('{not json').length, 0, 'malformed JSON is [], never throws');
+});
+
+test('#518 the full deck-in-a-pack-template round-trip: JSON export -> import -> stamp keeps draw-state', () => {
+  // build a pack whose template subtree contains a stateful shuffle deck mid-draw
+  const deckNode = c.mkNode('[[grammar:g1]]');
+  deckNode.grammar = [{ key: 'g1', mode: 'shuffle', items: ['sword', 'shield', 'potion'], bag: [1], result: 'sword' }];
+  const pack = { id: 'sys', name: 'Loot system', templates: [{ name: 'Loot deck', node: deckNode }] };
+  // export -> JSON string -> import (the real trust boundary)
+  const exported = JSON.stringify({ plugins: [pack] });
+  const imported = c.parsePackImport(exported);
+  const defs = c.packTemplateDefs(imported);
+  assert.equal(defs.length, 1, 'the pack template survived JSON export + import');
+  // stamp it (fresh ids) and confirm the deck arrives WITH its draw-state, as a distinct copy
+  const stamped = c.deepCloneNodeNewIds(defs[0].node);
+  const g = stamped.grammar[0];
+  assert.equal(g.mode, 'shuffle', 'mode preserved');
+  assert.deepEqual(host(g.items), ['sword', 'shield', 'potion'], 'items preserved');
+  assert.deepEqual(host(g.bag), [1], 'the partially-drawn bag (draw-state) preserved');
+  // and the stamped deck is independent of the imported def (drawing does not corrupt the pack)
+  assert.notEqual(g.bag, defs[0].node.grammar[0].bag, 'stamped deck bag is a distinct array');
+});
+
 test('plugin packs — a document rule OVERRIDES a pack rule on a name collision', () => {
   const root = c.mkRoot();
   root.plugins = [{ id: 'p', rules: 'color: red | blue' }];

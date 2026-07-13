@@ -13579,7 +13579,16 @@ function deepCloneNodeNewIds(node) {
     markov: (node.markov || []).map(m => ({ ...m, path: [...(m.path || [])] })),
     math:      (node.math      || []).map(m => ({ ...m })),
     vars:      (node.vars      || []).map(v => ({ ...v })),
-    grammar:   (node.grammar   || []).map(g => ({ ...g })),
+    grammar:   (node.grammar   || []).map(g => ({ ...g,
+      // #518: {...g} is shallow, so a deck's `items`/`bag` (and a named grammar's rules/steps/parts)
+      // aliased the source by reference — drawing from a STAMPED deck spliced the source's bag,
+      // corrupting a template's / pack's stored deck. Deep-copy the record's nested arrays too.
+      ...(g.items ? { items: [...g.items] } : {}),
+      ...(g.bag   ? { bag:   [...g.bag] }   : {}),
+      ...(g.rules ? { rules: g.rules.map(r => Array.isArray(r) ? [...r] : r) } : {}),
+      ...(g.steps ? { steps: g.steps.map(s => ({ ...s })) } : {}),
+      ...(g.parts ? { parts: [...g.parts] } : {}),
+    })),
     seq:       (node.seq       || []).map(s => ({ ...s, states: [...(s.states || [])] })),
     props:     (node.props     || []).map(p => ({ ...p })),
     est:       (node.est       || []).map(e => ({ ...e })),   // #583: were spread-by-reference, so a
