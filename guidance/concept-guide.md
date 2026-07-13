@@ -50,7 +50,7 @@ Grep for `const GUIDE = [` and `function openGuide(` to find them.
 | `id` | kebab-case, unique across all entries. |
 | `cat` | one of the eight category ids below — must match a `CATS` entry in `openGuide`, or the entry renders in no group. |
 | `title` | short noun phrase; it's the left-list label. **Raw text** — `openGuide` runs it through `escHtml`, so write `&`, not `&amp;`. |
-| `body` | one plain string of AP-style prose (see below). `escHtml`'d at render, so **no HTML and no entities** — write the literal `&`, `<`, `'`, em-dash. |
+| `body` | AP-style prose (see below). `escHtml`'d at render, so **no HTML and no entities** — write the literal `&`, `<`, `'`. **AP punctuation only; the em dash is banned in GUIDE copy** (CLAUDE.md, cleared wholesale in PR #158) — rewrite, never a `—`. Two authoring conveniences run after `escHtml` (so they can't inject): a **blank line** (`\n\n`) starts a new paragraph — keep each paragraph 2 to 4 sentences and give any entry past ~400 chars real paragraph breaks; and a **backtick pair** wraps an inline syntax token as `code` (`` `is:todo` ``, `` `Ctrl/Cmd+Shift+I` ``) — a lone backtick stays literal. A single-paragraph, backtick-free body renders exactly as before. |
 | `examples` | array of `{ syn, desc }`. `syn` = the literal key/menu-path/syntax the user types or clicks; `desc` = a lowercase-leading short gloss. Both are `escHtml`'d. Use `[]` if none. |
 | `covers` | **optional.** Array of `BLOCK_CMDS`/`INSERT_CMDS` ids this entry documents. Only add command ids here — it's the drift-guard contract, not a free-text tag. A bullet-menu-only feature (e.g. properties, notes) has no command id, so omit `covers`. |
 
@@ -108,8 +108,11 @@ strings before writing one; match them exactly.
   copy — the canonical user-facing split from `CLAUDE.md`. Code keeps `node`/`artifact`.
 - **Keybinds in bodies** are spelled `Ctrl/Cmd+Enter`, `Shift+Tab` — plain words. (The
   *essential shortcut* rows use the `MOD`/`⇧` glyphs; concept-entry bodies do not.)
-- Keep `body` to ~2–4 sentences. The `examples` carry the precise syntax; the body is the
-  why and the how.
+- Keep each **paragraph** to ~2–4 sentences. A short entry is one paragraph; a longer one
+  splits into paragraphs on blank lines (`\n\n`), one sub-topic each, so it reads scannably
+  instead of as a wall. The `examples` carry the precise syntax; the body is the why and the
+  how. Wrap an inline syntax token the prose names in backticks (`` `is:todo` ``) so it reads
+  as code, not prose.
 
 **Verify every fact against `index.html` before writing** — exact menu labels, exact
 keybinds, exact syntax tokens. Do not invent capabilities; if you're unsure a detail

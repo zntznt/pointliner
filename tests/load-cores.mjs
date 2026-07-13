@@ -169,6 +169,7 @@ export function loadCores() {
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
+    'guideBodyHtml', 'shortcutsAllBody',   // #598/#599 guide body transform + the one-page shortcuts builder
     'timelineModel',   // #516 timeline pure core
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
     'parseRulesLoose',   // #582 pack-tolerant rule parser
