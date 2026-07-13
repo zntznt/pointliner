@@ -6861,13 +6861,23 @@ function flashHint(msg, _replay) {
   // Re-apply neutral styling every call so a prior flashError (which reddened the shared
   // element) doesn't leave later hints red.
   el.style.cssText = `position:fixed;bottom:${flashBottom()};left:50%;transform:translateX(-50%);z-index:800;`
+    // #654: without width:max-content a centered fixed toast sized to ~50vw and wrapped a long hint
+    // into a skinny column; size to content, clamped to the viewport so it never runs off-screen.
+    + 'width:max-content;max-width:calc(100vw - 32px);'
     + 'background:var(--fg);color:var(--bg);font-size:12.5px;padding:7px 14px;border-radius:var(--r-md);'
     + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none';
   el.textContent = msg;
   if (!_replay) announce(msg); // every toast also reaches assistive tech via the #a11y-live region (a replayed hint was already announced when it was deferred)
   requestAnimationFrame(() => { el.style.opacity = '1'; });
   clearTimeout(_hintTimer);
-  _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
+  // #655: a flat 1400ms fades an instructional hint before it can be read. Scale the dwell with the
+  // message length (a floor of 1400ms for a short confirmation, ~3.4s for an 80-char hint), capped.
+  _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, hintDwell(msg));
+}
+// #655: how long a hint stays up, by message length. Floor 1400ms (a short "Saved" confirmation),
+// ~35ms/char above ~23 chars, capped at 6s so a very long hint doesn't linger indefinitely. Pure.
+function hintDwell(msg) {
+  return Math.min(6000, Math.max(1400, 600 + String(msg || '').length * 35));
 }
 
 // Error toast: same #flash-hint element as flashHint, but red-tinted and longer-lived so a
@@ -6880,7 +6890,7 @@ function flashError(msg) {
   if (!el) { flashHint(''); el = document.getElementById('flash-hint'); }
   el.style.cssText = `position:fixed;bottom:${flashBottom()};left:50%;transform:translateX(-50%);z-index:800;`
     + 'background:var(--bad);color:var(--bad-fg);font-size:12.5px;padding:7px 14px;border-radius:var(--r-md);'
-    + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none;max-width:calc(100vw - 32px)';
+    + 'box-shadow:var(--sh-1);opacity:0;transition:opacity .15s;pointer-events:none;width:max-content;max-width:calc(100vw - 32px)';   // #654: size to content, not ~50vw
   el.textContent = msg;
   announce(msg);
   requestAnimationFrame(() => { el.style.opacity = '1'; });
