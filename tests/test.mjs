@@ -6162,6 +6162,12 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('const MAX_INBOXES = 10'), 'inbox cap missing');
   assert.ok(_src.includes('function inboxAt') && _src.includes('function setInboxSlot') && _src.includes('function removeInboxSlot'), 'slot helpers missing');
   assert.ok(_src.includes('function doCapture'), 'capture action missing');
+  // #559: capture works with ZERO setup — no inbox → the top level is the working default
+  // (the same locked default as link-and-create), on the strip AND the URL/share route;
+  // the demand-first placeholder and the no-destination early return are gone.
+  assert.ok(_src.includes('inboxAt(captureSlot) || resolveInbox() || root'), 'doCapture zero-setup top-level fallback missing');
+  assert.ok(!_src.includes('Set an inbox first'), 'the config-before-value placeholder must stay retired');
+  assert.match(_src, /function appendTextToInbox[\s\S]{0,400}resolveInbox\(\) \|\| root/, 'URL/share append must share the top-level fallback');
   assert.ok(_src.includes('id="btn-capture"'), 'toolbar button missing');
   assert.ok(_src.includes("getElementById('btn-capture').addEventListener"), 'button not wired');
   // capture is a TOOLBAR STRIP (not a modal): a #capture-strip region toggled open/closed,
@@ -6176,8 +6182,8 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('function captureCurrentPointId'), 'current-point adopt path missing');
   // in-strip ⌘⇧<N> switches the target slot without reopening (captureTargetSlot)
   assert.ok(_src.includes('function capInputKeydown') && _src.includes('captureTargetSlot(d === 0 ? 10 : d)'), 'in-strip slot switch missing');
-  // no destination yet → the capture action opens the manager, never silently no-ops (P4)
-  assert.ok(_src.includes('if (!inbox) { captureManage = true; renderCaptureStrip(); return; }'), 'unset-inbox path missing');
+  // (the old "no destination → open the manager" gate is deliberately GONE — #559: with no
+  // inbox the capture itself proceeds to the top level; the fallback pin is asserted above)
   // Add-inbox must OPEN the modal overlay itself (the strip is no longer a modal, so the
   // tree picker needs its own ioBack.on — the "dead Add button" regression).
   {
@@ -11028,13 +11034,13 @@ test('buildSharePointText — combines a shared body / title / url into one plai
   assert.equal(c.buildSharePointText('', '', ''), '');
 });
 
-test('#465 URL-append wiring: hosted-only, param-stripped, plain-text, no-inbox flash', () => {
+test('#465 URL-append wiring: hosted-only, param-stripped, plain-text, top-level fallback', () => {
   const fn = fnBody(_src, 'handleUrlAppend');
   assert.ok(fn, 'handleUrlAppend must exist');
   assert.ok(/location\.protocol === 'file:' \|\| !window\.isSecureContext/.test(fn), 'inert on file:// and non-secure (PWA-exception rule)');
   assert.ok(/history\.replaceState/.test(fn) && /searchParams\.delete/.test(fn), 'strips the param so a reload never re-appends');
   assert.ok(/appendTextToInbox\(text\)/.test(fn), 'routes through the shared inbox-append helper');
-  assert.ok(/Set a point as your inbox to capture from a link/.test(fn), 'no inbox → a P4 flash, text dropped');
+  assert.ok(/top level/.test(fn), '#559: no inbox → the toast names the top-level fallback (the capture still lands)');
   // it is called in the boot sequence after render(), and the manifest advertises share_target
   assert.ok(/handleUrlAppend\(\);/.test(_src), 'called on boot');
   // the append helper never evaluates the param — plain text into node.text (no promoteInlineShorthand)
