@@ -12308,13 +12308,58 @@ test('spoiler (#645) — SOURCE PIN: the spoiler branch precedes the blockquote 
 // so these pins guard the pure cores that both the pill and the export string use.
 
 test('clock (#646) — parseClock accepts a valid [o N/M] and rejects out-of-bounds', () => {
-  assert.deepEqual(host(c.parseClock('3', '6')), { done: 3, total: 6 }, 'a valid clock parses');
-  assert.deepEqual(host(c.parseClock('0', '4')), { done: 0, total: 4 }, 'empty clock ok');
-  assert.deepEqual(host(c.parseClock('4', '4')), { done: 4, total: 4 }, 'full clock ok');
+  assert.deepEqual(host(c.parseClock('3', '6')), { done: 3, total: 6, computed: false }, 'a valid manual clock parses');
+  assert.deepEqual(host(c.parseClock('0', '4')), { done: 0, total: 4, computed: false }, 'empty clock ok');
+  assert.deepEqual(host(c.parseClock('4', '4')), { done: 4, total: 4, computed: false }, 'full clock ok');
   assert.equal(c.parseClock('7', '6'), null, 'done > total is rejected (stays literal)');
   assert.equal(c.parseClock('3', '0'), null, 'total 0 is rejected');
   assert.equal(c.parseClock('3', '100'), null, 'total over 99 is rejected');
   assert.equal(c.parseClock('-1', '6'), null, 'negative done is rejected');
+});
+
+test('clock (#646) — parseClock reads [o /M] as a COMPUTED clock (empty count slot)', () => {
+  assert.deepEqual(host(c.parseClock('', '6')), { done: null, total: 6, computed: true },
+    'an empty count means "tally from children"; done is resolved at render');
+  assert.deepEqual(host(c.parseClock('', '4')), { done: null, total: 4, computed: true }, 'any size');
+  assert.equal(c.parseClock('', '0'), null, 'a computed clock still needs a valid total');
+  assert.equal(c.parseClock('', '100'), null, 'total bound still applies to computed');
+});
+
+test('clock (#646) — clockFillFor tallies done children, capped at the clock total', () => {
+  const kid = (text) => ({ id: text, text, children: [] });
+  const parent = { id: 'p', text: 'Escape [o /6]', children: [
+    kid('- [x] cut bars'), kid('- [x] bribe guard'), kid('- [x] cross moat'),
+    kid('- [ ] not yet'), kid('#DONE one'), kid('#DONE two'),
+  ] };
+  assert.equal(c.progressCount(parent).done, 5, '3 checked + 2 done-keyword = 5 done');
+  assert.equal(c.clockFillFor(parent, 6), 5, 'fill is the done count when under total');
+  assert.equal(c.clockFillFor(parent, 3), 3, 'fill is capped at the clock total (never overfills the ring)');
+  assert.equal(c.clockFillFor(null, 6), 0, 'no node → empty');
+});
+
+test('clock (#646) — completingChildIndex marks the child whose done-ness fills the clock', () => {
+  const kid = (text) => ({ id: text, text, children: [] });
+  const parent = { id: 'p', text: 'Escape [o /6]', children: [
+    kid('- [x] a'), kid('- [x] b'), kid('- [x] c'), kid('- [ ] d'), kid('#DONE e'), kid('#DONE f'),
+  ] };
+  assert.equal(c.completingChildIndex(parent, 5), 5, 'the 6th child (2nd #DONE) tips done to 5');
+  assert.equal(c.completingChildIndex(parent, 3), 2, 'the 3rd checked child tips done to 3');
+  assert.equal(c.completingChildIndex(parent, 6), -1, 'only 5 done, a 6-clock never fills → no cue');
+  // a single child with several checkboxes can cross the line by itself
+  const multi = { id: 'm', text: '[o /2]', children: [ kid('- [x] x\n- [x] y'), kid('- [ ] z') ] };
+  assert.equal(c.completingChildIndex(multi, 2), 0, 'one child with 2 checked boxes completes a 2-clock');
+});
+
+test('clock (#646) — clockCompletionCue is true only for the completing child of a computed clock', () => {
+  const kid = (text) => ({ id: text, text, children: [] });
+  const c1 = kid('- [x] a'), c2 = kid('- [x] b'), c3 = kid('- [ ] c');
+  const parent = { id: 'p', text: 'Doom [o /2]', children: [c1, c2, c3] };
+  assert.equal(c.clockCompletionCue(parent, c2), true, 'c2 fills the 2-clock → cued');
+  assert.equal(c.clockCompletionCue(parent, c1), false, 'c1 does not complete it');
+  assert.equal(c.clockCompletionCue(parent, c3), false, 'an undone child is never the completer');
+  // a manual clock has no completing-child concept (its N is clicked, not child-derived)
+  const manual = { id: 'q', text: 'Doom [o 1/2]', children: [c1, c2, c3] };
+  assert.equal(c.clockCompletionCue(manual, c2), false, 'a manual clock produces no cue');
 });
 
 test('clock (#646) — clockGlyph fills in quarters, never empty/full for a partial', () => {

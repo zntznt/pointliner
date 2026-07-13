@@ -215,6 +215,7 @@ export function loadCores() {
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText',
+    'clockFillFor','completingChildIndex','clockCompletionCue','progressCount','tallyMarkers',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
