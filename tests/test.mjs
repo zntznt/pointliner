@@ -6121,6 +6121,16 @@ test('GUIDE drift guard: the guide is the one help surface, wired to the ? butto
   assert.ok(_src.includes('Help &amp; guide') || _src.includes('Help & guide'), 'Help & guide menu label missing');
 });
 
+test('#664/#665 guide content sizing: sc-desc keeps a dialog font-size; the examples grid caps its term column', () => {
+  // #664: .sc-desc must set its own font-size (the retired .sc-panel used to carry it) so shortcut
+  // descriptions don't inherit the document body size inside the guide dialog. Regression guard.
+  assert.match(_src, /\.sc-desc\{[^}]*font-size:\s*\d/, '.sc-desc must set a font-size, not inherit the document 17px');
+  // #665: the examples grid term column is capped (minmax(0,40%)) so one wide chip can't squeeze
+  // every description into a sliver; the chip wraps instead of forcing the column wide.
+  assert.match(_src, /\.guide-ex\{[^}]*grid-template-columns:minmax\(0,40%\) 1fr/, 'the examples grid must cap its term column');
+  assert.match(_src, /\.guide-ex dt code\{[^}]*white-space:normal/, 'a wide examples chip must be allowed to wrap');
+});
+
 test('#560 the guide sets its own accessible name; closeIo clears it so no reuser inherits a stale one', () => {
   // openGuide must set ioCard's aria-label to "Concept guide" (the shared io-card is reused across
   // dialogs, each setting its own on open), so a screen reader is never told it is in "New document".
