@@ -21,6 +21,8 @@ The everyday outliner. This is the part you use without thinking about it.
   ([point types](writing-and-formatting.md#point-types))
 - **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line.
   ([styling text](writing-and-formatting.md#styling-text))
+- **Secret and spoiler blocks.** Start a line with `>!` to hide it behind a blur until you click
+  or press it to reveal. ([secret blocks](writing-and-formatting.md#secret-and-spoiler-blocks))
 - **Emoji.** Type `:` and a name (`:fire`, `:tada`) to pick from a menu, or type the full
   `:shortcode:`. ([emoji](writing-and-formatting.md#emoji))
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
