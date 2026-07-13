@@ -6131,6 +6131,16 @@ test('#664/#665 guide content sizing: sc-desc keeps a dialog font-size; the exam
   assert.match(_src, /\.guide-ex dt code\{[^}]*white-space:normal/, 'a wide examples chip must be allowed to wrap');
 });
 
+test('#656/#661 guide sizing: scales with the viewport, no 680px cap, balanced top/bottom gap', () => {
+  const rule = (_src.match(/#io-card\.guide-open\{[^}]*\}/) || [''])[0];
+  // no hard 680px height cap that clips short windows / wastes large ones
+  assert.ok(!rule.includes('680px'), 'the guide must not cap its height at 680px');
+  // the height is viewport-relative (100dvh - 10vh) with a matching 5vh top margin — equal gaps
+  // top and bottom on the flex-start backdrop, so it is centered, not bottom-jammed.
+  assert.ok(rule.includes('margin-top:5vh') && rule.includes('max-height:calc(100dvh - 10vh)'),
+    'the guide must use a 5vh top margin + a 100dvh-10vh height so the top and bottom gaps match');
+});
+
 test('#560 the guide sets its own accessible name; closeIo clears it so no reuser inherits a stale one', () => {
   // openGuide must set ioCard's aria-label to "Concept guide" (the shared io-card is reused across
   // dialogs, each setting its own on open), so a screen reader is never told it is in "New document".

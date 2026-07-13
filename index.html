@@ -1411,8 +1411,13 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #sc-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #sc-toggle:hover{color:var(--fg);border-color:var(--acc)}
 #sc-toggle.on{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--acc)}
-#io-card.guide-open{width:min(760px,calc(100vw - 32px));max-height:min(88vh,680px);padding:0;overflow:hidden}
-.guide-wrap{display:flex;flex-direction:column;height:min(88vh,680px)}
+/* #656/#661: the guide inherited #io-card's margin-top:16vh and capped its height at min(88vh,680px).
+   On a short window (~808px) 16vh + 88vh overflowed and clipped the bottom; on a large screen the hard
+   680px cap wasted space. The backdrop is align-items:flex-start, so an EQUAL top+bottom gap needs a 5vh
+   top margin and a height of 100dvh - 10vh (5vh above, 5vh below). Balanced and scales with the viewport;
+   no 680px cap. */
+#io-card.guide-open{width:min(760px,calc(100vw - 32px));margin-top:5vh;max-height:calc(100dvh - 10vh);padding:0;overflow:hidden}
+.guide-wrap{display:flex;flex-direction:column;height:calc(100dvh - 10vh)}
 .guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 .guide-title{font-size:13px;font-weight:600;flex-shrink:0}
 .guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
