@@ -7184,6 +7184,89 @@ test('progressCount depth: a scoped cookie tallies deeper (UXP-159)', () => {
   assert.equal(at(Infinity), '2/3');   // whole subtree: a✓, b✗, c✓
 });
 
+// ── #646 progress clocks: shipped without pins; lock their pure cores ──
+test('#646 parseClock — manual, computed, and out-of-bounds', () => {
+  assert.deepEqual(host(c.parseClock('3', '6')), { done: 3, total: 6, computed: false });
+  assert.deepEqual(host(c.parseClock('', '6')), { done: null, total: 6, computed: true });   // [o /6] computed
+  assert.deepEqual(host(c.parseClock(null, '4')), { done: null, total: 4, computed: true });
+  assert.equal(c.parseClock('7', '6'), null, 'done > total is invalid');
+  assert.equal(c.parseClock('-1', '6'), null, 'negative done is invalid');
+  assert.equal(c.parseClock('0', '0'), null, 'total < 1 is invalid');
+  assert.equal(c.parseClock('1', '100'), null, 'total > 99 is invalid');
+  assert.deepEqual(host(c.parseClock('0', '6')), { done: 0, total: 6, computed: false }, 'empty clock is valid');
+});
+test('#646 clockGlyph — ring fills by quarters; partial is never ○ or ●', () => {
+  assert.equal(c.clockGlyph(0, 6), '○');
+  assert.equal(c.clockGlyph(6, 6), '●');
+  assert.equal(c.clockGlyph(1, 6), '◔');   // ~quarter
+  assert.equal(c.clockGlyph(3, 6), '◑');   // half
+  assert.equal(c.clockGlyph(5, 6), '◕');   // ~three-quarters
+  assert.equal(c.formatClock(3, 6), '◑ 3/6', 'the display/export string');
+});
+test('#646 advanceClock — clamps to [0,total]; advanceClockInText rewrites the Nth VALID manual clock', () => {
+  assert.equal(c.advanceClock(3, 6, 1), '[o 4/6]');
+  assert.equal(c.advanceClock(0, 6, -1), '[o 0/6]', 'clamps at 0');
+  assert.equal(c.advanceClock(6, 6, 1), '[o 6/6]', 'clamps at total');
+  // advance the 2nd clock (ordinal 1), leave the 1st
+  assert.equal(c.advanceClockInText('a [o 1/4] b [o 2/6] c', 1, 1), 'a [o 1/4] b [o 3/6] c');
+  // a computed clock is skipped in the ordinal count (so pill + text ordinals stay aligned — the #646 click fix)
+  assert.equal(c.advanceClockInText('[o /6] [o 2/6]', 0, 1), '[o /6] [o 3/6]');
+  // an out-of-range ordinal leaves the text unchanged
+  assert.equal(c.advanceClockInText('[o 2/6]', 5, 1), '[o 2/6]');
+});
+test('#646 clockFillFor — a computed clock fills from the parent done-tally, capped at total', () => {
+  const p = c.mkNode('clock'); const SEQS = host(c.allSequences());
+  p.children.push(c.mkNode('- [x] a'), c.mkNode('- [x] b'), c.mkNode('- [ ] c'));
+  assert.equal(c.clockFillFor(p, 6, SEQS), 2, 'two done children → fill 2 of 6');
+  // cap at total: 3 done but a 2-slot clock caps at 2
+  p.children.push(c.mkNode('- [x] d'));
+  assert.equal(c.clockFillFor(p, 2, SEQS), 2, 'capped at the clock total');
+  assert.equal(c.clockFillFor(null, 6, SEQS), 0, 'no node → 0');
+});
+
+// ── #648 meters: shipped without pins; lock their pure cores ──
+test('#648 parseMeter — the four forms, the trailing style word, and the non-meter reject', () => {
+  // #668 added a `style` field (default 'bar', or a trailing pool-style word: hearts/dots/…).
+  assert.deepEqual(host(c.parseMeter('meter: hp/hpmax')), { value: { kind: 'prop', v: 'hp' }, max: { kind: 'prop', v: 'hpmax' }, style: 'bar' });
+  assert.deepEqual(host(c.parseMeter('meter: hp/20')),    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 20 }, style: 'bar' });
+  assert.deepEqual(host(c.parseMeter('meter: hp')),       { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 100 }, style: 'bar' }, 'bare ref → out of 100');
+  assert.deepEqual(host(c.parseMeter('meter: 8/12')),     { value: { kind: 'lit', v: 8 }, max: { kind: 'lit', v: 12 }, style: 'bar' });
+  // a trailing style word (#668): "hp/5 hearts" → an icon-pool style
+  assert.deepEqual(host(c.parseMeter('meter: hp/5 hearts')), { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 5 }, style: 'hearts' });
+  assert.equal(c.parseMeter('foo: bar'), null, 'not a meter body');
+  assert.equal(c.parseMeter('meter: '), null, 'empty spec');
+});
+test('#648 meterPool — icon-pool fill counts, or null past the cap (#668)', () => {
+  assert.deepEqual(host(c.meterPool(3, 5)), { filled: 3, empty: 2 });
+  assert.deepEqual(host(c.meterPool(0, 4)), { filled: 0, empty: 4 }, 'empty pool');
+  assert.deepEqual(host(c.meterPool(9, 4)), { filled: 4, empty: 0 }, 'value over max clamps to full');
+  assert.equal(c.meterPool(3, 20), null, 'max over the cap → null (caller draws a bar instead)');
+  assert.equal(c.meterPool(3, 0), null, 'max < 1 → null');
+});
+test('#648 resolveMeter — reads props off the node; null when a side cannot resolve or max<=0', () => {
+  const n = c.mkNode('char'); n.props.push({ key: 'hp', val: '12' }, { key: 'hpmax', val: '20' });
+  assert.deepEqual(host(c.resolveMeter(n, c.parseMeter('meter: hp/hpmax'))), { value: 12, max: 20 });
+  assert.deepEqual(host(c.resolveMeter(n, c.parseMeter('meter: hp/30'))), { value: 12, max: 30 });
+  assert.equal(c.resolveMeter(n, c.parseMeter('meter: missing/hpmax')), null, 'unknown prop → null');
+  assert.equal(c.resolveMeter(n, c.parseMeter('meter: hp/0')), null, 'max <= 0 → null');
+});
+test('#648 meterBar / formatMeter — filled = round(value/max*cells), clamped', () => {
+  assert.equal(c.meterBar(8, 12), '███████░░░', '8/12 → 7 of 10 cells');
+  assert.equal(c.meterBar(0, 12), '░░░░░░░░░░', 'empty');
+  assert.equal(c.meterBar(20, 12), '██████████', 'over max clamps to full');
+  assert.equal(c.meterBar(-5, 12), '░░░░░░░░░░', 'negative clamps to empty');
+  assert.equal(c.formatMeter(8, 12), '███████░░░ 8/12', 'bar + exact count');
+});
+
+// ── #645 secret/spoiler blocks: lock the parse regex (src pin, it is a const) ──
+test('#645 secret blocks: the >! spoiler line pattern + render/reveal wiring (src pins)', () => {
+  // the SPOILER_RE recognizes a ">! hidden" line (up to 3 leading spaces, one optional space after !)
+  assert.match(_src, /const SPOILER_RE = \/\^ \{0,3\}>!/, 'the >! spoiler line pattern is missing');
+  assert.ok(_src.includes('md-spoiler'), 'the blurred spoiler render class is missing');
+  assert.ok(_src.includes('function toggleSpoiler') || _src.includes('toggleSpoiler('), 'the click-to-reveal path is missing');
+  assert.ok(_src.includes("covers:['secret']"), 'the secret concept-guide entry is missing');
+});
+
 test('subtree aggregation: only DIRECT children count (grandchildren excluded)', () => {
   const p = c.mkNode('p');
   const child = c.mkNode('c'); child.props.push({ key: 'cost', val: '10' });
