@@ -6121,6 +6121,16 @@ test('GUIDE drift guard: the guide is the one help surface, wired to the ? butto
   assert.ok(_src.includes('Help &amp; guide') || _src.includes('Help & guide'), 'Help & guide menu label missing');
 });
 
+test('#560 the guide sets its own accessible name; closeIo clears it so no reuser inherits a stale one', () => {
+  // openGuide must set ioCard's aria-label to "Concept guide" (the shared io-card is reused across
+  // dialogs, each setting its own on open), so a screen reader is never told it is in "New document".
+  assert.ok(_src.includes("ioCard.setAttribute('aria-label', 'Concept guide')"),
+    'openGuide must set aria-label to "Concept guide"');
+  // closeIo removes the aria-label so the next container reuser can never inherit a stale name.
+  assert.match(_src, /function closeIo\(\)[\s\S]{0,220}ioCard\.removeAttribute\('aria-label'\)/,
+    'closeIo must clear the stale aria-label');
+});
+
 test('GUIDE: the guide nav is a two-level list (category header per group, each topic its own item)', () => {
   // The left list groups entries under category headers and renders every entry
   // as its own clickable item — not a flat category-only nav. A regression to the
@@ -7393,6 +7403,23 @@ test('subtree aggregation: render + export + front-door wiring (src pins)', () =
   assert.ok(_src.includes("id:'rollups'") && _src.includes("syn:'{= sum(cost)}'"), 'GUIDE rollups entry or sum example missing');
   assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
   assert.ok(_src.includes('sum/avg/count/min/max(prop)'), 'math dialog hint missing min/max aggregation');
+});
+
+test('#557 firstEmptyRollup — flags a sum/avg over an empty prop scope; excludes count; ignores non-rollups', () => {
+  const withCost = c.mkNode('p'); const ch = c.mkNode('c'); ch.props.push({ key: 'cost', val: '10' }); withCost.children.push(ch);
+  const noCost = c.mkNode('p'); noCost.children.push(c.mkNode('x'));
+  assert.equal(c.firstEmptyRollup('sum(cost)', withCost), null, 'a matched scope is not flagged');
+  assert.equal(c.firstEmptyRollup('avg(cost)', noCost), 'cost', 'avg over nothing → flagged with the prop name');
+  assert.equal(c.firstEmptyRollup('sum(cost) + 5', noCost), 'cost', 'still flagged inside a larger expression');
+  assert.equal(c.firstEmptyRollup('count(cost)', noCost), null, 'count is excluded (0 is its honest answer)');
+  assert.equal(c.firstEmptyRollup('2 + 2', noCost), null, 'no rollup → null');
+  assert.equal(c.firstEmptyRollup('sum(cost)', null), 'cost', 'a null node is an empty scope');
+});
+
+test('#557 renderMathPill wires the empty-rollup "nothing matched" state (src pin)', () => {
+  assert.ok(_src.includes('firstEmptyRollup(m.expr, cookieNode)'), 'renderMathPill must check for an empty rollup');
+  assert.ok(_src.includes('math-empty'), 'the muted nothing-matched pill class is missing');
+  assert.ok(_src.includes('No ${emptyProp} below this point'), 'the empty-rollup hint (naming the prop) is missing');
 });
 
 // ── outline constraints / lint (F2) ─────────────────────────────────────────
