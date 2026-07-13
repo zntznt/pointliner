@@ -181,7 +181,7 @@ export function loadCores() {
     'workspaceBacklinks',                       // CF-4: cross-doc backlinks (pure)
     'searchWorkspace',                          // WS-1: workspace-wide search matcher (pure)
     'searchSnippet',                            // UXP-64: context-aware snippet for workspace results
-    'validPluginPack', 'mergePackRules', 'packVarDefs',
+    'validPluginPack', 'mergePackRules', 'packVarDefs', 'packTemplateDefs', 'mergedTemplates',   // packTemplateDefs/mergedTemplates: #583
     'pluginPackActive', 'packLabel', 'newPluginPack', 'updatePluginPack', 'removePluginPack', 'togglePluginPack', 'parsePackImport', 'parsePackVarLines', 'rollPackPickVars',
     'tagColorOf', 'propIconOf', 'setTagColor', 'setPropIcon', 'normalizeAppearance', 'isValidTagName',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',

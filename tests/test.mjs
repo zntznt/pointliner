@@ -1619,6 +1619,51 @@ test('#585 plugin packs — a document var of the same name overrides a pack pic
   assert.equal(c.collectVars(root).strength, 18, 'the document formula var wins over the pack pick (last-wins)');
 });
 
+test('#583 packTemplateDefs — carries a valid pack template, flagged _pack; drops malformed', () => {
+  const out = host(c.packTemplateDefs([
+    { id: 'a', templates: [
+      { name: 'Sheet', node: { text: 'STR: {3d6}', children: [] } },   // valid
+      { name: 'NoNode' },                                              // no node → dropped
+      { node: { text: 'x' } },                                         // no name → dropped
+    ] },
+    { id: 'b', templates: 'not-an-array' },                            // dropped
+    { templates: [{ name: 'z', node: {} }] },                          // no id → whole pack dropped
+  ]));
+  assert.deepEqual(out, [{ name: 'Sheet', node: { text: 'STR: {3d6}', children: [] }, _pack: true }]);
+});
+
+test('#583 packTemplateDefs — a disabled pack contributes no templates', () => {
+  const out = host(c.packTemplateDefs([{ id: 'a', enabled: false, templates: [{ name: 'Sheet', node: { text: 'x' } }] }]));
+  assert.deepEqual(out, []);
+});
+
+test('#583 mergedTemplates — union of pack + doc; document wins on a name collision', () => {
+  const plugins = [{ id: 'p', templates: [
+    { name: 'Sheet', node: { text: 'pack-sheet' } },
+    { name: 'Oracle', node: { text: 'pack-oracle' } },
+  ] }];
+  const docTemplates = [{ name: 'Sheet', node: { text: 'doc-sheet' } }];
+  const merged = host(c.mergedTemplates(plugins, docTemplates));
+  assert.deepEqual(merged.map(t => t.name).sort(), ['Oracle', 'Sheet']);
+  // the doc 'Sheet' shadows the pack one; the pack-only 'Oracle' survives, still _pack-flagged
+  assert.equal(merged.find(t => t.name === 'Sheet').node.text, 'doc-sheet', 'document template wins');
+  assert.ok(!merged.find(t => t.name === 'Sheet')._pack, 'the winning Sheet is the document one (no _pack flag)');
+  assert.equal(merged.find(t => t.name === 'Oracle')._pack, true, 'the pack-only Oracle keeps its _pack flag');
+});
+
+test('#583 deepCloneNodeNewIds — est and query sidecars are deep-copied, not shared', () => {
+  const src = c.mkNode('body'); src.est = [{ key: 'e1', expr: '5 to 10' }]; src.query = [{ key: 'q1', q: 'is:todo' }];
+  const clone = c.deepCloneNodeNewIds(src);
+  assert.notEqual(clone.id, src.id, 'fresh id');
+  assert.notEqual(clone.est, src.est, 'est array is a fresh copy');
+  assert.notEqual(clone.est[0], src.est[0], 'est record is a fresh copy');
+  assert.notEqual(clone.query, src.query, 'query array is a fresh copy');
+  assert.notEqual(clone.query[0], src.query[0], 'query record is a fresh copy');
+  // mutating the clone must not touch the source
+  clone.est[0].expr = 'changed';
+  assert.equal(src.est[0].expr, '5 to 10', 'source est untouched by clone mutation');
+});
+
 test('plugin packs — a document rule OVERRIDES a pack rule on a name collision', () => {
   const root = c.mkRoot();
   root.plugins = [{ id: 'p', rules: 'color: red | blue' }];
@@ -6618,6 +6663,25 @@ test('#585 pack pick vars: editor wiring (parse classifies, save rolls, seeds pi
   assert.ok(rp.includes('rollPickSource(v.source)') && rp.includes('rolled != null'), 'rollPackPickVars must roll and drop a non-rolling pick');
   // the edit round-trip re-displays a pick as `name: source`
   assert.ok(_src.includes("v.kind === 'pick' ? `${v.name}: ${v.expr}` : `${v.name} = ${v.expr}`"), 'a saved pick must re-display in its authoring form');
+});
+
+test('#583 pack templates: reads use mergedTemplates, writes stay doc-only, pack rows have no Forget (src pins)', () => {
+  // the four READ sites route through the merged (pack + doc) view
+  assert.ok(_src.includes('findTemplate(mergedTemplates(), name)'), 'stampTemplate + inline verb must resolve the merged list');
+  assert.ok(_src.includes('const list = mergedTemplates();'), 'the picker must list the merged templates');
+  assert.ok(_src.includes('findTemplate(mergedTemplates(), name)') && _src.includes('function isSavedTemplateName'), 'the existence check must see pack templates');
+  // the WRITES stay on root.templates only (a pack template is never mutated/deleted here)
+  assert.ok(_src.includes('root.templates = upsertTemplate('), 'save writes to root.templates only');
+  assert.ok(_src.includes('root.templates = removeTemplate('), 'delete writes to root.templates only');
+  // a pack template row shows a badge and has NO Forget button (the write-guard in the UI)
+  assert.ok(_src.includes("if (!tpl._pack) {"), 'only a document template gets a Forget button');
+  assert.ok(_src.includes('tpl-pack-badge'), 'a pack template is badged in the picker');
+  // the pure cores: packTemplateDefs flags _pack, mergedTemplates lets the doc win
+  const mt = fnBody(_src, 'mergedTemplates');
+  assert.ok(mt.includes('packTemplateDefs(plugins)') && mt.includes('document wins'), 'mergedTemplates unions pack + doc with doc winning');
+  // deepClone now copies est + query (a pack template may carry them)
+  const dc = fnBody(_src, 'deepCloneNodeNewIds');
+  assert.ok(dc.includes('est:') && dc.includes('query:'), 'the clone must deep-copy est and query');
 });
 
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {

@@ -71,6 +71,9 @@ self-contained HTML → a pack-loaded doc *is* a runnable, offline, re-rollable 
   time via `rollPickSource`, frozen as `{kind:'pick', expr, rolled}` in the pack, resolved by
   `collectVars` through the same `pickVals` frozen-value path as a document pick var). Both → `collectVars`.
 - **Emoji / shortcodes** — `shortcode → unicode` (data), → the `EMOJI` map.
+- **Templates** — reusable subtree snapshots `{name, node}` (#583), the pre-made-content vehicle
+  (a character sheet, an oracle laid out as points), merged into the `/template` picker via
+  `mergedTemplates` (document wins on a name tie), stamped by deep-clone. Inert data.
 
 **A pack MUST NOT carry:**
 - **Functions** — a math/JS function is **code**, so a "function pack" is a code-exec hole and
@@ -81,7 +84,14 @@ self-contained HTML → a pack-loaded doc *is* a runnable, offline, re-rollable 
   the single-source-theme prerequisite is **dropped**. (Accent presets remain data-driven, but
   no theme-pack feature is built.)
 
-Templates and saved searches are already doc-level config — no pack machinery needed.
+Saved searches are doc-level config — no pack machinery needed. **Templates DO now ride packs (#583):**
+a pack may carry `templates: [{name, node}]` (the same shape as `root.templates`), merged into the
+`/template` picker by `mergedTemplates()` with the DOCUMENT winning on a name collision (the same
+pack-first / document-wins ordering as rules and vars). A pack template is stamped by deep-clone with
+fresh ids like any template (inert data, inside the gate); it is authored by importing a pack JSON
+that carries it (there is no textarea authoring for a subtree), shows a "pack" badge in the picker, and
+has no Forget button there — it lives in the pack, removed via the pack manager. (This supersedes the
+former "templates need no pack machinery" line, written before packs became the pre-made-content vehicle.)
 
 **Decision — stateful decks/sequences inside a pack rule stay a documented boundary (#585 part 2).**
 A `{shuffle|cycle|once: …}` inside ANY rule (pack or document) degrades to a stateless pick — this is

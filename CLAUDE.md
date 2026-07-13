@@ -602,7 +602,11 @@ executes. A pack var may be a **formula** (`{name, expr}`, evalMath) or a **rand
 (`{name, kind:'pick', expr:source, rolled}` — rolled once at author/import time via
 `rollPickSource`, frozen in the pack, resolved by `collectVars` through the same `pickVals`
 path as a document pick var; #585). The pack manager (`openDataPackManager`, #487) is the
-authoring UI. Emoji packs, and packs carrying stateful decks/sequences/templates, stay out.
+authoring UI. A pack may also carry **templates** (`templates:[{name, node}]`, #583) — reusable
+subtree snapshots merged into the `/template` picker via `mergedTemplates` (document wins on a name
+tie), stamped by deep-clone with fresh ids like any template; authored by importing a pack (no
+textarea UI for a subtree), badged in the picker, not deletable there. Emoji packs, and packs
+carrying stateful decks/sequences, stay out.
 
 **Node links** are a third document-wide index, same shape as the above — and
 **hashtags** a fourth: `collectTags(rootNode = root)` walks the tree with mdInline's
