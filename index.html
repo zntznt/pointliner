@@ -1673,7 +1673,16 @@ body.agg-resizing{cursor:col-resize;user-select:none}
    a toggle and shows its pressed state with the strip-chip tint recipe. */
 #quick-bar{position:fixed;left:0;right:0;bottom:0;z-index:640;display:none;align-items:center;gap:4px;padding:6px 10px calc(6px + env(safe-area-inset-bottom));background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up)}
 #quick-bar.on{display:flex}
-#quick-bar .eb-btn[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+#quick-bar .eb-btn[aria-pressed="true"],#quick-bar .eb-btn[aria-expanded="true"]{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+/* #520: roll-template palette — floats just above the quick bar (bottom = the bar's height), a
+   wrapping row of tappable {…} chips. Same warm-paper envelope as the bar; monospace chips read
+   as the grammar they insert. */
+#roll-palette{position:fixed;left:8px;right:8px;bottom:calc(var(--qbar-h,52px) + 6px);z-index:660;display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);box-shadow:var(--sh-2);max-height:40vh;overflow-y:auto}
+#roll-palette[hidden]{display:none}
+.rp-chip{flex:0 0 auto;min-height:40px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;padding:5px 11px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:var(--bg);color:var(--fg);font:inherit;cursor:pointer;text-align:left}
+.rp-chip:active,.rp-chip:focus-visible{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);outline:none}
+.rp-chip .rp-syn{font-family:var(--mono);font-size:12.5px;color:var(--acc)}
+.rp-chip .rp-lbl{font-size:10.5px;color:var(--muted)}
 .eb-btn{flex:0 0 auto;min-width:44px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:17px;line-height:1;transition:background .1s}
 .eb-btn:active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .eb-btn:disabled{opacity:.35;pointer-events:none}
@@ -2200,9 +2209,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <button class="eb-btn" id="qb-capture" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox" aria-hidden="true"></i></button>
   <button class="eb-btn" id="qb-new" title="New point" aria-label="New point at the end">+</button>
   <button class="eb-btn" id="qb-insert" title="New point with the insert menu" aria-label="New point with the insert menu">@</button>
+  <button class="eb-btn" id="qb-roll" title="Roll templates" aria-label="Insert a roll template" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-dice" aria-hidden="true"></i></button>
   <span class="eb-spacer"></span>
   <button class="eb-btn" id="qb-help" title="Help &amp; guide" aria-label="Help and concept guide">?</button>
 </div>
+<!-- #520: the roll-template palette. Tapping a chip drops a ready-to-edit {…} into a new point,
+     so a mid-scene roll never means hunting { and } on a soft keyboard. Existing grammar syntax
+     only (no new sigil); the template promotes to a pill on Done and rolls on tap like any other. -->
+<div id="roll-palette" role="menu" aria-label="Roll templates" hidden></div>
 <!-- footnote panel -->
 <div id="fn-panel">
   <div class="fn-panel-hd" id="fn-panel-hd">Footnotes</div>
@@ -6349,6 +6363,20 @@ function stateCmds() {
 function blockCmdsPool() { return [...BLOCK_CMDS, ...stateCmds()]; }
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
+// #520: the touch roll palette. Each entry inserts a ready-to-edit {…} template so a mid-scene
+// roll never means hunting { and } on a soft keyboard. `ins` is EXISTING grammar syntax (dice,
+// yes/no oracle, {roll:} query, alternation) — no new sigil, inside the closed P5 inventory — so
+// each template promotes to a real pill on exit and rolls on tap like any hand-typed one. `caret`
+// is how many chars to walk the caret back from the end so it lands on the part worth editing
+// (0 = leave at the end, a complete valid roll you can commit as-is).
+const ROLL_TEMPLATES = [
+  { ins:'{2d6}',            label:'2d6',        caret:0 },
+  { ins:'{1d20}',          label:'d20',        caret:0 },
+  { ins:'{1d100}',         label:'d100',       caret:0 },
+  { ins:'{oracle: likely}', label:'oracle',    caret:1 },   // caret lands after "likely" for a quick swap of the odds band
+  { ins:'{roll: #tag}',     label:'roll on outline', caret:1 },   // after "#tag" to type the real tag/query
+  { ins:'{a | b}',          label:'either / or', caret:5 },   // back onto the first option "a"
+];
 const INSERT_CMDS = [
   // Insert — basic inline elements, most common
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
@@ -13866,22 +13894,86 @@ function updateQuickBar() {
 // (an empty view gets its first child) — the same call the ghost row makes, which renders
 // and focusNode's the fresh point itself. withAt then types '@' at the new caret — the
 // eb-insert path (UXP-105), so one tap goes from nothing to the pill palette mid-scene.
-function quickNewPoint(withAt) {
+// insertText (optional): a string typed into the fresh point once its caret exists — '@' opens
+// the insert menu (#566), a '{…}' template comes from the roll palette (#520). Both ride the same
+// execCommand path so the text is a normal edit (undoable, promotes on exit like hand-typed).
+function quickNewPoint(insertText) {
   let container = (focusedId && nodeById(focusedId)) || root;
   if (container.type === 'base') container = root;   // a base's children are its rows, never a free point
   const kids = container.children;
   if (kids.length) insertSiblingAfter(kids[kids.length - 1].id);
   else { pushUndo(); const n = createChildModel(container); render(); focusNode(n.id); }
-  if (withAt) requestAnimationFrame(() => requestAnimationFrame(() => {   // after focusNode's frame: the caret exists by now
-    if (document.querySelector('.node-content[data-editing]')) document.execCommand('insertText', false, '@');
+  if (insertText) requestAnimationFrame(() => requestAnimationFrame(() => {   // after focusNode's frame: the caret exists by now
+    if (document.querySelector('.node-content[data-editing]')) document.execCommand('insertText', false, insertText);
   }));
 }
 // Plain click wiring (no ebBtn caret guard: the bar acts from display mode, there is no
 // caret to protect, and focusable buttons keep the keyboard path (P3) for free).
 document.getElementById('qb-capture').addEventListener('click', () => toggleCapture());
-document.getElementById('qb-new').addEventListener('click', () => quickNewPoint(false));
-document.getElementById('qb-insert').addEventListener('click', () => quickNewPoint(true));
+document.getElementById('qb-new').addEventListener('click', () => quickNewPoint());
+document.getElementById('qb-insert').addEventListener('click', () => quickNewPoint('@'));
 document.getElementById('qb-help').addEventListener('click', e => { e.stopPropagation(); toggleGuide('shortcuts'); });
+
+// #520: the roll-template palette. A tap on a chip creates a new point, types the {…} template
+// into it (execCommand, so it is a normal undoable edit that promotes on exit), then walks the
+// caret back `caret` chars so it lands on the part worth editing. No new syntax: the chips are
+// the grammar the app already has, so this only removes the soft-keyboard brace hunt.
+const rollPalette = document.getElementById('roll-palette');
+const qbRoll = document.getElementById('qb-roll');
+function buildRollPalette() {
+  rollPalette.innerHTML = '';
+  for (const t of ROLL_TEMPLATES) {
+    const chip = document.createElement('button');
+    chip.className = 'rp-chip'; chip.type = 'button'; chip.setAttribute('role', 'menuitem');
+    chip.dataset.ins = t.ins; chip.dataset.caret = String(t.caret);
+    chip.setAttribute('aria-label', `Insert ${t.label} roll ${t.ins}`);
+    const syn = document.createElement('span'); syn.className = 'rp-syn'; syn.textContent = t.ins;
+    const lbl = document.createElement('span'); lbl.className = 'rp-lbl'; lbl.textContent = t.label;
+    chip.append(syn, lbl); rollPalette.appendChild(chip);
+  }
+}
+function openRollPalette() {
+  buildRollPalette();
+  rollPalette.hidden = false;
+  qbRoll.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(() => rollPalette.querySelector('.rp-chip')?.focus());
+}
+function closeRollPalette() {
+  rollPalette.hidden = true;
+  qbRoll.setAttribute('aria-expanded', 'false');
+}
+function rollPaletteOpen() { return !rollPalette.hidden; }
+function pickRollTemplate(ins, caret) {
+  closeRollPalette();
+  quickNewPoint(ins);
+  if (caret > 0) requestAnimationFrame(() => requestAnimationFrame(() => {
+    // quickNewPoint typed the template on the same double-rAF; walk the caret back into it.
+    const sel = window.getSelection();
+    for (let i = 0; i < caret; i++) sel.modify('move', 'backward', 'character');
+  }));
+}
+qbRoll.addEventListener('click', e => {
+  e.stopPropagation();
+  rollPaletteOpen() ? closeRollPalette() : openRollPalette();
+});
+rollPalette.addEventListener('click', e => {
+  const chip = e.target.closest('.rp-chip');
+  if (!chip) return;
+  pickRollTemplate(chip.dataset.ins, Number(chip.dataset.caret) || 0);
+});
+rollPalette.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeRollPalette(); qbRoll.focus(); return; }
+  const chips = [...rollPalette.querySelectorAll('.rp-chip')];
+  const i = chips.indexOf(document.activeElement);
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); chips[(i + 1) % chips.length]?.focus(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); chips[(i - 1 + chips.length) % chips.length]?.focus(); }
+});
+// tap-away / Escape-anywhere closes the palette (it is a transient popup, like the bullet menu)
+document.addEventListener('click', e => {
+  if (rollPaletteOpen() && !rollPalette.contains(e.target) && e.target !== qbRoll) closeRollPalette();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && rollPaletteOpen()) closeRollPalette(); });
+
 updateQuickBar();
 
 // Bulk edit a multi-selection the same way the bullet popup edits one point: the
@@ -25893,6 +25985,14 @@ const GUIDE = [
       { syn:'{roll: is:todo}',          desc:'a random open thread from the points below' },
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
       { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
+    ] },
+  { id:'roll-palette', cat:'generators',
+    title:'Roll palette (touch)',
+    body:"Drop a roll mid-scene on a phone without hunting for braces on the keyboard. On a touch device the bottom bar has a dice button; tap it for a small palette of ready-made rolls (a d6, a d20, a yes/no oracle, a roll on your own outline, a this-or-that pick). Tap one and it lands as an editable point you can tweak, then tap Done to turn it into a pill and tap the pill to roll. Everything it inserts is ordinary pill text, so a roll you make this way is the same as one you typed by hand: it re-rolls on tap and can be named and reused. The palette is a shortcut for the common rolls; the @ insert menu still has the full set.",
+    examples:[
+      { syn:'Dice button on the bottom bar', desc:'touch only: opens the roll palette' },
+      { syn:'{2d6} / {1d20}',           desc:'a dice roll, ready to edit then tap to roll' },
+      { syn:'{oracle: likely}',         desc:'a yes/no oracle at the chosen odds' },
     ] },
   { id:'gen-rules', cat:'generators',
     title:'Building generators',

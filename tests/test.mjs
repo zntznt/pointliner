@@ -6695,10 +6695,13 @@ test('#566 touch quick bar: wiring, swap discipline, and the bottom-stack integr
   assert.match(_src, /IS_TOUCH && !editBar\.classList\.contains\('on'\)/, 'bar must show on touch only, hidden while the edit bar is up');
   assert.match(_src, /updateQuickBar\(\);\s*\/\/ #566/, 'updateEditBar must drive the swap');
   // new point goes through the virtual-list reveal (ensureRowVisible), then focus enters edit;
-  // the @ variant reuses the eb-insert typed-'@' path (UXP-105), no duplicated menu logic
+  // the @ variant reuses the eb-insert typed-'@' path (UXP-105), no duplicated menu logic.
+  // #520 generalized quickNewPoint(withAt) -> quickNewPoint(insertText): the typed string is now
+  // the parameter ('@' from qb-insert, a {…} template from the roll palette), one execCommand path.
   const qnp = fnBody(_src, 'quickNewPoint');
   assert.ok(qnp.includes('insertSiblingAfter('), 'the + must be the ghost row\'s twin (same continuation-aware append)');
-  assert.ok(qnp.includes("execCommand('insertText', false, '@')"), 'the @ variant must reuse the typed-@ path');
+  assert.ok(qnp.includes("execCommand('insertText', false, insertText)"), 'the insert variant must reuse the one typed-insert path');
+  assert.ok(_src.includes("quickNewPoint('@')"), 'the @ button must feed the insert path an @');
   // the renderWindow focus-preservation fix this feature depends on: a rebuild around a
   // focused editor restores focus + caret instead of exitEditing it via the removal-blur
   assert.ok(_src.includes('_vlPreservingFocus'), 'renderWindow focus preservation missing');
@@ -6709,6 +6712,25 @@ test('#566 touch quick bar: wiring, swap discipline, and the bottom-stack integr
   // the capture twin mirrors the toolbar toggle's pressed state
   assert.match(_src, /qb-capture'\)\?\.setAttribute\('aria-pressed', 'true'\)/, 'open must press the twin');
   assert.match(_src, /qb-capture'\)\?\.setAttribute\('aria-pressed', 'false'\)/, 'close must release the twin');
+});
+
+test('#520 roll palette: every template is valid, promotable grammar (no new syntax)', () => {
+  // The palette must only ever insert EXISTING grammar the app can promote to a pill — the whole
+  // point is to skip the soft-keyboard brace hunt, not to mint a new sigil. Extract each template's
+  // {…} body from ROLL_TEMPLATES in source and require classifyBraceBody to call it an artifact
+  // (a promotable pill), never plain text. A future broken template trips this.
+  const block = _src.slice(_src.indexOf('const ROLL_TEMPLATES = ['));
+  const arr = block.slice(0, block.indexOf('];') + 2);
+  const bodies = [...arr.matchAll(/ins:\s*'\{([^}]*)\}'/g)].map(m => m[1].trim());
+  assert.ok(bodies.length >= 5, `expected the roll templates, parsed only: ${bodies.join(', ')}`);
+  for (const body of bodies) {
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'artifact',
+      `template {${body}} must classify as a promotable pill, not plain text (no new syntax)`);
+  }
+  // and the palette + its button exist and are wired to the shared insert path
+  assert.ok(_src.includes('id="roll-palette"') && _src.includes('id="qb-roll"'), 'palette + button missing');
+  assert.ok(_src.includes('function pickRollTemplate') && /quickNewPoint\(ins\)/.test(_src),
+    'a pick must feed the template through quickNewPoint (promotes on exit like typed shorthand)');
 });
 
 test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
