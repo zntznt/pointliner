@@ -1221,6 +1221,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .tpl-pick:hover,.tpl-pick:focus-visible{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);outline:none}
 .tpl-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tpl-count{flex-shrink:0;font-size:11px;color:var(--muted);font-family:var(--mono)}
+.tpl-pack-badge{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:var(--r-xs);padding:1px 5px;vertical-align:middle}/* #583: marks a template that came from a data pack */
 /* refile quick-switcher dialog: search input + filtered, keyboard-navigable list */
 .rf-search{width:100%;font-family:var(--font);font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:9px 11px;outline:none;margin-bottom:10px;transition:border-color .12s,box-shadow .12s}
 .rf-search:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
@@ -9982,11 +9983,11 @@ function openSaveTemplateDialog(nodeId) {
     },
   });
 }
-function isSavedTemplateName(name) { return !!findTemplate(root.templates, name); }
+function isSavedTemplateName(name) { return !!findTemplate(mergedTemplates(), name); }   // #583: a name colliding with a pack template is flagged too (the doc save shadows it)
 
 // /template door: a picker dialog listing saved templates; click stamps one here.
 function openTemplatePicker(nodeId) {
-  const list = root.templates || [];
+  const list = mergedTemplates();   // #583: pack templates + doc templates (doc wins on a name tie)
   ioCard.innerHTML = '';
 
   const head = document.createElement('div'); head.className = 'io-head';
@@ -10007,24 +10008,30 @@ function openTemplatePicker(nodeId) {
       const row = document.createElement('div'); row.className = 'tpl-row';
       const pick = document.createElement('button');
       pick.className = 'tpl-pick'; pick.type = 'button';
-      pick.setAttribute('aria-label', `Stamp template ${tpl.name}`);
+      pick.setAttribute('aria-label', `Stamp template ${tpl.name}${tpl._pack ? ' (from a data pack)' : ''}`);
       const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = tpl.name;
+      // #583: a pack template reads with a small "pack" badge so it's clear where it came from
+      // (and, below, has no Forget button — it's managed in the data-pack manager, not here).
+      if (tpl._pack) { const badge = document.createElement('span'); badge.className = 'tpl-pack-badge'; badge.textContent = 'pack'; nm.append(' ', badge); }
       const cnt = document.createElement('span'); cnt.className = 'tpl-count';
       cnt.textContent = ptsLabel(countPoints(tpl.node));
       pick.append(nm, cnt);
       pick.addEventListener('click', () => { closeIo(); stampTemplate(nodeId, tpl.name); });
-      const del = document.createElement('button');
-      del.className = 'io-btn xsm'; del.type = 'button';
-      setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
-      del.title = 'Forget'; del.setAttribute('aria-label', `Forget template ${tpl.name}`);
-      del.addEventListener('click', () => {
-        pushUndo();
-        root.templates = removeTemplate(root.templates, tpl.name);
-        markDirty();
-        flashHint(`Forgot template “${tpl.name}”`);
-        openTemplatePicker(nodeId); // re-render the picker in place
-      });
-      row.append(pick, del);
+      row.append(pick);
+      if (!tpl._pack) {   // only a DOCUMENT template can be forgotten here (writes stay doc-only)
+        const del = document.createElement('button');
+        del.className = 'io-btn xsm'; del.type = 'button';
+        setIcon(del, { fa: 'fa-solid fa-xmark', fb: '✕' });
+        del.title = 'Forget'; del.setAttribute('aria-label', `Forget template ${tpl.name}`);
+        del.addEventListener('click', () => {
+          pushUndo();
+          root.templates = removeTemplate(root.templates, tpl.name);
+          markDirty();
+          flashHint(`Forgot template “${tpl.name}”`);
+          openTemplatePicker(nodeId); // re-render the picker in place
+        });
+        row.append(del);
+      }
       tlist.appendChild(row);
     });
     ioCard.appendChild(tlist);
@@ -10587,7 +10594,7 @@ function showBrokenLinksReport() {
 // point when it's empty and childless (typed /template on a blank line); otherwise
 // inserts as the next sibling. Mirrors createBaseAt's blur-before-mutate discipline.
 function stampTemplate(nodeId, name) {
-  const tpl = findTemplate(root.templates, name);
+  const tpl = findTemplate(mergedTemplates(), name);   // #583: pack templates are stampable too (doc wins on a name tie)
   if (!tpl) return;
   const node = nodeById(nodeId);
   if (!node) return;
@@ -12151,6 +12158,18 @@ function findTemplate(list, name) {
   return (list || []).find(t => (t.name || '').trim() === v) || null;
 }
 
+// #583: the list the /template picker and stamp paths read — the union of PACK templates and
+// DOCUMENT templates, with the DOCUMENT winning on a name collision (mirroring the pack-first /
+// document-wins ordering rules and vars already use). Doc entries are appended last and dedup
+// keeps the LAST of each name, so a doc template of the same name shadows the pack one. Pure
+// (given plugins + docTemplates); the no-arg form reads the live root for call sites.
+function mergedTemplates(plugins = root?.plugins, docTemplates = root?.templates) {
+  const byName = new Map();
+  for (const t of packTemplateDefs(plugins)) byName.set((t.name || '').trim(), t);
+  for (const t of (docTemplates || [])) byName.set((t.name || '').trim(), t);   // document wins
+  return [...byName.values()];
+}
+
 // Single post-order pass: record every node whose subtree (incl. self) matches,
 // so the flatten pass is O(n) instead of re-scanning subtrees at every level.
 function computeMatchSet(node, set) {
@@ -13504,6 +13523,8 @@ function deepCloneNodeNewIds(node) {
     grammar:   (node.grammar   || []).map(g => ({ ...g })),
     seq:       (node.seq       || []).map(s => ({ ...s, states: [...(s.states || [])] })),
     props:     (node.props     || []).map(p => ({ ...p })),
+    est:       (node.est       || []).map(e => ({ ...e })),   // #583: were spread-by-reference, so a
+    query:     (node.query     || []).map(q => ({ ...q })),   // stamped estimate/query shared the source's sidecar
     children: (node.children   || []).map(c => deepCloneNodeNewIds(c)),
   };
 }
@@ -14721,7 +14742,7 @@ function slashApply() {
   if (trigger !== '@' && cmd.id === 'template') {
     const name = (rawArg || '').trim();
     if (name) {
-      if (findTemplate(root.templates, name)) stampTemplate(nodeId, name);
+      if (findTemplate(mergedTemplates(), name)) stampTemplate(nodeId, name);   // #583: resolves pack templates too
       else flashHint('No template named “' + name + '”. Save one from a point’s menu first.');
       return;
     }
@@ -16654,6 +16675,23 @@ function packVarDefs(plugins) {
       } else if (typeof v.expr === 'string') {                     // a formula (the v1 default)
         out.push({ name: v.name, expr: v.expr });
       }
+    }
+  }
+  return out;
+}
+
+// #583: a pack may also carry reusable subtree TEMPLATES — the natural vehicle for pre-made
+// content (a character sheet, an oracle laid out as points, a system's starting structure).
+// Same { name, node } shape as root.templates; the `node` is inert data (a subtree of points),
+// stamped by deep-clone with fresh ids like any template, so it stays inside the declarative-
+// data gate (no execution). Each carries `_pack:true` so the picker can label it and hide the
+// Forget button (a pack template isn't the user's to delete from there). Pure; no DOM.
+function packTemplateDefs(plugins) {
+  const out = [];
+  for (const p of (plugins || [])) {
+    if (!pluginPackActive(p) || !Array.isArray(p.templates)) continue;   // skip disabled / template-less packs
+    for (const t of p.templates) {
+      if (t && typeof t.name === 'string' && t.node && typeof t.node === 'object') out.push({ name: t.name, node: t.node, _pack: true });
     }
   }
   return out;
@@ -25700,7 +25738,7 @@ const GUIDE = [
     ] },
   { id:'templates', cat:'todos', covers:['template','savetemplate'],
     title:'Templates',
-    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /savetemplate:name to save this point and its children as a template, then /template:name to stamp a copy directly, or /template on its own to pick from a list. You can also save from any point's menu.",
+    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /savetemplate:name to save this point and its children as a template, then /template:name to stamp a copy directly, or /template on its own to pick from a list. You can also save from any point's menu. A data pack can carry templates too (a pre-made character sheet or oracle layout, for example); those show up in the same picker with a pack badge and stamp exactly like your own, so importing one pack can hand you a whole set of ready structures.",
     examples:[
       { syn:'/savetemplate:weekly review',       desc:'save this subtree as a template inline' },
       { syn:'/template:weekly review',           desc:'stamp that template inline' },
