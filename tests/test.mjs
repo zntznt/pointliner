@@ -6121,6 +6121,16 @@ test('GUIDE drift guard: the guide is the one help surface, wired to the ? butto
   assert.ok(_src.includes('Help &amp; guide') || _src.includes('Help & guide'), 'Help & guide menu label missing');
 });
 
+test('#560 the guide sets its own accessible name; closeIo clears it so no reuser inherits a stale one', () => {
+  // openGuide must set ioCard's aria-label to "Concept guide" (the shared io-card is reused across
+  // dialogs, each setting its own on open), so a screen reader is never told it is in "New document".
+  assert.ok(_src.includes("ioCard.setAttribute('aria-label', 'Concept guide')"),
+    'openGuide must set aria-label to "Concept guide"');
+  // closeIo removes the aria-label so the next container reuser can never inherit a stale name.
+  assert.match(_src, /function closeIo\(\)[\s\S]{0,220}ioCard\.removeAttribute\('aria-label'\)/,
+    'closeIo must clear the stale aria-label');
+});
+
 test('GUIDE: the guide nav is a two-level list (category header per group, each topic its own item)', () => {
   // The left list groups entries under category headers and renders every entry
   // as its own clickable item — not a flat category-only nav. A regression to the
