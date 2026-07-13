@@ -4579,7 +4579,8 @@ function collectVars(rootNode) {
     const nm = pv.name.toLowerCase();
     if (!(nm in defs)) order.push(nm);
     defs[nm] = pv.expr;
-    delete pickVals[nm];
+    if (pv.kind === 'pick') pickVals[nm] = String(pv.rolled ?? '');   // #585: a pack pick var resolves to its frozen roll
+    else delete pickVals[nm];
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
   _varShadowedKeys = shadowedDeclKeys(events);
@@ -4615,7 +4616,8 @@ function varMapAt(targetNode) {
     if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
   };
   // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
-  for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, undefined);
+  // #585: a pack pick var passes its frozen roll through the `pick` slot, like a document pick.
+  for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
 
   // Depth-first walk; collect declarations until we REACH targetNode, then stop. A reference
   // sees declarations in nodes before it, plus declarations earlier in its own node's text.
@@ -10197,15 +10199,22 @@ function buildPackEditView() {
   rulesIn.addEventListener('input', updRules); updRules();
   // vars (one per line: name = expr)
   const varsIn = document.createElement('textarea'); varsIn.className = 'io-mono'; varsIn.rows = 3;
-  varsIn.value = (p.vars || []).map(v => `${v.name} = ${v.expr}`).join('\n');
-  varsIn.placeholder = 'tax = 0.2\narea = pi * 4^2';
+  // #585: a saved pick var re-displays in its authoring form `name: source` (the grammar it was
+  // rolled from), a formula var as `name = expr`. Editing the source re-rolls on the next save.
+  varsIn.value = (p.vars || []).map(v => v.kind === 'pick' ? `${v.name}: ${v.expr}` : `${v.name} = ${v.expr}`).join('\n');
+  varsIn.placeholder = 'tax = 0.2\narea = pi * 4^2\nstrength: 3d6';
   varsIn.spellcheck = false; varsIn.autocomplete = 'off';
-  const varsPrev = mkPreview(mkField('Formula variables (one per line, name = expression)', varsIn));
+  const varsPrev = mkPreview(mkField('Variables (name = formula, or name: random pick, one per line)', varsIn));
   const updVars = () => {
     const parsed = parsePackVarLines(varsIn.value);
     if (!varsIn.value.trim()) return setPrev(varsPrev, 'Blank is fine (a rules-only pack).');
-    if (parsed.bad.length) return setPrev(varsPrev, `Not a name = expression: ${parsed.bad[0]}`, true);
-    setPrev(varsPrev, `${parsed.vars.length} variable${parsed.vars.length === 1 ? '' : 's'}: ${parsed.vars.map(v => v.name).join(', ')}`);
+    if (parsed.bad.length) return setPrev(varsPrev, `Not a variable line: ${parsed.bad[0]} (use name = formula, or name: random pick)`, true);
+    const picks = parsed.vars.filter(v => v.kind === 'pick').length;
+    const formulas = parsed.vars.length - picks;
+    const parts = [];
+    if (formulas) parts.push(`${formulas} formula${formulas === 1 ? '' : 's'}`);
+    if (picks) parts.push(`${picks} random pick${picks === 1 ? '' : 's'} (rolled once on save)`);
+    setPrev(varsPrev, `${parts.join(', ')}: ${parsed.vars.map(v => v.name).join(', ')}`);
   };
   varsIn.addEventListener('input', updVars); updVars();
 
@@ -10215,9 +10224,14 @@ function buildPackEditView() {
   const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
   const save = () => {
     const vp = parsePackVarLines(varsIn.value);
-    if (vp.bad.length) { varsIn.focus(); flashHint(`Fix the variable line: ${vp.bad[0]} (use name = expression)`); return; } // NIT-1/P4: say why, don't silently no-op
+    if (vp.bad.length) { varsIn.focus(); flashHint(`Fix the variable line: ${vp.bad[0]} (use name = formula, or name: random pick)`); return; } // NIT-1/P4: say why, don't silently no-op
+    // #585: freeze each random pick var to a rolled value NOW (on save), not per-keystroke; a
+    // source that won't roll is dropped and reported so the author isn't left with a silent gap.
+    const frozen = rollPackPickVars(vp.vars);
+    const droppedPick = vp.vars.filter(v => v.kind === 'pick').length - frozen.filter(v => v.kind === 'pick').length;
+    if (droppedPick > 0) { varsIn.focus(); flashHint(`${droppedPick} random pick${droppedPick === 1 ? '' : 's'} could not roll (check the grammar). Fix or remove ${droppedPick === 1 ? 'it' : 'them'}.`); return; }
     const name = nameIn.value.trim() || 'pack';
-    const fields = { name, rules: rulesIn.value.trim(), vars: vp.vars };
+    const fields = { name, rules: rulesIn.value.trim(), vars: frozen };
     pushUndo();
     if (isDraft) root.plugins = [...(root.plugins || []), { ..._packDraft, ...fields }]; // BUG-1: a New pack is persisted only NOW
     else root.plugins = updatePluginPack(root.plugins, p.id, fields);
@@ -10235,18 +10249,48 @@ function buildPackEditView() {
 // A blank line is skipped; a line without a top-level `=` (or an empty name/expr) is 'bad' (surfaced,
 // not silently dropped — P4). Pure; no DOM. The expr is NOT evaluated here (a formula may reference
 // a var not yet defined), matching packVarDefs' formula-only, resolve-at-collect contract.
+// Parse the pack-editor's var lines. Two forms, distinguished by their separator so an author
+// never has to learn a mode flag (#585):
+//   name = expression   → a FORMULA var (evalMath, live)
+//   name: grammar        → a random PICK var (rolled once, frozen), same as a document {name := …}
+// PURE + roll-free: it only CLASSIFIES (a pick carries { kind:'pick', source } with the grammar
+// text); the actual roll is deferred to commit (rollPackPickVars) so the live preview never
+// re-rolls on every keystroke. `=` wins if it comes before the first `:` (so `tax = a:b` stays a
+// formula), matching how the value's own separator is read left-to-right.
 function parsePackVarLines(text) {
   const vars = [], bad = [];
   for (const raw of String(text || '').split('\n')) {
     const line = raw.trim();
     if (!line) continue;
-    const eq = line.indexOf('=');
-    if (eq < 1) { bad.push(line); continue; }
-    const name = line.slice(0, eq).trim(), expr = line.slice(eq + 1).trim();
-    if (!name || !expr || !/^[A-Za-z_]\w*$/.test(name)) { bad.push(line); continue; }
-    vars.push({ name, expr });
+    const eq = line.indexOf('='), col = line.indexOf(':');
+    const isPick = col > 0 && (eq < 0 || col < eq);
+    const sep = isPick ? col : eq;
+    if (sep < 1) { bad.push(line); continue; }
+    const name = line.slice(0, sep).trim(), rhs = line.slice(sep + 1).trim();
+    if (!name || !rhs || !/^[A-Za-z_]\w*$/.test(name)) { bad.push(line); continue; }
+    if (isPick) vars.push({ name, kind: 'pick', source: rhs });
+    else vars.push({ name, expr: rhs });
   }
   return { vars, bad };
+}
+
+// Freeze every classified pick var to a rolled value at COMMIT time (#585). Given the parse
+// output, roll each { kind:'pick', source } through rollPickSource once and produce the stored
+// pack record { name, kind:'pick', expr:source, rolled }; a formula var passes through. A source
+// that won't roll (rollPickSource → null) is dropped from the saved pack (surfaced by the
+// preview before save). Rolls happen against the doc's rules/vars, so a pack pick can call
+// another pack rule. Not pure (it rolls); the classification (parsePackVarLines) is the pure half.
+function rollPackPickVars(parsedVars) {
+  const out = [];
+  for (const v of (parsedVars || [])) {
+    if (v.kind === 'pick') {
+      const rolled = rollPickSource(v.source);
+      if (rolled != null) out.push({ name: v.name, kind: 'pick', expr: v.source, rolled: String(rolled) });
+    } else if (typeof v.expr === 'string') {
+      out.push({ name: v.name, expr: v.expr });
+    }
+  }
+  return out;
 }
 
 // Export root.plugins as a downloaded JSON file (the { plugins:[…] } wrapper parsePackImport reads).
@@ -16592,15 +16636,24 @@ function mergePackRules(target, plugins) {
   return target;
 }
 
-// Flatten every valid pack's formula variables to a [{name, expr}] list, in pack
-// order. Drops entries that aren't {name:string, expr:string} (a missing field,
-// wrong type, or a pick-style var) — pack vars are formula-only in v1. Pure; no DOM.
+// Flatten every valid pack's variables to a resolvable [{name, ...}] list, in pack order.
+// Two kinds (#585): a FORMULA var {name, expr:string} (evalMath), and a RANDOM PICK var
+// {name, kind:'pick', expr:source, rolled:string} — a grammar value rolled ONCE at author/
+// import time and frozen in the pack (never re-rolled on a collect pass, the pick-var
+// contract), the same record collectVars already resolves for a document pick var. A pick
+// missing its frozen `rolled` is dropped (not silently turned into a broken formula); a
+// malformed entry is dropped defensively. Pure; no DOM.
 function packVarDefs(plugins) {
   const out = [];
   for (const p of (plugins || [])) {
     if (!pluginPackActive(p) || !Array.isArray(p.vars)) continue;  // #487: skip a disabled pack
     for (const v of p.vars) {
-      if (v && typeof v.name === 'string' && typeof v.expr === 'string') out.push({ name: v.name, expr: v.expr });
+      if (!v || typeof v.name !== 'string') continue;
+      if (v.kind === 'pick') {                                     // a random pick: needs its frozen roll
+        if (typeof v.rolled === 'string') out.push({ name: v.name, kind: 'pick', expr: typeof v.expr === 'string' ? v.expr : '', rolled: v.rolled });
+      } else if (typeof v.expr === 'string') {                     // a formula (the v1 default)
+        out.push({ name: v.name, expr: v.expr });
+      }
     }
   }
   return out;
@@ -25903,12 +25956,13 @@ const GUIDE = [
     ] },
   { id:'datapacks', cat:'compute',
     title:'Data packs',
-    body:"Bundle grammar rules and formula variables you want to reuse, so you don't have to redefine them in every document. A pack is pure data (the same rules and variables you already write in pills), stored with the document. Open File then Data packs to manage them: create a pack, type its grammar rules (one per line, name: choices) and formula variables (one per line, name = expression), and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. Toggle a pack off to remove its rules and variables without deleting it, or export a pack to a file to share it and import one back. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. To keep a big pack tidy, start a line with # to add a section header comment; those lines are skipped, and if you leave the colon off a rule by mistake, only that one line is skipped (the rest of the pack still loads, and the editor tells you how many lines it skipped). Packs never run code; they only add the data the existing pill engines already understand.",
+    body:"Bundle grammar rules and variables you want to reuse, so you don't have to redefine them in every document. A pack is pure data (the same rules and variables you already write in pills), stored with the document. Open File then Data packs to manage them: type its grammar rules (one per line, name: choices) and its variables, and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. A pack variable comes in two forms: a formula (name = expression, like tax = 0.2, which recomputes live) or a random pick (name: choices, like strength: 3d6, which is rolled ONCE when you save the pack and then stays that value, so a pack can ship a rolled-up stat block or a fixed random name). Toggle a pack off to remove its rules and variables without deleting it, or export a pack to a file to share it and import one back (a shared pick keeps the value it was rolled to, so everyone sees the same one). A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. To keep a big pack tidy, start a line with # to add a section header comment; those lines are skipped, and if you leave the colon off a rule by mistake, only that one line is skipped (the rest of the pack still loads, and the editor tells you how many lines it skipped). Packs never run code; they only add the data the existing pill engines already understand.",
     examples:[
       { syn:'File → Data packs',      desc:'create, enable, edit, import or export packs' },
       { syn:'# Weapons',              desc:'a section header comment; skipped, keeps a big pack tidy' },
       { syn:'npc: knight | rogue | mage', desc:'a pack grammar rule, callable as {npc} anywhere' },
       { syn:'tax = 0.2',              desc:'a pack formula variable, usable in any {= …}' },
+      { syn:'strength: 3d6',          desc:'a random pick variable, rolled once on save then fixed' },
       { syn:'toggle off',             desc:'disable a pack without deleting it' },
     ] },
   { id:'appearance', cat:'todos',

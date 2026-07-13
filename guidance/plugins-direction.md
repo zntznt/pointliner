@@ -66,7 +66,10 @@ self-contained HTML → a pack-loaded doc *is* a runnable, offline, re-rollable 
 
 **A pack MAY carry (pure data):**
 - **Grammar / oracle / content** — named rules (text), the headline pack type, → `collectRules`.
-- **Variables** — `name → expr` (text, evaluated by the restricted `evalMath`), → `collectVars`.
+- **Variables** — two forms (#585): a **formula** `name = expr` (text, evaluated live by the
+  restricted `evalMath`) and a **random pick** `name: source` (grammar rolled ONCE at author/import
+  time via `rollPickSource`, frozen as `{kind:'pick', expr, rolled}` in the pack, resolved by
+  `collectVars` through the same `pickVals` frozen-value path as a document pick var). Both → `collectVars`.
 - **Emoji / shortcodes** — `shortcode → unicode` (data), → the `EMOJI` map.
 
 **A pack MUST NOT carry:**
@@ -79,6 +82,17 @@ self-contained HTML → a pack-loaded doc *is* a runnable, offline, re-rollable 
   no theme-pack feature is built.)
 
 Templates and saved searches are already doc-level config — no pack machinery needed.
+
+**Decision — stateful decks/sequences inside a pack rule stay a documented boundary (#585 part 2).**
+A `{shuffle|cycle|once: …}` inside ANY rule (pack or document) degrades to a stateless pick — this is
+deliberate, documented engine behavior (CLAUDE.md: "inside a rule a `{mode:…}` degrades to a stateless
+pick — no per-instance record there"), not a pack-specific bug. Giving packs a first-class deck/
+sequence kind would require per-instance draw-state in the rule-expansion path, which the engine
+purposefully lacks, so it is a real engine change against a locked design decision, not a pack tweak.
+Verdict: **not built.** A pack ships flat grammar rules + formula/pick vars; a stateful deck stays a
+standalone `{mode:}` pill (or a `[[seq:]]` record) authored in the document, and #518's "ship an
+oracle as a pack" is served by the pick-var + grammar-rule surface, not by stateful decks-in-packs.
+Revisit only if per-instance rule state is added for other reasons.
 
 ---
 
