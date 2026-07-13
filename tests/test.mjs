@@ -11325,6 +11325,24 @@ test('flash channel wiring: hints consult the gate, deferred hints still announc
   assert.ok(block.includes('announce(msg)'), 'a deferred hint must still reach assistive tech immediately');
 });
 
+test('#655 hintDwell — scales the toast dwell with message length, floored and capped', () => {
+  assert.equal(c.hintDwell('Saved'), 1400, 'a short confirmation gets the floor');
+  assert.equal(c.hintDwell(''), 1400, 'empty is the floor, never 0');
+  assert.equal(c.hintDwell('x'.repeat(80)), 3400, 'an 80-char instructional hint stays ~3.4s');
+  assert.equal(c.hintDwell('x'.repeat(400)), 6000, 'a very long hint is capped at 6s');
+  assert.ok(c.hintDwell('x'.repeat(80)) > c.hintDwell('x'.repeat(20)), 'longer message → longer dwell');
+});
+
+test('#654/#655 the toast sizes to content and dwells by length (src pins)', () => {
+  // #654: both flashHint and flashError size to content (width:max-content) clamped to the viewport,
+  // instead of a centered element collapsing to ~50vw and wrapping a long hint into a sliver.
+  assert.match(_src, /flashHint[\s\S]{0,400}width:max-content;max-width:calc\(100vw - 32px\)/,
+    'flashHint must size to content, clamped to the viewport');
+  assert.ok(_src.includes('width:max-content;max-width:calc(100vw - 32px)'), 'flashError must size to content too');
+  // #655: the dwell comes from hintDwell(msg), not a hardcoded 1400.
+  assert.ok(_src.includes('el.style.opacity = \'0\'; }, hintDwell(msg))'), 'the hint dwell must come from hintDwell(msg)');
+});
+
 // ── Docked-stack viewport ceiling (#389): the toolbar can never exceed the screen ──
 test('docked stack failsafe: #toolbar clamps to the viewport and the agenda pane scrolls (#389)', () => {
   assert.ok(/#toolbar\{[^}]*max-height:100dvh/.test(_src), '#toolbar must clamp to 100dvh (was unbounded: 123% of a landscape phone)');
