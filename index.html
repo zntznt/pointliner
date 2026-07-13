@@ -1673,7 +1673,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 #btn-agenda.active{color:var(--acc)}
 
 /* storage warning banner */
-#storage-warn{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:400;background:color-mix(in srgb,var(--bad) 14%,var(--hbg));color:var(--bad);border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);font-size:12.5px;line-height:1.45;padding:8px 10px 8px 14px;border-radius:var(--r-md);box-shadow:var(--sh-2);display:none;align-items:center;gap:10px;max-width:calc(100vw - 24px)}
+#storage-warn{position:fixed;top:calc(var(--toolbar-h, 44px) + 8px);left:50%;transform:translateX(-50%);z-index:400;/* #658: track the live toolbar height, not a fixed 52px, so a grown toolbar never sits on the banner */background:color-mix(in srgb,var(--bad) 14%,var(--hbg));color:var(--bad);border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);font-size:12.5px;line-height:1.45;padding:8px 10px 8px 14px;border-radius:var(--r-md);box-shadow:var(--sh-2);display:none;align-items:center;gap:10px;max-width:calc(100vw - 24px)}
 #storage-warn.on{display:flex}
 /* .invite: the FRIENDLY banner variant (the first-run examples greeting). Accent tint, not the warn
    caution lane (issue #404: one color per meaning; the amber surface is reserved for real cautions
@@ -6848,7 +6848,9 @@ let _pendingHint = null;  // the LAST hint deferred during an error dwell; repla
 // location never becomes context-dependent (P1). Returns a CSS length for `bottom`.
 function flashBottom() {
   const on = id => { const el = document.getElementById(id); return el?.classList.contains('on') ? el.offsetHeight : 0; };
-  const stack = on('fn-panel') + on('bl-panel') + on('var-panel') + quickBarHeight();   // 0 when none open (#566: the bar is part of the stack)
+  // #659: on touch mid-edit the edit bar is up (the quick bar is not), so quickBarHeight() is 0 and
+  // a toast sat at bottom:20px UNDER the edit bar (z-index collision). Count the edit bar too.
+  const stack = on('fn-panel') + on('bl-panel') + on('var-panel') + quickBarHeight() + on('edit-bar');   // 0 when none open (#566: the bar is part of the stack)
   const safe = 'env(safe-area-inset-bottom)';
   return stack ? `calc(${stack + 20}px + ${safe})` : `calc(20px + ${safe})`;
 }
@@ -6921,13 +6923,12 @@ function maybeShowTouchHint() {
   if (!IS_TOUCH) return;
   try { if (localStorage.getItem(TOUCH_HINT_KEY)) return; } catch (_) { return; }
   try { localStorage.setItem(TOUCH_HINT_KEY, '1'); } catch (_) {}
-  let el = document.getElementById('flash-hint');
-  if (!el) { flashHint(''); el = document.getElementById('flash-hint'); }       // ensure the toast exists
-  el.textContent = 'Tip: swipe a point right to indent, left to outdent. Press and hold a bullet for more actions.';
-  announce(el.textContent);
-  requestAnimationFrame(() => { el.style.opacity = '1'; });
-  clearTimeout(_hintTimer);
-  _hintTimer = setTimeout(() => { el.style.opacity = '0'; }, 5200);             // longer: it's instructional
+  // #660: route through flashHint instead of hand-writing the shared element. Hand-writing skipped
+  // toastGate (so it clobbered an active error toast mid-dwell, a P4 silent-error) and never reset
+  // the cssText (so it could inherit a prior error's red tint). flashHint consults the gate, resets
+  // neutral styling, and scales the dwell with the message length (hintDwell caps at 6s, ample for
+  // this instructional tip).
+  flashHint('Tip: swipe a point right to indent, left to outdent. Press and hold a bullet for more actions.');
 }
 // Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
 // announces what it touched via flashHint — counts include descendants, since a
@@ -27217,6 +27218,10 @@ window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventD
   const syncBodyPad = () => {
     const warnH = _warn.classList.contains('on') ? _warn.offsetHeight + 16 : 0;  // 8px gap above the banner + 8 below
     document.body.style.paddingTop = (_tb.offsetHeight + warnH) + 'px';
+    // #658: publish the live toolbar height so a top banner tracks it. The banner's `top` was a fixed
+    // 52px, so when the toolbar grew (agenda bars open, breadcrumb wraps) the banner sat ON it. The
+    // observer already fires on toolbar resize, so re-publishing here keeps the banner below it.
+    document.documentElement.style.setProperty('--toolbar-h', _tb.offsetHeight + 'px');
   };
   const _ro = new ResizeObserver(syncBodyPad);
   _ro.observe(_tb);
