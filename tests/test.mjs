@@ -1735,6 +1735,55 @@ test('#518 the full deck-in-a-pack-template round-trip: JSON export -> import ->
   assert.notEqual(g.bag, defs[0].node.grammar[0].bag, 'stamped deck bag is a distinct array');
 });
 
+// ── #518 Piece 1: the capture-a-subtree-into-a-pack cores ──
+test('#518 upsertPackTemplate — appends a captured template, replaces by name, no-ops on blank/missing', () => {
+  const nodeA = c.mkNode('sheet A'), nodeB = c.mkNode('sheet B');
+  const packs = [{ id: 'sys', name: 'System', templates: [] }, { id: 'other' }];
+  const a = c.upsertPackTemplate(packs, 'sys', 'Sheet', nodeA);
+  assert.equal(a.find(p => p.id === 'sys').templates.length, 1, 'appended to the target pack');
+  assert.equal(a.find(p => p.id === 'other'), packs[1], 'other packs untouched');
+  // same name replaces (the "save over a name updates" contract)
+  const b = c.upsertPackTemplate(a, 'sys', 'Sheet', nodeB);
+  const t = b.find(p => p.id === 'sys').templates;
+  assert.equal(t.length, 1, 'same name replaces, not duplicates');
+  assert.equal(t[0].node.text, 'sheet B', 'the newer capture wins');
+  // a different name appends
+  assert.equal(c.upsertPackTemplate(b, 'sys', 'Oracle', nodeA).find(p => p.id === 'sys').templates.length, 2);
+  // blank name and missing pack id are no-ops
+  assert.equal(c.upsertPackTemplate(packs, 'sys', '  ', nodeA), packs, 'blank name → unchanged array');
+  assert.deepEqual(host(c.upsertPackTemplate(packs, 'nope', 'X', nodeA)), host(packs), 'missing id → no template added');
+  // immutability: the source pack's templates array is not mutated
+  assert.equal(packs[0].templates.length, 0, 'source untouched');
+});
+
+test('#518 removePackTemplate — removes by name, pure, leaves other packs + templates', () => {
+  const packs = [{ id: 'sys', templates: [{ name: 'Sheet', node: c.mkNode('s') }, { name: 'Oracle', node: c.mkNode('o') }] }];
+  const r = c.removePackTemplate(packs, 'sys', 'Sheet');
+  const t = r.find(p => p.id === 'sys').templates;
+  assert.equal(t.length, 1, 'one removed');
+  assert.equal(t[0].name, 'Oracle', 'the other stays');
+  assert.equal(packs[0].templates.length, 2, 'source untouched (pure)');
+  assert.deepEqual(host(c.removePackTemplate(packs, 'sys', 'Nope')), host(packs), 'removing a missing name is a no-op');
+});
+
+test('#518 Piece 1 wiring: the Add-to-pack door + Templates section are present (src pins)', () => {
+  // the bullet-menu door beside "Save as template", the dialog, and the pack-editor Templates list
+  assert.ok(_src.includes('Add to data pack'), 'the bullet-menu / dialog door is missing');
+  assert.ok(_src.includes('upsertPackTemplate(') && _src.includes('removePackTemplate('), 'the cores are not wired into the UI');
+  // the capture reuses deepCloneNodeNewIds (fresh ids), not a raw node reference
+  assert.match(_src, /upsertPackTemplate\([^)]*deepCloneNodeNewIds\(/, 'the captured subtree must be deep-cloned with fresh ids');
+  // save() must carry the pack's templates through so editing name/rules/vars never drops them
+  // (it reads the CURRENT templates via packUnderEdit so an in-session Remove is reflected)
+  assert.match(_src, /templates:\s*\(cur && cur\.templates\)/, 'buildPackEditView.save must preserve the pack templates');
+});
+
+test('#518 Piece 3: the pack-editor signposts a deck-in-a-rule (silent-degradation guard, src pin)', () => {
+  // a {shuffle|cycle|once|stopping:} typed into the RULES textarea degrades to a stateless pick;
+  // the editor must NAME that (P4) and point at the "Add to data pack" path that ships a real deck.
+  assert.match(_src, /\{\\s\*\(shuffle\|cycle\|once\|stopping\)/, 'the deck-in-a-rule detector is missing');
+  assert.ok(_src.includes('A deck in a rule draws at random'), 'the signpost copy is missing');
+});
+
 test('plugin packs — a document rule OVERRIDES a pack rule on a name collision', () => {
   const root = c.mkRoot();
   root.plugins = [{ id: 'p', rules: 'color: red | blue' }];

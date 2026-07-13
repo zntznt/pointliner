@@ -1230,6 +1230,13 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .pack-toggle{flex:0 0 auto;width:15px;height:15px;accent-color:var(--acc);cursor:pointer}/* #487: pack enable toggle */
 .pack-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .tpl-name.pack-off{color:var(--muted);text-decoration:line-through}/* a disabled pack reads dimmed + struck */
+/* #518: the pack-editor Templates list (captured subtrees this pack ships) */
+.pack-tpl-list{display:flex;flex-direction:column;gap:5px;margin-top:2px}
+.pack-tpl-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 9px}
+.pack-tpl-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pack-tpl-rm{flex:0 0 auto;font-size:11.5px;color:var(--muted);background:transparent;border:1px solid var(--bdr);border-radius:var(--r-xs);padding:2px 8px;cursor:pointer}
+.pack-tpl-rm:hover,.pack-tpl-rm:focus-visible{color:var(--bad);border-color:var(--bad);outline:none}
+.pack-tpl-empty{font-size:12px;color:var(--muted);line-height:1.5}
 .tpl-pick{flex:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 11px;cursor:pointer;text-align:left;transition:border-color .12s,background .12s}
 .tpl-pick:hover,.tpl-pick:focus-visible{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);outline:none}
 .tpl-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -10038,6 +10045,44 @@ function openSaveTemplateDialog(nodeId) {
 }
 function isSavedTemplateName(name) { return !!findTemplate(mergedTemplates(), name); }   // #583: a name colliding with a pack template is flagged too (the doc save shadows it)
 
+// #518: "Add to data pack" — capture a subtree into a shareable pack (the authoring lever). It
+// mirrors "Save as template" but the destination is a PACK's templates array, not the document's,
+// so a whole game system (a sheet + an oracle + a deck) can be built as points and exported as one
+// .json. Two fields: the template name + the pack name. An existing pack name ADDS to that pack; a
+// new pack name creates one (the same collision-updates contract as Save-as-template). The subtree
+// is deep-cloned with fresh ids, so its pills (incl. a stateful deck) ride the pack correctly.
+function openAddToPackDialog(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  const dfltTpl = (textForDisplay(node) || '').split('\n')[0].trim().slice(0, 40);
+  const packNames = (root.plugins || []).map(packLabel).filter(n => n && n !== '(unnamed)');
+  const packHint = packNames.length
+    ? `Existing packs: ${packNames.join(', ')}. A new name starts a new pack.`
+    : 'This starts your first data pack. Export it from File then Data packs to share.';
+  openInsertDialog({
+    icon: TEMPLATE_ICON,
+    title: 'Add to data pack',
+    submitLabel: 'Add',
+    fields: [
+      { key: 'tpl',  label: 'Template name', placeholder: 'e.g. Character sheet', value: dfltTpl,
+        hint: 'How this subtree is listed in the pack, and in the /template picker.' },
+      { key: 'pack', label: 'Pack name', placeholder: 'e.g. My game system',
+        hint: packHint },
+    ],
+    validate: v => !!(v.tpl && v.tpl.trim() && v.pack && v.pack.trim()),
+    onSubmit: v => {
+      const tplName = v.tpl.trim(), packName = v.pack.trim();
+      // find an existing pack by its display label, else create one
+      let pack = (root.plugins || []).find(p => packLabel(p) === packName);
+      pushUndo();
+      if (!pack) { pack = newPluginPack(packName); root.plugins = [...(root.plugins || []), pack]; }
+      root.plugins = upsertPackTemplate(root.plugins, pack.id, tplName, deepCloneNodeNewIds(node));
+      markDirty();
+      flashHint(`Added “${tplName}” to pack “${packName}” (${ptsLabel(countPoints(node))})`);
+    },
+  });
+}
+
 // /template door: a picker dialog listing saved templates; click stamps one here.
 function openTemplatePicker(nodeId) {
   const list = mergedTemplates();   // #583: pack templates + doc templates (doc wins on a name tie)
@@ -10260,7 +10305,13 @@ function buildPackEditView() {
     const n = parsed.order.length;
     const dropNote = parsed.dropped.length ? ` (${parsed.dropped.length} line${parsed.dropped.length === 1 ? '' : 's'} skipped: no colon)` : '';
     if (!n) return setPrev(rulesPrev, 'No valid rule lines found. Use name: choices per line.' + (parsed.dropped.length ? ` ${parsed.dropped.length} line(s) skipped.` : ''), true);
-    setPrev(rulesPrev, `${n} rule${n === 1 ? '' : 's'}: ${parsed.order.join(', ')}${dropNote}`, parsed.dropped.length > 0);
+    // #518 Piece 3 (signpost): a {shuffle|cycle|once|stopping: …} typed in a RULE draws at random —
+    // inside a rule the engine keeps no per-instance draw-state (the locked boundary), so it degrades
+    // to a stateless pick with no memory. Name that here instead of surprising the author (P4), and
+    // point at the path that DOES ship a stateful deck: capture it as a template via "Add to data pack".
+    const deckNote = /\{\s*(shuffle|cycle|once|stopping)\b[^}]*:/.test(v)
+      ? ' A deck in a rule draws at random (no memory). To ship a stateful deck, build it as a point and use “Add to data pack”.' : '';
+    setPrev(rulesPrev, `${n} rule${n === 1 ? '' : 's'}: ${parsed.order.join(', ')}${dropNote}${deckNote}`, parsed.dropped.length > 0);
   };
   rulesIn.addEventListener('input', updRules); updRules();
   // vars (one per line: name = expr)
@@ -10284,6 +10335,42 @@ function buildPackEditView() {
   };
   varsIn.addEventListener('input', updVars); updVars();
 
+  // #518: Templates — captured subtrees this pack ships. Import-authored or added via the bullet
+  // menu's "Add to data pack" door; not text-authorable here (a subtree isn't text — plugins-
+  // direction §3), so this section LISTS them with a Remove button, mirroring how the /template
+  // picker badges pack templates. Removing rewrites root.plugins live so a re-open reflects it.
+  const tplWrap = document.createElement('div'); tplWrap.className = 'io-field';
+  const tplLbl = document.createElement('label'); tplLbl.textContent = 'Templates (captured subtrees this pack ships)';
+  tplWrap.appendChild(tplLbl);
+  const tplList = document.createElement('div'); tplList.className = 'pack-tpl-list';
+  const renderTplList = () => {
+    const cur = packUnderEdit();
+    const tpls = (cur && cur.templates) || [];
+    tplList.innerHTML = '';
+    if (!tpls.length) {
+      const empty = document.createElement('div'); empty.className = 'pack-tpl-empty';
+      empty.textContent = 'None yet. Add one from a point’s bullet menu: “Add to data pack”.';
+      tplList.appendChild(empty); return;
+    }
+    for (const t of tpls) {
+      const row = document.createElement('div'); row.className = 'pack-tpl-row';
+      const nm = document.createElement('span'); nm.className = 'pack-tpl-name';
+      nm.textContent = `${t.name} (${ptsLabel(countPoints(t.node))})`;
+      const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'pack-tpl-rm';
+      rm.textContent = 'Remove'; rm.setAttribute('aria-label', `Remove template ${t.name}`);
+      rm.addEventListener('click', () => {
+        pushUndo();
+        root.plugins = removePackTemplate(root.plugins, p.id, t.name);
+        if (isDraft && _packDraft) _packDraft = { ..._packDraft, templates: (_packDraft.templates || []).filter(x => (x.name || '').trim() !== (t.name || '').trim()) };
+        markDirty(); render(); renderTplList();
+        flashHint(`Removed “${t.name}” from the pack`);
+      });
+      row.append(nm, rm); tplList.appendChild(row);
+    }
+  };
+  renderTplList();
+  tplWrap.appendChild(tplList); ioCard.appendChild(tplWrap);
+
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const backBtn = document.createElement('button'); backBtn.className = 'io-btn'; backBtn.textContent = 'Back';
   backBtn.addEventListener('click', () => { _packEditId = null; _packDraft = null; openDataPackManager(); }); // BUG-1: Back drops an unsaved draft
@@ -10297,7 +10384,11 @@ function buildPackEditView() {
     const droppedPick = vp.vars.filter(v => v.kind === 'pick').length - frozen.filter(v => v.kind === 'pick').length;
     if (droppedPick > 0) { varsIn.focus(); flashHint(`${droppedPick} random pick${droppedPick === 1 ? '' : 's'} could not roll (check the grammar). Fix or remove ${droppedPick === 1 ? 'it' : 'them'}.`); return; }
     const name = nameIn.value.trim() || 'pack';
-    const fields = { name, rules: rulesIn.value.trim(), vars: frozen };
+    // #518: read the pack's CURRENT templates (a Remove in this session already rewrote root.plugins)
+    // and carry them through — save() rebuilds the pack from the form fields, so without this an
+    // edit to name/rules/vars would silently drop every captured template.
+    const cur = packUnderEdit();
+    const fields = { name, rules: rulesIn.value.trim(), vars: frozen, templates: (cur && cur.templates) || [] };
     pushUndo();
     if (isDraft) root.plugins = [...(root.plugins || []), { ..._packDraft, ...fields }]; // BUG-1: a New pack is persisted only NOW
     else root.plugins = updatePluginPack(root.plugins, p.id, fields);
@@ -14381,6 +14472,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { sec:'Organize', prim:true, icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { sec:'More', icon: TEMPLATE_ICON, label:'Save as template',
       fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
+    { sec:'More', icon:{ fa:'fa-solid fa-circle-nodes', fb:'📦' }, label:'Add to data pack…',
+      fn: () => { hideBpop(); openAddToPackDialog(nodeId); } },
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
       fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
     { sec:'More', icon:{ fa:'fa-solid fa-inbox', fb:'⤓' },
@@ -16859,6 +16952,27 @@ function removePluginPack(plugins, id) {
 // Flip a pack's enabled state (absent → was active → becomes false). Pure.
 function togglePluginPack(plugins, id) {
   return (plugins || []).map(p => (p && p.id === id) ? { ...p, enabled: p.enabled === false } : p);
+}
+// #518: append (or replace-by-name) a captured subtree template on pack `id`. The node is stored
+// as-is (already deep-cloned by the caller with fresh ids), badged nothing here — packTemplateDefs
+// stamps _pack at read time. Name collision UPDATES that template (mirrors upsertTemplate + the
+// Save-as-template "saving over a name updates" contract). No-op if the id is absent. Pure.
+function upsertPackTemplate(plugins, id, name, node) {
+  const nm = (name || '').trim();
+  if (!nm) return plugins || [];
+  return (plugins || []).map(p => {
+    if (!p || p.id !== id) return p;
+    const templates = (p.templates || []).filter(t => (t.name || '').trim() !== nm);
+    return { ...p, templates: [...templates, { name: nm, node }] };
+  });
+}
+// #518: remove a template by name from pack `id`. Pure — returns a new array.
+function removePackTemplate(plugins, id, name) {
+  const nm = (name || '').trim();
+  return (plugins || []).map(p => {
+    if (!p || p.id !== id) return p;
+    return { ...p, templates: (p.templates || []).filter(t => (t.name || '').trim() !== nm) };
+  });
 }
 
 // Parse an imported packs payload (a JSON string or a parsed value) to a clean array of
@@ -26157,10 +26271,10 @@ const GUIDE = [
     ] },
   { id:'datapacks', cat:'compute',
     title:'Data packs',
-    body:"Bundle grammar rules and variables you want to reuse, so you don't have to redefine them in every document. A pack is pure data (the same rules and variables you already write in pills), stored with the document. Open File then Data packs to manage them: type its grammar rules (one per line, name: choices) and its variables, and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. A pack variable comes in two forms: a formula (name = expression, like tax = 0.2, which recomputes live) or a random pick (name: choices, like strength: 3d6, which is rolled ONCE when you save the pack and then stays that value, so a pack can ship a rolled-up stat block or a fixed random name). Toggle a pack off to remove its rules and variables without deleting it, or export a pack to a file to share it and import one back (a shared pick keeps the value it was rolled to, so everyone sees the same one). A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. To keep a big pack tidy, start a line with # to add a section header comment; those lines are skipped, and if you leave the colon off a rule by mistake, only that one line is skipped (the rest of the pack still loads, and the editor tells you how many lines it skipped). Packs never run code; they only add the data the existing pill engines already understand.",
+    body:"Bundle the pieces of a whole game system, setting or adventure into one file you can share: grammar rules, variables, and captured pieces of your outline like a character sheet, an oracle or a thread deck. A pack is pure data, stored with the document, and never runs code; it only adds the same rules, variables and pills the engine already understands.\n\nTo ship a working piece of a system, you capture it, you do not type it as a rule. Build a character sheet, a stat block or a shuffle deck as ordinary points, then choose `Add to data pack` from the point's bullet menu. The whole subtree, with its pills intact, becomes a template in the pack; a deck you add this way keeps drawing without repeats when someone stamps it. A deck typed into a pack's rules instead just draws at random, because a rule has no memory, so capture decks as templates.\n\nOpen File then Data packs to manage them. Type grammar rules (one per line, `name: choices`) and variables, and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. The pack's captured templates are listed there too, ready to stamp from the `/template` picker. A pack variable is either a formula (`name = expression`, like `tax = 0.2`, which recomputes live) or a random pick (`name: choices`, like `strength: 3d6`, rolled once when you save and then fixed, so a pack can ship a rolled stat block).\n\nExport a pack to a file to share it, and import one back; a shared pick keeps the value it was rolled to, so everyone sees the same one, and a captured deck arrives mid-shuffle exactly as you left it. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. Toggle a pack off to remove its contents without deleting it. Start a rules line with `#` for a section header comment (skipped), and if you leave the colon off a rule the editor skips just that line and tells you how many it skipped.",
     examples:[
+      { syn:'Bullet menu → Add to data pack', desc:'capture a subtree (sheet, oracle, deck) into a pack' },
       { syn:'File → Data packs',      desc:'create, enable, edit, import or export packs' },
-      { syn:'# Weapons',              desc:'a section header comment; skipped, keeps a big pack tidy' },
       { syn:'npc: knight | rogue | mage', desc:'a pack grammar rule, callable as {npc} anywhere' },
       { syn:'tax = 0.2',              desc:'a pack formula variable, usable in any {= …}' },
       { syn:'strength: 3d6',          desc:'a random pick variable, rolled once on save then fixed' },

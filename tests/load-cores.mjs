@@ -184,6 +184,7 @@ export function loadCores() {
     'searchSnippet',                            // UXP-64: context-aware snippet for workspace results
     'validPluginPack', 'mergePackRules', 'packVarDefs', 'packTemplateDefs', 'mergedTemplates',   // packTemplateDefs/mergedTemplates: #583
     'pluginPackActive', 'packLabel', 'newPluginPack', 'updatePluginPack', 'removePluginPack', 'togglePluginPack', 'parsePackImport', 'parsePackVarLines', 'rollPackPickVars',
+    'upsertPackTemplate', 'removePackTemplate',   // #518: capture-a-subtree-into-a-pack cores
     'tagColorOf', 'propIconOf', 'setTagColor', 'setPropIcon', 'normalizeAppearance', 'isValidTagName',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',

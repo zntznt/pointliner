@@ -178,11 +178,14 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))
-- **Data packs.** Bundle grammar rules, variables (formulas, or random picks like `strength: 3d6`
-  rolled once and frozen), and reusable subtree templates into a named, reusable pack (File then Data
-  packs): every rule and variable becomes callable across the document, imported templates appear in
-  the `/template` picker, and you can enable, disable, edit, import or export packs. Pure data, no
-  code, so opening any file stays safe.
+- **Data packs.** Bundle the pieces of a whole game system into one shareable file: grammar rules,
+  variables (formulas, or random picks like `strength: 3d6` rolled once and frozen), and captured
+  subtrees. Capture a subtree, do not type it: build a sheet, an oracle or a shuffle deck as points,
+  then **Add to data pack** from the point's bullet menu, and the whole subtree with its pills rides
+  the pack (a captured deck keeps drawing without repeats when someone stamps it). Manage packs in
+  File then Data packs: every rule and variable becomes callable across the document, captured
+  templates appear in the `/template` picker, and you can enable, disable, edit, import or export
+  packs. Pure data, no code, so opening any file stays safe.
 - **Start from an example.** File then **Start from an example** drops a ready-made, fully live
   example into your document: a campaign oracle that rolls on your own cast and threads, an
   oracle-driven scene loop, or a self-computing character sheet. Click any pill inside to play, then
