@@ -223,11 +223,29 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #search-wrap{position:absolute;left:50%;transform:translateX(-50%);pointer-events:none}
 #search-wrap>*{pointer-events:auto}
 /* file menu */
-#file-menu{position:fixed;z-index:300;display:none;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;min-width:252px;max-width:min(320px,calc(100vw - 16px));box-shadow:var(--sh-2);max-height:85vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;overscroll-behavior:contain}
+/* #603: centered overlay, mirroring the concept guide (#io-card.guide-open). Fixed + centered above
+   the shared #io-back scrim (the menu is not a child of it, so it centers itself); flex column so the
+   header/search stay put and the two-pane body scrolls within a height cap (short categories stay short). */
+#file-menu{position:fixed;z-index:801;left:50%;top:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 16vh);background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);overflow:hidden;overscroll-behavior:contain}
 @keyframes menu-pop{from{opacity:0;transform:scale(.96) translateY(-8px)}to{opacity:1;transform:none}}
-#file-menu.on{display:block;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1)}
+/* #603: the file menu is centered via transform:translate(-50%,-50%), so it needs its OWN pop keyframe
+   that preserves that transform. menu-pop (above) is shared by #io-card/#graph-panel/#timeline-panel,
+   which are flex/margin-centered and must animate with NO transform — do not fold the translate in. */
+@keyframes fm-pop{from{opacity:0;transform:translate(-50%,-50%) scale(.98)}to{opacity:1;transform:translate(-50%,-50%)}}
+#file-menu.on{display:flex;animation:fm-pop .16s cubic-bezier(.2,.8,.3,1)}
+#file-menu .guide-nav{width:150px}            /* short category labels: a tighter rail than the guide's 194px */
+.fm-body{flex:1;min-height:0}                 /* the guide-body two-pane; scroll lives in the nav + pane */
+.fm-pane{scroll-behavior:smooth}              /* #603: nav clicks scroll to a section on the single page */
+.fm-cat{display:flex;flex-direction:column;scroll-margin-top:8px}   /* all sections stacked; scroll-margin lands the heading in view */
+.fm-cat[hidden]{display:none}                  /* search hides a category with no matches (class+attr > class) */
+/* section eyebrow: a category label + a divider from the section above (the guide-nav-group recipe) */
+.fm-cat-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:14px 2px 5px;margin-top:6px;border-top:1px solid var(--bdr)}
+.cmd-item.fm-search-hidden{display:none}      /* a row filtered out by the menu search (2 classes > .cmd-item) */
+#accent-row.fm-search-hidden{display:none}    /* the color swatches have no searchable text: hidden while searching */
 /* header */
-.fm-head{display:flex;align-items:center;gap:10px;padding:7px 9px 11px;border-bottom:1px solid var(--bdr);margin-bottom:4px}
+/* #603: the doc-identity block now lives at the top of the Document category pane (not a menu-wide
+   header), so it sits flush with the pane padding and uses a divider below it before the actions. */
+.fm-head{display:flex;align-items:center;gap:10px;padding:2px 2px 11px;border-bottom:1px solid var(--bdr);margin-bottom:8px}
 .fm-head .cmd-icon{background:var(--acc);color:var(--acc-fg)}
 .fm-head-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
 .fm-title{font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);cursor:text;border-radius:var(--r-sm);padding:0 3px;margin:0 -3px}/* UXP-156: row-level surface → the radius ladder, off the bare 4px (DL §4) */
@@ -254,8 +272,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    the @media(max-width:560px) block reveals it where the toolbar version is hidden.
    Reuses the toolbar #level-ctl segmented-control skin (same border/cbg/r-sm/lvl-btn
    recipe) rather than inventing a new control shape — only the height grows for touch. */
-#fm-levels-group,#fm-levels-row{display:none}
-#fm-levels-row{align-items:center}
+#fm-levels-row{display:none;align-items:center}   /* phone-only: shown on narrow screens (below) */
 #fm-levels{display:flex;border:1px solid var(--bdr);background:var(--cbg);border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;padding:2px;gap:1px;align-items:stretch;margin-left:auto}
 .acc-swatch{width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;transition:transform .12s,box-shadow .12s;padding:0;flex-shrink:0;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--fg) 10%,transparent)}
 .acc-swatch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
@@ -1233,6 +1250,9 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #io-back.on{display:flex;animation:io-fade .14s ease}
 @keyframes io-fade{from{opacity:0}to{opacity:1}}
 #io-card{margin-top:16vh;width:400px;max-width:calc(100vw - 32px);max-height:82vh;overflow-y:auto;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);padding:16px 17px 14px;animation:menu-pop .16s cubic-bezier(.2,.8,.3,1);scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
+/* #603: the file menu reuses the #io-back scrim while rendering in its own #file-menu element, so the
+   shared dialog card sits empty behind it. An empty card must never render (no content, no chrome). */
+#io-card:empty{display:none}
 .io-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .io-head .cmd-icon{width:30px;height:30px;font-size:14px}
 .io-title{font-size:14.5px;font-weight:600}
@@ -1799,7 +1819,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      the logo/file menu (#fm-levels), and search collapses to a tappable magnifier that
      expands to a full-width overlay on focus. The icon toggles then fit on one row. */
   #level-ctl{display:none}
-  #fm-levels-group,#fm-levels-row{display:flex}   /* level control lives in the menu on phones */
+  #fm-levels-row{display:flex}   /* level control lives in the menu on phones */
   /* collapsed search: a ~40px magnifier button; the input is hidden until focus */
   #search-wrap{flex:0 0 auto;width:40px;min-width:40px;height:40px}
   #search-box{width:40px;padding:0;border-color:transparent;background:transparent;cursor:pointer;color:transparent;height:40px}
@@ -2142,62 +2162,91 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
 <div id="file-menu" role="dialog" aria-modal="true" aria-label="Pointliner menu">
-  <div class="fm-head">
-    <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
-    <div class="fm-head-info">
-      <span class="fm-title" id="file-name" tabindex="0" role="textbox" spellcheck="false" title="Click to rename" aria-label="Document name, click to rename">Untitled</span>
-      <span class="fm-status" id="fm-status">Not saved to a file</span>
-    </div>
-    <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
+  <!-- Header + two-pane body mirror the concept guide (#603): a title-and-search header row, then a
+       category nav on the left and the selected category's actions on the right. Rows keep their ids
+       so every handler wired elsewhere by id still fires; only their grouping/presentation changed. -->
+  <div class="guide-header">
+    <span class="guide-title">Menu</span>
+    <input class="guide-search" id="fm-search" type="search" placeholder="Search the menu…" aria-label="Search the menu" autocomplete="off">
   </div>
+  <div class="guide-body fm-body">
+    <nav class="guide-nav" id="fm-nav" aria-label="Menu categories">
+      <button class="guide-nav-btn active" type="button" data-cat="document">Document</button>
+      <button class="guide-nav-btn" type="button" data-cat="export">Export</button>
+      <button class="guide-nav-btn" type="button" data-cat="settings">Settings</button>
+      <button class="guide-nav-btn" type="button" data-cat="learn">Learn &amp; help</button>
+      <button class="guide-nav-btn" type="button" data-cat="tools">Tools</button>
+    </nav>
+    <div class="guide-pane fm-pane" id="fm-pane" tabindex="-1">
 
-  <div class="fm-group">File</div>
-  <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh document</span></div></div>
-  <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open…</span><span class="cmd-desc">Open an outline file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
-  <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
-  <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
-  <div class="cmd-item" id="btn-restore" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-clock-rotate-left" data-fb="↺">↺</div><div class="cmd-info"><span class="cmd-label">Restore earlier version</span><span class="cmd-desc">Roll back to the last auto-saved snapshot</span></div></div>
-  <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" id="workspace-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect a folder…</span><span class="cmd-desc" id="workspace-desc">Auto-save every document, switch between them, reopen later</span></div></div>
-  <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open and create documents in the folder</span></div></div>
-  <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-minus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Stop auto-saving. Your documents stay on disk</span></div></div>
-  <div class="cmd-item" id="workspace-invite" role="button" tabindex="-1" style="display:none" title="Copy this page's link to open in Chrome, Edge or a similar browser" aria-label="Folders need Chrome, Edge or a similar browser. Click to copy this page's link"><div class="cmd-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Folders need Chrome, Edge or similar</span><span class="cmd-desc">Click to copy this page’s link</span></div></div>
+      <div class="fm-cat" data-cat="document">
+        <div class="fm-head">
+          <div class="cmd-icon" style="font-size:12px" data-fa="fa-regular fa-file-lines" data-fb="◻">◻</div>
+          <div class="fm-head-info">
+            <span class="fm-title" id="file-name" tabindex="0" role="textbox" spellcheck="false" title="Click to rename" aria-label="Document name, click to rename">Untitled</span>
+            <span class="fm-status" id="fm-status">Not saved to a file</span>
+          </div>
+          <span class="dirty-dot" id="fm-dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
+        </div>
+        <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh document</span></div></div>
+        <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open…</span><span class="cmd-desc">Open an outline file</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
+        <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
+        <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
+        <div class="cmd-item" id="btn-restore" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-clock-rotate-left" data-fb="↺">↺</div><div class="cmd-info"><span class="cmd-label">Restore earlier version</span><span class="cmd-desc">Roll back to the last auto-saved snapshot</span></div></div>
+        <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" id="workspace-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect a folder…</span><span class="cmd-desc" id="workspace-desc">Auto-save every document, switch between them, reopen later</span></div></div>
+        <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open and create documents in the folder</span></div></div>
+        <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-minus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Stop auto-saving. Your documents stay on disk</span></div></div>
+        <div class="cmd-item" id="workspace-invite" role="button" tabindex="-1" style="display:none" title="Copy this page's link to open in Chrome, Edge or a similar browser" aria-label="Folders need Chrome, Edge or a similar browser. Click to copy this page's link"><div class="cmd-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Folders need Chrome, Edge or similar</span><span class="cmd-desc">Click to copy this page’s link</span></div></div>
+      </div>
 
-  <div class="fm-group">Export a copy</div>
-  <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot, pills frozen to text</span></div></div>
-  <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">One-way snapshot, plain outline</span></div></div>
-  <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Web page (HTML)</span><span class="cmd-desc">Shareable file, reopens as the live app</span></div></div>
+      <div class="fm-cat" data-cat="export">
+        <div class="fm-cat-head">Export a copy</div>
+        <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot, pills frozen to text</span></div></div>
+        <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">One-way snapshot, plain outline</span></div></div>
+        <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Web page (HTML)</span><span class="cmd-desc">Shareable file, reopens as the live app</span></div></div>
+      </div>
 
-  <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
-       version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels). -->
-  <div class="fm-group" id="fm-levels-group">Outline</div>
-  <div class="cmd-item" id="fm-levels-row">
-    <div class="cmd-icon" data-fa="fa-solid fa-list-ul" data-fb="≡">≡</div>
-    <div class="cmd-info"><span class="cmd-label">Show levels</span><span class="cmd-desc">Collapse deeper points</span></div>
-    <div id="fm-levels" role="group" aria-label="Show outline levels">
-      <button class="lvl-btn" data-lvl="1" aria-label="Show 1 level">1</button>
-      <button class="lvl-btn" data-lvl="2" aria-label="Show 2 levels">2</button>
-      <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
-      <button class="lvl-btn" data-lvl="0" aria-label="Show all levels">All</button>
+      <div class="fm-cat" data-cat="settings">
+        <div class="fm-cat-head">Settings</div>
+        <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
+        <div id="accent-row"><span class="acc-row-lbl">Color</span><div id="accent-swatches"></div></div>
+        <div class="cmd-item" id="btn-width" aria-pressed="false"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Width: Narrow</span><span class="cmd-desc">Widen the editing column</span></div></div>
+        <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips and the search cheatsheet all shown. Next: Standard</span></div><span class="cmd-key">⌘⇧.</span></div>
+        <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
+        <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
+        <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
+        <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
+      </div>
+
+      <div class="fm-cat" data-cat="learn">
+        <div class="fm-cat-head">Learn &amp; help</div>
+        <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Help &amp; guide</span><span class="cmd-desc">Shortcuts and every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
+        <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
+        <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Start from an example</span><span class="cmd-desc">Drop in a ready-made solo-RPG oracle, character sheet, or campaign</span></div></div>
+        <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
+        <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
+      </div>
+
+      <div class="fm-cat" data-cat="tools">
+        <div class="fm-cat-head">Tools</div>
+        <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
+        <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
+             version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels-row). -->
+        <div class="cmd-item" id="fm-levels-row">
+          <div class="cmd-icon" data-fa="fa-solid fa-list-ul" data-fb="≡">≡</div>
+          <div class="cmd-info"><span class="cmd-label">Show levels</span><span class="cmd-desc">Collapse deeper points</span></div>
+          <div id="fm-levels" role="group" aria-label="Show outline levels">
+            <button class="lvl-btn" data-lvl="1" aria-label="Show 1 level">1</button>
+            <button class="lvl-btn" data-lvl="2" aria-label="Show 2 levels">2</button>
+            <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
+            <button class="lvl-btn" data-lvl="0" aria-label="Show all levels">All</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-no-results" id="fm-noresults" hidden>No matching action. Clear the search to browse by category.</div>
     </div>
   </div>
-
-  <div class="fm-group">Appearance</div>
-  <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
-  <div id="accent-row"><span class="acc-row-lbl">Color</span><div id="accent-swatches"></div></div>
-  <div class="cmd-item" id="btn-width" aria-pressed="false"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Width: Narrow</span><span class="cmd-desc">Widen the editing column</span></div></div>
-
-  <div class="cmd-sep"></div>
-  <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Help &amp; guide</span><span class="cmd-desc">Shortcuts and every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
-  <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
-  <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Start from an example</span><span class="cmd-desc">Drop in a ready-made solo-RPG oracle, character sheet, or campaign</span></div></div>
-  <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
-  <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
-  <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
-  <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
-  <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips and the search cheatsheet all shown. Next: Standard</span></div><span class="cmd-key">⌘⇧.</span></div>
-  <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
-  <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
-  <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
 </div>
 <div id="outline"></div>
 
@@ -25780,6 +25829,64 @@ document.getElementById('timeline-back').addEventListener('mousedown', e => {
 const fileMenu  = document.getElementById('file-menu');
 const logoBtn   = document.getElementById('logo-btn');
 
+// #603: the menu is a single scrollable page (all categories stacked), with a category nav that
+// SCROLLS to a section — like a docs sidebar. A search box filters actions across every category.
+let fmActiveCat = 'document';
+function fmSetActiveNav(cat) {   // highlight the nav button for the section in view
+  fmActiveCat = cat;
+  fileMenu.querySelectorAll('.guide-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+}
+function fmRestoreAll() {   // exit search: every section + row visible again, no-results hidden
+  fileMenu.querySelectorAll('.fm-search-hidden').forEach(r => r.classList.remove('fm-search-hidden'));
+  fileMenu.querySelectorAll('.fm-cat').forEach(sec => { sec.hidden = false; });
+  const nores = document.getElementById('fm-noresults');
+  if (nores) nores.hidden = true;
+}
+function fmShowCategory(cat) {   // nav click: exit any search, scroll the section to the top, mark it active
+  const search = document.getElementById('fm-search');
+  if (search && search.value) { search.value = ''; fmRestoreAll(); }
+  fmSetActiveNav(cat);
+  // Align the section's top with the pane's top (a deterministic anchor jump — scrollIntoView skips
+  // when it deems the section already "visible enough", which reads as a broken nav click).
+  const pane = document.getElementById('fm-pane');
+  const sec = fileMenu.querySelector(`.fm-cat[data-cat="${cat}"]`);
+  if (pane && sec) pane.scrollTop += sec.getBoundingClientRect().top - pane.getBoundingClientRect().top - 6;
+}
+function fmApplySearch(q) {
+  q = (q || '').trim().toLowerCase();
+  if (!q) { fmRestoreAll(); return; }   // empty query restores the full single page
+  // Reset prior search state and reveal all sections first, so each row's TRUE visibility (only
+  // capability- or CSS-media hiding remains) is measurable via offsetParent before deciding matches.
+  fmRestoreAll();
+  let total = 0;
+  fileMenu.querySelectorAll('.fm-cat').forEach(sec => {
+    let any = false;
+    sec.querySelectorAll('.cmd-item').forEach(row => {
+      const hay = ((row.querySelector('.cmd-label')?.textContent || '') + ' ' +
+                   (row.querySelector('.cmd-desc')?.textContent || '')).toLowerCase();
+      const hit = row.offsetParent !== null && hay.includes(q);
+      row.classList.toggle('fm-search-hidden', !hit);
+      if (hit) { any = true; total++; }
+    });
+    sec.querySelector('#accent-row')?.classList.add('fm-search-hidden');   // no searchable text
+    sec.hidden = !any;   // a category with no matching action drops out entirely
+  });
+  const nores = document.getElementById('fm-noresults');
+  if (nores) nores.hidden = total > 0;   // P4: name the empty result instead of a silent blank pane
+}
+// Scroll-spy: as the single page scrolls, mark the nav for the section currently at the top (skip
+// while searching, so the filter's own section-hiding doesn't fight the highlight).
+function fmScrollSpy() {
+  const pane = document.getElementById('fm-pane');
+  if (!pane || document.getElementById('fm-search')?.value) return;
+  const paneTop = pane.getBoundingClientRect().top;
+  let current = 'document';
+  for (const sec of fileMenu.querySelectorAll('.fm-cat')) {
+    if (!sec.hidden && sec.getBoundingClientRect().top - paneTop <= 28) current = sec.dataset.cat;
+  }
+  if (current !== fmActiveCat) fmSetActiveNav(current);
+}
+
 function updateFmStatus() {
   const status = document.getElementById('fm-status');
   if (!status) return;
@@ -25825,18 +25932,31 @@ function openFileMenu() {
     const el = document.getElementById(id);
     if (el) { el.style.display = online ? '' : 'none'; el.hidden = !online; }
   }
-  const rect = document.getElementById('toolbar-row').getBoundingClientRect();
-  fileMenu.style.top  = (rect.bottom + 4) + 'px';
-  fileMenu.style.left = (rect.left + 8) + 'px';
+  // #603: open centered over the shared #io-back scrim, like the concept guide (no longer a corner
+  // dropdown). Route scrim-click + Escape through the shared ioCancel, and return focus to the logo.
+  const search = document.getElementById('fm-search');
+  if (search) search.value = '';
+  fmRestoreAll();                 // full single page, no stale search filter
+  fmSetActiveNav('document');     // start at the top (Document); the page scrolls from here
+  ioBack.classList.add('on');
+  ioCancel = closeFileMenu;
+  ioReturnFocus = logoBtn;
   fileMenu.classList.add('on');
   logoBtn.setAttribute('aria-expanded', 'true');
-  fmItems()[0]?.focus();
+  const pane = document.getElementById('fm-pane');
+  if (pane) pane.scrollTop = 0;   // reset to the top instantly (not a smooth-scroll animation)
+  requestAnimationFrame(() => (search || fmItems()[0])?.focus());   // focus the search box, like the guide
 }
 function closeFileMenu() {
-  const wasOpen = fileMenu.classList.contains('on');
+  // Bound to every document click (click-away), so it MUST be a no-op when the menu is not open —
+  // otherwise it would tear down the shared #io-back scrim out from under an open dialog or the
+  // concept guide (which also live in #io-back). #603: only touch the scrim when WE opened it.
+  if (!fileMenu.classList.contains('on')) return;
   fileMenu.classList.remove('on');
+  ioBack.classList.remove('on');          // #603: hide the shared scrim (only reached when the menu was open)
+  if (ioCancel === closeFileMenu) ioCancel = null;   // don't leak our cancel to the next dialog
   logoBtn.setAttribute('aria-expanded', 'false');
-  if (wasOpen && fileMenu.contains(document.activeElement)) logoBtn.focus();
+  if (fileMenu.contains(document.activeElement)) logoBtn.focus();
   // #506: drop any armed caret-return on close. The Escape path restores it FIRST (so this
   // clear is a no-op there); every other close — click-away, clicking a row that opens a
   // sub-surface, the logo toggle — leaves it stale, so a later reopen + Escape would yank the
@@ -25848,7 +25968,11 @@ function closeFileMenu() {
 // convenience on top, not menu semantics.
 // Hidden rows (the workspace connect/disconnect rows toggle by state) stay out of the
 // arrow-roving order and the initial-focus pick.
-const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')].filter(el => el.style.display !== 'none');
+// The rows the arrows rove over = only the visible ones: excludes capability-hidden rows, rows the
+// search filtered out, and every row in a non-active category (offsetParent is null when any ancestor
+// is display:none). #603: this replaces the old style.display check, which couldn't see category/search hiding.
+const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')].filter(el => el.offsetParent !== null);
+const fmNavBtns = () => [...fileMenu.querySelectorAll('.guide-nav-btn')];
 // #507: only the plain <div> rows get role=button — the two external-link <a> rows keep
 // their native link semantics (a SR announces "opens in new window") and the native
 // <button> (Install) keeps its own role. tabindex=-1 on all of them so arrow-roving owns
@@ -25857,27 +25981,70 @@ fileMenu.querySelectorAll('.cmd-item').forEach(it => {
   if (it.tagName === 'DIV') it.setAttribute('role', 'button');
   it.setAttribute('tabindex', '-1');
 });
+// #603: three focus zones — the search input, the category nav, and the visible action rows.
+// Arrows move within a zone and cross between them (search ↕ nav/rows; nav → rows); Tab wraps the
+// whole [search, nav, rows] order (aria-modal contract); Enter/Space activates. Added ALONGSIDE the
+// pointer path — rows keep their own click handlers, so the caret invariant is untouched.
 fileMenu.addEventListener('keydown', e => {
-  const items = fmItems();
-  const idx = items.indexOf(document.activeElement);
+  const search = document.getElementById('fm-search');
+  const active = document.activeElement;
+  const onSearch = active === search;
+  const onNav = !!active?.classList?.contains('guide-nav-btn');
+  const rows = fmItems();
+  const navBtns = fmNavBtns();
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (onSearch && search.value) { search.value = ''; fmApplySearch(''); return; }   // first Escape clears a query
+    restoreChromeReturn(); closeFileMenu(); return;
+  }
+  if (e.key === 'Tab') {   // trap: cycle search → nav → rows → search
+    e.preventDefault();
+    const order = [search, ...navBtns, ...rows].filter(Boolean);
+    const i = order.indexOf(active);
+    const d = e.shiftKey ? -1 : 1;
+    order[(i + d + order.length) % order.length]?.focus();
+    return;
+  }
+  if (e.key === 'Enter' || e.key === ' ') {
+    if (onSearch) return;   // typing space in the search box is a space, not an activate
+    e.preventDefault();
+    if (onNav) { active.click(); fmItems()[0]?.focus(); return; }   // pick the category, dive into it
+    active?.click();   // a row: run its handler
+    return;
+  }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
     const d = e.key === 'ArrowDown' ? 1 : -1;
-    items[(idx + d + items.length) % items.length]?.focus();
-  } else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
-  else if (e.key === 'End')  { e.preventDefault(); items[items.length - 1]?.focus(); }
-  else if (e.key === 'Tab') {
-    // #503: it's role=dialog + aria-modal, so honor the dialog contract — Tab wraps within
-    // the menu instead of walking out into the live outline behind it. Same rove list as the
-    // arrows; Shift+Tab reverses.
-    e.preventDefault();
-    const d = e.shiftKey ? -1 : 1;
-    items[(idx + d + items.length) % items.length]?.focus();
+    if (onSearch) { (d > 0 ? rows[0] : navBtns[navBtns.length - 1])?.focus(); return; }
+    if (onNav) {
+      const i = navBtns.indexOf(active), next = navBtns[i + d];
+      if (next) { next.click(); next.focus(); }        // switch category live as you arrow
+      else if (d < 0) search?.focus();                 // up past the first category → search
+      return;
+    }
+    const i = rows.indexOf(active);
+    if (i < 0) { rows[0]?.focus(); return; }
+    if (i + d < 0) { search?.focus(); return; }         // up past the first row → search
+    rows[(i + d) % rows.length]?.focus();
+    return;
   }
-  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.click(); }
-  // Escape: back to the edit it interrupted (exact caret), else to the logo button
-  else if (e.key === 'Escape') { e.preventDefault(); restoreChromeReturn(); closeFileMenu(); }
+  if (e.key === 'ArrowRight' && onNav) { e.preventDefault(); fmItems()[0]?.focus(); return; }   // nav → pane
+  if (e.key === 'ArrowLeft' && !onNav && !onSearch) {                                            // pane → active nav
+    e.preventDefault(); fileMenu.querySelector('.guide-nav-btn.active')?.focus(); return;
+  }
+  if (e.key === 'Home') { e.preventDefault(); rows[0]?.focus(); }
+  else if (e.key === 'End') { e.preventDefault(); rows[rows.length - 1]?.focus(); }
 });
+// Nav: a click scrolls to that section on the single page (mouse path; the keyboard path is above).
+fileMenu.querySelector('#fm-nav')?.addEventListener('click', e => {
+  const btn = e.target.closest('.guide-nav-btn');
+  if (btn) fmShowCategory(btn.dataset.cat);
+});
+// Search: filter action rows across every category as you type.
+document.getElementById('fm-search')?.addEventListener('input', e => fmApplySearch(e.target.value));
+// Scroll-spy: highlight the nav for the section currently at the top as the page scrolls.
+document.getElementById('fm-pane')?.addEventListener('scroll', fmScrollSpy, { passive: true });
 
 logoBtn.addEventListener('click', e => {
   e.stopPropagation();
