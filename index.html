@@ -5163,14 +5163,21 @@ const EMOJI = {
 function filterEmojiCandidates(prefix, map = EMOJI) {
   const lo = (prefix || '').toLowerCase();
   const seen = new Set();
-  const out = [];
+  const pre = [], sub = [];   // #592: prefix matches rank above mid-name substring matches
   for (const name in map) {
-    if (lo && !name.toLowerCase().startsWith(lo)) continue;
+    const n = name.toLowerCase();
+    let rank;
+    if (!lo) rank = 0;                        // no query → everything, insertion order
+    else if (n.startsWith(lo)) rank = 0;      // prefix match (the old behavior) first
+    else if (n.includes(lo)) rank = 1;        // #592: a mid-name substring match too, so `:cat`
+    else continue;                            // finds `cat_face` and `:face` finds every *_face
     const glyph = map[name];
-    if (seen.has(glyph)) continue;   // first alias wins, later synonyms hidden
+    if (seen.has(glyph)) continue;            // first alias wins, later synonyms hidden
     seen.add(glyph);
-    out.push({ name, glyph });
+    (rank === 0 ? pre : sub).push({ name, glyph });
   }
+  const out = pre.concat(sub);
+  // Dismiss when the query is exactly one entry's full name (the "uniquely resolved" close).
   return (out.length === 1 && out[0].name.toLowerCase() === lo) ? [] : out;
 }
 
