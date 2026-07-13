@@ -61,4 +61,8 @@ so the mechanical and the fictional stay in the same log, the same as the journa
 The whole roster is one branch of one document. Delete the parts you do not want, rename the
 factions to yours, and it is your campaign's tracker.
 
+Once your cast lives here, you can **roll on it**: tag the people `#npc` and a `{roll: #npc}` pill
+draws a random one when you need to know who shows up. [The living oracle](../living-oracle/living-oracle.md)
+turns this roster into a solo-play oracle that draws from your own campaign.
+
 **Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

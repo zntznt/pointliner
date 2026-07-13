@@ -98,9 +98,11 @@ braces). Alongside it, tagging beats with `#thread/torn-letter` and clicking the
 beat that touched that thread, so the deck decides *what to feature* and the tag shows you *what has
 happened* on it.
 
-> The deck lists the threads as literal text you maintain. Pointliner does not (yet) pull a random
-> *point* from elsewhere in your outline, so the deck is the hand-kept version of that. It takes ten
-> seconds to update and it keeps the whole loop inside the braces you already know.
+> The deck lists the threads as literal text you maintain, which keeps the whole loop inside the
+> braces you already know and works through every thread before repeating. If you would rather roll
+> on your *actual* open threads (the `#thread` points you already keep) so the deck never drifts from
+> the campaign, [the living oracle](../living-oracle/living-oracle.md) shows the `{roll: #thread}`
+> version. The two are the hand-kept and the live-kept forms of the same idea.
 
 ---
 
