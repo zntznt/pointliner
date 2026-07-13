@@ -1088,10 +1088,13 @@ test('mdToHtml — empty `- [ ]` / `- [x]` render as checkboxes, not literal bra
   assert.ok(emptyX.includes('md-task-check') && emptyX.includes('checked'), 'empty - [x] is a checked checkbox');
   // GFM still needs the space: `- [ ]bar` (no space) stays a plain list item
   assert.ok(!c.mdToHtml('- [ ]bar').includes('md-task-check'), '- [ ]bar (no space) is not a task');
-  // data-task numbering is contiguous across an empty middle task (render↔toggle align)
+  // data-task numbering is contiguous across an empty middle task (render↔toggle align).
+  // Each task emits the index TWICE — on the .md-task-pad touch hit extender and on the
+  // checkbox itself (#439) — so pin the pairs: same index within a task, contiguous across.
   const mixed = c.mdToHtml('- [ ] first\n- [ ]\n- [x] third');
   const tasks = [...mixed.matchAll(/data-task="(\d+)"/g)].map(m => m[1]);
-  assert.deepEqual(host(tasks), ['0', '1', '2']);
+  assert.deepEqual(host(tasks), ['0', '0', '1', '1', '2', '2']);
+  assert.ok(mixed.includes('md-task-pad'), 'each task carries its touch hit extender');
   // the toggle path shares the checkbox token with render via TASK_LINE_RE (F4), so
   // its data-task index can't desync from the rendered checkboxes
   assert.ok(_src.includes('const TASK_LINE_RE'), 'TASK_LINE_RE must be defined in the grammar block');

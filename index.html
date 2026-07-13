@@ -510,6 +510,7 @@ ul.md-list{list-style:disc}
 ol.md-list{list-style:decimal}
 ul.md-tasklist{list-style:none;padding-left:.2em}
 .md-task{display:flex;align-items:baseline;gap:.5em}
+.md-task-pad{display:none}/* the checkbox's touch hit extender (#439); the hover:none block reveals it */
 .md-task-check{cursor:pointer;width:16px;height:16px;transform:translateY(2px);flex-shrink:0;accent-color:var(--acc)}
 .md-dl{margin:2px 0 2px 0}
 .md-dl dt{font-weight:600}
@@ -1763,6 +1764,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .dice-edit::before,.mk-edit::before,.gr-edit::before,.var-edit::before,.est-edit::before,.math-edit::before,.seq-edit::before{
     content:'';position:absolute;top:50%;left:0;transform:translateY(-50%);
     width:44px;height:44px}
+  /* The pill BODY is the primary tap (re-roll / advance / open) but sits at its rendered
+     ~26px height, under the 36-38px aim (#438). Same invisible-overlay idiom, VERTICAL
+     only: growing sideways would swallow caret taps in the surrounding text, and the
+     right edge stays clear of the pencil, whose own right-biased overlay (painted above,
+     it is the later sibling) keeps a near-pencil tap opening edit instead of re-rolling. */
+  .dice-roll,.mk-roll,.gr-roll,.math-roll,.est-pill,.var-pill{position:relative}
+  .dice-roll::before,.mk-roll::before,.gr-roll::before,.math-roll::before,.est-pill::before,.var-pill::before{
+    content:'';position:absolute;left:0;right:0;top:-5px;bottom:-5px}
   /* table row handle: wider tap target on touch, always show the grip cue */
   /* min-width, not just width: in an over-constrained table, auto layout treats a
      length on an EMPTY cell as a soft preference and crushes the handle to ~2px;
@@ -1832,6 +1841,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      no ring where the dot itself is faded or hidden. */
   .nt-h1>.node-row .bullet-dot,.nt-h2>.node-row .bullet-dot,.nt-h3>.node-row .bullet-dot,.nt-h4>.node-row .bullet-dot,.nt-h5>.node-row .bullet-dot,.nt-h6>.node-row .bullet-dot,.nt-quote>.node-row .bullet-dot,.nt-code>.node-row .bullet-dot,.nt-para>.node-row .bullet-dot,.nt-divider>.node-row .bullet-dot{box-shadow:none}
   .md-task-check{width:24px;height:24px}
+  /* Ticking is the single most common list action, and the 24px box was the WHOLE target
+     (#439). A native checkbox renders no pseudo-elements, so the .md-task-pad sibling is
+     the overlay: it lifts the HIT area to ~40px over the checkbox zone while the visible
+     box stays 24px. It sits above the input (positioned sibling); both routes toggle. */
+  .md-task{position:relative}
+  .md-task-pad{display:block;position:absolute;left:-8px;top:-6px;width:40px;height:40px}
   /* base header strip: the view switcher / Rows / collapse controls are desktop-compact
      (~20px); give them a real tap height on touch (the checkbox 24px floor, comfortably) */
   .mt-view-btn,.mt-base-rows{padding:8px 10px}
@@ -5363,7 +5378,12 @@ function renderListItem(inner, taskNo) {
   const tm = inner.match(TASK_RE);
   if (tm) {
     const checked = tm[1].toLowerCase() === 'x';
-    return `<li class="md-task"><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
+    // The .md-task-pad span is the checkbox's TOUCH hit extender (#439): a native
+    // <input type=checkbox> renders no ::before/::after, so the invisible-overlay idiom
+    // (bullet, pill pencils) needs a real sibling element. display:none except under
+    // hover:none, where it overlays the checkbox zone at ~40px; it carries the same
+    // data-task so the mousedown toggle path treats it exactly like the box itself.
+    return `<li class="md-task"><span class="md-task-pad" data-task="${taskNo.n}" aria-hidden="true"></span><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
   }
   return `<li>${mdInline(inner)}</li>`;
 }
@@ -12108,7 +12128,9 @@ function attachContentEvents(content, node) {
 
   content.addEventListener('mousedown', e => {
     // task-list checkbox: toggle the source line without entering raw-edit mode
-    if (!content.dataset.editing && e.target.classList && e.target.classList.contains('md-task-check')) {
+    // (.md-task-pad is the checkbox's touch hit extender — same data-task, same toggle)
+    if (!content.dataset.editing && e.target.classList &&
+        (e.target.classList.contains('md-task-check') || e.target.classList.contains('md-task-pad'))) {
       e.preventDefault(); e.stopPropagation();
       // Bulk: if this OPENING checkbox is on a point that's in a multi-point selection,
       // the toggle propagates to every other task-first selected point (check one → check
@@ -12379,7 +12401,7 @@ function attachSwipeIndent(content, node) {
 
   content.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse' || content.dataset.editing) return;
-    if (e.target.closest('.bullet, .md-task-check, .todo-state, .todo-prio, a, .node-link, .hashtag, .fn-ref, [data-token], .dice-roll, .mk-roll, .gr-roll, .math-roll, .var-pill')) return;
+    if (e.target.closest('.bullet, .md-task-check, .md-task-pad, .todo-state, .todo-prio, a, .node-link, .hashtag, .fn-ref, [data-token], .dice-roll, .mk-roll, .gr-roll, .math-roll, .var-pill, .est-pill')) return;
     sx = e.clientX; sy = e.clientY; swiping = false; decided = false;
   }, { passive: true });
 
