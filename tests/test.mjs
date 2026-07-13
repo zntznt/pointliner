@@ -2348,6 +2348,41 @@ import assert2 from 'node:assert/strict';
     assert2.deepEqual(host2(c2.timelineModel([], monthOf)), []);
     assert2.deepEqual(host2(c2.timelineModel(null, monthOf)), []);
   });
+
+  // ── #519 depth-nudge pure predicates ────────────────────────────────────────
+  const pnode = (props) => ({ props });
+
+  ltest('nudgeSumKey — suggests the key only when a sibling shares the same numeric prop', () => {
+    const a = pnode([{ key: 'cost', val: '5' }]);
+    const b = pnode([{ key: 'cost', val: '3' }]);
+    // a sibling shares 'cost' → the parent can sum it
+    assert2.equal(c2.nudgeSumKey(a, [a, b], 'cost'), 'cost');
+    // a lone numeric prop (no sibling with it) → nothing to total, stay silent
+    assert2.equal(c2.nudgeSumKey(a, [a], 'cost'), null);
+    // the edited point's value is not numeric → no nudge
+    const t = pnode([{ key: 'cost', val: 'lots' }]);
+    assert2.equal(c2.nudgeSumKey(t, [t, b], 'cost'), null);
+  });
+
+  ltest('nudgeSumKey — a child sharing the key also warrants the nudge (node can sum its children)', () => {
+    const parentNode = { props: [{ key: 'hp', val: '10' }], children: [pnode([{ key: 'hp', val: '4' }])] };
+    assert2.equal(c2.nudgeSumKey(parentNode, [parentNode], 'hp'), 'hp');
+  });
+
+  ltest('nudgeSumKey — reserved keys (due/start/check/repeat/aliases) never nudge', () => {
+    for (const k of ['due', 'start', 'check', 'repeat', 'aliases']) {
+      const a = pnode([{ key: k, val: '5' }]);
+      const b = pnode([{ key: k, val: '3' }]);
+      assert2.equal(c2.nudgeSumKey(a, [a, b], k), null, `${k} must not nudge`);
+    }
+  });
+
+  ltest('nudgeRollTag — suggests the top tag once its roster reaches the threshold', () => {
+    assert2.equal(c2.nudgeRollTag([{ name: 'npc', count: 5 }, { name: 'thread', count: 2 }], 3), 'npc');
+    assert2.equal(c2.nudgeRollTag([{ name: 'npc', count: 2 }], 3), null);   // below threshold
+    assert2.equal(c2.nudgeRollTag([], 3), null);
+    assert2.equal(c2.nudgeRollTag(null, 3), null);
+  });
 }
 
 // ─── tokenUnderCaret ──────────────────────────────────────────────────────
@@ -6422,6 +6457,25 @@ test('#516 timeline: UI wiring + front doors + a11y (src pins)', () => {
   // Escape closes + restores focus
   const ct = fnBody(_src, 'closeTimeline');
   assert.ok(ct.includes("btn.setAttribute('aria-pressed', 'false')") && ct.includes('.focus()'), 'close must release pressed state + restore focus');
+});
+
+test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger points (src pins)', () => {
+  // the firing door enforces ALL three constraints in one place
+  const fn = fnBody(_src, 'fireNudge');
+  assert.ok(fn.includes('if (!isGuided()) return'), 'a nudge must be Guided-only (the verbosity dial)');
+  assert.ok(fn.includes('nudgeSeen(') && fn.includes('markNudgeSeen('), 'a nudge must fire once ever (persisted)');
+  assert.ok(fn.includes('flashHint('), 'a nudge must use the standard toast channel (one-feedback-pattern)');
+  // persistence is localStorage-backed (survives sessions, never nags again)
+  assert.ok(_src.includes("localStorage.getItem(NUDGE_STORE_KEY)") && _src.includes("localStorage.setItem(NUDGE_STORE_KEY"), 'nudge state persists in localStorage');
+  // the two trigger helpers gate before doing any work (cheap on the hot paths)
+  const ms = fnBody(_src, 'maybeNudgeSum');
+  assert.ok(ms.includes('if (!isGuided() || nudgeSeen(') && ms.includes('nudgeSumKey('), 'maybeNudgeSum must guard then use the pure predicate');
+  const mr = fnBody(_src, 'maybeNudgeRoll');
+  assert.ok(mr.includes('if (!isGuided() || nudgeSeen(') && mr.includes('nudgeRollTag('), 'maybeNudgeRoll must guard then use the pure predicate');
+  // wired at the point-of-relevance commit sites: the props dialog save, the /prop slash, and a tag edit
+  assert.ok(_src.includes('maybeNudgeSum(node, p.key)'), 'props-dialog save must offer the sum nudge');
+  assert.ok(_src.includes('maybeNudgeSum(cur, ps.key)'), 'the /prop slash must offer the sum nudge');
+  assert.ok(_src.includes('maybeNudgeRoll()'), 'a tag edit must offer the roll nudge');
 });
 
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {

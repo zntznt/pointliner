@@ -2960,6 +2960,36 @@ function childPropNumber(child, prop) {
   if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
   return parseDueDate(raw);                          // else a date-shaped value aggregates as its epoch-day (strict; non-dates → null)
 }
+// ── depth nudges (#519): point-of-relevance discovery ────────────────────────
+// The pure PREDICATE half — decides IF a nudge is warranted, given plain data. The
+// firing side (verbosity gate, once-only persistence, flashHint) lives in fireNudge.
+// Kept pure so the "is this actually applicable?" logic is testable without the DOM,
+// and so a nudge never fires on a case where the feature it suggests would be useless.
+
+// A numeric property is worth a sum() nudge only when it can actually roll up — i.e.
+// another point under the SAME parent carries the same key with a number. A lone
+// numeric prop has nothing to total, so we stay silent. Returns the key to suggest,
+// or null. Pure: takes the edited node, its siblings, and the key just added.
+function nudgeSumKey(node, siblings, key) {
+  const k = String(key || '').trim().toLowerCase();
+  if (!k || DATE_KEYS.has(k) || k === CHECK_KEY || k === REPEAT_KEY || k === ALIAS_KEY) return null;   // reserved keys aren't user rollups
+  const num = (n) => { const p = (n?.props || []).find(x => (x.key || '').trim().toLowerCase() === k); if (!p) return null; return Number.isFinite(Number(String(p.val).trim())) ? Number(p.val) : null; };
+  if (num(node) == null) return null;                                  // the edited point's value isn't numeric
+  // is there ANOTHER point with the same numeric key nearby (a sibling, or a child of the node)?
+  const others = (siblings || []).filter(s => s !== node);
+  if (others.some(s => num(s) != null)) return k;                      // siblings share it → parent can sum(k)
+  if ((node.children || []).some(c => num(c) != null)) return k;       // children carry it → node can sum(k)
+  return null;
+}
+
+// A tag is worth a {roll: #tag} nudge once its roster is big enough to be a real
+// random-draw pool (the solo-RPG moat, #517). Returns the tag name to suggest, or
+// null. Pure: takes the collectTags() [{name,count}] list + a threshold.
+function nudgeRollTag(tagList, threshold = 3) {
+  const top = (tagList || []).find(t => t.count >= threshold);
+  return top ? top.name : null;
+}
+
 function aggregateChildren(node, fn, prop, depth = 1) {
   // UXP-159: `depth` selects how deep the rollup reaches — 1 = direct children (the default,
   // unchanged), 2 = plus grandchildren, Infinity = the whole subtree. The nodes are gathered by the
@@ -9344,6 +9374,10 @@ function openPropsDialog(nodeId, targets = null) {
       }
     }
     markDirty(); render(); closeIo();
+    // #519: after the render, if a numeric property just became rollup-able (a sibling or
+    // child shares it), nudge once that {= sum(key)} can total it. Single-point edits only
+    // (a bulk edit is a different intent); Guided-only + once-ever enforced inside.
+    if (applyList.length === 1) for (const p of cleaned) maybeNudgeSum(node, p.key);
   }
   cancelBtn.addEventListener('click', closeIo);
   saveBtn.addEventListener('click', save);
@@ -12860,6 +12894,11 @@ function exitEdit(content, node) {
     markDirty();
     if (activeContentId === node.id) activeContentId = null;
     recordTextEdit(node.id, prevText, node.text);
+    // #519: if this edit ADDED a hashtag (the point now has one the prior text didn't),
+    // the tag roster may have crossed the "worth rolling on" threshold — nudge once about
+    // {roll: #tag}. Cheap: the tag-count scan only runs when a tag was newly typed, and the
+    // Guided-only + once-ever guards inside short-circuit the rest.
+    if (/(?<![a-zA-Z0-9])#[\w-]/.test(node.text) && node.text !== prevText) maybeNudgeRoll();
     const tblfm = extractTblfm(node.text); // the user may have typed/edited a #+TBLFM: line
     // A #+TBLFM: fragment that didn't land on its own line can't be associated with the
     // grid; surface it instead of silently dropping the formula (P4 feedback).
@@ -14775,6 +14814,7 @@ function slashApply() {
       const cur = nodeById(nodeId); if (!cur) return;
       pushUndo(); setProp(cur, ps.key, ps.val); markDirty(); render();
       flashHint(ps.val ? `Set ${ps.key} to ${ps.val}.` : `Cleared ${ps.key}.`);
+      maybeNudgeSum(cur, ps.key);   // #519: once, if this numeric prop can now roll up
       return;
     }
     // bare /prop → the promoting inline stub. Insert `{prop : }` at the trigger and park the caret on
@@ -26541,6 +26581,47 @@ function maybeBackupNudge(size) {
   if (size < BACKUP_NUDGE_MIN) return;
   _backupNudged = true;
   showStorageWarn('soft', 'Your notes live in this browser only. Save to a file to keep a backup you can reopen.');
+}
+
+// ── depth nudges (#519): the firing side ──────────────────────────────────────
+// Generalizes the storage-quota nudge (the sanctioned proactive-hint precedent, ux-
+// discipline §P4). Fires a one-time toast when a deep feature just became relevant —
+// e.g. a numeric property gains a sibling it could total, or a #tag roster grows big
+// enough to roll on. STRICT constraints (all enforced here so the trigger sites stay
+// dumb): Guided-verbosity only (silent in Standard/Lean — the dial contract), once
+// per nudge id EVER (persisted in localStorage so it never nags across sessions), and
+// through the standard flashHint toast (no new UI, the one-feedback-pattern rule).
+const NUDGE_STORE_KEY = 'pl-nudges-seen';
+function nudgeSeen(id) {
+  try { const seen = JSON.parse(localStorage.getItem(NUDGE_STORE_KEY) || '{}'); return seen[id] === true; }
+  catch (_) { return false; }
+}
+function markNudgeSeen(id) {
+  try { const seen = JSON.parse(localStorage.getItem(NUDGE_STORE_KEY) || '{}'); seen[id] = true; localStorage.setItem(NUDGE_STORE_KEY, JSON.stringify(seen)); }
+  catch (_) {}
+}
+// The single door. Returns true if it fired (for tests / callers that want to stop probing).
+function fireNudge(id, msg) {
+  if (!isGuided()) return false;        // the verbosity dial: teaching aids are Guided-only
+  if (nudgeSeen(id)) return false;      // once ever, never a nag
+  markNudgeSeen(id);
+  flashHint(msg);                       // the one feedback channel (also reaches #a11y-live, P3)
+  return true;
+}
+// Trigger 1: a numeric property just added to a point that has a sibling/child sharing it.
+// Called from openPropsDialog after commit. Cheap: only runs the sibling scan in Guided.
+function maybeNudgeSum(node, key) {
+  if (!isGuided() || nudgeSeen('sum')) return;
+  const parent = parentOf(node.id);
+  const k = nudgeSumKey(node, parent ? parent.children : [node], key);
+  if (k) fireNudge('sum', `Tip: put {= sum(${k})} on the point above these to total their ${k}, live. See the Calculations guide.`);
+}
+// Trigger 2: a #tag roster grew big enough to be a random-draw pool. Called after a
+// render pass (cheap: reuses the cached collectTags index, guarded by Guided + not-seen).
+function maybeNudgeRoll() {
+  if (!isGuided() || nudgeSeen('roll')) return;
+  const tag = nudgeRollTag(collectTags());
+  if (tag) fireNudge('roll', `Tip: {roll: #${tag}} draws a random one of your #${tag} points, a live oracle from your own notes. See the Roll on your own outline guide.`);
 }
 let _autosaveDeferred = false;   // an autosave was requested before reconcile finished
 // The localStorage crash-buffer write. With OPFS as the durable store, hitting the
