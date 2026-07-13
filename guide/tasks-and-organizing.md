@@ -95,9 +95,10 @@ list.
 Jot down a task, an idea, or a quick note the moment it strikes, without leaving what you are doing or
 hunting for the right spot.
 
-Set up to **10 inboxes** (numbered 1 to 10) and capture into any of them from anywhere; each entry
-lands as a new point at the bottom of that inbox. What you type is markdown-aware, so a typed `- [ ]`
-becomes a to-do.
+It works with nothing set up: with no inbox chosen, captures land at the **top level** of the
+document, ready to file later. Set up to **10 inboxes** (numbered 1 to 10) and capture into any of
+them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is
+markdown-aware, so a typed `- [ ]` becomes a to-do.
 
 Capture is a **toolbar strip**, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (or the toolbar
 **inbox button**) to toggle it open below the toolbar with the cursor already in its input, while the

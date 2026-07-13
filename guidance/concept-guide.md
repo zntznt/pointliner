@@ -1,8 +1,9 @@
 # The in-app concept guide (`GUIDE`)
 
 **What this is for:** the steps to add or fix an end-user help entry in Pointliner's
-in-app **Concept guide** — the searchable panel a user opens from the shortcuts
-popover's "Concept guide ›" footer button. If you ship a user-facing feature, its
+in-app **Concept guide** — the searchable panel the `?` chrome button and the File
+menu's "Help & guide" row open (the guide is the one help surface; the old corner
+shortcuts popover is retired). If you ship a user-facing feature, its
 concept-guide entry ships in the same change. This doc exists so you don't have to
 re-derive the structure, the drift-guard contract, or the house writing style every
 time.
@@ -15,15 +16,18 @@ Everything is in `index.html`:
 
 - **`const GUIDE = [ … ]`** — one flat array, two kinds of object:
   - **Essential shortcuts** carry `essential:true` + `essSection` + `keys` + `essLabel`.
-    These build the **Shortcuts & syntax** popover (`buildShortcutsPanel`), not the
-    concept guide. Leave them unless you're touching keyboard shortcuts.
+    These build the guide's **Shortcuts pages** — one page per `essSection`, rendered by
+    `shortcutsSectionBody(sec)`. A NEW `essSection` value also needs its page entry in the
+    Shortcuts group of `GUIDE` (a drift-guard test pins the two sets against each other),
+    and the first page keeps `id:'shortcuts'` (the `?` button's landing entry).
   - **Concept entries** carry **`cat`** (and `title`/`body`/`examples`). These ARE the
     concept guide. `openGuide()` does `GUIDE.filter(e => e.cat)` — *the presence of `cat`
     is what makes an object a guide entry.*
 - **`openGuide(initialId)`** — renders the panel. The left nav is two-level: a category
   header per `CATS` group, then one clickable item per entry. **Array order = display
   order** within a category, so insert an entry where it reads sensibly.
-- The footer button (`#sc-guide-open`, label "Concept guide ›") calls `openGuide()`.
+- The `?` chrome button (`#sc-toggle`) toggles it via `toggleGuide('shortcuts')`; the
+  File menu's "Help & guide" row calls `openGuide('shortcuts')`.
 
 Grep for `const GUIDE = [` and `function openGuide(` to find them.
 

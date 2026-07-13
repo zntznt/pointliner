@@ -1088,10 +1088,13 @@ test('mdToHtml — empty `- [ ]` / `- [x]` render as checkboxes, not literal bra
   assert.ok(emptyX.includes('md-task-check') && emptyX.includes('checked'), 'empty - [x] is a checked checkbox');
   // GFM still needs the space: `- [ ]bar` (no space) stays a plain list item
   assert.ok(!c.mdToHtml('- [ ]bar').includes('md-task-check'), '- [ ]bar (no space) is not a task');
-  // data-task numbering is contiguous across an empty middle task (render↔toggle align)
+  // data-task numbering is contiguous across an empty middle task (render↔toggle align).
+  // Each task emits the index TWICE — on the .md-task-pad touch hit extender and on the
+  // checkbox itself (#439) — so pin the pairs: same index within a task, contiguous across.
   const mixed = c.mdToHtml('- [ ] first\n- [ ]\n- [x] third');
   const tasks = [...mixed.matchAll(/data-task="(\d+)"/g)].map(m => m[1]);
-  assert.deepEqual(host(tasks), ['0', '1', '2']);
+  assert.deepEqual(host(tasks), ['0', '0', '1', '1', '2', '2']);
+  assert.ok(mixed.includes('md-task-pad'), 'each task carries its touch hit extender');
   // the toggle path shares the checkbox token with render via TASK_LINE_RE (F4), so
   // its data-task index can't desync from the rendered checkboxes
   assert.ok(_src.includes('const TASK_LINE_RE'), 'TASK_LINE_RE must be defined in the grammar block');
@@ -5322,6 +5325,23 @@ test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
     `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
 });
 
+test('GUIDE drift guard: every essSection has its own Shortcuts page entry', () => {
+  // The Shortcuts nav group is one page per essSection (built by shortcutsSectionBody).
+  // A new essSection value with no matching page entry would silently vanish from the
+  // guide nav, so pin the two sets against each other in the source.
+  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const sections = new Set([...guideBlock.matchAll(/essSection:\s*'([^']+)'/g)].map(m => m[1]));
+  const pages = new Set([...guideBlock.matchAll(/shortcutsSectionBody\('([^']+)'\)/g)].map(m => m[1]));
+  assert.ok(sections.size >= 5, `expected the essential sections, parsed only: ${[...sections].join(', ')}`);
+  assert.deepEqual([...sections].filter(s => !pages.has(s)), [],
+    'essSection values with no Shortcuts page entry (add the page to GUIDE)');
+  assert.deepEqual([...pages].filter(s => !sections.has(s)), [],
+    'Shortcuts page entries whose essSection no longer exists (remove or rename the page)');
+  // the ? button's landing id stays on the first Shortcuts page
+  assert.ok(/id:'shortcuts',\s*cat:'shortcuts'/.test(guideBlock),
+    "the id 'shortcuts' entry (the ? landing page) is missing from the Shortcuts group");
+});
+
 // ── User-guide drift guards ───────────────────────────────────────────────────
 // The user guide (guide/**) restates a few CLOSED enumerated lists that also live
 // in the live code (MODIFIERS, the is: search operators). Those lists are the kind
@@ -6142,6 +6162,12 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('const MAX_INBOXES = 10'), 'inbox cap missing');
   assert.ok(_src.includes('function inboxAt') && _src.includes('function setInboxSlot') && _src.includes('function removeInboxSlot'), 'slot helpers missing');
   assert.ok(_src.includes('function doCapture'), 'capture action missing');
+  // #559: capture works with ZERO setup — no inbox → the top level is the working default
+  // (the same locked default as link-and-create), on the strip AND the URL/share route;
+  // the demand-first placeholder and the no-destination early return are gone.
+  assert.ok(_src.includes('inboxAt(captureSlot) || resolveInbox() || root'), 'doCapture zero-setup top-level fallback missing');
+  assert.ok(!_src.includes('Set an inbox first'), 'the config-before-value placeholder must stay retired');
+  assert.match(_src, /function appendTextToInbox[\s\S]{0,400}resolveInbox\(\) \|\| root/, 'URL/share append must share the top-level fallback');
   assert.ok(_src.includes('id="btn-capture"'), 'toolbar button missing');
   assert.ok(_src.includes("getElementById('btn-capture').addEventListener"), 'button not wired');
   // capture is a TOOLBAR STRIP (not a modal): a #capture-strip region toggled open/closed,
@@ -6181,8 +6207,8 @@ test('#566 touch quick bar: wiring, swap discipline, and the bottom-stack integr
   assert.ok(_src.includes('function captureCurrentPointId'), 'current-point adopt path missing');
   // in-strip ⌘⇧<N> switches the target slot without reopening (captureTargetSlot)
   assert.ok(_src.includes('function capInputKeydown') && _src.includes('captureTargetSlot(d === 0 ? 10 : d)'), 'in-strip slot switch missing');
-  // no destination yet → the capture action opens the manager, never silently no-ops (P4)
-  assert.ok(_src.includes('if (!inbox) { captureManage = true; renderCaptureStrip(); return; }'), 'unset-inbox path missing');
+  // (the old "no destination → open the manager" gate is deliberately GONE — #559: with no
+  // inbox the capture itself proceeds to the top level; the fallback pin is asserted above)
   // Add-inbox must OPEN the modal overlay itself (the strip is no longer a modal, so the
   // tree picker needs its own ioBack.on — the "dead Add button" regression).
   {
@@ -11033,13 +11059,13 @@ test('buildSharePointText — combines a shared body / title / url into one plai
   assert.equal(c.buildSharePointText('', '', ''), '');
 });
 
-test('#465 URL-append wiring: hosted-only, param-stripped, plain-text, no-inbox flash', () => {
+test('#465 URL-append wiring: hosted-only, param-stripped, plain-text, top-level fallback', () => {
   const fn = fnBody(_src, 'handleUrlAppend');
   assert.ok(fn, 'handleUrlAppend must exist');
   assert.ok(/location\.protocol === 'file:' \|\| !window\.isSecureContext/.test(fn), 'inert on file:// and non-secure (PWA-exception rule)');
   assert.ok(/history\.replaceState/.test(fn) && /searchParams\.delete/.test(fn), 'strips the param so a reload never re-appends');
   assert.ok(/appendTextToInbox\(text\)/.test(fn), 'routes through the shared inbox-append helper');
-  assert.ok(/Set a point as your inbox to capture from a link/.test(fn), 'no inbox → a P4 flash, text dropped');
+  assert.ok(/top level/.test(fn), '#559: no inbox → the toast names the top-level fallback (the capture still lands)');
   // it is called in the boot sequence after render(), and the manifest advertises share_target
   assert.ok(/handleUrlAppend\(\);/.test(_src), 'called on boot');
   // the append helper never evaluates the param — plain text into node.text (no promoteInlineShorthand)
