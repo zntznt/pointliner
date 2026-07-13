@@ -905,6 +905,13 @@ body.zoomed .node-content h1.md-h{font-size:1.5em;font-variation-settings:'opsz'
 body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz' 34}
 /* markdown blockquote — element-driven so it works on any line */
 .node-content blockquote.md-bq{border-left:2px solid var(--acc);padding-left:14px;margin:6px 0 6px 2px;color:color-mix(in srgb,var(--fg) 88%,var(--bg));font-family:var(--display-font);font-style:italic;font-size:1.04em;font-variation-settings:'opsz' 12}
+/* Spoiler block (>! ): concealed with a blur until clicked/keyed to reveal. Reveal is transient (resets on re-render), no stored state. */
+.node-content .md-spoiler{border-left:2px dashed var(--muted);padding-left:14px;margin:6px 0 6px 2px;cursor:pointer;border-radius:var(--r-sm)}
+.node-content .md-spoiler:not(.revealed){filter:blur(5px);user-select:none;color:var(--muted);transition:filter .12s ease}
+.node-content .md-spoiler:not(.revealed) *{pointer-events:none}
+.node-content .md-spoiler.revealed{filter:none}
+.node-content .md-spoiler:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.node-content .md-spoiler:not(.revealed){transition:none}}
 .nt-quote>.node-row>.bullet .bullet-dot{opacity:.25}
 /* markdown thematic break */
 .node-content hr.md-hr{border:none;border-top:1px solid var(--bdr);margin:7px 0}
@@ -5538,6 +5545,7 @@ const ATX_RE = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;       // ATX heading "## Text
 const HR_RE  = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;       // thematic break --- *** ___
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})\s*([\w+-]*)\s*$/;  // fenced code ```lang
 const BQ_RE  = /^ {0,3}>\s?(.*)$/;                        // blockquote "> text"
+const SPOILER_RE = /^ {0,3}>!\s?(.*)$/;                   // spoiler ">! hidden" (a blockquote-row extension; MUST be tested before BQ_RE, which also matches ">!" with "!" as content)
 
 // One <li>; task-list items (`- [ ] foo`) render a clickable checkbox. taskNo is
 // a running counter so a click can map back to the Nth task line in node.text.
@@ -5587,11 +5595,22 @@ function mdToHtml(raw, isCode) {
     if (hm) { flush(); const lvl = hm[1].length; out.push(`<h${lvl} class="md-h">${mdInline(hm[2])}</h${lvl}>`); i++; continue; }
     // thematic break: --- *** ___
     if (HR_RE.test(line)) { flush(); out.push('<hr class="md-hr">'); i++; continue; }
-    // blockquote: group consecutive "> " lines into one <blockquote>
+    // spoiler: group consecutive ">! " lines into one hidden block. MUST come before
+    // the blockquote branch, because BQ_RE also matches ">!" (with "!" as the content).
+    // Blurred + click/keyboard reveal in display; plain editable ">! text" in edit mode.
+    if (SPOILER_RE.test(line)) {
+      flush();
+      const q = [];
+      while (i < lines.length && SPOILER_RE.test(lines[i])) { q.push(lines[i].match(SPOILER_RE)[1]); i++; }
+      out.push(`<div class="md-spoiler" role="button" tabindex="0" aria-expanded="false" aria-label="Hidden text, activate to reveal">${q.map(mdInline).join('<br>')}</div>`);
+      continue;
+    }
+    // blockquote: group consecutive "> " lines into one <blockquote> (spoiler ">!" lines
+    // excluded so a spoiler following a quote is not swallowed into the <blockquote>)
     if (BQ_RE.test(line)) {
       flush();
       const q = [];
-      while (i < lines.length && BQ_RE.test(lines[i])) { q.push(lines[i].match(BQ_RE)[1]); i++; }
+      while (i < lines.length && BQ_RE.test(lines[i]) && !SPOILER_RE.test(lines[i])) { q.push(lines[i].match(BQ_RE)[1]); i++; }
       out.push(`<blockquote class="md-bq">${q.map(mdInline).join('<br>')}</blockquote>`);
       continue;
     }
@@ -6318,6 +6337,7 @@ const BLOCK_CMDS = [
   { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
+  { id:'secret',  icon:'🙈',   fa:'fa-solid fa-eye-slash',     label:'Secret',     desc:'Hide a line behind a blur until you click or press it to reveal. Good for GM notes or a twist you do not want to see yet.', ex:'>! hidden text', section:'Blocks' },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
   { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A grid whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
@@ -13388,6 +13408,9 @@ function onKeyDown(e, id, content) {
     // hidden-note indicator: Enter/Space reveals the note (the keyboard twin of its click)
     const nind = e.target.closest?.('.note-ind');
     if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
+    // spoiler block: Enter/Space reveals/re-conceals it (the keyboard twin of its click)
+    const spoil = e.target.closest?.('.md-spoiler');
+    if (spoil && e.target === spoil) { e.preventDefault(); toggleSpoiler(spoil); return; }
     const pchip = e.target.closest?.('.prop-chip');
     if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
     // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
@@ -15131,6 +15154,22 @@ function slashApply() {
   }
   if (trigger !== '@' && cmd.id === 'journal') {
     openJournalEntry();
+    return;
+  }
+  // /secret writes a ">! " prefix at the start of the caret's line (a spoiler is a
+  // markdown line prefix like ">", not a node type — so it is a text write, not a turn).
+  // The caret lands after the prefix so you type the hidden text straight away. #645.
+  if (cmd.id === 'secret') {
+    const cur = nodeById(nodeId); if (!cur) return;
+    const t = cur.text;
+    const ls = t.lastIndexOf('\n', Math.max(0, slashOffset - 1)) + 1;  // start of the caret's line
+    cur.text = t.slice(0, ls) + '>! ' + t.slice(ls);
+    const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
+    if (activeEl) {
+      activeEl.innerHTML = editModeHTML(cur);
+      try { setCaretByOffset(activeEl, ls + 3); } catch(_) {}
+    }
+    markDirty();
     return;
   }
   // LEAN FLOOR: /note creates (if absent) and focuses the inline note editor below the point — the
@@ -23131,12 +23170,22 @@ function flattenArtifacts(text, node, varMap) {
   const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est|query):([a-z0-9]+)\]\]/gi,
     (_, type, key) => frozenTokenText(type, key, node, varMap));
   // progress cookies freeze to their computed tally in a one-way snapshot (UXP-159: honor the depth scope)
-  return flat.replace(/\[(\/|%)(self|children|subtree|\d+)?\]/g, (m, k, scope) => {
+  const cooked = flat.replace(/\[(\/|%)(self|children|subtree|\d+)?\]/g, (m, k, scope) => {
     const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
     if (depth === null) return m;
     const { done, total } = progressCount(node, allSequences(), depth);
     return formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
   });
+  return flattenSpoilers(cooked);
+}
+
+// A one-way export can't conceal, so a spoiler line ">! text" exports as "(spoiler) text"
+// (the reader is warned, the marker is gone). Pure + testable; run after pill/cookie
+// flattening so any pills inside the line are already resolved. #645.
+function flattenSpoilers(text) {
+  return (text || '').split('\n')
+    .map(l => { const m = l.match(SPOILER_RE); return m ? `(spoiler) ${m[1]}` : l; })
+    .join('\n');
 }
 
 // Strip the inline markdown emphasis markers for a clean plain-text rendering.
@@ -23538,17 +23587,27 @@ document.getElementById('outline').addEventListener('click', e => {
   searchHashtag(tag);
 });
 
-// hidden-note indicator clicks (same delegated pattern as hashtags: mousedown is
-// swallowed so the caret never moves — the caret invariant — and click acts)
+// hidden-note indicator + spoiler-block reveals (same delegated pattern as hashtags:
+// mousedown is swallowed so the caret never moves — the caret invariant — and click acts)
 document.getElementById('outline').addEventListener('mousedown', e => {
-  if (e.target.closest('.note-ind')) { e.preventDefault(); e.stopPropagation(); }
+  if (e.target.closest('.note-ind') || e.target.closest('.md-spoiler')) { e.preventDefault(); e.stopPropagation(); }
 }, true);
 document.getElementById('outline').addEventListener('click', e => {
   const ind = e.target.closest('.note-ind');
   if (ind) openNoteEditor(ind.dataset.noteId);
+  const sp = e.target.closest('.md-spoiler');
+  if (sp) toggleSpoiler(sp);
   const chip = e.target.closest('.prop-chip');
   if (chip) openPropChip(chip);
 });
+// Reveal is transient DOM state only (never written to node.text), so a spoiler
+// re-conceals on the next render — that is deliberate for the self-blinding use.
+// Enter/Space keyboard reveal is wired in onKeyDown (the per-content handler),
+// beside the note-ind / hashtag / link keyboard twins.
+function toggleSpoiler(sp) {
+  const shown = sp.classList.toggle('revealed');
+  sp.setAttribute('aria-expanded', shown ? 'true' : 'false');
+}
 
 // A property chip opens its editor: a date chip (due/start) → the Schedule
 // dialog (with the calendar); any other property → the generic Properties dialog.
@@ -25908,6 +25967,14 @@ const GUIDE = [
       { syn:'``` or ~~~',   desc:'code block' },
       { syn:'--- or ***',   desc:'divider line' },
       { syn:'/base',        desc:'editable spreadsheet table' },
+    ] },
+  { id:'secret', cat:'writing', covers:['secret'],
+    title:'Secret and spoiler blocks',
+    body:"Hide a line behind a blur until you choose to reveal it. Start a line with >! and it becomes a spoiler: in reading view it shows as a soft blur, and a click (or Enter or Space when it has focus) reveals it, click again to hide it. It is good for two things. Hand someone a self-contained copy of a document and your GM notes or answers stay covered until they look. Or blind yourself: write down an oracle result, a clue or a twist you do not want to see yet, and reveal it only when the story reaches it. A spoiler can span several lines, one >! per line, and pills and links inside it still work once revealed. Revealing is not saved, so a spoiler is blurred again next time the point is drawn. In an exported Markdown or text file a spoiler line is written with a (spoiler) label in front so a reader is warned before they read it.",
+    examples:[
+      { syn:'>! hidden text',   desc:'a spoiler line, blurred until revealed' },
+      { syn:'/secret',          desc:'start a spoiler line from the menu' },
+      { syn:'click / Enter',    desc:'reveal or re-hide a spoiler' },
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',

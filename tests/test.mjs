@@ -12242,3 +12242,62 @@ test('pickFromQuery (#558) — the drawn value has its queried tag stripped', ()
     `picked "${picked}" reads as fiction, no #npc`);
   assert.ok(!/#npc/.test(picked), 'the queried tag never appears in the result');
 });
+
+// ── secret / spoiler blocks (#645) ─────────────────────────────────────────
+// A ">! text" line renders a hidden .md-spoiler block, NOT a blockquote — even
+// though BQ_RE (/^ {0,3}>\s?(.*)$/) also matches ">!" with "!" as content. The
+// SPOILER-before-BQ branch order (and the guard on the BQ grouping loop) is the
+// whole correctness story, so these pins would fail if that order regressed.
+
+test('spoiler (#645) — ">! text" renders a spoiler block, not a blockquote', () => {
+  const h = c.mdToHtml('>! secret');
+  assert.match(h, /class="md-spoiler"/, 'a >! line is a spoiler block');
+  assert.doesNotMatch(h, /<blockquote/, 'a >! line is NOT swallowed by the blockquote branch');
+  assert.match(h, /role="button"/, 'the spoiler is keyboard-activatable (role=button)');
+  assert.match(h, /aria-expanded="false"/, 'starts concealed');
+});
+
+test('spoiler (#645) — a plain "> text" line is still a blockquote (no regression)', () => {
+  const h = c.mdToHtml('> hello');
+  assert.match(h, /<blockquote class="md-bq">hello<\/blockquote>/, 'plain quote unchanged');
+  assert.doesNotMatch(h, /md-spoiler/, 'a bare > is not a spoiler');
+});
+
+test('spoiler (#645) — ">!" with no space after the bang still hides', () => {
+  assert.match(c.mdToHtml('>!secret'), /class="md-spoiler"/, 'the space after >! is optional (\\s?)');
+});
+
+test('spoiler (#645) — a quote then a spoiler do NOT merge (two-sided grouping guard)', () => {
+  // The blockquote grouping loop must exclude >! lines, or a spoiler following a
+  // quote gets swallowed into the <blockquote>.
+  const h = c.mdToHtml('> quote\n>! hidden');
+  assert.match(h, /<blockquote class="md-bq">quote<\/blockquote>/, 'the quote stays its own block');
+  assert.match(h, /class="md-spoiler"[^>]*>hidden</, 'the spoiler stays its own block');
+});
+
+test('spoiler (#645) — consecutive >! lines group into one block, <br>-joined', () => {
+  const h = c.mdToHtml('>! one\n>! two');
+  const blocks = h.match(/md-spoiler/g) || [];
+  assert.equal(blocks.length, 1, 'two >! lines make ONE spoiler block');
+  assert.match(h, /one<br>two/, 'lines joined by <br> like a blockquote');
+});
+
+test('spoiler (#645) — export labels each spoiler line with a (spoiler) prefix', () => {
+  // flattenSpoilers runs at the tail of flattenArtifacts, so a one-way export
+  // warns the reader instead of concealing (which a flat file can't do).
+  assert.equal(
+    c.flattenSpoilers('>! the duke did it\nplain line\n>! and the well'),
+    '(spoiler) the duke did it\nplain line\n(spoiler) and the well',
+    'each >! line becomes "(spoiler) …"; plain lines untouched');
+  assert.equal(c.flattenSpoilers('no spoilers here'), 'no spoilers here', 'no-op on plain text');
+  assert.equal(c.flattenSpoilers(''), '', 'empty string is safe');
+});
+
+test('spoiler (#645) — SOURCE PIN: the spoiler branch precedes the blockquote branch in mdToHtml', () => {
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const body = fnBody(src, 'mdToHtml');
+  const spoilerAt = body.indexOf('SPOILER_RE.test(line)');
+  const bqAt = body.indexOf('BQ_RE.test(line)');
+  assert.ok(spoilerAt > -1 && bqAt > -1, 'both branches present in mdToHtml');
+  assert.ok(spoilerAt < bqAt, 'the SPOILER_RE branch MUST come before the BQ_RE branch (the ordering trap)');
+});

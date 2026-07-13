@@ -15,6 +15,29 @@ passage or a table for data you would otherwise put in a spreadsheet.
 Type **`/`** at the start of a point to open the menu and pick a type. (Markdown prefixes work too:
 start a line with `#` for a heading, `>` for a quote, `` ``` `` for a code fence.)
 
+## Secret and spoiler blocks
+
+Hide a line behind a blur until you choose to reveal it. Start a line with **`>!`** and it becomes a
+spoiler: in reading view it shows as a soft blur, and a click (or **Enter** / **Space** when it has
+focus) reveals it. Click again to hide it. Type **`/secret`** to start one from the menu.
+
+```
+>! The duke is the traitor.
+>! He poisoned the well in act two.
+```
+
+It is good for two things:
+
+- **Sharing.** Hand someone a self-contained copy of a document and your GM notes or answers stay
+  covered until they look.
+- **Blinding yourself.** Write down an oracle result, a clue or a twist you do not want to see yet,
+  and reveal it only when the story reaches it.
+
+A spoiler can span several lines (one `>!` per line), and pills or links inside it still work once
+revealed. Revealing is not saved, so a spoiler is blurred again the next time the point is drawn. In
+an exported Markdown or text file each spoiler line is written with a `(spoiler)` label in front, so
+a reader is warned before they read it.
+
 ## Styling text
 
 Make key words stand out, mark something as code, highlight a phrase for review or drop in a

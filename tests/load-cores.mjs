@@ -213,7 +213,7 @@ export function loadCores() {
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
     'rolltableDefToRules','migrateRolltables',
-    'rollPickSource','formatVarValue','flattenArtifacts','frozenTokenText','mathErrorReason','mathReasonPhrase',
+    'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
