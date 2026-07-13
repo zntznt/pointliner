@@ -12373,6 +12373,53 @@ test('clock (#646) — SOURCE PIN: advanceClockAt repaints in display mode, not 
   assert.match(body, /content\.dataset\.editing/, 'it also declines to advance while the node is being edited');
 });
 
+// ── meter pills {meter: value/max} (#648) ──────────────────────────────────
+// A computed bar of a numeric property, in the sparkline/clock unicode-string idiom
+// (never SVG). These pins guard the pure cores that both the pill and the export share.
+
+test('meter (#648) — parseMeter reads prop/prop, prop/lit, bare percent, and rejects garbage', () => {
+  assert.deepEqual(host(c.parseMeter('meter: hp/hpmax')),
+    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'prop', v: 'hpmax' } }, 'prop over prop');
+  assert.deepEqual(host(c.parseMeter('meter: hp/20')),
+    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 20 } }, 'prop over a literal max');
+  assert.deepEqual(host(c.parseMeter('meter: 8/12')),
+    { value: { kind: 'lit', v: 8 }, max: { kind: 'lit', v: 12 } }, 'two literals');
+  assert.deepEqual(host(c.parseMeter('meter: hp')),
+    { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 100 } }, 'bare value defaults max to 100 (percent)');
+  assert.equal(c.parseMeter('meter: hp+/x'), null, 'a non-ref side is rejected');
+  assert.equal(c.parseMeter('shuffle: a|b'), null, 'a non-meter brace body is not a meter');
+});
+
+test('meter (#648) — meterBar fills to round(value/max), clamped both ends', () => {
+  assert.equal(c.meterBar(8, 12), '███████░░░', '8/12 over 10 cells rounds to 7 filled');
+  assert.equal(c.meterBar(0, 12), '░░░░░░░░░░', 'empty');
+  assert.equal(c.meterBar(12, 12), '██████████', 'full');
+  assert.equal(c.meterBar(20, 12), '██████████', 'a value over max clamps to full, never overflows');
+  assert.equal(c.meterBar(-3, 12), '░░░░░░░░░░', 'a negative value clamps to empty');
+  assert.equal(c.meterBar(3, 20), '██░░░░░░░░', '3/20 rounds to 2 filled cells');
+});
+
+test('meter (#648) — resolveMeter reads props off the node; missing or non-numeric → null', () => {
+  const node = { props: [{ key: 'hp', val: '8' }, { key: 'hpmax', val: '12' }] };
+  assert.deepEqual(host(c.resolveMeter(node, c.parseMeter('meter: hp/hpmax'))), { value: 8, max: 12 }, 'reads both props');
+  assert.deepEqual(host(c.resolveMeter(node, c.parseMeter('meter: hp/20'))), { value: 8, max: 20 }, 'prop value, literal max');
+  assert.equal(c.resolveMeter({ props: [] }, c.parseMeter('meter: hp/hpmax')), null, 'missing prop → null (shows the marker)');
+  assert.equal(c.resolveMeter({ props: [{ key: 'hp', val: 'lots' }] }, c.parseMeter('meter: hp')), null, 'non-numeric prop → null');
+  assert.equal(c.resolveMeter(node, c.parseMeter('meter: hp/0')), null, 'a zero max is rejected (no divide-by-zero bar)');
+});
+
+test('meter (#648) — formatMeter is the bar + exact count (the display and export string)', () => {
+  assert.equal(c.formatMeter(8, 12), '███████░░░ 8/12', 'bar then the exact count');
+  assert.equal(c.formatMeter(0, 4), '░░░░░░░░░░ 0/4', 'empty');
+  assert.equal(c.formatMeter(4, 4), '██████████ 4/4', 'full');
+});
+
+test('meter (#648) — a meter freezes to its bar string on export; unresolvable → {meter?}', () => {
+  const node = { id: 'n', props: [{ key: 'hp', val: '8' }, { key: 'hpmax', val: '12' }], children: [] };
+  assert.equal(c.flattenArtifacts('HP {meter: hp/hpmax} left', node, {}), 'HP ███████░░░ 8/12 left', 'resolved meter freezes to its bar');
+  assert.equal(c.flattenArtifacts('{meter: mana/manamax}', node, {}), '{meter?}', 'a missing property exports the visible marker, not a wrong bar');
+});
+
 test('clock (#646) — clockGlyph fills in quarters, never empty/full for a partial', () => {
   // A 4-clock maps cleanly to the 5 ring states.
   assert.equal(['○','◔','◑','◕','●'].map((_,d) => c.clockGlyph(d, 4)).join(''), '○◔◑◕●',

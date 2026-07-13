@@ -92,6 +92,8 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 - **Progress clocks.** Drop `[o 0/6]` for a segmented tension clock you fill by hand, click to
   advance. ([progress clocks](tasks-and-organizing.md#progress-clocks))
   ([progress](computing-numbers.md#progress-bars))
+- **Meters.** Drop `{meter: hp/hpmax}` for a bar of a number against its maximum (HP, spell
+  slots, any gauge), read live from the point's properties. ([meters](tasks-and-organizing.md#meters))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
   ([variables](computing-numbers.md#variables-in-math))
 
