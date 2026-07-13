@@ -82,14 +82,14 @@ The `{= sum(slots)}` rollup totals the items; add a **check** of `sum(slots) <= 
 This is the same machinery as the [character sheet](../character-sheet/character-sheet.md) case, tuned
 to Cairn's slots.
 
-## Damage, armor and the death spiral
+## Damage, armour and the death spiral
 
 Damage in Cairn hits **Hit Protection** first (luck and stamina); when that runs out, the rest comes
 off **Strength**, and low Strength means Strength saves to avoid dying. Track HP and STR as variables
 and subtract by editing them, with the damage roll as a pill:
 
 ```
-Goblin hits you for {1d6} damage. Subtract armor, take the rest off HP, then off STR.
+Goblin hits you for {1d6} damage. Subtract armour, take the rest off HP, then off STR.
 Blade: {1d8}    Club: {1d6}    Bow: {1d6}
 ```
 
