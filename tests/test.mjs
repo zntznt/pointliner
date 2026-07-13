@@ -10078,6 +10078,18 @@ test('filterEmojiCandidates — no match is an empty list', () => {
   assert.deepEqual(host(c.filterEmojiCandidates('zzz', EMOJI_FIXTURE)), []);
 });
 
+test('#592 filterEmojiCandidates — mid-name substring matches, with prefix matches ranked first', () => {
+  // was prefix-only: `:eyes` found nothing though heart_eyes exists. Now a substring match surfaces it.
+  assert.deepEqual(host(c.filterEmojiCandidates('eyes', EMOJI_FIXTURE)).map(e => e.name), ['heart_eyes']);
+  // `art` is a mid-name substring of both heart and heart_eyes (neither is a prefix match)
+  assert.deepEqual(host(c.filterEmojiCandidates('art', EMOJI_FIXTURE)).map(e => e.name), ['heart', 'heart_eyes']);
+  // ranking: a query that matches one name as a PREFIX and another only mid-name lists the prefix first.
+  const RANK = { ember:'🔥', remember:'📝' };   // 'ember' is a prefix of `ember`, a substring of `remember`
+  assert.deepEqual(host(c.filterEmojiCandidates('ember', RANK)).map(e => e.name), ['ember', 'remember']);
+  // the dedupe + exact-name-dismiss still hold under substring matching
+  assert.deepEqual(host(c.filterEmojiCandidates('fire', EMOJI_FIXTURE)), [], 'exact full name still dismisses');
+});
+
 // ── priority: search + agenda rollup (UXP-109) ───────────────────────────────
 const SEQS = [{ states: ['TODO', 'NEXT', 'WAITING', 'DONE'], heldFrom: 2, doneFrom: 3 }];  // the default sequence shape: active(TODO,NEXT) | held(WAITING) | done(DONE)  (UXP-158)
 
