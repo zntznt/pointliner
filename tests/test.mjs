@@ -6177,6 +6177,31 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('function closeCapture') && _src.includes('function toggleCapture'), 'strip open/close missing');
   assert.ok(_src.includes("getElementById('cap-input')"), 'strip input focus missing');
   assert.ok(_src.includes('toggleCapture()'), '⌘⇧I toggle wiring missing');
+
+test('#566 touch quick bar: wiring, swap discipline, and the bottom-stack integration (src pins)', () => {
+  // the bar exists with its four actions and swaps with the edit bar (one bottom bar at a time)
+  assert.ok(_src.includes('id="quick-bar"'), 'quick bar region missing');
+  for (const id of ['qb-capture', 'qb-new', 'qb-insert', 'qb-help'])
+    assert.ok(_src.includes(`id="${id}"`), `${id} button missing`);
+  assert.ok(_src.includes('function updateQuickBar'), 'updateQuickBar missing');
+  assert.match(_src, /IS_TOUCH && !editBar\.classList\.contains\('on'\)/, 'bar must show on touch only, hidden while the edit bar is up');
+  assert.match(_src, /updateQuickBar\(\);\s*\/\/ #566/, 'updateEditBar must drive the swap');
+  // new point goes through the virtual-list reveal (ensureRowVisible), then focus enters edit;
+  // the @ variant reuses the eb-insert typed-'@' path (UXP-105), no duplicated menu logic
+  const qnp = fnBody(_src, 'quickNewPoint');
+  assert.ok(qnp.includes('insertSiblingAfter('), 'the + must be the ghost row\'s twin (same continuation-aware append)');
+  assert.ok(qnp.includes("execCommand('insertText', false, '@')"), 'the @ variant must reuse the typed-@ path');
+  // the renderWindow focus-preservation fix this feature depends on: a rebuild around a
+  // focused editor restores focus + caret instead of exitEditing it via the removal-blur
+  assert.ok(_src.includes('_vlPreservingFocus'), 'renderWindow focus preservation missing');
+  assert.match(_src, /if \(_vlPreservingFocus\) return;/, 'the blur handlers must honor the rebuild guard');
+  // the bar is the bottom-stack floor: panels/toast sit on it, and the corner ? folds in
+  assert.ok(_src.includes('quickBarHeight()'), 'stack sums must count the bar');
+  assert.match(_src, /#sc-toggle\{display:none\}/, 'the corner ? must fold into the bar on touch');
+  // the capture twin mirrors the toolbar toggle's pressed state
+  assert.match(_src, /qb-capture'\)\?\.setAttribute\('aria-pressed', 'true'\)/, 'open must press the twin');
+  assert.match(_src, /qb-capture'\)\?\.setAttribute\('aria-pressed', 'false'\)/, 'close must release the twin');
+});
   // slot shortcuts: ⌘⇧<N> capture-to-slot (adopt current point if empty), ⌘⌥<N> set-as-inbox
   assert.ok(_src.includes('openCaptureDialog(d === 0 ? 10 : d)'), 'slot capture shortcut missing');
   assert.ok(_src.includes('function captureCurrentPointId'), 'current-point adopt path missing');
