@@ -7791,6 +7791,16 @@ test('applyAutosaveData re-validates root.calendar through normalizeCalendar (#5
   const fn = fnBody(_src, 'applyAutosaveData');
   assert.ok(fn.includes('normalizeCalendar(root.calendar)'), 'autosave restore normalizes the calendar');
 });
+test('#563 the OPFS boot reconcile clears the examples-banner + first-run gate after swapping in the real doc', () => {
+  // When boot showed the Examples doc (empty localStorage) and reconcileOpfsOnBoot then swaps in the
+  // surviving OPFS copy via applyAutosaveData, it must clear _showingExamples + hide the banner
+  // (applyAutosaveData, unlike adoptDoc, doesn't), or the banner floats over the real doc and
+  // autosave stays gated. Pin the clear in the OPFS-wins branch.
+  const fn = fnBody(_src, 'reconcileOpfsOnBoot');
+  assert.ok(fn.includes('applyAutosaveData(data)'), 'the OPFS-wins branch applies the OPFS doc');
+  assert.ok(fn.includes('_showingExamples = false; hideExamplesBanner()'),
+    'the OPFS-wins branch must clear the first-run examples state (banner + gate) after applyAutosaveData');
+});
 test('parseDueDate relative forms resolve against the PASSED calendar (#527 seam contract)', () => {
   const cal = c.normalizeCalendar(HARPTOS); // current: 5000
   assert.equal(c.parseDueDate('today', cal), 5000, 'today = the fiction current, not the wall clock');
