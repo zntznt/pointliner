@@ -727,6 +727,41 @@ test('parseRules — accepts dotted sub-rule names; rejects stray dots', () => {
   assert.equal(c.parseRules('a.: y'), null);   // trailing dot
 });
 
+test('#582 parseRulesLoose — a # comment line does not zero the pack', () => {
+  const r = c.parseRulesLoose('# Weapons\nsword: blade | rapier\naxe: hatchet | greataxe');
+  assert.deepEqual(host(Object.keys(r.rules).sort()), ['axe', 'sword']);
+  assert.deepEqual(host(r.dropped), []);   // the comment is skipped, not dropped
+});
+
+test('#582 parseRulesLoose — one bad line drops only itself, keeps the rest (no total loss)', () => {
+  const r = c.parseRulesLoose('sword: blade\njust prose no colon\naxe: hatchet');
+  assert.deepEqual(host(Object.keys(r.rules).sort()), ['axe', 'sword']);
+  assert.deepEqual(host(r.dropped), ['just prose no colon']);   // the offender is reported (P4)
+});
+
+test('#582 parseRulesLoose — // comments and blank lines still tolerated; empty def yields empty', () => {
+  const r = c.parseRulesLoose('// header\n\nsword: blade\n\n// mid\naxe: hatchet');
+  assert.deepEqual(host(Object.keys(r.rules).sort()), ['axe', 'sword']);
+  assert.deepEqual(host(r.dropped), []);
+  const e = c.parseRulesLoose('');
+  assert.deepEqual(host(Object.keys(e.rules)), []);
+  assert.deepEqual(host(e.dropped), []);
+});
+
+test('#582 parseRulesLoose — per-line semantics match strict parseRules (a line parses iff strict would)', () => {
+  // a valid weighted-alt rule survives; a name-only line (no rhs) is dropped, matching strict
+  const r = c.parseRulesLoose('loot: gold 2 | gem\nbroken:\nweapon: sword | axe');
+  assert.deepEqual(host(Object.keys(r.rules).sort()), ['loot', 'weapon']);
+  assert.deepEqual(host(r.dropped), ['broken:']);   // empty rhs → strict rejects → loose drops it
+});
+
+test('#582 regression — strict parseRules still nulls on a bad line (the grammar-pill escape hatch)', () => {
+  assert.equal(c.parseRules('# Weapons\nsword: blade'), null);
+  assert.equal(c.parseRules('just prose no colon\nsword: blade'), null);
+  // the loose parser must NOT have changed the strict one's contract
+  assert.ok(c.parseRules('sword: blade | axe'), 'a fully-valid def still parses strictly');
+});
+
 test('isYesNoOracle — content-sniff: every origin alt leads yes/no, regardless of provenance (UXP-145)', () => {
   const O = (def, origin) => c.isYesNoOracle({ def, origin, result: 'x' });
   // a pure Yes/No family (typed shorthand form) → oracle
@@ -1465,12 +1500,34 @@ test('plugin packs — mergePackRules is defensive and later-pack-wins', () => {
   c.mergePackRules(target, [
     { id: 'a', rules: 'color: red' },
     { id: 'b', rules: 'color: blue' },   // later pack wins on a name collision
-    { id: 'c', rules: 'bogus line' },    // parseRules → null → skipped
+    { id: 'c', rules: 'bogus line' },    // #582: a colonless-only pack yields no rules (not a crash)
     { rules: 'beast: ogre' },            // no id → skipped
   ]);
   assert.ok('color' in target);
   assert.equal(target.color[0].template, 'blue', 'later pack wins on a rule-name collision');
   assert.ok(!('beast' in target), 'an id-less pack is skipped');
+});
+
+test('#582 plugin packs — mergePackRules keeps the good rules past a # comment or one bad line', () => {
+  const target = Object.create(null);
+  c.mergePackRules(target, [
+    { id: 'weapons', rules: '# Weapons\nsword: blade\naxe: hatchet' },       // # header no longer zeroes it
+    { id: 'npcs', rules: 'fence: shady\ntypo no colon here\nprior: pious' }, // one bad line no longer wipes the pack
+  ]);
+  assert.ok('sword' in target && 'axe' in target, 'a # comment must not drop the pack rules');
+  assert.ok('fence' in target && 'prior' in target, 'one malformed line must not drop the whole pack');
+});
+
+test('#582 wiring: pack paths use the tolerant parser; the grammar-pill path stays strict (src pins)', () => {
+  // the merge and the manager's count/preview go through parseRulesLoose
+  assert.ok(_src.includes('parseRulesLoose(p.rules).rules'), 'mergePackRules must use the tolerant parser');
+  assert.ok(_src.includes("parseRulesLoose(p.rules || '').order.length"), 'the pack rule-count must be tolerant');
+  assert.ok(_src.includes('parseRulesLoose(v)'), 'the pack editor preview must use the tolerant parser');
+  // the preview surfaces the dropped count (P4: no silent loss)
+  assert.ok(_src.includes('parsed.dropped.length') && _src.includes('skipped'), 'the editor must report skipped lines (P4)');
+  // CRITICAL: the grammar-pill path (g.def) must stay STRICT — the escape-hatch contract
+  assert.ok(_src.includes('parseRules(g.def)'), 'a grammar pill must still parse strictly (invalid body → literal)');
+  assert.ok(!_src.includes('parseRulesLoose(g.def)'), 'the grammar-pill path must NOT be made tolerant');
 });
 
 test('plugin packs — packVarDefs flattens only well-formed {name,expr} entries', () => {

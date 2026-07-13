@@ -10102,7 +10102,7 @@ function buildPackListView() {
       const nm = document.createElement('span'); nm.className = 'tpl-name' + (pluginPackActive(p) ? '' : ' pack-off');
       nm.textContent = packLabel(p);
       const cnt = document.createElement('span'); cnt.className = 'tpl-count';
-      const nRules = parseRules(p.rules || '')?.order?.length || 0;
+      const nRules = parseRulesLoose(p.rules || '').order.length;   // #582: tolerant count (a # comment no longer reads as 0 rules)
       const nVars = Array.isArray(p.vars) ? p.vars.length : 0;
       cnt.textContent = `${nRules} rule${nRules === 1 ? '' : 's'}, ${nVars} var${nVars === 1 ? '' : 's'}`;
       pick.append(nm, cnt);
@@ -10186,10 +10186,13 @@ function buildPackEditView() {
   const updRules = () => {
     const v = rulesIn.value.trim();
     if (!v) return setPrev(rulesPrev, 'Blank is fine (a vars-only pack).');
-    const parsed = parseRules(v);
-    const n = parsed?.order?.length || 0;
-    if (!n) return setPrev(rulesPrev, 'No valid rule lines found. Use name: choices per line.', true);
-    setPrev(rulesPrev, `${n} rule${n === 1 ? '' : 's'}: ${parsed.order.join(', ')}`);
+    // #582: tolerant parse — keep the good rules, tell the author about any dropped lines
+    // (P4: no silent loss) instead of the old all-or-nothing that zeroed the pack on one typo.
+    const parsed = parseRulesLoose(v);
+    const n = parsed.order.length;
+    const dropNote = parsed.dropped.length ? ` (${parsed.dropped.length} line${parsed.dropped.length === 1 ? '' : 's'} skipped: no colon)` : '';
+    if (!n) return setPrev(rulesPrev, 'No valid rule lines found. Use name: choices per line.' + (parsed.dropped.length ? ` ${parsed.dropped.length} line(s) skipped.` : ''), true);
+    setPrev(rulesPrev, `${n} rule${n === 1 ? '' : 's'}: ${parsed.order.join(', ')}${dropNote}`, parsed.dropped.length > 0);
   };
   rulesIn.addEventListener('input', updRules); updRules();
   // vars (one per line: name = expr)
@@ -15942,6 +15945,28 @@ function parseRules(def) {
   return order.length ? { rules, order } : null;
 }
 
+// #582: the TOLERANT twin of parseRules, for DATA PACKS ONLY. The strict parseRules
+// returns null on the first bad line — the right contract for a `[[grammar:]]` pill
+// (an invalid body stays literal text, the documented escape hatch), but total silent
+// data loss for a hand-authored pack (one fat-fingered colon, or a `#` section header,
+// zeroes every rule). This keeps the good rules and reports what it dropped, so a big
+// pack survives a typo. Per-line semantics are IDENTICAL to strict parsing because each
+// line is fed through parseRules itself (no logic fork): a line parses here iff it would
+// parse there. `#` comment lines are skipped, matching the existing `//` support and the
+// tag-sigil convention used everywhere else. Pure; returns { rules, order, dropped:[…] }
+// where dropped is the list of offending source lines (for a P4 count in the manager).
+function parseRulesLoose(def) {
+  const rules = Object.create(null); const order = []; const dropped = [];
+  for (const raw of (def || '').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('//') || line.startsWith('#')) continue;   // blank / comment
+    const one = parseRules(line);                                           // reuse the strict per-line parser
+    if (!one) { dropped.push(line); continue; }                             // bad line: drop it, keep the rest
+    for (const name of one.order) { if (!(name in rules)) order.push(name); rules[name] = one.rules[name]; }
+  }
+  return { rules, order, dropped };
+}
+
 // Weighted random choice among [{...,weight}] entries.
 // Weighted random pick. A weight may be a static number or a `{= expr}` resolved
 // now against `vars` (A5). An unresolved expr → neutral weight 1 (the alt is not
@@ -16559,8 +16584,10 @@ function pluginPackActive(p) {
 function mergePackRules(target, plugins) {
   for (const p of (plugins || [])) {
     if (!pluginPackActive(p) || typeof p.rules !== 'string') continue;  // #487: skip a disabled pack
-    const parsed = parseRules(p.rules);
-    if (parsed) Object.assign(target, parsed.rules);
+    // #582: the TOLERANT parser — a `#` section header or one fat-fingered colon no longer
+    // silently zeroes the whole pack; the good rules merge, the bad lines are dropped
+    // (the count is surfaced in the pack manager's preview, not here on the hot collect path).
+    Object.assign(target, parseRulesLoose(p.rules).rules);
   }
   return target;
 }
@@ -25876,9 +25903,10 @@ const GUIDE = [
     ] },
   { id:'datapacks', cat:'compute',
     title:'Data packs',
-    body:"Bundle grammar rules and formula variables you want to reuse, so you don't have to redefine them in every document. A pack is pure data (the same rules and variables you already write in pills), stored with the document. Open File then Data packs to manage them: create a pack, type its grammar rules (one per line, name: choices) and formula variables (one per line, name = expression), and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. Toggle a pack off to remove its rules and variables without deleting it, or export a pack to a file to share it and import one back. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. Packs never run code; they only add the data the existing pill engines already understand.",
+    body:"Bundle grammar rules and formula variables you want to reuse, so you don't have to redefine them in every document. A pack is pure data (the same rules and variables you already write in pills), stored with the document. Open File then Data packs to manage them: create a pack, type its grammar rules (one per line, name: choices) and formula variables (one per line, name = expression), and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. Toggle a pack off to remove its rules and variables without deleting it, or export a pack to a file to share it and import one back. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. To keep a big pack tidy, start a line with # to add a section header comment; those lines are skipped, and if you leave the colon off a rule by mistake, only that one line is skipped (the rest of the pack still loads, and the editor tells you how many lines it skipped). Packs never run code; they only add the data the existing pill engines already understand.",
     examples:[
       { syn:'File → Data packs',      desc:'create, enable, edit, import or export packs' },
+      { syn:'# Weapons',              desc:'a section header comment; skipped, keeps a big pack tidy' },
       { syn:'npc: knight | rogue | mage', desc:'a pack grammar rule, callable as {npc} anywhere' },
       { syn:'tax = 0.2',              desc:'a pack formula variable, usable in any {= …}' },
       { syn:'toggle off',             desc:'disable a pack without deleting it' },
