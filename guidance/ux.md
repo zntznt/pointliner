@@ -104,6 +104,29 @@ reads as junk, and it blurs "my notes" with "tutorial."
 4. **Self-documenting widgets** — ensure every pill/affordance has a clear label + tooltip.
 5. **The `?` syntax panel** — already exists; keep it as the full cheat-sheet for power users.
 
+### Depth nudges (#519) — SHIPPED (the win-#2 "just-in-time hints", concrete form)
+The day-3-to-day-30 gap is that the differentiating depth (rollups, `{roll:}`, constraints,
+estimates) is reachable only by already knowing what to type. **Point-of-relevance nudges** close
+it: a one-time toast fires the moment a deep feature becomes *applicable*, not before. Shipped as a
+generalization of the storage-quota nudge (the sanctioned proactive-hint precedent, ux-discipline
+§P4), under strict constraints so it never nags:
+- **Guided-only.** `fireNudge` returns early unless `isGuided()` — silent in Standard/Lean (the dial
+  contract). A nudge is a teaching aid, which the dial governs.
+- **Once ever, persisted.** Each nudge id is written to `localStorage['pl-nudges-seen']` on first
+  fire and never shows again, across sessions. No re-nagging.
+- **The toast channel only.** Fires through `flashHint` (no new UI, the one-feedback-pattern rule);
+  reaches `#a11y-live` for free.
+- **Only when actually useful.** The decision is a pure predicate (`nudgeSumKey`/`nudgeRollTag`,
+  Node-tested): a `sum()` nudge fires only when a numeric property has a sibling/child to total; a
+  `{roll:}` nudge only when a `#tag` roster reaches a real draw-pool size. A lone property or a
+  one-off tag stays silent.
+- **Points at the door, isn't one.** The message names the feature and the guide entry ("See the
+  Calculations guide"), it does not teach in situ. The concept guide remains the floor.
+
+Shipped triggers: numeric-property-gains-a-rollup (props dialog save + `/prop` slash), and
+tag-roster-crosses-threshold (a tag-adding edit). The set is extensible — add a predicate + a
+`fireNudge` call at the relevant commit seam; the guards are centralized so trigger sites stay dumb.
+
 ## Open questions
 - **Where the dial lives** — appearance menu? A persistent corner control? And how discoverable
   the "go Lean" path is without nagging.
