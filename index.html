@@ -16298,6 +16298,28 @@ function insertAndSelect(el, before, word, after) {
   el.setSelectionRange(head.length, head.length + word.length);
 }
 
+// Build the shared .io-chip button row. Each chip either inserts a string snippet at the caret
+// (a TEACH chip) or runs its insert(inp) function (an ACT chip: fill or toggle the field).
+// mousedown+preventDefault keeps the field's caret intact (the caret invariant); after inserting,
+// refresh the preview (input event) and refocus. Both openInsertDialog's field loop and the
+// bespoke var dialog route through here, so a future change (keyboard, aria) lands in one place.
+function buildChipRow(chips, inp, afterInsert) {
+  const row = document.createElement('div'); row.className = 'io-chips';
+  chips.forEach(chip => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'io-chip'; b.textContent = chip.label;
+    b.title = chip.title || 'Insert';   // a chip may fill the form, not just insert (P4) — let it say so
+    b.addEventListener('mousedown', e => {
+      e.preventDefault();
+      if (typeof chip.insert === 'function') chip.insert(inp); else insertAtCaret(inp, chip.insert);
+      inp.dispatchEvent(new Event('input', { bubbles: false }));
+      if (afterInsert) afterInsert();
+      inp.focus();
+    });
+    row.appendChild(b);
+  });
+  return row;
+}
+
 const MARKOV_CHIPS = [
   { label:'+ rule', insert: el => {
       const nl = el.value && !el.value.endsWith('\n') ? '\n' : '';
@@ -16367,21 +16389,7 @@ function openInsertDialog(opts) {
       updatePrev();
       wrap.appendChild(prev);
     }
-    if (f.chips) {
-      const row = document.createElement('div'); row.className = 'io-chips';
-      f.chips.forEach(chip => {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'io-chip'; b.textContent = chip.label;
-        b.title = chip.title || 'Insert';   // a chip may do more than insert (the calendar presets fill the form) — let it say so (P4)
-        b.addEventListener('mousedown', e => {
-          e.preventDefault(); // keep the field focused / caret intact
-          if (typeof chip.insert === 'function') chip.insert(inp); else insertAtCaret(inp, chip.insert);
-          inp.dispatchEvent(new Event('input', { bubbles: false })); // refresh preview
-          validate(); inp.focus();
-        });
-        row.appendChild(b);
-      });
-      wrap.appendChild(row);
-    }
+    if (f.chips) wrap.appendChild(buildChipRow(f.chips, inp, validate));
     if (f.hint) { const h = document.createElement('div'); h.className = 'io-hint'; h.textContent = f.hint; wrap.appendChild(h); }
     ioCard.appendChild(wrap);
   });
@@ -19748,6 +19756,7 @@ const EST_CHIPS = [
   { label:'normal()',  insert: el => insertAndSelect(el, 'normal(', '8, 2', ')') },
   { label:'uniform()', insert: el => insertAndSelect(el, 'uniform(', '0, 10', ')') },
   { label:'sum()',     insert: el => insertAndSelect(el, 'sum(', 'cost', ')') },
+  { label:'avg()',     insert: el => insertAndSelect(el, 'avg(', 'cost', ')') },
 ];
 
 function openEstimateDialog({ title, submitLabel, expr = '', existing = null, node = null, onResult }) {
@@ -20063,13 +20072,24 @@ function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
   });
 }
 
+// The search-operator chips shared by the query and query-base dialogs: TEACH chips that insert
+// an example of each operator in the closed search vocabulary (parseSearchQuery), with the value
+// part selected for editing. Every other authoring dialog gets insert chips; these two had none.
+const QUERY_CHIPS = [
+  { label:'is:',  title:'Filter by state: is:todo, is:done, is:note',        insert: el => insertAndSelect(el, 'is:', 'todo', '') },
+  { label:'#tag', title:'Match a hashtag (nested tags too: #thread/torn)',   insert: el => insertAndSelect(el, '#', 'tag', '') },
+  { label:'due:', title:'Filter by date: due:today, due:week, due:overdue',  insert: el => insertAndSelect(el, 'due:', 'week', '') },
+  { label:'key:', title:'Match a property value',                            insert: el => insertAndSelect(el, '', 'key', ':value') },
+  { label:'| OR', title:'Match either side (a spaced | is OR)',              insert: el => insertAtCaret(el, ' | ') },
+];
+
 function openQueryDialog({ title, submitLabel, expr = '', onResult }) {
   openInsertDialog({
     icon: { fa: 'fa-solid fa-magnifying-glass', fb: '🔍' },
     title,
     submitLabel,
     fields: [
-      { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true,
+      { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true, chips: QUERY_CHIPS,
         preview: (v) => {
           if (!v.trim()) return '<span class="io-preview-bad">Type a search, like is:todo or #idea -is:done</span>';
           const { total } = queryRows(v, root, null);
@@ -20105,7 +20125,7 @@ function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: tit
     guideId: 'querybase',   // #466
     title, submitLabel,
     fields: [
-      { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true,
+      { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true, chips: QUERY_CHIPS,
         preview: v => {
           if (!v.trim()) return '<span class="io-preview-bad">Type a search, like is:todo or #project -is:done</span>';
           const { total } = queryRows(v, root, null, 1);
@@ -20280,10 +20300,8 @@ const VAR_NAME_RE = /^[a-z_][a-z0-9_]*$/i;
 
 // Chips that insert common values/expressions into the variable dialog.
 const VAR_CHIPS = [
-  { label:'÷2',  insert: el => { el.value = `(${el.value || '0'})/2`; caretEnd(el); } },
   { label:'π',   insert: 'π' },
   { label:'e',   insert: 'e' },
-  { label:'½',   insert: '0.5' },
 ];
 
 function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefined, existing = null, onResult }) {
@@ -20371,16 +20389,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     prev.innerHTML = r === null ? '<span class="io-preview-bad">Invalid expression</span>'
       : `<span class="var-preview-result">${escHtml(formatMathResult(r))}</span>`;
   };
-  const chipsRow = document.createElement('div'); chipsRow.className = 'io-chips';
-  VAR_CHIPS.forEach(chip => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'io-chip'; b.textContent = chip.label;
-    b.addEventListener('mousedown', e => {
-      e.preventDefault();
-      if (typeof chip.insert === 'function') chip.insert(exprInp); else insertAtCaret(exprInp, chip.insert);
-      exprInp.dispatchEvent(new Event('input')); validate(); exprInp.focus();
-    });
-    chipsRow.appendChild(b);
-  });
+  const chipsRow = buildChipRow(VAR_CHIPS, exprInp, validate);
   const exprHint = document.createElement('div'); exprHint.className = 'io-hint';
   exprHint.textContent = 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
   exprWrap.append(exprLab, exprInp, prev, chipsRow, exprHint); ioCard.appendChild(exprWrap);

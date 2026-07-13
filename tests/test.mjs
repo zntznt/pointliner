@@ -12777,3 +12777,31 @@ test('#596 — GUIDE drift guard: every INSERT_CMDS (@ insert) id is covered', (
     `these @ commands have no concept-guide entry: ${missing.join(', ')}\n` +
     `(add each id to some GUIDE entry's covers:[…], or write a new entry)`);
 });
+
+// #612 — dialog helper-chip parity + a shared chip renderer. Src-pins over GUIDE_SRC (the whole
+// index.html source read for #596). These lock the invariants a future edit could silently break:
+// the two chip loops route through one helper, the query dialogs keep their operator chips, the
+// estimate dialog keeps its avg() parity chip, and the weak var chips stay gone.
+test('#612 — chip rendering is unified through buildChipRow (shared + var dialog)', () => {
+  assert.ok(GUIDE_SRC.includes('function buildChipRow('), 'the shared chip-row helper is gone');
+  // openInsertDialog routes its field chips through the helper (not an inline forEach)…
+  assert.ok(GUIDE_SRC.includes('if (f.chips) wrap.appendChild(buildChipRow(f.chips, inp, validate))'),
+    'openInsertDialog must render f.chips through buildChipRow');
+  // …and the bespoke var dialog routes VAR_CHIPS through the SAME helper (the maintenance fix).
+  assert.ok(GUIDE_SRC.includes('buildChipRow(VAR_CHIPS, exprInp, validate)'),
+    'the var dialog must route VAR_CHIPS through buildChipRow, not a hand-rolled loop');
+});
+
+test('#612 — parity chips: estimate avg(), query operator chips, trimmed var chips', () => {
+  // Estimate gained avg() beside sum() (the engine supported avg(prop) with no front door).
+  const est = GUIDE_SRC.slice(GUIDE_SRC.indexOf('const EST_CHIPS = ['), GUIDE_SRC.indexOf('const EST_CHIPS = [') + 400);
+  assert.ok(est.includes("label:'avg()'") && est.includes("label:'sum()'"), 'EST_CHIPS must offer both sum() and avg()');
+  // The query + query-base search fields now carry the shared operator chips.
+  assert.ok(GUIDE_SRC.includes('const QUERY_CHIPS = ['), 'QUERY_CHIPS operator chips missing');
+  const qchips = (GUIDE_SRC.match(/chips: QUERY_CHIPS/g) || []).length;
+  assert.equal(qchips, 2, 'both the query and query-base search fields must use QUERY_CHIPS');
+  // The weakest var chips (÷2, ½) were cut; π/e stay.
+  const varc = GUIDE_SRC.slice(GUIDE_SRC.indexOf('const VAR_CHIPS = ['), GUIDE_SRC.indexOf('const VAR_CHIPS = [') + 200);
+  assert.ok(!varc.includes("label:'÷2'") && !varc.includes("label:'½'"), 'the weak ÷2 / ½ var chips must be gone');
+  assert.ok(varc.includes("label:'π'") && varc.includes("label:'e'"), 'π and e stay in VAR_CHIPS');
+});
