@@ -5687,21 +5687,89 @@ test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
     `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
 });
 
-test('GUIDE drift guard: every essSection has its own Shortcuts page entry', () => {
-  // The Shortcuts nav group is one page per essSection (built by shortcutsSectionBody).
-  // A new essSection value with no matching page entry would silently vanish from the
-  // guide nav, so pin the two sets against each other in the source.
+test('GUIDE drift guard: every essSection has its own Shortcuts nav entry', () => {
+  // The Shortcuts nav group is five entries, one per essSection: each renders the one
+  // scrollable page (shortcutsAllBody) and scrolls to its own section via scrollTo. A new
+  // essSection value with no matching nav entry would silently vanish from the guide nav
+  // (and the SC_SECTIONS list that builds the page), so pin the section set against both
+  // the scrollTo targets and SC_SECTIONS in the source.
   const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
   const sections = new Set([...guideBlock.matchAll(/essSection:\s*'([^']+)'/g)].map(m => m[1]));
-  const pages = new Set([...guideBlock.matchAll(/shortcutsSectionBody\('([^']+)'\)/g)].map(m => m[1]));
+  const navTargets = new Set([...guideBlock.matchAll(/scrollTo:\s*'([^']+)'/g)].map(m => m[1]));
+  const scList = new Set([...(_src.match(/const SC_SECTIONS\s*=\s*\[([^\]]+)\]/)?.[1] || '')
+    .matchAll(/'([^']+)'/g)].map(m => m[1]));
   assert.ok(sections.size >= 5, `expected the essential sections, parsed only: ${[...sections].join(', ')}`);
-  assert.deepEqual([...sections].filter(s => !pages.has(s)), [],
-    'essSection values with no Shortcuts page entry (add the page to GUIDE)');
-  assert.deepEqual([...pages].filter(s => !sections.has(s)), [],
-    'Shortcuts page entries whose essSection no longer exists (remove or rename the page)');
-  // the ? button's landing id stays on the first Shortcuts page
+  assert.deepEqual([...sections].filter(s => !navTargets.has(s)), [],
+    'essSection values with no Shortcuts nav entry (add the scrollTo entry to GUIDE)');
+  assert.deepEqual([...navTargets].filter(s => !sections.has(s)), [],
+    'Shortcuts nav entries whose essSection no longer exists (remove or rename the entry)');
+  // the one page is built from SC_SECTIONS, so it must list exactly the section set
+  assert.deepEqual([...sections].filter(s => !scList.has(s)), [],
+    'essSection values missing from SC_SECTIONS (the one-page builder would skip them)');
+  // the ? button's landing id stays on the first Shortcuts entry
   assert.ok(/id:'shortcuts',\s*cat:'shortcuts'/.test(guideBlock),
     "the id 'shortcuts' entry (the ? landing page) is missing from the Shortcuts group");
+});
+
+test('#598 guideBodyHtml: a single-paragraph body renders byte-identically to the old one <p>', () => {
+  // Backward-compat pin: an entry with no blank line and no backtick must produce exactly
+  // the pre-change markup, so the whole existing GUIDE array renders unchanged.
+  assert.equal(c.guideBodyHtml('One plain sentence.'),
+    '<p class="guide-entry-body">One plain sentence.</p>');
+  assert.equal(c.guideBodyHtml(''), '<p class="guide-entry-body"></p>');
+});
+
+test('#598 guideBodyHtml: blank lines split the body into separate paragraphs', () => {
+  assert.equal(c.guideBodyHtml('First para.\n\nSecond para.'),
+    '<p class="guide-entry-body">First para.</p><p class="guide-entry-body">Second para.</p>');
+  // three-or-more newlines collapse to one break (no empty <p> between)
+  assert.equal(c.guideBodyHtml('A\n\n\n\nB'),
+    '<p class="guide-entry-body">A</p><p class="guide-entry-body">B</p>');
+  // a single newline is NOT a paragraph break (stays within one <p>)
+  assert.equal(c.guideBodyHtml('line one\nline two'),
+    '<p class="guide-entry-body">line one\nline two</p>');
+});
+
+test('#599 guideBodyHtml: backtick pairs become <code>; a lone backtick stays literal', () => {
+  assert.equal(c.guideBodyHtml('Type `is:todo` to filter.'),
+    '<p class="guide-entry-body">Type <code>is:todo</code> to filter.</p>');
+  // a lone (unpaired) backtick is left as-is
+  assert.equal(c.guideBodyHtml('a ` b'),
+    '<p class="guide-entry-body">a ` b</p>');
+  // backticks work per-paragraph after the split
+  assert.equal(c.guideBodyHtml('Roll `2d6`.\n\nAsk `#oracle`.'),
+    '<p class="guide-entry-body">Roll <code>2d6</code>.</p><p class="guide-entry-body">Ask <code>#oracle</code>.</p>');
+});
+
+test('#599 guideBodyHtml: escaping runs BEFORE the backtick pass, so it cannot inject', () => {
+  // A literal < in prose is escaped; a backtick pair only ever wraps already-escaped text,
+  // so a hostile-looking body produces inert markup (the < inside the code is an entity).
+  assert.equal(c.guideBodyHtml('use `<script>` carefully'),
+    '<p class="guide-entry-body">use <code>&lt;script&gt;</code> carefully</p>');
+  // an ampersand and quote outside code are escaped too
+  assert.ok(!c.guideBodyHtml('a & `b` "c"').includes(' & '));
+});
+
+test('shortcuts one-page: shortcutsAllBody renders every section with an anchored heading', () => {
+  const html = c.shortcutsAllBody('Edit');
+  for (const sec of ['Navigate', 'Edit', 'Insert', 'File', 'Select']) {
+    assert.ok(html.includes('id="sc-sec-' + sec + '"'),
+      `the one page must contain the ${sec} section anchor`);
+    assert.ok(html.includes('>' + sec + '</div>'),
+      `the one page must show the ${sec} eyebrow heading`);
+  }
+  // it is one page: all five sections in a single call, in SC_SECTIONS order
+  const order = ['Navigate', 'Edit', 'Insert', 'File', 'Select']
+    .map(s => html.indexOf('id="sc-sec-' + s + '"'));
+  for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], 'sections stay in order');
+});
+
+test('shortcuts one-page: only the passed-in section gets the active marker', () => {
+  const html = c.shortcutsAllBody('Insert');
+  assert.ok(/class="guide-sc-sec active" id="sc-sec-Insert"/.test(html),
+    'the active section carries the .active class');
+  // exactly one section is active
+  assert.equal((html.match(/guide-sc-sec active/g) || []).length, 1);
 });
 
 // ── User-guide drift guards ───────────────────────────────────────────────────

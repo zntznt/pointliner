@@ -1371,10 +1371,22 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .guide-cat-badge{font-size:10px;font-weight:600;color:var(--acc);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
 .guide-entry-title{font-size:13px;font-weight:600;margin-bottom:5px}
 .guide-entry-body{font-size:12.5px;line-height:1.57;margin:0 0 8px;color:var(--fg)}
+/* #599: inline `code` in a body (backtick pairs) — the examples-cell recipe a step quieter
+   (no border), so a syntax token stands out from prose without competing with the pill chips
+   two rows below in the examples table. */
+.guide-entry-body code{background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:var(--r-xs);padding:0 4px;font-family:var(--mono);font-size:11.5px}
 .guide-ex{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12px}
 .guide-ex dt code{background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:1px 5px;font-family:var(--mono);font-size:11.5px;white-space:nowrap}
 .guide-ex dd{color:var(--muted);align-self:center;margin:0}
 .guide-no-results{color:var(--muted);font-size:12.5px;padding:16px 12px;text-align:center}
+/* Shortcuts page: five sections on one scrollable page, each under an eyebrow heading (the
+   .guide-nav-group recipe) with the .sc-row grid beneath. .active is the section the clicked
+   nav entry scrolled to — a quiet left rule, not a fill, so it marks place without shouting. */
+.guide-sc-sec{margin-bottom:16px}
+.guide-sc-sec:last-child{margin-bottom:0}
+.guide-sc-head{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:0 0 4px;margin-bottom:4px;border-bottom:1px solid var(--bdr)}
+.guide-sc-sec.active .guide-sc-head{color:var(--acc)}
+.guide-sc-sec.active{border-left:2px solid color-mix(in srgb,var(--acc) 45%,transparent);padding-left:10px;margin-left:-12px}
 @media(max-width:540px){
   .guide-nav{width:150px}.guide-pane{padding:12px 14px}
   /* #561: side-by-side term/definition clips at the right edge on phones (the card is
@@ -25518,21 +25530,23 @@ const GUIDE = [
   // Each cat entry is its own item in the guide's left list, grouped by category.
   // Bodies are written plainly: lead with what you can DO, then how, no jargon.
 
-  // Shortcuts: the guide's home group (the Shortcuts category leads CATS). One page per
-  // section, each built by shortcutsSectionBody() from the same essential rows above, so
-  // the keyboard reference lives inside the guide, not a separate panel — one help
-  // surface. The first page keeps the id 'shortcuts': it is the ? button's landing entry.
-  // A new essSection needs its page entry added here (the drift-guard test trips if not).
-  { id:'shortcuts', cat:'shortcuts', title:'Navigate',
-    bodyHtml: () => shortcutsSectionBody('Navigate'), searchText: () => shortcutsSectionText('Navigate') },
-  { id:'shortcuts-edit', cat:'shortcuts', title:'Edit',
-    bodyHtml: () => shortcutsSectionBody('Edit'), searchText: () => shortcutsSectionText('Edit') },
-  { id:'shortcuts-insert', cat:'shortcuts', title:'Insert',
-    bodyHtml: () => shortcutsSectionBody('Insert'), searchText: () => shortcutsSectionText('Insert') },
-  { id:'shortcuts-file', cat:'shortcuts', title:'File',
-    bodyHtml: () => shortcutsSectionBody('File'), searchText: () => shortcutsSectionText('File') },
-  { id:'shortcuts-select', cat:'shortcuts', title:'Select',
-    bodyHtml: () => shortcutsSectionBody('Select'), searchText: () => shortcutsSectionText('Select') },
+  // Shortcuts: the guide's home group (the Shortcuts category leads CATS). All five entries
+  // render the SAME scrollable page (every section, built by shortcutsAllBody from the
+  // essential rows above), so the keyboard reference is one continuous document that reads
+  // like every other guide page. Each entry's `scrollTo` names its section anchor: selecting
+  // it shows the full page and scrolls to that section (see renderPane), rather than swapping
+  // in a one-section pane. The first entry keeps the id 'shortcuts': the ? button's landing
+  // entry. A new essSection needs its entry added here (the drift-guard test trips if not).
+  { id:'shortcuts', cat:'shortcuts', title:'Navigate', scrollTo:'Navigate',
+    bodyHtml: () => shortcutsAllBody('Navigate'), searchText: () => shortcutsSectionText('Navigate') },
+  { id:'shortcuts-edit', cat:'shortcuts', title:'Edit', scrollTo:'Edit',
+    bodyHtml: () => shortcutsAllBody('Edit'), searchText: () => shortcutsSectionText('Edit') },
+  { id:'shortcuts-insert', cat:'shortcuts', title:'Insert', scrollTo:'Insert',
+    bodyHtml: () => shortcutsAllBody('Insert'), searchText: () => shortcutsSectionText('Insert') },
+  { id:'shortcuts-file', cat:'shortcuts', title:'File', scrollTo:'File',
+    bodyHtml: () => shortcutsAllBody('File'), searchText: () => shortcutsSectionText('File') },
+  { id:'shortcuts-select', cat:'shortcuts', title:'Select', scrollTo:'Select',
+    bodyHtml: () => shortcutsAllBody('Select'), searchText: () => shortcutsSectionText('Select') },
 
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
@@ -25759,7 +25773,7 @@ const GUIDE = [
     ] },
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
-    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. It works with nothing set up: with no inbox chosen, captures land at the top level of the document. Set up to 10 inboxes (numbered 1 to 10) and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. What you type is Markdown-aware, so a typed - [ ] becomes a to-do. Capture is a toolbar strip (not a pop-up dialog): press Ctrl/Cmd+Shift+I (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. Ctrl/Cmd+Shift+1 through 0 open it targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. While the strip is open the same keys switch the destination (they move the selector, they do not reopen it), and you can open the inbox manager (click the destination name) to pick a slot, add or remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. Reorder the inbox chips to change which number each one answers to: drag a chip, or focus one and press Alt+Left or Alt+Right. Ctrl/Cmd+Alt+1 through 0 sets the current point as inbox 1 to 10; the point's menu adds or removes an inbox slot too. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes. When Pointliner is installed as an app (or open on the web), you can also capture from a link: opening it with ?append=your%20text in the address adds that text as a point to your inbox, and sharing a page or selection to Pointliner from your system share menu does the same. It is added as plain text (never run as a pill), and the address is cleaned up so a reload will not add it twice; with no inbox set it lands at the top level, like any capture.",
+    body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. It works with nothing set up: with no inbox chosen, captures land at the top level of the document. What you type is Markdown-aware, so a typed `- [ ]` becomes a to-do.\n\nCapture is a toolbar strip, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.\n\nSet up to 10 inboxes, numbered 1 to 10, and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. `Ctrl/Cmd+Shift+1` through 0 open the strip targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. `Ctrl/Cmd+Alt+1` through 0 sets the current point as inbox 1 to 10, and the point's menu adds or removes an inbox slot too.\n\nWhile the strip is open the same number keys switch the destination (they move the selector, they do not reopen it). Click the destination name to open the inbox manager, where you pick a slot or add and remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. To change which number a chip answers to, reorder the chips: drag one, or focus it and press Alt+Left or Alt+Right.\n\nWhen Pointliner is installed as an app (or open on the web), you can also capture from a link. Opening it with `?append=your%20text` in the address adds that text as a point to your inbox, and sharing a page or selection to Pointliner from your system share menu does the same. It is added as plain text, never run as a pill, and the address is cleaned up so a reload will not add it twice; with no inbox set it lands at the top level, like any capture.",
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
@@ -25798,7 +25812,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. A single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks; a Titles chip cycles its name-column width); click the active one again to return to just the List. In Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day has more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides (same size as the centred one); click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month). Turn on Done to include completed points; toggle Running to show or hide started work; turn on Overdue to focus every view on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any #NEXT or #TODO point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with state:next or is:todo. Note that Pointliner has no background reminders or notifications (it runs entirely offline with no server), so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it. Click any point to jump straight to it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a 7-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar), or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centred one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a 7-day planner spread, with an Earlier column' },
@@ -25961,7 +25975,7 @@ const GUIDE = [
     ] },
   { id:'variables', cat:'compute', covers:['var'],
     title:'Variables',
-    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use {name} in any calculation or generator. Update the variable and everything that references it recalculates instantly. A variable can be a fixed number, a formula that depends on other variables, a bit of text, or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as {name := value}: a number or formula on the right makes a number, quoted text like {company := \"Acme Corp\"} makes a text value, and options split on the bar like {tone := warm | cool} make a random pick. A point's own numeric PROPERTIES are variables too: give a point a STR: 14 property and {= STR + 2} on it reads 16, no declaration needed. Properties also inherit DOWN the outline, so a pill reads a numeric property set on an ancestor point (a scene under a STR: 14 character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
+    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text, or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, and options split on the bar like `{tone := warm | cool}` make a random pick.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the outline, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
     examples:[
       { syn:'{rate := 0.2}', desc:'a number, by typing' },
       { syn:'{company := "Acme Corp"}', desc:'a text value (quote it)' },
@@ -26108,18 +26122,42 @@ const GUIDE = [
 // here. Keep this line right after the array's closing `];`. (Replaces the old
 // `(function buildShortcutsPanel` boundary, retired with the shortcuts panel.)
 
-// One Shortcuts page's body: the essential-shortcut rows of ONE essSection, reusing the
-// .sc-row/.sc-keys markup and CSS (no section eyebrow — the page title carries it).
-// Built from the GUIDE essential rows — one source, so the pages and the essential
-// registry never drift.
-function shortcutsSectionBody(sec) {
-  let html = '<div class="guide-sc">';
-  for (const e of GUIDE) {
-    if (!e.essential || e.essSection !== sec) continue;
-    const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('<span class="sc-or">/</span>');
-    html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
+// A plain-text guide body becomes HTML: escape first, then two authoring conveniences
+// (#598, #599). Blank lines split the body into separate <p>s so a long entry reads as
+// paragraphs, not a wall; backtick pairs become <code> so a syntax token stands out from
+// prose. Both run AFTER escHtml, so the transform sees no live markup and can't inject: a
+// backtick pair only ever wraps already-escaped text, and a lone backtick stays literal.
+// A single-paragraph, backtick-free body renders byte-identically to the old one <p> form.
+function guideBodyHtml(body) {
+  return (body || '').split(/\n\n+/).map(para => {
+    const html = escHtml(para).replace(/`([^`]+)`/g, '<code>$1</code>');
+    return '<p class="guide-entry-body">' + html + '</p>';
+  }).join('');
+}
+
+// The five keyboard sections rendered as ONE scrollable page (Navigate, Edit, Insert,
+// File, Select), each under an anchored eyebrow heading. The guide's five Shortcuts nav
+// entries all render this same page and scroll to their own section (see openGuide), so
+// the reference is one continuous document, not five swapped panes. `active` highlights the
+// section the clicked entry targets. Built from the GUIDE essential rows — one source, so
+// the pages and the essential registry never drift.
+const SC_SECTIONS = ['Navigate', 'Edit', 'Insert', 'File', 'Select'];
+function shortcutsAllBody(active) {
+  let html = '';
+  for (const sec of SC_SECTIONS) {
+    const rows = GUIDE.filter(e => e.essential && e.essSection === sec);
+    if (!rows.length) continue;
+    html += '<div class="guide-sc-sec' + (sec === active ? ' active' : '') +
+      '" id="sc-sec-' + sec + '">' +
+      '<div class="guide-sc-head">' + escHtml(sec) + '</div>' +
+      '<div class="guide-sc">';
+    for (const e of rows) {
+      const keys = e.keys.map(k => `<kbd>${escHtml(k)}</kbd>`).join('<span class="sc-or">/</span>');
+      html += `<div class="sc-row"><span class="sc-keys">${keys}</span><span class="sc-desc">${escHtml(e.essLabel)}</span></div>`;
+    }
+    html += '</div></div>';
   }
-  return html + '</div>';
+  return html;
 }
 // The searchable text for one Shortcuts page: its keys + labels (+ the words a user
 // types to find the reference), so the guide search matches a shortcut (e.g. "bold",
@@ -26248,16 +26286,24 @@ function openGuide(initialId) {
     // An entry may supply pre-built body HTML (bodyHtml) instead of the plain-text body
     // paragraph — used by the Shortcuts entry to render the grouped key rows. The builder
     // is trusted app HTML (it escHtml's its own dynamic parts); e.body stays escaped.
-    const bodyHtml = e.bodyHtml ? e.bodyHtml() : '<p class="guide-entry-body">' + escHtml(e.body||'') + '</p>';
+    const bodyHtml = e.bodyHtml ? e.bodyHtml() : guideBodyHtml(e.body || '');
+    // The five Shortcuts entries all render the one continuous page, so they share the page
+    // title "Shortcuts" (their own title, e.g. "Edit", is the section eyebrow and the nav
+    // label, not the page heading).
+    const title = e.cat === 'shortcuts' ? 'Shortcuts' : (e.title || '');
     pane.innerHTML = '<div class="guide-entry">' +
       '<div class="guide-cat-badge">' + escHtml(catLabels[e.cat] || e.cat) + '</div>' +
-      '<div class="guide-entry-title">' + escHtml(e.title||'') + '</div>' +
+      '<div class="guide-entry-title">' + escHtml(title) + '</div>' +
       bodyHtml + exHtml + '</div>';
     // When a search is active, mark the matched text in the shown entry (like document search),
     // so a hit shows WHERE it matched, not just which entry survived the filter.
     const q = filterQ.trim().toLowerCase();
     if (q) highlightGuideMatch(pane, q);
-    pane.scrollTop = 0;
+    // A Shortcuts entry scrolls the one page to its own section; every other entry starts at
+    // the top. scrollIntoView within the pane (an overflow container) never moves the page.
+    const target = e.scrollTo && pane.querySelector('#sc-sec-' + e.scrollTo);
+    if (target) target.scrollIntoView({ block: 'start' });
+    else pane.scrollTop = 0;
   }
   // Selecting only flips the .active class (no nav rebuild) so keyboard focus
   // survives arrow navigation; renderNav is reserved for search changes.
