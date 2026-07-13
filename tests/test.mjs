@@ -6285,6 +6285,23 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   assert.ok(_src.includes('function closeCapture') && _src.includes('function toggleCapture'), 'strip open/close missing');
   assert.ok(_src.includes("getElementById('cap-input')"), 'strip input focus missing');
   assert.ok(_src.includes('toggleCapture()'), '⌘⇧I toggle wiring missing');
+  // slot shortcuts: ⌘⇧<N> capture-to-slot (adopt current point if empty), ⌘⌥<N> set-as-inbox
+  assert.ok(_src.includes('openCaptureDialog(d === 0 ? 10 : d)'), 'slot capture shortcut missing');
+  assert.ok(_src.includes('function captureCurrentPointId'), 'current-point adopt path missing');
+  // in-strip ⌘⇧<N> switches the target slot without reopening (captureTargetSlot)
+  assert.ok(_src.includes('function capInputKeydown') && _src.includes('captureTargetSlot(d === 0 ? 10 : d)'), 'in-strip slot switch missing');
+  // (the old "no destination → open the manager" gate is deliberately GONE — #559: with no
+  // inbox the capture itself proceeds to the top level; the fallback pin is asserted above)
+  // Add-inbox must OPEN the modal overlay itself (the strip is no longer a modal, so the
+  // tree picker needs its own ioBack.on — the "dead Add button" regression).
+  {
+    const add = fnBody(_src, 'captureAddInbox');
+    assert.ok(add.includes("ioBack.classList.add('on')"), 'Add-inbox must open the modal overlay');
+    assert.ok(add.includes('buildTreePicker'), 'Add-inbox must use the tree picker');
+  }
+  // captured text is markdown-aware (a typed - [ ] becomes a to-do)
+  assert.ok(_src.includes('deriveTypeFromText(text)') && _src.includes('todoDoneFromText(text)'), 'capture not markdown-aware');
+});
 
 test('#566 touch quick bar: wiring, swap discipline, and the bottom-stack integration (src pins)', () => {
   // the bar exists with its four actions and swaps with the edit bar (one bottom bar at a time)
@@ -6335,23 +6352,6 @@ test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
   // Escape closes + returns focus to the toggle (P1-3 outward resolve)
   const cg = fnBody(_src, 'closeGraph');
   assert.ok(cg.includes("btn.setAttribute('aria-pressed', 'false')") && cg.includes('.focus()'), 'close must release pressed state + restore focus');
-});
-  // slot shortcuts: ⌘⇧<N> capture-to-slot (adopt current point if empty), ⌘⌥<N> set-as-inbox
-  assert.ok(_src.includes('openCaptureDialog(d === 0 ? 10 : d)'), 'slot capture shortcut missing');
-  assert.ok(_src.includes('function captureCurrentPointId'), 'current-point adopt path missing');
-  // in-strip ⌘⇧<N> switches the target slot without reopening (captureTargetSlot)
-  assert.ok(_src.includes('function capInputKeydown') && _src.includes('captureTargetSlot(d === 0 ? 10 : d)'), 'in-strip slot switch missing');
-  // (the old "no destination → open the manager" gate is deliberately GONE — #559: with no
-  // inbox the capture itself proceeds to the top level; the fallback pin is asserted above)
-  // Add-inbox must OPEN the modal overlay itself (the strip is no longer a modal, so the
-  // tree picker needs its own ioBack.on — the "dead Add button" regression).
-  {
-    const add = fnBody(_src, 'captureAddInbox');
-    assert.ok(add.includes("ioBack.classList.add('on')"), 'Add-inbox must open the modal overlay');
-    assert.ok(add.includes('buildTreePicker'), 'Add-inbox must use the tree picker');
-  }
-  // captured text is markdown-aware (a typed - [ ] becomes a to-do)
-  assert.ok(_src.includes('deriveTypeFromText(text)') && _src.includes('todoDoneFromText(text)'), 'capture not markdown-aware');
 });
 
 test('progress cookies: tallyMarkers counts each [ ]/[x] marker, done = [x]', () => {
