@@ -24081,9 +24081,28 @@ async function reopenWorkspaceDoc(dir, name) {
       flashError('Could not read “' + name + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
       return true;   // the folder IS reachable (keep the workspace); the doc is just write-guarded
     }
-  } else {                                               // local copy is newer (post-degrade edit) — keep it, just rebind
-    fileHandle = fh; workspaceFile = fh; fileName = name;
-    renderFileName(); updateTitle();
+  } else {                                               // local autosave timestamp is newer than the file
+    // A newer local timestamp does NOT prove the in-memory `root` is THIS file's document. On a fresh
+    // boot, restoreAutosave() loaded the last-active doc into `root`, which may be a DIFFERENT document
+    // than the one WORKSPACE_KEY points at (the two keys are written at different moments and can
+    // diverge). Rebinding blindly here bound doc A's content to file B's handle, so the next autosave
+    // wrote A over B on disk — silent cross-document data loss (audit #2, distinct names, distinct
+    // content). Guard on docId: only keep the local copy when it is genuinely a newer edit of THIS
+    // file's document; on any mismatch the FILE is authoritative and we adopt its content, never
+    // overwriting it with an unrelated in-memory doc.
+    let fileRoot;
+    try { fileRoot = fromOpml(await file.text()); } catch (_) { fileRoot = null; } // null = unreadable/corrupt
+    if (!fileRoot) {                                      // authoritative file won't parse: detach + warn, never rebind (audit #1 invariant)
+      workspaceFile = null;
+      flashError('Could not read “' + name + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
+      return true;
+    }
+    if (root && root.docId && fileRoot.docId && root.docId === fileRoot.docId) {
+      fileHandle = fh; workspaceFile = fh; fileName = name; // same document, a real newer local edit → keep it
+      renderFileName(); updateTitle();
+    } else {                                              // different document (or a file with no docId): the file wins
+      adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
+    }
   }
   _wsKnownModified = file.lastModified || 0;             // sync-safety: anchor to the on-disk version
   startWorkspaceWatch();                                 // sync-safety: watch the reopened file

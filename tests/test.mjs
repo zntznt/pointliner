@@ -9990,6 +9990,24 @@ test('Restore earlier version is doc-scoped: only the current document\'s snapsh
   assert.ok(rest.includes('earlierVersionForCurrentDoc()'), 'restore must apply only the current doc\'s snapshot');
 });
 
+// Cross-document write guard on reconnect (audit #2, the reload data-loss bug): reopenWorkspaceDoc's
+// "local autosave is newer" branch used to rebind the in-memory root to the reopened file handle
+// without checking they are the SAME document. On a fresh boot restoreAutosave loads the last-active
+// doc, which can differ from the WORKSPACE_KEY file — so it bound doc A's content to file B's handle
+// and the next autosave wrote A over B. The fix guards on docId: keep the local copy only when
+// root.docId === the reopened file's docId; on any mismatch the FILE wins (adoptDoc its content).
+test('reopenWorkspaceDoc: the local-newer branch guards on docId before rebinding (audit #2, src pin)', () => {
+  const fn = fnBody(_src, 'reopenWorkspaceDoc');
+  // it parses the reopened file to learn its identity in the local-newer branch (not just a blind rebind)
+  assert.ok(/fromOpml\(await file\.text\(\)\)/.test(fn), 'the local-newer branch must read the file to compare identity');
+  // the keep-local rebind is now gated on a docId MATCH
+  assert.ok(/root\.docId\s*===\s*\w+\.docId/.test(fn), 'rebind (keep local) must be gated on root.docId === the file docId');
+  // on mismatch it adopts the file, never leaving root bound to a different-doc handle
+  assert.ok(fn.includes('adoptDoc('), 'on a docId mismatch the file wins (adoptDoc), never overwriting it with root');
+  // an unreadable file in this branch detaches (pauses autosave) instead of rebinding (audit #1 invariant extended here)
+  assert.ok(fn.includes('workspaceFile = null'), 'a corrupt file in this branch must detach + pause auto-save, never rebind');
+});
+
 // flashError was referenced by ~10 catch blocks but never defined — an error path threw a
 // ReferenceError instead of surfacing the message. Pin that it's now a real function.
 test('flashError is defined (error toasts no longer throw)', () => {
