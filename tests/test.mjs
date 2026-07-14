@@ -12918,3 +12918,36 @@ test('#597 — recipes category + every related:[…] id points to a real GUIDE 
   const recipeEntries = [...g.matchAll(/cat:'recipes'/g)].length;
   assert.ok(recipeEntries >= 4, `the recipes category needs several entries (found ${recipeEntries})`);
 });
+
+// #544 — evalMath numeric additions (B4 lane): gcd, lcm, roundto + variadic avg. All pure and
+// calendar-independent. The avg variadic mirrors the shipped min/max disjointness argument.
+test('#544 — evalMath: gcd, lcm, roundto', () => {
+  const m = e => c.evalMath(e, {});
+  assert.equal(m('gcd(12, 8)'), 4);
+  assert.equal(m('gcd(0, 5)'), 5);       // gcd(0,n) = |n|
+  assert.equal(m('gcd(-12, 8)'), 4);     // inputs made positive
+  assert.equal(m('gcd(0, 0)'), 0);
+  assert.equal(m('gcd(12.4, 8)'), 4);    // inputs rounded to integers
+  assert.equal(m('lcm(4, 6)'), 12);
+  assert.equal(m('lcm(3, 5)'), 15);
+  assert.equal(m('lcm(0, 5)'), 0);       // lcm with 0 is 0 (no divide-by-zero)
+  assert.equal(m('roundto(7, 5)'), 5);   // 7/5 = 1.4 → 1 → 5
+  assert.equal(m('roundto(8, 5)'), 10);  // 8/5 = 1.6 → 2 → 10
+  assert.equal(m('roundto(2.3, 0.5)'), 2.5);
+  assert.equal(m('roundto(25.4, 25)'), 25);
+  assert.equal(m('roundto(5, 0)'), 5);   // step 0 → x, not NaN/∞
+});
+
+test('#544 — variadic avg is a mean (≥2 args), disjoint from the avg(prop) child rollup', () => {
+  const m = e => c.evalMath(e, {});
+  assert.equal(m('avg(2, 4)'), 3);       // variadic mean reaches evalMath
+  assert.equal(m('avg(2, 4, 6)'), 4);
+  assert.equal(m('avg(1, 2, 3, 4)'), 2.5);
+  assert.equal(m('avg(4)'), null);       // 1 arg is not a valid variadic (so a single ident stays for aggregation)
+  assert.equal(m('min(2, 4)'), 2);       // min/max unchanged
+  assert.equal(m('max(2, 4)'), 4);
+  // Disjointness: avg(prop) as a single bare identifier still aggregates over children (byte-identical).
+  const p = c.mkNode('p');
+  for (const v of [10, 20, 30]) { const ch = c.mkNode('c'); ch.props.push({ key: 'cost', val: String(v) }); p.children.push(ch); }
+  assert.equal(c.aggregateChildren(p, 'avg', 'cost'), 20);   // mean of 10,20,30 (the rollup, not the variadic)
+});
