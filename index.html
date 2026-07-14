@@ -1820,7 +1820,12 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
    the gate is 950px (was 820px, which still let the 1/2/3/All control bleed into the
    search box around 821-900px). The phone-only shrinking stays at 560px. */
 @media(max-width:950px){
-  #search-wrap{position:relative;left:auto;transform:none;flex:1 1 auto;min-width:0}
+  /* In-flow flex search fills the space between the logo and the icons. Give it a min-width
+     floor so the AT-REST field never collapses to near-nothing at the narrow end of this range
+     (~561-680px, where it was ~50px of usable typing behind 74px of icon chrome). The floor is
+     capped to the viewport so it can't itself cause overflow, and since #tbtn-cluster now
+     scrolls (it is flex-shrink:1), the icon strip absorbs the squeeze instead of the search. */
+  #search-wrap{position:relative;left:auto;transform:none;flex:1 1 auto;min-width:min(190px,calc(100vw - 130px))}
   #search-box{width:100%}
 }
 /* Middle widths (561–950px): the reflow above makes search an in-flow flex item that
