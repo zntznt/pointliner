@@ -48,6 +48,13 @@ Every artifact follows the same path. To add one (say `@weather`):
    gate the `:value` arm to your verb only, trigger-pin the strip, dialog on a bare
    verb, flash on a bad value (P4). Do **not** widen the shared slash matcher for all
    verbs.
+   **If the pill has an inline `{…}` shorthand form (most do), also add a row to
+   `BRACE_FORMS`** so the `{` picker offers it as a scaffold — the picker is an
+   aggregating door that enumerates the `{…}` grammar surface, and a new form is only
+   discoverable there if it has a row. The `BRACE_FORMS parity` drift test **fails** if a
+   promotable form family has no row (or if a row's scaffold no longer promotes), so this
+   is enforced, not optional. Give the row a `label`, keyword `keys`, an `insert`
+   scaffold, and a `sel` span selecting the placeholder to type over.
 9. **Click handler** — add a `closest('.weather-pill')` branch to the
    `mousedown` handler in `attachContentEvents`. Follow the existing convention
    (`e.preventDefault()` keeps focus off the node so it never enters edit mode):
@@ -77,7 +84,8 @@ Every artifact follows the same path. To add one (say `@weather`):
     - **No new syntax (P5):** if this pill introduced a new typeable notation rather than
       riding `{…}` / a token, justify it and update the syntax inventory + `?` panel.
     - **Discoverable (P2):** the `@`-menu entry prints its typed shorthand; if the pill is
-      inline-able, a `{…}` shorthand path exists alongside the dialog.
+      inline-able, a `{…}` shorthand path exists alongside the dialog **and is registered in
+      `BRACE_FORMS`** so the `{` picker teaches it (enforced by the `BRACE_FORMS parity` test).
     - **Reachable (P3, interim):** the pill carries an `aria-label` of the form
       `"Weather: <result>"`, updated after every reroll; the reroll writes to the
       `aria-live` region. (Pill `tabindex`/`role=tree` stay deferred per `accessibility.md`.)

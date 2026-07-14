@@ -208,7 +208,8 @@ export function loadCores() {
     'cloneArtifactSidecars','mergeArtifactSidecars',
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
-    'collectCallables','filterBraceCandidates',
+    'collectCallables','filterBraceCandidates','filterBraceForms',
+    'mathCompletions','mathFragmentAt','mathFnGroup',
     'classifyBraceBody','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed

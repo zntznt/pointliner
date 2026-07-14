@@ -1021,6 +1021,145 @@ test('classifyBraceBody / braceTypeLabel — a repeat reads as a (grammar) artif
   assert.deepEqual(host(c.braceTypeLabel('3x: hello', {}, {})), ['grammar', null]);
 });
 
+test('filterBraceForms — empty prefix returns every form, each a well-formed {…} scaffold', () => {
+  const forms = c.filterBraceForms('');
+  assert.ok(forms.length >= 10, 'the picker offers the full generative surface');
+  for (const f of forms) {
+    assert.equal(f.group, 'form');
+    assert.ok(f.insert.startsWith('{') && f.insert.endsWith('}'), `${f.name}: scaffold is a brace form`);
+    const [a, b] = f.sel;
+    assert.ok(Number.isInteger(a) && Number.isInteger(b) && 0 < a && a <= b && b <= f.insert.length,
+      `${f.name}: sel [${a},${b}) is within the scaffold`);
+    const ph = f.insert.slice(a, b);
+    assert.ok(!/[{}]/.test(ph), `${f.name}: the selected placeholder sits inside the braces`);
+  }
+});
+
+test('filterBraceForms — each scaffold selects the intended placeholder (sel offsets pinned)', () => {
+  const want = {
+    'math': '', 'roll-up': 'prop', 'word count': 'subtree', 'dice': '2d6',
+    'pick': 'a', 'conditional': 'cond', 'deck': 'a | b | c', 'repeat': 'template',
+    'modifier': 'name', 'item field': 'item', 'estimate': '5 to 10',
+    'query': 'is:todo', 'count': 'is:todo', 'roll': 'is:todo', 'meter': 'hp/hpmax',
+    'markov': 'a→b, b→c', 'oracle': 'likely', 'sequence': 'Flow',
+  };
+  const byName = Object.fromEntries(c.filterBraceForms('').map(f => [f.name, f]));
+  for (const [name, ph] of Object.entries(want)) {
+    const f = byName[name];
+    assert.ok(f, `form "${name}" exists`);
+    assert.equal(f.insert.slice(f.sel[0], f.sel[1]), ph, `${name}: selects "${ph}"`);
+  }
+});
+
+// ── BRACE_FORMS drift guard (extends the GUIDE/FA_GLYPHS drift-guard family) ────
+// The { picker is an aggregating surface: it enumerates the {…} grammar forms, and a
+// row can go stale two ways — offer a body the engine no longer promotes, or omit a
+// form family that shipped. Both guarded below. Recipe: guidance/adding-an-artifact.md
+// requires any new {…} sub-form to register a BRACE_FORMS row.
+
+test('BRACE_FORMS parity: every picker scaffold is a recognized brace form (promotes, or is a render-time display)', () => {
+  // Doc context so the base-dependent scaffolds resolve — the picker's placeholders
+  // (name, item) stand in for a real rule/var the user fills in.
+  const RULES = { name: ['x'], item: ['sword'], 'item.field': ['1d8'] }, VARS = {};
+  // The math scaffold is an empty {= } caret you fill; test a realistic body.
+  const FILL = { 'math': '= 1 + 1' };
+  // Meter is a render-time computed display (the [/]-cookie model): {meter: …} stays in
+  // node.text and renders live — it does NOT promote to a token, so it classifies 'literal'.
+  const RENDER_TIME = new Set(['meter']);
+  for (const f of c.filterBraceForms('')) {
+    const body = FILL[f.name] ?? f.insert.slice(1, -1);
+    const cls = c.classifyBraceBody(body, RULES, VARS);
+    if (RENDER_TIME.has(f.name)) {
+      assert.notEqual(cls, 'invalid', `${f.name}: render-time scaffold {${body}} must not read as a broken attempt`);
+    } else {
+      assert.equal(cls, 'artifact', `${f.name}: picker scaffold {${body}} must promote to a pill`);
+    }
+  }
+});
+
+test('BRACE_FORMS parity: the picker rosters every user-facing brace family (no family shipped without a door)', () => {
+  // The generative {…} families that MUST have a picker row. When a new family ships (a
+  // new classifyBraceBody/resolveBrace branch with a user-facing door), add it here AND to
+  // BRACE_FORMS — see guidance/adding-an-artifact.md. Catches a family shipped without a
+  // picker door, or an accidental removal from the table.
+  const roster = ['math','roll-up','word count','dice','pick','conditional','deck','repeat',
+                  'modifier','item field','estimate','query','count','roll','meter','markov',
+                  'oracle','sequence'];
+  const have = new Set(c.filterBraceForms('').map(f => f.name));
+  const missing = roster.filter(n => !have.has(n));
+  assert.equal(missing.length, 0, `BRACE_FORMS missing families: ${missing.join(', ')}`);
+});
+
+// ── math body completion (the { picker, stage 2 — inside a {= …} body) ─────────
+
+test('mathFragmentAt — the identifier fragment ending at the caret (null off an identifier)', () => {
+  assert.deepEqual(host(c.mathFragmentAt('= sq', 4)), { prefix: 'sq', start: 2 });
+  assert.deepEqual(host(c.mathFragmentAt('= sqrt(st', 9)), { prefix: 'st', start: 7 }); // inside an argument
+  assert.equal(c.mathFragmentAt('= 2', 3), null, 'a number is not a completion fragment');
+  assert.equal(c.mathFragmentAt('= sqrt(', 7), null, 'right after ( → empty → no menu');
+  assert.equal(c.mathFragmentAt('= a +', 5), null, 'right after an operator → no menu');
+  assert.equal(c.mathFragmentAt('=', 1), null, 'no fragment yet');
+});
+
+test('mathCompletions — sources functions, roll-ups, constants and this doc\'s variables', () => {
+  const find = (arr, n) => arr.find(x => x.name === n);
+  const sq = find(c.mathCompletions('sq', {}), 'sqrt');
+  assert.ok(sq, 'sqrt is completable');
+  assert.equal(sq.group, 'fn-core');
+  assert.equal(sq.insert, 'sqrt()', 'a function inserts balanced parens');
+  assert.equal(sq.caretBack, 1, 'the caret lands inside the parens');
+  // representatives from each source table / hand list
+  assert.ok(find(c.mathCompletions('po', {}), 'pow'), 'FN2 pow');
+  assert.ok(find(c.mathCompletions('cl', {}), 'clamp'), 'FN3 clamp');
+  assert.ok(find(c.mathCompletions('mi', {}), 'min'), 'variadic min');
+  const sum = find(c.mathCompletions('su', {}), 'sum');
+  assert.ok(sum && sum.group === 'agg', 'child roll-up sum, grouped agg');
+  const pi = find(c.mathCompletions('p', {}), 'pi');
+  assert.ok(pi && pi.group === 'const' && pi.insert === 'pi' && pi.caretBack === 0, 'constant pi, bare insert');
+  assert.ok(find(c.mathCompletions('t', {}), 'today'), 'the dynamic constant today');
+  // this doc's variables, with a value hint
+  const v = find(c.mathCompletions('str', { strength: 12 }), 'strength');
+  assert.ok(v && v.group === 'var' && v.insert === 'strength' && /12/.test(v.hint), 'a variable completes with its value');
+});
+
+test('mathCompletions — empty prefix returns nothing (no {= } flood), and it prefix-filters', () => {
+  assert.equal(c.mathCompletions('', { strength: 1 }).length, 0, 'empty prefix → [] (decision A)');
+  const sqOnly = c.mathCompletions('sqr', {}).map(x => x.name);
+  assert.ok(sqOnly.includes('sqrt') && !sqOnly.includes('sin'), 'prefix-match, not fuzzy');
+});
+
+test('mathFnGroup — conversions and dates are sub-grouped; log2/atan2 are not conversions', () => {
+  assert.equal(c.mathFnGroup('c2f'), 'fn-conv');
+  assert.equal(c.mathFnGroup('km2mi'), 'fn-conv');
+  assert.equal(c.mathFnGroup('year'), 'fn-date');
+  assert.equal(c.mathFnGroup('sqrt'), 'fn-core');
+  assert.equal(c.mathFnGroup('log2'), 'fn-core', 'trailing digit, not an x2y conversion');
+  assert.equal(c.mathFnGroup('atan2'), 'fn-core');
+});
+
+test('mathCompletions drift: every MATH_CONSTS constant is completable', () => {
+  // MATH_CONSTS is the canonical constant source; a new constant must stay completable.
+  const m = _src.match(/const MATH_CONSTS = Object\.assign\(Object\.create\(null\), \{([^}]*)\}/);
+  assert.ok(m, 'MATH_CONSTS literal not found (renamed?)');
+  const consts = [...m[1].matchAll(/(\w+)\s*:/g)].map(x => x[1]);
+  assert.ok(consts.length >= 3, `parsed constants: ${consts.join(',')}`);
+  for (const name of consts) {
+    const got = c.mathCompletions(name, {}).find(x => x.name === name);
+    assert.ok(got && got.group === 'const', `${name} must be completable as a constant`);
+  }
+});
+
+test('filterBraceForms — prefix filters by label and keyword aliases', () => {
+  const names = p => c.filterBraceForms(p).map(f => f.name);
+  assert.ok(names('cond').includes('conditional'));
+  assert.ok(names('sum').includes('roll-up'), 'a keyword alias surfaces the form');
+  assert.ok(names('shuffle').includes('deck'));
+  assert.ok(names('normal').includes('estimate'));
+  const d = names('d');
+  assert.ok(d.includes('dice') && d.includes('deck'), 'a shared prefix keeps both');
+  assert.equal(names('zzz').length, 0, 'no match → nothing (name candidates still merge in the caller)');
+});
+
 test('resolveBrace — a {mode: …} inside a rule degrades to a uniform pick (no state there)', () => {
   c.seedSequence([0]); // floor(0*3) → first item
   try {

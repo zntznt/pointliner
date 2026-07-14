@@ -286,6 +286,25 @@ Implemented:
   promotes to the matching pill when you leave the node (and on paste, and on
   document load/import via `promoteLoadedShorthand` in `adoptDoc`); while
   editing it stays grammar-styled text. Invalid/unknown bodies stay literal text.
+- **`{` grammar picker** — typing `{` opens a picker (UXP-9 + UXP-192): a **Grammar
+  forms** group listing every `{…}` shape (math, roll-up, word count, dice, pick,
+  conditional, deck, repeat, modifier, item field, estimate, query, count, roll,
+  meter, markov, oracle, sequence) above this doc's callable **names**
+  (variables/rules/tables/chains). Pick a form and it inserts the scaffold with a
+  placeholder selected to type over; pick a name and it writes `{name}`. Either way
+  it's the same shorthand above — the picker just makes the whole composition surface
+  discoverable where you author, with no new syntax. A `BRACE_FORMS parity` drift test
+  keeps the roster complete: a promotable `{…}` family with no picker row fails CI.
+  **Stage 2 — body completion (UXP-193):** once a body commits to a form, the picker
+  completes what's valid *inside* it. Phase 1 covers math: typing `{= s` suggests
+  `sqrt`, `sign`, `sum`… — the FN1/FN2/FN3 functions, the child roll-ups (`sum`/`avg`/
+  `count`/`words`), constants (`pi`/`e`/`tau`/`today`), and this doc's variables — grouped
+  Functions / Roll-ups / Conversions / Dates / Constants / Variables. A function inserts
+  `name()` with the caret inside the parens (IDE-style); chaining works (`{= sqrt(str`
+  suggests `strength`). `{= ` opens only once you type the first letter, so the ~70-function
+  surface never floods. Cores `mathFragmentAt`/`mathCompletions`/`mathFnGroup` (pure);
+  reuses the brace-menu wholesale. Search-operator / oracle / meter contexts are speced
+  follow-ups (`guidance/brace-completion-proposal.md`).
 - **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
   inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
   complex ones stay atomic pills. Raw `[[…]]` tokens are never shown.
