@@ -202,6 +202,17 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    ON keeps the accent fill from button.active. Kept subtle so the toolbar stays calm. */
 .tbtn-toggle{border-color:var(--bdr)}
 .tbtn-toggle:hover{border-color:var(--muted)}
+/* The toolbar's icon toggles live in one horizontally-scrollable cluster so a narrow screen
+   (or an 8th button when the Chronicle is bound) scrolls the row instead of clipping the last
+   button off the right edge. min-width:0 lets it shrink below its content width in the flex row,
+   flex-shrink:1 makes it the thing that gives, and the scrollbar is hidden (it is a short
+   icon strip, not a scroll region a user needs a visible bar for). The 5px top/right padding +
+   negative margins keep the Done button's absolute count badge (top/right -4px) from being
+   clipped by overflow, without shifting the buttons. The bar only ever scrolls when the icons
+   don't fit (narrow phone, or the 8th Chronicle button); at any comfortable width it is inert. */
+#tbtn-cluster{display:flex;align-items:center;gap:7px;min-width:0;flex-shrink:1;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;padding:5px 5px 0 0;margin:-5px -5px 0 0;overscroll-behavior-x:contain}
+#tbtn-cluster::-webkit-scrollbar{display:none}
+#tbtn-cluster>*{flex-shrink:0}
 /* MOBILE-2: the "N done hidden" count badge on the Done button. A calm accent-tinted corner
    count that appears only when checked items are hidden, so the cue and the recovery control
    (this same toggle) are one element. Hidden by default; .has-hidden reveals it. */
@@ -2170,6 +2181,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
       <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
+    <div id="tbtn-cluster">
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (in-world log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
@@ -2178,6 +2190,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
     <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
     <button id="btn-notes" class="tbtn-toggle active" title="Notes" aria-label="Notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
+    </div>
   </div>
   <div id="doc-tabs" role="tablist" aria-label="Open documents" style="display:none"></div>
   <div id="breadcrumb-row"></div>
