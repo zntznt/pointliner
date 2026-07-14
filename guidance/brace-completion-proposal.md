@@ -1,10 +1,19 @@
 # Contextual body completion for the `{` picker — design proposal
 
-**Status:** proposal, awaiting sign-off. No code until approved.
+**Status:** **Phase 1 (math) shipped.** Decisions 1–4 approved as recommended (A / `name()`
+caret-inside / variables grouped-last first-char-gated / math-only first). Phases 2+
+(search operators, oracle bands, meter props) remain as speced follow-ups below.
 **Motivates:** the `{` picker (UXP-192 / #715) completes the *form*, then gets out of
 the way. This adds a second stage — completing the *body* of a form — so typing
 `{=` suggests what you can do with math, `{query:` suggests search operators, etc.
 The "member/function completion" an IDE gives you.
+
+**Phase 1 as built:** cores `mathFragmentAt` / `mathCompletions` / `mathFnGroup` (pure,
+pinned); `checkBraceTrigger` gains a math-mode branch (body starts with `=`);
+`braceApply` gains a mid-body insert path (`braceState.mode === 'math'`); the menu
+reuses the brace-menu with `fn-core`/`agg`/`fn-conv`/`fn-date`/`const`/`var` groups.
+`{= ` opens on the first identifier letter; a function inserts `name()` with the caret
+inside; constants/variables insert bare. Verified in-browser.
 
 ---
 
@@ -153,7 +162,7 @@ New apply path, distinct from `braceApply`'s replace-from-`braceStart`:
   `{prefix, start}` (recommended — makes §4 testable without the DOM).
 - Browser: `{= sq` → menu → Enter → `{= sqrt()}` with the caret inside the parens.
 
-## 11. Decisions I need from you
+## 11. Decisions — RESOLVED (approved as recommended)
 
 1. **Flood handling (§6):** A (open after first char — recommended) / B (curated common
    set on empty) / C (show all grouped).

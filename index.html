@@ -19821,6 +19821,61 @@ const FN3 = Object.assign(Object.create(null), {
   },
 });
 
+// ─── math body completion (the { picker, stage 2 — inside a {= …} body) ────────
+// The vocabulary the { picker offers once a body commits to math: FN1/FN2/FN3 +
+// the variadics + the child roll-ups + MATH_CONSTS + this doc's variables. Pure —
+// reads the real tables via closure and the passed `vars` (collectVars output), so
+// a new math fn is completable automatically (a drift test pins that). Prefix-match,
+// consistent with the other pickers; EMPTY prefix → [] so `{= ` never floods with
+// ~70 rows (math mode opens only once you type the first letter — decision A). Each
+// item inserts at the caret: a function as `name()` with the caret landing INSIDE the
+// parens (caretBack 1), a constant/variable as its bare name. See
+// guidance/brace-completion-proposal.md.
+const MATH_DATE_FNS = new Set(['year','month','day','weekday','quarter','daysuntil','eom','age',
+  'weeknum','asdate','daysbetween','addmonths','workdaysbetween','date','moonphase']);
+function mathFnGroup(name) {
+  if (/^[a-z]+2[a-z]+$/i.test(name)) return 'fn-conv';   // c2f, km2mi, kmh2mph … (log2/atan2 don't match: no letters after the 2)
+  if (MATH_DATE_FNS.has(name)) return 'fn-date';
+  return 'fn-core';
+}
+// The identifier fragment ending at `caret` within a math body — the token being
+// typed. null when the caret isn't on a bare identifier (after a number, an operator,
+// a bracket, or empty), so a number or operator never opens the menu. Pure.
+function mathFragmentAt(body, caret) {
+  let i = caret;
+  while (i > 0 && /\w/.test(body[i - 1])) i--;
+  const prefix = body.slice(i, caret);
+  return /^[A-Za-z_]\w*$/.test(prefix) ? { prefix, start: i } : null;
+}
+function mathCompletions(prefix, vars) {
+  const lo = (prefix || '').toLowerCase();
+  if (!lo) return [];                                    // no empty-prefix flood (decision A)
+  const out = [], seen = new Set();
+  const match = (n) => n.toLowerCase().startsWith(lo);
+  const pushFn = (name, group, hint) => {
+    if (seen.has(name) || !match(name)) return; seen.add(name);
+    out.push({ name, group, insert: name + '()', caretBack: 1, hint });
+  };
+  for (const n of Object.keys(FN1)) pushFn(n, mathFnGroup(n), n + '(x)');
+  for (const n of Object.keys(FN2)) pushFn(n, mathFnGroup(n), n + '(a, b)');
+  for (const n of Object.keys(FN3)) pushFn(n, mathFnGroup(n), n + '(a, b, c)');
+  for (const n of ['min','max','and','or']) pushFn(n, 'fn-core', n + '(…)');   // variadics (parser-level, not in the FN tables)
+  for (const n of ['sum','avg','count']) pushFn(n, 'agg', n + '(prop)');       // child roll-ups (expandAggExpr)
+  pushFn('words', 'agg', 'words(subtree)');
+  for (const n of [...Object.keys(MATH_CONSTS), 'today']) {                    // today is dynamic, added by hand
+    if (seen.has(n) || !match(n)) continue; seen.add(n);
+    out.push({ name: n, group: 'const', insert: n, caretBack: 0, hint: 'constant' });
+  }
+  for (const n of Object.keys(vars || {})) {
+    if (seen.has(n) || !match(n)) continue; seen.add(n);
+    const v = vars[n];
+    const disp = typeof v === 'string' ? v : (Number.isInteger(+v) ? +v : +Number(v).toPrecision(4));
+    out.push({ name: n, group: 'var', insert: n, caretBack: 0, hint: '= ' + disp });
+  }
+  const rank = { 'fn-core': 0, 'agg': 1, 'fn-conv': 2, 'fn-date': 3, 'const': 4, 'var': 5 };
+  return out.sort((a, b) => (rank[a.group] ?? 9) - (rank[b.group] ?? 9));       // stable → groups cluster for the menu headers
+}
+
 function evalMath(input, vars = {}) {
   // Pre-process: collapse whitespace, lowercase, map Unicode math symbols
   const s = (input || '')
@@ -21471,13 +21526,28 @@ function checkBraceTrigger(content, nodeId) {
   // escape hatch: inside inline `code`, a `{` is literal, so don't offer the rule-completion menu there
   if (inCodeSpan(codeSpanRanges(before), braceStart)) { hideBraceMenu(); return; }
   const inner = before.slice(braceStart + 1);
-  // Bare identifier prefix (or empty) only — not math (=…), dice, or alternation
+  // Math body completion (stage 2): inside a {= …} body, complete the math vocabulary
+  // at the caret instead of closing the menu. `inner` spans from just after `{` to the
+  // caret, so the identifier fragment ends at inner.length. Empty fragment → no menu
+  // (decision A: {= } doesn't flood). Handled BEFORE the identifier bail below.
+  if (/^=/.test(inner)) {
+    const frag = mathFragmentAt(inner, inner.length);
+    if (!frag) { hideBraceMenu(); return; }
+    const mm = mathCompletions(frag.prefix, collectVars());
+    if (!mm.length) { hideBraceMenu(); return; }
+    const fragStart = braceStart + 1 + frag.start;
+    braceState = { nodeId, content, braceStart, mode: 'math', prefix: frag.prefix, fragStart, caret: pos, activeIdx: 0, matches: mm };
+    renderBraceMenu();
+    positionCaretMenu(braceMenu, content, fragStart);  // anchor at the fragment, where the completion lands
+    return;
+  }
+  // Bare identifier prefix (or empty) only — not dice or alternation (math handled above)
   if (inner !== '' && !/^[a-z_]\w*$/i.test(inner)) { hideBraceMenu(); return; }
   const prefix = inner.toLowerCase();
   // Forms first (fixed, always-present discovery), then this doc's names.
   const matches = [...filterBraceForms(prefix), ...filterBraceCandidates(collectCallables(), prefix)];
   if (!matches.length) { hideBraceMenu(); return; }
-  braceState = { nodeId, content, braceStart, prefix, activeIdx: 0, matches };
+  braceState = { nodeId, content, braceStart, mode: 'forms', prefix, activeIdx: 0, matches };
   renderBraceMenu();
   // Anchor at the `{` itself (always present), not braceStart+1 — when `{` is the
   // last character that offset points past end-of-text, the DOM walk finds no node
@@ -21486,7 +21556,9 @@ function checkBraceTrigger(content, nodeId) {
   positionCaretMenu(braceMenu, content, braceStart);
 }
 
-const BM_GROUP_LABELS = { form: 'Grammar forms', var: 'Variables', rule: 'Rules', chain: 'Chains' };
+const BM_GROUP_LABELS = { form: 'Grammar forms', var: 'Variables', rule: 'Rules', chain: 'Chains',
+  // math body-completion groups (stage 2, inside {= …})
+  'fn-core': 'Functions', 'agg': 'Roll-ups (over child points)', 'fn-conv': 'Conversions', 'fn-date': 'Dates', 'const': 'Constants' };
 
 function renderBraceMenu() {
   if (!braceState) return;
@@ -21509,10 +21581,11 @@ function renderBraceMenu() {
     nameEl.className = 'bm-name';
     nameEl.textContent = item.name;
     el.appendChild(nameEl);
-    // The muted right-hand hint: a form shows the scaffold it inserts (teaching the
-    // shape); a variable shows its resolved value.
+    // The muted right-hand hint: a math completion carries an explicit signature/value
+    // hint; a form shows the scaffold it inserts; a callable variable shows its value.
     let hint = null;
-    if (item.group === 'form') hint = item.insert;
+    if (item.hint) hint = item.hint;
+    else if (item.group === 'form') hint = item.insert;
     else if (item.group === 'var' && item.val !== undefined) {
       hint = '= ' + (typeof item.val === 'string' ? item.val // random pick — frozen text
         : Number.isInteger(item.val) ? item.val : +item.val.toPrecision(6));
@@ -21579,10 +21652,22 @@ function braceMove(dir) {
 
 function braceApply() {
   if (!braceState) return;
-  const { nodeId, content, braceStart, prefix, activeIdx, matches } = braceState;
+  const { nodeId, content, braceStart, prefix, activeIdx, matches, mode, fragStart, caret } = braceState;
   const chosen = matches[activeIdx];
   hideBraceMenu();
   const node = nodeById(nodeId); if (!node) return;
+  if (mode === 'math') {
+    // Mid-body insert (stage 2): replace the identifier fragment at the caret with the
+    // chosen token, keeping the rest of the {= …} body. A function lands the caret INSIDE
+    // its () (caretBack 1) so you type the argument next; a constant/variable lands after.
+    const full = editableText(content);
+    let end = caret; while (end < full.length && /\w/.test(full[end])) end++;   // consume the rest of the identifier the caret sits in
+    node.text = full.slice(0, fragStart) + chosen.insert + full.slice(end);
+    content.innerHTML = editModeHTML(node);
+    try { setCaretByOffset(content, fragStart + chosen.insert.length - (chosen.caretBack || 0)); } catch(_) {}
+    markDirty();
+    return;
+  }
   const fullText = editableText(content);
   // A form inserts its scaffold (the {…} shorthand promotes on exit); a name
   // completes {name}. Both replace the `{`+typed-prefix at braceStart.

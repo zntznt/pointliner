@@ -1090,6 +1090,65 @@ test('BRACE_FORMS parity: the picker rosters every user-facing brace family (no 
   assert.equal(missing.length, 0, `BRACE_FORMS missing families: ${missing.join(', ')}`);
 });
 
+// ── math body completion (the { picker, stage 2 — inside a {= …} body) ─────────
+
+test('mathFragmentAt — the identifier fragment ending at the caret (null off an identifier)', () => {
+  assert.deepEqual(host(c.mathFragmentAt('= sq', 4)), { prefix: 'sq', start: 2 });
+  assert.deepEqual(host(c.mathFragmentAt('= sqrt(st', 9)), { prefix: 'st', start: 7 }); // inside an argument
+  assert.equal(c.mathFragmentAt('= 2', 3), null, 'a number is not a completion fragment');
+  assert.equal(c.mathFragmentAt('= sqrt(', 7), null, 'right after ( → empty → no menu');
+  assert.equal(c.mathFragmentAt('= a +', 5), null, 'right after an operator → no menu');
+  assert.equal(c.mathFragmentAt('=', 1), null, 'no fragment yet');
+});
+
+test('mathCompletions — sources functions, roll-ups, constants and this doc\'s variables', () => {
+  const find = (arr, n) => arr.find(x => x.name === n);
+  const sq = find(c.mathCompletions('sq', {}), 'sqrt');
+  assert.ok(sq, 'sqrt is completable');
+  assert.equal(sq.group, 'fn-core');
+  assert.equal(sq.insert, 'sqrt()', 'a function inserts balanced parens');
+  assert.equal(sq.caretBack, 1, 'the caret lands inside the parens');
+  // representatives from each source table / hand list
+  assert.ok(find(c.mathCompletions('po', {}), 'pow'), 'FN2 pow');
+  assert.ok(find(c.mathCompletions('cl', {}), 'clamp'), 'FN3 clamp');
+  assert.ok(find(c.mathCompletions('mi', {}), 'min'), 'variadic min');
+  const sum = find(c.mathCompletions('su', {}), 'sum');
+  assert.ok(sum && sum.group === 'agg', 'child roll-up sum, grouped agg');
+  const pi = find(c.mathCompletions('p', {}), 'pi');
+  assert.ok(pi && pi.group === 'const' && pi.insert === 'pi' && pi.caretBack === 0, 'constant pi, bare insert');
+  assert.ok(find(c.mathCompletions('t', {}), 'today'), 'the dynamic constant today');
+  // this doc's variables, with a value hint
+  const v = find(c.mathCompletions('str', { strength: 12 }), 'strength');
+  assert.ok(v && v.group === 'var' && v.insert === 'strength' && /12/.test(v.hint), 'a variable completes with its value');
+});
+
+test('mathCompletions — empty prefix returns nothing (no {= } flood), and it prefix-filters', () => {
+  assert.equal(c.mathCompletions('', { strength: 1 }).length, 0, 'empty prefix → [] (decision A)');
+  const sqOnly = c.mathCompletions('sqr', {}).map(x => x.name);
+  assert.ok(sqOnly.includes('sqrt') && !sqOnly.includes('sin'), 'prefix-match, not fuzzy');
+});
+
+test('mathFnGroup — conversions and dates are sub-grouped; log2/atan2 are not conversions', () => {
+  assert.equal(c.mathFnGroup('c2f'), 'fn-conv');
+  assert.equal(c.mathFnGroup('km2mi'), 'fn-conv');
+  assert.equal(c.mathFnGroup('year'), 'fn-date');
+  assert.equal(c.mathFnGroup('sqrt'), 'fn-core');
+  assert.equal(c.mathFnGroup('log2'), 'fn-core', 'trailing digit, not an x2y conversion');
+  assert.equal(c.mathFnGroup('atan2'), 'fn-core');
+});
+
+test('mathCompletions drift: every MATH_CONSTS constant is completable', () => {
+  // MATH_CONSTS is the canonical constant source; a new constant must stay completable.
+  const m = _src.match(/const MATH_CONSTS = Object\.assign\(Object\.create\(null\), \{([^}]*)\}/);
+  assert.ok(m, 'MATH_CONSTS literal not found (renamed?)');
+  const consts = [...m[1].matchAll(/(\w+)\s*:/g)].map(x => x[1]);
+  assert.ok(consts.length >= 3, `parsed constants: ${consts.join(',')}`);
+  for (const name of consts) {
+    const got = c.mathCompletions(name, {}).find(x => x.name === name);
+    assert.ok(got && got.group === 'const', `${name} must be completable as a constant`);
+  }
+});
+
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
   const names = p => c.filterBraceForms(p).map(f => f.name);
   assert.ok(names('cond').includes('conditional'));
