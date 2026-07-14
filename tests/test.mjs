@@ -12900,3 +12900,21 @@ test('#603 — shared menu-pop keyframe carries no centering transform; the menu
   assert.ok(GUIDE_SRC.includes('@keyframes fm-pop{'), 'the file menu must have its own fm-pop keyframe');
   assert.ok(/#file-menu\.on\{[^}]*animation:\s*fm-pop/.test(GUIDE_SRC), '#file-menu.on must animate with fm-pop, not menu-pop');
 });
+
+// #597 — the concept guide gained a "Put it together" recipes category and a related:[…] field
+// rendered as "See also" chips. Drift guard: every related id must point to a real GUIDE entry, and
+// the recipes category must have real entries. (The GUIDE slice ends at // GUIDE-END, before CATS.)
+test('#597 — recipes category + every related:[…] id points to a real GUIDE entry', () => {
+  const g = GUIDE_SRC.slice(GUIDE_SRC.indexOf('const GUIDE = ['), GUIDE_SRC.indexOf('// GUIDE-END'));
+  const ids = new Set([...g.matchAll(/\bid:'([^']+)'/g)].map(m => m[1]));
+  const related = new Set();
+  for (const m of g.matchAll(/related:\[([^\]]+)\]/g))
+    for (const r of m[1].matchAll(/'([^']+)'/g)) related.add(r[1]);
+  const missing = [...related].filter(r => !ids.has(r));
+  assert.deepEqual(missing, [], `related: ids with no matching GUIDE entry: ${missing.join(', ')}`);
+  assert.ok(related.size >= 8, `the related-chip feature is exercised (found ${related.size} links)`);
+  // The recipes category is registered and has entries.
+  assert.ok(/id:'recipes',\s*label:'Put it together'/.test(GUIDE_SRC), 'the recipes CATS row is missing');
+  const recipeEntries = [...g.matchAll(/cat:'recipes'/g)].length;
+  assert.ok(recipeEntries >= 4, `the recipes category needs several entries (found ${recipeEntries})`);
+});

@@ -1469,6 +1469,12 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .guide-ex{display:grid;grid-template-columns:minmax(0,40%) 1fr;gap:3px 10px;margin:0;font-size:12px}
 .guide-ex dt code{background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:1px 5px;font-family:var(--mono);font-size:11.5px;white-space:normal;overflow-wrap:anywhere}
 .guide-ex dd{color:var(--muted);align-self:center;margin:0}
+/* #597: "See also" chips under an entry, linking to related entries */
+.guide-related{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px;padding-top:13px;border-top:1px solid var(--bdr)}
+.guide-related-lbl{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.guide-related-chip{font-size:11.5px;padding:3px 9px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .1s,border-color .1s}
+.guide-related-chip:hover{background:color-mix(in srgb,var(--acc) 8%,transparent);border-color:var(--acc)}
+.guide-related-chip:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .guide-no-results{color:var(--muted);font-size:12.5px;padding:16px 12px;text-align:center}
 /* Shortcuts page: five sections on one scrollable page, each under an eyebrow heading (the
    .guide-nav-group recipe) with the .sc-row grid beneath. .active is the section the clicked
@@ -26724,7 +26730,7 @@ const GUIDE = [
       { syn:'is:todo | due:week',    desc:'any search works as the row source' },
       { syn:'Cost: = sum(cost)',     desc:'a column computed per matching point' },
     ] },
-  { id:'query', cat:'todos', covers:['query','count'],
+  { id:'query', cat:'todos', covers:['query','count'], related:['progress','recipe-dashboard'],
     title:'Embedded queries',
     body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more. Want just the number? {count: is:todo} (or @ then Count) shows a live count instead of the list, handy for a dashboard line like open bugs: 7.",
     examples:[
@@ -26820,7 +26826,7 @@ const GUIDE = [
       { syn:'{dF}',       desc:'Fate dice (−1, 0 or +1)' },
       { syn:'{2d6>=4}',   desc:'count how many roll 4 or more' },
     ] },
-  { id:'grammar', cat:'generators', covers:['grammar','rolltable'],
+  { id:'grammar', cat:'generators', covers:['grammar','rolltable'], related:['deck','recipe-npc'],
     title:'Random picks & tables',
     body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts or make a raffle picker. Write choices in CURLY braces and one is picked at random each click: {red|blue|green}. Square brackets [red|blue] are not a pill, they stay plain text, so use { } not [ ]. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
     examples:[
@@ -26951,7 +26957,7 @@ const GUIDE = [
       { syn:'{= c2f(20)}',         desc:'°C to °F (also f2c)' },
       { syn:'{= km2mi(10)}',       desc:'km to miles (mi2km, kg2lb, l2gal…)' },
     ] },
-  { id:'variables', cat:'compute', covers:['var'],
+  { id:'variables', cat:'compute', covers:['var'], related:['gen-conditions','recipe-crit'],
     title:'Variables',
     body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, and options split on the bar like `{tone := warm | cool}` make a random pick.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the outline, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
     examples:[
@@ -26985,7 +26991,7 @@ const GUIDE = [
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
       { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
     ] },
-  { id:'check', cat:'compute', covers:['check'],
+  { id:'check', cat:'compute', covers:['check'], related:['rollups','recipe-budget'],
     title:'Checks & rules',
     body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
@@ -27095,6 +27101,50 @@ const GUIDE = [
       { syn:'File → Export a copy → Markdown', desc:'a one-way plain text snapshot for sharing' },
       { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable file that reopens as the live app' },
     ] },
+
+  // ── Put it together (#597): recipes that combine several features. Each uses only verified syntax
+  //    from the entries above; the "See also" chips link back to the pieces. ──────────────────────
+  { id:'recipe-crit', cat:'recipes', related:['variables','dice','gen-conditions','math'],
+    title:'Capture a roll, then branch on it',
+    body:"The move behind every crit, save and skill check: roll once, remember the result, then react to it. Type a variable that captures a die and the same number is there to test and to add to. The capture holds still until you click it, so the whole line stays consistent and one click re-rolls the lot.",
+    examples:[
+      { syn:'{r := 1d20}',          desc:'roll a d20 and remember it as r' },
+      { syn:'{r == 20: Critical!}', desc:'react when it is a natural 20' },
+      { syn:'{= r + mod} to hit',   desc:'and add your modifier to the same roll' },
+    ] },
+  { id:'recipe-npc', cat:'recipes', related:['grammar','gen-conditions','variables'],
+    title:'A character who stays consistent',
+    body:"Roll up a character once and have every mention agree: the same weapon, the same damage die, all the way down the sentence. Write the choices as a rule, give each choice its own fields, then freeze the pick in a variable so it holds still. Click the pill to meet someone new.",
+    examples:[
+      { syn:'weapon: longsword | warhammer | dagger', desc:'a rule of choices (@ Grammar)' },
+      { syn:'longsword.dmg: 1d8',                      desc:'give a choice its own field' },
+      { syn:'w = {weapon}',                            desc:'freeze one pick in a variable (@ Variable)' },
+      { syn:'She draws her {w} for {w.dmg}.',          desc:'both mentions are the same weapon' },
+    ] },
+  { id:'recipe-budget', cat:'recipes', related:['properties','rollups','check','search-ops'],
+    title:'A budget that totals and checks itself',
+    body:"Make a parent point a budget and each line item a child with a cost, and the total keeps itself. Add a check and the point flags the moment you go over, with no watching on your part. One search then finds every over-budget point in the document.",
+    examples:[
+      { syn:'Trip: spent {= sum(cost)} of {budget}', desc:'totals the children live' },
+      { syn:'sum(cost) <= budget',                   desc:'a check on the parent (/check)' },
+      { syn:'is:failing',                            desc:'find every point that fails its check' },
+    ] },
+  { id:'recipe-dashboard', cat:'recipes', related:['query','progress','search-ops'],
+    title:'A live status line',
+    body:"Turn the top of a project into a line that reads itself. A count pill shows how many points match a search, an embedded query lists them and a progress cookie tallies the boxes below. Every piece updates on its own as the work moves.",
+    examples:[
+      { syn:'{count: is:todo} open',    desc:'just the number, live' },
+      { syn:'[/]',                      desc:'a done tally over the child tasks' },
+      { syn:'{query: #idea -is:done}',  desc:'the matching points, listed live' },
+    ] },
+  { id:'recipe-stocker', cat:'recipes', related:['deck','grammar','gen-rules','dice'],
+    title:'Stock a scene from parts',
+    body:"Build a generator that assembles a scene from smaller tables: repeat pulls several features at once, each feature is its own rule and a rule can roll dice or reach into another table. Want each thing to come up only once? Swap the repeat for a deck and deal them out.",
+    examples:[
+      { syn:'This room holds {3x: {feature}}.', desc:'three independent features (repeat)' },
+      { syn:'feature: a {monster} | {treasure}', desc:'each feature is its own rule' },
+      { syn:'treasure: {2d6} silver | a {gem}',  desc:'a rule can roll dice or call another' },
+    ] },
 ];
 // GUIDE-END — stable boundary marker: tests slice the GUIDE array from `const GUIDE = [` to
 // here. Keep this line right after the array's closing `];`. (Replaces the old
@@ -27199,6 +27249,7 @@ function openGuide(initialId) {
     { id:'compute',        label:'Compute' },
     { id:'links',          label:'Links & knowledge' },
     { id:'files',          label:'Files & folders' },
+    { id:'recipes',        label:'Put it together' },
   ];
   const entries = GUIDE.filter(e => e.cat);            // every guide entry, in order
   const catLabels = Object.fromEntries(CATS.map(c => [c.id, c.label]));
@@ -27265,6 +27316,15 @@ function openGuide(initialId) {
       ? '<dl class="guide-ex">' + (e.examples||[]).map(x =>
           '<dt><code>' + escHtml(x.syn) + '</code></dt><dd>' + escHtml(x.desc) + '</dd>').join('') + '</dl>'
       : '';
+    // #597: optional "See also" chips. Each related id points to another entry; a click navigates to
+    // it via selectItem. Unknown ids are dropped defensively (a drift test also pins that all exist).
+    const relHtml = (e.related||[]).length
+      ? '<div class="guide-related"><span class="guide-related-lbl">See also</span>' +
+        (e.related||[]).map(id => {
+          const t = entries.find(x => x.id === id);
+          return t ? '<button type="button" class="guide-related-chip" data-id="' + id + '">' + escHtml(t.title || id) + '</button>' : '';
+        }).join('') + '</div>'
+      : '';
     // An entry may supply pre-built body HTML (bodyHtml) instead of the plain-text body
     // paragraph — used by the Shortcuts entry to render the grouped key rows. The builder
     // is trusted app HTML (it escHtml's its own dynamic parts); e.body stays escaped.
@@ -27276,7 +27336,7 @@ function openGuide(initialId) {
     pane.innerHTML = '<div class="guide-entry">' +
       '<div class="guide-cat-badge">' + escHtml(catLabels[e.cat] || e.cat) + '</div>' +
       '<div class="guide-entry-title">' + escHtml(title) + '</div>' +
-      bodyHtml + exHtml + '</div>';
+      bodyHtml + exHtml + relHtml + '</div>';
     // When a search is active, mark the matched text in the shown entry (like document search),
     // so a hit shows WHERE it matched, not just which entry survived the filter.
     const q = filterQ.trim().toLowerCase();
@@ -27296,6 +27356,11 @@ function openGuide(initialId) {
   }
   renderNav();
   renderPane();
+  // #597: a "See also" chip navigates to the related entry (delegated, survives renderPane rebuilds).
+  pane.addEventListener('click', ev => {
+    const chip = ev.target.closest('.guide-related-chip');
+    if (chip) selectItem(chip.dataset.id);
+  });
   nav.addEventListener('click', e => {
     const btn = e.target.closest('.guide-nav-btn');
     if (!btn) return;
