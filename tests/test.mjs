@@ -13075,3 +13075,64 @@ test('#647 — timeline collectors: journal (tree position), lore (when/date pro
   assert.equal(c.collectJournalDates({ children: [lore, task] }).length, 0);
   assert.equal(c.collectLoreDates({ children: [ mk('Founded', [{ key: 'date', val: '2020-01-01' }]) ] }).length, 1);
 });
+
+// #653 — calendar coexistence (two-log slice): a date's calendar is decided by WHERE it lives.
+// resolveCalendarId is the pure decision over a node's root-first ancestor-id chain. Three outcomes:
+// a named calendar id (in-world log), the ' gregorian' sentinel (journal subtree, IRL even in a
+// fiction-default doc), or null (unbound → the document default).
+test('#653 — resolveCalendarId: subtree decides the calendar (game-log / journal / unbound)', () => {
+  const GREG = '@gregorian@';   // CAL_GREGORIAN sentinel (documented; the @...@ wrapper can't be a real calendar id)
+  // chain is root-first … node-last (ids). A point inside the game-log home → the bound calendar id.
+  assert.equal(c.resolveCalendarId(['root', 'gl', 'day', 'beat'], 'jr', 'gl', 'harptos'), 'harptos');
+  assert.equal(c.resolveCalendarId(['root', 'gl'], 'jr', 'gl', 'harptos'), 'harptos');   // the home itself
+  // A point inside the journal home → Gregorian, NOT the document default.
+  assert.equal(c.resolveCalendarId(['root', 'jr', 'y', 'm', 'd'], 'jr', 'gl', 'harptos'), GREG);
+  // Neither home on the chain → null (unbound; caller falls to the document default).
+  assert.equal(c.resolveCalendarId(['root', 'other', 'x'], 'jr', 'gl', 'harptos'), null);
+  // Deepest-match-wins: a journal nested inside a game log reads IRL; a game log nested inside a
+  // journal reads in-world (the last home crossed on the root→node walk decides).
+  assert.equal(c.resolveCalendarId(['root', 'gl', 'jr', 'entry'], 'jr', 'gl', 'harptos'), GREG);
+  assert.equal(c.resolveCalendarId(['root', 'jr', 'gl', 'beat'], 'jr', 'gl', 'harptos'), 'harptos');
+  // A game log bound to no calendar id → null (falls to default), never a crash.
+  assert.equal(c.resolveCalendarId(['root', 'gl', 'x'], 'jr', 'gl', null), null);
+  // Defensive: a non-array chain never throws.
+  assert.equal(c.resolveCalendarId(null, 'jr', 'gl', 'harptos'), null);
+});
+
+// #653 — normalizeCalendarBindings guarantees the {calendars, gamelog} shape and re-validates each
+// named calendar (mirrors the root.calendar re-validate), so a pre-feature or tampered autosave is safe.
+test('#653 — normalizeCalendarBindings: shape guarantee + re-validation', () => {
+  const validCal = { id: 'harptos', name: 'Harptos', months: [{ name: 'Hammer', days: 30 }], week: { length: 7, days: [] } };
+  // A pre-feature root (no fields) gets empty {}/null, never undefined.
+  const r1 = c.normalizeCalendarBindings({});
+  assert.deepEqual(host(r1.calendars), {});
+  assert.equal(r1.gamelog, null);
+  // A valid named calendar survives; a broken one (empty months) is DROPPED, not kept broken.
+  const r2 = c.normalizeCalendarBindings({ calendars: { harptos: validCal, junk: { months: [] } }, gamelog: { targetId: 'n1', calendarId: 'harptos' } });
+  assert.deepEqual(host(Object.keys(r2.calendars)), ['harptos']);
+  assert.equal(r2.gamelog.targetId, 'n1');
+  assert.equal(r2.gamelog.calendarId, 'harptos');
+  // A malformed gamelog (no string targetId) → null; a missing calendarId defaults to null, not undefined.
+  assert.equal(c.normalizeCalendarBindings({ gamelog: { calendarId: 'x' } }).gamelog, null);
+  assert.equal(c.normalizeCalendarBindings({ gamelog: { targetId: 'n2' } }).gamelog.calendarId, null);
+});
+
+// #653 — the coexistence wiring src-pins: the bullet-menu door, the OPML persistence, and the seams
+// that resolve a node's calendar. Guards that no piece of the feature is silently dropped in a refactor.
+test('#653 — calendar coexistence: door + persistence + seam wiring', () => {
+  // the bullet-menu bind/unbind door (front door, P2)
+  assert.ok(_src.includes('Bind as in-world log'), 'the in-world-log bind door is missing');
+  assert.ok(_src.includes('Unbind in-world log'), 'the unbind label is missing');
+  assert.ok(_src.includes('In-world log (needs a custom calendar)'), 'the needs-a-calendar guard label is missing');
+  // OPML round-trip (both save + load sides)
+  assert.ok(_src.includes("headEl('_calendars'") && _src.includes("headEl('_gamelog'"), 'the calendars/gamelog head elements are not emitted');
+  assert.ok(_src.includes("head > _calendars") && _src.includes("head > _gamelog"), 'the calendars/gamelog head elements are not parsed on load');
+  // the resolver is threaded into the date seams it must override (chips, the task collector, the timeline)
+  assert.ok(_src.includes('calendarForNode('), 'calendarForNode is not called anywhere');
+  const cdd = fnBody(_src, 'collectDueDates');
+  assert.ok(cdd.includes('calendarForNode('), 'collectDueDates must parse each point under its own calendar');
+  const rt = fnBody(_src, 'renderTimeline');
+  assert.ok(rt.includes('calendarForNode('), 'the timeline must group each row under its own calendar');
+  // the shape guarantee runs on every load path
+  assert.ok(_src.includes('normalizeCalendarBindings(root)'), 'normalizeCalendarBindings must run on the load/adopt paths');
+});

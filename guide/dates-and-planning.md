@@ -130,12 +130,12 @@ your era. Open **File then Custom calendar** and type the calendar as text:
 Two example chips fill the fields with a complete working calendar to edit; the live preview under
 each field checks your lines as you type and shows what "today" resolves to before you commit.
 
-Once active, the whole document speaks that calendar: due and start dates read and write the
-calendar's own year-month-day (`due: 1204-04-12`), the agenda's month and week views take its shape
-(a 10-day week really shows ten columns), the date picker in the Schedule dialog renders its months,
-date math like `{= daysuntil(due)}` counts its days, and the [journal](#daily-journal) files entries
-under the in-world date, so a campaign log accumulates in campaign time. Relative dates (`today+3`,
-`tomorrow`) mean in-world days.
+Once active, the document speaks that calendar: due and start dates read and write the calendar's own
+year-month-day (`due: 1204-04-12`), the agenda's month and week views take its shape (a 10-day week
+really shows ten columns), the date picker in the Schedule dialog renders its months, and date math
+like `{= daysuntil(due)}` counts its days. Relative dates (`today+3`, `tomorrow`) mean in-world days.
+(Your [journal](#daily-journal) is the one part that stays on the real calendar, so it keeps tracking
+actual days; see [two calendars in one document](#two-calendars-in-one-document) below.)
 
 **Let time pass** from the agenda: with a calendar active, a **Today** chip shows the in-world date;
 click it to advance the clock (+1 day, +3 days, +1 week) or set an exact date. Advancing never
@@ -154,6 +154,24 @@ exactly yet; the usual workaround is folding each festival into the preceding mo
 
 For a worked campaign example with an importable demo, see
 [the campaign calendar](solo-rpg/campaign-calendar/campaign-calendar.md) in the solo-RPG guides.
+
+### Two calendars in one document
+
+Solo and GM play often wants **both** clocks at once: real dates for the journal and your actual
+scheduling, in-world dates for the campaign. A calendar is decided by **where a point lives**, not by
+the date you type, so the two coexist without ever tagging a value:
+
+- Your **journal** always reads the **real (Gregorian) calendar**, even in a world that runs on a
+  custom one. What you did on a given day is an IRL fact.
+- An **in-world log** reads a custom calendar you bind to it. Make a point the home of your campaign
+  log, open its bullet menu and choose **Bind as in-world log** (it needs a custom calendar defined
+  first). Every date inside that point's subtree then reads the campaign's own year, month and day,
+  while the rest of the document stays on the regular calendar. Unbind it from the same menu.
+
+Because the calendar follows the subtree, nothing you already typed changes: a `due` inside the
+in-world log is read in world time, the same string elsewhere is read normally, and the
+[timeline](#timeline) lays each row out under its own calendar (in-world months and real months on
+separate axes, never merged).
 
 ---
 
