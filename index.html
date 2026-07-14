@@ -19299,6 +19299,15 @@ const FN3 = Object.assign(Object.create(null), {
   // calToEpoch; null (out-of-range for that calendar) → NaN so evalMath fails visibly, not silently.
   date: (y, m, d) => { const cal = activeCalendar(); if (cal) { const ep = calToEpoch(cal.eras.length ? calYearFromEra(y, cal) : y, m, d, cal); return ep == null ? NaN : ep; } return Math.floor(Date.UTC(y, m - 1, d) / DAY_MS); },
   clamp: (x, lo, hi) => Math.min(Math.max(x, lo), hi),            // bound x to [lo, hi]
+  // #649 moon phase: the fraction 0..1 through a lunar cycle. period = the cycle length in days
+  // (29.53 for Earth's moon, or any fantasy value), offset = the epoch-day of a known new moon.
+  // 0 = new, 0.5 = full. A bare moonphase(…) pill renders as a moon glyph (see isMoonExpr); wrap
+  // it in more math (× 8, floor…) to get the raw number. Multiple moons = multiple calls.
+  moonphase: (date, period, offset) => {
+    if (!period) return NaN;                                       // period 0/NaN → visible error
+    const frac = ((Math.round(date) - Math.round(offset)) / period) % 1;
+    return (frac + 1) % 1;                                         // normalize negatives to [0, 1)
+  },
 });
 
 function evalMath(input, vars = {}) {
@@ -19490,7 +19499,20 @@ function formatEpochDays(n, cal = activeCalendar()) {
   return `${d.getUTCFullYear()}-${m}-${day}`;
 }
 function isDateExpr(expr) { return /^\s*asdate\s*\(/i.test(expr || ''); }
-function formatMathDisplay(v, expr) { return isDateExpr(expr) ? formatEpochDays(v) : formatMathResult(v); }
+// #649: a bare moonphase(…) pill displays its 0..1 result as a moon glyph (like asdate → an ISO
+// date). Eight phases; 0 and 1 both land on new. Compose it in a bigger expression to get the number.
+const MOON_GLYPHS = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];   // new → waxing → full → waning
+function moonGlyph(phase) {
+  if (!isFinite(phase)) return '#ERR';
+  const p = ((phase % 1) + 1) % 1;                                   // normalize to [0, 1)
+  return MOON_GLYPHS[Math.round(p * 8) % 8];
+}
+// Glyph-format only a BARE moonphase call (the whole expression), so composing it for the raw number
+// works: moonphase(d, 28, 0) → 🌒, but moonphase(d, 28, 0) * 8 or floor(moonphase(…) * 8) → a number.
+function isMoonExpr(expr) { return /^\s*moonphase\s*\(.*\)\s*$/i.test(expr || ''); }
+function formatMathDisplay(v, expr) {
+  return isMoonExpr(expr) ? moonGlyph(v) : isDateExpr(expr) ? formatEpochDays(v) : formatMathResult(v);
+}
 
 function formatMathResult(n) {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '-∞' : 'NaN';
@@ -19523,7 +19545,7 @@ function makeMathResult(expr, scope = null) {
   // instead of staying raw text — parity with how renderMathPill will evaluate it.
   const v = evalMath(expandAggExpr(expr, null), scope || collectVars());
   if (v === null) return null;
-  return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isDateExpr(expr) ? 'date' : undefined };
+  return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isMoonExpr(expr) ? 'moon' : isDateExpr(expr) ? 'date' : undefined };
 }
 
 // ─── uncertainty fields (B2) ─────────────────────────────────────────────────
@@ -27025,6 +27047,7 @@ const GUIDE = [
       { syn:'{= addmonths(due, 3)}', desc:'shift a date by whole months (day clamped)' },
       { syn:'{= eom(due)}',        desc:'the last day of that month' },
       { syn:'{= workdaysbetween(start, due)}', desc:'Mon-Fri days between (weeknum for the ISO week)' },
+      { syn:'{= moonphase(due, 28, 0)}', desc:'a moon phase glyph for a 28-day cycle' },
       { syn:'{= weekday(today)}',  desc:'0=Sun…6=Sat (also year, month, quarter)' },
       { syn:'{= km2mi(10)}',       desc:'km to miles (c2f, kg2lb, l2gal…)' },
     ] },

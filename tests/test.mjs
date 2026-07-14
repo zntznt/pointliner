@@ -12983,3 +12983,32 @@ test('#544 — evalMath dates: weeknum, eom, age, addmonths, workdaysbetween', (
   assert.equal(m('workdaysbetween(date(2024,1,5), date(2024,1,8))'), 1);  // Fri..Mon = just Fri
   assert.equal(m('workdaysbetween(date(2024,1,8), date(2024,1,1))'), 5);  // order-independent
 });
+
+// #649 — moonphase(date, period, offset) → 0..1 through a lunar cycle (0 new, 0.5 full). A bare
+// moonphase(…) pill renders as a moon glyph; composing it yields the raw number.
+test('#649 — moonphase computes the cycle fraction and clamps offset/period edges', () => {
+  const m = e => c.evalMath(e, {});
+  assert.equal(m('moonphase(0, 28, 0)'), 0);      // at the offset = new moon
+  assert.equal(m('moonphase(14, 28, 0)'), 0.5);   // half a 28-day cycle = full
+  assert.equal(m('moonphase(7, 28, 0)'), 0.25);   // first quarter
+  assert.equal(m('moonphase(28, 28, 0)'), 0);     // a full cycle later = new again
+  assert.equal(+m('moonphase(-1, 28, 0)').toFixed(4), 0.9643);   // before the offset wraps into [0,1)
+  assert.equal(m('moonphase(5, 0, 0)'), null);    // period 0 → visible error, no divide-by-zero
+  assert.equal(m('moonphase(9, 28, 2)'), 0.25);   // offset shifts the reference new moon
+  assert.equal(m('moonphase(7, 28, 0) * 8'), 2);  // composed → the raw phase index, a number
+});
+
+test('#649 — moon glyph display: bare pill → glyph, composed → number', () => {
+  assert.equal(c.moonGlyph(0), '🌑');       // new
+  assert.equal(c.moonGlyph(0.5), '🌕');     // full
+  assert.equal(c.moonGlyph(0.25), '🌓');    // first quarter
+  assert.equal(c.moonGlyph(0.75), '🌗');    // last quarter
+  assert.equal(c.moonGlyph(0.99), '🌑');    // wraps back to new
+  assert.ok(!isFinite(NaN) && c.moonGlyph(NaN) === '#ERR', 'a non-finite phase is a visible error');
+  // isMoonExpr glyphs ONLY a bare call, so composition still gets the number.
+  assert.equal(c.isMoonExpr('moonphase(due, 28, 0)'), true);
+  assert.equal(c.isMoonExpr('moonphase(due, 28, 0) * 8'), false);
+  assert.equal(c.isMoonExpr('floor(moonphase(due, 28, 0) * 8)'), false);
+  assert.equal(c.formatMathDisplay(0.5, 'moonphase(x, 28, 0)'), '🌕');       // bare → glyph
+  assert.equal(c.formatMathDisplay(4, 'moonphase(x, 28, 0) * 8'), '4');      // composed → number
+});

@@ -90,8 +90,15 @@ constant **`today`** is the anchor:
 {= eom(due)}               the last day of that month
 {= weeknum(due)}           ISO 8601 week number
 {= weekday(today)}         0 = Sunday … 6 = Saturday
+{= moonphase(due, 28, 0)}  a moon phase glyph (period, offset in days)
 {= year(due)}  month(due)  day(due)  quarter(due)
 ```
+
+**Moons.** `moonphase(date, period, offset)` gives the fraction 0..1 through a lunar cycle
+(0 = new, 0.5 = full): `period` is the cycle length in days, `offset` is the epoch-day of a
+known new moon. A **bare** `{= moonphase(…)}` pill shows the matching glyph 🌑🌒🌓🌔🌕🌖🌗🌘;
+compose it (`{= floor(moonphase(due, 28, 0) * 8)}`) to get the phase number instead. For a
+second moon, add another call with its own `period` and `offset`.
 
 `year`, `month`, `day`, `quarter`, `age`, `eom` and `addmonths` follow a **custom calendar**
 when the document has one; `weeknum` (ISO) and `workdaysbetween` (Mon-Fri) use the ordinary
