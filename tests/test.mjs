@@ -542,6 +542,18 @@ test('promoteBraceBody — {oracle: band} builds the dialog-identical anonymous 
   assert.deepEqual(host(c.braceTypeLabel('oracle: likely', {}, {})), ['grammar', 'oracle']);
 });
 
+// {meter: hp/hpmax} is a valid live form (a text-recipe pill rendered via resolveMeter, like
+// {= sum()}), so it must classify as an artifact and label as 'meter' — not fall through to the
+// generic 'pill'/'literal' as it did before, which left it unstyled in edit mode though it renders.
+test('classifyBraceBody / braceTypeLabel — {meter: …} is a recognized live form', () => {
+  assert.deepEqual(host(c.braceTypeLabel('meter: hp/hpmax', {}, {})), ['meter', null]);
+  assert.equal(c.classifyBraceBody('meter: hp/hpmax', {}, {}), 'artifact');
+  // a `meter:` keyword commits to the form, so a malformed body is an ATTEMPT (typo), not prose
+  assert.equal(c.classifyBraceBody('meter: !!!', {}, {}), 'invalid');
+  // no colon → not the meter form (a bare word stays a rule/var-ref classification)
+  assert.notEqual(c.braceTypeLabel('meter', {}, {})[0], 'meter');
+});
+
 test('resolveBrace — a nested {oracle: band} resolves to a Yes/No pick (#543)', () => {
   const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
   for (let i = 0; i < 10; i++) assert.match(c.resolveBrace('oracle: even', ctx), /^(Yes|No)$/);
@@ -1035,12 +1047,28 @@ test('filterBraceForms — empty prefix returns every form, each a well-formed {
   }
 });
 
+// The picker's discoverability layer: every form carries a one-line `desc` (shown in Guided) and a
+// `guide` id (the ? help mark, Guided + Standard) that MUST point at a real concept-guide entry, or
+// the ? opens nothing. Guards the picker-to-guide wiring the same way the drift guards protect commands.
+test('BRACE_FORMS: every form has a description and a valid concept-guide link', () => {
+  const g = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const guideIds = new Set([...g.matchAll(/\{\s*id:\s*['"]([\w-]+)['"]/g)].map(m => m[1]));
+  for (const f of c.filterBraceForms('')) {
+    assert.ok(f.desc && typeof f.desc === 'string' && f.desc.length > 3, `${f.name}: has a Guided description`);
+    assert.ok(!f.desc.includes('—'), `${f.name}: description has no em dash`);
+    assert.ok(f.guide, `${f.name}: names a concept-guide entry for its ? help mark`);
+    assert.ok(guideIds.has(f.guide), `${f.name}: guide id '${f.guide}' is a real GUIDE entry`);
+  }
+  // the picker's own hub entry exists and is reachable
+  assert.ok(guideIds.has('brace-picker'), "the { picker's own concept-guide entry ('brace-picker') exists");
+});
+
 test('filterBraceForms — each scaffold selects the intended placeholder (sel offsets pinned)', () => {
   const want = {
     'math': '', 'roll-up': 'prop', 'word count': 'subtree', 'dice': '2d6',
     'pick': 'a', 'conditional': 'cond', 'deck': 'a | b | c', 'repeat': 'template',
     'modifier': 'name', 'item field': 'item', 'estimate': '5 to 10',
-    'query': 'is:todo', 'count': 'is:todo', 'roll': 'is:todo', 'meter': 'hp/hpmax',
+    'query': 'is:todo', 'count': 'is:todo', 'roll': 'is:todo', 'meter': '10/100',
     'markov': 'a→b, b→c', 'oracle': 'likely', 'sequence': 'Flow',
   };
   const byName = Object.fromEntries(c.filterBraceForms('').map(f => [f.name, f]));
@@ -1126,6 +1154,20 @@ test('mathCompletions — empty prefix returns nothing (no {= } flood), and it p
   assert.equal(c.mathCompletions('', { strength: 1 }).length, 0, 'empty prefix → [] (decision A)');
   const sqOnly = c.mathCompletions('sqr', {}).map(x => x.name);
   assert.ok(sqOnly.includes('sqrt') && !sqOnly.includes('sin'), 'prefix-match, not fuzzy');
+});
+
+// #74: a {cond: …} condition is an evalMath comparison, so its body completes with the math
+// vocabulary — the same as {= …}. The gate (pinned here as the pure predicate bodyCompletion uses):
+// complete only while the caret is still in the condition (no top-level `:` typed) AND a comparison
+// operator is present (so a bare word stays an ordinary rule/var reference, not a half-typed cond).
+test('#74: conditional body completes math while still in the condition, not in the branches', () => {
+  const inCondition = (inner) => c.splitTopLevel(inner, ':').length === 1 && /[<>=!]=?|[<>]/.test(inner);
+  assert.ok(inCondition('strength > st'), 'a comparison with no colon → complete the condition');
+  assert.ok(!inCondition('str'), 'a bare word (no operator) → NOT a condition (stays a name ref)');
+  assert.ok(!inCondition('strength > 10: hi | b'), 'past the top-level colon → in the branches, no math');
+  // and the completion it routes to actually surfaces the variable
+  assert.ok(c.mathCompletions('str', { strength: 15 }).some(m => m.name === 'strength'),
+    'the condition completes a document variable by name');
 });
 
 test('mathFnGroup — conversions and dates are sub-grouped; log2/atan2 are not conversions', () => {

@@ -1957,11 +1957,20 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #brace-menu,#tag-menu,#emoji-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #brace-menu.on,#tag-menu.on,#emoji-menu.on{display:block}
 .bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
-.bm-item{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:var(--r-md);cursor:pointer;font-size:13px}/* #396: the shared .cmd-item row metrics */
+.bm-item{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;padding:6px 10px;border-radius:var(--r-md);cursor:pointer;font-size:13px}/* #396: the shared .cmd-item row metrics; wrap lets the Guided description sit on its own line */
 .bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 10%,transparent)}/* #396: one highlight recipe */
 .bm-name{flex:none;font-family:var(--mono)}
 .bm-val{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .bm-item.hi .bm-val{color:var(--muted)}
+/* the { picker help mark + description (discoverability layer). The `?` opens the form's concept-guide
+   entry; the description explains it inline. Verbosity-gated via body classes (same pattern as .sh-row):
+   the help mark shows in Guided + Standard, hidden in Lean; the description shows in Guided only. */
+.bm-help{flex:none;order:3;width:16px;height:16px;padding:0;font-size:10px;line-height:1;font-weight:700;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:999px;cursor:pointer}
+.bm-help:hover{color:var(--acc);border-color:var(--acc)}
+.bm-help:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.bm-desc{order:4;flex:1 0 100%;font-size:11px;color:var(--muted);line-height:1.3;padding-top:1px}
+body.v-lean .bm-help{display:none}
+body:not(.v-guided) .bm-desc{display:none}
 /* ── variables overview panel ── */
 #var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
 #var-panel.on{transform:translateY(0)}
@@ -13739,6 +13748,10 @@ function classifyBraceBody(body, rules, vars) {
   // {oracle: likely} — the band name is a closed set, so an unknown band is an ATTEMPT
   // (typo styling), not prose; the text still stays literal on exit (#543, the #407 model).
   if (/^oracle\s*:/i.test(body)) return oracleParts(body) ? 'artifact' : 'invalid';
+  // {meter: hp/hpmax} — a text-recipe pill (renders a live bar via resolveMeter, no sidecar,
+  // like {= sum()}). The `meter:` keyword commits to the form, so a malformed body is an ATTEMPT,
+  // not prose. Recognizing it here gives it grammar styling in edit mode, matching its render.
+  if (/^meter\s*:/i.test(body)) return parseMeter(body) ? 'artifact' : 'invalid';
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
@@ -13791,6 +13804,7 @@ function braceTypeLabel(body, rules, vars) {
   if (queryParts(body)) return ['query', null];                        // {query: is:todo}
   if (countParts(body)) return ['query', 'count'];                     // {count: is:todo} (#541)
   if (oracleParts(body)) return ['grammar', 'oracle'];                 // {oracle: likely} (#543)
+  if (parseMeter(body)) return ['meter', null];                        // {meter: hp/hpmax} — a text-recipe pill, rendered live like {= sum()}
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
@@ -18052,25 +18066,27 @@ function filterBraceCandidates(callables, prefix) {
 // `sel` is a [start,end) span within `insert` selected for type-to-replace (a
 // caret when start===end). `keys` are extra prefixes the form matches on (so `{sum`
 // surfaces the roll-up, `{shuffle` the deck). Order = teaching order (common first).
+// `guide` names the concept-guide entry id the form's help mark opens (Guided + Standard); `desc`
+// is the one-line gloss shown in Guided (verbose). Both are optional per form.
 const BRACE_FORMS = [
-  { label:'math',        keys:['math','calc'],                                        insert:'{= }',                 sel:[3,3]  },
-  { label:'roll-up',     keys:['rollup','sum','avg','min','max','count','total'],      insert:'{= sum(prop)}',        sel:[7,11] },
-  { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   sel:[9,16] },
-  { label:'dice',        keys:['dice','roll'],                                         insert:'{2d6}',                sel:[1,4]  },
-  { label:'pick',        keys:['pick','alt','choice','weighted'],                      insert:'{a | b | c}',          sel:[1,2]  },
-  { label:'conditional', keys:['cond','conditional','if'],                             insert:'{cond: then | else}',  sel:[1,5]  },
-  { label:'deck',        keys:['deck','shuffle','cycle','once','stopping','sequence'], insert:'{shuffle: a | b | c}', sel:[10,19]},
-  { label:'repeat',      keys:['repeat','times'],                                      insert:'{2x: template}',       sel:[5,13] },
-  { label:'modifier',    keys:['modifier','mod','cap','title','upper','lower'],        insert:'{name.cap}',           sel:[1,5]  },
-  { label:'item field',  keys:['item','field'],                                        insert:'{item.field}',         sel:[1,5]  },
-  { label:'estimate',    keys:['estimate','uncertain','normal','uniform'],             insert:'{5 to 10}',            sel:[1,8]  },
-  { label:'query',       keys:['query','search','list','embed'],                       insert:'{query: is:todo}',     sel:[8,15] },
-  { label:'count',       keys:['count','tally','number','howmany'],                    insert:'{count: is:todo}',     sel:[8,15] },
-  { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      sel:[7,14] },
-  { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: hp/hpmax}',    sel:[8,16] },
-  { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   sel:[9,17] },
-  { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     sel:[9,15] },
-  { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', sel:[5,9] },
+  { label:'math',        keys:['math','calc'],                                        insert:'{= }',                 sel:[3,3],  guide:'math',          desc:'calculate a value live' },
+  { label:'roll-up',     keys:['rollup','sum','avg','min','max','count','total'],      insert:'{= sum(prop)}',        sel:[7,11], guide:'rollups',       desc:"total a property over this point's children" },
+  { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   sel:[9,16], guide:'math',          desc:'count words in this point and below' },
+  { label:'dice',        keys:['dice','roll'],                                         insert:'{2d6}',                sel:[1,4],  guide:'dice',          desc:'roll dice, click to re-roll' },
+  { label:'pick',        keys:['pick','alt','choice','weighted'],                      insert:'{a | b | c}',          sel:[1,2],  guide:'grammar',       desc:'pick one at random from a list' },
+  { label:'conditional', keys:['cond','conditional','if'],                             insert:'{cond: then | else}',  sel:[1,5],  guide:'gen-conditions',desc:'show one text or another by a test' },
+  { label:'deck',        keys:['deck','shuffle','cycle','once','stopping','sequence'], insert:'{shuffle: a | b | c}', sel:[10,19],guide:'deck',          desc:'draw without repeats, or cycle in order' },
+  { label:'repeat',      keys:['repeat','times'],                                      insert:'{2x: template}',       sel:[5,13], guide:'grammar',       desc:'repeat a template N times' },
+  { label:'modifier',    keys:['modifier','mod','cap','title','upper','lower'],        insert:'{name.cap}',           sel:[1,5],  guide:'gen-modifiers', desc:'reshape output: capitalize, a/an, plural' },
+  { label:'item field',  keys:['item','field'],                                        insert:'{item.field}',         sel:[1,5],  guide:'gen-rules',     desc:'read a field off a picked item' },
+  { label:'estimate',    keys:['estimate','uncertain','normal','uniform'],             insert:'{5 to 10}',            sel:[1,8],  guide:'estimates',     desc:'an uncertain value with a range' },
+  { label:'query',       keys:['query','search','list','embed'],                       insert:'{query: is:todo}',     sel:[8,15], guide:'query',         desc:'a live list of matching points' },
+  { label:'count',       keys:['count','tally','number','howmany'],                    insert:'{count: is:todo}',     sel:[8,15], guide:'query',         desc:'a live count of matching points' },
+  { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      sel:[7,14], guide:'roll-query',    desc:'pick one random matching point' },
+  { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: 10/100}',      sel:[8,14], guide:'meter',         desc:'a bar of a value against its max' },
+  { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   sel:[9,17], guide:'markov',        desc:'generate text in a style you seed' },
+  { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     sel:[9,15], guide:'oracle',        desc:'a weighted yes/no answer' },
+  { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', sel:[5,9], guide:'sequences', desc:'define a custom to-do workflow' },
 ];
 // Filter BRACE_FORMS by prefix (label or any key, anchored). Empty prefix = all.
 // Returns fresh {group:'form', …} objects for the merged menu. Pure; no DOM.
@@ -18078,7 +18094,7 @@ function filterBraceForms(prefix) {
   const lo = (prefix || '').toLowerCase();
   return BRACE_FORMS
     .filter(f => !lo || f.label.startsWith(lo) || f.keys.some(k => k.startsWith(lo)))
-    .map(f => ({ group:'form', name:f.label, insert:f.insert, sel:f.sel }));
+    .map(f => ({ group:'form', name:f.label, insert:f.insert, sel:f.sel, guide:f.guide, desc:f.desc }));
 }
 
 // ─── hashtag index ───────────────────────────────────────────────────────────
@@ -18114,7 +18130,7 @@ function collectTags(rootNode) {
   return result;
 }
 
-let _propKeysCacheVer = -1, _propKeysCached = null; // doc-cache 9: collectPropKeys (see resetDocCaches registry)
+let _propKeysCacheVer = -1, _propKeysCached = null; // doc-cache 10: collectPropKeys (see resetDocCaches registry)
 // Distinct property keys across the whole document, sorted — the vocabulary behind
 // has:/key: search completion. Mirrors collectTags: walk children, gather node.props
 // keys (lowercased + deduped), cache on _varsVer. Pure over rootNode; no-arg = the live
@@ -21599,6 +21615,13 @@ let braceState = null;
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
 function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; }
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
+// The picker's `?` help mark: close the menu and open the concept guide at the form's entry. The
+// half-typed `{` stays in the point (hideBraceMenu never touches node text), so closing the guide
+// returns the user to their draft. openGuide validates the id and falls back gracefully if absent.
+function openBraceHelp(guideId) {
+  hideBraceMenu();
+  if (typeof openGuide === 'function') openGuide(guideId);
+}
 
 // ─── {…} shorthand live-preview tooltip (UXP-7) ──────────────────────────────
 // A non-interactive tooltip that appears below the closing } of a valid {body}
@@ -21628,6 +21651,15 @@ function bodyCompletion(inner, nodeId) {
     const frag = mathFragmentAt(inner, inner.length);
     return frag ? { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, collectVars()) }
                 : { prefix: '', fragStart: inner.length, matches: [] };
+  }
+  // conditional: {cond: then | else} — the condition (before the top-level `:`) is an evalMath
+  // comparison, so complete it with the SAME math vocabulary as {= …} (functions, constants, vars).
+  // `inner` is the body up to the caret; a `:` in it means the caret has moved past the condition
+  // into the free-text branches, so only complete while no top-level `:` has been typed yet AND the
+  // partial condition already reads as a comparison (a bare word is still an ordinary rule/var ref).
+  if (splitTopLevel(inner, ':').length === 1 && /[<>=!]=?|[<>]/.test(inner)) {
+    const frag = mathFragmentAt(inner, inner.length);
+    if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, collectVars()) };
   }
   let m;
   if ((m = /^(query|roll|count)\s*:/i.exec(inner))) {                 // search: {query|roll|count: …}
@@ -21733,6 +21765,24 @@ function renderBraceMenu() {
       valEl.className = 'bm-val';
       valEl.textContent = hint;
       el.appendChild(valEl);
+    }
+    // A help mark (Guided + Standard, CSS-gated off in Lean) that opens the form's concept-guide
+    // entry. mousedown+preventDefault (caret invariant) and stopPropagation so it opens the guide
+    // instead of applying the form. The typed `{` draft stays in the point; the picker closes.
+    if (item.guide) {
+      const help = document.createElement('button');
+      help.type = 'button'; help.className = 'bm-help'; help.textContent = '?';
+      help.tabIndex = -1; help.setAttribute('aria-label', 'What is ' + item.name + '? Open the guide');
+      help.title = 'Open the guide for ' + item.name;
+      help.addEventListener('mousedown', ev => { ev.preventDefault(); ev.stopPropagation(); openBraceHelp(item.guide); });
+      el.appendChild(help);
+    }
+    // A one-line description (Guided only, CSS-gated) so a verbose user reads what the form does
+    // without leaving the menu. On its own row under the name so it never crowds the hint/help.
+    if (item.desc) {
+      const d = document.createElement('div');
+      d.className = 'bm-desc'; d.textContent = item.desc;
+      el.appendChild(d);
     }
     el.addEventListener('mouseenter', () => { braceState.activeIdx = i; renderBraceMenu(); });
     el.addEventListener('mousedown', e => { e.preventDefault(); braceState.activeIdx = i; braceApply(); });
@@ -23111,7 +23161,7 @@ function performMultiDrop(ids, targetId, position) {
 // else touches the eight per-generation caches.
 //
 // THE CANONICAL REGISTRY — every whole-tree cache keyed on _varsVer (grep
-// `doc-cache` to list all nine declarations; a tenth MUST join this list AND
+// `doc-cache` to list all ten declarations; an eleventh MUST join this list AND
 // be wired to _varsVer, or it will silently serve stale data):
 //   1. collectVars      (_varsCacheVer)
 //   2. collectRules     (_rulesCacheVer)
@@ -23122,6 +23172,7 @@ function performMultiDrop(ids, targetId, position) {
 //   7. knownStates      (_statesCacheVer)
 //   8. stateCmds        (_stateCmdsCacheVer)   ← no rootNode override; reads live state via allSequences()
 //   9. varMapAt         (_varMapAtCacheVer)    ← per-node positional scope; a Map keyed on node id, reset on generation bump
+//  10. collectPropKeys  (_propKeysCacheVer)    ← distinct property keys, the has:/key: completion vocabulary
 //
 // markDirty does this on every edit, but a fresh document load (newFile/openFile/
 // restore) replaces `root` without an edit — so the previous document's caches
@@ -27477,13 +27528,13 @@ const GUIDE = [
 
   { id:'overview', cat:'getting-around',
     title:'Start here',
-    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nTwo menus put everything within reach without memorizing anything. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table) and `@` anywhere to insert a pill (dice, a date, a calculation). The rest of this guide is a tour of what those two menus hold. If you would rather not read, open the Cookbook recipes at the end for finished examples you can copy.",
-    related:['point-types','dice','search-ops'],
+    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nThree keys put everything within reach without memorizing anything. Type `{` and a menu lists every kind of pill you can write, with a scaffold to fill in and a help mark that opens its guide. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table), and `@` anywhere to insert a pill from a dialog. If you are not sure how to write something, type `{` and browse. The rest of this guide tours what those menus hold; if you would rather not read, open the Cookbook recipes at the end for finished examples you can copy.",
+    related:['brace-picker','point-types','dice','search-ops'],
     examples:[
       { syn:'Enter / Tab',    desc:'new point, then nest it under the one above' },
       { syn:'{2d6}',          desc:'a live pill: roll two dice, click to re-roll' },
+      { syn:'{',              desc:'a menu of every pill you can write' },
       { syn:'/',              desc:'change what a point is (heading, to-do, table)' },
-      { syn:'@',              desc:'insert a pill (dice, date, calculation)' },
     ] },
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
@@ -27851,6 +27902,16 @@ const GUIDE = [
     ] },
 
   // ── Generators (guide) ────────────────────────────────────────────────────
+  { id:'brace-picker', cat:'generators',
+    title:'The { menu: write any pill',
+    body:"Discover and write every kind of pill without memorizing the syntax. Type an opening curly brace and a menu appears listing the pill forms you can build: a dice roll, a random pick, a calculation, a live list, a meter, and the rest. Type a word to filter (`{ro` narrows to roll-ups, rolls and roll tables), then press Enter and it drops in a ready-to-edit scaffold with the first part selected, so you fill in the blanks instead of remembering the shape.\n\nThe same menu completes as you write inside a pill. In a calculation it offers function names, in a live search it offers filters like `is:todo`, and once you have defined named rules it offers those by name. Where a suggestion has a full guide entry, a small help mark opens it, so the menu is also the fastest way to learn what each form does.\n\nThe menu is keyboard-first: arrow keys move, Enter accepts, Esc dismisses. It is the front door to everything on the rest of this page, so if you are not sure which pill you want, type `{` and browse.",
+    related:['dice','grammar','math','overview'],
+    examples:[
+      { syn:'{',          desc:'open the menu of pill forms' },
+      { syn:'{pick',      desc:'filter the menu by typing (here: a random pick)' },
+      { syn:'{= su',      desc:'inside a calculation, complete sum / functions' },
+      { syn:'Enter',      desc:'drop in the form with the first blank selected' },
+    ] },
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
     body:"Roll dice for tabletop RPGs, random generation, decision-making or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. The braces are what make it a pill, so bare 2d6 stays plain text, and an unclosed {2d6 waits until you type the closing brace. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
