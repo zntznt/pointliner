@@ -116,8 +116,9 @@ Turn the outline into a lightweight planner.
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
   ([journal](dates-and-planning.md#daily-journal))
 - **Custom calendars.** Give a document a fictional calendar (your months, week, and era) and every
-  date, agenda view, and journal entry speaks it; advance the in-world clock from the agenda.
-  ([custom calendars](dates-and-planning.md#custom-calendars))
+  date and agenda view speaks it; advance the in-world clock from the agenda. The journal stays on the
+  real calendar, and you can bind one subtree as an in-world log with its own calendar, so real and
+  in-world dates coexist in one document. ([custom calendars](dates-and-planning.md#custom-calendars))
 - **Search and filter.** Filter with `#tag`, the `is:todo` / `is:done` / `is:note` / `is:failing` /
   `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` / `is:held` flags, structure and pill flags
   (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus

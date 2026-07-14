@@ -237,6 +237,7 @@ export function loadCores() {
     'dueDateToday','parseDueDate','formatDueDate','formatDateConcrete','parseRepeat','nextOccurrence','describeRepeat','ordinalSuffix','buildSharePointText','collectDueDates','collectActions','priorityRank','oracleSwingBody',
     'collectJournalDates','collectLoreDates','collectTimelineItems',   // #647 timeline sources
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
+    'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'calWeekLen','calWeekHeads','calMonthTitle','calDayLabel','calDayShort',   // #527 PR-A: the render-label layer
     'parseCalMonths','parseCalWeek','parseCalEras','calendarToText','auditCalendarSwitch','buildCalendarFromFields','dateFormsHint',   // #527 PR-C: the dialog grammars + the switch audit
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',

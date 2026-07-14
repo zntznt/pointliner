@@ -2421,7 +2421,7 @@ let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} }, calendar: null };
+  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} }, calendar: null, calendars: {}, gamelog: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -3674,7 +3674,88 @@ function evalCheck(node, vars = {}, ancestors = []) {
 // So arithmetic, sort, agendaGantt, due:< — everything on the raw integer — is
 // calendar-agnostic and untouched. Only the parse/format/component seam routes here.
 // The active calendar for the live doc; a param lets the pure cores stay testable.
+// This is the DOCUMENT DEFAULT (root.calendar) — every context-free date call (search windows,
+// the agenda's own month anchor, math component fns) still resolves against it, byte-identical to
+// the single-calendar era. calendarForNode (below) is the per-scope override on top of it.
 function activeCalendar() { return (typeof root !== 'undefined' && root && root.calendar) || null; }
+
+// #653 calendar coexistence (minimal two-log slice). Solo/GM play wants BOTH calendars live at
+// once: Gregorian for the journal + real scheduling, an in-world calendar for the campaign log.
+// The clean model is calendar-per-SUBTREE, not per-date: a date string carries no calendar marker;
+// its calendar is decided by WHERE the point lives. So no per-value tagging and zero migration of
+// existing dates. root.calendars is the keyed store of NAMED extra calendars ({id: cal}); the
+// document default stays on root.calendar (so activeCalendar + all 28 seams are unchanged until a
+// second calendar is actually bound). root.gamelog = {targetId, calendarId} binds ONE in-world-log
+// subtree to one of those calendars. #653 scopes this to the two logs; a general per-subtree
+// `calendar:` prop is the deferred wider version.
+
+// Pure core: given a node's ancestor-id chain (root-first … node-last, ids only), which calendar-id
+// applies? Three distinct outcomes, because "journal" and "unbound" differ when the DOCUMENT DEFAULT
+// is itself a fiction calendar: a named calendars-key string (the in-world log), the CAL_GREGORIAN
+// sentinel (the journal subtree, pinned to IRL even in a fiction-default doc), or null (unbound →
+// the document default). Injecting the chain + home ids keeps it DOM-free and Node-testable.
+// Precedence: the nearest bound home on the chain wins — walk root-first, the DEEPEST match decides,
+// so a journal nested inside a game log reads IRL and vice versa (last-match-on-the-root→node chain).
+const CAL_GREGORIAN = "@gregorian@";   // reserved sentinel; the @...@ wrapper cannot collide with a real calendar id (id defaults to 'custom')
+function resolveCalendarId(chainIds, journalHomeId, gamelogHomeId, gamelogCalId) {
+  if (!Array.isArray(chainIds)) return null;
+  let result = null;   // unbound → document default, until a home is crossed
+  for (const id of chainIds) {   // root-first, so the deepest (last) crossed home wins
+    if (gamelogHomeId && id === gamelogHomeId) result = gamelogCalId || null;   // in-world log subtree
+    else if (journalHomeId && id === journalHomeId) result = CAL_GREGORIAN;     // journal subtree = IRL
+  }
+  return result;
+}
+// The extra named calendars keyed by id (never the default, which lives on root.calendar). Each is
+// re-validated through normalizeCalendar so a tampered autosave can't activate a broken bijection.
+function namedCalendars() {
+  const raw = (typeof root !== 'undefined' && root && root.calendars) || null;
+  if (!raw || typeof raw !== 'object') return {};
+  const out = {};
+  for (const k of Object.keys(raw)) { const c = normalizeCalendar(raw[k]); if (c) out[k] = c; }
+  return out;
+}
+// Guarantee the {calendars, gamelog} shape on a root and re-validate each named calendar (mirrors
+// the root.calendar re-validate). A pre-feature autosave has neither field; a tampered blob could
+// carry a broken calendar or a malformed binding. Mutates + returns the root. Pure (no DOM).
+function normalizeCalendarBindings(r) {
+  if (!r || typeof r !== 'object') return r;
+  const cals = {};
+  if (r.calendars && typeof r.calendars === 'object') {
+    for (const k of Object.keys(r.calendars)) { const c = normalizeCalendar(r.calendars[k]); if (c) cals[k] = c; }
+  }
+  r.calendars = cals;
+  const g = r.gamelog;
+  r.gamelog = (g && typeof g === 'object' && typeof g.targetId === 'string')
+    ? { targetId: g.targetId, calendarId: typeof g.calendarId === 'string' ? g.calendarId : null }
+    : null;
+  return r;
+}
+// The calendar a given live node's dates resolve under — the per-scope override on activeCalendar().
+// Walks the node's ancestor chain to the nearest bound log home. DOM-bound (uses pathTo/root config);
+// the pure decision is resolveCalendarId.
+function calendarForNode(node) {
+  if (typeof root === 'undefined' || !root || !node) return activeCalendar();
+  const gl = root.gamelog;
+  const glHomeId = gl?.targetId || null;
+  // Only pin the journal to Gregorian when the DOCUMENT DEFAULT is a fiction calendar — otherwise
+  // the default already IS Gregorian and the walk is pure overhead. So journalHomeId is consulted
+  // only in a fiction-default doc; a plain Gregorian doc takes the fast path below.
+  const jHomeId = activeCalendar() ? (root.journal?.targetId || journalHomeId()) : null;
+  if (!glHomeId && !jHomeId) return activeCalendar();           // nothing to override: fast path = default
+  const path = (typeof pathTo === 'function' && pathTo(node.id)) || [node];
+  const calId = resolveCalendarId(path.map(n => n.id), jHomeId, glHomeId, gl?.calendarId);
+  if (calId === CAL_GREGORIAN) return null;                     // journal subtree: IRL, never the fiction default
+  if (calId == null) return activeCalendar();                   // unbound: the document default
+  return namedCalendars()[calId] || activeCalendar();
+}
+// The current Journal home's id WITHOUT creating one (findOrCreateJournalHome mutates). Read-only.
+function journalHomeId() {
+  if (typeof root === 'undefined' || !root) return null;
+  if (root.journal?.targetId && (typeof nodeById !== 'function' || nodeById(root.journal.targetId))) return root.journal.targetId;
+  const home = (root.children || []).find(c => (c.text || '').split('\n', 1)[0].trim() === 'Journal');
+  return home ? home.id : null;
+}
 // Every valid fiction epoch lives inside this window (±~27k years of epoch-days). Outside it,
 // integer math loses precision (breaking the bijection) and a Gantt axis over the range freezes
 // the tab — the fiction twin of the Gregorian arm's 1900–2200 typo window. (#527 review, CRIT-1.)
@@ -4269,12 +4350,16 @@ function collectDueDates(rootNode = root, seqs = allSequences()) {
     const props = n.props || [];
     const dueProp   = props.find(p => p.key.toLowerCase() === 'due');
     const startProp = props.find(p => p.key.toLowerCase() === 'start');
-    const due   = dueProp   ? parseDueDate(dueProp.val)   : null;
-    const start = startProp ? parseDueDate(startProp.val) : null;
+    // #653: parse each point's dates under ITS OWN calendar (a game-log task's "50-06-15" is a Vale
+    // date; a journal/default task stays on the document default). The resulting epoch is a plain
+    // integer, so sorting/positioning downstream is calendar-agnostic; only the parse axis differs.
+    const nodeCal = calendarForNode(n);
+    const due   = dueProp   ? parseDueDate(dueProp.val, nodeCal)   : null;
+    const start = startProp ? parseDueDate(startProp.val, nodeCal) : null;
     if (due !== null || start !== null) {
       const started = start !== null && start <= today;
       const primary = due !== null ? due : start; // deadline drives display when present
-      const { iso, label, state } = formatDueDate(primary);
+      const { iso, label, state } = formatDueDate(primary, nodeCal);   // #653: label under the point's own calendar
       // UXP-162: carry held-ness so a BLOCKED dated task reads waiting here too, not full-urgency.
       // Structural (keywordIsHeld reads the sequence's held band), like the Actions row. Overdue-red
       // is NOT suppressed (a blocked-but-past-deadline task is real trouble the planner wants loud).
@@ -6665,7 +6750,11 @@ function toOpml(r) {
   // file-per-day journal (or a custom home point) to the defaults on EVERY OPML save/load.
   // Emit only when non-default (the _appearance/_calendar empty-skip), so a plain doc stays clean.
   const journalHas = r.journal && (r.journal.mode !== 'append' || r.journal.targetId != null);
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '');
+  // #653: the extra named calendars + the game-log binding. Emit only when present so a
+  // single-calendar (or no-calendar) doc stays byte-identical — the empty-skip discipline.
+  const calsHas = r.calendars && Object.keys(r.calendars).length;
+  const gamelogHas = r.gamelog && r.gamelog.targetId != null;
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -6809,7 +6898,19 @@ function fromOpml(xml) {
   // broken calendar (the whole date layer just stays Gregorian).
   const calendarRaw   = doc.querySelector('head > _calendar')?.textContent?.trim();
   const calendar      = (() => { try { return normalizeCalendar(JSON.parse(calendarRaw || 'null')); } catch(_) { return null; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, docId, journal,
+  // #653: extra named calendars (each re-validated through normalizeCalendar; a broken one drops,
+  // never activates) + the game-log binding. Both default empty, so a legacy doc loads unchanged.
+  const calendarsRaw  = doc.querySelector('head > _calendars')?.textContent?.trim();
+  const calendars     = (() => { try {
+      const raw = JSON.parse(calendarsRaw || 'null'); if (!raw || typeof raw !== 'object') return {};
+      const out = {}; for (const k of Object.keys(raw)) { const c = normalizeCalendar(raw[k]); if (c) out[k] = c; } return out;
+    } catch(_) { return {}; } })();
+  const gamelogRaw    = doc.querySelector('head > _gamelog')?.textContent?.trim();
+  const gamelog       = (() => { try {
+      const g = JSON.parse(gamelogRaw || 'null');
+      return (g && typeof g === 'object' && typeof g.targetId === 'string') ? { targetId: g.targetId, calendarId: typeof g.calendarId === 'string' ? g.calendarId : null } : null;
+    } catch(_) { return null; } })();
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, docId, journal,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -9728,9 +9829,12 @@ function buildPropsArea(node) {
     let displayVal = val;
     chip.dataset.propKey = propK; // routes date chips to the Schedule dialog
     if (propK === 'due' || propK === 'start') {
-      const ep = parseDueDate(val);
+      // #653: parse + format under THIS node's calendar (a point inside the game-log subtree reads
+      // its own in-world calendar; everything else stays the document default). One resolve, reused.
+      const nodeCal = calendarForNode(node);
+      const ep = parseDueDate(val, nodeCal);
       if (ep !== null) {
-        const df = formatDueDate(ep);
+        const df = formatDueDate(ep, nodeCal);
         // A start in the past has *begun*, not lapsed — "2d overdue" is due-date
         // language. Relabel to "2d ago" so the chip agrees with the agenda's
         // started/running treatment. Future/Today labels read fine as-is. The ▸ is
@@ -15078,6 +15182,28 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
           markDirty(); flashHint('Journal home set to ' + crumbLabel(node));
         }
       } },
+    // #653: bind this subtree as the IN-WORLD LOG — every date inside it reads the campaign's own
+    // calendar, while the journal + rest of the doc stay Gregorian. Needs a custom calendar defined
+    // first (File then Custom calendar); the row explains that when none exists. #652 builds the
+    // dated game-log strip on top of this binding.
+    { sec:'More', icon:{ fa:'fa-solid fa-hourglass-half', fb:'⧗' },
+      label: root.gamelog?.targetId === nodeId ? 'Unbind in-world log' : (activeCalendar() ? 'Bind as in-world log' : 'In-world log (needs a custom calendar)'),
+      fn: () => {
+        hideBpop();
+        if (root.gamelog?.targetId === nodeId) {
+          root.gamelog = null;
+          markDirty(); render(); flashHint('In-world log unbound. Its dates read the regular calendar again.');
+          return;
+        }
+        const cal = activeCalendar();
+        if (!cal) { flashHint('Define a custom calendar first: File then Custom calendar.'); return; }
+        pushUndo();
+        const cid = cal.id || 'custom';
+        root.calendars = { ...(root.calendars || {}), [cid]: cal };   // register the doc's calendar as a named one to bind against
+        root.gamelog = { targetId: nodeId, calendarId: cid };
+        markDirty(); render();
+        flashHint('In-world log bound to ' + (cal.name || 'the custom calendar') + '. Its dates now read in world time.');
+      } },
     { sec:'Danger', prim:true, icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
       fn: isBase
         ? async () => {
@@ -17948,7 +18074,9 @@ function timelineModel(items, monthOf) {
   for (const it of (items || [])) {
     const ep = it.epochDay;
     if (ep == null || !Number.isFinite(ep)) continue;   // undated / garbage epoch → skip
-    const m = monthOf(ep);
+    // #653: monthOf receives the whole item so a coexistence-aware caller can group each row under
+    // its OWN calendar (in-world months and Gregorian months on separate axes, never merged).
+    const m = monthOf(ep, it);
     let g = groups.get(m.key);
     if (!g) { g = { key: m.key, label: m.label, sort: m.sort, items: [] }; groups.set(m.key, g); }
     g.items.push(it);
@@ -22665,6 +22793,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   document.getElementById('search-box').value = '';            // normalization #1: clear stale search UI on every swap (the <input> path skipped this)
   document.getElementById('search-clear').classList.remove('on');
   migrateNodePrefixes(root);
+  normalizeCalendarBindings(root); // #653: every adopted doc gets the {calendars, gamelog} shape (mkRoot has it, but a legacy import / self-contained HTML may not)
   promoteLoadedShorthand(root);   // typed-but-unpromoted {…} from an imported/loaded doc → fresh pills
   buildIndex(root, null);
   resetDocCaches();
@@ -25949,12 +26078,20 @@ const TL_SRC_LABELS = { task: 'Tasks', journal: 'Journal', lore: 'Lore' };
 function renderTimeline(panel) {
   panel.innerHTML = '';
   const items = collectTimelineItems(root, timelineSources);
-  // month grouping under the active calendar: calComponents gives the (era-adjusted) year
-  // + month for a stable key, calMonthTitle the human header; sort by the raw month index
-  // so a fictional calendar's own months order correctly and Gregorian is byte-unchanged.
-  const monthOf = (ep) => {
-    const c = calComponents(ep);
-    return { key: c.year + ':' + c.month, label: calMonthTitle(ep), sort: c.year * 100 + c.month };
+  // month grouping, #653 coexistence-aware: each row resolves under ITS OWN calendar (a game-log
+  // point uses the in-world calendar, journal/lore/tasks the document default). calComponents gives
+  // the (era-adjusted) year + month for a stable key, calMonthTitle the header. The group key is
+  // PREFIXED with the calendar id so two calendars' months never merge onto one axis; the sort key
+  // interleaves them by epoch-day of the month via a shared origin so a mixed timeline still reads
+  // chronologically. Single-calendar docs are byte-unchanged (one calendar id, same keys as before).
+  const monthOf = (ep, it) => {
+    const n = it && it.id && nodeById(it.id);
+    const cal = n ? calendarForNode(n) : activeCalendar();
+    const c = calComponents(ep, cal);
+    const cid = cal ? (cal.id || 'custom') : 'greg';
+    // sort by the month's FIRST epoch-day (calComponents → back to an epoch anchor) so cross-calendar
+    // months interleave in real time order, not by each calendar's own year*100+month numbering.
+    return { key: cid + '|' + c.year + ':' + c.month, label: calMonthTitle(ep, cal), sort: ep - (calComponents(ep, cal).day - 1) };
   };
   const groups = timelineModel(items, monthOf);
   const total = groups.reduce((n, g) => n + g.items.length, 0);
@@ -26007,12 +26144,15 @@ function renderTimeline(panel) {
       }
       // journal + lore are neutral history rows: no urgency, no done state, just when it happened.
       row.className = cls;
-      const dt = document.createElement('span'); dt.className = 'tl-date'; dt.textContent = calDayShort(it.epochDay);
+      // #653: date label under the row's own calendar (in-world for a game-log point, default else).
+      const rowNode = it.id && nodeById(it.id);
+      const rowCal = rowNode ? calendarForNode(rowNode) : activeCalendar();
+      const dt = document.createElement('span'); dt.className = 'tl-date'; dt.textContent = calDayShort(it.epochDay, rowCal);
       const ti = document.createElement('span'); ti.className = 'tl-title'; ti.textContent = it.title;
       row.append(dt, ti);
       if (it.source !== 'task') { const sr = document.createElement('span'); sr.className = 'tl-src-tag'; sr.textContent = it.source; row.appendChild(sr); }
       const srcNote = it.source === 'task' ? (it.done ? ', done' : '') : `, ${it.source}`;
-      row.setAttribute('aria-label', `${calDayLabel(it.epochDay)}: ${it.title}${srcNote}. Activate to open.`);
+      row.setAttribute('aria-label', `${calDayLabel(it.epochDay, rowCal)}: ${it.title}${srcNote}. Activate to open.`);
       row.addEventListener('mousedown', ev => ev.preventDefault());   // caret invariant
       row.addEventListener('click', () => go(it.id));
       grp.appendChild(row);
@@ -26982,11 +27122,12 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'custom-calendars', cat:'dates',
     title:'Custom calendars',
-    body:"Give a document its own fictional calendar: your world's months, week length, day names, and era, plus the current in-world date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, every date in the document speaks that calendar: due dates, the agenda month and week, the date picker, date math, and the journal. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as your story moves. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.",
+    body:"Give a document its own fictional calendar: your world's months, week length, day names, and era, plus the current in-world date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, dates in the document speak that calendar: due dates, the agenda month and week, the date picker, and date math. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as your story moves. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.\n\nReal and in-world dates can coexist in one document, because a date's calendar is decided by where the point lives. Your journal always reads the real calendar, even in a fiction-calendar document, so it keeps tracking actual days. To keep a campaign log in world time, make its home point, open its bullet menu and choose Bind as in-world log: every date inside that subtree then reads the campaign's calendar while the rest of the document stays on the regular one. The timeline lays each row out under its own calendar, real and in-world months on separate axes.",
     examples:[
       { syn:'File → Custom calendar', desc:"define or edit this document's calendar" },
       { syn:'Firstfrost: 30',         desc:'a month line: name and day count' },
       { syn:'due: 1204-04-12',        desc:"dates use the calendar's own year-month-day" },
+      { syn:'Menu → Bind as in-world log', desc:'this subtree reads the campaign calendar; the rest stays real' },
     ] },
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
@@ -28144,6 +28285,7 @@ function applyAutosaveData(data) {
   root = data.root;
   root.appearance = normalizeAppearance(root.appearance); // #464: a pre-feature autosave has none; guarantee the {tags,props} shape
   root.calendar = normalizeCalendar(root.calendar); // #527: same hole as appearance — a tampered/stale autosave calendar must re-validate here or every date-chip render throws
+  normalizeCalendarBindings(root); // #653: guarantee {calendars, gamelog} shape + re-validate each named calendar (a pre-feature or tampered autosave has none / could be broken)
   migrateNodePrefixes(root);
   buildIndex(root, null); resetDocCaches();
   focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
