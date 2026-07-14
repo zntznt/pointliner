@@ -12576,15 +12576,48 @@ test('clock (#646) — clockCompletionCue is true only for the completing child 
   assert.equal(c.clockCompletionCue(manual, c2), false, 'a manual clock produces no cue');
 });
 
-test('clock (#646) — SOURCE PIN: advanceClockAt repaints in display mode, not via the edit-focusing rerenderNode', () => {
-  // Clicking a manual clock must repaint the pill in place (repaintNodeContent, the dice-reroll
+test('clock (#646) — SOURCE PIN: the clock mover repaints in display mode, not via the edit-focusing rerenderNode', () => {
+  // Advancing a manual clock must repaint the pill in place (repaintNodeContent, the dice-reroll
   // path), NOT rerenderNode — which calls focusNode → enterEdit and would drop the point into
-  // edit mode (showing raw [o N/M]) on every click. This regression was caught in the browser.
+  // edit mode (showing raw [o N/M]). This regression was caught in the browser. The repaint lives
+  // in advanceClockOrdinal (the shared mover); advanceClockAt (the DOM shim) keeps the edit guard.
   const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
-  const body = fnBody(src, 'advanceClockAt');
-  assert.match(body, /repaintNodeContent\(node\)/, 'advanceClockAt uses the display-mode repaint');
-  assert.doesNotMatch(body, /rerenderNode/, 'advanceClockAt must NOT use rerenderNode (it enters edit mode)');
-  assert.match(body, /content\.dataset\.editing/, 'it also declines to advance while the node is being edited');
+  const mover = fnBody(src, 'advanceClockOrdinal');
+  assert.match(mover, /repaintNodeContent\(node\)/, 'advanceClockOrdinal uses the display-mode repaint');
+  assert.doesNotMatch(mover, /rerenderNode/, 'the clock mover must NOT use rerenderNode (it enters edit mode)');
+  assert.match(fnBody(src, 'advanceClockAt'), /content\.dataset\.editing/, 'advanceClockAt declines while the node is being edited');
+  // P4/P3 feedback (#703): the mover announces on success and flashes on a clamp — no silent no-op.
+  assert.match(mover, /announce\(/, 'a successful advance announces to assistive tech (P3-5, the dice pattern)');
+  assert.match(mover, /flashHint\(/, 'a clamped advance flashes instead of failing silently (P4)');
+});
+
+test('clock (#701) — clockAtOrdinal / manualClocksOf target the Nth MANUAL clock, skipping computed', () => {
+  // The keyboard pill-action row and the feedback messages target clocks by ordinal in
+  // node.text; computed [o /M] are skipped so the ordinal matches the .clock:not(.clock-computed)
+  // DOM order that advanceClockAt uses (or the pill row and the pointer path would disagree).
+  assert.deepEqual(host(c.clockAtOrdinal('a [o 3/6] b [o 1/4]', 0)), { done: 3, total: 6 }, 'the 0th manual clock');
+  assert.deepEqual(host(c.clockAtOrdinal('a [o 3/6] b [o 1/4]', 1)), { done: 1, total: 4 }, 'the 1st manual clock');
+  assert.equal(c.clockAtOrdinal('a [o 3/6]', 5), null, 'an out-of-range ordinal is null');
+  assert.deepEqual(host(c.clockAtOrdinal('a [o /6] b [o 2/8]', 0)), { done: 2, total: 8 },
+    'a computed clock is skipped, so ordinal 0 is the manual [o 2/8] (aligned with advanceClockInText)');
+  assert.deepEqual(host(c.manualClocksOf('a [o 3/6] b [o /5] c [o 1/4]')),
+    [{ done: 3, total: 6 }, { done: 1, total: 4 }], 'lists only the manual clocks, in document order');
+  assert.deepEqual(host(c.manualClocksOf('plain [o 9/6] text')), [], 'an out-of-bounds token is not a clock');
+});
+
+test('clock/spoiler (#701) — SOURCE PIN: pills are tabindex=-1 (out of the Tab order) and register in collectPillActions', () => {
+  // The established pill pattern: artifact pills carry tabindex="-1" (programmatic/AT focus,
+  // reached via the collectPillActions keyboard row on Shift+F10, NOT the Tab order — so a
+  // 50-clock document does not add 50 tab stops). The clock and spoiler shipped as tabindex="0"
+  // and must be corrected to match dice/grammar/etc.
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  assert.match(src, /class="clock\$\{full\}" role="button" tabindex="-1"/, 'the manual clock pill is tabindex="-1", not 0');
+  assert.match(src, /class="md-spoiler" role="button" tabindex="-1"/, 'the spoiler block is tabindex="-1", not 0');
+  const cpa = fnBody(src, 'collectPillActions');
+  assert.match(cpa, /manualClocksOf\(node\.text\)/, 'collectPillActions surfaces each manual clock as a keyboard action');
+  assert.match(cpa, /Advance clock/, 'a keyboard "Advance clock" row exists');
+  assert.match(cpa, /Step clock back/, 'a keyboard "Step clock back" row exists (the keyboard twin of Shift+click)');
+  assert.match(cpa, /toggleSpoilersOf\(node\.id\)/, 'collectPillActions surfaces a spoiler reveal action');
 });
 
 // ── meter pills {meter: value/max} (#648) ──────────────────────────────────

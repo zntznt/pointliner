@@ -215,7 +215,7 @@ export function loadCores() {
     'escHtml','escAttr','escQ','safeUrl',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
-    'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText',
+    'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText','clockAtOrdinal','manualClocksOf',
     'clockFillFor','completingChildIndex','clockCompletionCue','progressCount','tallyMarkers',
     'parseMeter','resolveMeter','meterBar','formatMeter','meterPool','childPropNumber',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
