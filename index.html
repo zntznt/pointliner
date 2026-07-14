@@ -27052,6 +27052,7 @@ const GUIDE = [
   { id:'overview', cat:'getting-around',
     title:'Start here',
     body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nTwo menus put everything within reach without memorizing anything. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table) and `@` anywhere to insert a pill (dice, a date, a calculation). The rest of this guide is a tour of what those two menus hold. If you would rather not read, open the Cookbook recipes at the end for finished examples you can copy.",
+    related:['point-types','dice','search-ops'],
     examples:[
       { syn:'Enter / Tab',    desc:'new point, then nest it under the one above' },
       { syn:'{2d6}',          desc:'a live pill: roll two dice, click to re-roll' },
@@ -27061,6 +27062,7 @@ const GUIDE = [
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
     body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.",
+    related:['saved-searches','query','hashtags'],
     examples:[
       { syn:'word word',              desc:'all terms must match' },
       { syn:'-term',                  desc:'exclude matches' },
@@ -27094,6 +27096,7 @@ const GUIDE = [
   { id:'saved-searches', cat:'getting-around',
     title:'Saved searches',
     body:"Keep a search you run often within one click instead of retyping it. Pin filters like open tasks tagged a project, everything overdue or notes mentioning a person, then bring any of them back later. Type your search, then click the star at the right of the search box to save it. The star fills in once it's kept. Saved searches show as chips under the Saved heading whenever the search box has focus; click one to run it again, or the ✕ on a chip to forget it. Click the filled star to forget the one you're currently looking at.",
+    related:['search-ops','query'],
     examples:[
       { syn:'☆ star button', desc:'save the search you just typed' },
       { syn:'★ filled star', desc:'forget the current search' },
@@ -27103,6 +27106,7 @@ const GUIDE = [
   { id:'workspace-search', cat:'getting-around',
     title:'Searching all your documents',
     body:"When several documents are in the same folder, search covers all of them at once, not just the one you're reading. Useful when you know something is in your documents but can't remember which one. Matches from other documents appear in a 'Found in other documents' list; click one to jump straight there.",
+    related:['search-ops','workspace-documents','cross-doc-links'],
     examples:[
       { syn:'connect a folder', desc:'File → Connect folder: cross-document search turns on once a folder holds your documents' },
       { syn:'type in the search box', desc:'matches in the current document filter it live, as always' },
@@ -27112,6 +27116,7 @@ const GUIDE = [
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
     body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.",
+    related:['search-ops','properties'],
     examples:[
       { syn:'#tag',         desc:'label a point by topic, status or project' },
       { syn:'#tag/subtag',  desc:'nest a tag; searching #tag also finds #tag/subtag' },
@@ -27121,6 +27126,7 @@ const GUIDE = [
   { id:'refile', cat:'getting-around', covers:['refile'],
     title:'Refile a point',
     body:"Move a point and everything under it to a new home far across the outline: drop a stray idea into the right project, tuck a finished item under an archive or pull a buried note up to the top. Type /refile:name to move it under the point with that title (or /refile:top to lift it out of all nesting), or /refile on its own to browse the whole outline as a searchable tree: type to filter, walk it with the arrow keys, then press Enter to move the point there as the chosen parent's last child. It's the searchable alternative to dragging or indenting one step at a time.",
+    related:['move-nest','multi-select'],
     examples:[
       { syn:'/refile:Archive',  desc:'move it under the Archive point, inline' },
       { syn:'/refile:top',      desc:'lift it out of all nesting' },
@@ -27129,6 +27135,7 @@ const GUIDE = [
   { id:'multi-select', cat:'getting-around',
     title:'Selecting many points',
     body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete the lot. Start a selection by Shift+clicking a point (a contiguous range) or Ctrl/Cmd+clicking points to pick them out of order, or press Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.",
+    related:['move-nest','refile'],
     examples:[
       { syn:'Shift+Click',            desc:'select a range of points' },
       { syn:'Ctrl/Cmd+Click',         desc:'add or remove one point (out of order)' },
@@ -27141,6 +27148,7 @@ const GUIDE = [
   { id:'move-nest', cat:'getting-around',
     title:'Moving and nesting points',
     body:"Reshape the outline as your thinking changes: reorder points and change how deeply they nest. From the keyboard, Tab indents a point so it becomes a child of the one above, Shift+Tab outdents it back to its parent's level, and Alt+up or Alt+down moves it among its siblings. With a mouse, drag a point's bullet: drop between rows to reorder, or drop to the right of a point to nest under it.\n\nOn a phone or tablet there is no Tab key, so swipe a point sideways instead, right to indent and left to outdent, with a chip showing the direction. While you are editing, the bar above the keyboard has one-tap indent, outdent and move buttons for the same thing.",
+    related:['zoom','refile','multi-select'],
     examples:[
       { syn:'Tab / Shift+Tab',  desc:'indent / outdent (keyboard)' },
       { syn:'Alt+↑ / Alt+↓',    desc:'move a point among its siblings' },
@@ -27150,6 +27158,7 @@ const GUIDE = [
   { id:'zoom', cat:'getting-around',
     title:'Zoom into a point',
     body:"Work on one branch full-screen with the rest of the outline out of sight, so a single project, a chapter or a busy task list fills the page with just it and its children. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet, or choose Zoom into from its menu. The point becomes a large editable title with its note and children below.\n\nA breadcrumb row at the top shows Home then each ancestor then the current point. Click any crumb to jump to that level, the Home crumb to return to the full outline, or press Esc to step up one level toward the parent.",
+    related:['move-nest','point-types'],
     examples:[
       { syn:'Ctrl/Cmd+Enter',  desc:"zoom into the point you're editing" },
       { syn:'click the bullet', desc:'zoom into that point' },
@@ -27163,6 +27172,7 @@ const GUIDE = [
   { id:'point-types', cat:'writing', covers:['ul','ol','h1','h2','h3','para','code','divider','quote','base'],
     title:'Point types',
     body:"Give your outline real document structure. Add headings to divide a long document into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.",
+    related:['inline-md','todo-syntax','overview'],
     examples:[
       { syn:'# Heading',    desc:'heading (one to six # marks for smaller sizes)' },
       { syn:'> quote',      desc:'quote block' },
@@ -27173,6 +27183,7 @@ const GUIDE = [
   { id:'secret', cat:'writing', covers:['secret'],
     title:'Secret and spoiler blocks',
     body:"Hide a line behind a blur until you choose to reveal it. Start a line with >! and it becomes a spoiler: in reading view it shows as a soft blur, and a click (or Enter or Space when it has focus) reveals it, click again to hide it. It is good for two things. Hand someone a self-contained copy of a document and your GM notes or answers stay covered until they look. Or blind yourself: write down an oracle result, a clue or a twist you do not want to see yet, and reveal it only when the story reaches it. A spoiler can span several lines, one >! per line, and pills and links inside it still work once revealed. Revealing is not saved, so a spoiler is blurred again next time the point is drawn. In an exported Markdown or text file a spoiler line is written with a (spoiler) label in front so a reader is warned before they read it.",
+    related:['inline-md','point-types'],
     examples:[
       { syn:'>! hidden text',   desc:'a spoiler line, blurred until revealed' },
       { syn:'/secret',          desc:'start a spoiler line from the menu' },
@@ -27181,6 +27192,7 @@ const GUIDE = [
   { id:'inline-md', cat:'writing',
     title:'Styling text',
     body:"Make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the outline. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you.",
+    related:['point-types','footnotes','secret'],
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
       { syn:'*italic* or _italic_',     desc:'italic' },
@@ -27194,6 +27206,7 @@ const GUIDE = [
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
     body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets and the rest.",
+    related:['base-views','querybase'],
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
@@ -27207,6 +27220,7 @@ const GUIDE = [
   { id:'base-views', cat:'writing',
     title:'Base views',
     body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
+    related:['tables','querybase','properties'],
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },
       { syn:'Alt + R',        desc:'mark a column Status or Date (so Board / Calendar can use it)' },
@@ -27215,6 +27229,7 @@ const GUIDE = [
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
     body:"Annotate a claim without cluttering the main text, link out to a source or a website or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
+    related:['point-links','inline-md'],
     examples:[
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
@@ -27223,6 +27238,7 @@ const GUIDE = [
   { id:'notes', cat:'writing', covers:['note'],
     title:'Per-point notes',
     body:"Tuck a bit of context under any point without cluttering the line: a source, a note-to-self, a caption or a few sentences of background. The note sits below the point as a quiet plain-text block you click to edit in place; press Enter for a line break and Esc or click away to save, and clearing all the text removes it. Type /note to start (or open) a note right there, or use a point's menu. Notes are searched along with the rest of your outline and you can hide them all with the notes button in the header. A small mark stays on each noted point so you can click to peek.",
+    related:['point-types','properties'],
     examples:[
       { syn:'/note',            desc:'start or open a note under this point' },
       { syn:'Menu → Edit note', desc:'open an existing note to change it' },
@@ -27234,6 +27250,7 @@ const GUIDE = [
   { id:'todo-syntax', cat:'todos', covers:['todo'],
     title:'To-dos & tasks',
     body:"Track a shopping list, a reading list, a project backlog or a daily to-do all in the same outline. Turn any point into a task with a checkbox, or start it with an UPPERCASE status word prefixed by #, like #TODO, #NEXT or #DONE (the # and the capitals are required: plain TODO stays text, and lowercase #todo is a tag that filters by status rather than a badge). Easiest is /todo, which writes the status for you. Click the colored badge to change the status or set a priority (A, B or C). Press Enter on a task and the next point is a task too, so running off a list is fast.",
+    related:['sequences','sort-children','progress'],
     examples:[
       { syn:'- [ ] task',              desc:'task with a checkbox' },
       { syn:'- [x] done',              desc:'checked-off task' },
@@ -27244,6 +27261,7 @@ const GUIDE = [
   { id:'sequences', cat:'todos', covers:['sequence'],
     title:'Custom workflows',
     body:"Define a workflow that matches the way you actually work. Use it to move articles through DRAFT → REVIEW → PUBLISHED, support requests through OPEN → IN PROGRESS → RESOLVED or any process with distinct stages. The states feed the progress bar and the is:done filter automatically. Give it a name and its states: type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, or use the @ Sequence dialog. States to the right of | count as done, then apply any state with / (like /BACKLOG). Need a blocked stage? Add a second | for a held band, like DOING | BLOCKED | SHIPPED; points in that middle band read as waiting (not a live next-action), the same way the built-in WAITING does.",
+    related:['todo-syntax','sort-children','progress'],
     examples:[
       { syn:'{seq Flow: BACKLOG DOING | SHIPPED}', desc:'declare a workflow by typing' },
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },
@@ -27252,6 +27270,7 @@ const GUIDE = [
   { id:'sort-children', cat:'todos',
     title:'Sort by state and priority',
     body:"Tidy a busy list into working order in one move: bring the open work to the top and let the finished items sink. Open the bullet menu of the parent point and choose Sort children by state / priority, and its child points reorder by their to-do state and priority. Unfinished points come before done ones, higher priority before lower (an A before a B before a C, unmarked last), and within the same state they follow the order of their workflow. It is one undo away if you preferred the old order, and it sorts only the direct children of that point, not the whole tree. The option appears once a point has two or more children.",
+    related:['todo-syntax','sequences','properties'],
     examples:[
       { syn:'Menu → Sort children by state / priority', desc:"reorder a point's children" },
       { syn:'open before done',   desc:'unfinished points rise to the top' },
@@ -27260,6 +27279,7 @@ const GUIDE = [
   { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
     body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Type /prop:owner=zeo to set one inline, or /prop to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.",
+    related:['check','rollups','hashtags'],
     examples:[
       { syn:'/prop:owner=zeo',     desc:'set a property inline, no dialog' },
       { syn:'/prop',               desc:'write the fill-in-the-blank stub' },
@@ -27269,6 +27289,7 @@ const GUIDE = [
   { id:'progress', cat:'todos', covers:['progress'],
     title:'Progress bars',
     body:"Put a live tally on a project, a checklist or any parent point and see how much is done at a glance. As you check off the work underneath, the number updates on its own, with nothing to track by hand. Type `[/]` for a count like 2/5, or `[%]` for a percentage.\n\nIt counts two things together: any checkboxes in the point's own text, and each of its direct child points that is a task. A child counts as done when its box is ticked or its status keyword sits on the done side of its sequence (so a `#DONE` child counts, a `#TODO` child does not), which means a mix of checkboxes and status points tallies correctly. Grandchildren are not counted, so a cookie measures one level, the immediate work under that point.\n\nThe cookie is plain text that recomputes as the outline changes, so it saves and shares like any point and needs no setup. Put one in a heading to track a phase, or several down a page for an at-a-glance dashboard.",
+    related:['todo-syntax','clock','meter'],
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
@@ -27277,6 +27298,7 @@ const GUIDE = [
   { id:'clock', cat:'todos', covers:['clock'],
     title:'Progress clocks',
     body:"A clock you fill in segments, for tracking a rising danger, a countdown or any fuse that fills as a situation develops. It comes in two forms. A manual clock, [o 0/6], is yours to advance whenever the story says so: click it to advance one segment, or Shift+click to step it back (from the keyboard, focus it and press Enter, or Shift+Enter to step back). A counting clock, [o /6] with the count left empty, fills itself from the checked sub-points and #DONE children beneath it, exactly the way a progress bar counts. Add or finish a sub-point and it advances, delete or reopen one and it drops back. On a counting clock, the sub-point whose completion fills the last segment is marked with a small filled ring, so you can see which one finished it. Change the 6 for any size, such as a 4 or an 8. Either form shows as a ring that fills up, with the exact count beside it, and exports as that ring and count (a half-full six-clock reads as a filled half-ring next to 3/6).",
+    related:['progress','meter'],
     examples:[
       { syn:'[o 0/6]',        desc:'a manual clock, click to advance (Shift+click steps back)' },
       { syn:'[o /6]',         desc:'a counting clock, fills from your checked sub-points' },
@@ -27285,6 +27307,7 @@ const GUIDE = [
   { id:'meter', cat:'todos', covers:['meter'],
     title:'Meters',
     body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change. You can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row. If a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
+    related:['progress','clock'],
     examples:[
       { syn:'{meter: hp/hpmax}', desc:'a bar of one property over another' },
       { syn:'{meter: hp/20}',    desc:'a fixed maximum' },
@@ -27293,12 +27316,13 @@ const GUIDE = [
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
     body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost or a formula computed for each row (rollups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, it is always a view of the live outline. Type / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. The grid is read-only; edit the matching points themselves and the rows follow.",
+    related:['query','base-views','tables'],
     examples:[
       { syn:'/querybase',            desc:'create one from the / menu' },
       { syn:'is:todo | due:week',    desc:'any search works as the row source' },
       { syn:'Cost: = sum(cost)',     desc:'a column computed per matching point' },
     ] },
-  { id:'query', cat:'todos', covers:['query','count'], related:['progress','recipe-dashboard'],
+  { id:'query', cat:'todos', covers:['query','count'], related:['querybase','search-ops','progress','recipe-dashboard'],
     title:'Embedded queries',
     body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more. Want just the number? {count: is:todo} (or @ then Count) shows a live count instead of the list, handy for a dashboard line like open bugs: 7.",
     examples:[
@@ -27310,6 +27334,7 @@ const GUIDE = [
   { id:'templates', cat:'todos', covers:['template','savetemplate'],
     title:'Templates',
     body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /savetemplate:name to save this point and its children as a template, then /template:name to stamp a copy directly, or /template on its own to pick from a list. You can also save from any point's menu. A data pack can carry templates too (a pre-made character sheet or oracle layout, for example); those show up in the same picker with a pack badge and stamp exactly like your own, so importing one pack can hand you a whole set of ready structures.",
+    related:['capture-inbox','datapacks'],
     examples:[
       { syn:'/savetemplate:weekly review',       desc:'save this subtree as a template inline' },
       { syn:'/template:weekly review',           desc:'stamp that template inline' },
@@ -27318,6 +27343,7 @@ const GUIDE = [
   { id:'capture-inbox', cat:'todos',
     title:'Capture & quick inbox',
     body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. It works with nothing set up: with no inbox chosen, captures land at the top level of the document. What you type is Markdown-aware, so a typed `- [ ]` becomes a to-do.\n\nCapture is a toolbar strip, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.\n\nSet up to 10 inboxes, numbered 1 to 10, and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. `Ctrl/Cmd+Shift+1` through 0 open the strip targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. `Ctrl/Cmd+Alt+1` through 0 sets the current point as inbox 1 to 10, and the point's menu adds or removes an inbox slot too.\n\nWhile the strip is open the same number keys switch the destination (they move the selector, they do not reopen it). Click the destination name to open the inbox manager, where you pick a slot or add and remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. To change which number a chip answers to, reorder the chips: drag one, or focus it and press Alt+Left or Alt+Right.\n\nWhen Pointliner is installed as an app (or open on the web), you can also capture from a link. Opening it with `?append=your%20text` in the address adds that text as a point to your inbox, and sharing a page or selection to Pointliner from your system share menu does the same. It is added as plain text, never run as a pill, and the address is cleaned up so a reload will not add it twice; with no inbox set it lands at the top level, like any capture.",
+    related:['templates','journal'],
     examples:[
       { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
       { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
@@ -27329,6 +27355,7 @@ const GUIDE = [
   { id:'aliases', cat:'todos', covers:['alias'],
     title:'Nicknames (aliases)',
     body:"Make a point findable under different names. Useful when a concept has a short form and a long form: add 'JS' as an alias for a 'JavaScript' note, or 'NYC' for 'New York City'. The [[ link picker and the unlinked-references panel both recognize any alias, so links and mentions find the right point regardless of which name you used. Type /alias:wyrm, drake to add them inline (comma-separated), or /alias on its own for the dialog.",
+    related:['point-links','hashtags'],
     examples:[
       { syn:'/alias:wyrm, drake', desc:'add extra names inline' },
       { syn:'/alias',       desc:'open the aliases dialog' },
@@ -27338,6 +27365,7 @@ const GUIDE = [
   { id:'custom-calendars', cat:'dates',
     title:'Custom calendars',
     body:"Give a document its own fictional calendar: your world's months, week length, day names, and era, plus the current in-world date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, dates in the document speak that calendar: due dates, the agenda month and week, the date picker, and date math. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as your story moves. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.\n\nReal and in-world dates can coexist in one document, because a date's calendar is decided by where the point lives. Your journal always reads the real calendar, even in a fiction-calendar document, so it keeps tracking actual days. To keep a campaign log in world time, make its home point, open its bullet menu and choose Bind as in-world log: every date inside that subtree then reads the campaign's calendar while the rest of the document stays on the regular one. The timeline lays each row out under its own calendar, real and in-world months on separate axes.",
+    related:['dates','agenda','chronicle'],
     examples:[
       { syn:'File → Custom calendar', desc:"define or edit this document's calendar" },
       { syn:'Firstfrost: 30',         desc:'a month line: name and day count' },
@@ -27347,6 +27375,7 @@ const GUIDE = [
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
     body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.",
+    related:['agenda','timeline','custom-calendars'],
     examples:[
       { syn:'/due:tomorrow',    desc:'set the due date inline' },
       { syn:'/start:2026-07-01',desc:'set the start date inline' },
@@ -27358,6 +27387,7 @@ const GUIDE = [
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
     body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a seven-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar) or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centered one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
+    related:['dates','timeline','custom-calendars'],
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
       { syn:'Week',       desc:'a seven-day planner spread, with an Earlier column' },
@@ -27369,6 +27399,7 @@ const GUIDE = [
   { id:'timeline', cat:'dates',
     title:'Timeline',
     body:"See the whole story of your document in time order, so you can find something by when it happened rather than by its exact date. Every dated point lines up in one chronological list, grouped by month, from the earliest to the far future. This is the history view for a long campaign or a big set of notes: the war, the treaty, the comet, in the order they land, so you can browse the arc instead of searching a date you half-remember.\n\nIt draws from three kinds of dated point, so a whole session sits on one line: tasks (anything with a start or due date), your daily journal entries, and lore events (any point carrying a when or date property, for world events that are not tasks). A row of source toggles (Tasks, Journal, Lore) at the top shows or hides each kind, so you can read the planned schedule alone, the journal alone, or the whole braided history.\n\nOpen it from the hourglass button in the toolbar. Each entry shows its date and title, colored by urgency (an overdue task in red), with done points struck through, start-only points marked with a small arrow, and journal and lore entries tagged with their source; click any entry to jump to that point. It opens scrolled near today, so a long history starts at 'now'. When a custom calendar is active, the months and years are your world's own, so a campaign reads in campaign time. This is different from the agenda's Timeline (a Gantt of the near-term schedule): this one spans the whole archive and reads as a chronicle, not a work plan.",
+    related:['agenda','dates','chronicle'],
     examples:[
       { syn:'Toolbar hourglass button', desc:'open the timeline' },
       { syn:'when: 1247-03-02',         desc:'date a lore point so it joins the timeline (or date:)' },
@@ -27378,6 +27409,7 @@ const GUIDE = [
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',
     body:"Keep a running log of what you worked on, decisions you made or anything worth noting each day. The toolbar journal button toggles the Journal bar: type a point and press Enter (or click Journal) to file it under today's entry without leaving your place. The bar shows the date it saves to; click the year, month or day to jump to that part of the journal. Type /journal to open today's entry directly. Entries go one of two ways: in this document, filed by date under a Journal point (nested year then month then day, 2026 > 06 > 16), or as one file per day in a connected folder. Switch between the two with Ctrl/Cmd+Shift+J.",
+    related:['chronicle','capture-inbox','timeline'],
     examples:[
       { syn:'/journal', desc:"open or start today's entry" },
       { syn:'Ctrl/Cmd+Shift+J', desc:'switch in-doc / file per day' },
@@ -27385,6 +27417,7 @@ const GUIDE = [
   { id:'chronicle', cat:'dates',
     title:'Chronicle (in-world log)',
     body:"Keep a campaign log dated in the game's own time instead of the real day. The journal records the day you actually wrote it; a chronicle records the day you decide, so session four can log day 300 of the campaign year. First give the document a custom calendar, then make the point that will hold the log and choose Bind as in-world log from its bullet menu; a chronicle button then appears in the toolbar. Its bar works like the journal's, but the date is a cursor you steer: the left and right arrows step one game-day back or forward (honoring your calendar's months and week), and clicking the date jumps to a day you name. Type a beat and press Enter to file it under the cursor's date, nested year then month then day in the game calendar. Chronicle beats appear on the timeline as their own Chronicle source, dated in world time and toggleable on their own.",
+    related:['journal','custom-calendars','timeline'],
     examples:[
       { syn:'Menu → Bind as in-world log', desc:'make this point the chronicle home' },
       { syn:'◂ / ▸',           desc:'step the in-world day back or forward' },
@@ -27395,6 +27428,7 @@ const GUIDE = [
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
     body:"Roll dice for tabletop RPGs, random generation, decision-making or any time you need a number from a range. Results stay frozen until you click to re-roll, so they won't change just from opening the file. Type @ and choose Dice roll, or type the formula in braces: {2d6} for two six-sided dice. The braces are what make it a pill, so bare 2d6 stays plain text, and an unclosed {2d6 waits until you type the closing brace. Advanced options let you keep the highest rolls, explode on a max, reroll low results or count successes against a threshold.",
+    related:['grammar','deck','variables'],
     examples:[
       { syn:'{2d6}',      desc:'roll two six-sided dice' },
       { syn:'{4d6kh3}',   desc:'roll 4, keep the highest 3' },
@@ -27403,7 +27437,7 @@ const GUIDE = [
       { syn:'{dF}',       desc:'Fate dice (−1, 0 or +1)' },
       { syn:'{2d6>=4}',   desc:'count how many roll 4 or more' },
     ] },
-  { id:'grammar', cat:'generators', covers:['grammar','rolltable'], related:['deck','recipe-npc'],
+  { id:'grammar', cat:'generators', covers:['grammar','rolltable'], related:['gen-rules','dice','deck','recipe-npc'],
     title:'Random picks & tables',
     body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts or make a raffle picker. Write choices in CURLY braces and one is picked at random each click: {red|blue|green}. Square brackets [red|blue] are not a pill, they stay plain text, so use { } not [ ]. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
     examples:[
@@ -27415,6 +27449,7 @@ const GUIDE = [
   { id:'roll-query', cat:'generators', covers:['rollpick'],
     title:'Roll on your own outline',
     body:"Pick a random point from your live outline instead of a typed list. Keep a list of open plot threads, NPCs or ideas as ordinary points, then let one get chosen at random: great for solo tabletop play (advance a random thread, a random NPC reacts) or any \"surprise me from what I already wrote\" moment. Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random.",
+    related:['grammar','gen-rules','roll-palette'],
     examples:[
       { syn:'{roll: is:todo}',          desc:'a random open thread from the points below' },
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
@@ -27423,6 +27458,7 @@ const GUIDE = [
   { id:'roll-palette', cat:'generators',
     title:'Roll palette (touch)',
     body:"Drop a roll mid-scene on a phone without hunting for braces on the keyboard. On a touch device the bottom bar has a dice button; tap it for a small palette of ready-made rolls (a d6, a d20, a yes/no oracle, a roll on your own outline, a this-or-that pick). Tap one and it lands as an editable point you can tweak, then tap Done to turn it into a pill and tap the pill to roll. Everything it inserts is ordinary pill text, so a roll you make this way is the same as one you typed by hand: it re-rolls on tap and can be named and reused. The palette is a shortcut for the common rolls; the @ insert menu still has the full set.",
+    related:['roll-query','grammar'],
     examples:[
       { syn:'Dice button on the bottom bar', desc:'touch only: opens the roll palette' },
       { syn:'{2d6} / {1d20}',           desc:'a dice roll, ready to edit then tap to roll' },
@@ -27431,6 +27467,7 @@ const GUIDE = [
   { id:'gen-rules', cat:'generators',
     title:'Building generators',
     body:"Build a name generator, an encounter table, a full story prompt or a procedural character description. The building block is a named list, a rule: write `color: red | blue | green` and then `{color}` picks one at random wherever you use it.\n\nRules call each other, which is what makes them powerful. A sentence rule can pull from `{subject}`, `{verb}` and `{object}`, each its own list, so a small set of short rules produces enormous variety. A rule can also roll dice (`reward: {2d6} gold`) or calculate (`price: {= base * 2}`), so the pieces that vary and the pieces that compute live side by side and the whole thing stays short to read.\n\nWeight a choice by writing a number after it (`orc | dragon 2` makes the dragon twice as likely), or let a variable decide the odds live with `{= ...}`. Rule names are known across the whole document, not just the point they sit in, so a rule you define once is callable from anywhere. Cover finer control of the output with text modifiers and conditions, the next two entries.",
+    related:['gen-modifiers','gen-conditions','grammar'],
     examples:[
       { syn:'color: red | blue | green', desc:'define a named list (a rule)' },
       { syn:'{color}',                desc:'use it anywhere' },
@@ -27442,6 +27479,7 @@ const GUIDE = [
   { id:'gen-modifiers', cat:'generators',
     title:'Text modifiers',
     body:"Make generator output read like real prose instead of raw picks. Without them a result like 'they grab axe' reads awkwardly; with them it becomes 'they grab an axe'. A modifier is a dot and a keyword added after any rule or variable reference, so `{beast}` becomes `{beast.cap}` to capitalize it.\n\nThe set covers the everyday fixes: capitalize the first letter (`cap`) or every word (`title`), force upper or lower case, put the right article in front so 'a' becomes 'an' before a vowel (`a`), make a noun plural (`s`), make it possessive (`poss`), put a verb in the past or continuous tense (`ed`, `ing`), or turn a number into an ordinal like 3rd (`ord`). Stack several with more dots and they apply left to right, so `{beast.a.cap}` gives 'An ogre', the article added first and then the whole thing capitalized.",
+    related:['gen-rules','gen-conditions'],
     examples:[
       { syn:'{beast.cap}',   desc:'capitalize the first letter' },
       { syn:'{name.title}',  desc:'Capitalize Each Word' },
@@ -27456,6 +27494,7 @@ const GUIDE = [
   { id:'gen-conditions', cat:'generators',
     title:'Conditions & item details',
     body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
+    related:['gen-rules','variables','gen-modifiers'],
     examples:[
       { syn:'{hp>0: alive|dead}', desc:'show the first if true, else the second' },
       { syn:'{luck>=10: lucky!}', desc:'the else part is optional' },
@@ -27469,6 +27508,7 @@ const GUIDE = [
   { id:'deck', cat:'generators', covers:['deck'],
     title:'Decks & repeats',
     body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. A number after shuffle deals that many cards at once ({shuffle 3: …}), the classic 'draw three, no duplicates'. You can also expand a template multiple times at once, and each expansion rolls independently, so you get several different results in one click.",
+    related:['grammar','dice','oracle'],
     examples:[
       { syn:'{shuffle: a|b|c}', desc:'deal without repeats' },
       { syn:'{shuffle 3: a|b|c|d}', desc:'deal 3 at once, no duplicates' },
@@ -27481,6 +27521,7 @@ const GUIDE = [
   { id:'markov', cat:'generators', covers:['markov'],
     title:'Markov chains',
     body:"Generate made-up text that sounds like it belongs to a style you define: invented place names, character names in the style of a language, sample dialogue or procedural flavor text. You give it a set of transitions (each state points to the next, with optional weights) and it walks them at random. Type {markov: a→b, b→c} to make one inline, or use the @ Markov chain dialog to name it and set a start and length. Click the pill to walk it again.",
+    related:['grammar','gen-rules'],
     examples:[
       { syn:'{markov: a→b, b→c}', desc:'make one by typing (→ or ->)' },
       { syn:'{markov: sun→rain, sun→sun 2}', desc:'weight a transition' },
@@ -27490,6 +27531,7 @@ const GUIDE = [
   { id:'oracle', cat:'generators', covers:['oracle'],
     title:'Yes / no oracle',
     body:"Resolve uncertain questions at a glance, useful in solo tabletop games, creative writing, brainstorming or any situation where you want a random yes/no with a bias toward likely or unlikely. Set the odds to match how plausible the answer feels (Certain, Likely, Even, Unlikely or Impossible), then click to ask. For a yes/no with a twist, pick a \"+ swing\" likelihood: it answers six ways (Yes and, Yes, Yes but, No but, No, No and) so a complication or a bonus rides along. Type @ and choose Oracle, or type the band name directly: {oracle: likely}.",
+    related:['deck','dice','grammar'],
     examples:[
       { syn:'@ → Oracle (yes/no)', desc:'add a yes/no oracle' },
       { syn:'{oracle: likely}',  desc:'type it: certain, likely, even, unlikely, impossible' },
@@ -27501,6 +27543,7 @@ const GUIDE = [
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
     body:"Build a budget where every line adds to a running sum, or track a project cost that recomputes when you change a rate, all live in the outline. Write `{= expression}` and the result appears inline as a pill; change a variable the expression uses and it updates the moment you do.\n\nThe expression handles arithmetic and parentheses, powers with `^`, remainder with `%`, and percentages. Comparisons (`>`, `<`, `==`) return 1 or 0, and a ternary `a > b ? x : y` (or `if(a>b, x, y)`) picks between two results, so a pill can decide as well as compute. Constants `pi`, `e`, `tau` and `today` are built in, and any variable you have set is a name you can use.\n\nThis is the base calculator; three companions build on it. Named functions like `sqrt`, `round` and the unit conversions are on the functions page, dates are their own arithmetic (see calculating with dates), and a parent point can roll up its children with `sum`, `avg` or `count` (see roll up children). Every result stays a number, so pills, variables and rollups all compose.",
+    related:['math-fns','math-dates','variables'],
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },
       { syn:'{= 2 ^ 10}',        desc:'powers (^) and remainder (%)' },
@@ -27512,6 +27555,7 @@ const GUIDE = [
   { id:'math-fns', cat:'compute',
     title:'Math functions',
     body:"Do the things arithmetic alone can't easily express: round a price to a whole number or to the nearest 5, clamp a score to a valid range (never below 0, never above 100), find the smallest, largest or average of a set of values, combine several comparisons into one test with and, or and not, compute a percentage change or run a scientific calculation. Call any function by name; they mix freely with variables, dice and other functions.",
+    related:['math','math-dates','rollups'],
     examples:[
       { syn:'{= round(3.7)}',     desc:'round (also floor, ceil, trunc)' },
       { syn:'{= roundto(x, 5)}',  desc:'round to the nearest 5, 25 or 0.5' },
@@ -27527,6 +27571,7 @@ const GUIDE = [
   { id:'math-dates', cat:'compute',
     title:'Dates & units in math',
     body:"Calculate how many days until a deadline, show what date is 30 days from today, find someone's age in years, shift a date by whole months, land on the last day of a month, count the working days to a deadline or convert between units for a recipe or a travel plan. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date. The month and year functions follow a custom calendar when one is set; weeknum and workdaysbetween use the ordinary Mon-Sun week.",
+    related:['math','dates','custom-calendars'],
     examples:[
       { syn:'{= today + 30}',      desc:'30 days from today' },
       { syn:'{= asdate(today+30)}',desc:'show that as a calendar date' },
@@ -27539,7 +27584,7 @@ const GUIDE = [
       { syn:'{= weekday(today)}',  desc:'0=Sun…6=Sat (also year, month, quarter)' },
       { syn:'{= km2mi(10)}',       desc:'km to miles (c2f, kg2lb, l2gal…)' },
     ] },
-  { id:'variables', cat:'compute', covers:['var'], related:['gen-conditions','recipe-crit'],
+  { id:'variables', cat:'compute', covers:['var'], related:['math','gen-conditions','recipe-crit'],
     title:'Variables',
     body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, and options split on the bar like `{tone := warm | cool}` make a random pick.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the outline, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
     examples:[
@@ -27555,6 +27600,7 @@ const GUIDE = [
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
     body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-` and `*`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
+    related:['math','rollups'],
     examples:[
       { syn:'{5 to 10}',      desc:'a 90% range, most likely 5 to 10' },
       { syn:'{normal(8, 2)}', desc:'a bell curve around 8' },
@@ -27565,6 +27611,7 @@ const GUIDE = [
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
     body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max. By default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point (a live writing target), and reading time is just words(subtree) / 200.",
+    related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
       { syn:'{= sum(cost, subtree)}', desc:'total the cost of every descendant, all the way down' },
@@ -27574,7 +27621,7 @@ const GUIDE = [
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
       { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
     ] },
-  { id:'check', cat:'compute', covers:['check'], related:['rollups','recipe-budget'],
+  { id:'check', cat:'compute', covers:['check'], related:['rollups','properties','recipe-budget'],
     title:'Checks & rules',
     body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
@@ -27589,6 +27636,7 @@ const GUIDE = [
   { id:'datapacks', cat:'compute',
     title:'Data packs',
     body:"Bundle the pieces of a whole game system, setting or adventure into one file you can share: grammar rules, variables, and captured pieces of your outline like a character sheet, an oracle or a thread deck. A pack is pure data, stored with the document, and never runs code; it only adds the same rules, variables and pills the engine already understands.\n\nTo ship a working piece of a system, you capture it, you do not type it as a rule. Build a character sheet, a stat block or a shuffle deck as ordinary points, then choose `Add to data pack` from the point's bullet menu. The whole subtree, with its pills intact, becomes a template in the pack; a deck you add this way keeps drawing without repeats when someone stamps it. A deck typed into a pack's rules instead just draws at random, because a rule has no memory, so capture decks as templates.\n\nOpen File then Data packs to manage them. Type grammar rules (one per line, `name: choices`) and variables, and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. The pack's captured templates are listed there too, ready to stamp from the `/template` picker. A pack variable is either a formula (`name = expression`, like `tax = 0.2`, which recomputes live) or a random pick (`name: choices`, like `strength: 3d6`, rolled once when you save and then fixed, so a pack can ship a rolled stat block).\n\nExport a pack to a file to share it, and import one back; a shared pick keeps the value it was rolled to, so everyone sees the same one, and a captured deck arrives mid-shuffle exactly as you left it. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. Toggle a pack off to remove its contents without deleting it. Start a rules line with `#` for a section header comment (skipped), and if you leave the colon off a rule the editor skips just that line and tells you how many it skipped.",
+    related:['grammar','variables','templates'],
     examples:[
       { syn:'Bullet menu → Add to data pack', desc:'capture a subtree (sheet, oracle, deck) into a pack' },
       { syn:'File → Data packs',      desc:'create, enable, edit, import or export packs' },
@@ -27602,6 +27650,7 @@ const GUIDE = [
   { id:'point-links', cat:'links',
     title:'Linking points',
     body:"Build a personal wiki where ideas refer to each other, create a table of contents that jumps to sections or connect a task to its full context note. Type `[[` and pick the point to link to, then click the link to go straight there.\n\nA link tracks the point it points at, so it never goes stale. Leave the label empty and it shows that point's current title, so renaming the point updates every link to it at once. Give it a label (`[[#id|my wording]]`) when you want your own phrasing instead. Leave the label empty and it does something more: the linked point's rendered content appears right there inline, a live mirror of the other point, so a summary can pull in a definition or a stat block without copying it.\n\nLinks are two-way for free: the point you link to lists everything that links to it, covered under backlinks. That turns a pile of points into a connected web you can navigate from either end.",
+    related:['backlinks','cross-doc-links','aliases'],
     examples:[
       { syn:'[[',                   desc:'open the link picker' },
       { syn:'[[#id|label]]',        desc:'link with your own wording' },
@@ -27611,6 +27660,7 @@ const GUIDE = [
   { id:'backlinks', cat:'links',
     title:'Backlinks',
     body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
+    related:['point-links','link-graph','cross-doc-links'],
     examples:[
       { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
       { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
@@ -27620,6 +27670,7 @@ const GUIDE = [
   { id:'link-graph', cat:'links',
     title:'Link graph',
     body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long campaign or a big set of notes: the town near the coast, the character who betrayed you, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.",
+    related:['point-links','backlinks','broken-links'],
     examples:[
       { syn:'Toolbar graph button', desc:'open the link graph (the linked-dots icon)' },
       { syn:'Click a dot',          desc:'jump to that point in the outline' },
@@ -27629,6 +27680,7 @@ const GUIDE = [
   { id:'cross-doc-links', cat:'links',
     title:'Links across documents',
     body:"Weave a network out of separate files: link a project to a person's page, connect a meeting to an action item in another document or build a topic index that points across your whole library. This works once you have a connected folder, a folder of documents Pointliner reads together (see connecting a folder).\n\nWith a folder connected, the `[[` picker searches every document, not just the one you are in, so linking to a point in another file is the same move as linking inside this one. Pick it and Pointliner writes a cross-document link that carries which file it lives in, and clicking it opens that document at that point. If the point you want does not exist yet, choose New document from the picker to create it and link to it in one step.\n\nCross-document links are two-way like ordinary ones: a point lists the links that reach it from other documents too, so a person's page shows every project, meeting and note that mentions it, gathered from across the folder.",
+    related:['point-links','workspace-documents','backlinks'],
     examples:[
       { syn:'[[',                   desc:'search every document in the folder' },
       { syn:'+ New document',       desc:'make a document and link to it at once' },
@@ -27637,6 +27689,7 @@ const GUIDE = [
   { id:'broken-links', cat:'links',
     title:'Find broken links',
     body:"When you delete or rename the point a link pointed at, the link goes stale and shows with a dashed underline. To round them all up, open the File menu and choose Broken links. It lists every link whose target point or note is gone, in this document and, when a folder is connected, across the whole folder. Click one to jump to the point that holds the broken link so you can fix or remove it.",
+    related:['point-links','link-graph'],
     examples:[
       { syn:'File → Broken links',  desc:'list every dangling link, click to jump to its source' },
     ] },
@@ -27645,6 +27698,7 @@ const GUIDE = [
   { id:'saving', cat:'files',
     title:'Saving your work',
     body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step. If auto-save has overwritten something you wanted back, open the File menu and choose Restore earlier version to roll back to the last auto-saved snapshot.",
+    related:['export','workspace-documents'],
     examples:[
       { syn:`${MOD}+S`,              desc:'save to your file (or download a copy if your browser can’t write to disk)' },
       { syn:`${MOD}+O`,              desc:'open a saved file' },
@@ -27654,6 +27708,7 @@ const GUIDE = [
   { id:'workspace-documents', cat:'files',
     title:'Working with a folder of documents',
     body:"Keep a whole library of documents in one folder on your computer and move between them the way you would tabs: a project document, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge or a similar browser only) and every document saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the documents in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a document any time by clicking its name at the top left and typing a new one. Each document also remembers where you were: switch away and come back and it restores your zoom and scroll position. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
+    related:['saving','cross-doc-links','workspace-search'],
     examples:[
       { syn:'File → Connect folder…',   desc:'link a folder of documents (Chromium only)' },
       { syn:'File → Switch document…',  desc:'list, open, create or delete documents' },
@@ -27664,6 +27719,7 @@ const GUIDE = [
   { id:'appearance-controls', cat:'files',
     title:'Appearance & display',
     body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or reveal completed tasks you'd normally keep out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Show done points is the checkmark button in the toolbar; turn it on and finished to-dos and DONE points reappear in the outline.",
+    related:['appearance'],
     examples:[
       { syn:'File → Theme',      desc:'cycle system, light then dark' },
       { syn:'File → Color',      desc:'pick an accent color' },
@@ -27673,6 +27729,7 @@ const GUIDE = [
   { id:'appearance', cat:'files',
     title:'Tag colors & property icons',
     body:"Make your outline easier to scan at a glance. Open File then Tag & property styling to give a tag its own color and a property key a small icon. Type a tag name and click a color swatch: every #tag with that name shows in that color, and nested tags inherit it (a color on #thread also colors #thread/idea). Type a property key and pick an icon: that property's chip shows the icon before its name (a dollar sign on cost, a calendar on due). Both are purely visual, stored with the document and change nothing about the text or how search works. The colors are a curated on-brand set that stays legible in light and dark mode; the icons are drawn from the built-in set.",
+    related:['appearance-controls','hashtags'],
     examples:[
       { syn:'File → Tag & property styling', desc:'color tags and icon properties' },
       { syn:'#urgent → red',       desc:'a tag color (nested tags inherit it)' },
@@ -27681,6 +27738,7 @@ const GUIDE = [
   { id:'export', cat:'files',
     title:'Exporting & sharing',
     body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.",
+    related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },
       { syn:'File → Export a copy → Markdown', desc:'a one-way plain text snapshot for sharing' },
