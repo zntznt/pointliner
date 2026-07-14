@@ -1327,9 +1327,17 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .tp-title.tp-anc{color:var(--muted)}
 .rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
 /* ── capture strip (toolbar dock, like the agenda — not a modal) ── */
-#capture-strip,#journal-strip{display:none;flex-direction:column;gap:4px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
-#capture-strip.on,#journal-strip.on{display:flex}
-#btn-capture.active,#btn-journal.active{color:var(--acc)}
+#capture-strip,#journal-strip,#chronicle-strip{display:none;flex-direction:column;gap:4px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
+#capture-strip.on,#journal-strip.on,#chronicle-strip.on{display:flex}
+#btn-capture.active,#btn-journal.active,#btn-chronicle.active{color:var(--acc)}
+/* #652 the chronicle cursor chip: ◂ / ▸ nudge the in-world day, the middle segment jumps to a date */
+.cap-cursor{display:inline-flex;align-items:center;gap:1px;flex-shrink:0}
+.cap-cursor-nudge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:24px;font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);cursor:pointer;padding:0}
+.cap-cursor-nudge:hover{color:var(--fg);border-color:var(--acc)}
+.cap-cursor-nudge:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cap-cursor-date{font:inherit;font-size:11px;font-weight:600;line-height:1.4;color:var(--fg);background:none;border:none;padding:2px 6px;cursor:pointer;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.cap-cursor-date:hover{color:var(--acc)}
+.cap-cursor-date:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 .cap-row{display:flex;align-items:center;gap:5px;min-width:0}
 /* destination selector: [▾ N · name] — click to open the in-strip manager */
 /* the destination is a two-part control (#421 remap): the NAME opens the manager (the safe,
@@ -2164,6 +2172,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
     </div>
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
+    <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (in-world log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
@@ -2174,6 +2183,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   <div id="breadcrumb-row"></div>
   <div id="capture-strip" role="region" aria-label="Capture"></div>
   <div id="journal-strip" role="region" aria-label="Journal"></div>
+  <div id="chronicle-strip" role="region" aria-label="Chronicle"></div>
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
 <div id="file-menu" role="dialog" aria-modal="true" aria-label="Pointliner menu">
@@ -3726,8 +3736,10 @@ function normalizeCalendarBindings(r) {
   }
   r.calendars = cals;
   const g = r.gamelog;
+  // #652: the in-world cursor is a persisted epoch-day integer (the "current" in-world day the
+  // chronicle strip files beats under). Absent/garbage → null (the strip seeds it from the calendar).
   r.gamelog = (g && typeof g === 'object' && typeof g.targetId === 'string')
-    ? { targetId: g.targetId, calendarId: typeof g.calendarId === 'string' ? g.calendarId : null }
+    ? { targetId: g.targetId, calendarId: typeof g.calendarId === 'string' ? g.calendarId : null, cursor: Number.isSafeInteger(g.cursor) ? g.cursor : null }
     : null;
   return r;
 }
@@ -4431,13 +4443,48 @@ function collectLoreDates(rootNode = root) {
   })({ children: rootNode?.children || [] });
   return items;
 }
-// The timeline's three date-sources merged and tagged for filtering. Tasks keep their urgency fields;
-// journal + lore are neutral history rows. `sources` = {task, journal, lore} booleans (all on by default).
-function collectTimelineItems(rootNode = root, sources = { task: true, journal: true, lore: true }) {
+// Source 4 — CHRONICLE (#652): the in-world game log. Like the journal it is dated by TREE POSITION
+// (game-log home > Y > M > D), but the rungs are the GAME calendar's year/month/day, so the epoch is
+// read via calToEpoch(cal) rather than Gregorian Date.UTC. `homeId` = root.gamelog.targetId, `cal` =
+// its bound calendar (null → falls back to Gregorian parsing, same as the journal). Pure + testable
+// (inject homeId + cal so no DOM). Rows tag as 'chronicle' so they toggle separately from the journal.
+function collectChronicleDates(rootNode = root, homeId = null, cal = null) {
+  const items = [];
+  if (!homeId) return items;
+  const first = n => (n.text || '').split('\n', 1)[0].trim();
+  const find = (n, id) => { if (!n) return null; if (n.id === id) return n; for (const c of (n.children || [])) { const r = find(c, id); if (r) return r; } return null; };
+  const home = find({ children: rootNode?.children || [] }, homeId);
+  if (!home) return items;
+  for (const yNode of (home.children || [])) {
+    const ym = first(yNode).match(/^-?\d+/); if (!ym) continue;
+    for (const mNode of (yNode.children || [])) {
+      const mo = first(mNode).match(/^\d{1,2}/); if (!mo) continue;
+      for (const dNode of (mNode.children || [])) {
+        const dd = first(dNode).match(/^\d{1,2}/); if (!dd) continue;
+        const Y = +ym[0], MO = +mo[0], D = +dd[0];
+        // parse the rungs under the GAME calendar; calToEpoch returns null for an out-of-range m/d.
+        const ep = cal ? calToEpoch(Y, MO, D, cal) : Math.floor(Date.UTC(Y, MO - 1, D) / DAY_MS);
+        if (ep == null || !Number.isFinite(ep)) continue;
+        items.push({ id: dNode.id, title: textForDisplay(dNode) || first(dNode) || 'chronicle', epochDay: ep, source: 'chronicle' });
+      }
+    }
+  }
+  return items;
+}
+// The timeline's date-sources merged and tagged for filtering. Tasks keep their urgency fields;
+// journal / lore / chronicle are neutral history rows. `sources` = {task, journal, lore, chronicle}
+// booleans (all on by default). The chronicle source needs its home id + calendar, which only the
+// live app has, so a bare-root caller (tests) passes them explicitly via `opts`.
+function collectTimelineItems(rootNode = root, sources = { task: true, journal: true, lore: true, chronicle: true }, opts = {}) {
   const items = [];
   if (sources.task) for (const it of collectDueDates(rootNode)) items.push({ ...it, source: 'task' });
   if (sources.journal) items.push(...collectJournalDates(rootNode));
   if (sources.lore) items.push(...collectLoreDates(rootNode));
+  if (sources.chronicle !== false) {   // default-on, but only yields rows when a game log is bound
+    const homeId = opts.chronicleHomeId ?? (typeof root !== 'undefined' && root && root.gamelog?.targetId) ?? null;
+    const cal = opts.chronicleCal ?? ((typeof namedCalendars === 'function' && (typeof root !== 'undefined' && root && root.gamelog?.calendarId) && namedCalendars()[root.gamelog.calendarId]) || null);
+    if (homeId) items.push(...collectChronicleDates(rootNode, homeId, cal));
+  }
   items.sort((a, b) => a.epochDay - b.epochDay);
   return items;
 }
@@ -6908,7 +6955,7 @@ function fromOpml(xml) {
   const gamelogRaw    = doc.querySelector('head > _gamelog')?.textContent?.trim();
   const gamelog       = (() => { try {
       const g = JSON.parse(gamelogRaw || 'null');
-      return (g && typeof g === 'object' && typeof g.targetId === 'string') ? { targetId: g.targetId, calendarId: typeof g.calendarId === 'string' ? g.calendarId : null } : null;
+      return (g && typeof g === 'object' && typeof g.targetId === 'string') ? { targetId: g.targetId, calendarId: typeof g.calendarId === 'string' ? g.calendarId : null, cursor: Number.isSafeInteger(g.cursor) ? g.cursor : null } : null;
     } catch(_) { return null; } })();
   return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, docId, journal,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
@@ -7530,6 +7577,8 @@ function render() {
     }
   }
   _lastRenderFocusedId = focusedId;
+
+  if (typeof syncChronicleButton === 'function') syncChronicleButton();   // #652: show the Chronicle button only when an in-world log is bound
 
   if (firstChildId) focusNode(firstChildId);
 }
@@ -12341,6 +12390,133 @@ function findOrCreateJournalHome() {
   parentMap.set(home.id, root);
   markDirty();
   return home;
+}
+
+// ── chronicle strip (#652): the journal's in-world twin. The journal logs the REAL day
+//    (todayISO, observed); the chronicle logs the day the GM SETS — a movable in-world cursor,
+//    "time-travel mode". It reuses the in-world-log binding (#653): root.gamelog.targetId is the
+//    home subtree, root.gamelog.calendarId its calendar, root.gamelog.cursor the current in-world
+//    day (an epoch-day integer). Beats file under the cursor's date via findOrCreateDatedEntry, so
+//    they nest year→month→day in the GAME calendar and feed the timeline as the in-world source.
+let chronicleOpen = false, chronicleDraft = '', chronicleCount = 0, chronicleReturnFocus = null;
+// The bound in-world-log home node, or null when nothing is bound (the strip has no target then).
+function chronicleHome() { const id = root.gamelog?.targetId; return id ? nodeById(id) : null; }
+// The chronicle's calendar object (from the named store), or null (Gregorian) as a safe fallback.
+function chronicleCal() { const cid = root.gamelog?.calendarId; return (cid && namedCalendars()[cid]) || null; }
+// The current in-world cursor (epoch-day integer). Seeds from the calendar's `current` (its "today
+// in this world"), else 0, the first time it's read; persisted on root.gamelog thereafter.
+function chronicleCursor() {
+  const gl = root.gamelog; if (!gl) return 0;
+  if (Number.isSafeInteger(gl.cursor)) return gl.cursor;
+  const cal = chronicleCal();
+  gl.cursor = (cal && Number.isSafeInteger(cal.current)) ? cal.current : 0;
+  return gl.cursor;
+}
+// Show/hide the toolbar Chronicle button: it only exists when an in-world log is bound (nothing to
+// chronicle otherwise). Called from render() and after any bind/unbind. Closes the strip if the
+// binding vanished while it was open.
+function syncChronicleButton() {
+  const btn = document.getElementById('btn-chronicle'); if (!btn) return;
+  const bound = !!chronicleHome();
+  btn.style.display = bound ? '' : 'none';
+  if (!bound && chronicleOpen) closeChronicleStrip();
+}
+function toggleChronicleStrip() { if (chronicleOpen) closeChronicleStrip(); else openChronicleStrip(); }
+function openChronicleStrip() {
+  if (!chronicleHome()) { flashHint('Bind a point as an in-world log first (its bullet menu), then chronicle to it.'); return; }
+  if (!chronicleOpen) { chronicleCount = 0; chronicleReturnFocus = document.activeElement; }  // draft survives close/reopen
+  chronicleOpen = true;
+  document.getElementById('chronicle-strip').classList.add('on');
+  const btn = document.getElementById('btn-chronicle');
+  btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+  renderChronicleStrip();
+  requestAnimationFrame(() => document.getElementById('chr-input')?.focus());
+}
+function closeChronicleStrip() {
+  chronicleOpen = false;
+  document.getElementById('chronicle-strip').classList.remove('on');
+  const btn = document.getElementById('btn-chronicle');
+  btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
+  const rf = chronicleReturnFocus; chronicleReturnFocus = null;
+  if (rf && rf.isConnected) rf.focus(); else document.getElementById('btn-chronicle').focus();
+}
+function renderChronicleStrip() {
+  const strip = document.getElementById('chronicle-strip');
+  strip.innerHTML = '';
+  if (!chronicleOpen) return;
+  const cal = chronicleCal();
+  const cursor = chronicleCursor();
+  const row = document.createElement('div'); row.className = 'cap-row';
+
+  const input = document.createElement('textarea');
+  input.id = 'chr-input'; input.className = 'cap-input'; input.rows = 1; input.value = chronicleDraft;
+  input.placeholder = 'Log a beat in the chronicle…';
+  input.setAttribute('aria-label', 'Text for the chronicle');
+  input.spellcheck = true;
+  input.addEventListener('input', () => { chronicleDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doChronicleAdd(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeChronicleStrip(); }
+    else if (e.key !== 'Tab') e.stopPropagation();
+  });
+  row.appendChild(input);
+
+  // the in-world cursor: ◂ / ▸ nudge one game-day; the middle segment jumps to a date + zooms in.
+  const cur = document.createElement('div'); cur.className = 'cap-cursor';
+  cur.setAttribute('role', 'group'); cur.setAttribute('aria-label', 'In-world date');
+  const prev = document.createElement('button'); prev.type = 'button'; prev.className = 'cap-cursor-nudge';
+  prev.textContent = '◂'; prev.title = 'Previous in-world day'; prev.setAttribute('aria-label', 'Previous in-world day');
+  prev.addEventListener('click', () => nudgeChronicleCursor(-1));
+  const dateBtn = document.createElement('button'); dateBtn.type = 'button'; dateBtn.className = 'cap-cursor-date';
+  dateBtn.textContent = calDayLabel(cursor, cal);
+  dateBtn.title = 'Jump to a date in the chronicle'; dateBtn.setAttribute('aria-label', 'In-world date ' + calDayLabel(cursor, cal) + '. Jump to a date');
+  dateBtn.addEventListener('click', () => openChronicleDate());
+  const next = document.createElement('button'); next.type = 'button'; next.className = 'cap-cursor-nudge';
+  next.textContent = '▸'; next.title = 'Next in-world day'; next.setAttribute('aria-label', 'Next in-world day');
+  next.addEventListener('click', () => nudgeChronicleCursor(1));
+  cur.append(prev, dateBtn, next);
+  row.appendChild(cur);
+
+  const goBtn = document.createElement('button'); goBtn.type = 'button'; goBtn.className = 'cap-go'; goBtn.textContent = 'Log';
+  goBtn.disabled = !chronicleDraft.trim();
+  goBtn.addEventListener('click', () => doChronicleAdd());
+  row.appendChild(goBtn);
+  strip.appendChild(row);
+}
+// Move the in-world cursor by whole game-days. The cursor is an epoch-day integer, so ±1 is
+// calendar-agnostic; the calendar only affects how the date READS. Persisted so it survives reload.
+function nudgeChronicleCursor(delta) {
+  const gl = root.gamelog; if (!gl) return;
+  gl.cursor = chronicleCursor() + delta;
+  markDirty();
+  renderChronicleStrip();
+  document.getElementById('chr-input')?.focus();
+}
+// Jump the cursor: zoom into the cursor date's entry (creating the path), so the GM can read/write
+// there directly. Reuses the dated-entry walk; the strip stays open (the button stays a toggle).
+function openChronicleDate() {
+  const home = chronicleHome(); if (!home) return;
+  const cal = chronicleCal();
+  const iso = formatEpochDays(chronicleCursor(), cal);
+  pushUndo();
+  const { entry } = findOrCreateDatedEntry(home, iso, (t, p) => { const n = mkNode(t); n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); return n; });
+  markDirty(); render();
+  zoomInto(entry.id); focusNode(entry.id);
+}
+function doChronicleAdd() {
+  const text = (chronicleDraft || '').replace(/\s+$/, '');
+  if (!text.trim()) { flashHint('Type a beat to log'); return; }
+  const home = chronicleHome();
+  if (!home) { flashError('The in-world log is no longer bound. Bind a point first.'); closeChronicleStrip(); return; }
+  const cal = chronicleCal();
+  const iso = formatEpochDays(chronicleCursor(), cal);
+  pushUndo();
+  const { entry } = findOrCreateDatedEntry(home, iso, (t, p) => { const n = mkNode(t); n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); return n; });
+  appendJournalPoint(entry, text);   // shares the journal's markdown-aware append
+  chronicleCount++; chronicleDraft = '';
+  flashHint('✓ Logged ' + (chronicleCount === 1 ? '1 beat' : chronicleCount + ' beats') + ' · ' + calDayLabel(chronicleCursor(), cal));
+  renderChronicleStrip();
+  document.getElementById('chr-input')?.focus();
 }
 
 async function openJournalEntry() {
@@ -26073,8 +26249,8 @@ function toggleTimeline() { if (timelineOpen) closeTimeline(); else openTimeline
 
 // #647: which of the three date-sources the timeline shows (session-only, like agendaMonth). All on
 // by default — the timeline chronicles everything dated; toggles carve out a personal or world review.
-let timelineSources = { task: true, journal: true, lore: true };
-const TL_SRC_LABELS = { task: 'Tasks', journal: 'Journal', lore: 'Lore' };
+let timelineSources = { task: true, journal: true, lore: true, chronicle: true };
+const TL_SRC_LABELS = { task: 'Tasks', journal: 'Journal', lore: 'Lore', chronicle: 'Chronicle' };
 function renderTimeline(panel) {
   panel.innerHTML = '';
   const items = collectTimelineItems(root, timelineSources);
@@ -26106,10 +26282,14 @@ function renderTimeline(panel) {
   head.append(ttl, cnt, close);
   panel.appendChild(head);
 
-  // #647: source toggles — show/hide tasks, journal, lore. A personal review is journal + tasks with
-  // lore off; a world review is lore + game-log with tasks off. Same view, different chips.
+  // #647/#652: source toggles — show/hide tasks, journal, lore, and (when an in-world log is bound)
+  // the chronicle. A personal review is journal + tasks with lore off; a world review is lore +
+  // chronicle with tasks off. Same view, different chips. The Chronicle chip only appears when a game
+  // log is bound (no dead toggle otherwise).
   const bar = document.createElement('div'); bar.className = 'tl-toggles'; bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', 'Timeline sources');
-  for (const key of ['task', 'journal', 'lore']) {
+  const srcKeys = ['task', 'journal', 'lore'];
+  if (root.gamelog?.targetId) srcKeys.push('chronicle');
+  for (const key of srcKeys) {
     const chip = document.createElement('button'); chip.type = 'button';
     chip.className = 'tl-toggle tl-src-' + key + (timelineSources[key] ? ' on' : '');
     chip.textContent = TL_SRC_LABELS[key];
@@ -26769,6 +26949,7 @@ document.getElementById('capture-strip').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeCapture(); }
 });
 document.getElementById('btn-journal').addEventListener('click', () => toggleJournalStrip());
+document.getElementById('btn-chronicle').addEventListener('click', () => toggleChronicleStrip());
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. IS_MAC/MOD are defined
 // above (moved up so the verbosity toasts can use MOD); the modifier renders ⌘ on Mac, Ctrl elsewhere.
@@ -27166,6 +27347,14 @@ const GUIDE = [
     examples:[
       { syn:'/journal', desc:"open or start today's entry" },
       { syn:'Ctrl/Cmd+Shift+J', desc:'switch in-doc / file per day' },
+    ] },
+  { id:'chronicle', cat:'dates',
+    title:'Chronicle (in-world log)',
+    body:"Keep a campaign log dated in the game's own time instead of the real day. The journal records the day you actually wrote it; a chronicle records the day you decide, so session four can log day 300 of the campaign year. First give the document a custom calendar, then make the point that will hold the log and choose Bind as in-world log from its bullet menu; a chronicle button then appears in the toolbar. Its bar works like the journal's, but the date is a cursor you steer: the left and right arrows step one game-day back or forward (honoring your calendar's months and week), and clicking the date jumps to a day you name. Type a beat and press Enter to file it under the cursor's date, nested year then month then day in the game calendar. Chronicle beats appear on the timeline as their own Chronicle source, dated in world time and toggleable on their own.",
+    examples:[
+      { syn:'Menu → Bind as in-world log', desc:'make this point the chronicle home' },
+      { syn:'◂ / ▸',           desc:'step the in-world day back or forward' },
+      { syn:'Click the date',  desc:'jump the cursor to a day you name' },
     ] },
 
   // ── Generators (guide) ────────────────────────────────────────────────────
