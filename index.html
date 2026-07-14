@@ -4424,7 +4424,15 @@ function collectJournalDates(rootNode = root) {
         const Y = +y, MO = +mo[0], D = +dd[0];
         const ep = Math.floor(Date.UTC(Y, MO - 1, D) / DAY_MS);   // Gregorian, regardless of any active fiction calendar
         if (!Number.isFinite(ep)) continue;
-        items.push({ id: dNode.id, title: textForDisplay(dNode) || first(dNode) || 'journal', epochDay: ep, source: 'journal' });
+        // The day rung ('13') is just a wrapper; the ENTRIES are its children. Emit one row per
+        // entry so the timeline shows what you journaled, not a bare date. A day with no entries
+        // yet still shows one row for the day itself (so an empty-but-created day isn't invisible).
+        const entries = (dNode.children || []);
+        if (entries.length) {
+          for (const e of entries) items.push({ id: e.id, title: textForDisplay(e) || first(e) || 'journal', epochDay: ep, source: 'journal' });
+        } else {
+          items.push({ id: dNode.id, title: textForDisplay(dNode) || first(dNode) || 'journal', epochDay: ep, source: 'journal' });
+        }
       }
     }
   }
@@ -4465,7 +4473,14 @@ function collectChronicleDates(rootNode = root, homeId = null, cal = null) {
         // parse the rungs under the GAME calendar; calToEpoch returns null for an out-of-range m/d.
         const ep = cal ? calToEpoch(Y, MO, D, cal) : Math.floor(Date.UTC(Y, MO - 1, D) / DAY_MS);
         if (ep == null || !Number.isFinite(ep)) continue;
-        items.push({ id: dNode.id, title: textForDisplay(dNode) || first(dNode) || 'chronicle', epochDay: ep, source: 'chronicle' });
+        // like the journal: the day rung is a wrapper; emit one row per logged BEAT (its children),
+        // falling back to the day node itself only when the day has no beats yet.
+        const beats = (dNode.children || []);
+        if (beats.length) {
+          for (const b of beats) items.push({ id: b.id, title: textForDisplay(b) || first(b) || 'chronicle', epochDay: ep, source: 'chronicle' });
+        } else {
+          items.push({ id: dNode.id, title: textForDisplay(dNode) || first(dNode) || 'chronicle', epochDay: ep, source: 'chronicle' });
+        }
       }
     }
   }

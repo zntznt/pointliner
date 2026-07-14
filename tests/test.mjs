@@ -13043,7 +13043,9 @@ test('#437 — the touch edit-bar carries a wired to-do button', () => {
 // position Journal > YYYY > MM > DD), and lore (a when:/date: property). Merged, tagged, sortable.
 test('#647 — timeline collectors: journal (tree position), lore (when/date prop), merged + tagged', () => {
   const mk = (text, props = [], children = []) => { const n = c.mkNode(text); n.props = props; n.children = children; return n; };
-  const day = mk('13 Monday');   // a titled day rung reused fuzzily
+  // The day rung is a wrapper; its ENTRIES are the rows the timeline shows.
+  const e1 = mk('Met the ferryman'), e2 = mk('Crossed the river');
+  const day = mk('13 Monday', [], [ e1, e2 ]);   // a titled day rung reused fuzzily
   const journal = mk('Journal', [], [ mk('2026', [], [ mk('07', [], [ day ]) ]) ]);
   const lore = mk('342, the Sundering', [{ key: 'when', val: '2026-03-01' }]);
   const task = mk('Ship it', [{ key: 'due', val: '2026-07-20' }]);
@@ -13051,24 +13053,29 @@ test('#647 — timeline collectors: journal (tree position), lore (when/date pro
   const iso = ep => new Date(ep * 86400000).toISOString().slice(0, 10);
 
   const j = c.collectJournalDates(root);
-  assert.equal(j.length, 1);
+  assert.equal(j.length, 2);                         // one row per ENTRY under the day, not the day
   assert.equal(iso(j[0].epochDay), '2026-07-13');   // date from tree position, not a property
   assert.equal(j[0].source, 'journal');
-  assert.equal(j[0].id, day.id);                    // navigates to the day node
+  assert.equal(j[0].id, e1.id);                     // navigates to the entry, not the '13 Monday' node
+  assert.equal(j[0].title, 'Met the ferryman');
+  assert.equal(j[1].id, e2.id);
+  // an empty day (created, nothing written yet) still shows one row for the day itself
+  const emptyDay = mk('Journal', [], [ mk('2026', [], [ mk('08', [], [ mk('05', [], []) ]) ]) ]);
+  assert.equal(c.collectJournalDates({ children: [emptyDay] }).length, 1);
 
   const l = c.collectLoreDates(root);
   assert.equal(l.length, 1);
   assert.equal(iso(l[0].epochDay), '2026-03-01');
   assert.equal(l[0].source, 'lore');
 
-  // Merged: tagged and sorted by date (lore Mar → journal Jul 13 → task Jul 20). host() normalizes
-  // the vm-realm array prototype so deepEqual compares by structure.
+  // Merged: tagged and sorted by date (lore Mar → journal Jul 13 (both entries) → task Jul 20).
+  // host() normalizes the vm-realm array prototype so deepEqual compares by structure.
   const all = c.collectTimelineItems(root, { task: true, journal: true, lore: true });
-  assert.deepEqual(host(all.map(x => x.source)), ['lore', 'journal', 'task']);
+  assert.deepEqual(host(all.map(x => x.source)), ['lore', 'journal', 'journal', 'task']);
 
   // Toggles filter by source.
   assert.deepEqual(host(c.collectTimelineItems(root, { task: true, journal: false, lore: false }).map(x => x.source)), ['task']);
-  assert.deepEqual(host(c.collectTimelineItems(root, { task: false, journal: true, lore: false }).map(x => x.source)), ['journal']);
+  assert.deepEqual(host(c.collectTimelineItems(root, { task: false, journal: true, lore: false }).map(x => x.source)), ['journal', 'journal']);
   assert.equal(c.collectTimelineItems(root, { task: false, journal: false, lore: false }).length, 0);
 
   // No Journal home → no journal items; a date: prop is also lore.
@@ -13144,21 +13151,30 @@ test('#652 — collectChronicleDates: game-log entries dated in the bound calend
   const mk = (text, children = []) => { const n = c.mkNode(text); n.children = children; return n; };
   // a 12x30-day calendar with year 1 anchored at epoch 0.
   const cal = c.normalizeCalendar({ id: 'vale', name: 'Vale', epochDay: 0, months: Array.from({ length: 12 }, (_, i) => ({ name: 'M' + (i + 1), days: 30 })), week: { length: 7, days: [] }, eras: [] });
-  const beat = mk('Muster the levies');
-  const home = mk('Campaign Log', [ mk('50', [ mk('6', [ mk('15 Restday', [ beat ]) ]) ]) ]);
+  // Two beats logged under the same day rung → two rows, each the BEAT (not the bare day wrapper).
+  const beat = mk('Muster the levies'), beat2 = mk('Scouts return at dusk');
+  const day = mk('15 Restday', [ beat, beat2 ]);
+  const home = mk('Campaign Log', [ mk('50', [ mk('6', [ day ]) ]) ]);
   const root = { children: [home] };
 
   const items = c.collectChronicleDates(root, home.id, cal);
-  assert.equal(items.length, 1);
+  assert.equal(items.length, 2);
   assert.equal(items[0].source, 'chronicle');
-  assert.equal(items[0].id, home.children[0].children[0].children[0].id);   // the day node
+  assert.equal(items[0].id, beat.id);    // the entry, not the '15 Restday' day node
+  assert.equal(items[1].id, beat2.id);
+  assert.equal(items[0].title, 'Muster the levies');
   // year 50, month 6, day 15 under Vale = calToEpoch of the same → the epoch matches the calendar core.
   assert.equal(items[0].epochDay, c.calToEpoch(50, 6, 15, cal));
+  assert.equal(items[1].epochDay, c.calToEpoch(50, 6, 15, cal));
+
+  // An EMPTY day (created but nothing logged yet) still shows one row for the day itself.
+  const emptyDayHome = mk('Log', [ mk('50', [ mk('6', [ mk('20', []) ]) ]) ]);
+  const emptyItems = c.collectChronicleDates({ children: [emptyDayHome] }, emptyDayHome.id, cal);
+  assert.equal(emptyItems.length, 1);
+  assert.equal(emptyItems[0].id, emptyDayHome.children[0].children[0].children[0].id);
 
   // No home id → no rows (the fast path when nothing is bound).
   assert.equal(c.collectChronicleDates(root, null, cal).length, 0);
-  // A titled day rung ('15 Restday') and a titled month are read by their leading number.
-  assert.equal(c.collectChronicleDates({ children: [ mk('Log', [ mk('50', [ mk('6 Highsun', [ mk('15', []) ]) ]) ]) ]}, root.children[0].id, cal).length, 0); // wrong home id → 0
   // With no calendar it falls back to Gregorian parsing (so a game log with no bound cal still lists).
   const gHome = mk('Log', [ mk('2026', [ mk('07', [ mk('13', []) ]) ]) ]);
   const gItems = c.collectChronicleDates({ children: [gHome] }, gHome.id, null);
