@@ -27049,6 +27049,15 @@ const GUIDE = [
   { id:'shortcuts-select', cat:'shortcuts', title:'Select', scrollTo:'Select',
     bodyHtml: () => shortcutsAllBody('Select'), searchText: () => shortcutsSectionText('Select') },
 
+  { id:'overview', cat:'getting-around',
+    title:'Start here',
+    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nTwo menus put everything within reach without memorizing anything. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table) and `@` anywhere to insert a pill (dice, a date, a calculation). The rest of this guide is a tour of what those two menus hold. If you would rather not read, open the Cookbook recipes at the end for finished examples you can copy.",
+    examples:[
+      { syn:'Enter / Tab',    desc:'new point, then nest it under the one above' },
+      { syn:'{2d6}',          desc:'a live pill: roll two dice, click to re-roll' },
+      { syn:'/',              desc:'change what a point is (heading, to-do, table)' },
+      { syn:'@',              desc:'insert a pill (dice, date, calculation)' },
+    ] },
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
     body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.",
