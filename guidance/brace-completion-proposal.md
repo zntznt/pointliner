@@ -1,9 +1,11 @@
 # Contextual body completion for the `{` picker — design proposal
 
-**Status:** **Phases 1 (math) + 2 (search / oracle / meter) shipped.** Decisions 1–4 approved
-as recommended. Remaining follow-up: `has:`/generic `key:` prop-*value* completion, which
-needs a doc-wide property-key index (deferred; meter completes the point's *own* keys, no
-index needed). Phase-2 cores: `searchTokenAt`/`searchCompletions` (+ `SEARCH_IS_VALUES`,
+**Status:** **Phases 1 (math) + 2 (search / oracle / meter) shipped, incl. `has:` prop-key
+completion.** Decisions 1–4 approved as recommended. The last deferred piece — `has:` /
+generic `key:` prop-key completion — landed via `collectPropKeys` (the ninth `_varsVer`
+doc-cache, mirroring `collectTags`); `{query: has:` now completes the doc's property keys.
+Generic `key:value` key-completion from a bare word (vs. `has:`) is the only remaining
+nicety, left out to avoid overlapping the field-prefix suggestions. Phase-2 cores: `searchTokenAt`/`searchCompletions` (+ `SEARCH_IS_VALUES`,
 drift-guarded against `parseSearchQuery`'s `is:(…)` regex), `oracleCompletions`,
 `meterTokenAt`/`meterCompletions`; the DOM dispatcher `bodyCompletion(inner, node)` unified
 all four contexts under one `braceState.mode === 'body'` mid-body insert.

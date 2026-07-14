@@ -1202,6 +1202,26 @@ test('meterTokenAt / meterCompletions — the point\'s own property keys', () =>
   assert.equal(c.meterCompletions('z', keys).length, 0, 'no matching property → nothing');
 });
 
+test('collectPropKeys — distinct property keys across the whole tree (lowercased, deduped, sorted)', () => {
+  const tree = { children: [
+    { props: [{ key: 'cost', val: '5' }, { key: 'Owner', val: 'zeo' }], children: [
+      { props: [{ key: 'cost', val: '3' }], children: [] },   // dup across points
+      { props: [{ key: 'due', val: '2026-01-01' }], children: [] },
+    ] },
+    { props: [], children: [] },
+    { children: [] },   // no props field at all
+  ] };
+  assert.deepEqual(host(c.collectPropKeys(tree)), ['cost', 'due', 'owner']);
+});
+
+test('searchCompletions — has: completes doc-wide property keys (the deferred piece, now landed)', () => {
+  const ctx = { tags: [], vars: [], states: [], propKeys: ['cost', 'owner', 'due'] };
+  const names = (t) => host(c.searchCompletions(t, ctx).map(x => x.name));
+  assert.deepEqual(names('has:'), ['has:cost', 'has:owner', 'has:due'], 'all keys after has:');
+  assert.deepEqual(names('has:o'), ['has:owner'], 'prefix-filtered');
+  assert.ok(names('-has:c').includes('-has:cost'), 'negation preserved');
+});
+
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
   const names = p => c.filterBraceForms(p).map(f => f.name);
   assert.ok(names('cond').includes('conditional'));
@@ -5932,10 +5952,10 @@ test('searchWorkspace: per-doc context (collectVars) is computed only when an is
 }
 
 // ── doc-cache invalidation invariant (preventive) ─────────────────────────────
-// Eight whole-tree caches are keyed on the single _varsVer generation; both
+// Nine whole-tree caches are keyed on the single _varsVer generation; both
 // writers (markDirty / resetDocCaches) bump it. This pins the invalidation
 // WIRING — not content (content is pinned per-collector via the explicit-root
-// path). It catches a future ninth cache wired to the wrong counter, or a
+// path). It catches a future tenth cache wired to the wrong counter, or a
 // writer that forgets to bump — both of which serve stale data silently.
 //
 // The cache path is only reachable via the NO-ARG form (uses the module `root`);
@@ -5947,7 +5967,7 @@ test('searchWorkspace: per-doc context (collectVars) is computed only when an is
 test('doc-cache: every _varsVer-keyed collector caches within a generation and rebuilds after a bump', () => {
   const bump = c._context.resetDocCaches;
   assert.equal(typeof bump, 'function', 'resetDocCaches must be reachable via _context to drive the _varsVer bump');
-  // The canonical eight (mirrors the resetDocCaches registry / the `// doc-cache` markers).
+  // The canonical nine (mirrors the resetDocCaches registry / the `// doc-cache` markers).
   const collectors = [
     ['collectVars', c.collectVars],
     ['collectRules', c.collectRules],
@@ -5957,6 +5977,7 @@ test('doc-cache: every _varsVer-keyed collector caches within a generation and r
     ['collectSequences', c.collectSequences],
     ['knownStates', c.knownStates],
     ['stateCmds', c.stateCmds],
+    ['collectPropKeys', c.collectPropKeys],
   ];
   for (const [name, fn] of collectors) {
     assert.equal(typeof fn, 'function', `${name} must be harvested into the cores`);
