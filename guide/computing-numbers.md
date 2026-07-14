@@ -34,8 +34,9 @@ You can use `×` `÷` `−` and `√` if you like typing them; `pi`, `e`, `tau` 
 Call a function with parentheses. The big ones:
 
 **Math:** `sqrt abs floor ceil round trunc sign cbrt exp` · `sin cos tan asin acos atan atan2` ·
-`ln log log2 log10` · `deg rad` · `pow(x,y) hypot(a,b)` · `min(…) max(…)` (two or more args) ·
-`clamp(x, lo, hi)`.
+`ln log log2 log10` · `deg rad` · `pow(x,y) hypot(a,b)` · `min(…) max(…) avg(…)` (two or more args) ·
+`clamp(x, lo, hi)` · `roundto(x, step)` → round to the nearest step (5, 25, 0.5) ·
+`gcd(a, b) lcm(a, b)`.
 
 **Percentages:** `pctof(part, whole)` → part as a % of whole; `pctchange(from, to)` → % change.
 
