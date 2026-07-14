@@ -12682,6 +12682,19 @@ test('meter (#648) — a meter freezes to its bar string on export; unresolvable
   assert.equal(c.flattenArtifacts('{meter: mana/manamax}', node, {}), '{meter?}', 'a missing property exports the visible marker, not a wrong bar');
 });
 
+test('meter (#708) — a pool meter labels the ROUNDED icon counts, not the raw value', () => {
+  // The icons show Math.round(value) filled (via meterPool); the bar path shows the exact
+  // value beside the bar. So the pool's aria must come from pool.filled/(filled+empty), NOT
+  // formatMathResult(value) — else a fractional hp:3.5 shows 4 filled icons but says "3.5 of 5".
+  // meterPool already rounds; this pins the label source so the render can't drift back.
+  assert.deepEqual(host(c.meterPool(3.5, 5)), { filled: 4, empty: 1 }, 'the icons round 3.5 up to 4 filled');
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  // isolate the pool render branch and confirm its aria uses pool.filled, not the raw value.
+  const poolBranch = src.slice(src.indexOf('meter meter-pool'), src.indexOf('meter meter-pool') + 240);
+  assert.match(poolBranch, /aria-label="Meter, \$\{pool\.filled\} of \$\{pool\.filled \+ pool\.empty\}"/,
+    'the pool aria reports the rounded icon counts (pool.filled), so the label matches the visual');
+});
+
 test('meter (#648) — every icon-pool glyph is in the FA subset AND has a ::before codepoint (font integrity)', () => {
   // A pool style references an FA glyph. If that glyph is not in FA_GLYPHS + a ::before rule +
   // the embedded solid woff2, it paints blank (the exact regression the woff2 re-subset had to

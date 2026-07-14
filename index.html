@@ -773,7 +773,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .dice-expl{color:var(--acc);opacity:.65;font-size:.78em;padding:0 1px}
 .dice-reroll-orig{opacity:.4;text-decoration:line-through;font-size:.92em}
 .fate-die{font-weight:700;font-size:.95em}
-.fate-minus{color:var(--bad)}.fate-zero{color:var(--muted);opacity:.7}.fate-plus{color:var(--acc)}
+.fate-minus{color:var(--bad)}.fate-zero{color:var(--muted)}.fate-plus{color:var(--acc)}
 .dice-mod{font-family:var(--mono);color:var(--fg);opacity:.75}
 .dice-eq{color:var(--muted);opacity:.6;padding:0 1px}
 .dice-total{font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
@@ -5766,7 +5766,6 @@ function mdInline(s) {
     const r = parsed && resolveMeter(cookieNode, parsed);
     if (!r) return stash(`<span class="meter meter-bad" aria-label="Meter, cannot resolve">{meter?}</span>`);
     const full = r.value >= r.max ? ' meter-full' : '';
-    const aria = `Meter, ${formatMathResult(r.value)} of ${formatMathResult(r.max)}`;
     // an icon-pool style draws one FA glyph per unit (filled vs dimmed) when the max is within
     // the cap; a bigger max falls back to the bar so the pool can never blow out the line.
     const pool = parsed.style !== 'bar' && meterPool(r.value, r.max);
@@ -5774,9 +5773,13 @@ function mdInline(s) {
       const glyph = METER_POOL_STYLES[parsed.style];
       const icon = (cls) => `<i class="fa-solid ${glyph}${cls}" aria-hidden="true"></i>`;
       const icons = icon('').repeat(pool.filled) + icon(' meter-icon-empty').repeat(pool.empty);
-      return stash(`<span class="meter meter-pool${full}" aria-label="${aria}">${icons}</span>`);
+      // the label reports the ROUNDED counts the icons actually show (#708), never the raw
+      // value — else a fractional hp:3.5 would show 4 filled icons but say "3.5 of 5".
+      return stash(`<span class="meter meter-pool${full}" aria-label="Meter, ${pool.filled} of ${pool.filled + pool.empty}">${icons}</span>`);
     }
-    return stash(`<span class="meter${full}" aria-label="${aria}">${formatMeter(r.value, r.max)}</span>`);
+    // the bar's label carries the exact value (the bar's fill rounds visually, but the number
+    // beside it is exact, so "8.5 of 12" matches what the pill shows).
+    return stash(`<span class="meter${full}" aria-label="Meter, ${formatMathResult(r.value)} of ${formatMathResult(r.max)}">${formatMeter(r.value, r.max)}</span>`);
   });
   s = mdEmph(s);
   // emoji shortcodes
