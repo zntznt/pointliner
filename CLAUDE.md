@@ -79,13 +79,13 @@ are out of scope — not deferred, out.
 - **`mdToHtml` must stay synchronous** (render-context globals depend on it).
 - **`markDirty()` is the single invalidation point** — it bumps `_varsVer` (as does
   `resetDocCaches()`, the DOM-free twin called on document load/swap). Any new cross-node
-  cache must be keyed on `_varsVer` too. **The canonical registry is the eight whole-tree
+  cache must be keyed on `_varsVer` too. **The canonical registry is the nine whole-tree
   caches** keyed on that one generation — `collectVars`, `collectRules`, `collectLinks`,
-  `collectTags`, `collectCallables`, `collectSequences`, `knownStates`, `stateCmds` (grep
-  `// doc-cache` for the declarations; the full list also lives in the `resetDocCaches`
-  doc-comment). A **ninth** cache MUST join that list AND check/set `_varsVer`, or it
-  silently serves stale data; the `doc-cache invalidation` test in `tests/test.mjs` pins
-  the wiring (collector-object identity across a generation bump).
+  `collectTags`, `collectCallables`, `collectSequences`, `knownStates`, `stateCmds`,
+  `collectPropKeys` (grep `// doc-cache` for the declarations; the full list also lives in
+  the `resetDocCaches` doc-comment). A **tenth** cache MUST join that list AND check/set
+  `_varsVer`, or it silently serves stale data; the `doc-cache invalidation` test in
+  `tests/test.mjs` pins the wiring (collector-object identity across a generation bump).
 - **Theme via CSS custom properties** (`--acc`, `--bg`, `--fg`, `--bdr`, `--ring`,
   `--muted`, the semantic `--ok/--warn/--bad/--info`, `--acc-fg`, `--mono`, the `--r-*`
   radius and `--sh-*` shadow tokens). Don't hardcode colors; dark mode is a media query

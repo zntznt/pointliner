@@ -310,7 +310,8 @@ Implemented:
   **property keys**. One dispatcher `bodyCompletion` routes all four contexts through the same
   mid-body insert. Cores `searchTokenAt`/`searchCompletions`/`oracleCompletions`/`meterTokenAt`/
   `meterCompletions`; `SEARCH_IS_VALUES` is drift-guarded against `parseSearchQuery`'s canonical
-  `is:` regex. Deferred: `has:`/`key:` prop-value completion (needs a doc-wide key index).
+  `is:` regex. **`has:` completes the doc's property keys** via `collectPropKeys` (the ninth
+  `_varsVer` doc-cache, mirroring `collectTags`).
 - **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
   inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
   complex ones stay atomic pills. Raw `[[…]]` tokens are never shown.

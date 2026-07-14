@@ -18114,6 +18114,26 @@ function collectTags(rootNode) {
   return result;
 }
 
+let _propKeysCacheVer = -1, _propKeysCached = null; // doc-cache 9: collectPropKeys (see resetDocCaches registry)
+// Distinct property keys across the whole document, sorted — the vocabulary behind
+// has:/key: search completion. Mirrors collectTags: walk children, gather node.props
+// keys (lowercased + deduped), cache on _varsVer. Pure over rootNode; no-arg = the live
+// document (cached). Includes reserved keys (due/start/check) — has:due is a valid filter.
+function collectPropKeys(rootNode) {
+  const useCache = rootNode === undefined;
+  if (useCache) rootNode = root;
+  if (useCache && _propKeysCacheVer === _varsVer && _propKeysCached) return _propKeysCached;
+  const keys = new Set();
+  function walk(n) {
+    for (const p of n.props || []) { const k = (p.key || '').trim().toLowerCase(); if (k) keys.add(k); }
+    for (const c of n.children || []) walk(c);
+  }
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  const result = [...keys].sort();
+  if (useCache) { _propKeysCacheVer = _varsVer; _propKeysCached = result; }
+  return result;
+}
+
 // Ids of every point whose display title collides (case-insensitively) with at least one
 // OTHER point's title — the data behind `is:duplicate-title` (#468). Built ONCE per search
 // (a doc-cache keyed on _varsVer, mirroring collectTags), not per node, so the search loop
@@ -19907,7 +19927,7 @@ function searchTokenAt(query, caret) {
 // leading `-` (NOT) is preserved. Pure.
 function searchCompletions(token, ctx) {
   ctx = ctx || {};
-  const tags = ctx.tags || [], vars = ctx.vars || [], states = ctx.states || [];
+  const tags = ctx.tags || [], vars = ctx.vars || [], states = ctx.states || [], propKeys = ctx.propKeys || [];
   const neg = token && token[0] === '-';
   const core = neg ? token.slice(1) : token;
   const pre = neg ? '-' : '';
@@ -19925,7 +19945,7 @@ function searchCompletions(token, ctx) {
   if ((m = /^priority:(.*)$/i.exec(core))) { for (const v of SEARCH_PRIORITY_VALUES) if (starts(v, m[1])) push('op-prio', 'priority:' + v, 'priority'); return out; }
   if ((m = /^state:(.*)$/i.exec(core)))    { for (const s of states) if (starts(s, m[1])) push('op-state', 'state:' + s.toLowerCase(), 'sequence state'); return out; }
   if ((m = /^var:(.*)$/i.exec(core)))      { for (const v of vars) if (starts(v, m[1])) push('op-var', 'var:' + v.toLowerCase(), 'declares a variable'); return out; }
-  if (/^has:/i.test(core)) return out;                                     // prop-key value completion deferred (needs a doc index)
+  if ((m = /^has:(.*)$/i.exec(core)))      { for (const k of propKeys) if (starts(k, m[1])) push('op-prop', 'has:' + k, 'has a property'); return out; }
   // bare word → the field prefixes + matching tags (no match → [] → no menu, so plain text terms don't flood)
   for (const f of SEARCH_FIELDS) if (starts(f, core)) push('op-field', f, 'filter');
   for (const t of tags) if (starts(t, core)) push('op-tag', '#' + t, 'tag');
@@ -21595,7 +21615,7 @@ function showBracePreview(body, content, offset) {
 
 // The doc vocabulary the search completion draws on (cached collectors, cheap).
 function searchCtx() {
-  return { tags: collectTags().map(t => t.name), vars: Object.keys(collectVars()), states: [...knownStates()] };
+  return { tags: collectTags().map(t => t.name), vars: Object.keys(collectVars()), states: [...knownStates()], propKeys: collectPropKeys() };
 }
 // Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 // (fragStart RELATIVE to the char after `{`) for a recognized completing lead — matches
