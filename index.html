@@ -19190,6 +19190,24 @@ const DAY_MS = 86400000;
 // would resolve to the Object function (NaN downstream) and `constructor(5)` would
 // dispatch it as a unary FN1, instead of both failing cleanly to null.
 const MATH_CONSTS = Object.assign(Object.create(null), { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity, infinity: Infinity });
+// #544 date helpers: INTRINSIC (arithmetic-safe) y/m/d ↔ epoch and days-in-month, for the active
+// fiction calendar or Gregorian. Intrinsic year (epochToCal's, relative to the calendar's year 1)
+// is used for year math because the ERA-display year can jump at era boundaries. Custom months have
+// fixed lengths (no leap branching); Gregorian goes through UTC Date (leap-aware). Pure.
+function ymdIntrinsic(ep, cal) {
+  ep = Math.round(ep);
+  if (cal) { const c = epochToCal(ep, cal); return c ? { year: c.year, month: c.month, day: c.day } : null; }
+  const d = new Date(ep * DAY_MS);
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+function ymdToEpoch(y, m, d, cal) {   // inverse of ymdIntrinsic (intrinsic year in, epoch out; null if out of range)
+  if (cal) return calToEpoch(y, m, d, cal);
+  return Math.floor(Date.UTC(y, m - 1, d) / DAY_MS);
+}
+function daysInMonthOf(y, m, cal) {   // days in month m of intrinsic year y
+  if (cal) return (m >= 1 && m <= cal.months.length) ? cal.months[m - 1].days : NaN;
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();   // day 0 of month m+1 = last day of m (leap-aware)
+}
 const FN1 = Object.assign(Object.create(null), {
   sqrt: Math.sqrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil,
   round: Math.round, sin: Math.sin, cos: Math.cos, tan: Math.tan,
@@ -19218,6 +19236,22 @@ const FN1 = Object.assign(Object.create(null), {
   weekday: x => calComponents(x, activeCalendar()).weekday,   // Gregorian: 0=Sun … 6=Sat; custom: index into its week
   quarter: x => calComponents(x, activeCalendar()).quarter,   // 1–4
   daysuntil: d => Math.round(d) - dueDateToday(),                     // days from today to date d (negative if past)
+  // #544 date additions (B5 lane). eom/age are calendar-aware (fiction month lengths / intrinsic
+  // years); weeknum is ISO 8601 and workdaysbetween is Mon-Fri, both Gregorian-only concepts (a
+  // fictional week has no ISO week or Monday), so they read the epoch as a Gregorian UTC date.
+  eom: d => { const cal = activeCalendar(); const c = ymdIntrinsic(d, cal); if (!c) return NaN;
+              const ep = ymdToEpoch(c.year, c.month, daysInMonthOf(c.year, c.month, cal), cal); return ep == null ? NaN : ep; },  // last day of d's month
+  age: d => { const cal = activeCalendar(); const dc = ymdIntrinsic(d, cal), tc = ymdIntrinsic(dueDateToday(), cal);
+              if (!dc || !tc) return NaN; let a = tc.year - dc.year;
+              if (tc.month < dc.month || (tc.month === dc.month && tc.day < dc.day)) a--; return a; },          // whole years from d to today
+  weeknum: d => {                                                     // ISO 8601 week number (Gregorian)
+    const dt = new Date(Math.round(d) * DAY_MS);
+    const day = (dt.getUTCDay() + 6) % 7;                             // Mon=0 … Sun=6
+    const thu = new Date(dt.getTime()); thu.setUTCDate(dt.getUTCDate() - day + 3);   // the Thursday of this week
+    const jan4 = new Date(Date.UTC(thu.getUTCFullYear(), 0, 4));
+    const w1 = new Date(jan4.getTime()); w1.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() + 6) % 7) + 3);  // week 1's Thursday
+    return 1 + Math.round((thu - w1) / (7 * DAY_MS));
+  },
   asdate:  x => x,
   // logic — not() flips a truth value (nonzero → 0, zero → 1). The NaN guard keeps a
   // failed sub-expression from reading as a verdict; and()/or() are the variadic arm
@@ -19240,6 +19274,24 @@ const FN2 = Object.assign(Object.create(null), {
   gcd: (a, b) => intGcd(a, b),                                     // greatest common divisor (integers)
   lcm: (a, b) => { const g = intGcd(a, b); return g === 0 ? 0 : Math.abs(Math.round(a) * Math.round(b)) / g; }, // least common multiple
   roundto: (x, step) => step === 0 ? x : Math.round(x / step) * step,  // round x to the nearest multiple of step
+  // #544 date additions (B5 lane). addmonths is calendar-aware (fiction month count + lengths, day
+  // clamped like spreadsheet EDATE); workdaysbetween is Mon-Fri, a Gregorian-only concept.
+  addmonths: (d, n) => {                                           // shift d by n calendar months, day-clamped
+    const cal = activeCalendar(); const c = ymdIntrinsic(d, cal); if (!c) return NaN;
+    const mpy = cal ? cal.months.length : 12;
+    const total = c.year * mpy + (c.month - 1) + Math.round(n);
+    const ny = Math.floor(total / mpy), nm = ((total % mpy) + mpy) % mpy + 1;
+    const nd = Math.min(c.day, daysInMonthOf(ny, nm, cal));        // Jan 31 + 1 month = Feb 28/29
+    const ep = ymdToEpoch(ny, nm, nd, cal); return ep == null ? NaN : ep;
+  },
+  workdaysbetween: (a, b) => {                                     // Mon-Fri days in [a, b) (Gregorian, exclusive end)
+    const lo = Math.round(Math.min(a, b)), hi = Math.round(Math.max(a, b)), days = hi - lo;
+    if (days <= 0) return 0;
+    const fw = Math.floor(days / 7); let count = fw * 5;
+    const startDow = new Date(lo * DAY_MS).getUTCDay();            // 0=Sun … 6=Sat
+    for (let i = fw * 7; i < days; i++) { const dow = (startDow + i) % 7; if (dow !== 0 && dow !== 6) count++; }
+    return count;
+  },
 });
 const FN3 = Object.assign(Object.create(null), {
   // Inverse of the component fns: build an epoch from y/m/d. Under a fictional calendar the y the
@@ -26964,15 +27016,17 @@ const GUIDE = [
     ] },
   { id:'math-dates', cat:'compute',
     title:'Dates & units in math',
-    body:"Calculate how many days until a deadline, show what date is 30 days from today, check if a due date has passed or convert between units for a recipe, a travel plan or a measurement in an unfamiliar system. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date.",
+    body:"Calculate how many days until a deadline, show what date is 30 days from today, find someone's age in years, shift a date by whole months, land on the last day of a month, count the working days to a deadline or convert between units for a recipe or a travel plan. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date. The month and year functions follow a custom calendar when one is set; weeknum and workdaysbetween use the ordinary Mon-Sun week.",
     examples:[
       { syn:'{= today + 30}',      desc:'30 days from today' },
       { syn:'{= asdate(today+30)}',desc:'show that as a calendar date' },
-      { syn:'{= date(2026, 1, 1)}',desc:'a fixed date' },
       { syn:'{= daysbetween(start, due)}', desc:'whole days apart' },
+      { syn:'{= age(born)}',       desc:'whole years old (birthdays, reigns)' },
+      { syn:'{= addmonths(due, 3)}', desc:'shift a date by whole months (day clamped)' },
+      { syn:'{= eom(due)}',        desc:'the last day of that month' },
+      { syn:'{= workdaysbetween(start, due)}', desc:'Mon-Fri days between (weeknum for the ISO week)' },
       { syn:'{= weekday(today)}',  desc:'0=Sun…6=Sat (also year, month, quarter)' },
-      { syn:'{= c2f(20)}',         desc:'°C to °F (also f2c)' },
-      { syn:'{= km2mi(10)}',       desc:'km to miles (mi2km, kg2lb, l2gal…)' },
+      { syn:'{= km2mi(10)}',       desc:'km to miles (c2f, kg2lb, l2gal…)' },
     ] },
   { id:'variables', cat:'compute', covers:['var'], related:['gen-conditions','recipe-crit'],
     title:'Variables',

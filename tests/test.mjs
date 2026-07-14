@@ -12951,3 +12951,35 @@ test('#544 — variadic avg is a mean (≥2 args), disjoint from the avg(prop) c
   for (const v of [10, 20, 30]) { const ch = c.mkNode('c'); ch.props.push({ key: 'cost', val: String(v) }); p.children.push(ch); }
   assert.equal(c.aggregateChildren(p, 'avg', 'cost'), 20);   // mean of 10,20,30 (the rollup, not the variadic)
 });
+
+// #544 — evalMath date functions (B5 lane). All on the epoch-day model. eom/age/addmonths are
+// calendar-aware; weeknum (ISO 8601) and workdaysbetween (Mon-Fri) are Gregorian-only. Edges pinned.
+test('#544 — evalMath dates: weeknum, eom, age, addmonths, workdaysbetween', () => {
+  const m = e => c.evalMath(e, {});
+  // weeknum (ISO 8601) at year boundaries — the sharp cases
+  assert.equal(m('weeknum(date(2024,1,1))'), 1);    // Mon → week 1
+  assert.equal(m('weeknum(date(2023,1,1))'), 52);   // Sun → week 52 of 2022
+  assert.equal(m('weeknum(date(2026,1,1))'), 1);    // Thu → week 1
+  assert.equal(m('weeknum(date(2024,12,30))'), 1);  // Mon → week 1 of 2025
+  // eom: last day of the month, leap-aware
+  assert.equal(m('day(eom(date(2024,2,15)))'), 29); // leap Feb
+  assert.equal(m('day(eom(date(2023,2,15)))'), 28); // non-leap Feb
+  assert.equal(m('day(eom(date(2024,4,10)))'), 30);
+  assert.equal(m('day(eom(date(2024,1,10)))'), 31);
+  // age: whole years from d to today (deterministic offsets from the `today` constant)
+  assert.equal(m('age(today)'), 0);
+  assert.equal(m('age(today - 300)'), 0);           // < 1 year
+  assert.equal(m('age(today - 400)'), 1);           // 1 full year + change
+  assert.equal(m('age(today - 800)'), 2);           // 2 full years + change
+  // addmonths: EDATE day-clamp across a leap boundary; month/year carry
+  assert.equal(m('day(addmonths(date(2024,1,31), 1))'), 29);  // Jan 31 + 1mo = Feb 29 (leap)
+  assert.equal(m('day(addmonths(date(2023,1,31), 1))'), 28);  // Feb 28 (non-leap)
+  assert.equal(m('month(addmonths(date(2024,12,15), 1))'), 1);   // Dec + 1 → Jan
+  assert.equal(m('year(addmonths(date(2024,12,15), 1))'), 2025); // …of the next year
+  assert.equal(m('month(addmonths(date(2024,6,15), -3))'), 3);   // negative shift
+  // workdaysbetween: Mon-Fri days, exclusive end (matches daysbetween's whole-day model)
+  assert.equal(m('workdaysbetween(date(2024,1,1), date(2024,1,8))'), 5);  // Mon..next Mon = one full work week
+  assert.equal(m('workdaysbetween(date(2024,1,1), date(2024,1,1))'), 0);  // same day
+  assert.equal(m('workdaysbetween(date(2024,1,5), date(2024,1,8))'), 1);  // Fri..Mon = just Fri
+  assert.equal(m('workdaysbetween(date(2024,1,8), date(2024,1,1))'), 5);  // order-independent
+});
