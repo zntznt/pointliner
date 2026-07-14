@@ -18064,6 +18064,13 @@ const BRACE_FORMS = [
   { label:'modifier',    keys:['modifier','mod','cap','title','upper','lower'],        insert:'{name.cap}',           sel:[1,5]  },
   { label:'item field',  keys:['item','field'],                                        insert:'{item.field}',         sel:[1,5]  },
   { label:'estimate',    keys:['estimate','uncertain','normal','uniform'],             insert:'{5 to 10}',            sel:[1,8]  },
+  { label:'query',       keys:['query','search','list','embed'],                       insert:'{query: is:todo}',     sel:[8,15] },
+  { label:'count',       keys:['count','tally','number','howmany'],                    insert:'{count: is:todo}',     sel:[8,15] },
+  { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      sel:[7,14] },
+  { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: hp/hpmax}',    sel:[8,16] },
+  { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   sel:[9,17] },
+  { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     sel:[9,15] },
+  { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', sel:[5,9] },
 ];
 // Filter BRACE_FORMS by prefix (label or any key, anchored). Empty prefix = all.
 // Returns fresh {group:'form', …} objects for the merged menu. Pure; no DOM.

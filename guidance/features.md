@@ -288,11 +288,13 @@ Implemented:
   editing it stays grammar-styled text. Invalid/unknown bodies stay literal text.
 - **`{` grammar picker** — typing `{` opens a picker (UXP-9 + UXP-192): a **Grammar
   forms** group listing every `{…}` shape (math, roll-up, word count, dice, pick,
-  conditional, deck, repeat, modifier, item field, estimate) above this doc's
-  callable **names** (variables/rules/tables/chains). Pick a form and it inserts the
-  scaffold with a placeholder selected to type over; pick a name and it writes
-  `{name}`. Either way it's the same shorthand above — the picker just makes the
-  whole composition surface discoverable where you author, with no new syntax.
+  conditional, deck, repeat, modifier, item field, estimate, query, count, roll,
+  meter, markov, oracle, sequence) above this doc's callable **names**
+  (variables/rules/tables/chains). Pick a form and it inserts the scaffold with a
+  placeholder selected to type over; pick a name and it writes `{name}`. Either way
+  it's the same shorthand above — the picker just makes the whole composition surface
+  discoverable where you author, with no new syntax. A `BRACE_FORMS parity` drift test
+  keeps the roster complete: a promotable `{…}` family with no picker row fails CI.
 - **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
   inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
   complex ones stay atomic pills. Raw `[[…]]` tokens are never shown.

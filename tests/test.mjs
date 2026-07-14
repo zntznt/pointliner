@@ -1040,6 +1040,8 @@ test('filterBraceForms — each scaffold selects the intended placeholder (sel o
     'math': '', 'roll-up': 'prop', 'word count': 'subtree', 'dice': '2d6',
     'pick': 'a', 'conditional': 'cond', 'deck': 'a | b | c', 'repeat': 'template',
     'modifier': 'name', 'item field': 'item', 'estimate': '5 to 10',
+    'query': 'is:todo', 'count': 'is:todo', 'roll': 'is:todo', 'meter': 'hp/hpmax',
+    'markov': 'a→b, b→c', 'oracle': 'likely', 'sequence': 'Flow',
   };
   const byName = Object.fromEntries(c.filterBraceForms('').map(f => [f.name, f]));
   for (const [name, ph] of Object.entries(want)) {
@@ -1049,20 +1051,43 @@ test('filterBraceForms — each scaffold selects the intended placeholder (sel o
   }
 });
 
-test('filterBraceForms — every scaffold body is real, engine-recognized {…} syntax (no new syntax)', () => {
-  // Each form types shorthand the engine already promotes. Strip the outer braces and
-  // confirm braceTypeLabel classifies the body (item.field needs a defined base, so it
-  // is the one deferred-until-filled scaffold — excluded here).
-  const expect = {
-    'math': 'math', 'roll-up': 'math', 'word count': 'math', 'dice': 'dice',
-    'pick': 'grammar', 'conditional': 'grammar', 'deck': 'grammar', 'repeat': 'grammar',
-    'modifier': 'grammar', 'estimate': 'estimate',
-  };
-  const byName = Object.fromEntries(c.filterBraceForms('').map(f => [f.name, f]));
-  for (const [name, type] of Object.entries(expect)) {
-    const body = byName[name].insert.slice(1, -1);
-    assert.equal(host(c.braceTypeLabel(body, {}, {}))[0], type, `${name}: {${body}} → ${type}`);
+// ── BRACE_FORMS drift guard (extends the GUIDE/FA_GLYPHS drift-guard family) ────
+// The { picker is an aggregating surface: it enumerates the {…} grammar forms, and a
+// row can go stale two ways — offer a body the engine no longer promotes, or omit a
+// form family that shipped. Both guarded below. Recipe: guidance/adding-an-artifact.md
+// requires any new {…} sub-form to register a BRACE_FORMS row.
+
+test('BRACE_FORMS parity: every picker scaffold is a recognized brace form (promotes, or is a render-time display)', () => {
+  // Doc context so the base-dependent scaffolds resolve — the picker's placeholders
+  // (name, item) stand in for a real rule/var the user fills in.
+  const RULES = { name: ['x'], item: ['sword'], 'item.field': ['1d8'] }, VARS = {};
+  // The math scaffold is an empty {= } caret you fill; test a realistic body.
+  const FILL = { 'math': '= 1 + 1' };
+  // Meter is a render-time computed display (the [/]-cookie model): {meter: …} stays in
+  // node.text and renders live — it does NOT promote to a token, so it classifies 'literal'.
+  const RENDER_TIME = new Set(['meter']);
+  for (const f of c.filterBraceForms('')) {
+    const body = FILL[f.name] ?? f.insert.slice(1, -1);
+    const cls = c.classifyBraceBody(body, RULES, VARS);
+    if (RENDER_TIME.has(f.name)) {
+      assert.notEqual(cls, 'invalid', `${f.name}: render-time scaffold {${body}} must not read as a broken attempt`);
+    } else {
+      assert.equal(cls, 'artifact', `${f.name}: picker scaffold {${body}} must promote to a pill`);
+    }
   }
+});
+
+test('BRACE_FORMS parity: the picker rosters every user-facing brace family (no family shipped without a door)', () => {
+  // The generative {…} families that MUST have a picker row. When a new family ships (a
+  // new classifyBraceBody/resolveBrace branch with a user-facing door), add it here AND to
+  // BRACE_FORMS — see guidance/adding-an-artifact.md. Catches a family shipped without a
+  // picker door, or an accidental removal from the table.
+  const roster = ['math','roll-up','word count','dice','pick','conditional','deck','repeat',
+                  'modifier','item field','estimate','query','count','roll','meter','markov',
+                  'oracle','sequence'];
+  const have = new Set(c.filterBraceForms('').map(f => f.name));
+  const missing = roster.filter(n => !have.has(n));
+  assert.equal(missing.length, 0, `BRACE_FORMS missing families: ${missing.join(', ')}`);
 });
 
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
