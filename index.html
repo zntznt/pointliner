@@ -13333,6 +13333,11 @@ function attachContentEvents(content, node) {
     });
     content.addEventListener('blur', () => {
       if (_vlPreservingFocus) return;   // the virtual-list rebuild restores this focus itself
+      // A caret-anchored picker interaction (clicking a { or # item, or the { picker's ? help mark)
+      // can pull focus off the contenteditable for an instant. Committing the edit here would tear
+      // down the picker's state before its click handler runs — the click-to-select / ? bugs. The
+      // picker's own mousedown handlers act and restore the caret; let them, don't exitEdit under them.
+      if (_pickerMousedownActive) return;
       if (content.dataset.editing) exitEdit(content, node);
     });
     content.addEventListener('keydown', e => {
@@ -21612,8 +21617,16 @@ function positionLinkMenu(content, offset) {
 
 const braceMenu = document.getElementById('brace-menu');
 let braceState = null;
+// True for the duration of a mousedown INSIDE a caret-anchored picker menu. The contenteditable's
+// blur handler checks this and skips exitEdit, so clicking a picker item (or the { picker's ? help
+// mark, which is a real <button> that steals focus) does not tear down the picker before its own
+// mousedown handler runs. Set in the capture phase so it is true before any blur fires; cleared on
+// the next microtask, after the click's handlers have executed.
+let _pickerMousedownActive = false;
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
 function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; }
+// Capture-phase so the flag is set before the item/? handlers (and any blur) run; cleared next tick.
+braceMenu.addEventListener('mousedown', () => { _pickerMousedownActive = true; queueMicrotask(() => { _pickerMousedownActive = false; }); }, true);
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
 // The picker's `?` help mark: close the menu and open the concept guide at the form's entry. The
 // half-typed `{` stays in the point (hideBraceMenu never touches node text), so closing the guide
