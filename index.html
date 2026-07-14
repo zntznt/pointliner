@@ -359,16 +359,20 @@ body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:n
 #search-save:hover,#search-save[aria-pressed="true"]{color:var(--acc)}
 #search-save:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 #search-wrap:has(#search-clear.on) #search-box{padding-right:60px}
-/* Pin the search hint to the viewport edges whenever the window is too narrow to hold
-   the centered popup (its content is ~590px, so center-anchoring overflows below ~720px).
-   Above that there's room to center it. Rows wrap (base .sh-row), so it stays readable. */
-/* Below the centering breakpoint, pin the hint to the VIEWPORT (position:fixed escapes
-   the narrow, absolutely-positioned #search-wrap parent — otherwise left+right insets
-   would size the hint to the thin search box, making it extremely narrow). It sizes to
-   its content down to a floor, capped at the viewport width. */
+/* Anchor the hint to the SEARCH BOX, not the viewport, across the whole range where the box
+   is left-anchored on focus (561-950px: the box's focus rule pins it to left:8px there). The
+   ceiling is 950px to MATCH that box behavior — at 720px it used to hand off to a viewport-
+   centered hint while the box stayed left-anchored, so 721-950px showed the panel ~170px to the
+   right of the box's left edge, reading as disconnected. Left-aligning both makes the hint sit
+   directly under the field it belongs to. Above 950px the box re-centers in the viewport and the
+   hint (still centered by the base rule) shares its center, so they align there too. */
+/* Below this breakpoint, pin the hint to the VIEWPORT (position:fixed escapes the narrow,
+   absolutely-positioned #search-wrap parent — otherwise left+right insets would size the hint to
+   the thin search box, making it extremely narrow). It sizes to its content down to a floor,
+   capped at the viewport width. */
 /* #587: fixed to the top on mobile; bound the height from that offset so a 25-row cheatsheet
    scrolls within the viewport instead of running 1344px tall off a 667px screen. */
-@media(max-width:720px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 44px - env(safe-area-inset-top) - 12px)}}
+@media(max-width:950px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 44px - env(safe-area-inset-top) - 12px)}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
 #search-clear.on{display:block}
