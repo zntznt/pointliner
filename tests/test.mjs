@@ -11476,6 +11476,7 @@ test('inventory drift guard: every brace sniff in code has its token in the sect
     condParts: '{cond:', seqParts: '{shuffle', markovParts: '{markov:', seqDeclParts: '{seq ',
     repeatParts: '{Nx:', propDeclParts: '{prop ', dateDeclParts: '{date due:',
     queryParts: '{query:', rollParts: '{roll:', parseVarDecl: ':=', estParts: 'lo to hi',
+    countParts: '{count:', oracleParts: '{oracle:', parseMeter: '{meter:',   // #707: closed the map's blind spot
   };
   for (const [fn, token] of Object.entries(SNIFFS)) {
     assert.ok(_src.includes(`function ${fn}`), `sniff ${fn} vanished from index.html — update this guard with the rename`);
