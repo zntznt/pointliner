@@ -5755,7 +5755,7 @@ function mdInline(s) {
       return stash(`<span class="clock clock-computed${full}" aria-label="Clock, ${done} of ${pc.total} filled from sub-points">${formatClock(done, pc.total)}</span>`);
     }
     const full = pc.done === pc.total ? ' clock-full' : '';
-    return stash(`<span class="clock${full}" role="button" tabindex="0" aria-label="Clock, ${pc.done} of ${pc.total} filled">${formatClock(pc.done, pc.total)}</span>`);
+    return stash(`<span class="clock${full}" role="button" tabindex="-1" aria-label="Clock, ${pc.done} of ${pc.total} filled">${formatClock(pc.done, pc.total)}</span>`);
   });
   // meter — {meter: value/max} → a segmented bar of a numeric property. A COMPUTED display
   // (like the cookie): resolved live against the render node (cookieNode), no sidecar, not a
@@ -6266,7 +6266,7 @@ function mdToHtml(raw, isCode) {
       flush();
       const q = [];
       while (i < lines.length && SPOILER_RE.test(lines[i])) { q.push(lines[i].match(SPOILER_RE)[1]); i++; }
-      out.push(`<div class="md-spoiler" role="button" tabindex="0" aria-expanded="false" aria-label="Hidden text, activate to reveal">${q.map(mdInline).join('<br>')}</div>`);
+      out.push(`<div class="md-spoiler" role="button" tabindex="-1" aria-expanded="false" aria-label="Hidden text, activate to reveal">${q.map(mdInline).join('<br>')}</div>`);
       continue;
     }
     // blockquote: group consecutive "> " lines into one <blockquote> (spoiler ">!" lines
@@ -15303,7 +15303,35 @@ function collectPillActions(node) {
     rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-roll pick' + tag(v.name), fn:() => rerollPickVar(node, v.key) });
     rows.push(freeze('var', v.key));
   }
+  // Manual clocks and spoilers are plain-text tokens (no sidecar), so surface them by their
+  // ORDINAL in node.text — the same position-based targeting advanceClockAt uses. This is the
+  // keyboard door for pills that carry tabindex="-1" (never in the Tab order): a sighted
+  // keyboard-only user reaches them here, in the Shift+F10 hub, not by tabbing.
+  manualClocksOf(node.text).forEach((c, i) => {
+    const suffix = tag(`${c.done}/${c.total}`);
+    rows.push({ icon:{ fa:'fa-solid fa-circle-half-stroke', fb:'◔' }, label:'Advance clock' + suffix, fn:() => advanceClockOrdinal(node, i, 1) });
+    rows.push({ icon:{ fa:'fa-solid fa-circle-half-stroke', fb:'◔' }, label:'Step clock back' + suffix, fn:() => advanceClockOrdinal(node, i, -1) });
+  });
+  if (SPOILER_RE.test(node.text)) rows.push({ icon:{ fa:'fa-solid fa-eye-slash', fb:'🙈' }, label:'Reveal or hide spoiler', fn:() => toggleSpoilersOf(node.id) });
   return rows;
+}
+// The {done,total} of every MANUAL clock in text, in document order (computed [o /M] skipped
+// so the index matches the .clock:not(.clock-computed) DOM order). Pure.
+function manualClocksOf(text) {
+  const out = [];
+  String(text || '').replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    if (pc && !pc.computed) out.push({ done: pc.done, total: pc.total });
+    return m;
+  });
+  return out;
+}
+// Toggle every spoiler block rendered under a node — the keyboard twin of clicking one. A
+// node's `>!` groups may render as more than one block; the menu reveals/hides them together
+// (a single "read the hidden text on this point" action). Display-state only, like a click.
+function toggleSpoilersOf(nodeId) {
+  const content = document.querySelector(`.node-content[data-id="${nodeId}"]`);
+  content?.querySelectorAll('.md-spoiler').forEach(toggleSpoiler);
 }
 
 function showBulletPopup(nodeId, bulletEl, opts = {}) {
@@ -24632,10 +24660,37 @@ document.getElementById('outline').addEventListener('click', e => {
   const sp = e.target.closest('.md-spoiler');
   if (sp) toggleSpoiler(sp);
   const clk = e.target.closest('.clock:not(.clock-computed)');
-  if (clk) advanceClockAt(clk, e.shiftKey ? -1 : 1);   // Shift-click steps back (computed clocks are not clickable)
+  // a long-press already stepped this clock back (touch), so the trailing click must not
+  // also advance it — the same trailing-click suppression the bullet long-press uses.
+  if (clk && !_clockLongPressed) advanceClockAt(clk, e.shiftKey ? -1 : 1);   // Shift-click steps back (desktop)
+  _clockLongPressed = false;
   const chip = e.target.closest('.prop-chip');
   if (chip) openPropChip(chip);
 });
+// Touch has no Shift, so step-back on a manual clock is a LONG-PRESS (tap still advances) —
+// the bullet's tap-vs-long-press precedent. Timer starts on pointerdown, cancels on movement
+// slop or an early release; if it fires, it steps back and flags the trailing click to no-op.
+let _clockLongPressed = false;
+if (IS_TOUCH) {
+  const outlineEl = document.getElementById('outline');
+  let lpTimer = null, lpX = 0, lpY = 0;
+  const cancelLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+  outlineEl.addEventListener('pointerdown', e => {
+    const clk = e.target.closest?.('.clock:not(.clock-computed)');
+    if (!clk) return;
+    lpX = e.clientX; lpY = e.clientY;
+    lpTimer = setTimeout(() => {
+      lpTimer = null;
+      _clockLongPressed = true;            // suppress the trailing click's advance
+      advanceClockAt(clk, -1);
+    }, 450);
+  });
+  outlineEl.addEventListener('pointermove', e => {
+    if (lpTimer && (Math.abs(e.clientX - lpX) > 10 || Math.abs(e.clientY - lpY) > 10)) cancelLp();  // moved → a scroll, not a hold
+  });
+  outlineEl.addEventListener('pointerup', cancelLp);
+  outlineEl.addEventListener('pointercancel', cancelLp);
+}
 // Reveal is transient DOM state only (never written to node.text), so a spoiler
 // re-conceals on the next render — that is deliberate for the self-blinding use.
 // Enter/Space keyboard reveal is wired in onKeyDown (the per-content handler),
@@ -24660,11 +24715,36 @@ function advanceClockAt(clk, dir) {
   const pills = [...content.querySelectorAll('.clock:not(.clock-computed)')];
   const ordinal = pills.indexOf(clk);
   if (ordinal < 0) return;
+  advanceClockOrdinal(node, ordinal, dir);
+}
+// Advance the ORDINAL-th manual clock in node.text by dir. Shared by the pointer/keyboard
+// path (advanceClockAt, via a DOM ordinal) and the bullet-menu keyboard row (collectPillActions,
+// which has the node directly). Feedback matches the dice-reroll family: announce() the new
+// value on success (P3-5), flashHint() the clamp so a full/empty clock never no-ops silently (P4).
+function advanceClockOrdinal(node, ordinal, dir) {
+  if (!node) return;
   const next = advanceClockInText(node.text, ordinal, dir);
-  if (next === node.text) return;      // no-op (clamped at an end) — nothing to save
+  if (next === node.text) {            // clamped at an end — not a silent no-op (P4)
+    const cur = clockAtOrdinal(node.text, ordinal);
+    if (cur) flashHint(cur.done >= cur.total ? 'The clock is already full.' : 'The clock is already empty.');
+    return;
+  }
   node.text = next;
   markDirty();
   repaintNodeContent(node);            // display-mode repaint, like a dice re-roll — no edit-mode entry
+  const now = clockAtOrdinal(node.text, ordinal);
+  if (now) announce(`Clock, ${now.done} of ${now.total}` + (now.done >= now.total ? ', full' : ''));
+}
+// The {done,total} of the ORDINAL-th valid clock in text (manual or computed alike), or null.
+// Used for the advance-feedback messages. Pure.
+function clockAtOrdinal(text, ordinal) {
+  let seen = -1, out = null;
+  String(text || '').replace(CLOCK_RE, (m, d, t) => {
+    const pc = parseClock(d, t);
+    if (pc && !pc.computed) { seen++; if (seen === ordinal) out = { done: pc.done, total: pc.total }; }
+    return m;
+  });
+  return out;
 }
 
 // A property chip opens its editor: a date chip (due/start) → the Schedule
@@ -27321,7 +27401,7 @@ const GUIDE = [
     ] },
   { id:'clock', cat:'todos', covers:['clock'],
     title:'Progress clocks',
-    body:"A clock you fill in segments, for tracking a rising danger, a countdown or any fuse that fills as a situation develops. It comes in two forms. A manual clock, [o 0/6], is yours to advance whenever the story says so: click it to advance one segment, or Shift+click to step it back (from the keyboard, focus it and press Enter, or Shift+Enter to step back). A counting clock, [o /6] with the count left empty, fills itself from the checked sub-points and #DONE children beneath it, exactly the way a progress bar counts. Add or finish a sub-point and it advances, delete or reopen one and it drops back. On a counting clock, the sub-point whose completion fills the last segment is marked with a small filled ring, so you can see which one finished it. Change the 6 for any size, such as a 4 or an 8. Either form shows as a ring that fills up, with the exact count beside it, and exports as that ring and count (a half-full six-clock reads as a filled half-ring next to 3/6).",
+    body:"A clock you fill in segments, for tracking a rising danger, a countdown or any fuse that fills as a situation develops. It comes in two forms. A manual clock, [o 0/6], is yours to advance whenever the story says so: click it to advance one segment, or Shift+click to step it back. On a touch screen, tap to advance and press and hold to step back. From the keyboard, open the point's menu (Shift+F10 or the bullet menu): its Pills section lists Advance clock and Step clock back. A counting clock, [o /6] with the count left empty, fills itself from the checked sub-points and #DONE children beneath it, exactly the way a progress bar counts. Add or finish a sub-point and it advances, delete or reopen one and it drops back. On a counting clock, the sub-point whose completion fills the last segment is marked with a small filled ring, so you can see which one finished it. Change the 6 for any size, such as a 4 or an 8. Either form shows as a ring that fills up, with the exact count beside it, and exports as that ring and count (a half-full six-clock reads as a filled half-ring next to 3/6).",
     related:['progress','meter'],
     examples:[
       { syn:'[o 0/6]',        desc:'a manual clock, click to advance (Shift+click steps back)' },

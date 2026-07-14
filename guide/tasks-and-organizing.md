@@ -65,8 +65,9 @@ develops. It is a staple of solo and tabletop play, and it comes in two forms.
 ```
 
 A **manual** clock is yours to advance whenever the story says so. **Click** it to advance one
-segment, or **Shift+click** to step it back. From the keyboard, focus it and press **Enter** to
-advance or **Shift+Enter** to step back.
+segment, or **Shift+click** to step it back. On a touch screen, tap to advance and **press and
+hold** to step back. From the keyboard, open the point's menu (**Shift+F10** or the bullet menu):
+its Pills section lists Advance clock and Step clock back.
 
 A **counting** clock, written with the count left empty, fills itself the way a progress bar does:
 from the checked sub-points and `#DONE` children beneath it. Finish a sub-point and it advances,
