@@ -18044,6 +18044,36 @@ function filterBraceCandidates(callables, prefix) {
   return callables.filter(c => c.name.startsWith(lo));
 }
 
+// The generative FORMS the { picker offers alongside document names — the whole
+// {…} surface, not just rules/vars (the discoverability fix: every content-sniffed
+// brace form now has an in-place front door, P2). Each `insert` is the *existing*
+// shorthand the engine already promotes to a pill on exitEdit — so the picker mints
+// ZERO new syntax (P5): it types what a user could already type, just teachably.
+// `sel` is a [start,end) span within `insert` selected for type-to-replace (a
+// caret when start===end). `keys` are extra prefixes the form matches on (so `{sum`
+// surfaces the roll-up, `{shuffle` the deck). Order = teaching order (common first).
+const BRACE_FORMS = [
+  { label:'math',        keys:['math','calc'],                                        insert:'{= }',                 sel:[3,3]  },
+  { label:'roll-up',     keys:['rollup','sum','avg','min','max','count','total'],      insert:'{= sum(prop)}',        sel:[7,11] },
+  { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   sel:[9,16] },
+  { label:'dice',        keys:['dice','roll'],                                         insert:'{2d6}',                sel:[1,4]  },
+  { label:'pick',        keys:['pick','alt','choice','weighted'],                      insert:'{a | b | c}',          sel:[1,2]  },
+  { label:'conditional', keys:['cond','conditional','if'],                             insert:'{cond: then | else}',  sel:[1,5]  },
+  { label:'deck',        keys:['deck','shuffle','cycle','once','stopping','sequence'], insert:'{shuffle: a | b | c}', sel:[10,19]},
+  { label:'repeat',      keys:['repeat','times'],                                      insert:'{2x: template}',       sel:[5,13] },
+  { label:'modifier',    keys:['modifier','mod','cap','title','upper','lower'],        insert:'{name.cap}',           sel:[1,5]  },
+  { label:'item field',  keys:['item','field'],                                        insert:'{item.field}',         sel:[1,5]  },
+  { label:'estimate',    keys:['estimate','uncertain','normal','uniform'],             insert:'{5 to 10}',            sel:[1,8]  },
+];
+// Filter BRACE_FORMS by prefix (label or any key, anchored). Empty prefix = all.
+// Returns fresh {group:'form', …} objects for the merged menu. Pure; no DOM.
+function filterBraceForms(prefix) {
+  const lo = (prefix || '').toLowerCase();
+  return BRACE_FORMS
+    .filter(f => !lo || f.label.startsWith(lo) || f.keys.some(k => k.startsWith(lo)))
+    .map(f => ({ group:'form', name:f.label, insert:f.insert, sel:f.sel }));
+}
+
 // ─── hashtag index ───────────────────────────────────────────────────────────
 // Document-wide tag list for the # autocomplete (UXP-10): every #word the hashtag
 // renderer (mdInline) would produce, counted across the tree — same sigil rule,
@@ -21389,11 +21419,18 @@ function positionLinkMenu(content, offset) {
   });
 }
 
-// ─── { brace autocomplete (callable-name picker) ──────────────────────────────
+// ─── { brace autocomplete (forms + callable names) ────────────────────────────
 // Mirrors the / slash menu and [[ link picker (§7.1 menu pattern): trigger →
-// filter as you type → ↑/↓/Enter/Tab/Esc → apply completes {name}; normal
-// promotion-on-exit turns it into a pill. Only fires on a bare identifier
-// prefix inside an unclosed { — never after =, a dice pattern, or |.
+// filter as you type → ↑/↓/Enter/Tab/Esc → apply. Two kinds of entry share the
+// menu: FORMS (BRACE_FORMS — every {…} grammar shape, inserted as a scaffold with a
+// placeholder selected) and NAMES (this doc's rules/vars/chains, completed as
+// {name}). Both end in the same promotion-on-exit → pill. Forms are the P2
+// discoverability fix: the content-sniffed brace surface ({cond:}, {shuffle:},
+// {ref.mod}, {= sum()}, {5 to 10}, …) used to be reachable only if you already
+// knew it — the picker only listed names. It mints no syntax (P5): a form types
+// what you could already type. Only fires on a bare identifier prefix (or empty)
+// inside an unclosed { — never after =, a dice pattern, or | (you're authoring then,
+// and the live-preview tooltip takes over).
 
 const braceMenu = document.getElementById('brace-menu');
 let braceState = null;
@@ -21430,7 +21467,8 @@ function checkBraceTrigger(content, nodeId) {
   // Bare identifier prefix (or empty) only — not math (=…), dice, or alternation
   if (inner !== '' && !/^[a-z_]\w*$/i.test(inner)) { hideBraceMenu(); return; }
   const prefix = inner.toLowerCase();
-  const matches = filterBraceCandidates(collectCallables(), prefix);
+  // Forms first (fixed, always-present discovery), then this doc's names.
+  const matches = [...filterBraceForms(prefix), ...filterBraceCandidates(collectCallables(), prefix)];
   if (!matches.length) { hideBraceMenu(); return; }
   braceState = { nodeId, content, braceStart, prefix, activeIdx: 0, matches };
   renderBraceMenu();
@@ -21441,7 +21479,7 @@ function checkBraceTrigger(content, nodeId) {
   positionCaretMenu(braceMenu, content, braceStart);
 }
 
-const BM_GROUP_LABELS = { var: 'Variables', rule: 'Rules', chain: 'Chains' };
+const BM_GROUP_LABELS = { form: 'Grammar forms', var: 'Variables', rule: 'Rules', chain: 'Chains' };
 
 function renderBraceMenu() {
   if (!braceState) return;
@@ -21464,11 +21502,18 @@ function renderBraceMenu() {
     nameEl.className = 'bm-name';
     nameEl.textContent = item.name;
     el.appendChild(nameEl);
-    if (item.group === 'var' && item.val !== undefined) {
+    // The muted right-hand hint: a form shows the scaffold it inserts (teaching the
+    // shape); a variable shows its resolved value.
+    let hint = null;
+    if (item.group === 'form') hint = item.insert;
+    else if (item.group === 'var' && item.val !== undefined) {
+      hint = '= ' + (typeof item.val === 'string' ? item.val // random pick — frozen text
+        : Number.isInteger(item.val) ? item.val : +item.val.toPrecision(6));
+    }
+    if (hint) {
       const valEl = document.createElement('span');
       valEl.className = 'bm-val';
-      valEl.textContent = '= ' + (typeof item.val === 'string' ? item.val // random pick — frozen text
-        : Number.isInteger(item.val) ? item.val : +item.val.toPrecision(6));
+      valEl.textContent = hint;
       el.appendChild(valEl);
     }
     el.addEventListener('mouseenter', () => { braceState.activeIdx = i; renderBraceMenu(); });
@@ -21530,13 +21575,21 @@ function braceApply() {
   const { nodeId, content, braceStart, prefix, activeIdx, matches } = braceState;
   const chosen = matches[activeIdx];
   hideBraceMenu();
-  const fullText = editableText(content);
-  const inserted = `{${chosen.name}}`;
-  const newText = fullText.slice(0, braceStart) + inserted + fullText.slice(braceStart + 1 + prefix.length);
   const node = nodeById(nodeId); if (!node) return;
-  node.text = newText;
+  const fullText = editableText(content);
+  // A form inserts its scaffold (the {…} shorthand promotes on exit); a name
+  // completes {name}. Both replace the `{`+typed-prefix at braceStart.
+  const inserted = chosen.group === 'form' ? chosen.insert : `{${chosen.name}}`;
+  node.text = fullText.slice(0, braceStart) + inserted + fullText.slice(braceStart + 1 + prefix.length);
   content.innerHTML = editModeHTML(node);
-  try { setCaretByOffset(content, braceStart + inserted.length); } catch(_) {}
+  if (chosen.group === 'form' && chosen.sel && chosen.sel[0] !== chosen.sel[1]) {
+    // Select the placeholder for type-to-replace (falls back to a caret at its end).
+    try { selectLogicalRange(content, braceStart + chosen.sel[0], braceStart + chosen.sel[1]); }
+    catch(_) { try { setCaretByOffset(content, braceStart + chosen.sel[1]); } catch(__) {} }
+  } else {
+    const caret = chosen.group === 'form' ? braceStart + chosen.sel[0] : braceStart + inserted.length;
+    try { setCaretByOffset(content, caret); } catch(_) {}
+  }
   markDirty();
 }
 
@@ -21903,6 +21956,42 @@ function setCaretByOffset(el, target) {
   }
   for (const c of el.childNodes) { walk(c); if (done) break; }
   if (!done) { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
+}
+
+// Find the DOM {node, off} for a logical character offset, counting atomic pill
+// spans as data-token.length and <br> as 1 — the same discipline as
+// getCaretOffset/setCaretByOffset. Used to build a non-collapsed selection
+// (selectLogicalRange). Returns null if the offset runs past the content.
+function domPointForLogical(el, target) {
+  let rem = target, res = null;
+  function walk(node) {
+    if (res) return;
+    if (node.nodeType === 3) {
+      const raw = node.nodeValue; let logical = 0, i = 0;
+      for (; i < raw.length; i++) {
+        if (raw[i] !== '​') { if (logical === rem) { res = { node, off: i }; return; } logical++; }
+      }
+      if (logical >= rem) { res = { node, off: i }; return; }
+      rem -= logical; return;
+    }
+    if (node.nodeType !== 1) return;
+    if (node.dataset?.token) { if (rem <= 0) { res = { node: node.parentNode, off: [...node.parentNode.childNodes].indexOf(node) }; return; } rem -= node.dataset.token.length; return; }
+    if (node.nodeName === 'BR') { rem -= 1; return; }
+    for (const c of node.childNodes) { walk(c); if (res) return; }
+  }
+  for (const c of el.childNodes) { walk(c); if (res) break; }
+  return res;
+}
+
+// Select the logical [start,end) span in a contenteditable (type-to-replace). Used
+// by the { form picker to highlight a scaffold's placeholder. Falls back to a
+// collapsed caret at `end` if either endpoint can't be resolved.
+function selectLogicalRange(el, start, end) {
+  const p1 = domPointForLogical(el, start), p2 = domPointForLogical(el, end);
+  if (!p1 || !p2) { setCaretByOffset(el, end); return; }
+  const r = document.createRange();
+  r.setStart(p1.node, p1.off); r.setEnd(p2.node, p2.off);
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
 }
 
 // ─── node type / checked ─────────────────────────────────────────────────────

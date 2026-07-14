@@ -1021,6 +1021,61 @@ test('classifyBraceBody / braceTypeLabel — a repeat reads as a (grammar) artif
   assert.deepEqual(host(c.braceTypeLabel('3x: hello', {}, {})), ['grammar', null]);
 });
 
+test('filterBraceForms — empty prefix returns every form, each a well-formed {…} scaffold', () => {
+  const forms = c.filterBraceForms('');
+  assert.ok(forms.length >= 10, 'the picker offers the full generative surface');
+  for (const f of forms) {
+    assert.equal(f.group, 'form');
+    assert.ok(f.insert.startsWith('{') && f.insert.endsWith('}'), `${f.name}: scaffold is a brace form`);
+    const [a, b] = f.sel;
+    assert.ok(Number.isInteger(a) && Number.isInteger(b) && 0 < a && a <= b && b <= f.insert.length,
+      `${f.name}: sel [${a},${b}) is within the scaffold`);
+    const ph = f.insert.slice(a, b);
+    assert.ok(!/[{}]/.test(ph), `${f.name}: the selected placeholder sits inside the braces`);
+  }
+});
+
+test('filterBraceForms — each scaffold selects the intended placeholder (sel offsets pinned)', () => {
+  const want = {
+    'math': '', 'roll-up': 'prop', 'word count': 'subtree', 'dice': '2d6',
+    'pick': 'a', 'conditional': 'cond', 'deck': 'a | b | c', 'repeat': 'template',
+    'modifier': 'name', 'item field': 'item', 'estimate': '5 to 10',
+  };
+  const byName = Object.fromEntries(c.filterBraceForms('').map(f => [f.name, f]));
+  for (const [name, ph] of Object.entries(want)) {
+    const f = byName[name];
+    assert.ok(f, `form "${name}" exists`);
+    assert.equal(f.insert.slice(f.sel[0], f.sel[1]), ph, `${name}: selects "${ph}"`);
+  }
+});
+
+test('filterBraceForms — every scaffold body is real, engine-recognized {…} syntax (no new syntax)', () => {
+  // Each form types shorthand the engine already promotes. Strip the outer braces and
+  // confirm braceTypeLabel classifies the body (item.field needs a defined base, so it
+  // is the one deferred-until-filled scaffold — excluded here).
+  const expect = {
+    'math': 'math', 'roll-up': 'math', 'word count': 'math', 'dice': 'dice',
+    'pick': 'grammar', 'conditional': 'grammar', 'deck': 'grammar', 'repeat': 'grammar',
+    'modifier': 'grammar', 'estimate': 'estimate',
+  };
+  const byName = Object.fromEntries(c.filterBraceForms('').map(f => [f.name, f]));
+  for (const [name, type] of Object.entries(expect)) {
+    const body = byName[name].insert.slice(1, -1);
+    assert.equal(host(c.braceTypeLabel(body, {}, {}))[0], type, `${name}: {${body}} → ${type}`);
+  }
+});
+
+test('filterBraceForms — prefix filters by label and keyword aliases', () => {
+  const names = p => c.filterBraceForms(p).map(f => f.name);
+  assert.ok(names('cond').includes('conditional'));
+  assert.ok(names('sum').includes('roll-up'), 'a keyword alias surfaces the form');
+  assert.ok(names('shuffle').includes('deck'));
+  assert.ok(names('normal').includes('estimate'));
+  const d = names('d');
+  assert.ok(d.includes('dice') && d.includes('deck'), 'a shared prefix keeps both');
+  assert.equal(names('zzz').length, 0, 'no match → nothing (name candidates still merge in the caller)');
+});
+
 test('resolveBrace — a {mode: …} inside a rule degrades to a uniform pick (no state there)', () => {
   c.seedSequence([0]); // floor(0*3) → first item
   try {
