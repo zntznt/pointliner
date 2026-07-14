@@ -1234,7 +1234,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 /* a month group: a sticky header, then its dated points down a spine */
 .tl-group{padding:0}
 .tl-month{position:sticky;top:0;background:var(--hbg);z-index:1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 18px 6px;border-bottom:1px solid var(--bdr)}
-.tl-item{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:baseline;padding:6px 18px;border:none;background:none;width:100%;text-align:left;font:inherit;color:var(--fg);cursor:pointer;position:relative;transition:background .09s}
+.tl-item{display:grid;grid-template-columns:96px 1fr auto;gap:12px;align-items:baseline;padding:6px 18px;border:none;background:none;width:100%;text-align:left;font:inherit;color:var(--fg);cursor:pointer;position:relative;transition:background .09s}
 .tl-item:hover{background:color-mix(in srgb,var(--acc) 8%,transparent)}
 .tl-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .tl-date{font-size:11.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -1244,6 +1244,13 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .tl-item.tl-overdue .tl-date{color:var(--bad)}
 .tl-item.tl-today .tl-date{color:var(--ok)}
 .tl-start .tl-date::before{content:'▸ '}
+/* #647: the source toggles bar + the per-row source tag (journal/lore are neutral history rows). */
+.tl-toggles{display:flex;gap:6px;padding:8px 18px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.tl-toggle{font-size:11.5px;padding:3px 10px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--muted);cursor:pointer;transition:background .1s,border-color .1s,color .1s}
+.tl-toggle:hover{border-color:var(--acc)}
+.tl-toggle.on{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--fg)}
+.tl-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.tl-src-tag{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);align-self:center;opacity:.7}
 
 /* inline-insert dialog (links / images) */
 #io-back{position:fixed;inset:0;z-index:800;background:var(--scrim);display:none;align-items:flex-start;justify-content:center}
@@ -4293,6 +4300,60 @@ function collectDueDates(rootNode = root, seqs = allSequences()) {
   // UXP-109: same date first, then higher priority (A < B < … < none) as the tiebreak, so the
   // agenda surfaces the most urgent work within a given day rather than tree order.
   items.sort((a, b) => a.epochDay - b.epochDay || priorityRank(a.priority) - priorityRank(b.priority));
+  return items;
+}
+
+// #647 timeline sources 2 + 3. The timeline reads collectDueDates (tasks) plus two more sources so
+// history, not just scheduled work, lines up in time. All pure + Node-testable.
+
+// Source 2 — JOURNAL: entries are dated by TREE POSITION (home 'Journal' > YYYY > MM > DD), not a
+// property, so every existing journal appears with zero migration. Derive the epoch from the three
+// rungs (the day rung may be titled, e.g. '13 Monday', so read its leading number). Journal dates are
+// IRL/Gregorian by design (#647); a mixed-calendar timeline is #653's job, not this one.
+function collectJournalDates(rootNode = root) {
+  const items = [];
+  const first = n => (n.text || '').split('\n', 1)[0].trim();
+  const home = (rootNode?.children || []).find(c => first(c) === 'Journal');
+  if (!home) return items;
+  for (const yNode of (home.children || [])) {
+    const y = first(yNode);
+    if (!/^-?\d+$/.test(y)) continue;                             // a year rung is a bare (possibly negative) number
+    for (const mNode of (yNode.children || [])) {
+      const mo = first(mNode).match(/^\d{1,2}/);                  // '07' or '7'
+      if (!mo) continue;
+      for (const dNode of (mNode.children || [])) {
+        const dd = first(dNode).match(/^\d{1,2}/);                // '13' or '13 Monday'
+        if (!dd) continue;
+        const Y = +y, MO = +mo[0], D = +dd[0];
+        const ep = Math.floor(Date.UTC(Y, MO - 1, D) / DAY_MS);   // Gregorian, regardless of any active fiction calendar
+        if (!Number.isFinite(ep)) continue;
+        items.push({ id: dNode.id, title: textForDisplay(dNode) || first(dNode) || 'journal', epochDay: ep, source: 'journal' });
+      }
+    }
+  }
+  return items;
+}
+// Source 3 — LORE: a point carrying a `when:` or `date:` property = "this happened". A neutral
+// history row (no urgency/done). ponytail: no task/lore dedup — `when`/`date` are distinct keys from
+// the task `due`/`start`, so a normal task never lands here; a point deliberately given both shows on
+// both rows, which is defensible. Add a dedup pass only if that double-listing is reported as a bug.
+function collectLoreDates(rootNode = root) {
+  const items = [];
+  (function walk(n) {
+    const p = (n.props || []).find(x => { const k = x.key.toLowerCase(); return k === 'when' || k === 'date'; });
+    if (p) { const ep = parseDueDate(p.val); if (ep !== null) items.push({ id: n.id, title: textForDisplay(n) || '(untitled)', epochDay: ep, source: 'lore' }); }
+    for (const c of (n.children || [])) walk(c);
+  })({ children: rootNode?.children || [] });
+  return items;
+}
+// The timeline's three date-sources merged and tagged for filtering. Tasks keep their urgency fields;
+// journal + lore are neutral history rows. `sources` = {task, journal, lore} booleans (all on by default).
+function collectTimelineItems(rootNode = root, sources = { task: true, journal: true, lore: true }) {
+  const items = [];
+  if (sources.task) for (const it of collectDueDates(rootNode)) items.push({ ...it, source: 'task' });
+  if (sources.journal) items.push(...collectJournalDates(rootNode));
+  if (sources.lore) items.push(...collectLoreDates(rootNode));
+  items.sort((a, b) => a.epochDay - b.epochDay);
   return items;
 }
 
@@ -25881,9 +25942,13 @@ function closeTimeline() {
 }
 function toggleTimeline() { if (timelineOpen) closeTimeline(); else openTimeline(); }
 
+// #647: which of the three date-sources the timeline shows (session-only, like agendaMonth). All on
+// by default — the timeline chronicles everything dated; toggles carve out a personal or world review.
+let timelineSources = { task: true, journal: true, lore: true };
+const TL_SRC_LABELS = { task: 'Tasks', journal: 'Journal', lore: 'Lore' };
 function renderTimeline(panel) {
   panel.innerHTML = '';
-  const items = collectDueDates();
+  const items = collectTimelineItems(root, timelineSources);
   // month grouping under the active calendar: calComponents gives the (era-adjusted) year
   // + month for a stable key, calMonthTitle the human header; sort by the raw month index
   // so a fictional calendar's own months order correctly and Gregorian is byte-unchanged.
@@ -25904,11 +25969,24 @@ function renderTimeline(panel) {
   head.append(ttl, cnt, close);
   panel.appendChild(head);
 
+  // #647: source toggles — show/hide tasks, journal, lore. A personal review is journal + tasks with
+  // lore off; a world review is lore + game-log with tasks off. Same view, different chips.
+  const bar = document.createElement('div'); bar.className = 'tl-toggles'; bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', 'Timeline sources');
+  for (const key of ['task', 'journal', 'lore']) {
+    const chip = document.createElement('button'); chip.type = 'button';
+    chip.className = 'tl-toggle tl-src-' + key + (timelineSources[key] ? ' on' : '');
+    chip.textContent = TL_SRC_LABELS[key];
+    chip.setAttribute('aria-pressed', String(timelineSources[key]));
+    chip.addEventListener('click', () => { timelineSources[key] = !timelineSources[key]; renderTimeline(panel); });
+    bar.appendChild(chip);
+  }
+  panel.appendChild(bar);
+
   if (!total) {
     const empty = document.createElement('div'); empty.className = 'graph-empty';
-    const et = document.createElement('div'); et.className = 'graph-empty-title'; et.textContent = 'No dated points yet';
+    const et = document.createElement('div'); et.className = 'graph-empty-title'; et.textContent = 'No dated points here yet';
     const eh = document.createElement('div'); eh.className = 'graph-empty-hint';
-    eh.textContent = 'Give points a start or due date and they line up here in time order. Type /due on a point, or use the bullet menu, then reopen the timeline.';
+    eh.textContent = 'Scheduled points (a start or due date), your daily journal, and lore events (a point with a when or date property) all line up here in time order. Type /due to schedule, write a journal entry, or add a when property, then reopen the timeline. Check the source toggles above are on.';
     empty.append(et, eh); panel.appendChild(empty);
     return;
   }
@@ -25921,13 +25999,20 @@ function renderTimeline(panel) {
     grp.appendChild(mh);
     for (const it of g.items) {
       const row = document.createElement('button'); row.type = 'button';
-      // a due-only urgency tint (start-only points read as neutral "▸ begins" markers)
-      const urg = it.due != null ? (it.state === 'overdue' ? ' tl-overdue' : it.state === 'today' ? ' tl-today' : '') : ' tl-start';
-      row.className = 'tl-item' + (it.done ? ' tl-done' : '') + urg;
+      let cls = 'tl-item tl-src-' + it.source;
+      if (it.source === 'task') {
+        // a due-only urgency tint (start-only points read as neutral "▸ begins" markers)
+        const urg = it.due != null ? (it.state === 'overdue' ? ' tl-overdue' : it.state === 'today' ? ' tl-today' : '') : ' tl-start';
+        cls += (it.done ? ' tl-done' : '') + urg;
+      }
+      // journal + lore are neutral history rows: no urgency, no done state, just when it happened.
+      row.className = cls;
       const dt = document.createElement('span'); dt.className = 'tl-date'; dt.textContent = calDayShort(it.epochDay);
       const ti = document.createElement('span'); ti.className = 'tl-title'; ti.textContent = it.title;
       row.append(dt, ti);
-      row.setAttribute('aria-label', `${calDayLabel(it.epochDay)}: ${it.title}${it.done ? ', done' : ''}. Activate to open.`);
+      if (it.source !== 'task') { const sr = document.createElement('span'); sr.className = 'tl-src-tag'; sr.textContent = it.source; row.appendChild(sr); }
+      const srcNote = it.source === 'task' ? (it.done ? ', done' : '') : `, ${it.source}`;
+      row.setAttribute('aria-label', `${calDayLabel(it.epochDay)}: ${it.title}${srcNote}. Activate to open.`);
       row.addEventListener('mousedown', ev => ev.preventDefault());   // caret invariant
       row.addEventListener('click', () => go(it.id));
       grp.appendChild(row);
@@ -26927,12 +27012,12 @@ const GUIDE = [
 
   { id:'timeline', cat:'dates',
     title:'Timeline',
-    body:"See the whole story of your document in time order, so you can find something by when it happened rather than by its exact date. Every point with a start or due date lines up in one chronological list, grouped by month, from the earliest to the far future. This is the history view for a long campaign or a big set of notes: the war, the treaty, the comet, in the order they land, so you can browse the arc instead of searching a date you half-remember. Open it from the hourglass button in the toolbar. Each entry shows its date and title, colored by urgency (overdue in red), with done points struck through and start-only points marked with a small arrow; click any entry to jump to that point. It opens scrolled near today, so a long history starts at 'now'. When a custom calendar is active, the months and years are your world's own, so a campaign reads in campaign time. This is different from the agenda's Timeline (a Gantt of the near-term schedule): this one spans the whole archive and reads as a chronicle, not a work plan.",
+    body:"See the whole story of your document in time order, so you can find something by when it happened rather than by its exact date. Every dated point lines up in one chronological list, grouped by month, from the earliest to the far future. This is the history view for a long campaign or a big set of notes: the war, the treaty, the comet, in the order they land, so you can browse the arc instead of searching a date you half-remember.\n\nIt draws from three kinds of dated point, so a whole session sits on one line: tasks (anything with a start or due date), your daily journal entries, and lore events (any point carrying a when or date property, for world events that are not tasks). A row of source toggles (Tasks, Journal, Lore) at the top shows or hides each kind, so you can read the planned schedule alone, the journal alone, or the whole braided history.\n\nOpen it from the hourglass button in the toolbar. Each entry shows its date and title, colored by urgency (an overdue task in red), with done points struck through, start-only points marked with a small arrow, and journal and lore entries tagged with their source; click any entry to jump to that point. It opens scrolled near today, so a long history starts at 'now'. When a custom calendar is active, the months and years are your world's own, so a campaign reads in campaign time. This is different from the agenda's Timeline (a Gantt of the near-term schedule): this one spans the whole archive and reads as a chronicle, not a work plan.",
     examples:[
       { syn:'Toolbar hourglass button', desc:'open the timeline' },
-      { syn:'A month header',           desc:'groups the points dated in that month' },
+      { syn:'when: 1247-03-02',         desc:'date a lore point so it joins the timeline (or date:)' },
+      { syn:'Tasks / Journal / Lore',   desc:'toggles that show or hide each source' },
       { syn:'Click an entry',           desc:'jump to that point in the outline' },
-      { syn:'A red date',               desc:'a due date now past' },
     ] },
   { id:'journal', cat:'dates', covers:['journal'],
     title:'Daily journal',

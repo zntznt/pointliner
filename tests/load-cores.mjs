@@ -235,6 +235,7 @@ export function loadCores() {
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
     'pickerTitle','treeRows','selectionRoots','resolveRefileTarget',   // LEAN FLOOR: /refile:title resolution
     'dueDateToday','parseDueDate','formatDueDate','formatDateConcrete','parseRepeat','nextOccurrence','describeRepeat','ordinalSuffix','buildSharePointText','collectDueDates','collectActions','priorityRank','oracleSwingBody',
+    'collectJournalDates','collectLoreDates','collectTimelineItems',   // #647 timeline sources
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
     'calWeekLen','calWeekHeads','calMonthTitle','calDayLabel','calDayShort',   // #527 PR-A: the render-label layer
     'parseCalMonths','parseCalWeek','parseCalEras','calendarToText','auditCalendarSwitch','buildCalendarFromFields','dateFormsHint',   // #527 PR-C: the dialog grammars + the switch audit

@@ -71,15 +71,27 @@ and re-opens when you complete it.
 ## Timeline
 
 See the whole story of your document in time order. Where the agenda is a planner for what is coming
-up, the **timeline** is the history: every point with a start or due date, laid out in one
-chronological list from the earliest to the far future, grouped by month. It is the view for a long
-campaign or a big set of notes, where you want to browse the arc ("the war, the treaty, the comet, in
-the order they landed") instead of searching for a date you only half-remember.
+up, the **timeline** is the history: every dated point laid out in one chronological list from the
+earliest to the far future, grouped by month. It is the view for a long campaign or a big set of
+notes, where you want to browse the arc ("the war, the treaty, the comet, in the order they landed")
+instead of searching for a date you only half-remember.
 
-Open it from the **hourglass button** in the toolbar. Each entry shows its date and title, colored by
-urgency (a past-due date reads red), with done points struck through and start-only points marked with
-a small `▸`. Click any entry to jump to that point; press `Esc` to close. It opens scrolled near
-today, so a long history starts at "now" rather than at year one.
+It draws from **three kinds of dated point**, so a whole session sits on one line:
+
+- **Tasks**, anything with a start or due date, the same scheduled points the agenda plans.
+- **Journal**, each daily entry from your [journal](#daily-journal), so what actually happened lands
+  next to what was planned.
+- **Lore**, any point carrying a `when` or `date` property, for world events that are not tasks: a
+  founding, a battle, a comet. Add `when: 1247-03-02` (or `date:`) to a point and it takes its place
+  in the chronicle.
+
+Open it from the **hourglass button** in the toolbar. A row of **source toggles** (Tasks, Journal,
+Lore) sits at the top; click one to show or hide that kind, so you can read the planned schedule alone,
+the journal alone, or the whole braided history. Each entry shows its date and title, colored by
+urgency (a past-due task reads red), with done points struck through and start-only points marked with
+a small `▸`; journal and lore entries carry a small source tag. Click any entry to jump to that point;
+press `Esc` to close. It opens scrolled near today, so a long history starts at "now" rather than at
+year one.
 
 When a [custom calendar](#custom-calendars) is active, the month headers and dates are your world's
 own (Firstfrost, Longnight, the era year), so a campaign reads in campaign time. This is distinct from
