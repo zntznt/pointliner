@@ -7,9 +7,14 @@ Everything here is one syntax: **`{curly braces}`**. Type something inside `{…
 from the point, and it becomes a **pill**. Click the pill to roll it again. Click the words
 next to it to edit the `{…}` back.
 
-If you'd rather not memorize syntax, type **`@`** in a point: the menu has a **dialog for every
-generator** (Dice, Grammar, Roll table, Deck, Oracle, Markov, Variable) with a live preview that
-teaches you the form as you fill it in. This page is the *why* behind those dialogs.
+If you'd rather not memorize syntax, you have two doors. Type an opening **`{`** in a point and a
+menu lists every pill form you can build (a dice roll, a random pick, a calculation, a live list,
+a meter and the rest); type a word to filter, press Enter, and it drops in a ready-to-edit scaffold
+with the first blank selected. The same menu keeps completing as you write inside a pill (function
+names in a calculation, filters like `is:todo` in a live search, your own rule names once you define
+them), and a small help mark on a suggestion opens its guide entry. Or type **`@`** for a **dialog
+for every generator** (Dice, Grammar, Roll table, Deck, Oracle, Markov, Variable) with a live preview.
+This page is the *why* behind both.
 
 ---
 
