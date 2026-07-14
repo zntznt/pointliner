@@ -84,9 +84,18 @@ constant **`today`** is the anchor:
 {= date(2026, 12, 25)}     a specific calendar date
 {= daysuntil(due)}         days from today to a `due` value (negative if past)
 {= daysbetween(a, b)}      whole days between two dates
+{= workdaysbetween(a, b)}  Mon-Fri days between (exclusive end)
+{= age(born)}              whole years from a date to today
+{= addmonths(due, 3)}      shift a date by whole months (day clamped, like EDATE)
+{= eom(due)}               the last day of that month
+{= weeknum(due)}           ISO 8601 week number
 {= weekday(today)}         0 = Sunday … 6 = Saturday
 {= year(due)}  month(due)  day(due)  quarter(due)
 ```
+
+`year`, `month`, `day`, `quarter`, `age`, `eom` and `addmonths` follow a **custom calendar**
+when the document has one; `weeknum` (ISO) and `workdaysbetween` (Mon-Fri) use the ordinary
+Mon-Sun week.
 
 A math result that's a date renders as an **ISO date** automatically when you wrap it in
 `asdate(...)`:
