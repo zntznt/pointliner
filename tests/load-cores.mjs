@@ -204,7 +204,7 @@ export function loadCores() {
     'parseTodo','formatTodo','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
-    'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix',
+    'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix','toggleTaskLine',
     'cloneArtifactSidecars','mergeArtifactSidecars',
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',

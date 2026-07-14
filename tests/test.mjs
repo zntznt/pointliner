@@ -13012,3 +13012,27 @@ test('#649 — moon glyph display: bare pill → glyph, composed → number', ()
   assert.equal(c.formatMathDisplay(0.5, 'moonphase(x, 28, 0)'), '🌕');       // bare → glyph
   assert.equal(c.formatMathDisplay(4, 'moonphase(x, 28, 0) * 8'), '4');      // composed → number
 });
+
+// #437 — toggleTaskLine: the touch edit-bar's "make this line a to-do" core. Plain line gains a
+// `- [ ]` marker, a task line loses it; operates on the caret's line only; out-of-range is a no-op.
+test('#437 — toggleTaskLine adds/removes the to-do marker on the caret line', () => {
+  const t = c.toggleTaskLine;
+  assert.equal(t('buy milk', 0), '- [ ] buy milk');       // plain → to-do (caret at start)
+  assert.equal(t('buy milk', 4), '- [ ] buy milk');       // caret mid-line still toggles the line
+  assert.equal(t('- [ ] buy milk', 0), 'buy milk');       // to-do → plain (body kept)
+  assert.equal(t('- [x] done', 0), 'done');               // a checked task also strips to plain
+  assert.equal(t('- [ ] ', 0), '');                       // empty to-do → empty plain
+  assert.equal(t('', 0), '- [ ] ');                       // empty plain → empty to-do
+  assert.equal(t('a\nb\nc', 2), 'a\n- [ ] b\nc');         // multi-line: only the caret's line
+  assert.equal(t('a\n- [ ] b\nc', 3), 'a\nb\nc');         // …and toggling it back
+  assert.equal(t('buy milk', 999), 'buy milk');           // caret out of range → unchanged
+});
+
+test('#437 — the touch edit-bar carries a wired to-do button', () => {
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const bar = src.slice(src.indexOf('id="edit-bar"'), src.indexOf('id="edit-bar"') + 900);
+  assert.ok(bar.includes('id="eb-todo"'), 'the edit-bar is missing the to-do button');
+  assert.ok(/aria-label="Toggle to-do"/.test(bar), 'the to-do button needs an accessible name');
+  assert.ok(src.includes("ebBtn('eb-todo'"), 'the to-do button must be wired through ebBtn (the pointerup-gated touch path)');
+  assert.ok(src.includes('toggleTaskLine(text, off)'), 'the button must use the toggleTaskLine core');
+});

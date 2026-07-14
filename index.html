@@ -1750,7 +1750,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 /* touch edit bar: a full-width strip of structural controls pinned to the bottom (JS
    lifts it above the on-screen keyboard via visualViewport). Shown only while editing a
    single point on touch. */
-#edit-bar{position:fixed;left:0;right:0;bottom:0;z-index:650;display:none;align-items:center;gap:4px;padding:6px 10px calc(6px + env(safe-area-inset-bottom));background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up)}
+#edit-bar{position:fixed;left:0;right:0;bottom:0;z-index:650;display:none;align-items:center;gap:3px;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up)}
 #edit-bar.on{display:flex}
 /* touch quick bar (#566): the edit bar's display-mode twin — same envelope, same .eb-btn
    controls, they swap with edit state (JS gates both on IS_TOUCH). The capture button is
@@ -1767,11 +1767,13 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .rp-chip:active,.rp-chip:focus-visible{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);outline:none}
 .rp-chip .rp-syn{font-family:var(--mono);font-size:12.5px;color:var(--acc)}
 .rp-chip .rp-lbl{font-size:10.5px;color:var(--muted)}
-.eb-btn{flex:0 0 auto;min-width:44px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:17px;line-height:1;transition:background .1s}
+/* #437: prefer a 44px tap target, but shrink gracefully toward 38px on the narrowest phones so the
+   seventh button (to-do) fits at 360px instead of overflowing the bar. */
+.eb-btn{flex:0 1 44px;min-width:38px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:17px;line-height:1;transition:background .1s}
 .eb-btn:active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .eb-btn:disabled{opacity:.35;pointer-events:none}
 #eb-done{font-size:14px;padding:0 14px;color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
-.eb-sep{width:1px;height:22px;background:var(--bdr);flex-shrink:0;margin:0 3px}
+.eb-sep{width:1px;height:22px;background:var(--bdr);flex-shrink:0;margin:0 2px}
 .eb-spacer{flex:1 1 auto}
 .nsb-btn.danger:hover{background:color-mix(in srgb,var(--bad) 10%,transparent);border-color:var(--bad);color:var(--bad)}
 
@@ -2305,6 +2307,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      so reordering and nesting never need the fiddly bullet drag. Touch-only; hidden otherwise. -->
 <div id="edit-bar" role="toolbar" aria-label="Edit point" aria-hidden="true">
   <button class="eb-btn" id="eb-insert" title="Insert a pill" aria-label="Insert a pill">@</button>
+  <button class="eb-btn" id="eb-todo" title="Toggle to-do" aria-label="Toggle to-do">☑</button>
   <span class="eb-sep"></span>
   <button class="eb-btn" id="eb-outdent" title="Outdent" aria-label="Outdent point">⇤</button>
   <button class="eb-btn" id="eb-indent"  title="Indent"  aria-label="Indent point">⇥</button>
@@ -3010,6 +3013,23 @@ const TASK_STRIP_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '\\s*');      
 const TASK_STRIP_G  = new RegExp('^\\s*[-*+]\\s+(?:' + TASK_BOX.source + '\\s*)?', 'gm');              // stripMd (per line)
 const TASK_KEEP_RE  = new RegExp('^[-*+]\\s+(' + TASK_BOX.source + ')\\s*');                           // strip lead but KEEP the box (export)
 function isTaskFirst(text) { return TASK_FIRST_RE.test(text == null ? '' : String(text)); }
+// #437: toggle the to-do marker on the line the caret is in — a plain line gains `- [ ]`, a task
+// line loses it (becomes plain, body kept). The touch edit-bar's front door for "make this tickable".
+// Pure: (text, caret offset) → new text; an out-of-range offset leaves the text unchanged.
+function toggleTaskLine(text, off) {
+  const lines = String(text == null ? '' : text).split('\n');
+  let charOff = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const lineEnd = charOff + lines[i].length;
+    if (off >= charOff && off <= lineEnd) {
+      const m = lines[i].match(TASK_LINE_RE);
+      lines[i] = m ? (m[3] || '').replace(/^\s+/, '') : '- [ ] ' + lines[i];   // strip the box, or add one
+      break;
+    }
+    charOff += lines[i].length + 1;
+  }
+  return lines.join('\n');
+}
 
 // Node-level done-ness from the text: keyword wins — done iff it sits right of
 // its sequence's | split (generalizes the old keyword===DONE); otherwise a
@@ -14414,6 +14434,25 @@ ebBtn('eb-insert', () => {
   if (!content) return;
   content.focus();                              // pointerdown+preventDefault kept the caret; ensure focus for execCommand
   document.execCommand('insertText', false, '@');
+});
+// #437: the touch front door for "make this line a to-do". Toggles the `- [ ]` marker on the caret's
+// line (the touch twin of typing `- [ ]` or the long-press type-switcher). Mirrors the Ctrl+Shift+X
+// keydown path: rewrite node.text, re-render edit HTML, restore the caret shifted by the marker length.
+ebBtn('eb-todo', () => {
+  const id = editBarTargetId();
+  if (id == null) return;
+  const content = document.querySelector(`.node-content[data-id="${id}"][data-editing]`);
+  const node = nodeById(id);
+  if (!content || !node) return;
+  const text = editableText(content);
+  const off = getCaretOffset(content);
+  const next = toggleTaskLine(text, off);
+  if (next === text) return;
+  node.text = next;
+  content.innerHTML = editModeHTML(node);
+  setCaretByOffset(content, Math.max(0, Math.min(off + (next.length - text.length), next.length)));
+  markDirty();
+  updateEditBar();
 });
 ebBtn('eb-outdent', () => editBarMove(outdentNode));
 ebBtn('eb-indent',  () => editBarMove(indentNode));
