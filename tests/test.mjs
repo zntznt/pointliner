@@ -13136,3 +13136,53 @@ test('#653 — calendar coexistence: door + persistence + seam wiring', () => {
   // the shape guarantee runs on every load path
   assert.ok(_src.includes('normalizeCalendarBindings(root)'), 'normalizeCalendarBindings must run on the load/adopt paths');
 });
+
+// #652 — the chronicle (in-world game log) is the journal's twin: dated by tree position under the
+// game-log home, but the rungs are the GAME calendar's year/month/day (parsed via calToEpoch), not
+// Gregorian. collectChronicleDates is the pure source; the cursor persistence rides normalizeCalendarBindings.
+test('#652 — collectChronicleDates: game-log entries dated in the bound calendar', () => {
+  const mk = (text, children = []) => { const n = c.mkNode(text); n.children = children; return n; };
+  // a 12x30-day calendar with year 1 anchored at epoch 0.
+  const cal = c.normalizeCalendar({ id: 'vale', name: 'Vale', epochDay: 0, months: Array.from({ length: 12 }, (_, i) => ({ name: 'M' + (i + 1), days: 30 })), week: { length: 7, days: [] }, eras: [] });
+  const beat = mk('Muster the levies');
+  const home = mk('Campaign Log', [ mk('50', [ mk('6', [ mk('15 Restday', [ beat ]) ]) ]) ]);
+  const root = { children: [home] };
+
+  const items = c.collectChronicleDates(root, home.id, cal);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].source, 'chronicle');
+  assert.equal(items[0].id, home.children[0].children[0].children[0].id);   // the day node
+  // year 50, month 6, day 15 under Vale = calToEpoch of the same → the epoch matches the calendar core.
+  assert.equal(items[0].epochDay, c.calToEpoch(50, 6, 15, cal));
+
+  // No home id → no rows (the fast path when nothing is bound).
+  assert.equal(c.collectChronicleDates(root, null, cal).length, 0);
+  // A titled day rung ('15 Restday') and a titled month are read by their leading number.
+  assert.equal(c.collectChronicleDates({ children: [ mk('Log', [ mk('50', [ mk('6 Highsun', [ mk('15', []) ]) ]) ]) ]}, root.children[0].id, cal).length, 0); // wrong home id → 0
+  // With no calendar it falls back to Gregorian parsing (so a game log with no bound cal still lists).
+  const gHome = mk('Log', [ mk('2026', [ mk('07', [ mk('13', []) ]) ]) ]);
+  const gItems = c.collectChronicleDates({ children: [gHome] }, gHome.id, null);
+  assert.equal(gItems.length, 1);
+  assert.equal(gItems[0].epochDay, Math.floor(Date.UTC(2026, 6, 13) / 86400000));
+});
+
+// #652 — the chronicle cursor persists on root.gamelog (an epoch-day integer), guaranteed by
+// normalizeCalendarBindings; and the strip + button + timeline source are wired (src-pins).
+test('#652 — chronicle: cursor persistence + strip/button/source wiring', () => {
+  // cursor rides the gamelog shape (safe-integer only; garbage → null so the strip re-seeds it)
+  assert.equal(c.normalizeCalendarBindings({ gamelog: { targetId: 'n1', calendarId: 'v', cursor: 12345 } }).gamelog.cursor, 12345);
+  assert.equal(c.normalizeCalendarBindings({ gamelog: { targetId: 'n1', cursor: 1.5 } }).gamelog.cursor, null);
+  assert.equal(c.normalizeCalendarBindings({ gamelog: { targetId: 'n1' } }).gamelog.cursor, null);
+  // toolbar button + strip container + wiring
+  assert.ok(_src.includes('id="btn-chronicle"'), 'the Chronicle toolbar button is missing');
+  assert.ok(_src.includes('id="chronicle-strip"'), 'the chronicle strip container is missing');
+  assert.ok(_src.includes("getElementById('btn-chronicle').addEventListener"), 'the Chronicle button is not wired');
+  assert.ok(_src.includes('function renderChronicleStrip') && _src.includes('function doChronicleAdd'), 'the chronicle strip render/add are missing');
+  assert.ok(_src.includes('function nudgeChronicleCursor'), 'the cursor nudge (time-travel) is missing');
+  // the button only shows when a log is bound
+  assert.ok(_src.includes('function syncChronicleButton'), 'the button visibility syncer is missing');
+  // the chronicle feeds the timeline as its own toggleable source
+  const cti = fnBody(_src, 'collectTimelineItems');
+  assert.ok(cti.includes('collectChronicleDates('), 'the timeline must include the chronicle source');
+  assert.ok(_src.includes("chronicle: 'Chronicle'"), 'the chronicle timeline toggle label is missing');
+});

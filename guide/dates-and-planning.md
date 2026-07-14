@@ -112,6 +112,27 @@ entry directly.
 (When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
 journal can instead write one file per day on disk.)
 
+## The chronicle: an in-world log
+
+The journal logs the **real** day, the day you actually wrote it. A campaign also wants a log dated in
+the **game's** time, where "now" is the day you decide, not the day it is. That is the **chronicle**:
+a journal twin whose date is a movable in-world cursor, so session 4 can chronicle day 300 of the
+campaign year.
+
+Set it up in two steps: define a [custom calendar](#custom-calendars) for your world, then make the
+point that will hold the log and choose **Bind as in-world log** from its bullet menu (this is the
+same binding that keeps that subtree on the world's calendar, see
+[two calendars in one document](#two-calendars-in-one-document)). A **chronicle button** then appears
+in the toolbar.
+
+Open it and a bar appears like the journal's, with one difference: the date is an **in-world cursor**
+you steer. The **◂** and **▸** buttons step one game-day back or forward (honoring your calendar's own
+months and week), and clicking the date jumps to a day you name. Type a beat and press Enter to file it
+under the cursor's date, nested year then month then day in the game calendar, the same tidy structure
+as the journal. Chronicle beats show on the [timeline](#timeline) as their own **Chronicle** source,
+dated in world time and toggleable on their own, so a session's real notes and in-world events sit side
+by side without ever being confused for each other.
+
 ---
 
 ## Custom calendars
