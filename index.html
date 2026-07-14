@@ -19888,6 +19888,48 @@ function mathFragmentAt(body, caret) {
   const prefix = body.slice(i, caret);
   return /^[A-Za-z_]\w*$/.test(prefix) ? { prefix, start: i } : null;
 }
+// One-line glosses for every math completion (shown in Guided under the signature hint), so a
+// completion explains itself the way the top-level { forms do. Terse; the signature `hint` already
+// shows the shape. A name missing here just shows no description (the conversions are self-evident
+// but included for consistency). The ? help mark links to the entry mathGuideFor picks by group.
+const MATH_FN_DESC = {
+  // core
+  sqrt:'square root', abs:'absolute value', floor:'round down to a whole number', ceil:'round up to a whole number',
+  round:'round to the nearest whole number', trunc:'drop the fractional part', sign:'-1, 0 or 1 by sign',
+  cbrt:'cube root', exp:'e to the power x', ln:'natural log (base e)', log:'log base 10', log2:'log base 2', log10:'log base 10',
+  sin:'sine (radians)', cos:'cosine (radians)', tan:'tangent (radians)', asin:'inverse sine (arcsin)',
+  acos:'inverse cosine (arccos)', atan:'inverse tangent (arctan)', atan2:'angle of the point (a, b)',
+  deg:'radians to degrees', rad:'degrees to radians', pow:'a raised to the power b', hypot:'length of the hypotenuse',
+  gcd:'greatest common divisor', lcm:'least common multiple', roundto:'round to the nearest step',
+  clamp:'keep a value within a low and high', pctof:'a as a percent of b', pctchange:'percent change from a to b',
+  min:'the smallest of the values', max:'the largest of the values', and:'1 if all are true, else 0',
+  or:'1 if any is true, else 0', not:'flip a true/false (1/0)',
+  // aggregates over children
+  sum:"add up a property across this point's children", avg:"average a property across children",
+  count:"how many children have the property", words:'count words in a scope (subtree, self, children)',
+  // dates
+  year:'the year of a date', month:'the month of a date (1 to 12)', day:'the day of the month', weekday:'the day of the week',
+  quarter:'the quarter of the year (1 to 4)', daysuntil:'days from today until a date', daysbetween:'days between two dates',
+  age:'whole years from a date to today', eom:'the last day of that month', weeknum:'the ISO week number',
+  addmonths:'shift a date by N months', workdaysbetween:'weekdays (Mon to Fri) between two dates',
+  date:'build a date from year, month, day', moonphase:'moon phase 0 to 1 for a date', asdate:'show a number as a date',
+  // conversions (self-evident, kept for consistency)
+  c2f:'celsius to fahrenheit', f2c:'fahrenheit to celsius', km2mi:'kilometers to miles', mi2km:'miles to kilometers',
+  m2ft:'meters to feet', ft2m:'feet to meters', cm2in:'centimeters to inches', in2cm:'inches to centimeters',
+  kg2lb:'kilograms to pounds', lb2kg:'pounds to kilograms', kmh2mph:'km/h to mph', mph2kmh:'mph to km/h',
+  l2gal:'liters to gallons', gal2l:'gallons to liters',
+  // constants
+  pi:'the constant pi (3.14159...)', e:"Euler's number (2.71828...)", tau:'the constant tau (2 pi)',
+  today:"today's date", inf:'infinity', infinity:'infinity',
+};
+// Which concept-guide entry a math completion's ? opens, by group. Dates go to the dates-in-math
+// entry; everything else to the math functions reference; aggregates to the roll-ups entry.
+function mathGuideFor(group) {
+  if (group === 'fn-date') return 'math-dates';
+  if (group === 'agg') return 'rollups';
+  if (group === 'const') return 'math';
+  return 'math-fns';   // fn-core, fn-conv
+}
 function mathCompletions(prefix, vars) {
   const lo = (prefix || '').toLowerCase();
   if (!lo) return [];                                    // no empty-prefix flood (decision A)
@@ -19895,7 +19937,7 @@ function mathCompletions(prefix, vars) {
   const match = (n) => n.toLowerCase().startsWith(lo);
   const pushFn = (name, group, hint) => {
     if (seen.has(name) || !match(name)) return; seen.add(name);
-    out.push({ name, group, insert: name + '()', caretBack: 1, hint });
+    out.push({ name, group, insert: name + '()', caretBack: 1, hint, desc: MATH_FN_DESC[name], guide: mathGuideFor(group) });
   };
   for (const n of Object.keys(FN1)) pushFn(n, mathFnGroup(n), n + '(x)');
   for (const n of Object.keys(FN2)) pushFn(n, mathFnGroup(n), n + '(a, b)');
@@ -19905,13 +19947,13 @@ function mathCompletions(prefix, vars) {
   pushFn('words', 'agg', 'words(subtree)');
   for (const n of [...Object.keys(MATH_CONSTS), 'today']) {                    // today is dynamic, added by hand
     if (seen.has(n) || !match(n)) continue; seen.add(n);
-    out.push({ name: n, group: 'const', insert: n, caretBack: 0, hint: 'constant' });
+    out.push({ name: n, group: 'const', insert: n, caretBack: 0, hint: 'constant', desc: MATH_FN_DESC[n], guide: 'math' });
   }
-  for (const n of Object.keys(vars || {})) {
+  for (const n of Object.keys(vars || {})) {                                   // a document variable (no fixed desc/guide — it's the user's own)
     if (seen.has(n) || !match(n)) continue; seen.add(n);
     const v = vars[n];
     const disp = typeof v === 'string' ? v : (Number.isInteger(+v) ? +v : +Number(v).toPrecision(4));
-    out.push({ name: n, group: 'var', insert: n, caretBack: 0, hint: '= ' + disp });
+    out.push({ name: n, group: 'var', insert: n, caretBack: 0, hint: '= ' + disp, desc: 'a variable you defined', guide: 'variables' });
   }
   const rank = { 'fn-core': 0, 'agg': 1, 'fn-conv': 2, 'fn-date': 3, 'const': 4, 'var': 5 };
   return out.sort((a, b) => (rank[a.group] ?? 9) - (rank[b.group] ?? 9));       // stable → groups cluster for the menu headers
@@ -19942,6 +19984,18 @@ function searchTokenAt(query, caret) {
   const token = query.slice(i, caret);
   return token ? { token, start: i } : null;
 }
+// One-line glosses for the is: structural filters (shown in Guided). The other operator families
+// (due:/has:/state:/var:/priority:) complete a value the user already knows, so their group hint is
+// description enough; the is: set is the vocabulary worth explaining.
+const SEARCH_IS_DESC = {
+  done:'finished points', todo:'open to-dos', note:'points that have a note', pill:'points holding any pill',
+  random:'re-rollable pills (dice, generators)', failing:'a check that fails', passing:'a check that passes',
+  scheduled:'has a start or due date', unscheduled:'has no date', overdue:'past its deadline, not done',
+  held:'blocked or waiting in its sequence', leaf:'has no children', parent:'has children',
+  collapsed:'folded closed', expanded:'folded open', broken:'a link whose target is gone',
+  empty:'no text', orphan:'nothing links to it', 'duplicate-title':'title collides with another point',
+  'recently-edited':'changed in the last 48 hours',
+};
 // Complete a single search token against the doc's vocabulary. ctx = {tags, vars, states}
 // (plain arrays, gathered by the caller). A field prefix (is:/due:/…) completes its value
 // set; a bare word suggests the field prefixes + matching tags; `#foo` completes tags. A
@@ -19953,7 +20007,8 @@ function searchCompletions(token, ctx) {
   const core = neg ? token.slice(1) : token;
   const pre = neg ? '-' : '';
   const out = [];
-  const push = (group, body, hint) => out.push({ name: pre + body, group, insert: pre + body, caretBack: 0, hint });
+  // every search completion links to the search-and-filter guide entry; `desc` is optional per item
+  const push = (group, body, hint, desc) => out.push({ name: pre + body, group, insert: pre + body, caretBack: 0, hint, desc, guide: 'search-ops' });
   const starts = (s, p) => s.toLowerCase().startsWith(p.toLowerCase());
   if (core[0] === '#') {                                                    // #tag
     const tp = core.slice(1);
@@ -19961,7 +20016,7 @@ function searchCompletions(token, ctx) {
     return out;
   }
   let m;
-  if ((m = /^is:(.*)$/i.exec(core)))       { for (const v of SEARCH_IS_VALUES)      if (starts(v, m[1])) push('op-is', 'is:' + v, 'state / structure'); return out; }
+  if ((m = /^is:(.*)$/i.exec(core)))       { for (const v of SEARCH_IS_VALUES)      if (starts(v, m[1])) push('op-is', 'is:' + v, 'state / structure', SEARCH_IS_DESC[v]); return out; }
   if ((m = /^(due|start):(.*)$/i.exec(core))) { const f = m[1].toLowerCase(); for (const v of SEARCH_DATE_VALUES) if (starts(v, m[2])) push('op-date', f + ':' + v, 'date'); return out; }
   if ((m = /^priority:(.*)$/i.exec(core))) { for (const v of SEARCH_PRIORITY_VALUES) if (starts(v, m[1])) push('op-prio', 'priority:' + v, 'priority'); return out; }
   if ((m = /^state:(.*)$/i.exec(core)))    { for (const s of states) if (starts(s, m[1])) push('op-state', 'state:' + s.toLowerCase(), 'sequence state'); return out; }
@@ -19975,10 +20030,11 @@ function searchCompletions(token, ctx) {
 
 // {oracle: <band>} — complete the closed likelihood set. Empty prefix → all five (small,
 // not a flood). Pure (reads ORACLE_BANDS via closure).
+const ORACLE_BAND_DESC = { certain:'almost always yes', likely:'yes more often than no', even:'a 50/50 coin flip', unlikely:'no more often than yes', impossible:'almost always no' };
 function oracleCompletions(prefix) {
   const lo = (prefix || '').toLowerCase();
   return ORACLE_BANDS.filter(b => b.label.toLowerCase().startsWith(lo))
-    .map(b => ({ name: b.label.toLowerCase(), group: 'oracle', insert: b.label.toLowerCase(), caretBack: 0, hint: b.body }));
+    .map(b => ({ name: b.label.toLowerCase(), group: 'oracle', insert: b.label.toLowerCase(), caretBack: 0, hint: b.body, desc: ORACLE_BAND_DESC[b.label.toLowerCase()], guide: 'oracle' }));
 }
 
 // {meter: prop/prop} — the identifier token at the caret, and completion over the point's
@@ -19994,7 +20050,7 @@ function meterCompletions(prefix, propKeys) {
   const lo = (prefix || '').toLowerCase();
   if (!lo) return [];
   return (propKeys || []).filter(k => k.toLowerCase().startsWith(lo))
-    .map(k => ({ name: k, group: 'op-prop', insert: k, caretBack: 0, hint: 'property' }));
+    .map(k => ({ name: k, group: 'op-prop', insert: k, caretBack: 0, hint: 'property', desc: 'a property on this point', guide: 'meter' }));
 }
 
 function evalMath(input, vars = {}) {

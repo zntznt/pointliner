@@ -1172,6 +1172,29 @@ test('mathCompletions — empty prefix returns nothing (no {= } flood), and it p
   assert.ok(sqOnly.includes('sqrt') && !sqOnly.includes('sin'), 'prefix-match, not fuzzy');
 });
 
+// Every body completion (like the top-level { forms) carries a Guided description + a ? guide link,
+// so a completion popping up inside a { explains itself. Sweep the whole surface: no built-in
+// function/constant/operator/oracle band may be missing its desc or point at a bogus guide entry.
+test('body completions all carry a description and a valid guide link', () => {
+  const g = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const guideIds = new Set([...g.matchAll(/\{\s*id:\s*['"]([\w-]+)['"]/g)].map(m => m[1]));
+  // math: sweep the whole alphabet to gather every built-in completion (exclude user vars — a var's
+  // "desc" is a fixed label, its guide is 'variables', both present, so it passes too).
+  const math = new Map();
+  for (const ch of 'abcdefghijklmnopqrstuvwxyz') for (const m of c.mathCompletions(ch, {})) math.set(m.name, m);
+  for (const m of math.values()) {
+    assert.ok(m.desc && typeof m.desc === 'string', `math ${m.name}: has a Guided description`);
+    assert.ok(!m.desc.includes('—'), `math ${m.name}: description has no em dash`);
+    assert.ok(m.guide && guideIds.has(m.guide), `math ${m.name}: guide '${m.guide}' is a real GUIDE entry`);
+  }
+  // search is: values (the described family) + oracle bands
+  const isDone = c.searchCompletions('is:done', { propKeys: [] }).find(x => x.name === 'is:done');
+  assert.ok(isDone && isDone.desc && isDone.guide === 'search-ops', 'is:done carries a desc + the search guide link');
+  for (const o of c.oracleCompletions('')) {
+    assert.ok(o.desc && o.guide === 'oracle', `oracle ${o.name}: has a desc + the oracle guide link`);
+  }
+});
+
 // #74: a {cond: …} condition is an evalMath comparison, so its body completes with the math
 // vocabulary — the same as {= …}. The gate (pinned here as the pure predicate bodyCompletion uses):
 // complete only while the caret is still in the condition (no top-level `:` typed) AND a comparison
