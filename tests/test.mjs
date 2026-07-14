@@ -6945,7 +6945,9 @@ test('#516 timeline: UI wiring + front doors + a11y (src pins)', () => {
   assert.ok(_src.includes("getElementById('btn-timeline').addEventListener('click', toggleTimeline)"), 'timeline button not wired');
   // rendering goes through the pure timelineModel core, grouped under the ACTIVE calendar
   const rt = fnBody(_src, 'renderTimeline');
-  assert.ok(rt.includes('timelineModel(') && rt.includes('collectDueDates('), 'renderTimeline must use timelineModel over collectDueDates');
+  // #647: the timeline now draws from the three-source collector (tasks + journal + lore), still
+  // grouped through the pure timelineModel core.
+  assert.ok(rt.includes('timelineModel(') && rt.includes('collectTimelineItems('), 'renderTimeline must group collectTimelineItems through timelineModel');
   assert.ok(rt.includes('calComponents(') && rt.includes('calMonthTitle('), 'month grouping must be calendar-aware (calComponents/calMonthTitle)');
   assert.ok(rt.includes('calDayShort(') && rt.includes('calDayLabel('), 'date labels must be calendar-aware');
   // a11y (P3): the panel is a named modal; each entry is a real <button> (Enter fires natively) with
@@ -13035,4 +13037,41 @@ test('#437 — the touch edit-bar carries a wired to-do button', () => {
   assert.ok(/aria-label="Toggle to-do"/.test(bar), 'the to-do button needs an accessible name');
   assert.ok(src.includes("ebBtn('eb-todo'"), 'the to-do button must be wired through ebBtn (the pointerup-gated touch path)');
   assert.ok(src.includes('toggleTaskLine(text, off)'), 'the button must use the toggleTaskLine core');
+});
+
+// #647 — the timeline draws from three date-sources: tasks (start/due), journal (dated by tree
+// position Journal > YYYY > MM > DD), and lore (a when:/date: property). Merged, tagged, sortable.
+test('#647 — timeline collectors: journal (tree position), lore (when/date prop), merged + tagged', () => {
+  const mk = (text, props = [], children = []) => { const n = c.mkNode(text); n.props = props; n.children = children; return n; };
+  const day = mk('13 Monday');   // a titled day rung reused fuzzily
+  const journal = mk('Journal', [], [ mk('2026', [], [ mk('07', [], [ day ]) ]) ]);
+  const lore = mk('342, the Sundering', [{ key: 'when', val: '2026-03-01' }]);
+  const task = mk('Ship it', [{ key: 'due', val: '2026-07-20' }]);
+  const root = { children: [journal, lore, task] };
+  const iso = ep => new Date(ep * 86400000).toISOString().slice(0, 10);
+
+  const j = c.collectJournalDates(root);
+  assert.equal(j.length, 1);
+  assert.equal(iso(j[0].epochDay), '2026-07-13');   // date from tree position, not a property
+  assert.equal(j[0].source, 'journal');
+  assert.equal(j[0].id, day.id);                    // navigates to the day node
+
+  const l = c.collectLoreDates(root);
+  assert.equal(l.length, 1);
+  assert.equal(iso(l[0].epochDay), '2026-03-01');
+  assert.equal(l[0].source, 'lore');
+
+  // Merged: tagged and sorted by date (lore Mar → journal Jul 13 → task Jul 20). host() normalizes
+  // the vm-realm array prototype so deepEqual compares by structure.
+  const all = c.collectTimelineItems(root, { task: true, journal: true, lore: true });
+  assert.deepEqual(host(all.map(x => x.source)), ['lore', 'journal', 'task']);
+
+  // Toggles filter by source.
+  assert.deepEqual(host(c.collectTimelineItems(root, { task: true, journal: false, lore: false }).map(x => x.source)), ['task']);
+  assert.deepEqual(host(c.collectTimelineItems(root, { task: false, journal: true, lore: false }).map(x => x.source)), ['journal']);
+  assert.equal(c.collectTimelineItems(root, { task: false, journal: false, lore: false }).length, 0);
+
+  // No Journal home → no journal items; a date: prop is also lore.
+  assert.equal(c.collectJournalDates({ children: [lore, task] }).length, 0);
+  assert.equal(c.collectLoreDates({ children: [ mk('Founded', [{ key: 'date', val: '2020-01-01' }]) ] }).length, 1);
 });
