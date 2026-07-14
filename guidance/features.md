@@ -303,8 +303,14 @@ Implemented:
   `name()` with the caret inside the parens (IDE-style); chaining works (`{= sqrt(str`
   suggests `strength`). `{= ` opens only once you type the first letter, so the ~70-function
   surface never floods. Cores `mathFragmentAt`/`mathCompletions`/`mathFnGroup` (pure);
-  reuses the brace-menu wholesale. Search-operator / oracle / meter contexts are speced
-  follow-ups (`guidance/brace-completion-proposal.md`).
+  reuses the brace-menu wholesale. **Phase 2 extends it to the other bodies:** `{query:`/`{roll:`/
+  `{count:` complete **search operators** (the field prefixes, the ~20 `is:` values, `due:`/`start:`
+  dates, `priority:`, `state:`, `var:`, `#tags`; a leading `-` is preserved); `{oracle:` completes
+  the five **likelihood bands** (odds shown as the hint); `{meter:` completes the point's own
+  **property keys**. One dispatcher `bodyCompletion` routes all four contexts through the same
+  mid-body insert. Cores `searchTokenAt`/`searchCompletions`/`oracleCompletions`/`meterTokenAt`/
+  `meterCompletions`; `SEARCH_IS_VALUES` is drift-guarded against `parseSearchQuery`'s canonical
+  `is:` regex. Deferred: `has:`/`key:` prop-value completion (needs a doc-wide key index).
 - **Inline token editing** — out of edit mode, artifacts are pills; in edit mode,
   inline-able ones *unfold* to editable `{…}` grammar text (styled `.gr-src`) and
   complex ones stay atomic pills. Raw `[[…]]` tokens are never shown.

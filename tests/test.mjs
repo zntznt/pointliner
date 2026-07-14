@@ -1149,6 +1149,59 @@ test('mathCompletions drift: every MATH_CONSTS constant is completable', () => {
   }
 });
 
+// ── body completion Phase 2 — search operators, oracle bands, meter props ──────
+
+test('searchTokenAt — the whitespace-delimited token ending at the caret', () => {
+  assert.deepEqual(host(c.searchTokenAt('is:to', 5)), { token: 'is:to', start: 0 });
+  assert.deepEqual(host(c.searchTokenAt('#combat is:t', 12)), { token: 'is:t', start: 8 });
+  assert.equal(c.searchTokenAt('foo ', 4), null, 'right after a space → no token');
+  assert.equal(c.searchTokenAt('', 0), null);
+});
+
+test('searchCompletions — fields, is: values, tags, and negation', () => {
+  const ctx = { tags: ['combat','city'], vars: ['gold'], states: ['TODO','WAITING'] };
+  const names = (tok) => c.searchCompletions(tok, ctx).map(x => x.name);
+  assert.ok(names('is').includes('is:'), 'a bare "is" suggests the is: field');
+  assert.ok(names('is:').includes('is:done') && names('is:').includes('is:failing'), 'is: completes its value set');
+  assert.ok(names('is:fa').every(n => n.startsWith('is:fa')) && names('is:fa').includes('is:failing'), 'prefix-filtered values');
+  assert.ok(names('due:').includes('due:today') && names('due:').includes('due:overdue'), 'date values');
+  assert.ok(names('priority:').includes('priority:a') && names('priority:').includes('priority:none'));
+  assert.ok(names('state:').includes('state:todo'), 'sequence states, lowercased');
+  assert.ok(names('var:').includes('var:gold'), 'declared variables');
+  assert.ok(names('#co').includes('#combat') && !names('#co').includes('#city'), 'tag completion');
+  assert.ok(names('c').includes('#combat'), 'a bare prefix also surfaces matching tags');
+  assert.ok(names('-is:').includes('-is:done'), 'a leading - (NOT) is preserved');
+  assert.equal(c.searchCompletions('zzzznomatch', ctx).length, 0, 'a plain word with no field/tag → nothing');
+});
+
+test('searchCompletions drift: SEARCH_IS_VALUES matches parseSearchQuery\'s canonical is: regex', () => {
+  // The is: value set is authoritative in parseSearchQuery's /^is:(a|b|…)$/ alternation.
+  // Completion must offer exactly that set — a new is: value can't ship uncompletable.
+  const m = _src.match(/\^is:\(([a-z|\-]+)\)\$/i);
+  assert.ok(m, 'the is:(…) alternation was not found in parseSearchQuery (renamed?)');
+  const canonical = m[1].split('|');
+  const completed = c.searchCompletions('is:', { tags: [], vars: [], states: [] }).map(x => x.name.replace(/^is:/, ''));
+  const missing = canonical.filter(v => !completed.includes(v));
+  assert.equal(missing.length, 0, `is: values not completable: ${missing.join(', ')}`);
+});
+
+test('oracleCompletions — the closed likelihood set, with odds as the hint', () => {
+  const all = c.oracleCompletions('');
+  assert.ok(all.length >= 5, 'all bands on empty prefix (small, not a flood)');
+  const likely = all.find(x => x.name === 'likely');
+  assert.ok(likely && likely.group === 'oracle' && /yes/i.test(likely.hint), 'band carries its Yes|No odds as the hint');
+  assert.deepEqual(host(c.oracleCompletions('un').map(x => x.name)), ['unlikely']);
+});
+
+test('meterTokenAt / meterCompletions — the point\'s own property keys', () => {
+  assert.deepEqual(host(c.meterTokenAt('hp/hp', 5)), { token: 'hp', start: 3 }, 'the token after the / boundary');
+  assert.equal(c.meterTokenAt('hp/', 3), null, 'right after / → no token');
+  const keys = ['hp','hpmax','mana'];
+  assert.deepEqual(host(c.meterCompletions('hp', keys).map(x => x.name)), ['hp','hpmax']);
+  assert.equal(c.meterCompletions('', keys).length, 0, 'empty prefix → nothing');
+  assert.equal(c.meterCompletions('z', keys).length, 0, 'no matching property → nothing');
+});
+
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
   const names = p => c.filterBraceForms(p).map(f => f.name);
   assert.ok(names('cond').includes('conditional'));
