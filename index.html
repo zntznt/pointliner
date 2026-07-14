@@ -19876,6 +19876,86 @@ function mathCompletions(prefix, vars) {
   return out.sort((a, b) => (rank[a.group] ?? 9) - (rank[b.group] ?? 9));       // stable → groups cluster for the menu headers
 }
 
+// ─── body completion — Phase 2 (search operators, oracle bands, meter props) ───
+// The same stage-2 idea as math, for the other form bodies. All pure + Node-testable;
+// the vocab sources are passed in (tags/vars/states/propKeys) so the DOM layer gathers
+// them. Each inserts mid-body at the caret via braceApply's 'body' path. See
+// guidance/brace-completion-proposal.md.
+
+// The search-operator vocabulary a {query|roll|count: …} body draws on. SEARCH_IS_VALUES
+// is the canonical is: set — a drift test pins it against parseSearchQuery's own is:(…)
+// regex, so a new is: value can't ship without becoming completable.
+const SEARCH_IS_VALUES = ['done','todo','note','failing','passing','scheduled','unscheduled',
+  'overdue','held','pill','random','leaf','parent','collapsed','expanded','broken','empty',
+  'orphan','duplicate-title','recently-edited'];
+const SEARCH_FIELDS = ['is:','due:','start:','has:','state:','priority:','var:'];
+const SEARCH_DATE_VALUES = ['today','tomorrow','overdue','week','month'];
+const SEARCH_PRIORITY_VALUES = ['a','b','c','none','any'];
+
+// The whitespace-delimited token ending at the caret in a query string (a search term
+// legitimately holds `:` `#` `-` `"`, so only a space breaks it). null when empty (right
+// after a space / at the start) → no menu, so `{query: ` never floods. Pure.
+function searchTokenAt(query, caret) {
+  let i = caret;
+  while (i > 0 && !/\s/.test(query[i - 1])) i--;
+  const token = query.slice(i, caret);
+  return token ? { token, start: i } : null;
+}
+// Complete a single search token against the doc's vocabulary. ctx = {tags, vars, states}
+// (plain arrays, gathered by the caller). A field prefix (is:/due:/…) completes its value
+// set; a bare word suggests the field prefixes + matching tags; `#foo` completes tags. A
+// leading `-` (NOT) is preserved. Pure.
+function searchCompletions(token, ctx) {
+  ctx = ctx || {};
+  const tags = ctx.tags || [], vars = ctx.vars || [], states = ctx.states || [];
+  const neg = token && token[0] === '-';
+  const core = neg ? token.slice(1) : token;
+  const pre = neg ? '-' : '';
+  const out = [];
+  const push = (group, body, hint) => out.push({ name: pre + body, group, insert: pre + body, caretBack: 0, hint });
+  const starts = (s, p) => s.toLowerCase().startsWith(p.toLowerCase());
+  if (core[0] === '#') {                                                    // #tag
+    const tp = core.slice(1);
+    for (const t of tags) if (starts(t, tp)) push('op-tag', '#' + t, 'tag');
+    return out;
+  }
+  let m;
+  if ((m = /^is:(.*)$/i.exec(core)))       { for (const v of SEARCH_IS_VALUES)      if (starts(v, m[1])) push('op-is', 'is:' + v, 'state / structure'); return out; }
+  if ((m = /^(due|start):(.*)$/i.exec(core))) { const f = m[1].toLowerCase(); for (const v of SEARCH_DATE_VALUES) if (starts(v, m[2])) push('op-date', f + ':' + v, 'date'); return out; }
+  if ((m = /^priority:(.*)$/i.exec(core))) { for (const v of SEARCH_PRIORITY_VALUES) if (starts(v, m[1])) push('op-prio', 'priority:' + v, 'priority'); return out; }
+  if ((m = /^state:(.*)$/i.exec(core)))    { for (const s of states) if (starts(s, m[1])) push('op-state', 'state:' + s.toLowerCase(), 'sequence state'); return out; }
+  if ((m = /^var:(.*)$/i.exec(core)))      { for (const v of vars) if (starts(v, m[1])) push('op-var', 'var:' + v.toLowerCase(), 'declares a variable'); return out; }
+  if (/^has:/i.test(core)) return out;                                     // prop-key value completion deferred (needs a doc index)
+  // bare word → the field prefixes + matching tags (no match → [] → no menu, so plain text terms don't flood)
+  for (const f of SEARCH_FIELDS) if (starts(f, core)) push('op-field', f, 'filter');
+  for (const t of tags) if (starts(t, core)) push('op-tag', '#' + t, 'tag');
+  return out;
+}
+
+// {oracle: <band>} — complete the closed likelihood set. Empty prefix → all five (small,
+// not a flood). Pure (reads ORACLE_BANDS via closure).
+function oracleCompletions(prefix) {
+  const lo = (prefix || '').toLowerCase();
+  return ORACLE_BANDS.filter(b => b.label.toLowerCase().startsWith(lo))
+    .map(b => ({ name: b.label.toLowerCase(), group: 'oracle', insert: b.label.toLowerCase(), caretBack: 0, hint: b.body }));
+}
+
+// {meter: prop/prop} — the identifier token at the caret, and completion over the point's
+// OWN property keys (node-local, no doc index). Empty prefix → [] (the token scanner already
+// guards that). Pure.
+function meterTokenAt(body, caret) {
+  let i = caret;
+  while (i > 0 && /\w/.test(body[i - 1])) i--;
+  const token = body.slice(i, caret);
+  return /^[A-Za-z_]\w*$/.test(token) ? { token, start: i } : null;
+}
+function meterCompletions(prefix, propKeys) {
+  const lo = (prefix || '').toLowerCase();
+  if (!lo) return [];
+  return (propKeys || []).filter(k => k.toLowerCase().startsWith(lo))
+    .map(k => ({ name: k, group: 'op-prop', insert: k, caretBack: 0, hint: 'property' }));
+}
+
 function evalMath(input, vars = {}) {
   // Pre-process: collapse whitespace, lowercase, map Unicode math symbols
   const s = (input || '')
@@ -21513,6 +21593,43 @@ function showBracePreview(body, content, offset) {
   positionCaretMenu(bracePreview, content, offset);
 }
 
+// The doc vocabulary the search completion draws on (cached collectors, cheap).
+function searchCtx() {
+  return { tags: collectTags().map(t => t.name), vars: Object.keys(collectVars()), states: [...knownStates()] };
+}
+// Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
+// (fragStart RELATIVE to the char after `{`) for a recognized completing lead — matches
+// may be empty (a recognized lead with nothing to offer, e.g. {= } → we own the menu and
+// close it, never falling through to forms). Returns null when the body is NOT a
+// completing lead (fall through to the forms/name picker). Pure cores do the work; this
+// just gathers the DOM-side context.
+function bodyCompletion(inner, nodeId) {
+  if (/^=/.test(inner)) {                                             // math: {= …}
+    const frag = mathFragmentAt(inner, inner.length);
+    return frag ? { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, collectVars()) }
+                : { prefix: '', fragStart: inner.length, matches: [] };
+  }
+  let m;
+  if ((m = /^(query|roll|count)\s*:/i.exec(inner))) {                 // search: {query|roll|count: …}
+    const qStart = m[0].length, query = inner.slice(qStart);
+    const tok = searchTokenAt(query, query.length);
+    return tok ? { prefix: tok.token, fragStart: qStart + tok.start, matches: searchCompletions(tok.token, searchCtx()) }
+               : { prefix: '', fragStart: inner.length, matches: [] };
+  }
+  if ((m = /^oracle\s*:\s*/i.exec(inner))) {                          // oracle: {oracle: <band>}
+    const frag = inner.slice(m[0].length);
+    return /^[a-z]*$/i.test(frag) ? { prefix: frag, fragStart: m[0].length, matches: oracleCompletions(frag) }
+                                  : { prefix: '', fragStart: inner.length, matches: [] };
+  }
+  if ((m = /^meter\s*:/i.exec(inner))) {                              // meter: {meter: prop/prop} — the point's own keys
+    const body = inner.slice(m[0].length), tok = meterTokenAt(body, body.length);
+    if (!tok) return { prefix: '', fragStart: inner.length, matches: [] };
+    const node = nodeById(nodeId), keys = node ? (node.props || []).map(p => p.key) : [];
+    return { prefix: tok.token, fragStart: m[0].length + tok.start, matches: meterCompletions(tok.token, keys) };
+  }
+  return null;
+}
+
 function checkBraceTrigger(content, nodeId) {
   const pos = getCaretOffset(content);
   const before = editableText(content).slice(0, pos);
@@ -21526,22 +21643,20 @@ function checkBraceTrigger(content, nodeId) {
   // escape hatch: inside inline `code`, a `{` is literal, so don't offer the rule-completion menu there
   if (inCodeSpan(codeSpanRanges(before), braceStart)) { hideBraceMenu(); return; }
   const inner = before.slice(braceStart + 1);
-  // Math body completion (stage 2): inside a {= …} body, complete the math vocabulary
-  // at the caret instead of closing the menu. `inner` spans from just after `{` to the
-  // caret, so the identifier fragment ends at inner.length. Empty fragment → no menu
-  // (decision A: {= } doesn't flood). Handled BEFORE the identifier bail below.
-  if (/^=/.test(inner)) {
-    const frag = mathFragmentAt(inner, inner.length);
-    if (!frag) { hideBraceMenu(); return; }
-    const mm = mathCompletions(frag.prefix, collectVars());
-    if (!mm.length) { hideBraceMenu(); return; }
-    const fragStart = braceStart + 1 + frag.start;
-    braceState = { nodeId, content, braceStart, mode: 'math', prefix: frag.prefix, fragStart, caret: pos, activeIdx: 0, matches: mm };
+  // Body completion (stage 2): once a body commits to a form ({= …}, {query: …},
+  // {oracle: …}, {meter: …}), complete its vocabulary at the caret instead of closing.
+  // `inner` spans just after `{` to the caret. A recognized lead returns a (possibly
+  // empty) match set → we own the menu here and never fall through to forms below.
+  const bc = bodyCompletion(inner, nodeId);
+  if (bc) {
+    if (!bc.matches.length) { hideBraceMenu(); return; }
+    const fragStart = braceStart + 1 + bc.fragStart;
+    braceState = { nodeId, content, braceStart, mode: 'body', prefix: bc.prefix, fragStart, caret: pos, activeIdx: 0, matches: bc.matches };
     renderBraceMenu();
     positionCaretMenu(braceMenu, content, fragStart);  // anchor at the fragment, where the completion lands
     return;
   }
-  // Bare identifier prefix (or empty) only — not dice or alternation (math handled above)
+  // Bare identifier prefix (or empty) only — not dice or alternation (bodies handled above)
   if (inner !== '' && !/^[a-z_]\w*$/i.test(inner)) { hideBraceMenu(); return; }
   const prefix = inner.toLowerCase();
   // Forms first (fixed, always-present discovery), then this doc's names.
@@ -21558,7 +21673,10 @@ function checkBraceTrigger(content, nodeId) {
 
 const BM_GROUP_LABELS = { form: 'Grammar forms', var: 'Variables', rule: 'Rules', chain: 'Chains',
   // math body-completion groups (stage 2, inside {= …})
-  'fn-core': 'Functions', 'agg': 'Roll-ups (over child points)', 'fn-conv': 'Conversions', 'fn-date': 'Dates', 'const': 'Constants' };
+  'fn-core': 'Functions', 'agg': 'Roll-ups (over child points)', 'fn-conv': 'Conversions', 'fn-date': 'Dates', 'const': 'Constants',
+  // search / oracle / meter body-completion groups (stage 2)
+  'op-field': 'Filters', 'op-is': 'is: state / structure', 'op-date': 'Dates', 'op-prio': 'Priority',
+  'op-state': 'Sequence states', 'op-var': 'Variables', 'op-tag': 'Tags', 'oracle': 'Likelihood', 'op-prop': 'Properties' };
 
 function renderBraceMenu() {
   if (!braceState) return;
@@ -21656,10 +21774,10 @@ function braceApply() {
   const chosen = matches[activeIdx];
   hideBraceMenu();
   const node = nodeById(nodeId); if (!node) return;
-  if (mode === 'math') {
-    // Mid-body insert (stage 2): replace the identifier fragment at the caret with the
-    // chosen token, keeping the rest of the {= …} body. A function lands the caret INSIDE
-    // its () (caretBack 1) so you type the argument next; a constant/variable lands after.
+  if (mode === 'body') {
+    // Mid-body insert (stage 2, all body-completion contexts): replace the fragment at the
+    // caret with the chosen token, keeping the rest of the body. A math function lands the
+    // caret INSIDE its () (caretBack 1); an operator / band / property lands after (caretBack 0).
     const full = editableText(content);
     let end = caret; while (end < full.length && /\w/.test(full[end])) end++;   // consume the rest of the identifier the caret sits in
     node.text = full.slice(0, fragStart) + chosen.insert + full.slice(end);

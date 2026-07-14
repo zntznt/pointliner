@@ -1,8 +1,12 @@
 # Contextual body completion for the `{` picker — design proposal
 
-**Status:** **Phase 1 (math) shipped.** Decisions 1–4 approved as recommended (A / `name()`
-caret-inside / variables grouped-last first-char-gated / math-only first). Phases 2+
-(search operators, oracle bands, meter props) remain as speced follow-ups below.
+**Status:** **Phases 1 (math) + 2 (search / oracle / meter) shipped.** Decisions 1–4 approved
+as recommended. Remaining follow-up: `has:`/generic `key:` prop-*value* completion, which
+needs a doc-wide property-key index (deferred; meter completes the point's *own* keys, no
+index needed). Phase-2 cores: `searchTokenAt`/`searchCompletions` (+ `SEARCH_IS_VALUES`,
+drift-guarded against `parseSearchQuery`'s `is:(…)` regex), `oracleCompletions`,
+`meterTokenAt`/`meterCompletions`; the DOM dispatcher `bodyCompletion(inner, node)` unified
+all four contexts under one `braceState.mode === 'body'` mid-body insert.
 **Motivates:** the `{` picker (UXP-192 / #715) completes the *form*, then gets out of
 the way. This adds a second stage — completing the *body* of a form — so typing
 `{=` suggests what you can do with math, `{query:` suggests search operators, etc.
