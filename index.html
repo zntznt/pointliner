@@ -26987,7 +26987,7 @@ const GUIDE = [
   { id:'edit-break',   essential:true, essSection:'Edit', keys:['⇧+Enter'],               essLabel:'Line break' },
   { id:'edit-merge',   essential:true, essSection:'Edit', keys:['Bksp at start'],            essLabel:'Merge point up' },
   { id:'edit-indent',  essential:true, essSection:'Edit', keys:['Tab','⇧+Tab'],           essLabel:'Indent / outdent' },
-  { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','↓'],         essLabel:'Move point up / down' },
+  { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','Alt+↓'],     essLabel:'Move point up / down' },
   { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
   // Touch GESTURES are intentionally NOT here: this panel is keys + syntax only. Gestures
   // (hold/drag/swipe the bullet, the edit-bar) live in the concept guide's "Moving and
@@ -27239,6 +27239,14 @@ const GUIDE = [
       { syn:'{seq Flow: BACKLOG DOING | SHIPPED}', desc:'declare a workflow by typing' },
       { syn:'TODO NEXT WAITING | DONE', desc:'the built-in set' },
       { syn:'@ → Sequence', desc:'declare one with a form' },
+    ] },
+  { id:'sort-children', cat:'todos',
+    title:'Sort by state and priority',
+    body:"Tidy a busy list into working order in one move: bring the open work to the top and let the finished items sink. Open the bullet menu of the parent point and choose Sort children by state / priority, and its child points reorder by their to-do state and priority. Unfinished points come before done ones, higher priority before lower (an A before a B before a C, unmarked last), and within the same state they follow the order of their workflow. It is one undo away if you preferred the old order, and it sorts only the direct children of that point, not the whole tree. The option appears once a point has two or more children.",
+    examples:[
+      { syn:'Menu → Sort children by state / priority', desc:"reorder a point's children" },
+      { syn:'open before done',   desc:'unfinished points rise to the top' },
+      { syn:'A before B before C',desc:'higher priority first, unmarked last' },
     ] },
   { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
@@ -27580,14 +27588,6 @@ const GUIDE = [
       { syn:'strength: 3d6',          desc:'a random pick variable, rolled once on save then fixed' },
       { syn:'toggle off',             desc:'disable a pack without deleting it' },
     ] },
-  { id:'appearance', cat:'todos',
-    title:'Tag colors & property icons',
-    body:"Make your outline easier to scan at a glance. Open File then Tag & property styling to give a tag its own color and a property key a small icon. Type a tag name and click a color swatch: every #tag with that name shows in that color, and nested tags inherit it (a color on #thread also colors #thread/idea). Type a property key and pick an icon: that property's chip shows the icon before its name (a dollar sign on cost, a calendar on due). Both are purely visual, stored with the document and change nothing about the text or how search works. The colors are a curated on-brand set that stays legible in light and dark mode; the icons are drawn from the built-in set.",
-    examples:[
-      { syn:'File → Tag & property styling', desc:'color tags and icon properties' },
-      { syn:'#urgent → red',       desc:'a tag color (nested tags inherit it)' },
-      { syn:'cost → $ icon',       desc:'a property icon before the key' },
-    ] },
 
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
@@ -27660,6 +27660,14 @@ const GUIDE = [
       { syn:'File → Color',      desc:'pick an accent color' },
       { syn:'File → Full width', desc:'widen or narrow the editing column' },
       { syn:'Show done points',  desc:'toolbar button: reveal completed points' },
+    ] },
+  { id:'appearance', cat:'files',
+    title:'Tag colors & property icons',
+    body:"Make your outline easier to scan at a glance. Open File then Tag & property styling to give a tag its own color and a property key a small icon. Type a tag name and click a color swatch: every #tag with that name shows in that color, and nested tags inherit it (a color on #thread also colors #thread/idea). Type a property key and pick an icon: that property's chip shows the icon before its name (a dollar sign on cost, a calendar on due). Both are purely visual, stored with the document and change nothing about the text or how search works. The colors are a curated on-brand set that stays legible in light and dark mode; the icons are drawn from the built-in set.",
+    examples:[
+      { syn:'File → Tag & property styling', desc:'color tags and icon properties' },
+      { syn:'#urgent → red',       desc:'a tag color (nested tags inherit it)' },
+      { syn:'cost → $ icon',       desc:'a property icon before the key' },
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
