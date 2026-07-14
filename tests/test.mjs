@@ -1063,6 +1063,22 @@ test('BRACE_FORMS: every form has a description and a valid concept-guide link',
   assert.ok(guideIds.has('brace-picker'), "the { picker's own concept-guide entry ('brace-picker') exists");
 });
 
+// Clicking a { picker item (or its ? help mark, a real <button> that steals focus) must not tear the
+// picker down before the click's own handler runs. The contenteditable blur handler committed the
+// edit under the picker's mousedown, nulling braceState so click-to-select and the ? did nothing.
+// Fix: a _pickerMousedownActive flag set in the picker's capture-phase mousedown; the blur handler
+// skips exitEdit while it is true.
+test('picker click: the blur handler is guarded against an in-progress picker mousedown (src pins)', () => {
+  // the flag is set in a capture-phase mousedown on the brace menu, cleared next microtask
+  assert.ok(/_pickerMousedownActive\s*=\s*true[\s\S]{0,120}queueMicrotask/.test(_src),
+    'the picker mousedown sets the guard flag and clears it on the next microtask');
+  assert.ok(_src.includes("braceMenu.addEventListener('mousedown', () => { _pickerMousedownActive = true"),
+    'the flag is set on the brace-menu mousedown (capture phase)');
+  // the contenteditable blur handler must consult the flag before exitEdit
+  assert.ok(/if \(_pickerMousedownActive\) return;[\s\S]{0,120}exitEdit\(content, node\)/.test(_src),
+    'the blur handler skips exitEdit while a picker mousedown is active');
+});
+
 test('filterBraceForms — each scaffold selects the intended placeholder (sel offsets pinned)', () => {
   const want = {
     'math': '', 'roll-up': 'prop', 'word count': 'subtree', 'dice': '2d6',
