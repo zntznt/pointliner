@@ -28738,6 +28738,43 @@ const AUTOSAVE_KEY = 'pointliner_autosave';
 // always trails the current state by at least that interval (the "a mistake I made a while ago" window).
 const AUTOSAVE_PREV_KEY = 'pointliner_autosave_prev';
 const SNAPSHOT_EVERY_MS = 5 * 60 * 1000;   // 5 min: old enough to predate an unnoticed edit, fresh enough to matter
+// The prev-version store is a PER-DOC map { [docId]: { prev, at } } (was a single global slot, which
+// only ever held the last-active doc's earlier version — switch away and its restore point was lost).
+// Bounded so a folder of docs can't blow the localStorage ceiling: keep the newest N by `at`, then
+// drop oldest until under a byte cap. evictPrevVersions is the pure core (Node-tested).
+const PREV_KEEP_DOCS = 5;              // how many recently-edited docs keep a restore point
+const PREV_BYTE_CAP  = 3_000_000;      // ~3MB total across all kept prev snapshots (well under STORAGE_SOFT_LIMIT)
+// Read the prev-version store as a { [docId]: {prev, at} } map. Migrates the LEGACY single-slot
+// format (the value was one snapshot string) into the map under its own docId, so an existing
+// restore point survives the upgrade. Returns {} on anything unreadable.
+function readPrevVersions() {
+  let raw; try { raw = localStorage.getItem(AUTOSAVE_PREV_KEY); } catch (_) { return {}; }
+  if (!raw) return {};
+  let d; try { d = JSON.parse(raw); } catch (_) { return {}; }
+  if (!d || typeof d !== 'object') return {};
+  // legacy: the old format was a single snapshot object with a `.root` — re-key it by its docId
+  if (d.root && typeof d.root === 'object') {
+    const id = d.root.docId;
+    return id ? { [id]: { prev: raw, at: 0 } } : {};
+  }
+  return d;
+}
+function evictPrevVersions(map, keepN = PREV_KEEP_DOCS, byteCap = PREV_BYTE_CAP) {
+  if (!map || typeof map !== 'object') return {};
+  // newest-first by `at` (missing/garbage `at` sorts oldest so it's evicted first)
+  const entries = Object.entries(map)
+    .filter(([, v]) => v && typeof v.prev === 'string')
+    .sort((a, b) => (b[1].at || 0) - (a[1].at || 0))
+    .slice(0, keepN);
+  const out = {};
+  let bytes = 0;
+  for (const [id, v] of entries) {
+    bytes += v.prev.length;
+    if (bytes > byteCap && Object.keys(out).length >= 1) break; // always keep at least the newest one
+    out[id] = { prev: v.prev, at: v.at || 0 };
+  }
+  return out;
+}
 let _lastSnapshotAt = 0;
 let autosaveTimer = null;
 let autosaveDisabled = false; // set once an outline proves too large for localStorage
@@ -29018,7 +29055,20 @@ function writeLocalAutosave(payload) {
       const now = Date.now();
       if (now - _lastSnapshotAt >= SNAPSHOT_EVERY_MS) {
         const prev = localStorage.getItem(AUTOSAVE_KEY);
-        if (prev && prev !== payload) { try { localStorage.setItem(AUTOSAVE_PREV_KEY, prev); _lastSnapshotAt = now; } catch (_) {} }
+        // Stash the outgoing value under ITS OWN docId in the per-doc map, so switching docs never
+        // loses this doc's restore point. Key by the outgoing snapshot's docId (not the live root —
+        // they match here, but the snapshot is the source of truth for what is being preserved).
+        if (prev && prev !== payload) {
+          try {
+            const outId = JSON.parse(prev)?.root?.docId;
+            if (outId) {
+              const store = readPrevVersions();
+              store[outId] = { prev, at: now };
+              localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store)));
+              _lastSnapshotAt = now;
+            }
+          } catch (_) {}
+        }
       }
     }
     localStorage.setItem(AUTOSAVE_KEY, payload);
@@ -29120,12 +29170,15 @@ function applyAutosaveData(data) {
 // it matches, else null (used by both hasEarlierVersion and restoreEarlierVersion, one parse each).
 function earlierVersionForCurrentDoc() {
   try {
-    const raw = localStorage.getItem(AUTOSAVE_PREV_KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
+    // The store is a per-doc map { [docId]: {prev, at} }; look up THIS doc's own restore point, so a
+    // snapshot rolled while editing another document is neither offered nor applied (the cross-doc
+    // guard is now structural — the key IS the docId — not just a match check on a shared slot).
+    if (!root || !root.docId) return null;
+    const entry = readPrevVersions()[root.docId];
+    if (!entry || typeof entry.prev !== 'string') return null;
+    const d = JSON.parse(entry.prev);
     if (!d || !d.root) return null;
-    // Only offer a snapshot whose docId matches the live doc. A legacy snapshot with no docId (from
-    // before this stamp) is treated as non-matching — safer to skip than to risk a cross-doc restore.
+    // Defensive: the stored snapshot's own docId must still match (a corrupt/mis-keyed entry is skipped).
     if (!d.root.docId || d.root.docId !== root.docId) return null;
     return d;
   } catch (_) { return null; }

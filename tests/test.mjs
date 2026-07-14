@@ -9990,6 +9990,48 @@ test('Restore earlier version is doc-scoped: only the current document\'s snapsh
   assert.ok(rest.includes('earlierVersionForCurrentDoc()'), 'restore must apply only the current doc\'s snapshot');
 });
 
+// The prev-version store is now PER-DOC (a { [docId]: {prev, at} } map), so switching documents no
+// longer discards a doc's restore point. evictPrevVersions bounds it: keep the newest N by `at`, then
+// drop oldest until under a byte cap, always keeping at least the newest one.
+test('evictPrevVersions: keeps the newest N docs, byte-capped, at least one', () => {
+  const e = (prev, at) => ({ prev, at });
+  // 7 docs, keepN=5 → the 5 newest by `at` survive; the 2 oldest are dropped
+  const map = {};
+  for (let i = 1; i <= 7; i++) map['doc' + i] = e('x'.repeat(10), i * 100); // doc7 newest
+  const kept = c.evictPrevVersions(map, 5, 1_000_000);
+  const ids = Object.keys(kept);
+  assert.equal(ids.length, 5, 'keeps exactly keepN');
+  assert.ok(ids.includes('doc7') && ids.includes('doc3'), 'keeps the 5 newest (doc3..doc7)');
+  assert.ok(!ids.includes('doc1') && !ids.includes('doc2'), 'drops the 2 oldest');
+
+  // byte cap: three 1000-byte snapshots, cap 1500 → newest fits, then the cap stops further ones
+  const big = { a: e('a'.repeat(1000), 300), b: e('b'.repeat(1000), 200), c: e('c'.repeat(1000), 100) };
+  const capped = c.evictPrevVersions(big, 5, 1500);
+  assert.equal(Object.keys(capped).length, 1, 'the byte cap drops entries past the budget');
+  assert.ok(capped.a, 'the newest (highest at) is the one kept');
+
+  // always keep at least one even if a single snapshot exceeds the cap (a lost restore point is worse)
+  const huge = { z: e('z'.repeat(5000), 1) };
+  assert.equal(Object.keys(c.evictPrevVersions(huge, 5, 100)).length, 1, 'never evicts to empty');
+
+  // garbage in → {} out, and entries without a string prev are filtered
+  assert.deepEqual(host(c.evictPrevVersions(null)), {});
+  assert.deepEqual(host(c.evictPrevVersions({ bad: { at: 5 } })), {}, 'an entry with no prev string is dropped');
+});
+
+// src-pins: the read + write paths use the per-doc map, not the old single global slot.
+test('prev-version store is per-doc (src pins)', () => {
+  const w = fnBody(_src, 'writeLocalAutosave');
+  assert.ok(w.includes('readPrevVersions()') && w.includes('evictPrevVersions('),
+    'the write path stashes into the per-doc map and evicts');
+  assert.ok(/store\[\w+\]\s*=\s*\{\s*prev/.test(w), 'the outgoing snapshot is keyed by its own docId');
+  const r = fnBody(_src, 'earlierVersionForCurrentDoc');
+  assert.ok(r.includes('readPrevVersions()[root.docId]'), 'restore looks up THIS document\'s entry by docId');
+  // legacy single-slot format still migrates so an existing restore point survives the upgrade
+  const rp = fnBody(_src, 'readPrevVersions');
+  assert.ok(rp.includes('d.root') && rp.includes('docId'), 'readPrevVersions migrates the legacy single-slot value by docId');
+});
+
 // Cross-document write guard on reconnect (audit #2, the reload data-loss bug): reopenWorkspaceDoc's
 // "local autosave is newer" branch used to rebind the in-memory root to the reopened file handle
 // without checking they are the SAME document. On a fresh boot restoreAutosave loads the last-active
