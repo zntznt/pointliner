@@ -316,7 +316,11 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    clicked) onto the inert .sh-row teaching rows, so those still never steal focus from the search box.
    The toolbar is a fixed 44px row, so a fixed top aligns the panel just under it like the old absolute one. */
 #search-hint{display:none;position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);
-  min-width:min(max-content,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 60px);overflow-y:auto;
+  /* Match the width the focused search box extends to (min(592px, 100vw-32px)), so the panel is
+     as wide as the search bar rather than shrinking to its content (~300px, which read as a
+     too-narrow column under a wide field). The rows wrap to fill it. Capped to the viewport so it
+     never overflows; the ≤950px block below overrides this with a viewport-anchored sizing. */
+  width:min(592px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 60px);overflow-y:auto;
   overscroll-behavior:contain;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted)}
 #search-wrap:focus-within #search-hint{display:block}
@@ -359,16 +363,14 @@ body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:n
 #search-save:hover,#search-save[aria-pressed="true"]{color:var(--acc)}
 #search-save:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 #search-wrap:has(#search-clear.on) #search-box{padding-right:60px}
-/* Pin the search hint to the viewport edges whenever the window is too narrow to hold
-   the centered popup (its content is ~590px, so center-anchoring overflows below ~720px).
-   Above that there's room to center it. Rows wrap (base .sh-row), so it stays readable. */
-/* Below the centering breakpoint, pin the hint to the VIEWPORT (position:fixed escapes
-   the narrow, absolutely-positioned #search-wrap parent — otherwise left+right insets
-   would size the hint to the thin search box, making it extremely narrow). It sizes to
-   its content down to a floor, capped at the viewport width. */
-/* #587: fixed to the top on mobile; bound the height from that offset so a 25-row cheatsheet
-   scrolls within the viewport instead of running 1344px tall off a 667px screen. */
-@media(max-width:720px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 44px - env(safe-area-inset-top) - 12px)}}
+/* The base rule above centers the hint at the box's focus width (min(592px, viewport)). That is
+   correct from 561px up: the focused box centers there too (its 561-950px focus rule and the
+   >=951px desktop rule both center it), so box + hint share a center and the same width. Only the
+   PHONE (<=560px) differs: the box collapses to a magnifier that expands to a full-width overlay on
+   focus, so the hint is pinned to the viewport edges (position:fixed escapes the narrow
+   #search-wrap parent) and bounded in height so a 25-row cheatsheet scrolls instead of running off
+   a short screen (#587). */
+@media(max-width:560px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 44px - env(safe-area-inset-top) - 12px)}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
 #search-clear.on{display:block}
@@ -1836,7 +1838,11 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
    width (capped to the viewport). Mirrors the ≥951px behavior; the phone (≤560px) keeps
    its own full-width magnifier overlay below. */
 @media(min-width:561px) and (max-width:950px){
-  #search-wrap:focus-within{position:absolute;left:8px;right:auto;width:auto;z-index:70}
+  /* On focus, lift the field out of flow and CENTER it (matching the >=951px desktop behavior)
+     rather than pinning it to the left edge, which left a lopsided ~200px gap on the right at the
+     wide end of this range. The box + hint are both min(592px, viewport), so centering keeps them
+     aligned and on-screen. */
+  #search-wrap:focus-within{position:absolute;left:50%;right:auto;transform:translateX(-50%);width:auto;z-index:70}
   #search-wrap:focus-within #search-box{width:min(592px,calc(100vw - 16px))}
 }
 @media(max-width:560px){
