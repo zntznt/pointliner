@@ -18140,6 +18140,22 @@ function filterBraceForms(prefix) {
     .map(f => ({ group:'form', name:f.label, insert:f.insert, sel:f.sel, guide:f.guide, desc:f.desc }));
 }
 
+// The DEFAULT (highlighted) candidate for the forms+names picker: row 0 — unless the
+// typed prefix IS one of this doc's own callable names. A fully typed exact name is
+// near-proof of intent: `{count` on a doc with a `count` rule must Enter-complete
+// {count} again, not splice the count form's scaffold into the text (the P1
+// muscle-memory inversion, #730). Only the SELECTION moves — the display order stays
+// forms-first (discovery intact, no group headers jumping mid-keystroke) and the
+// user's name sits one visible highlight down the same list. A prefix that exactly
+// matches only a form label (`{dice` with no callable named dice) keeps the form:
+// applying a scaffold is the discoverable action, and Escape covers the rare literal
+// intent. Pure; callable names are lowercase by construction (collectVars/-Callables).
+function defaultBraceChoice(matches, prefix) {
+  if (!prefix) return 0;
+  const exact = matches.findIndex(x => x.group !== 'form' && x.name === prefix);
+  return exact === -1 ? 0 : exact;
+}
+
 // ─── hashtag index ───────────────────────────────────────────────────────────
 // Document-wide tag list for the # autocomplete (UXP-10): every #word the hashtag
 // renderer (mdInline) would produce, counted across the tree — same sigil rule,
@@ -21888,7 +21904,7 @@ function checkBraceTrigger(content, nodeId) {
   // Forms first (fixed, always-present discovery), then this doc's names.
   const matches = [...filterBraceForms(prefix), ...filterBraceCandidates(collectCallables(), prefix)];
   if (!matches.length) { hideBraceMenu(); return; }
-  braceState = { nodeId, content, braceStart, mode: 'forms', prefix, activeIdx: 0, matches };
+  braceState = { nodeId, content, braceStart, mode: 'forms', prefix, activeIdx: defaultBraceChoice(matches, prefix), matches };
   renderBraceMenu();
   // Anchor at the `{` itself (always present), not braceStart+1 — when `{` is the
   // last character that offset points past end-of-text, the DOM walk finds no node

@@ -1505,6 +1505,28 @@ test('filterBraceForms — prefix filters by label and keyword aliases', () => {
   assert.equal(names('zzz').length, 0, 'no match → nothing (name candidates still merge in the caller)');
 });
 
+test('defaultBraceChoice — an exactly-typed callable name wins the selection, not the list order (#730)', () => {
+  // The forms-first merge shadowed same-named doc callables as the Enter target:
+  // {count on a doc with a `count` rule spliced the {count: is:todo} scaffold. A fully
+  // typed exact name now moves the HIGHLIGHT to the user's own name; display order
+  // (forms first, discovery) is untouched.
+  const matches = [
+    { group: 'form', name: 'count', insert: '{count: is:todo}' },
+    { group: 'form', name: 'conditional', insert: '{cond: then | else}' },
+    { group: 'rule', name: 'count' },
+    { group: 'var',  name: 'counter', val: 3 },
+  ];
+  assert.equal(c.defaultBraceChoice(matches, 'count'), 2, 'the exact callable outranks the same-named form');
+  assert.equal(c.defaultBraceChoice(matches, 'cou'), 0, 'a prefix keeps discovery order (form first)');
+  assert.equal(c.defaultBraceChoice(matches, ''), 0, 'empty prefix → row 0');
+  // an exact FORM label with no same-named callable keeps the form — applying the
+  // scaffold is the discoverable action; Escape covers rare literal intent
+  const formsOnly = [{ group: 'form', name: 'dice', insert: '{2d6}' }];
+  assert.equal(c.defaultBraceChoice(formsOnly, 'dice'), 0);
+  // a var counts as a callable too
+  assert.equal(c.defaultBraceChoice(matches, 'counter'), 3, 'an exact variable name wins as well');
+});
+
 test('resolveBrace — a {mode: …} inside a rule degrades to a uniform pick (no state there)', () => {
   c.seedSequence([0]); // floor(0*3) → first item
   try {
