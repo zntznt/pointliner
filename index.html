@@ -5624,25 +5624,31 @@ function renderNodeInline(node) {
                   query: queryRenderList,
                   cookie: cookieNode, varMap: renderVarMap };
   _inlineDepth++;
-  diceRenderList = node.dice || null; markovRenderList = node.markov || null;
-  mathRenderList = node.math || null; estRenderList = node.est || null;
-  varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
-  seqRenderList = node.seq || null;
-  queryRenderList = node.query || null;
-  cookieNode = node;
-  // globalVarMap is document-wide — leave it. renderVarMap is POSITIONAL scope, so it must
-  // follow the mirrored target or its var/math pills resolve against the source's scope.
-  renderVarMap = varMapAt(node);
-  const html = node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
-  diceRenderList = saved.dice; markovRenderList = saved.markov;
-  mathRenderList = saved.math; estRenderList = saved.est;
-  varRenderList = saved.vars; grammarRenderList = saved.grammar;
-  seqRenderList = saved.seq;
-  queryRenderList = saved.query;
-  cookieNode = saved.cookie;
-  renderVarMap = saved.varMap;
-  _inlineDepth--;
-  return html;
+  // try/finally so a throw inside the mirrored target's render (a malformed sidecar surfacing in
+  // a pill renderer, codeNodeHTML) can never leave these module-level render globals pointing at
+  // the target — which would leak the target's sidecars into the rest of the synchronous pass —
+  // or jam _inlineDepth > 0 (every later mirror silently degrading to title-only). (#764)
+  try {
+    diceRenderList = node.dice || null; markovRenderList = node.markov || null;
+    mathRenderList = node.math || null; estRenderList = node.est || null;
+    varRenderList = node.vars || null; grammarRenderList = node.grammar || null;
+    seqRenderList = node.seq || null;
+    queryRenderList = node.query || null;
+    cookieNode = node;
+    // globalVarMap is document-wide — leave it. renderVarMap is POSITIONAL scope, so it must
+    // follow the mirrored target or its var/math pills resolve against the source's scope.
+    renderVarMap = varMapAt(node);
+    return node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
+  } finally {
+    diceRenderList = saved.dice; markovRenderList = saved.markov;
+    mathRenderList = saved.math; estRenderList = saved.est;
+    varRenderList = saved.vars; grammarRenderList = saved.grammar;
+    seqRenderList = saved.seq;
+    queryRenderList = saved.query;
+    cookieNode = saved.cookie;
+    renderVarMap = saved.varMap;
+    _inlineDepth--;
+  }
 }
 
 // inline markdown within a single line (text is NOT yet escaped)
@@ -5700,12 +5706,12 @@ function mdInline(s) {
   const stash = html => { tok.push(html); return `\x00${tok.length-1}\x00`; };
   s = s.replace(/`([^`\n]+)`/g, (_,c) => stash(`<code>${c}</code>`));
   // images first: ![alt](url "title") — superset of link syntax
-  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s\x00]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
     const u = safeUrl(url, true); if (!u) return '';
     return stash(`<img src="${escQ(u)}" alt="${escQ(alt)}"${title?` title="${escQ(title)}"`:''} class="md-img" loading="lazy">`);
   });
   // links: [text](url "title") — emphasis allowed inside the text
-  s = s.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*?)")?\)/g, (_, txt, url, title) => {
+  s = s.replace(/\[([^\]]*)\]\(([^)\s\x00]+)(?:\s+"([^"]*?)")?\)/g, (_, txt, url, title) => {
     const u = safeUrl(url); if (!u) return txt;
     return stash(`<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${mdEmph(txt)}</a>`);
   });
@@ -5742,8 +5748,10 @@ function mdInline(s) {
   s = s.replace(/\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, target, label) =>
     stash(renderLinkPill(target, label ?? '')));
   // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
-  // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:)
-  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g,
+  // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:). The URL
+  // char classes exclude \x00 so a stashed pill/footnote/code placeholder (\x00N\x00) glued to
+  // a URL is never swallowed into the href and dropped (#761).
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)\x00]+[^\s<).,;:!?\x00])/g,
     (_, pre, url) => pre + stash(`<a href="${escQ(url)}" target="_blank" rel="noopener">${url}</a>`));
   // progress cookies — [/] (fraction) and [%] (percent) tally the point's tasks.
   // Computed against the node being rendered (cookieNode); literal text otherwise. UXP-159: an
@@ -17769,7 +17777,13 @@ function nextSeqIndex(rec) {
 // through nextSeqIndex — so a deal spanning an empty bag reshuffles mid-deal and
 // continues, like a real deck; draws are distinct while the bag lasts.
 function advanceSeq(rec, rules = collectRules(), vars = collectVars()) {
-  const deal = Math.max(1, rec.count || 1);
+  const n = rec.items ? rec.items.length : 0;
+  // A shuffle deck draws WITHOUT replacement, so one deal can never exceed the deck size — else
+  // the bag empties and reshuffles mid-deal, repeating a card (the nested-in-rule path caps it
+  // the same way). cycle/once/stopping legitimately rotate and keep the requested count (once/
+  // stopping self-limit via nextSeqIndex returning -1). (#763)
+  const want = Math.max(1, rec.count || 1);
+  const deal = rec.mode === 'shuffle' && n > 0 ? Math.min(want, n) : want;
   const out = [];
   for (let i = 0; i < deal; i++) {
     const idx = nextSeqIndex(rec);
@@ -20021,7 +20035,14 @@ const FN3 = Object.assign(Object.create(null), {
   // Inverse of the component fns: build an epoch from y/m/d. Under a fictional calendar the y the
   // user types is the era-DISPLAY year (matching year() above), so convert to intrinsic then
   // calToEpoch; null (out-of-range for that calendar) → NaN so evalMath fails visibly, not silently.
-  date: (y, m, d) => { const cal = activeCalendar(); if (cal) { const ep = calToEpoch(cal.eras.length ? calYearFromEra(y, cal) : y, m, d, cal); return ep == null ? NaN : ep; } return Math.floor(Date.UTC(y, m - 1, d) / DAY_MS); },
+  date: (y, m, d) => { const cal = activeCalendar(); if (cal) { const ep = calToEpoch(cal.eras.length ? calYearFromEra(y, cal) : y, m, d, cal); return ep == null ? NaN : ep; }
+    // Round-trip-validate like parseDueDate: Date.UTC silently overflow-normalizes an impossible
+    // date (date(2026,2,30) → Mar 2, date(2025,13,40) → next year), so a bad date would read as a
+    // valid one. Reject it (→ NaN → #ERR) instead. (#760)
+    const yi = Math.trunc(y), mi = Math.trunc(m), di = Math.trunc(d);
+    const ms = Date.UTC(yi, mi - 1, di), dt = new Date(ms);
+    if (dt.getUTCFullYear() !== yi || dt.getUTCMonth() !== mi - 1 || dt.getUTCDate() !== di) return NaN;
+    return Math.floor(ms / DAY_MS); },
   clamp: (x, lo, hi) => Math.min(Math.max(x, lo), hi),            // bound x to [lo, hi]
   // #649 moon phase: the fraction 0..1 through a lunar cycle. period = the cycle length in days
   // (29.53 for Earth's moon, or any fantasy value), offset = the epoch-day of a known new moon.
