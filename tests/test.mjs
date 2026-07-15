@@ -41,6 +41,15 @@ const host = (x) => JSON.parse(JSON.stringify(x));
 // function, with no byte-offset window. Replaces the brittle /function X[\s\S]{0,N}sub/
 // pins (a behavior-preserving insert pushed the substring past N → false red). Returns ''
 // if the function isn't found (the caller's includes() then fails with a clear message).
+// The canonical is: value list, read from the SEARCH_IS_VALUES array literal — the ONE
+// source parseSearchQuery's regex is built from (single-sourced in #736's cleanup; the
+// old extractors sniffed the hand-written alternation, which no longer exists).
+function searchIsValuesFromSrc(src) {
+  const m = src.match(/const SEARCH_IS_VALUES = \[([\s\S]*?)\];/);
+  if (!m) return null;
+  return [...m[1].matchAll(/'([a-z-]+)'/g)].map(x => x[1]);
+}
+
 function fnBody(src, name) {
   const start = src.indexOf('function ' + name);
   if (start < 0) return '';
@@ -1253,7 +1262,7 @@ test('searchTokenAt — the whitespace-delimited token ending at the caret', () 
 });
 
 test('searchCompletions — fields, is: values, tags, and negation', () => {
-  const ctx = { tags: ['combat','city'], vars: ['gold'], states: ['TODO','WAITING'] };
+  const ctx = { tags: [{ name: 'combat', count: 3 }, { name: 'city', count: 2 }], vars: ['gold'], states: ['TODO','WAITING'] };
   const names = (tok) => c.searchCompletions(tok, ctx).map(x => x.name);
   assert.ok(names('is').includes('is:'), 'a bare "is" suggests the is: field');
   assert.ok(names('is:').includes('is:done') && names('is:').includes('is:failing'), 'is: completes its value set');
@@ -1269,11 +1278,14 @@ test('searchCompletions — fields, is: values, tags, and negation', () => {
 });
 
 test('searchCompletions drift: SEARCH_IS_VALUES matches parseSearchQuery\'s canonical is: regex', () => {
-  // The is: value set is authoritative in parseSearchQuery's /^is:(a|b|…)$/ alternation.
-  // Completion must offer exactly that set — a new is: value can't ship uncompletable.
-  const m = _src.match(/\^is:\(([a-z|\-]+)\)\$/i);
-  assert.ok(m, 'the is:(…) alternation was not found in parseSearchQuery (renamed?)');
-  const canonical = m[1].split('|');
+  // The is: value set is single-sourced: SEARCH_IS_VALUES builds parseSearchQuery's own
+  // regex, so parser and completion CANNOT drift structurally — pin the build + usage,
+  // then that completion offers exactly the canonical set.
+  assert.ok(/new RegExp\('\^is:\(' \+ SEARCH_IS_VALUES\.join\('\|'\) \+ '\)\$', 'i'\)/.test(_src),
+    'SEARCH_IS_RE must be BUILT from SEARCH_IS_VALUES (the single source)');
+  assert.ok(_src.includes('tok.match(SEARCH_IS_RE)'), 'parseSearchQuery must parse through the built regex');
+  const canonical = searchIsValuesFromSrc(_src);
+  assert.ok(canonical && canonical.length >= 15, 'SEARCH_IS_VALUES array literal not found');
   const completed = c.searchCompletions('is:', { tags: [], vars: [], states: [] }).map(x => x.name.replace(/^is:/, ''));
   const missing = canonical.filter(v => !completed.includes(v));
   assert.equal(missing.length, 0, `is: values not completable: ${missing.join(', ')}`);
@@ -1503,6 +1515,83 @@ test('filterBraceForms — prefix filters by label and keyword aliases', () => {
   const d = names('d');
   assert.ok(d.includes('dice') && d.includes('deck'), 'a shared prefix keeps both');
   assert.equal(names('zzz').length, 0, 'no match → nothing (name candidates still merge in the caller)');
+});
+
+// ── #736 cleanup batch: vocab single-sourcing, self-filter, ph-derivation, F1, walkers ──
+
+test('every completion-suggested search operator parses as its operator, never literal text (#736)', () => {
+  // The two-directional functional guard: the picker must never suggest a token the
+  // parser reads back as a plain text term (the P4 silent-wrong-search class).
+  const kindOf = (q) => host(c.parseSearchQuery(q))[0]?.kind;
+  const vals = searchIsValuesFromSrc(_src);
+  for (const v of vals) assert.equal(kindOf('is:' + v), 'is', `is:${v} must parse as an is: term`);
+  for (const v of ['today', 'tomorrow', 'overdue', 'week', 'month']) {
+    assert.equal(kindOf('due:' + v), 'due', `due:${v} must parse as a date term`);
+    assert.equal(kindOf('start:' + v), 'start', `start:${v} must parse as a date term`);
+  }
+  for (const v of ['a', 'b', 'c', 'none', 'any']) assert.equal(kindOf('priority:' + v), 'priority', `priority:${v}`);
+  assert.equal(kindOf('state:todo'), 'state');
+  assert.equal(kindOf('var:gold'), 'var');
+  assert.equal(kindOf('has:cost'), 'has');
+});
+
+test('searchCompletions — the half-typed tag is not offered back to itself (#736)', () => {
+  // Mirrors the dedicated # tag picker's rule: the prefix being typed is itself already
+  // indexed (node.text was written before the trigger), so a count-1 exact match is the
+  // self-occurrence, not a real tag.
+  const ctx = { tags: [{ name: 'co', count: 1 }, { name: 'combat', count: 3 }], vars: [], states: [] };
+  const names = host(c.searchCompletions('#co', ctx).map(x => x.name));
+  assert.ok(names.includes('#combat'), 'real tags still offered');
+  assert.ok(!names.includes('#co'), 'the count-1 self-occurrence is filtered');
+  // a genuinely used tag with the same spelling survives (count > 1)
+  const ctx2 = { tags: [{ name: 'co', count: 4 }], vars: [], states: [] };
+  assert.ok(host(c.searchCompletions('#co', ctx2).map(x => x.name)).includes('#co'));
+});
+
+test('BRACE_FORMS type-to-replace spans are DERIVED from ph placeholders (#736)', () => {
+  // The hand-counted sel:[a,b) offsets (double-bookkept in the `want` map above) are
+  // gone: filterBraceForms computes the span from the row's ph string, so a scaffold
+  // rewording can no longer desync selection from text. Pin the derivation contract.
+  const m = _src.match(/const BRACE_FORMS = \[([\s\S]*?)\];/);
+  assert.ok(m && !/sel:\[/.test(m[1]), 'no hand-counted sel offsets remain in the table');
+  for (const f of c.filterBraceForms('')) {
+    const [a, b] = f.sel;
+    if (a === b) { assert.equal(a, f.insert.length - 1, `${f.name}: the caret form sits before the closing brace`); continue; }
+    assert.equal(f.insert.indexOf(f.insert.slice(a, b)), a, `${f.name}: the span is the placeholder's own position`);
+  }
+});
+
+test('tokenLeftOfCaret — one scanner core behind both fragment tokenizers (#736)', () => {
+  assert.deepEqual(host(c.tokenLeftOfCaret('= sq', 4, /\w/, /^[A-Za-z_]\w*$/)), { token: 'sq', start: 2 });
+  assert.deepEqual(host(c.tokenLeftOfCaret('hp/hp-m', 7, /[\w-]/, /^[A-Za-z][\w-]*$/)), { token: 'hp-m', start: 3 });
+  assert.equal(c.tokenLeftOfCaret('= 2', 3, /\w/, /^[A-Za-z_]\w*$/), null, 'validation still gates the run');
+  // the wrappers preserve their public shapes
+  assert.deepEqual(host(c.mathFragmentAt('= sq', 4)), { prefix: 'sq', start: 2 });
+  assert.deepEqual(host(c.meterTokenAt('hp/hp-m', 7)), { token: 'hp-m', start: 3 });
+});
+
+test('F1 opens the guide for the highlighted picker suggestion (src pins, #736)', () => {
+  assert.ok(/if \(e\.key==='F1' && m\.help\)\s*\{ e\.preventDefault\(\); m\.help\(\);/.test(_src),
+    'the picker nav loop must route F1 to the menu help hook (preventDefault beats browser F1)');
+  assert.ok(/help: \(\) => \{ const it = braceState\?\.matches\[braceState\.activeIdx\]; openBraceHelp\(it\?\.guide \|\| 'brace-picker'\); \}/.test(_src),
+    'the brace menu supplies the help hook, falling back to the picker guide entry');
+  // documented where the menu is documented (P2) + in the keyboard grammar (P1)
+  assert.ok(_src.includes("syn:'F1'"), 'the brace-picker guide entry teaches F1');
+  const grammar = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guidance', 'ux-discipline.md'), 'utf8');
+  assert.ok(grammar.includes('| `F1` (picker menu open) |'), 'ux-discipline.md section 3 carries the F1 row');
+});
+
+test('the caret-walker suite is consolidated: no third walkDom copy; boundary rules match (src pins, #736)', () => {
+  const pcm = fnBody(_src, 'positionCaretMenu');
+  assert.ok(pcm.includes('domPointForLogical(content, offset)'), 'positionCaretMenu delegates to the shared point finder');
+  assert.ok(!pcm.includes('function walkDom'), 'the private walkDom copy is retired');
+  const dpl = fnBody(_src, 'domPointForLogical');
+  assert.ok(/if \(rem === 0\)[\s\S]{0,160}BR/.test(dpl) || /BR[\s\S]{0,300}rem === 0/.test(dpl),
+    'an offset ON a line break resolves BEFORE it (setCaretByOffset\u2019s rule)');
+  assert.ok(dpl.includes('rem <= len'), 'an offset inside a pill resolves at the following boundary, never negative');
+  // the VL scroll-out path closes the pickers (the one teardown gap left)
+  assert.ok(/isConnected[\s\S]{0,800}hideInlineMenus\(\)/.test(_src.slice(_src.indexOf('_vlPreservingFocus = true'), _src.indexOf('_vlPreservingFocus = false'))),
+    'a scrolled-out edited row closes the inline pickers instead of leaking them');
 });
 
 test('defaultBraceChoice — an exactly-typed callable name wins the selection, not the list order (#730)', () => {
@@ -6448,11 +6537,9 @@ test('user-guide drift: generating-text.md lists exactly the code MODIFIERS set'
 });
 
 test('user-guide drift: features.md lists every is: search operator from the code', () => {
-  // Canonical source: the is:(...) alternation in parseSearchQuery. Allow `-` so hyphenated
-  // operators (is:duplicate-title, #468) are captured, not truncated at the dash.
-  const m = _src.match(/is:\(([a-z|-]+)\)/i);
-  assert.ok(m, 'is:(...) operator regex not found in index.html (parseSearchQuery changed?)');
-  const codeOps = m[1].split('|');
+  // Canonical source: the SEARCH_IS_VALUES array (parseSearchQuery's regex is built from it).
+  const codeOps = searchIsValuesFromSrc(_src);
+  assert.ok(codeOps, 'SEARCH_IS_VALUES array literal not found in index.html');
   assert.ok(codeOps.length >= 3, `parsed too few is: operators: ${codeOps.join(',')}`);
 
   // Every is:<op> must appear somewhere in the user-facing features.md.
@@ -8228,7 +8315,8 @@ test('outline constraints: front-door + render + search wiring (src pins)', () =
   assert.ok(_src.includes('function openCheckDialog'), 'openCheckDialog missing');
   assert.ok(_src.includes('function buildCheckChip'), 'check chip builder missing');
   assert.ok(_src.includes('prop-check-fail'), 'check chip fail CSS class missing');
-  assert.ok(/is:\(done\|todo\|note\|failing\|passing\|/.test(_src), 'is:failing/is:passing missing from parseSearchQuery');
+  const isVals = searchIsValuesFromSrc(_src);
+  assert.ok(isVals && isVals.includes('failing') && isVals.includes('passing'), 'is:failing/is:passing missing from the search vocabulary');
   assert.ok(_src.includes("openCheckDialog(chip.dataset.propsId)"), 'check chip not routed in openPropChip');
 });
 
@@ -12139,9 +12227,9 @@ test('inventory drift guard: every brace sniff in code has its token in the sect
 });
 
 test('inventory drift guard: the is: whitelist in parseSearchQuery matches the section 2 row (#408)', () => {
-  const m = _src.match(/\^is:\(([a-z|-]+)\)\$/);   // `-` so hyphenated ops (is:duplicate-title) match
-  assert.ok(m, 'could not find the is: whitelist regex in parseSearchQuery — update this guard with the new shape');
-  for (const kw of m[1].split('|')) {
+  const vals = searchIsValuesFromSrc(_src);   // the array the parser's regex is built from
+  assert.ok(vals, 'could not find SEARCH_IS_VALUES — update this guard with the new shape');
+  for (const kw of vals) {
     assert.ok(_inv.includes('`' + kw + '`'), `is:${kw} shipped in code but is missing from the section 2 Search-query row`);
   }
 });

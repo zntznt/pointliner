@@ -7748,6 +7748,13 @@ function renderWindow(force) {
     if (focusedInner.isConnected) {
       focusedInner.focus();
       if (caretOff != null) setCaretByOffset(focusedInner, caretOff);
+    } else {
+      // The edited row scrolled OUT of the window and was not re-appended: focus is gone
+      // and the guarded blur above skipped exitEdit's teardown, so any open caret picker
+      // would float orphaned over unrelated rows, holding a detached content element and
+      // still owning Enter/Tab (#736). Close them here — the one exit path hideInlineMenus
+      // didn't cover.
+      hideInlineMenus();
     }
     _vlPreservingFocus = false;   // cleared unconditionally: the guard must never outlive the rebuild
   }
@@ -12666,6 +12673,23 @@ function cycleJournalMode() {
 // literal text term — the same invalid-body escape hatch as {…} shorthand, so a
 // query never silently matches everything (an empty OR clause is dropped, same rule).
 
+// The search-operator vocabulary — SINGLE-SOURCED here so the parser and the picker's
+// completion can never drift. SEARCH_IS_VALUES is the one canonical is: list: the
+// parser's regex below is BUILT from it, so adding a value makes it parseable and
+// completable in the same edit (structural, not test-guarded — the review found the
+// old hand-copied alternation guarded in one direction only). The other three arrays
+// are completion's curated subsets of arms whose parser grammar is intentionally wider
+// (priority accepts any letter; the date arm also parses ISO dates and </> prefixes),
+// so they cannot BE the parser source — a two-directional drift test pins each against
+// its arm instead (#736).
+const SEARCH_IS_VALUES = ['done','todo','note','failing','passing','scheduled','unscheduled',
+  'overdue','held','pill','random','leaf','parent','collapsed','expanded','broken','empty',
+  'orphan','duplicate-title','recently-edited'];
+const SEARCH_IS_RE = new RegExp('^is:(' + SEARCH_IS_VALUES.join('|') + ')$', 'i');
+const SEARCH_FIELDS = ['is:','due:','start:','has:','state:','priority:','var:'];
+const SEARCH_DATE_VALUES = ['today','tomorrow','overdue','week','month'];
+const SEARCH_PRIORITY_VALUES = ['a','b','c','none','any'];
+
 // Parse a query string into terms: [{neg, kind:'text'|'tag'|'is', value}].
 // Values are lowercased (search is case-insensitive throughout). Pure.
 // QX-1: the artifact sidecar arrays (mkNode), and the has:<word> -> field map
@@ -12704,7 +12728,7 @@ function parseSearchQuery(q) {
     // never feeds it to `new RegExp('...#'+value+'...')` — a ~32k tag exceeds V8's regex program
     // limit and throws mid-render(). (Adversarial pass, blast: crash.) The `else if` chain below
     // catches the fall-through; an over-long token becomes a plain text search, which is harmless.
-    else if ((t = tok.match(/^is:(done|todo|note|failing|passing|scheduled|unscheduled|overdue|held|pill|random|leaf|parent|collapsed|expanded|broken|empty|orphan|duplicate-title|recently-edited)$/i)))  terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() });
+    else if ((t = tok.match(SEARCH_IS_RE)))                    terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() }); // built from SEARCH_IS_VALUES — one source for parser + completion
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -14265,7 +14289,11 @@ function hideInlineMenus() {
 const INLINE_MENU_NAV = [
   { open: () => lpState && isLpMenuOpen(),       move: lpMove,    apply: lpApply,    hide: hideLinkMenu },
   { open: () => slashState && isSlashMenuOpen(), move: slashMove, apply: slashApply, hide: hideSlashMenu },
-  { open: () => braceState && isBraceMenuOpen(), move: braceMove, apply: braceApply, hide: hideBraceMenu },
+  { open: () => braceState && isBraceMenuOpen(), move: braceMove, apply: braceApply, hide: hideBraceMenu,
+    // F1 = help for the highlighted suggestion — the platform help key, collision-free
+    // with typing by construction (every printable char, `?` included, must keep going
+    // into the text). The keyboard twin of the mouse-only .bm-help mark (P3, #736).
+    help: () => { const it = braceState?.matches[braceState.activeIdx]; openBraceHelp(it?.guide || 'brace-picker'); } },
   { open: () => tagState && isTagMenuOpen(),     move: tagMove,   apply: tagApply,   hide: hideTagMenu },
   { open: () => emojiState && isEmojiMenuOpen(), move: emojiMove, apply: emojiApply, hide: hideEmojiMenu },
 ];
@@ -14370,6 +14398,7 @@ function onKeyDown(e, id, content) {
     if (e.key==='ArrowUp')              { e.preventDefault(); m.move(-1); return; }
     if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); m.apply();  return; }
     if (e.key==='Escape')               { e.preventDefault(); m.hide();   return; }
+    if (e.key==='F1' && m.help)         { e.preventDefault(); m.help();   return; }   // help for the highlighted row (preventDefault beats the browser's own F1)
     break;   // this menu owns the popup; unhandled keys fall through (matches the old blocks)
   }
   if (isSizePickerOpen()) {
@@ -18112,32 +18141,43 @@ function filterBraceCandidates(callables, prefix) {
 // `guide` names the concept-guide entry id the form's help mark opens (Guided + Standard); `desc`
 // is the one-line gloss shown in Guided (verbose). Both are optional per form.
 const BRACE_FORMS = [
-  { label:'math',        keys:['math','calc'],                                        insert:'{= }',                 sel:[3,3],  guide:'math',          desc:'calculate a value live' },
-  { label:'roll-up',     keys:['rollup','sum','avg','min','max','count','total'],      insert:'{= sum(prop)}',        sel:[7,11], guide:'rollups',       desc:"total a property over this point's children" },
-  { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   sel:[9,16], guide:'math',          desc:'count words in this point and below' },
-  { label:'dice',        keys:['dice','roll'],                                         insert:'{2d6}',                sel:[1,4],  guide:'dice',          desc:'roll dice, click to re-roll' },
-  { label:'pick',        keys:['pick','alt','choice','weighted'],                      insert:'{a | b | c}',          sel:[1,2],  guide:'grammar',       desc:'pick one at random from a list' },
-  { label:'conditional', keys:['cond','conditional','if'],                             insert:'{cond: then | else}',  sel:[1,5],  guide:'gen-conditions',desc:'show one text or another by a test' },
-  { label:'deck',        keys:['deck','shuffle','cycle','once','stopping','sequence'], insert:'{shuffle: a | b | c}', sel:[10,19],guide:'deck',          desc:'draw without repeats, or cycle in order' },
-  { label:'repeat',      keys:['repeat','times'],                                      insert:'{2x: template}',       sel:[5,13], guide:'grammar',       desc:'repeat a template N times' },
-  { label:'modifier',    keys:['modifier','mod','cap','title','upper','lower'],        insert:'{name.cap}',           sel:[1,5],  guide:'gen-modifiers', desc:'reshape output: capitalize, a/an, plural' },
-  { label:'item field',  keys:['item','field'],                                        insert:'{item.field}',         sel:[1,5],  guide:'gen-rules',     desc:'read a field off a picked item' },
-  { label:'estimate',    keys:['estimate','uncertain','normal','uniform'],             insert:'{5 to 10}',            sel:[1,8],  guide:'estimates',     desc:'an uncertain value with a range' },
-  { label:'query',       keys:['query','search','list','embed'],                       insert:'{query: is:todo}',     sel:[8,15], guide:'query',         desc:'a live list of matching points' },
-  { label:'count',       keys:['count','tally','number','howmany'],                    insert:'{count: is:todo}',     sel:[8,15], guide:'query',         desc:'a live count of matching points' },
-  { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      sel:[7,14], guide:'roll-query',    desc:'pick one random matching point' },
-  { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: 10/100}',      sel:[8,14], guide:'meter',         desc:'a bar of a value against its max' },
-  { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   sel:[9,17], guide:'markov',        desc:'generate text in a style you seed' },
-  { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     sel:[9,15], guide:'oracle',        desc:'a weighted yes/no answer' },
-  { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', sel:[5,9], guide:'sequences', desc:'define a custom to-do workflow' },
+  { label:'math',        keys:['math','calc'],                                        insert:'{= }',                 ph:null,  guide:'math',          desc:'calculate a value live' },
+  { label:'roll-up',     keys:['rollup','sum','avg','min','max','count','total'],      insert:'{= sum(prop)}',        ph:'prop', guide:'rollups',       desc:"total a property over this point's children" },
+  { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   ph:'subtree', guide:'math',          desc:'count words in this point and below' },
+  { label:'dice',        keys:['dice','roll'],                                         insert:'{2d6}',                ph:'2d6',  guide:'dice',          desc:'roll dice, click to re-roll' },
+  { label:'pick',        keys:['pick','alt','choice','weighted'],                      insert:'{a | b | c}',          ph:'a',  guide:'grammar',       desc:'pick one at random from a list' },
+  { label:'conditional', keys:['cond','conditional','if'],                             insert:'{cond: then | else}',  ph:'cond',  guide:'gen-conditions',desc:'show one text or another by a test' },
+  { label:'deck',        keys:['deck','shuffle','cycle','once','stopping','sequence'], insert:'{shuffle: a | b | c}', ph:'a | b | c',guide:'deck',          desc:'draw without repeats, or cycle in order' },
+  { label:'repeat',      keys:['repeat','times'],                                      insert:'{2x: template}',       ph:'template', guide:'grammar',       desc:'repeat a template N times' },
+  { label:'modifier',    keys:['modifier','mod','cap','title','upper','lower'],        insert:'{name.cap}',           ph:'name',  guide:'gen-modifiers', desc:'reshape output: capitalize, a/an, plural' },
+  { label:'item field',  keys:['item','field'],                                        insert:'{item.field}',         ph:'item',  guide:'gen-rules',     desc:'read a field off a picked item' },
+  { label:'estimate',    keys:['estimate','uncertain','normal','uniform'],             insert:'{5 to 10}',            ph:'5 to 10',  guide:'estimates',     desc:'an uncertain value with a range' },
+  { label:'query',       keys:['query','search','list','embed'],                       insert:'{query: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live list of matching points' },
+  { label:'count',       keys:['count','tally','number','howmany'],                    insert:'{count: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live count of matching points' },
+  { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      ph:'is:todo', guide:'roll-query',    desc:'pick one random matching point' },
+  { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: 10/100}',      ph:'10/100', guide:'meter',         desc:'a bar of a value against its max' },
+  { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   ph:'a→b, b→c', guide:'markov',        desc:'generate text in a style you seed' },
+  { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     ph:'likely', guide:'oracle',        desc:'a weighted yes/no answer' },
+  { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', ph:'Flow', guide:'sequences', desc:'define a custom to-do workflow' },
 ];
 // Filter BRACE_FORMS by prefix (label or any key, anchored). Empty prefix = all.
-// Returns fresh {group:'form', …} objects for the merged menu. Pure; no DOM.
+// Returns fresh {group:'form', …} objects for the merged menu. The type-to-replace span
+// is DERIVED from the row's `ph` placeholder string (ph:null = a collapsed caret before
+// the closing brace, the {= } case) — the old hand-counted sel:[a,b) offsets had to be
+// recounted on every scaffold rewording and were double-bookkept in a test `want` map;
+// desync is now impossible by construction (#736). Pure; no DOM.
+// The mapped rows are CONSTANT — built once (sel derived from ph here), filtered by
+// reference per call. The old per-keystroke .map() allocated 18 fresh objects on every
+// input after a bare `{` (the forms menu is always non-empty since #715), for identical
+// results (#736). Rows are read-only by contract (renderBraceMenu/braceApply only read).
+const BRACE_FORM_ROWS = BRACE_FORMS.map(f => {
+  const at = f.ph ? f.insert.indexOf(f.ph) : f.insert.length - 1;
+  return { group:'form', name:f.label, insert:f.insert, sel: f.ph ? [at, at + f.ph.length] : [at, at], guide:f.guide, desc:f.desc };
+});
 function filterBraceForms(prefix) {
   const lo = (prefix || '').toLowerCase();
-  return BRACE_FORMS
-    .filter(f => !lo || f.label.startsWith(lo) || f.keys.some(k => k.startsWith(lo)))
-    .map(f => ({ group:'form', name:f.label, insert:f.insert, sel:f.sel, guide:f.guide, desc:f.desc }));
+  if (!lo) return BRACE_FORM_ROWS;
+  return BRACE_FORM_ROWS.filter((r, i) => r.name.startsWith(lo) || BRACE_FORMS[i].keys.some(k => k.startsWith(lo)));
 }
 
 // The DEFAULT (highlighted) candidate for the forms+names picker: row 0 — unless the
@@ -19936,11 +19976,19 @@ function mathFnGroup(name) {
 // The identifier fragment ending at `caret` within a math body — the token being
 // typed. null when the caret isn't on a bare identifier (after a number, an operator,
 // a bracket, or empty), so a number or operator never opens the menu. Pure.
-function mathFragmentAt(body, caret) {
+// One scan-left tokenizer for every body-completion fragment: walk back over `scanRe`
+// chars, validate the run against the target grammar's own ref pattern. The two former
+// copies (mathFragmentAt / meterTokenAt) were byte-identical except for those two
+// regexes — and a fix to one silently missed the other (#736). Pure.
+function tokenLeftOfCaret(text, caret, scanRe, validRe) {
   let i = caret;
-  while (i > 0 && /\w/.test(body[i - 1])) i--;
-  const prefix = body.slice(i, caret);
-  return /^[A-Za-z_]\w*$/.test(prefix) ? { prefix, start: i } : null;
+  while (i > 0 && scanRe.test(text[i - 1])) i--;
+  const token = text.slice(i, caret);
+  return validRe.test(token) ? { token, start: i } : null;
+}
+function mathFragmentAt(body, caret) {
+  const t = tokenLeftOfCaret(body, caret, /\w/, /^[A-Za-z_]\w*$/);
+  return t ? { prefix: t.token, start: t.start } : null;   // callers read `prefix`
 }
 // One-line glosses for every math completion (shown in Guided under the signature hint), so a
 // completion explains itself the way the top-level { forms do. Terse; the signature `hint` already
@@ -20020,15 +20068,9 @@ function mathCompletions(prefix, vars) {
 // them. Each inserts mid-body at the caret via braceApply's 'body' path. See
 // guidance/brace-completion-proposal.md.
 
-// The search-operator vocabulary a {query|roll|count: …} body draws on. SEARCH_IS_VALUES
-// is the canonical is: set — a drift test pins it against parseSearchQuery's own is:(…)
-// regex, so a new is: value can't ship without becoming completable.
-const SEARCH_IS_VALUES = ['done','todo','note','failing','passing','scheduled','unscheduled',
-  'overdue','held','pill','random','leaf','parent','collapsed','expanded','broken','empty',
-  'orphan','duplicate-title','recently-edited'];
-const SEARCH_FIELDS = ['is:','due:','start:','has:','state:','priority:','var:'];
-const SEARCH_DATE_VALUES = ['today','tomorrow','overdue','week','month'];
-const SEARCH_PRIORITY_VALUES = ['a','b','c','none','any'];
+// The search-operator vocabulary lives with parseSearchQuery (single-sourced there —
+// SEARCH_IS_VALUES builds the parser's own is: regex, so parser and completion cannot
+// drift; the other three arrays are pinned two-directionally against the parser's arms).
 
 // The whitespace-delimited token ending at the caret in a query string (a search term
 // legitimately holds `:` `#` `-` `"`, so only a space breaks it). null when empty (right
@@ -20067,7 +20109,10 @@ function searchCompletions(token, ctx) {
   const starts = (s, p) => s.toLowerCase().startsWith(p.toLowerCase());
   if (core[0] === '#') {                                                    // #tag
     const tp = core.slice(1);
-    for (const t of tags) if (starts(t, tp)) push('op-tag', '#' + t, 'tag');
+    // The half-typed prefix is itself already indexed (node.text was written before the
+    // trigger ran), so a count-1 exact match is that self-occurrence, not a real tag —
+    // the same rule the dedicated # tag picker ships (#736).
+    for (const t of tags) if (starts(t.name, tp) && !(t.count === 1 && t.name === tp)) push('op-tag', '#' + t.name, 'tag');
     return out;
   }
   let m;
@@ -20084,7 +20129,7 @@ function searchCompletions(token, ctx) {
   if ((m = /^has:(.*)$/i.exec(core)))      { for (const k of propKeys) if (starts(k, m[1]) && /^[\w][\w-]*$/.test(k)) push('op-prop', 'has:' + k, 'has a property'); return out; }
   // bare word → the field prefixes + matching tags (no match → [] → no menu, so plain text terms don't flood)
   for (const f of SEARCH_FIELDS) if (starts(f, core)) push('op-field', f, 'filter');
-  for (const t of tags) if (starts(t, core)) push('op-tag', '#' + t, 'tag');
+  for (const t of tags) if (starts(t.name, core) && !(t.count === 1 && t.name === core)) push('op-tag', '#' + t.name, 'tag');
   return out;
 }
 
@@ -20101,13 +20146,8 @@ function oracleCompletions(prefix) {
 // OWN property keys (node-local, no doc index). Empty prefix → [] (the token scanner already
 // guards that). Pure.
 function meterTokenAt(body, caret) {
-  // Scan with parseMeter's OWN ref grammar ([A-Za-z][\w-]* — hyphens are legal in
-  // property keys): a \w scan stopped at '-', so `{meter: hp/hp-m` tokenized just 'm',
-  // never offered `hp-max`, and splicing a pick mid-key corrupted the ref (hp-mana).
-  let i = caret;
-  while (i > 0 && /[\w-]/.test(body[i - 1])) i--;
-  const token = body.slice(i, caret);
-  return /^[A-Za-z][\w-]*$/.test(token) ? { token, start: i } : null;
+  // parseMeter's own ref grammar ([A-Za-z][\w-]* — hyphenated property keys are legal).
+  return tokenLeftOfCaret(body, caret, /[\w-]/, /^[A-Za-z][\w-]*$/);
 }
 function meterCompletions(prefix, propKeys) {
   const lo = (prefix || '').toLowerCase();
@@ -21757,7 +21797,7 @@ function disarmPickerGuard() { _pickerMousedownActive = false; clearTimeout(_pic
 window.addEventListener('click', disarmPickerGuard, true);
 window.addEventListener('pointercancel', disarmPickerGuard, true);
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
-function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; _bodyVocab = null; /* drop the per-session completion vocabulary (see bodyVocab) */ }
+function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; _bodyVocab = null; _braceRenderKey = null; /* drop the per-session completion vocabulary + render key (see bodyVocab/renderBraceMenu) */ }
 braceMenu.addEventListener('pointerdown', armPickerGuard, true);
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
 // The picker's `?` help mark: commit the draft DELIBERATELY, then open the concept guide at
@@ -21789,7 +21829,7 @@ function showBracePreview(body, content, offset) {
 
 // The doc vocabulary the search completion draws on (cached collectors, cheap).
 function searchCtx() {
-  return { tags: collectTags().map(t => t.name), vars: Object.keys(collectVars()), states: [...knownStates()], propKeys: collectPropKeys() };
+  return { tags: collectTags().map(t => ({ name: t.name, count: t.count })), vars: Object.keys(collectVars()), states: [...knownStates()], propKeys: collectPropKeys() };
 }
 // Per-SESSION vocabulary cache for body completion. The input handler runs markDirty()
 // (bumping _varsVer) BEFORE the trigger chain, so every _varsVer-keyed collector read
@@ -21920,8 +21960,17 @@ const BM_GROUP_LABELS = { form: 'Grammar forms', var: 'Variables', rule: 'Rules'
   'op-field': 'Filters', 'op-is': 'is: state / structure', 'op-date': 'Dates', 'op-prio': 'Priority',
   'op-state': 'Sequence states', 'op-var': 'Variables', 'op-tag': 'Tags', 'oracle': 'Likelihood', 'op-prop': 'Properties' };
 
+let _braceRenderKey = null;   // last-rendered menu content key — cleared in hideBraceMenu
 function renderBraceMenu() {
   if (!braceState) return;
+  // Skip the innerHTML teardown + rebuild when nothing visible changed: same mode, same
+  // highlight, same candidate names (hints are session-stable via the vocab cache). A
+  // keystroke that narrows nothing — common while typing a long token — otherwise paid
+  // a full ~18-row DOM rebuild per key (#736). positionCaretMenu still runs at the
+  // caller, so the menu keeps tracking the caret.
+  const key = braceState.mode + '|' + braceState.activeIdx + '|' + braceState.matches.map(m => m.name).join('\u0000');
+  if (isBraceMenuOpen() && key === _braceRenderKey) return;
+  _braceRenderKey = key;
   braceMenu.innerHTML = '';
   let lastGroup = null;
   braceState.matches.forEach((item, i) => {
@@ -21987,29 +22036,23 @@ function renderBraceMenu() {
 // Position a caret-anchored picker (the { and # menus share this) at the logical
 // text offset, flipping above the caret when it would clip the viewport bottom.
 function positionCaretMenu(menu, content, offset) {
-  let rem = offset, targetNode = null, targetRawOff = 0;
-  function walkDom(node) {
-    if (targetNode) return;
-    if (node.nodeType === 3) {
-      const raw = node.nodeValue; let logical = 0, i = 0;
-      for (; i < raw.length; i++) {
-        if (raw[i] !== '​') {
-          if (logical === rem) { targetNode = node; targetRawOff = i; return; }
-          logical++;
-        }
-      }
-      rem -= logical; return;
-    }
-    if (node.nodeType !== 1) return;
-    if (node.dataset?.token) { rem -= node.dataset.token.length; return; }
-    if (node.nodeName === 'BR') { rem -= 1; return; }
-    for (const c of node.childNodes) walkDom(c);
-  }
-  for (const c of content.childNodes) walkDom(c);
-  if (!targetNode) { menu.style.left = '0'; menu.style.top = '0'; return; }
+  // ONE walker: delegate to domPointForLogical (the shared logical→DOM point finder)
+  // instead of keeping a third private copy of the ZWSP/token/BR walk — the copies had
+  // already diverged on boundary cases (#736; CLAUDE.md's "edit any one and you usually
+  // have to edit all of them" suite shrinks by one). Bonus over the old private copy:
+  // an offset at end-of-text now resolves to a collapsed rect at the caret instead of
+  // falling back to the 0,0 corner.
+  const p = domPointForLogical(content, offset);
+  if (!p) { menu.style.left = '0'; menu.style.top = '0'; return; }
   const range = document.createRange();
-  range.setStart(targetNode, targetRawOff);
-  range.setEnd(targetNode, Math.min(targetRawOff + 1, targetNode.length));
+  if (p.node.nodeType === 3) {
+    range.setStart(p.node, p.off);
+    range.setEnd(p.node, Math.min(p.off + 1, p.node.length));
+  } else {
+    // an element point (a pill/BR boundary): span that child so the rect anchors on it
+    range.setStart(p.node, p.off);
+    range.setEnd(p.node, Math.min(p.off + 1, p.node.childNodes.length));
+  }
   const rect = range.getBoundingClientRect();
   menu.style.left = rect.left + 'px';
   menu.style.top  = (rect.bottom + 4) + 'px';
@@ -22471,7 +22514,7 @@ function setCaretByOffset(el, target) {
 // getCaretOffset/setCaretByOffset. Used to build a non-collapsed selection
 // (selectLogicalRange). Returns null if the offset runs past the content.
 function domPointForLogical(el, target) {
-  let rem = target, res = null;
+  let rem = target, res = null, fallback = null;
   function walk(node) {
     if (res) return;
     if (node.nodeType === 3) {
@@ -22479,16 +22522,44 @@ function domPointForLogical(el, target) {
       for (; i < raw.length; i++) {
         if (raw[i] !== '​') { if (logical === rem) { res = { node, off: i }; return; } logical++; }
       }
-      if (logical >= rem) { res = { node, off: i }; return; }
+      if (logical === rem) {
+        // The point sits exactly ON this node's END boundary. Geometrically that can be
+        // a dead spot — a collapsed range at the end of a "\n" text node has no box, so
+        // a menu anchored there fell back to the 0,0 corner (#736). Keep it only as a
+        // FALLBACK and keep walking: the same logical position at the START of the next
+        // non-empty text node (or before the next pill/BR) is where the caret renders.
+        if (!fallback) fallback = { node, off: i };
+      }
       rem -= logical; return;
     }
     if (node.nodeType !== 1) return;
-    if (node.dataset?.token) { if (rem <= 0) { res = { node: node.parentNode, off: [...node.parentNode.childNodes].indexOf(node) }; return; } rem -= node.dataset.token.length; return; }
-    if (node.nodeName === 'BR') { rem -= 1; return; }
+    if (node.dataset?.token) {
+      // Mirror setCaretByOffset's pill discipline (the review found this copy had
+      // diverged, #736): an offset AT the pill start resolves before it; an offset
+      // strictly inside/at its width resolves to the following text node's start
+      // (the caret-visible position after an atomic pill), falling back to the
+      // element boundary after it. rem must never go negative past a pill.
+      const len = node.dataset.token.length;
+      if (rem <= 0) { res = { node: node.parentNode, off: [...node.parentNode.childNodes].indexOf(node) }; return; }
+      if (rem <= len) {
+        const nxt = node.nextSibling;
+        if (nxt && nxt.nodeType === 3) res = { node: nxt, off: 0 };
+        else res = { node: node.parentNode, off: [...node.parentNode.childNodes].indexOf(node) + 1 };
+        return;
+      }
+      rem -= len; return;
+    }
+    if (node.nodeName === 'BR') {
+      // An offset landing exactly ON a line break resolves BEFORE it (setCaretByOffset's
+      // rule) — the unconditional decrement resolved it to the end of the NEXT line's
+      // text, a divergence the review flagged as latent (#736).
+      if (rem === 0) { res = { node: node.parentNode, off: [...node.parentNode.childNodes].indexOf(node) }; return; }
+      rem -= 1; return;
+    }
     for (const c of node.childNodes) { walk(c); if (res) return; }
   }
   for (const c of el.childNodes) { walk(c); if (res) break; }
-  return res;
+  return res || fallback;
 }
 
 // Select the logical [start,end) span in a contenteditable (type-to-replace). Used
@@ -28183,13 +28254,14 @@ const GUIDE = [
   // ── Generators (guide) ────────────────────────────────────────────────────
   { id:'brace-picker', cat:'generators',
     title:'The { menu: write any pill',
-    body:"Discover and write every kind of pill without memorizing the syntax. Type an opening curly brace and a menu appears listing the pill forms you can build: a dice roll, a random pick, a calculation, a live list, a meter, and the rest. Type a word to filter (`{ro` narrows to roll-ups, rolls and roll tables), then press Enter and it drops in a ready-to-edit scaffold with the first part selected, so you fill in the blanks instead of remembering the shape.\n\nThe same menu completes as you write inside a pill. In a calculation it offers function names, in a live search it offers filters like `is:todo`, and once you have defined named rules it offers those by name. Where a suggestion has a full guide entry, a small help mark opens it, so the menu is also the fastest way to learn what each form does.\n\nThe menu is keyboard-first: arrow keys move, Enter accepts, Esc dismisses. It is the front door to everything on the rest of this page, so if you are not sure which pill you want, type `{` and browse.",
+    body:"Discover and write every kind of pill without memorizing the syntax. Type an opening curly brace and a menu appears listing the pill forms you can build: a dice roll, a random pick, a calculation, a live list, a meter, and the rest. Type a word to filter (`{ro` narrows to roll-ups, rolls and roll tables), then press Enter and it drops in a ready-to-edit scaffold with the first part selected, so you fill in the blanks instead of remembering the shape.\n\nThe same menu completes as you write inside a pill. In a calculation it offers function names, in a live search it offers filters like `is:todo`, and once you have defined named rules it offers those by name. Where a suggestion has a full guide entry, a small help mark opens it, so the menu is also the fastest way to learn what each form does.\n\nThe menu is keyboard-first: arrow keys move, Enter accepts, Esc dismisses, and F1 opens the guide entry for the highlighted suggestion (the keyboard twin of the small help mark). It is the front door to everything on the rest of this page, so if you are not sure which pill you want, type `{` and browse.",
     related:['dice','grammar','math','overview'],
     examples:[
       { syn:'{',          desc:'open the menu of pill forms' },
       { syn:'{pick',      desc:'filter the menu by typing (here: a random pick)' },
       { syn:'{= su',      desc:'inside a calculation, complete sum / functions' },
       { syn:'Enter',      desc:'drop in the form with the first blank selected' },
+      { syn:'F1',         desc:'open the guide for the highlighted suggestion' },
     ] },
   { id:'dice', cat:'generators', covers:['dice'],
     title:'Dice rolls',
