@@ -1609,6 +1609,7 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agg-bar.soon{background:color-mix(in srgb,var(--acc) 18%,transparent);border-color:color-mix(in srgb,var(--acc) 45%,transparent)}
 .agg-bar.future,.agg-bar.none{background:color-mix(in srgb,var(--fg) 8%,transparent);border-color:var(--bdr-ui)}
 .agg-bar.ongoing{border-style:dashed}
+.agg-bar.pending{border-style:dotted;opacity:.75}
 .agg-bar.done{opacity:.5}
 .agg-bar:hover{filter:brightness(1.08)}
 .agg-bar:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -4390,7 +4391,6 @@ function setAliasProp(node, csv) {
 // Pure + Node-testable.
 function priorityRank(p) { return p ? (p.toUpperCase().charCodeAt(0) - 65) : 99; }
 function collectDueDates(rootNode = root, seqs = allSequences()) {
-  const today = dueDateToday();
   const items = [];
   function walk(n, path) {
     const props = n.props || [];
@@ -4400,10 +4400,14 @@ function collectDueDates(rootNode = root, seqs = allSequences()) {
     // date; a journal/default task stays on the document default). The resulting epoch is a plain
     // integer, so sorting/positioning downstream is calendar-agnostic; only the parse axis differs.
     const nodeCal = calendarForNode(n);
+    // #769: measure started/elapsed against the point's OWN calendar's today, the SAME calendar
+    // formatDueDate labels under. Using the global (active-calendar) today desynced the two for a
+    // point on a non-active fiction calendar (a "Today" label with a 200-day elapsed, or vice versa).
+    const nodeToday = dueDateToday(nodeCal);
     const due   = dueProp   ? parseDueDate(dueProp.val, nodeCal)   : null;
     const start = startProp ? parseDueDate(startProp.val, nodeCal) : null;
     if (due !== null || start !== null) {
-      const started = start !== null && start <= today;
+      const started = start !== null && start <= nodeToday;
       const primary = due !== null ? due : start; // deadline drives display when present
       const { iso, label, state } = formatDueDate(primary, nodeCal);   // #653: label under the point's own calendar
       // UXP-162: carry held-ness so a BLOCKED dated task reads waiting here too, not full-urgency.
@@ -4417,7 +4421,7 @@ function collectDueDates(rootNode = root, seqs = allSequences()) {
         path: path.slice(),
         start, due, started,
         done: todoDoneFromText(n.text),
-        runningDays: started ? today - start : null,
+        runningDays: started ? nodeToday - start : null,
         priority: parseTodo(n.text).priority,   // UXP-109: 'A'|'B'|… or null, for agenda ordering
         keyword,
         waiting: !!keyword && keywordIsHeld(keyword, seqs),
@@ -4612,7 +4616,8 @@ function calendarMonthGrid(epochDay, cal = activeCalendar()) {
 // becomes a horizontal bar on a shared day axis:
 //   • due + start → a range bar from start to due ('bar')
 //   • due only    → a 1-day bar at the deadline ('bar')
-//   • start only  → an open-ended bar from start to today ('ongoing')
+//   • start only, already started (start ≤ today) → an open-ended bar start→today ('ongoing')
+//   • start only, NOT yet started (start > today)  → a 1-day marker at its future start ('pending', #768)
 // The axis range spans every bar plus today (so the "today" line is always in
 // frame), padded one day each side. Offsets/spans are in DAYS (pixels are a
 // render concern). Rows sort by start day. Returns
@@ -4624,7 +4629,13 @@ function agendaGantt(items, today = dueDateToday()) {
   for (const it of (items || [])) {
     let s, e, kind;
     if (it.due != null)        { s = it.start != null ? Math.min(it.start, it.due) : it.due; e = it.due; kind = 'bar'; }
-    else if (it.start != null) { s = it.start; e = Math.max(today, it.start); kind = 'ongoing'; }
+    else if (it.start != null) {
+      // #768: only a STARTED point (start ≤ today) is 'ongoing' (a dashed start→today bar). A
+      // future-dated start with no deadline hasn't begun — render it as a 1-day 'pending' marker
+      // at its start, not a neutral "in progress" bar that misreads as currently running.
+      const started = it.start <= today;
+      s = it.start; e = started ? today : it.start; kind = started ? 'ongoing' : 'pending';
+    }
     else continue;
     rows.push({ ...it, kind, _s: s, _e: e });
     lo = Math.min(lo, s); hi = Math.max(hi, e);
@@ -26764,7 +26775,7 @@ function renderAgendaGantt(host, visible, totalDated) {
     const bar = document.createElement('div');
     // ongoing (no deadline) reads neutral; bars with a deadline carry its urgency tint.
     // agendaState collapses a done bar's urgency to 'done', so it's never overdue-red.
-    bar.className = 'agg-bar ' + r.kind + ' ' + (r.kind === 'ongoing' && !r.done ? 'none' : agendaState(r)) + (r.done ? ' done' : '');
+    bar.className = 'agg-bar ' + r.kind + ' ' + ((r.kind === 'ongoing' || r.kind === 'pending') && !r.done ? 'none' : agendaState(r)) + (r.done ? ' done' : '');
     bar.style.left = (r.offsetDays * px) + 'px';
     bar.style.width = Math.max(6, r.spanDays * px) + 'px';
     wireAgNav(bar, r, agItemAria(r));
