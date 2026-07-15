@@ -5737,12 +5737,12 @@ function renderCrossLinkPill(docId, target, label) {
   // embedded) named itself "link" when it had no label and no resolvable title — a cluster of
   // identical dead pills. Fall back to the DOC NAME instead: "in <doc>" reads as a real destination.
   const docName = workspaceIndex?.nameByDocId?.get(docId);
-  const capText = label || title || (docName ? 'in ' + docName : 'another document');
+  const capText = label || title || (docName ? 'in ' + displayName(docName) : 'another document');
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another document)')}">${cap}</span>`;
   }
-  const docLabel = docName || 'another document';
+  const docLabel = displayName(docName || 'another document');
   return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docLabel)}" aria-label="${escQ(capText + ', link to a point in ' + docLabel)}">${cap}</span>`;
 }
 
@@ -11512,16 +11512,16 @@ async function openWorkspaceSwitcher() {
       const row = document.createElement('div'); row.className = 'tpl-row';
       const pick = document.createElement('button');
       pick.className = 'tpl-pick'; pick.type = 'button';
-      pick.setAttribute('aria-label', 'Open ' + name + (isCur ? ' (current document)' : ''));
+      pick.setAttribute('aria-label', 'Open ' + displayName(name) + (isCur ? ' (current document)' : ''));
       if (isCur) pick.setAttribute('aria-current', 'true');
-      const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = name;
+      const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = displayName(name);
       const tag = document.createElement('span'); tag.className = 'tpl-count'; tag.textContent = isCur ? 'current' : '';
       pick.append(nm, tag);
       pick.addEventListener('click', async () => { closeIo(); await switchWorkspaceDoc(name); });
       const del = document.createElement('button');
       del.className = 'io-btn xsm'; del.type = 'button';
       setIcon(del, { fa: 'fa-solid fa-trash-can', fb: '🗑' });
-      del.title = 'Delete'; del.setAttribute('aria-label', 'Delete ' + name);
+      del.title = 'Delete'; del.setAttribute('aria-label', 'Delete ' + displayName(name));
       del.addEventListener('click', async () => { if (await deleteWorkspaceDoc(name)) openWorkspaceSwitcher(); });
       row.append(pick, del);
       tlist.appendChild(row);
@@ -21825,9 +21825,9 @@ function renderLinkMenu() {
     if (nd.docId) {
       const hint = document.createElement('span');
       hint.className = 'lp-doc-hint';
-      hint.textContent = ` · ${nd.docName || 'another document'}`;
+      hint.textContent = ` · ${displayName(nd.docName || 'another document')}`;
       item.appendChild(hint);
-      item.setAttribute('aria-label', `${nd.title}, in ${nd.docName || 'another document'}`);
+      item.setAttribute('aria-label', `${nd.title}, in ${displayName(nd.docName || 'another document')}`);
     } else if (nd.alias) {
       // alias hint: when an alias (not the title) caused this match, say so (P4 — no
       // silent "why did that appear?"). Additive markup; the title stays the label.
@@ -24044,7 +24044,7 @@ async function openFile() {
 }
 
 async function saveFile() {
-  if (hasFSA) { if (fileHandle) { if (await writeH(fileHandle)) flashHint('Saved “' + fileName + '”'); } else await saveAsFile(); }
+  if (hasFSA) { if (fileHandle) { if (await writeH(fileHandle)) flashHint('Saved “' + displayName(fileName) + '”'); } else await saveAsFile(); }
   else dlOpml();
 }
 async function saveAsFile() {
@@ -24068,8 +24068,8 @@ async function saveAsFile() {
       updateTitle();
       if (await writeH(fileHandle)) {
         flashHint(wasFolderBacked
-          ? 'Saved “' + fileName + '” as a standalone file (no longer in the folder)'
-          : 'Saved “' + fileName + '”');
+          ? 'Saved “' + displayName(fileName) + '” as a standalone file (no longer in the folder)'
+          : 'Saved “' + displayName(fileName) + '”');
       }
     } catch(e) { if (e.name!=='AbortError') flashError('Could not save: '+e.message); }
   } else dlOpml();
@@ -24475,17 +24475,17 @@ function renderDocTabs() {
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', isCur ? 'true' : 'false');
     tab.tabIndex = isCur ? 0 : -1;                       // roving tabindex (tablist pattern)
-    tab.setAttribute('aria-label', 'Document ' + name + (isCur ? ' (current)' : ''));
+    tab.setAttribute('aria-label', 'Document ' + displayName(name) + (isCur ? ' (current)' : ''));
     // dot is always present; CSS shows it only on the active tab when #toolbar-row.dirty
     const dot = document.createElement('span'); dot.className = 'doc-tab-dot';
     dot.setAttribute('aria-hidden', 'true'); dot.title = 'Unsaved changes';
     tab.appendChild(dot);
-    const nm = document.createElement('span'); nm.className = 'doc-tab-name'; nm.textContent = name;
+    const nm = document.createElement('span'); nm.className = 'doc-tab-name'; nm.textContent = displayName(name);
     tab.appendChild(nm);
     const close = document.createElement('button');
     close.className = 'doc-tab-close close-btn'; close.type = 'button';
     setIcon(close, { fa: 'fa-solid fa-xmark', fb: '✕' });
-    close.setAttribute('aria-label', 'Close ' + name);
+    close.setAttribute('aria-label', 'Close ' + displayName(name));
     close.title = 'Close';
     tab.appendChild(close);
     // activation (mousedown, so toolbar focus doesn't fight a contenteditable; keyboard alongside)
@@ -24566,7 +24566,7 @@ async function connectWorkspace() {
     renderFileName();
     updateTitle();
     renderWorkspaceAffordance();       // also registers the current doc as a tab + renders the strip
-    flashHint('Folder connected. Saved “' + name + '”');
+    flashHint('Folder connected. Saved “' + displayName(name) + '”');
     await reconcileDuplicateDocIds(dir);   // #745: repair any duplicate-docId collision before indexing
     refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
   } catch (e) {
@@ -24624,7 +24624,7 @@ async function reopenWorkspaceDoc(dir, name) {
       // real file with an empty tree (audit #1, silent on-disk data loss). Invariant: never make a
       // file an auto-write target when you failed to load its authoritative content. Detach + warn.
       workspaceFile = null;
-      flashError('Could not read “' + name + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
+      flashError('Could not read “' + displayName(name) + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
       return true;   // the folder IS reachable (keep the workspace); the doc is just write-guarded
     }
     // Genuine divergence: the file changed under us AND our in-memory copy is the SAME document
@@ -24633,7 +24633,7 @@ async function reopenWorkspaceDoc(dir, name) {
     const sameDocDiverged = knownFileMod > 0 && localId && fileRoot.docId && localId === fileRoot.docId;
     adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
     if (sameDocDiverged && stashPayloadAsPrev(localPayload, localId)) {
-      flashHint('“' + name + '” was updated elsewhere, so the disk version was loaded. Your local copy: File menu, Restore earlier version.');
+      flashHint('“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy: File menu, Restore earlier version.');
     }
   } else {                                               // local autosave is newer than the file
     // A newer local timestamp does NOT prove the in-memory `root` is THIS file's document. On a fresh
@@ -24648,7 +24648,7 @@ async function reopenWorkspaceDoc(dir, name) {
     try { fileRoot = fromOpml(await file.text()); } catch (_) { fileRoot = null; } // null = unreadable/corrupt
     if (!fileRoot) {                                      // authoritative file won't parse: detach + warn, never rebind (audit #1 invariant)
       workspaceFile = null;
-      flashError('Could not read “' + name + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
+      flashError('Could not read “' + displayName(name) + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
       return true;
     }
     if (root && root.docId && fileRoot.docId && root.docId === fileRoot.docId) {
@@ -24780,7 +24780,7 @@ async function switchWorkspaceDoc(name) {
     startWorkspaceWatch();                                      // sync-safety: watch the newly-open file
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
     _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;  // affordance registers the tab + renders the strip
-  } catch (e) { flashError('Could not open “' + name + '”: ' + (e.message || e)); return false; }
+  } catch (e) { flashError('Could not open “' + displayName(name) + '”: ' + (e.message || e)); return false; }
 }
 
 // New document inside the folder (collision-safe). Reroutes File → New when a folder is
@@ -24860,7 +24860,7 @@ async function saveToWorkspaceDoc() {
     renderFileName(); updateTitle();
     renderWorkspaceAffordance();
     refreshWorkspaceIndex();           // CF-1: a previously-detached doc joined the notebook
-    flashHint('Added to the folder as “' + name + '”');
+    flashHint('Added to the folder as “' + displayName(name) + '”');
   } catch (e) { degradeWorkspace('Could not save to the folder. It may be unavailable. Reconnect, or use Save as to keep your work.'); }
 }
 
@@ -24868,13 +24868,13 @@ async function saveToWorkspaceDoc() {
 // first remaining doc, or a fresh new doc when the folder is now empty.
 async function deleteWorkspaceDoc(name) {
   if (!await openConfirmDialog({
-    title: 'Delete “' + name + '”?',
+    title: 'Delete “' + displayName(name) + '”?',
     message: 'This permanently removes the document from the folder. This can’t be undone.',
     confirmLabel: 'Delete', cancelLabel: 'Cancel',
   })) return false;
   try { await workspaceDir.removeEntry(name); }
-  catch (e) { flashError('Could not delete “' + name + '”: ' + (e.message || e)); return false; }
-  flashHint('Deleted “' + name + '”');   // UX audit: confirm a permanent delete (P4)
+  catch (e) { flashError('Could not delete “' + displayName(name) + '”: ' + (e.message || e)); return false; }
+  flashHint('Deleted “' + displayName(name) + '”');   // UX audit: confirm a permanent delete (P4)
   if (name === fileName) {
     const rest = await listWorkspaceNames(workspaceDir);
     if (rest.length) await switchWorkspaceDoc(rest[0]);   // switch refreshes the index
@@ -25009,7 +25009,7 @@ async function handleExternalChange(canReloadLossless) {
       const file = await workspaceFile.getFile();
       adoptDoc(fromOpml(await file.text()), { fileName, fileHandle: workspaceFile, workspaceFile });
       _wsKnownModified = file.lastModified || 0;
-      flashHint('Reloaded “' + fileName + '”. It was updated elsewhere (sync).');
+      flashHint('Reloaded “' + displayName(fileName) + '”. It was updated elsewhere (sync).');
     } catch (_) { /* unreadable — leave the in-memory copy; next write will reconcile again */ }
     return;
   }
@@ -25031,7 +25031,7 @@ async function handleExternalChange(canReloadLossless) {
       adoptDoc(fromOpml(await file.text()), { fileName, fileHandle: workspaceFile, workspaceFile });
       _wsKnownModified = file.lastModified || 0;
       refreshWorkspaceIndex();
-      flashHint('Saved your version as “' + copyName + '” and loaded the disk version.');
+      flashHint('Saved your version as “' + displayName(copyName) + '” and loaded the disk version.');
     } catch (e) { flashError('Could not save a copy: ' + (e.message || e)); }
   } else {                                          // 'mine' (or dismissed) → keep local, overwrite disk
     _wsForceWrite = true;                            // the next write wins without re-checking (our explicit choice)
@@ -25054,7 +25054,7 @@ function openReconcileDialog(name) {
 
     const msg = document.createElement('p');
     msg.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 16px;line-height:1.55';
-    msg.textContent = '“' + name + '” was updated elsewhere (another device or sync) while you had unsaved changes here. Choose which version to keep. Nothing is overwritten until you pick.';
+    msg.textContent = '“' + displayName(name) + '” was updated elsewhere (another device or sync) while you had unsaved changes here. Choose which version to keep. Nothing is overwritten until you pick.';
     ioCard.appendChild(msg);
 
     // Stacked footer (io-foot-stack): three full-width choices read as "pick one"
@@ -25110,7 +25110,7 @@ function openDupDocIdDialog(names) {
     function finish(result) { ioBack.removeEventListener('keydown', onKey); closeIo(); resolve(result); }
     let firstBtn = null;
     for (const name of names) {
-      const b = document.createElement('button'); b.className = 'io-btn'; b.textContent = 'Keep the identity on “' + name + '”';
+      const b = document.createElement('button'); b.className = 'io-btn'; b.textContent = 'Keep the identity on “' + displayName(name) + '”';
       b.addEventListener('click', () => finish(name));
       foot.append(b); if (!firstBtn) firstBtn = b;
     }
@@ -25609,9 +25609,9 @@ function renderWorkspaceSearchResults(query) {
     row.className = 'sh-ws-item';
     row.setAttribute('role', 'listitem');   // #591: an honest list (the container is role=list); it never implemented the listbox keyboard contract
     row.setAttribute('tabindex', '0');
-    row.setAttribute('aria-label', `${title}, in ${docName || 'another document'}`);
+    row.setAttribute('aria-label', `${title}, in ${displayName(docName || 'another document')}`);
     const t = document.createElement('span'); t.className = 'sh-ws-title'; t.textContent = title;
-    const d = document.createElement('span'); d.className = 'sh-ws-doc';   d.textContent = ` · ${docName || 'another document'}`;
+    const d = document.createElement('span'); d.className = 'sh-ws-doc';   d.textContent = ` · ${displayName(docName || 'another document')}`;
     row.append(t, d);
     if (snippet && snippet !== title) {
       const s = document.createElement('div'); s.className = 'sh-ws-snip'; s.textContent = snippet; row.appendChild(s);
@@ -26027,12 +26027,12 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.textContent = t;
     const hint = document.createElement('span');
     hint.className = 'bl-doc-hint';
-    hint.textContent = ` · ${docName || 'another document'}`;
+    hint.textContent = ` · ${displayName(docName || 'another document')}`;
     item.appendChild(hint);
     item.title = 'Open this document';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable cross-doc backlink rows
     item.setAttribute('tabindex', '0');
-    item.setAttribute('aria-label', `Linked from "${t}" in ${docName || 'another document'}. Open`);
+    item.setAttribute('aria-label', `Linked from "${t}" in ${displayName(docName || 'another document')}. Open`);
     const go = () => {
       hideBlPanel();
       followLinkTarget(docId, nodeId);                          // open source note, or flash if it's gone (P4)
@@ -26107,11 +26107,11 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     label.textContent = title;
     const hint = document.createElement('span');
     hint.className = 'bl-doc-hint';
-    hint.textContent = ` · ${docName || 'another document'}`;
+    hint.textContent = ` · ${displayName(docName || 'another document')}`;
     label.appendChild(hint);
     label.setAttribute('role', 'link');
     label.setAttribute('tabindex', '0');
-    label.setAttribute('aria-label', `Open "${title}" in ${docName || 'another document'}`);
+    label.setAttribute('aria-label', `Open "${title}" in ${displayName(docName || 'another document')}`);
     const go = () => { hideBlPanel(); followLinkTarget(docId, nodeId); };
     label.addEventListener('click', go);
     label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });

@@ -6257,8 +6257,9 @@ test('renderCrossLinkPill: cross-doc target → .node-link-cross with data-doc/t
   assert.match(html, /data-doc="db"/);
   assert.match(html, /data-target="m1"/);
   assert.match(html, />Gamma</);                        // empty label → live title from the index
-  assert.match(html, /title="b\.opml"/);                // doc-name tooltip
-  assert.match(html, /aria-label="[^"]*b\.opml[^"]*"/); // P3: doc name in the accessible name
+  assert.match(html, /title="b"/);                      // doc-name tooltip — displayName, no .opml extension
+  assert.match(html, /aria-label="[^"]*point in b"/);   // P3: doc name (extension-less) in the accessible name
+  assert.doesNotMatch(html, /\.opml/);                  // the .opml extension is never shown to the user
   assert.match(c.renderCrossLinkPill('db', 'm1', 'see B'), />see B</); // explicit label wins
 });
 
