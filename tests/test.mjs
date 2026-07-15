@@ -930,6 +930,19 @@ test('advanceSeq — a counted shuffle deals N distinct cards per advance (#542)
   assert.equal(dealt2.length, 3, 'a deal spanning an empty bag reshuffles and completes');
 });
 
+test('advanceSeq — a standalone shuffle deal is capped at the deck size, never repeating within it (#763)', () => {
+  // count 5 over a 3-card deck: draw-without-replacement can only yield the 3 distinct cards.
+  // Previously the standalone pill looped past the bag and reshuffled mid-deal (e.g. "c a b c a");
+  // the nested-in-rule path already caps to the deck, so the two paths now agree.
+  const rec = { mode: 'shuffle', items: ['a', 'b', 'c'], count: 5, bag: [] };
+  const dealt = c.advanceSeq(rec, {}, {}).split(' ');
+  assert.equal(dealt.length, 3, 'deals the whole deck (3), not the requested 5');
+  assert.equal(new Set(dealt).size, 3, 'no card repeats within one deal');
+  // cycle is a rotation, so a count beyond the length legitimately repeats (unchanged)
+  const cyc = { mode: 'cycle', items: ['a', 'b'], count: 5, pos: 0 };
+  assert.equal(c.advanceSeq(cyc, {}, {}).split(' ').length, 5, 'cycle keeps the requested count');
+});
+
 test('advanceSeq — an exhausted once ends the deal early, never pads (#542 guard)', () => {
   // count only ships on shuffle, but advanceSeq must stay safe if a record carries one
   const rec = { mode: 'once', items: ['a', 'b'], count: 3, pos: 0 };
@@ -1703,6 +1716,18 @@ test('stripMd — strips inline markers and link/code syntax', () => {
 
 test('mdToHtml — ATX heading becomes a real <h1>', () => {
   assert.equal(c.mdToHtml('# Title'), '<h1 class="md-h">Title</h1>');
+});
+
+test('mdInline — a URL/link char class never swallows an adjacent stashed placeholder (#761)', () => {
+  // A footnote ref glued to a URL: both must render, and no raw NUL sentinel may leak.
+  const h = c.mdToHtml('See http://example.com[^1]');
+  assert.ok(h.includes('href="http://example.com"'), 'the URL links cleanly, the placeholder excluded');
+  assert.ok(h.includes('fn-ref'), 'the glued footnote still renders (not swallowed into the href)');
+  assert.ok(!h.includes('\u0000'), 'no raw NUL sentinel leaks into the output');
+  // A markdown link whose URL is a code span: the link stays literal, the code renders, nothing dropped.
+  const h2 = c.mdToHtml('[x](`y`)');
+  assert.ok(h2.includes('<code>y</code>'), 'the code span renders instead of being absorbed as a href');
+  assert.ok(!h2.includes('\u0000'), 'no raw NUL sentinel leaks');
 });
 
 // Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
@@ -2786,6 +2811,14 @@ test('math — conversion names need one argument', () => {
 test('date — date(y,m,d) differences give day counts', () => {
   assert.equal(c.evalMath('date(2026,12,25) - date(2026,12,18)'), 7);
   assert.equal(c.evalMath('date(2027,1,1) - date(2026,12,31)'), 1);
+});
+test('date — date(y,m,d) rejects an impossible calendar date instead of overflow-normalizing (#760)', () => {
+  assert.equal(c.evalMath('date(2026,2,30)'), null, 'Feb 30 is not a date (would have normalized to Mar 2)');
+  assert.equal(c.evalMath('date(2025,13,40)'), null, 'month 13 / day 40 rejected (would have rolled into next year)');
+  assert.equal(c.evalMath('date(2024,4,31)'), null, 'April has 30 days');
+  // valid dates still compute
+  assert.equal(c.evalMath('date(1970,1,1)'), 0, 'the epoch day is 0');
+  assert.equal(c.evalMath('date(2024,2,29)'), c.parseDueDate('2024-02-29'), 'a real leap day still resolves');
 });
 test('date — component pullers', () => {
   assert.equal(c.evalMath('year(date(2026,12,25))'), 2026);
