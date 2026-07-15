@@ -3057,8 +3057,8 @@ const TASK_DONE_BOX = /\[[xX]\]$/;        // a matched marker that is CHECKED (e
 const TASK_RE       = new RegExp('^' + TASK_BOX_CAP.source + '(?:\\s+(.*))?$');                       // a list item's INNER text → [, state, content?]
 const TASK_FIRST_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '(?:\\s|$)');                       // first line is a (UL) task item
 const TASK_LINE_RE  = new RegExp('^(\\s*(?:[-*+]|\\d+\\.)\\s+)' + TASK_BOX_CAP.source + '(\\s.*)?$');  // a FULL line → [, prefix, state, tail?]
-const TASK_DONE_G   = new RegExp('^\\s*(?:[-*+]|\\d+\\.)\\s+' + TASK_BOX.source, 'gm');                // todoDoneFromText marker scan
-const TASK_TALLY_G  = new RegExp('^[ \\t]*(?:[-*+]|\\d+\\.)[ \\t]+' + TASK_BOX.source, 'gm');          // tallyMarkers marker scan
+const TASK_DONE_G   = new RegExp('^\\s*(?:[-*+]|\\d+\\.)\\s+' + TASK_BOX.source + '(?=\\s|$)', 'gm');   // todoDoneFromText marker scan (space-or-EOL guard, like TASK_FIRST_RE)
+const TASK_TALLY_G  = new RegExp('^[ \\t]*(?:[-*+]|\\d+\\.)[ \\t]+' + TASK_BOX.source + '(?=\\s|$)', 'gm'); // tallyMarkers marker scan (same guard)
 const TASK_STRIP_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '\\s*');                             // strip a UL task marker (textForDisplay/applyBlockCmd)
 const TASK_STRIP_G  = new RegExp('^\\s*[-*+]\\s+(?:' + TASK_BOX.source + '\\s*)?', 'gm');              // stripMd (per line)
 const TASK_KEEP_RE  = new RegExp('^[-*+]\\s+(' + TASK_BOX.source + ')\\s*');                           // strip lead but KEEP the box (export)
@@ -3270,6 +3270,7 @@ function childPropNumber(child, prop) {
   const p = (child?.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).trim().toLowerCase());
   if (!p) return null;
   const raw = String(p.val).trim();
+  if (!raw) return null;                            // blank value is not a number (Number('')===0 would miscount)
   const n = Number(raw);
   if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
   return parseDueDate(raw);                          // else a date-shaped value aggregates as its epoch-day (strict; non-dates → null)
@@ -5177,12 +5178,18 @@ function collectVars(rootNode) {
     else delete pickVals[nm];
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
-  _varShadowedKeys = shadowedDeclKeys(events);
-  _varActiveExprs  = defs;
-
   const { resolved, cycles } = resolveVarDefs(defs, pickVals, order);
-  _varCycles = cycles;
-  if (useCache) { _varsCacheVer = _varsVer; _varsCached = resolved; }
+  // Only the live-document pass owns the display globals. An explicit-root call
+  // (e.g. workspace search resolving a FOREIGN doc's vars) must not clobber them:
+  // the next live collectVars() returns early on the still-valid cache and never
+  // refreshes these, so a foreign write would persist into the current doc's var
+  // panel / pill markers until the next markDirty().
+  if (useCache) {
+    _varShadowedKeys = shadowedDeclKeys(events);
+    _varActiveExprs  = defs;
+    _varCycles       = cycles;
+    _varsCacheVer = _varsVer; _varsCached = resolved;
+  }
   return resolved;
 }
 
@@ -12784,7 +12791,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     // matches #thread AND #thread/torn-letter (the trailing boundary allows a /
     // continuation but not another [\w-] char). term.value may contain / and -,
     // so escape it for regex safety.
-    const text = (node.text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
+    const text = tagScanText(node.text);
     const esc = term.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i').test(text);
   }
@@ -12918,7 +12925,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     // doc-wide index: is any point linking TO this one (same-document; the cross-doc
     // index is CF-4's, not this filter's).
     if (term.value === 'link' && /\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|[^\]\n]*)?\]\]/i.test(node.text || '')) return true;
-    if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\w-]/.test((node.text || '').replace(/\[\[[^\]]*\]\]/g, ' '))) return true;
+    if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\w-]/.test(tagScanText(node.text))) return true;
     if (term.value === 'backlink') {
       const lk = links || collectLinks();
       if ((lk.backlinks[node.id] || []).length) return true;
@@ -18202,6 +18209,14 @@ function defaultBraceChoice(matches, prefix) {
 // `#` not preceded by a letter/digit. [[…]] tokens are stripped first so link
 // targets ([[#id|…]]) and artifact tokens never read as tags; status keywords
 // (#TODO) count deliberately — completing them is useful. Sorted most-used first.
+// Blank [[…]] tokens (link/artifact targets) AND the leading org priority marker `[#A]`
+// (UXP-109) — the shared pre-pass for every hashtag scan (collectTags index, #tag search,
+// has:tag), keeping the three-place lockstep structural rather than by-hand. Length-
+// preserving on the priority strip (offset-safe); a bare `.test()` consumer is unaffected.
+function tagScanText(text) {
+  return (text || '').replace(/\[\[[^\]]*\]\]/g, ' ')
+    .replace(/^(\s*#\w+\s+)?\[#[A-Za-z]\]/, m => ' '.repeat(m.length));
+}
 // Pure over rootNode (tests); no-arg = the live document, cached on _varsVer.
 let _tagsCacheVer = -1, _tagsCached = null; // doc-cache 4: collectTags (see resetDocCaches registry)
 function collectTags(rootNode) {
@@ -18216,7 +18231,7 @@ function collectTags(rootNode) {
     // marker leaks a phantom tag. The render side already strips the priority marker
     // (renderContentHTML splits it off before mdInline), so this keeps collectTags in
     // lockstep with mdInline. #KEYWORD status words are left to count deliberately.
-    const text = (n.text || '').replace(/\[\[[^\]]*\]\]/g, ' ').replace(/^(\s*#\w+\s+)?\[#[A-Za-z]\]/, m => ' '.repeat(m.length));
+    const text = tagScanText(n.text);
     let m; TAG_RE.lastIndex = 0;
     while ((m = TAG_RE.exec(text)) !== null) counts.set(m[1], (counts.get(m[1]) || 0) + 1);
     for (const c of n.children || []) walk(c);

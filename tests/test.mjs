@@ -1755,6 +1755,23 @@ test('task grammar: all task-aware functions agree an empty `- [ ]` is a task (F
   assert.deepEqual(host(c.tallyMarkers('1. [ ]\n2. [x]')), { done: 1, total: 2 });
 });
 
+// TASK_DONE_G / TASK_TALLY_G lacked the space-or-EOL guard that the renderer (TASK_RE)
+// and TASK_FIRST_RE enforce, so a box glued to a non-space char (`- [ ]typo`, which the
+// renderer treats as PLAIN text, not a task) was over-counted — flipping done-ness and
+// inflating a [/] cookie. The marker scanners must agree with the renderer.
+test('task grammar: a box glued to a non-space char is NOT a task marker (#756)', () => {
+  // `- [ ]typo` is not a task line (no space after `]`); the renderer agrees.
+  assert.ok(!c.mdToHtml('- [ ]typo').includes('md-task-check'), 'renderer: glued box is not a task');
+  // A checked point whose only *real* task is done must read as done, ignoring the glued line.
+  assert.equal(c.todoDoneFromText('- [x] Buy milk\n- [ ]typo'), true,
+    'the one real (checked) task counts; the glued `- [ ]typo` must not drag done-ness false');
+  // Tally counts only the real markers, not the glued one or a markdown link.
+  assert.deepEqual(host(c.tallyMarkers('- [x] Buy milk\n- [ ]typo')), { done: 1, total: 1 });
+  assert.deepEqual(host(c.tallyMarkers('- [ ](https://example.com)')), { done: 0, total: 0 });
+  // a box at end-of-line (nothing after `]`) is still a real marker
+  assert.deepEqual(host(c.tallyMarkers('- [ ]\n- [x]')), { done: 1, total: 2 });
+});
+
 // Regression (code-review F1): the 4th task-marker regex — legacy italic/underline
 // migration — also required a trailing space, so an empty `- [ ]` had its bracket
 // wrapped in emphasis (`- *[ ]*`) instead of staying a task. The marker is a prefix
@@ -1964,6 +1981,20 @@ test('collectVars — later declaration of a name shadows the earlier (last wins
 test('collectVars — explicit root bypasses the cache (distinct roots, distinct results)', () => {
   assert.equal(c.collectVars(mkVarRoot([['n', 'n', '10']])).n, 10);
   assert.equal(c.collectVars(mkVarRoot([['n', 'n', '20']])).n, 20);
+});
+
+test('collectVars — an explicit-root (foreign-doc) call never clobbers the live display globals (#754)', () => {
+  // The live doc's resolved var state lives in module globals (_varActiveExprs/_varCycles),
+  // read by the var panel + pill markers and only refreshed on the cached no-arg path. A
+  // workspace search resolving a FOREIGN doc's vars (explicit root) must leave them untouched;
+  // otherwise the foreign state persists into the current doc until the next markDirty().
+  vm.runInContext('_varActiveExprs = { __live: "1" }; _varCycles = new Set(); _varShadowedKeys = new Set();', c._context);
+  // Resolve a foreign doc that has a reference CYCLE (would set _varCycles = {a,b} if it leaked).
+  c.collectVars(mkVarRoot([['a', 'a', 'b'], ['b', 'b', 'a']]));
+  assert.equal(vm.runInContext('Object.keys(_varActiveExprs).join(",")', c._context), '__live',
+    'foreign collectVars must not overwrite _varActiveExprs');
+  assert.equal(vm.runInContext('_varCycles.size', c._context), 0,
+    'foreign collectVars must not overwrite _varCycles (was {a,b} before the fix)');
 });
 
 test('collectVars — a variable named "constructor" resolves, not crashes', () => {
@@ -6986,6 +7017,21 @@ test('search query: tag terms are word-anchored and token-blind', () => {
   assert.equal(c.queryMatchesNode(q('#todo'), n4), true);    // state keywords are hashtag-shaped
 });
 
+test('search: a #tag / has:tag query never matches the [#A] priority marker (#757, lockstep with collectTags)', () => {
+  const q = s => c.parseSearchQuery(s);
+  // `#DONE [#A] Finish report`: a status keyword + org priority marker, no real `#a` hashtag.
+  const n = c.mkNode('#DONE [#A] Finish report');
+  assert.equal(c.queryMatchesNode(q('#a'), n), false, '#a must not match the #A inside [#A]');
+  assert.equal(c.queryMatchesNode(q('has:tag'), n), false, 'has:tag must not fire on a bare [#A] marker');
+  // collectTags blanks the whole `#DONE [#A]` prefix, so search agrees: a status point is
+  // found via is:/state: (the render side shows it as a status badge, not a hashtag pill).
+  assert.equal(c.queryMatchesNode(q('is:done'), n), true, 'the proper door for a status point');
+  // a status keyword with NO priority marker is still a hashtag-shaped match (unchanged behavior)
+  assert.equal(c.queryMatchesNode(q('#done'), c.mkNode('#DONE Finish report')), true);
+  // a genuine single-letter tag still matches, even alongside a leading [#A]
+  assert.equal(c.queryMatchesNode(q('#a'), c.mkNode('[#A] then a real #a tag')), true);
+});
+
 test('search query: is:todo / is:done / is:note', () => {
   const q = s => c.parseSearchQuery(s);
   const open     = c.mkNode('#TODO write tests');
@@ -7701,6 +7747,23 @@ test('subtree aggregation: childPropNumber reads numbers AND date-shaped values 
   assert.equal(c.childPropNumber(child, 'due'), c.parseDueDate('2026-06-14'));  // date aggregates as epoch-days
   assert.equal(c.childPropNumber(child, 'label'), null);  // non-date string → still skipped
   assert.equal(c.childPropNumber(child, 'missing'), null);
+});
+
+test('subtree aggregation: a blank property value is skipped, not counted as 0 (#755)', () => {
+  // Number('') === 0, so an empty-valued prop used to aggregate as a real 0 — inflating
+  // count/avg. A present-but-blank value is not a number; it must read as null (skipped).
+  const a = c.mkNode('a'); a.props.push({ key: 'cost', val: '10' });
+  const b = c.mkNode('b'); b.props.push({ key: 'cost', val: '' });      // blank value
+  const cc = c.mkNode('c'); cc.props.push({ key: 'cost', val: '   ' });  // whitespace-only
+  assert.equal(c.childPropNumber(b, 'cost'), null, 'empty value → null, not 0');
+  assert.equal(c.childPropNumber(cc, 'cost'), null, 'whitespace-only value → null, not 0');
+  assert.equal(c.childPropNumber(a, 'cost'), 10);   // a real 0 still aggregates
+  const z = c.mkNode('z'); z.props.push({ key: 'cost', val: '0' });
+  assert.equal(c.childPropNumber(z, 'cost'), 0, 'an explicit 0 still counts');
+  const p = c.mkNode('P'); p.children.push(a, b, cc);
+  assert.equal(c.aggregateChildren(p, 'count', 'cost'), 1, 'only the non-blank child counts');
+  assert.equal(c.aggregateChildren(p, 'sum', 'cost'), 10);
+  assert.equal(c.aggregateChildren(p, 'avg', 'cost'), 10, 'avg over the one real value, not (10+0+0)/3');
 });
 
 test('subtree aggregation: date properties aggregate (min/max/count, the F2 date-range unlock)', () => {
