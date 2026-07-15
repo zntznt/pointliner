@@ -1385,13 +1385,28 @@ test('bodyCompletion reads collectors only through the per-session vocab cache',
   const body = fnBody(_src, 'bodyCompletion');
   assert.ok(/const vv = bodyVocab\(nodeId, braceStart\)/.test(body),
     'bodyCompletion must open the session cache keyed on nodeId + braceStart');
-  assert.ok(!/matches: mathCompletions\([^)]*collectVars\(\)\)/.test(body.replace(/vv\.vars \?\?= collectVars\(\)/g, 'CACHED')),
-    'collectVars must be read only through vv.vars ??= (no bare per-keystroke call)');
+  assert.ok(!/matches: mathCompletions\([^)]*collectVars\(\)\)/.test(body.replace(/vv\.vars \?\?= completionScopeVars\(nodeId\)/g, 'CACHED')),
+    'the math vocabulary must be read only through vv.vars ??= (no bare per-keystroke call)');
   assert.ok(!/searchCompletions\([^)]*searchCtx\(\)\)/.test(body.replace(/vv\.ctx \?\?= searchCtx\(\)/g, 'CACHED')),
     'searchCtx must be read only through vv.ctx ??= (no bare per-keystroke call)');
   // the cache drops when the menu hides, so re-entering a brace re-reads fresh vocabulary
   assert.ok(/function hideBraceMenu\(\)[^\n]*_bodyVocab = null/.test(_src),
     'hideBraceMenu must drop the session vocabulary');
+});
+
+test('math body completion uses the node scope the pill evaluates, not the bare global map', () => {
+  // #731: promotion, highlight, and render all resolve a {= …} body through node scope
+  // (positional vars via varMapAt + own/ancestor numeric props via resolveNodeScope);
+  // completion fed bare collectVars(), so it omitted property names the pill accepts and
+  // hinted global last-wins values for positional {name := …} vars (P1 divergence).
+  const body = fnBody(_src, 'bodyCompletion');
+  const uses = (body.match(/vv\.vars \?\?= completionScopeVars\(nodeId\)/g) || []).length;
+  assert.equal(uses, 2, 'both the {= …} and conditional branches must read completionScopeVars');
+  const scope = fnBody(_src, 'completionScopeVars');
+  assert.ok(/resolveNodeScope\(node, ancestorsOf\(node\), varMapAt\(node\)\)/.test(scope),
+    'completionScopeVars must compose the render scope: positional vars + own/ancestor props');
+  assert.ok(/collectVars\(\)/.test(scope),
+    'a node outside the live index still degrades to the global map');
 });
 
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
