@@ -13371,7 +13371,7 @@ function attachContentEvents(content, node) {
     // open caret picker would survive at stale offsets and keep owning Enter/Tab — close
     // them here (the menus live outside the content, so their own mousedown never routes
     // through this handler). Cheap no-ops when nothing is open.
-    if (content.dataset.editing) { hideLinkMenu(); hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); }
+    if (content.dataset.editing) hideInlineMenus();
     // task-list checkbox: toggle the source line without entering raw-edit mode
     // (.md-task-pad is the checkbox's touch hit extender — same data-task, same toggle)
     if (!content.dataset.editing && e.target.classList &&
@@ -14237,6 +14237,15 @@ function parseMLlines(lines) {
 
 // ─── keydown ─────────────────────────────────────────────────────────────────
 
+// Close every caret-anchored picker + the brace preview in one call. The menus re-derive
+// only on input events and hold offsets into a specific content element, so ANY path that
+// moves the caret without an input event (caret keys, same-content clicks) or replaces the
+// content DOM out from under them (undo/redo's render()) must tear them down — an open menu
+// would keep owning Enter/Tab against stale coordinates or a detached element.
+function hideInlineMenus() {
+  hideLinkMenu(); hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview();
+}
+
 // The single-column inline picker menus, data-driving their identical ↓/↑/Enter/Tab/Escape
 // nav (#450). `open` is a thunk so it reads the live *State let at keydown time. Only one is
 // ever open. (The 2D sizePicker is NOT here — it has its own ←/→ + key-swallow block.)
@@ -14336,7 +14345,7 @@ function onKeyDown(e, id, content) {
   // eating the newline and teleporting the caret back on apply. Hide (cheap no-ops when
   // closed) and let the key fall through to its normal caret movement.
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
-    hideLinkMenu(); hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview();
+    hideInlineMenus();
   }
   // The single-column inline picker menus (link / slash / brace / tag / emoji) all navigate
   // identically: ↓/↑ move, Enter/Tab apply, Escape hide (#450). Only one is ever open, so a
@@ -23441,6 +23450,12 @@ function pushUndo() {
 
 // apply one history entry; `dir` is 'prev' for undo, 'next' for redo
 function applyEntry(entry, intoStack, dir) {
+  // Both branches re-render, detaching every content element — an inline picker left open
+  // would survive pointing at the DETACHED pre-undo element while focusNode re-arms keydown
+  // on the new one: the next Enter would braceApply against the detached DOM, silently
+  // reverting the undo in node.text and autosaving text the user cannot see. Undo/redo is
+  // not a caret move or an input event, so no other teardown path covers it.
+  hideInlineMenus();
   if (entry.kind === 'text') {
     const node = nodeById(entry.nodeId);
     intoStack.push(entry); // same entry reverses symmetrically
