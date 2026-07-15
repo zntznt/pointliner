@@ -13333,11 +13333,6 @@ function attachContentEvents(content, node) {
     });
     content.addEventListener('blur', () => {
       if (_vlPreservingFocus) return;   // the virtual-list rebuild restores this focus itself
-      // A caret-anchored picker interaction (clicking a { or # item, or the { picker's ? help mark)
-      // can pull focus off the contenteditable for an instant. Committing the edit here would tear
-      // down the picker's state before its click handler runs — the click-to-select / ? bugs. The
-      // picker's own mousedown handlers act and restore the caret; let them, don't exitEdit under them.
-      if (_pickerMousedownActive) return;
       if (content.dataset.editing) exitEdit(content, node);
     });
     content.addEventListener('keydown', e => {
@@ -13553,6 +13548,14 @@ function attachContentEvents(content, node) {
   });
   content.addEventListener('blur', () => {
     if (_vlPreservingFocus) return;   // the virtual-list rebuild restores this focus itself
+    // A caret-anchored picker interaction ({ / # / : menu tap) can pull focus off the
+    // contenteditable for an instant — on touch, the blur precedes the SYNTHETIC mousedown
+    // that carries the menu action. Committing here would tear down the picker's state
+    // before its handler runs (the click-to-select bug). The guard spans the whole
+    // pointer sequence (see armPickerGuard); the menu's own handler acts and restores
+    // the caret — don't exitEdit under it. This is the ONLY blur handler where a picker
+    // can be open: the base branch never wires the input listener that opens them.
+    if (_pickerMousedownActive) return;
     if (content.dataset.editing) exitEdit(content, node);
     fnLocked = false;
     scheduleFnHide();
@@ -21673,22 +21676,41 @@ function positionLinkMenu(content, offset) {
 
 const braceMenu = document.getElementById('brace-menu');
 let braceState = null;
-// True for the duration of a mousedown INSIDE a caret-anchored picker menu. The contenteditable's
-// blur handler checks this and skips exitEdit, so clicking a picker item (or the { picker's ? help
-// mark, which is a real <button> that steals focus) does not tear down the picker before its own
-// mousedown handler runs. Set in the capture phase so it is true before any blur fires; cleared on
-// the next microtask, after the click's handlers have executed.
+// True while a pointer interaction that STARTED on a caret-anchored picker menu ({ / # / :)
+// is in flight. The contenteditable's blur handler consults it and skips exitEdit, so a menu
+// tap can never tear down the picker's state before the menu's own action handler runs.
+// LIFETIME MATTERS: on touch, the editor's blur can precede the SYNTHETIC mousedown that
+// carries the menu action, and a microtask-scoped flag expires at the first listener
+// boundary of a trusted event — it is cleared before anything can read it. So the guard is
+// armed on pointerdown (capture — fires first on both mouse and touch) and disarmed when
+// the interaction ends: the trailing click (window capture — the last event of both the
+// mouse and the synthetic-touch sequence), pointercancel, or a timeout backstop for
+// sequences that produce neither (a drag off the menu that never clicks).
 let _pickerMousedownActive = false;
+let _pickerGuardTimer = 0;
+function armPickerGuard() {
+  _pickerMousedownActive = true;
+  clearTimeout(_pickerGuardTimer);
+  _pickerGuardTimer = setTimeout(() => { _pickerMousedownActive = false; }, 800);
+}
+function disarmPickerGuard() { _pickerMousedownActive = false; clearTimeout(_pickerGuardTimer); }
+window.addEventListener('click', disarmPickerGuard, true);
+window.addEventListener('pointercancel', disarmPickerGuard, true);
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
 function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; }
-// Capture-phase so the flag is set before the item/? handlers (and any blur) run; cleared next tick.
-braceMenu.addEventListener('mousedown', () => { _pickerMousedownActive = true; queueMicrotask(() => { _pickerMousedownActive = false; }); }, true);
+braceMenu.addEventListener('pointerdown', armPickerGuard, true);
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
-// The picker's `?` help mark: close the menu and open the concept guide at the form's entry. The
-// half-typed `{` stays in the point (hideBraceMenu never touches node text), so closing the guide
-// returns the user to their draft. openGuide validates the id and falls back gracefully if absent.
+// The picker's `?` help mark: commit the draft DELIBERATELY, then open the concept guide at
+// the form's entry. openGuide focuses its search box a frame later (rAF), which blurs the
+// contenteditable long after any pointer guard has expired — leaving the commit to that
+// race meant exitEdit fired unpredictably under the dialog. Committing here is explicit
+// and loss-free: the typed text (the half-typed `{…` included) is saved with the point,
+// and clicking back into the point resumes editing. openGuide validates the id and falls
+// back gracefully if absent.
 function openBraceHelp(guideId) {
+  const st = braceState;
   hideBraceMenu();
+  if (st?.content?.dataset.editing) { const n = nodeById(st.nodeId); if (n) exitEdit(st.content, n); }
   if (typeof openGuide === 'function') openGuide(guideId);
 }
 
@@ -21963,6 +21985,9 @@ function isEmojiMenuOpen() { return emojiMenu.classList.contains('on'); }
 function hideEmojiMenu() { emojiState?.content?.removeAttribute('aria-activedescendant'); emojiState?.content?.removeAttribute('aria-controls'); emojiMenu.classList.remove('on'); emojiState = null; }
 emojiMenu.addEventListener('mousedown', e => e.preventDefault());
 tagMenu.addEventListener('mousedown', e => e.preventDefault());
+// The blur guard covers all three caret pickers (see armPickerGuard by the brace menu).
+tagMenu.addEventListener('pointerdown', armPickerGuard, true);
+emojiMenu.addEventListener('pointerdown', armPickerGuard, true);
 
 function checkTagTrigger(content, nodeId) {
   const pos = getCaretOffset(content);

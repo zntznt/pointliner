@@ -1066,17 +1066,33 @@ test('BRACE_FORMS: every form has a description and a valid concept-guide link',
 // Clicking a { picker item (or its ? help mark, a real <button> that steals focus) must not tear the
 // picker down before the click's own handler runs. The contenteditable blur handler committed the
 // edit under the picker's mousedown, nulling braceState so click-to-select and the ? did nothing.
-// Fix: a _pickerMousedownActive flag set in the picker's capture-phase mousedown; the blur handler
-// skips exitEdit while it is true.
-test('picker click: the blur handler is guarded against an in-progress picker mousedown (src pins)', () => {
-  // the flag is set in a capture-phase mousedown on the brace menu, cleared next microtask
-  assert.ok(/_pickerMousedownActive\s*=\s*true[\s\S]{0,120}queueMicrotask/.test(_src),
-    'the picker mousedown sets the guard flag and clears it on the next microtask');
-  assert.ok(_src.includes("braceMenu.addEventListener('mousedown', () => { _pickerMousedownActive = true"),
-    'the flag is set on the brace-menu mousedown (capture phase)');
-  // the contenteditable blur handler must consult the flag before exitEdit
-  assert.ok(/if \(_pickerMousedownActive\) return;[\s\S]{0,120}exitEdit\(content, node\)/.test(_src),
-    'the blur handler skips exitEdit while a picker mousedown is active');
+// Fix (reworked after review): the guard is armed on pointerdown over any caret picker menu
+// and spans the WHOLE pointer sequence (on touch the editor's blur precedes the SYNTHETIC
+// mousedown, and the old microtask lifetime expired at the first trusted-event listener
+// boundary — cleared before anything could read it). Disarmed on the trailing window click /
+// pointercancel, with a timeout backstop. The guard lives in the REGULAR content blur handler
+// (the only one where a picker can be open — the base branch never wires the input listener
+// that opens them); the old pin matched the guard in the dead base handler.
+test('picker click: the blur guard spans the pointer sequence and sits in the real blur handler', () => {
+  // armed on pointerdown (capture) over each of the three caret picker menus
+  for (const menu of ['braceMenu', 'tagMenu', 'emojiMenu']) {
+    assert.ok(_src.includes(`${menu}.addEventListener('pointerdown', armPickerGuard, true)`),
+      `${menu} must arm the blur guard on pointerdown (capture)`);
+  }
+  // disarmed at the end of the interaction, not on a microtask
+  assert.ok(_src.includes("window.addEventListener('click', disarmPickerGuard, true)"),
+    'the guard disarms on the trailing click (the last event of mouse AND synthetic-touch sequences)');
+  assert.ok(!/_pickerMousedownActive\s*=\s*true[\s\S]{0,80}queueMicrotask/.test(_src),
+    'the microtask lifetime is gone (it expired between listener callbacks, guarding nothing)');
+  // the guard must sit in the REGULAR blur handler — the one that also hides the link menu —
+  // not the base branch's (where no picker can open)
+  assert.ok(/if \(_pickerMousedownActive\) return;[\s\S]{0,400}exitEdit\(content, node\);[\s\S]{0,200}hideLinkMenu\(\)/.test(_src),
+    'the guarded exitEdit is the regular-point blur handler (hideLinkMenu is unique to it)');
+  const baseGuards = (_src.match(/if \(_pickerMousedownActive\) return;/g) || []).length;
+  assert.equal(baseGuards, 1, 'exactly one blur handler carries the guard (the dead base copy was removed)');
+  // the ? help mark commits the draft deliberately before the guide steals focus
+  assert.ok(/function openBraceHelp\(guideId\) \{[\s\S]{0,400}exitEdit\(st\.content, n\)/.test(_src),
+    'openBraceHelp commits the draft explicitly instead of racing the guide’s rAF focus');
 });
 
 test('filterBraceForms — each scaffold selects the intended placeholder (sel offsets pinned)', () => {
