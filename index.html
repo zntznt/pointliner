@@ -24318,8 +24318,34 @@ async function reopenWorkspaceDoc(dir, name) {
     if (root && root.docId && fileRoot.docId && root.docId === fileRoot.docId) {
       fileHandle = fh; workspaceFile = fh; fileName = name; // same document, a real newer local edit → keep it
       renderFileName(); updateTitle();
-    } else {                                              // different document (or a file with no docId): the file wins
+    } else {
+      // Different document, OR a file with no docId (a legacy/other-tool file that no
+      // docId-aware build ever saved): the FILE wins. The risks are asymmetric — wrongly
+      // keeping the local copy lets the next auto-write clobber the on-disk file (the
+      // audit-#2 disaster; the filesystem is the user's storage), while wrongly preferring
+      // the file loses only session edits. So the file stays authoritative, but the loss is
+      // never SILENT or unrecoverable (#729): the losing local payload is stashed as a
+      // restore point first, and the identity-unknown case says so out loud. adoptDoc mints
+      // a docId (ensureDocId) and the next auto-write persists it into the file, so a
+      // legacy file takes this branch at most once.
+      let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
+      const localId = root?.docId || null;   // the pre-adopt identity (minted in memory if nothing else)
+      const unknownIdentity = !fileRoot.docId;
       adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
+      // Key the restore point where the user will look for it: identity-unknown means the
+      // discarded edits are almost certainly THIS document's, so they go under the doc now
+      // on screen (root.docId, freshly minted by the adopt; the payload is re-keyed to carry
+      // that identity too, or the restore path's mis-key guard would reject it) and "Restore
+      // earlier version" offers them directly. A provably DIFFERENT document's edits belong
+      // to that other document — keyed under its own id, they surface when it is opened again.
+      const stashed = unknownIdentity
+        ? stashPayloadAsPrev(rekeyPayloadDocId(localPayload, root.docId), root.docId)
+        : stashPayloadAsPrev(localPayload, localId);
+      if (unknownIdentity) {
+        flashHint(stashed
+          ? 'This file carries no identity mark, so the file\'s version was kept. Your newer local copy: File menu, Restore earlier version.'
+          : 'This file carries no identity mark, so the file\'s version was kept.');
+      }
     }
   }
   _wsKnownModified = file.lastModified || 0;             // sync-safety: anchor to the on-disk version
@@ -28984,6 +29010,35 @@ function parsePrevStore(raw) {
 function readPrevVersions() {
   let raw; try { raw = localStorage.getItem(AUTOSAVE_PREV_KEY); } catch (_) { return {}; }
   return parsePrevStore(raw);
+}
+// Preserve an autosave payload as a restore point under the given docId, immediately
+// (no snapshot throttle — callers use this when the payload is about to be DISCARDED,
+// not merely rotated: the reconnect file-wins path stashes the losing local copy so
+// "the file won" is always one Restore click away from recoverable, never a silent
+// loss, #729). Best-effort like every prev-store write; returns whether it stuck.
+function stashPayloadAsPrev(prev, docId) {
+  if (!prev || !docId) return false;
+  try {
+    const store = readPrevVersions();
+    store[docId] = { prev, at: Date.now() };
+    localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store)));
+    return true;
+  } catch (_) { return false; }
+}
+// Rewrite an autosave payload's embedded docId. The reconnect stash keys an identity-
+// unknown local copy under the doc NOW on screen — but earlierVersionForCurrentDoc
+// defensively rejects an entry whose embedded id differs from its store key (the
+// mis-keyed-entry guard), so the payload itself must carry the new identity too. That
+// is also the correct go-forward semantic: the discarded edits become THIS document's
+// earlier version, under the identity the document now has. Pure; null on unreadable.
+function rekeyPayloadDocId(payload, docId) {
+  if (!payload || !docId) return null;
+  try {
+    const d = JSON.parse(payload);
+    if (!d || !d.root || typeof d.root !== 'object') return null;
+    d.root.docId = docId;
+    return JSON.stringify(d);
+  } catch (_) { return null; }
 }
 // `strict` drops the keep-at-least-the-newest exemption: the quota-budgeted stash (see
 // writeLocalAutosave) passes the headroom REMAINING under the live payload as the cap, and
