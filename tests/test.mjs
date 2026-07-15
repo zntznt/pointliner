@@ -10258,8 +10258,59 @@ test('prev-version store is per-doc (src pins)', () => {
   const r = fnBody(_src, 'earlierVersionForCurrentDoc');
   assert.ok(r.includes('readPrevVersions()[root.docId]'), 'restore looks up THIS document\'s entry by docId');
   // legacy single-slot format still migrates so an existing restore point survives the upgrade
-  const rp = fnBody(_src, 'readPrevVersions');
-  assert.ok(rp.includes('d.root') && rp.includes('docId'), 'readPrevVersions migrates the legacy single-slot value by docId');
+  // (the migration lives in the pure parsePrevStore; readPrevVersions is its localStorage wrapper)
+  const rp = fnBody(_src, 'parsePrevStore');
+  assert.ok(rp.includes('d.root') && rp.includes('docId'), 'parsePrevStore migrates the legacy single-slot value by docId');
+  assert.ok(fnBody(_src, 'readPrevVersions').includes('parsePrevStore(raw)'), 'readPrevVersions delegates to the pure parser');
+});
+
+test('parsePrevStore: structural legacy sniff — a docId literally named "root" no longer wipes the store (#733)', () => {
+  // Legacy single-slot payload: the whole value IS a snapshot ({root: <tree>, …}) — migrates by docId.
+  const legacy = JSON.stringify({ root: { docId: 'abc123', children: [] }, focusedId: null });
+  const migrated = host(c.parsePrevStore(legacy));
+  assert.ok(migrated.abc123 && migrated.abc123.prev === legacy && migrated.abc123.at === 0, 'legacy migrates under its docId');
+  // Legacy payload with NO docId → nothing to key by → {}.
+  assert.deepEqual(host(c.parsePrevStore(JSON.stringify({ root: { children: [] } }))), {});
+  // The #733 wipe: a NEW-format map containing a doc whose id is literally "root" — d.root is an
+  // object, but it carries a string .prev, so it must be recognized as the map it is, not legacy.
+  const newFmt = { root: { prev: '{"root":{}}', at: 5 }, other: { prev: 'x', at: 9 } };
+  assert.deepEqual(host(c.parsePrevStore(JSON.stringify(newFmt))), newFmt, 'a map with a "root" key survives intact');
+  // Garbage in → {} out.
+  assert.deepEqual(host(c.parsePrevStore('not json')), {});
+  assert.deepEqual(host(c.parsePrevStore('')), {});
+  assert.deepEqual(host(c.parsePrevStore('42')), {});
+});
+
+test('evictPrevVersions: strict mode + serialized cost — the quota-budgeted stash never keeps an over-budget snapshot (#733)', () => {
+  const e = (prev, at) => ({ prev, at });
+  // strict: a single snapshot larger than the cap is DROPPED (the live autosave write it
+  // would crowd out matters more than a restore point) — the exemption applies only to the
+  // static-cap path (non-strict), pinned above as "never evicts to empty".
+  const huge = { z: e('z'.repeat(5000), 1) };
+  assert.deepEqual(host(c.evictPrevVersions(huge, 5, 100, true)), {}, 'strict drops what the budget cannot fit');
+  assert.equal(Object.keys(c.evictPrevVersions(huge, 5, 100)).length, 1, 'non-strict keeps the exemption');
+  // strict keeps whatever DOES fit, newest first
+  const mix = { a: e('a'.repeat(1000), 300), b: e('b'.repeat(1000), 200), c: e('c'.repeat(1000), 100) };
+  const kept = host(c.evictPrevVersions(mix, 5, 1200, true));
+  assert.deepEqual(Object.keys(kept), ['a'], 'the newest fits the strict budget; the rest are dropped');
+  // cost counts the SERIALIZED size: a quote-heavy snapshot escapes to ~2x its raw length,
+  // so a raw-length cap would under-count and overshoot the real setItem write.
+  const quoted = { q: e('"'.repeat(600), 1) };   // 600 raw chars → ~1202 serialized
+  assert.deepEqual(host(c.evictPrevVersions(quoted, 5, 800, true)), {}, 'escaping is counted against the budget');
+  assert.equal(Object.keys(c.evictPrevVersions(quoted, 5, 1400, true)).length, 1, 'and fits once the budget covers the escaped size');
+});
+
+test('writeLocalAutosave stash: throttle-on-attempt + strict quota budget (src pins, #733)', () => {
+  const w = fnBody(_src, 'writeLocalAutosave');
+  // the interval stamp precedes the try — a failing stash (full store, pre-docId payload) backs
+  // off for SNAPSHOT_EVERY_MS instead of re-running the multi-MB parse+stringify every autosave
+  assert.ok(w.indexOf('_lastSnapshotAt = now') < w.indexOf('const outId'),
+    'the snapshot throttle advances on attempt, not only on success');
+  // the prev store is budgeted against the headroom under the live payload, strictly
+  assert.ok(/Math\.min\(PREV_BYTE_CAP, budget\), true\)/.test(w),
+    'the stash evicts with the strict quota budget');
+  assert.ok(/LS_TOTAL_BUDGET - payload\.length/.test(w),
+    'the budget is the quota headroom remaining under the live payload');
 });
 
 // Cross-document write guard on reconnect (audit #2, the reload data-loss bug): reopenWorkspaceDoc's
