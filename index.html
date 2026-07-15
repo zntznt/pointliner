@@ -21710,7 +21710,7 @@ function disarmPickerGuard() { _pickerMousedownActive = false; clearTimeout(_pic
 window.addEventListener('click', disarmPickerGuard, true);
 window.addEventListener('pointercancel', disarmPickerGuard, true);
 function isBraceMenuOpen() { return braceMenu.classList.contains('on'); }
-function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; }
+function hideBraceMenu() { braceState?.content?.removeAttribute('aria-activedescendant'); braceState?.content?.removeAttribute('aria-controls'); braceMenu.classList.remove('on'); braceState = null; _bodyVocab = null; /* drop the per-session completion vocabulary (see bodyVocab) */ }
 braceMenu.addEventListener('pointerdown', armPickerGuard, true);
 braceMenu.addEventListener('mousedown', e => e.preventDefault());
 // The picker's `?` help mark: commit the draft DELIBERATELY, then open the concept guide at
@@ -21744,16 +21744,34 @@ function showBracePreview(body, content, offset) {
 function searchCtx() {
   return { tags: collectTags().map(t => t.name), vars: Object.keys(collectVars()), states: [...knownStates()], propKeys: collectPropKeys() };
 }
+// Per-SESSION vocabulary cache for body completion. The input handler runs markDirty()
+// (bumping _varsVer) BEFORE the trigger chain, so every _varsVer-keyed collector read
+// during completion is structurally guaranteed COLD — without this cache, typing inside
+// a {query|roll|count:} body re-walked the whole tree four times per keystroke
+// (collectTags + collectVars + knownStates + collectPropKeys via searchCtx), and a
+// {= …} / conditional body re-resolved every document variable per keystroke, breaking
+// guidance/performance.md's core invariant (the keystroke path must not pay whole-tree
+// walks). The vocabulary is frozen for the lifetime of ONE open brace in ONE point
+// (key: nodeId + braceStart) — the names a completion draws on pre-exist the edit
+// session by construction, so freshness within it buys nothing. Dropped when the brace
+// menu hides (hideBraceMenu), so leaving and re-entering a brace re-reads fresh vocab.
+let _bodyVocab = null; // { key, ctx?, vars? } — lazily filled per branch
+function bodyVocab(nodeId, braceStart) {
+  const key = nodeId + ':' + braceStart;
+  if (_bodyVocab?.key !== key) _bodyVocab = { key };
+  return _bodyVocab;
+}
 // Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 // (fragStart RELATIVE to the char after `{`) for a recognized completing lead — matches
 // may be empty (a recognized lead with nothing to offer, e.g. {= } → we own the menu and
 // close it, never falling through to forms). Returns null when the body is NOT a
 // completing lead (fall through to the forms/name picker). Pure cores do the work; this
-// just gathers the DOM-side context.
-function bodyCompletion(inner, nodeId) {
+// just gathers the DOM-side context (vocabulary via the session cache above).
+function bodyCompletion(inner, nodeId, braceStart) {
+  const vv = bodyVocab(nodeId, braceStart);
   if (/^=/.test(inner)) {                                             // math: {= …}
     const frag = mathFragmentAt(inner, inner.length);
-    return frag ? { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, collectVars()) }
+    return frag ? { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, vv.vars ??= collectVars()) }
                 : { prefix: '', fragStart: inner.length, matches: [] };
   }
   // conditional: {cond: then | else} — the condition (before the top-level `:`) is an evalMath
@@ -21763,13 +21781,13 @@ function bodyCompletion(inner, nodeId) {
   // partial condition already reads as a comparison (a bare word is still an ordinary rule/var ref).
   if (splitTopLevel(inner, ':').length === 1 && /[<>=!]=?|[<>]/.test(inner)) {
     const frag = mathFragmentAt(inner, inner.length);
-    if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, collectVars()) };
+    if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, vv.vars ??= collectVars()) };
   }
   let m;
   if ((m = /^(query|roll|count)\s*:/i.exec(inner))) {                 // search: {query|roll|count: …}
     const qStart = m[0].length, query = inner.slice(qStart);
     const tok = searchTokenAt(query, query.length);
-    return tok ? { prefix: tok.token, fragStart: qStart + tok.start, matches: searchCompletions(tok.token, searchCtx()) }
+    return tok ? { prefix: tok.token, fragStart: qStart + tok.start, matches: searchCompletions(tok.token, vv.ctx ??= searchCtx()) }
                : { prefix: '', fragStart: inner.length, matches: [] };
   }
   if ((m = /^oracle\s*:\s*/i.exec(inner))) {                          // oracle: {oracle: <band>}
@@ -21803,7 +21821,7 @@ function checkBraceTrigger(content, nodeId) {
   // {oracle: …}, {meter: …}), complete its vocabulary at the caret instead of closing.
   // `inner` spans just after `{` to the caret. A recognized lead returns a (possibly
   // empty) match set → we own the menu here and never fall through to forms below.
-  const bc = bodyCompletion(inner, nodeId);
+  const bc = bodyCompletion(inner, nodeId, braceStart);
   if (bc) {
     if (!bc.matches.length) { hideBraceMenu(); return; }
     // A single completion that IS the fully-typed fragment offers nothing — applying
