@@ -6717,6 +6717,66 @@ function stripTblfm(text) {
   return (text || '').replace(TBLFM_LINE_RE, '').replace(/\n+$/, '');
 }
 
+// Remap a stored 0-based column index across a structural column op, so metadata that
+// points at a column by index (a board's view.groupBy, a calendar's view.dateBy, a
+// #+TBLFM $N ref) follows the column instead of pointing at whatever slid into its slot.
+// op ∈ {kind:'insert', at} | {kind:'delete', at} | {kind:'move', from, to} — all 0-based;
+// the move semantics mirror mtMoveItem (splice out `from`, splice in at `to`). Returns the
+// new index, or null when the referenced column was the one deleted. Pure, Node-testable.
+function remapColIndex(idx, op) {
+  if (idx == null) return idx;
+  if (op.kind === 'insert') return idx >= op.at ? idx + 1 : idx;
+  if (op.kind === 'delete') return idx === op.at ? null : idx > op.at ? idx - 1 : idx;
+  if (op.kind === 'move') {
+    if (idx === op.from) return op.to;
+    if (op.from < op.to) return (idx > op.from && idx <= op.to) ? idx - 1 : idx;
+    return (idx >= op.to && idx < op.from) ? idx + 1 : idx;
+  }
+  return idx;
+}
+
+// Reindex the absolute 1-based $N column refs in a #+TBLFM recipe across a column op.
+// Relative refs ($</$>/$#/$±n) and every @row ref are unaffected by a column op and pass
+// through untouched. On a DELETE, a clause that targets or references the removed column is
+// dropped whole: its column is gone, and the engine reads a dangling ref as 0 (a silent
+// wrong total), so dropping the clause — the total simply stops recomputing — is the visible,
+// honest degrade. Returns the rewritten recipe ('' if every clause was dropped). Pure.
+function reindexTblfmCols(recipe, op) {
+  if (!recipe) return recipe;
+  const kept = [];
+  for (const part of recipe.split('::').map(p => p.trim()).filter(Boolean)) {
+    let broken = false;
+    const next = part.replace(/\$(\d+)/g, (m, d) => {
+      const n = remapColIndex(parseInt(d, 10) - 1, op);   // org 1-based → 0-based → remap
+      if (n == null) { broken = true; return m; }
+      return '$' + (n + 1);                                // back to 1-based
+    });
+    if (!broken) kept.push(next);
+  }
+  return kept.join(' :: ');
+}
+
+// Keep a base's column-associated metadata aligned when a column is inserted, deleted, or
+// moved: the board/calendar view's stored column index and the #+TBLFM recipe's $N refs.
+// (colW/colRole are spliced inline by each caller; this covers the two that were missed.)
+// If the view's own key column is deleted the view reverts to the plain table (a headless
+// board/calendar would group by nothing) rather than silently mis-grouping. DOM-free.
+function remapNodeColumns(node, op) {
+  if (node.view) {
+    const key = node.view.kind === 'board' ? 'groupBy' : node.view.kind === 'calendar' ? 'dateBy' : null;
+    if (key && node.view[key] != null) {
+      const n = remapColIndex(node.view[key], op);
+      if (n == null) node.view = undefined;   // its column was deleted → back to table view
+      else node.view[key] = n;
+    }
+  }
+  const recipe = extractTblfm(node.text);
+  if (recipe) {
+    const next = reindexTblfmCols(recipe, op);
+    node.text = stripTblfm(node.text) + (next ? '\n#+TBLFM: ' + next : '');
+  }
+}
+
 // Detect a *spreadsheet-style* formula a user typed straight into a base cell —
 // `=A1+B1`, `=$1*$2`, `=SUM(...)`. Bases don't compute cell-level `=` formulas (Org's
 // #+TBLFM: recipe + the Calculate menu own that, by design), so such a cell stays
@@ -8355,6 +8415,7 @@ function mtInsertCol(node, colIdx, side) {
   m.rows.forEach(r => r.splice(at, 0, ''));
   if (node.colW) node.colW.splice(at, 0, null); // keep widths aligned to columns
   if (node.colRole) node.colRole.splice(at, 0, null); // roles stay aligned too (FR-1)
+  remapNodeColumns(node, { kind: 'insert', at }); // view.groupBy/dateBy + #+TBLFM refs follow the shift
   mtCommit(node, m); refreshTable(node);
 }
 // Set/clear a column's display role (FR-1). Lazily sized like colW; an all-null
@@ -8387,6 +8448,7 @@ function mtMoveCol(node, colIdx, dir) {
   m.rows.forEach(r => mtMoveItem(r, colIdx, to));
   if (node.colW) mtMoveItem(node.colW, colIdx, to);
   if (node.colRole) mtMoveItem(node.colRole, colIdx, to);
+  remapNodeColumns(node, { kind: 'move', from: colIdx, to }); // view + #+TBLFM refs follow the move
   mtCommit(node, m); refreshTable(node);
 }
 function mtDeleteCol(node, colIdx) {
@@ -8396,6 +8458,7 @@ function mtDeleteCol(node, colIdx) {
   m.rows.forEach(r => r.splice(colIdx, 1));
   if (node.colW) node.colW.splice(colIdx, 1);
   if (node.colRole) { node.colRole.splice(colIdx, 1); if (node.colRole.every(x => x == null)) node.colRole = undefined; }
+  remapNodeColumns(node, { kind: 'delete', at: colIdx }); // drop view/#+TBLFM refs to the removed column
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
 // Set (or clear, with w=null) a column's pinned width and re-render the grid.
@@ -9300,7 +9363,7 @@ function buildTableWidget(node, readOnly) {
     const m = mtModel(node);
     if (mtReorder.kind==='col') {
       const ch = e.target.closest('.mt-colhead');
-      if (ch) { const to=+ch.dataset.c; mtMoveItem(m.aligns, mtReorder.from, to); m.rows.forEach(r => mtMoveItem(r, mtReorder.from, to)); if (node.colW) mtMoveItem(node.colW, mtReorder.from, to); mtCommit(node,m); }
+      if (ch) { const to=+ch.dataset.c, from=mtReorder.from; mtMoveItem(m.aligns, from, to); m.rows.forEach(r => mtMoveItem(r, from, to)); if (node.colW) mtMoveItem(node.colW, from, to); if (node.colRole) mtMoveItem(node.colRole, from, to); remapNodeColumns(node, { kind:'move', from, to }); mtCommit(node,m); }
     } else {
       const rh = e.target.closest('.mt-rowh');
       if (rh && rh.dataset.r) { mtMoveItem(m.rows, mtReorder.from, +rh.dataset.r); mtCommit(node,m); }
