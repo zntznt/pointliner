@@ -1076,6 +1076,8 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 /* start-date chip — neutral/accent ink (a start is never "overdue"-urgent) */
 .prop-chip.prop-start-overdue .prop-val,.prop-chip.prop-start-today .prop-val,.prop-chip.prop-start-soon .prop-val{color:var(--acc)}
 .prop-chip.prop-start-future .prop-val{color:var(--muted)}
+/* a DONE point's date is met, not urgent: muted ink, never overdue-red (mirrors the agenda) */
+.prop-chip.prop-due-done .prop-val,.prop-chip.prop-start-done .prop-val{color:var(--muted)}
 /* constraint / check chip (F2) — pass is a muted ✓ (P4: not silent), fail is bad,
    error is a distinct "can't evaluate" warn treatment */
 .prop-chip.prop-check .prop-check-glyph{font-weight:600;margin-right:3px}
@@ -10069,14 +10071,16 @@ function buildPropsArea(node) {
       const ep = parseDueDate(val, nodeCal);
       if (ep !== null) {
         const df = formatDueDate(ep, nodeCal);
-        // A start in the past has *begun*, not lapsed — "2d overdue" is due-date
-        // language. Relabel to "2d ago" so the chip agrees with the agenda's
-        // started/running treatment. Future/Today labels read fine as-is. The ▸ is
-        // a visual start-marker only — kept out of the aria-label (a screen reader
-        // would read the glyph name).
-        const dateLabel = propK === 'start' ? df.label.replace(/(\d+)d overdue/, '$1d ago') : df.label;
+        // A DONE point's deadline was MET, so it is not overdue — collapse the urgency to 'done'
+        // (drop the red), reusing the agenda's agendaState so the chip agrees with the Timeline.
+        // A start in the past has *begun*, not lapsed. Either way "Nd overdue" is due-date language,
+        // so relabel it "Nd ago". The ▸ is a visual start-marker only — kept out of the aria-label
+        // (a screen reader would read the glyph name).
+        const done = todoDoneFromText(node.text);
+        const state = agendaState({ done, state: df.state });
+        const dateLabel = (propK === 'start' || done) ? df.label.replace(/(\d+)d overdue/, '$1d ago') : df.label;
         displayVal = (propK === 'start' ? '▸ ' : '') + dateLabel;
-        chip.classList.add('prop-' + propK + '-' + df.state);
+        chip.classList.add('prop-' + propK + '-' + state);
         chip.title = df.iso + '. Click to edit';
         chip.setAttribute('aria-label', `${propK}: ${dateLabel} (${df.iso}). Click to edit properties`);
       } else if (String(val).trim()) {
