@@ -1359,6 +1359,23 @@ test('picker exclusion + lifecycle wiring pinned in source (one caret menu at a 
     'onKeyDown must close the caret pickers on caret-move keys');
 });
 
+// ── body-completion vocabulary session cache (keystroke-path perf invariant) ────
+// markDirty() runs BEFORE the trigger chain on every input, so a collector read inside
+// bodyCompletion is guaranteed cache-cold; the session cache is the only thing standing
+// between typing-in-a-query-body and four whole-tree walks per keystroke.
+test('bodyCompletion reads collectors only through the per-session vocab cache', () => {
+  const body = fnBody(_src, 'bodyCompletion');
+  assert.ok(/const vv = bodyVocab\(nodeId, braceStart\)/.test(body),
+    'bodyCompletion must open the session cache keyed on nodeId + braceStart');
+  assert.ok(!/matches: mathCompletions\([^)]*collectVars\(\)\)/.test(body.replace(/vv\.vars \?\?= collectVars\(\)/g, 'CACHED')),
+    'collectVars must be read only through vv.vars ??= (no bare per-keystroke call)');
+  assert.ok(!/searchCompletions\([^)]*searchCtx\(\)\)/.test(body.replace(/vv\.ctx \?\?= searchCtx\(\)/g, 'CACHED')),
+    'searchCtx must be read only through vv.ctx ??= (no bare per-keystroke call)');
+  // the cache drops when the menu hides, so re-entering a brace re-reads fresh vocabulary
+  assert.ok(/function hideBraceMenu\(\)[^\n]*_bodyVocab = null/.test(_src),
+    'hideBraceMenu must drop the session vocabulary');
+});
+
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
   const names = p => c.filterBraceForms(p).map(f => f.name);
   assert.ok(names('cond').includes('conditional'));
