@@ -166,7 +166,7 @@ export function loadCores() {
     'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr',   // #649 moon phase + math display seam
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'strCondVerdict',
-    'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'pastTense', 'fieldParts', 'fieldModParts',
+    'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'pastTense', 'presentParticiple', 'fieldParts', 'fieldModParts',
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
