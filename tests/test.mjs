@@ -650,6 +650,39 @@ test('pastTense — CVC doubling now agrees with presentParticiple (#770)', () =
   assert.equal(c.pastTense('love'), 'loved');     // e-ending handled earlier
 });
 
+test('pluralize — f/fe→ves is restricted to the exception set; regular -f/-fe take -s (#771)', () => {
+  // the over-broad rule used to mangle these common nouns:
+  assert.equal(c.pluralize('roof'), 'roofs');
+  assert.equal(c.pluralize('chief'), 'chiefs');
+  assert.equal(c.pluralize('belief'), 'beliefs');
+  assert.equal(c.pluralize('safe'), 'safes');
+  assert.equal(c.pluralize('chef'), 'chefs');
+  assert.equal(c.pluralize('cafe'), 'cafes');
+  // the genuine -ves words still convert (dwarf/elf apt for this app)
+  assert.equal(c.pluralize('wolf'), 'wolves');
+  assert.equal(c.pluralize('knife'), 'knives');
+  assert.equal(c.pluralize('dwarf'), 'dwarves');
+  assert.equal(c.pluralize('elf'), 'elves');
+  assert.equal(c.pluralize('Leaf'), 'Leaves');   // leading capital survives
+});
+
+test('article — .a chooses a/an by pronunciation for the common exceptions (#772)', () => {
+  const art = w => c.applyMods(w, ['a']);
+  assert.equal(art('hour'), 'an hour');           // silent h
+  assert.equal(art('honest'), 'an honest');
+  assert.equal(art('heir'), 'an heir');
+  assert.equal(art('unicorn'), 'a unicorn');       // consonant (y) onset
+  assert.equal(art('university'), 'a university');
+  assert.equal(art('european'), 'a european');
+  assert.equal(art('one'), 'a one');               // w onset
+  // the naive letter test still handles the ordinary cases, and an unlisted word
+  // falls back to it (no NEW error introduced)
+  assert.equal(art('ogre'), 'an ogre');
+  assert.equal(art('apple'), 'an apple');
+  assert.equal(art('sword'), 'a sword');
+  assert.equal(art('umbrella'), 'an umbrella');    // unlisted 'u' → letter test → correct here
+});
+
 test('applyMods — folds modifiers left-to-right', () => {
   assert.equal(c.applyMods('dragon', ['a', 'cap']), 'A dragon');
   assert.equal(c.applyMods('dragon', ['cap', 'a']), 'a Dragon');

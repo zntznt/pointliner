@@ -17550,11 +17550,18 @@ function irregularLookup(table, w) {
 // English pluralizer: common irregulars first (the recorded A1 deferral, closed via the
 // leftover pass), then the regular heuristic. Order matters below: sibilant → +es;
 // f/fe → ves; consonant+y → ies; else +s.
+// #771: f/fe → ves is the EXCEPTION, not the rule — most -f/-fe nouns take plain -s
+// (roof→roofs, chief→chiefs, belief→beliefs, safe→safes, chef→chefs, cafe→cafes). Restrict
+// the -ves form to the known set (base forms; -ife words drop "fe", -f words drop "f"); every
+// other f/fe word falls through to -s. Dual-plural words (dwarf, scarf, hoof, wharf) keep the
+// -ves form, apt for this app's usage (dwarves/elves).
+const F_TO_VES = new Set(['leaf','loaf','wolf','half','calf','knife','life','wife','shelf',
+  'thief','self','elf','wharf','scarf','hoof','dwarf','sheaf']);
 function pluralize(w) {
   const irr = irregularLookup(IRREGULAR_PLURALS, w);
   if (irr !== null) return irr;
   if (/(s|x|z|ch|sh)$/i.test(w)) return w + 'es';
-  if (/(?:[^f]f|fe)$/i.test(w)) return w.replace(/fe?$/i, 'ves');
+  if (/(?:[^f]f|fe)$/i.test(w) && F_TO_VES.has(w.toLowerCase())) return w.replace(/fe?$/i, 'ves');
   if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ies';
   return w + 's';
 }
@@ -17601,13 +17608,31 @@ function ordinal(s) {
   return n + suf;
 }
 
+// #772: a/an by PRONUNCIATION, not the leading vowel LETTER. Silent-h words sound vowel-
+// initial (an hour / honest / heir); many vowel-letter words have a consonant y/w onset (a
+// unicorn / university / one). Explicit sets (checked on the first word, case-insensitively)
+// override the naive letter test for the common cases; coverage is partial by nature, but it
+// never introduces a NEW error — an unlisted word falls back to the original letter test.
+const ARTICLE_AN = new Set(['hour','hours','hourly','honest','honestly','honesty','honor','honors',
+  'honorable','honorary','honour','honours','honourable','heir','heirs','heiress','heirloom','homage']);
+const ARTICLE_A = new Set(['one','once','ewe','ewes','euro','euros','europe','european','euphemism',
+  'euphoria','eulogy','eucalyptus','unicorn','unicorns','uniform','uniforms','union','unions','unique',
+  'unit','units','unite','unity','universal','universe','university','universities','use','used','useful',
+  'useless','user','users','usual','usually','usurp','utensil','utility','utopia','ukulele','ubiquitous',
+  'uranium','ufo']);
+function indefiniteArticle(word) {
+  const first = String(word).trim().toLowerCase().match(/^[a-z]+/)?.[0] || '';
+  if (ARTICLE_AN.has(first)) return 'an';
+  if (ARTICLE_A.has(first)) return 'a';
+  return /^[aeiou]/i.test(String(word).trim()) ? 'an' : 'a';
+}
 // One canonical string→string fn per modifier (null-proto so `m in MODIFIERS` is safe).
 const MODIFIERS = Object.assign(Object.create(null), {
   cap:   s => s.charAt(0).toUpperCase() + s.slice(1),
   title: s => s.split(/(\s+)/).map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(''),
   upper: s => s.toUpperCase(),
   lower: s => s.toLowerCase(),
-  a:     s => (/^[aeiou]/i.test(s.trim()) ? 'an ' : 'a ') + s,
+  a:     s => indefiniteArticle(s) + ' ' + s,
   s:     s => pluralize(s),
   ed:    s => pastTense(s),
   ord:   s => ordinal(s),
