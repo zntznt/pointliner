@@ -5189,6 +5189,26 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     assert.equal(c.foldedOffsetFor(n, 10), 16);
   });
 
+  test('foldedOffsetFor — a just-promoted token uses its LITERAL width, not the canonical rebuild (#766)', () => {
+    // The user typed the literal `{=1+1}` (6 chars), but the math record's canonical shorthand is
+    // `{= 1+1}` (7). A caret offset captured at the end of the unfolded LITERAL buffer
+    // (`{=1+1}rest!` = 11) must map to the true end of the folded text, not one char short of it.
+    const node = { text: '[[math:k1]]rest!', math: [{ key: 'k1', expr: '1+1' }] };
+    const T = '[[math:k1]]'.length;              // folded token width (11); text.length = T + 5 (16)
+    assert.equal(c.artifactToShorthand('math', node.math[0]), '{= 1+1}');   // canonical is 7 chars
+    // WITHOUT the promoted-literal hint → canonical width (7): offset 11 lands one char short (the bug)
+    vm.runInContext('_promotedLit = new Map();', c._context);
+    assert.equal(c.foldedOffsetFor(node, 11), T + 4);            // 11 - 7 = 4 past token → short of end
+    // WITH the literal width recorded (6) → offset 11 maps to the real end (after "rest!")
+    vm.runInContext('_promotedLit = new Map([["k1", 6]]);', c._context);
+    assert.equal(c.foldedOffsetFor(node, 11), T + 5);           // 11 - 6 = 5 → end of "rest!"
+    assert.equal(node.text.length, T + 5);                      // confirm T+5 IS the end
+    // a key NOT in the map falls back to canonical (no false match on unique keys)
+    assert.equal(c.foldedOffsetFor({ text: '[[math:k2]]x', math: [{ key: 'k2', expr: '1+1' }] }, 8),
+      '[[math:k2]]'.length + 1);                                // 8 - 7 = 1 → after 'x'
+    vm.runInContext('_promotedLit = new Map();', c._context);   // reset for later tests
+  });
+
   test('foldedOffsetFor — accumulates across multiple inline-able tokens', () => {
     const n = c.mkNode('[[dice:a1]]+[[math:m1]] end');
     n.dice = [{ key: 'a1', expr: '2d6' }];
