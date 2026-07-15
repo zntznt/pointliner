@@ -50,6 +50,11 @@ The everyday outliner. This is the part you use without thinking about it.
 Random generators for names, loot, prompts, oracles, anything. Type it in `{curly braces}` and it
 becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 
+- **The `{` menu teaches all of this.** Type an opening `{` in a point and a menu lists every
+  pill form (dice, picks, calculations, live lists, meters and the rest); pick one and it drops
+  in a ready-to-edit scaffold with the first blank selected. It keeps completing as you write
+  inside a pill: function names in a calculation, `is:todo` filters in a live search, your own
+  rule and variable names, a point's own properties. ([the two doors](generating-text.md))
 - **Pick from a list.** `{sword | shield | potion}` shows one at random, click to re-pick.
   ([weights too](generating-text.md#pick-one-of-several-alternation): make some choices rarer.)
 - **Roll dice.** `{2d6}`, `{1d20+5}`, plus exploding, keep-highest, Fate and success pools.

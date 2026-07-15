@@ -13584,6 +13584,11 @@ function attachContentEvents(content, node) {
     // the compositionend listener below catches up on commit).
     if (!e.isComposing && normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); return; }
     if (checkMdBlockPrefix(content, node)) return;
+    // IME: composition updates carry isComposing=true. The pickers must not derive
+    // against uncommitted composition text — the commit replaces it with a different-
+    // length run, and a menu opened mid-composition would splice at stale offsets.
+    // Hide, skip the triggers, and let compositionend re-derive on the committed text.
+    if (e.isComposing) { hideInlineMenus(); return; }
     checkSlash(content, node.id);
     checkLinkTrigger(content, node.id);
     checkBraceTrigger(content, node.id);
@@ -13593,11 +13598,19 @@ function attachContentEvents(content, node) {
     updateFnPanel(node);
   });
   // IME: composition updates arrive as input events with isComposing=true, which
-  // skip the gr-src normalize above. Normalize once when the composition commits.
+  // skip the gr-src normalize above. Normalize once when the composition commits,
+  // then re-run the trigger chain: the input events were composition-gated, and in
+  // some browsers no post-compositionend input fires, so this is the one place the
+  // pickers can re-derive against the committed text.
   content.addEventListener('compositionend', () => {
     if (!content.dataset.editing) return;
     node.text = editableText(content); markDirty();
-    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); }
+    if (normalizeGrSrcSpans(content, node)) { hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); return; }
+    checkSlash(content, node.id);
+    checkLinkTrigger(content, node.id);
+    checkBraceTrigger(content, node.id);
+    checkTagTrigger(content, node.id);
+    checkEmojiTrigger(content, node.id);
   });
   content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
   content.addEventListener('paste', e => handlePaste(e, node, content));
@@ -19976,9 +19989,10 @@ function mathCompletions(prefix, vars) {
   }
   for (const n of Object.keys(vars || {})) {                                   // a document variable (no fixed desc/guide — it's the user's own)
     if (seen.has(n) || !match(n)) continue; seen.add(n);
-    const v = vars[n];
-    const disp = typeof v === 'string' ? v : (Number.isInteger(+v) ? +v : +Number(v).toPrecision(4));
-    out.push({ name: n, group: 'var', insert: n, caretBack: 0, hint: '= ' + disp, desc: 'a variable you defined', guide: 'variables' });
+    // formatVarValue is the ONE var display path (CLAUDE.md) — hand-rolled precision here
+    // vs renderBraceMenu's meant the same variable showed 4 sig figs as a math completion
+    // and 6 as a name candidate, inside one menu (P1).
+    out.push({ name: n, group: 'var', insert: n, caretBack: 0, hint: '= ' + formatVarValue(vars[n]), desc: 'a variable you defined', guide: 'variables' });
   }
   const rank = { 'fn-core': 0, 'agg': 1, 'fn-conv': 2, 'fn-date': 3, 'const': 4, 'var': 5 };
   return out.sort((a, b) => (rank[a.group] ?? 9) - (rank[b.group] ?? 9));       // stable → groups cluster for the menu headers
@@ -21798,7 +21812,7 @@ function completionScopeVars(nodeId) {
 // just gathers the DOM-side context (vocabulary via the session cache above).
 function bodyCompletion(inner, nodeId, braceStart) {
   const vv = bodyVocab(nodeId, braceStart);
-  if (/^=/.test(inner)) {                                             // math: {= …}
+  if (/^\s*=/.test(inner)) {                                          // math: {= …} (leads tolerate leading space — the sniffers .trim(), so '{ query:' promotes; completion must agree)
     const frag = mathFragmentAt(inner, inner.length);
     return frag ? { prefix: frag.prefix, fragStart: frag.start, consume: /\w/, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) }
                 : { prefix: '', fragStart: inner.length, matches: [] };
@@ -21808,23 +21822,23 @@ function bodyCompletion(inner, nodeId, braceStart) {
   // `inner` is the body up to the caret; a `:` in it means the caret has moved past the condition
   // into the free-text branches, so only complete while no top-level `:` has been typed yet AND the
   // partial condition already reads as a comparison (a bare word is still an ordinary rule/var ref).
-  if (splitTopLevel(inner, ':').length === 1 && /[<>=!]=?|[<>]/.test(inner)) {
+  if (splitTopLevel(inner, ':').length === 1 && /==|!=|<|>/.test(inner)) {   // condParts' own comparison sniff: a lone '!' or '=' is prose, not a conditional
     const frag = mathFragmentAt(inner, inner.length);
     if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, consume: /\w/, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) };
   }
   let m;
-  if ((m = /^(query|roll|count)\s*:/i.exec(inner))) {                 // search: {query|roll|count: …}
+  if ((m = /^\s*(query|roll|count)\s*:/i.exec(inner))) {              // search: {query|roll|count: …}
     const qStart = m[0].length, query = inner.slice(qStart);
     const tok = searchTokenAt(query, query.length);
     return tok ? { prefix: tok.token, fragStart: qStart + tok.start, consume: /[^\s{}]/, matches: searchCompletions(tok.token, vv.ctx ??= searchCtx()) }
                : { prefix: '', fragStart: inner.length, matches: [] };
   }
-  if ((m = /^oracle\s*:\s*/i.exec(inner))) {                          // oracle: {oracle: <band>}
+  if ((m = /^\s*oracle\s*:\s*/i.exec(inner))) {                       // oracle: {oracle: <band>}
     const frag = inner.slice(m[0].length);
     return /^[a-z]*$/i.test(frag) ? { prefix: frag, fragStart: m[0].length, consume: /[A-Za-z]/, matches: oracleCompletions(frag) }
                                   : { prefix: '', fragStart: inner.length, matches: [] };
   }
-  if ((m = /^meter\s*:/i.exec(inner))) {                              // meter: {meter: prop/prop} — the point's own keys
+  if ((m = /^\s*meter\s*:/i.exec(inner))) {                           // meter: {meter: prop/prop} — the point's own keys
     const body = inner.slice(m[0].length), tok = meterTokenAt(body, body.length);
     if (!tok) return { prefix: '', fragStart: inner.length, matches: [] };
     const node = nodeById(nodeId), keys = node ? (node.props || []).map(p => p.key) : [];
@@ -21917,8 +21931,7 @@ function renderBraceMenu() {
     if (item.hint) hint = item.hint;
     else if (item.group === 'form') hint = item.insert;
     else if (item.group === 'var' && item.val !== undefined) {
-      hint = '= ' + (typeof item.val === 'string' ? item.val // random pick — frozen text
-        : Number.isInteger(item.val) ? item.val : +item.val.toPrecision(6));
+      hint = '= ' + formatVarValue(item.val); // the one var display path (string-aware, CLAUDE.md)
     }
     if (hint) {
       const valEl = document.createElement('span');
