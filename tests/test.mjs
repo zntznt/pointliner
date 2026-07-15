@@ -9474,6 +9474,21 @@ test('agendaGantt — a row carries the item done flag through to the renderer (
   assert.equal(byId.d.done, true);
 });
 
+test('agendaGantt — a future-dated start with no due is a pending marker, not an ongoing bar (#768)', () => {
+  const today = c.parseDueDate('2026-06-14');
+  const g = host(c.agendaGantt([
+    { id: 'run',  start: c.parseDueDate('2026-06-10'), due: null, title: 'Running' },     // started (start <= today)
+    { id: 'soon', start: c.parseDueDate('2026-06-20'), due: null, title: 'Not started' }, // future start (start > today)
+  ], today));
+  const byId = Object.fromEntries(g.rows.map(r => [r.id, r]));
+  // a STARTED start-only point is an open-ended 'ongoing' bar spanning start → today
+  assert.equal(byId.run.kind, 'ongoing');
+  assert.equal(byId.run.spanDays, 5);          // 2026-06-10 → 2026-06-14 inclusive
+  // a FUTURE start is a 1-day 'pending' marker at its start, NOT an in-progress bar (#768)
+  assert.equal(byId.soon.kind, 'pending');
+  assert.equal(byId.soon.spanDays, 1);         // a single-day marker, not a bar reaching back to today
+});
+
 test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today flags', () => {
   const today  = c.parseDueDate('2026-06-14');
   const anchor = c.parseDueDate('2026-06-01');     // June 2026
