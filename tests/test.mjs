@@ -2069,6 +2069,38 @@ test('collectVars — an explicit-root (foreign-doc) call never clobbers the liv
     'foreign collectVars must not overwrite _varCycles (was {a,b} before the fix)');
 });
 
+test('renderPosVarMaps — intra-point positional: a ref reads the nearest declaration ABOVE its token (#767)', () => {
+  // One point: {gold} {gold := 10} {gold} {gold := 50} {gold}. The middle ref must see 10 (the
+  // declaration above it), not the point's whole-text last-wins (50); a ref before the FIRST
+  // declaration sees nothing; a ref after both sees 50. (renderPosVarMaps walks the module root.)
+  const root = c.mkRoot();
+  const pt = c.mkNode('[[var:r0]] [[var:d1]] [[var:r1]] [[var:d2]] [[var:r2]]');
+  pt.vars = [
+    { key: 'r0', name: 'gold', expr: '' },   // reference BEFORE any declaration → nothing
+    { key: 'd1', name: 'gold', expr: '10' }, // gold := 10
+    { key: 'r1', name: 'gold', expr: '' },   // reference BETWEEN the two declarations → 10
+    { key: 'd2', name: 'gold', expr: '50' }, // gold := 50
+    { key: 'r2', name: 'gold', expr: '' },   // reference AFTER both → 50
+  ];
+  root.children.push(pt);
+  c._context.__posRoot = root;
+  vm.runInContext('root = __posRoot; resetDocCaches();', c._context);
+  try {
+    const byKey = c.renderPosVarMaps(pt);
+    const g = k => { const map = byKey.get(k); return map ? map.gold : '(no map)'; };
+    assert.equal(g('r0'), undefined, 'a ref before the first declaration sees nothing');
+    assert.equal(g('r1'), 10, 'the middle ref sees the declaration above it (10), not the later 50');
+    assert.equal(g('r2'), 50, 'a ref after both declarations sees the latest (50)');
+    // a point that declares nothing inline returns null (every pill shares varMapAt, common case)
+    const plain = c.mkNode('just a [[var:x1]] reference'); plain.vars = [{ key: 'x1', name: 'gold', expr: '' }];
+    root.children.push(plain);
+    vm.runInContext('resetDocCaches();', c._context);
+    assert.equal(c.renderPosVarMaps(plain), null, 'no inline declaration → null (share the node map)');
+  } finally {
+    vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);   // restore for later tests
+  }
+});
+
 test('collectVars — a variable named "constructor" resolves, not crashes', () => {
   // VAR_NAME_RE accepts it, so it's reachable from the dialog. On plain-object maps
   // pass 1 threw (allKeysForName.constructor is the inherited Object function —
@@ -8446,8 +8478,9 @@ test('evalCheck: a check inherits ancestor props (parity with the math pill, #46
 // The two DOM-render scope sites (math pill + check chip) must feed resolveNodeScope the
 // ancestor chain; the pure query-base / search sites deliberately stay own-node (boundary).
 test('ancestor inheritance is wired at the math pill + check chip, own-node at the query base (#461)', () => {
-  // renderMathPill builds its scope through resolveNodeScope with ancestorsOf(cookieNode)
-  assert.ok(/resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), renderVarMap\)/.test(_src),
+  // renderMathPill builds its scope through resolveNodeScope with ancestorsOf(cookieNode), over the
+  // per-pill positional var map (#767: vmap = the pill's positional map, or the node positional map)
+  assert.ok(/resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), vmap\)/.test(_src),
     'math pill scope inherits via resolveNodeScope + ancestorsOf');
   // buildCheckChip passes ancestorsOf(node) to evalCheck
   assert.ok(/evalCheck\(node, globalVarMap, ancestorsOf\(node\)\)/.test(_src),
@@ -12758,8 +12791,10 @@ test('math pill scope: a node own numeric prop resolves in {= }, own props win o
 
 test('renderMathPill wiring: builds the merged own+ancestor scope and uses it for both compute and error reason (backlog A / #461)', () => {
   const fn = fnBody(_src, 'renderMathPill');
-  // #461: the merge now flows through resolveNodeScope with the ancestor chain (own props still win)
-  assert.ok(/const scope = resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), renderVarMap\)/.test(fn), 'the pill scope inherits ancestor props via resolveNodeScope (own props win last)');
+  // #767: the scope base is the pill's POSITIONAL var map (per-pill when the point declares vars
+  // inline, else the node positional map), then #461's resolveNodeScope inherits ancestor props.
+  assert.ok(/const vmap = \(renderPosVarMap && renderPosVarMap\.get\(key\)\) \|\| renderVarMap/.test(fn), 'the scope base is the per-pill positional map');
+  assert.ok(/const scope = resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), vmap\)/.test(fn), 'the pill scope inherits ancestor props via resolveNodeScope (own props win last)');
   assert.ok(/evalMath\(expr, scope\)/.test(fn), 'the fresh compute uses the merged scope');
   assert.ok(/mathErrorReason\(expr, scope, _varCycles\)/.test(fn), 'the error-reason path uses the SAME scope (or a prop-resolved expr shows a false #ERR reason)');
 });

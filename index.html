@@ -4976,6 +4976,7 @@ function renderContentHTML(node) {
   // render-path readers (renderVarPill, the math-pill eval below) use renderVarMap; search /
   // check eval keep using the document-wide globalVarMap.
   renderVarMap      = varMapAt(node);
+  renderPosVarMap   = renderPosVarMaps(node);   // #767: per-pill positional maps when this point declares vars inline
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
   // block element itself — headings/quotes are markdown-driven now, not CSS-on-prefix.
   // Whole-node code blocks get their own fence-aware renderer.
@@ -5024,6 +5025,7 @@ function renderContentHTML(node) {
   // that search / check eval read outside render (see the save/restore note above).
   queryRenderList   = null;
   renderVarMap      = globalVarMap;
+  renderPosVarMap   = null;
   cookieNode        = null;
   return html;
 }
@@ -5251,6 +5253,39 @@ function collectNodeDecls(node, add) {
     const v = node.vars?.find(v => v.key === m[1]);
     if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined);
   }
+}
+
+// #767: per-pill POSITIONAL variable maps for a point that declares a variable in its OWN text.
+// varMapAt gives one map per point (this point's own declarations collapsed last-wins), but the
+// model is nearest-declaration-ABOVE-the-reference — which, within a single point, means a {name}
+// reads only the declarations that appear before ITS token, and a reference before its declaration
+// sees nothing. So resolve, per inline-able token, the vars visible AT that token: every declaration
+// in points above (all precede every token here), plus this point's own declarations appearing
+// before the token. resolveVarDefs eagerly snapshots, so `defs` can grow in place between tokens.
+// Returns Map(key -> resolved map), or null for the common point that declares nothing inline —
+// every pill then shares varMapAt(node), an identical result at zero extra cost. Cached on _varsVer.
+let _posVarMapCacheVer = -1, _posVarMapCache = new Map();
+function renderPosVarMaps(node) {
+  if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
+  if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
+  if (node.id != null && _posVarMapCache.has(node.id)) return _posVarMapCache.get(node.id);
+  const defs = Object.create(null), pickVals = Object.create(null), order = [];
+  const add = (nm, expr, pick) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; };
+  for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
+  let done = false;    // gather declarations from every point ABOVE this one (document order)
+  (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add); for (const c of n.children || []) { walk(c); if (done) return; } })(root);
+  const byKey = new Map();
+  const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
+  let m;
+  while ((m = RE.exec(node.text || '')) !== null) {
+    byKey.set(m[2], resolveVarDefs(defs, pickVals, order).resolved);   // vars visible BEFORE this token
+    if (m[1] === 'var') {                                              // a declaration adds itself, so a
+      const v = node.vars?.find(x => x.key === m[2]);                  // LATER ref sees it, an earlier one not
+      if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined);
+    }
+  }
+  if (node.id != null) _posVarMapCache.set(node.id, byKey);
+  return byKey;
 }
 
 // Resolve a name→expr `defs` map (+ frozen `pickVals` + first-seen `order`) into a
@@ -5622,7 +5657,7 @@ function renderNodeInline(node) {
                   math: mathRenderList, est: estRenderList,
                   vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList,
                   query: queryRenderList,
-                  cookie: cookieNode, varMap: renderVarMap };
+                  cookie: cookieNode, varMap: renderVarMap, posVarMap: renderPosVarMap };
   _inlineDepth++;
   // try/finally so a throw inside the mirrored target's render (a malformed sidecar surfacing in
   // a pill renderer, codeNodeHTML) can never leave these module-level render globals pointing at
@@ -5638,6 +5673,7 @@ function renderNodeInline(node) {
     // globalVarMap is document-wide — leave it. renderVarMap is POSITIONAL scope, so it must
     // follow the mirrored target or its var/math pills resolve against the source's scope.
     renderVarMap = varMapAt(node);
+    renderPosVarMap = renderPosVarMaps(node);   // #767: positional per-pill maps follow the mirrored target
     return node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   } finally {
     diceRenderList = saved.dice; markovRenderList = saved.markov;
@@ -5647,6 +5683,7 @@ function renderNodeInline(node) {
     queryRenderList = saved.query;
     cookieNode = saved.cookie;
     renderVarMap = saved.varMap;
+    renderPosVarMap = saved.posVarMap;
     _inlineDepth--;
   }
 }
@@ -5841,6 +5878,7 @@ let globalVarMap = {};
 // The render-path pill readers use this; search / check eval use globalVarMap (document-wide).
 // Defaults to globalVarMap so any reader outside a node render still resolves globally.
 let renderVarMap = {};
+let renderPosVarMap = null;   // #767: per-pill positional var maps (key -> map) for the node being rendered; null = share renderVarMap
 let _varsCacheVer = -1, _varsVer = 0, _varsCached = {}; // doc-cache 1: collectVars; _varsVer is the shared generation counter (see resetDocCaches registry)
 let _varCycles        = new Set(); // names that participate in a reference cycle
 let _varShadowedKeys  = new Set(); // sidecar keys whose name is overridden by a later declaration
@@ -20986,7 +21024,8 @@ function renderMathPill(key, m) {
   // props on top (resolveNodeScope, #461 — the ancestor-inheritance half; #460 shipped own-node).
   // So a `{= STR + 2}` pill on a scene under a `STR:14` character point reads 16, and its own
   // `STR:` (if any) still wins. A no-prop node + no-prop ancestors yields renderVarMap unchanged.
-  const scope = resolveNodeScope(cookieNode, ancestorsOf(cookieNode), renderVarMap);
+  const vmap = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap;   // #767: vars visible AT this pill's position
+  const scope = resolveNodeScope(cookieNode, ancestorsOf(cookieNode), vmap);
   const fresh = evalMath(expr, scope);          // positional: vars visible at this node, own props on top
   if (fresh === null) {
     // The live recompute failed — a referenced variable became unresolvable (deleted,
@@ -21062,7 +21101,7 @@ function renderVarPill(key, v) {
   // Display-only mode: empty expr — read value from the positional map (vars visible AT this
   // node), so {name} reads the nearest declaration above it (Stage B), not the global last-win.
   if (!v.expr) {
-    const val = renderVarMap[(v.name || '').toLowerCase()];
+    const val = ((renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap)[(v.name || '').toLowerCase()];   // #767: positional
     const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
     const title = val === undefined ? 'Variable not found. Click to edit' : escAttr(`$${v.name} = ${display}. Click to edit`);
@@ -21077,7 +21116,7 @@ function renderVarPill(key, v) {
   }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
   const shadowed = _varShadowedKeys.has(key);
-  const fresh    = cyclic ? null : evalMath(v.expr, renderVarMap);
+  const fresh    = cyclic ? null : evalMath(v.expr, (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap);   // #767: positional
   const display  = fresh !== null ? formatMathResult(fresh) : (cyclic ? '↻' : '?');
   let cls = 'var-pill';
   if (cyclic)   cls += ' var-cycle';
