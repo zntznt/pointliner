@@ -1319,6 +1319,46 @@ test('searchCompletions — has: completes doc-wide property keys (the deferred 
   assert.ok(names('-has:c').includes('-has:cost'), 'negation preserved');
 });
 
+// ── picker menu lifecycle (review findings: stray `}`, dual menus, Enter trap) ──
+
+test('applyBraceFormText — consumes a pre-existing closing brace so a re-pick never doubles it', () => {
+  // Type-over inside a fresh scaffold: `{p}` with the menu reopened on the 'p' prefix.
+  assert.equal(c.applyBraceFormText('{p}', 0, 'p', '{a | b | c}'), '{a | b | c}',
+    'the old close is consumed, not left as a stray');
+  // Name completion inside an already-closed brace: `{gob}` → `{goblin}`, not `{goblin}}`.
+  assert.equal(c.applyBraceFormText('{gob}', 0, 'gob', '{goblin}'), '{goblin}');
+  // Unclosed brace (the normal flow) is unchanged: nothing after the prefix to consume.
+  assert.equal(c.applyBraceFormText('roll {2d', 5, '2d', '{2d6}'), 'roll {2d6}');
+  // Only a DIRECTLY adjacent close is consumed — prose after the prefix survives intact.
+  assert.equal(c.applyBraceFormText('{gob today', 0, 'gob', '{goblin}'), '{goblin} today');
+  // Mid-text with a second, unrelated close later: consume one, keep the rest.
+  assert.equal(c.applyBraceFormText('a {p} and {q}', 2, 'p', '{2d6}'), 'a {2d6} and {q}');
+});
+
+test('picker exclusion + lifecycle wiring pinned in source (one caret menu at a time; caret moves close them)', () => {
+  // Tag yields to an open brace menu; emoji yields to both (priority = trigger-chain order).
+  const tag = fnBody(_src, 'checkTagTrigger');
+  assert.ok(/if \(isBraceMenuOpen\(\)\) \{ hideTagMenu\(\); return; \}/.test(tag),
+    'checkTagTrigger must bail (and hide itself) while the brace menu is open');
+  const emoji = fnBody(_src, 'checkEmojiTrigger');
+  assert.ok(/if \(isBraceMenuOpen\(\) \|\| isTagMenuOpen\(\)\) \{ hideEmojiMenu\(\); return; \}/.test(emoji),
+    'checkEmojiTrigger must bail while the brace or tag menu is open');
+  // Body-mode exact-match self-dismissal (mirrors filterTagCandidates): a lone completion
+  // equal to the typed fragment closes the menu so Enter returns to the editor.
+  const trig = fnBody(_src, 'checkBraceTrigger');
+  assert.ok(/bc\.matches\.length === 1 && bc\.matches\[0\]\.insert === bc\.prefix/.test(trig),
+    'checkBraceTrigger must dismiss on a lone exact-match body completion');
+  // Empty-fragment anchor clamp: {oracle: at end-of-text must not resolve past the
+  // last char (positionCaretMenu would fall back to 0,0).
+  assert.ok(/positionCaretMenu\(braceMenu, content, Math\.min\(fragStart, pos - 1\)\)/.test(trig),
+    'body-mode menu anchor must clamp to the char before the caret');
+  // Caret-move teardown: Left/Right/Home/End close every caret picker (they re-derive
+  // only on input events, so an open menu would own Enter/Tab at stale offsets).
+  const kd = fnBody(_src, 'onKeyDown');
+  assert.ok(/(ArrowLeft'[\s\S]{0,120}ArrowRight'[\s\S]{0,120}Home'[\s\S]{0,120}End')[\s\S]{0,220}hideBraceMenu\(\); hideTagMenu\(\); hideEmojiMenu\(\)/.test(kd),
+    'onKeyDown must close the caret pickers on caret-move keys');
+});
+
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
   const names = p => c.filterBraceForms(p).map(f => f.name);
   assert.ok(names('cond').includes('conditional'));
