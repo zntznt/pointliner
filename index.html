@@ -24142,6 +24142,19 @@ function reconcileAction({ diskModified, knownModified, dirty }) {
   return dirty ? 'prompt' : 'reload';    // disk changed externally
 }
 
+// #746 pure decision: at boot, is the on-disk file the authoritative copy (vs the local
+// autosave)? Prefer a LIKE-FOR-LIKE filesystem-mtime comparison — the on-disk mtime against the
+// mtime we recorded when we last wrote the file (knownFileMod, same clock). Only when no mtime
+// was recorded (a pre-#746 autosave, or a doc that never had a folder file) fall back to the
+// legacy wall-clock savedAt compare, which cross-device sync skew can invert. Testable without a
+// filesystem so the clock-skew data-loss case is pinned.
+function bootPrefersFile({ diskModified, knownFileMod, localSavedAt }) {
+  const disk = Number(diskModified) || 0;
+  const known = Number(knownFileMod) || 0;
+  if (known > 0) return disk > known;              // same filesystem clock — robust
+  return disk >= (Number(localSavedAt) || 0);      // legacy fallback (no recorded mtime)
+}
+
 // Pure: the temp filename for an atomic write. We write here, then move() over the
 // real name, so a sync tool or a crash can never observe a half-written target.
 // A `.pltmp` suffix (not the live `.opml`) so a stray temp is never listed as a document by
@@ -24452,9 +24465,20 @@ async function reopenWorkspaceDoc(dir, name) {
     workspaceDir = null; try { await idbDel(WORKSPACE_KEY); } catch (_) {}
     return false;
   }
-  if (file.lastModified >= lastAutosaveSavedAt()) {      // folder is the newer/authoritative copy
-    try { adoptDoc(fromOpml(await file.text()), { fileName: name, fileHandle: fh, workspaceFile: fh }); }
-    catch (_) {
+  // #746: like-for-like newer-wins. Compare the on-disk mtime against the file mtime we last
+  // recorded (same filesystem clock), not this browser's wall-clock savedAt — a synced folder's
+  // cross-device clock skew can invert that into keeping a stale local copy over a newer file.
+  // Fall back to the legacy wall-clock compare only when no mtime was recorded (a pre-#746
+  // autosave, or a doc that never had a folder file), so upgrading never demotes a newer edit.
+  const knownFileMod = lastAutosaveFileModified();
+  const fileIsAuthoritative = bootPrefersFile({ diskModified: file.lastModified, knownFileMod, localSavedAt: lastAutosaveSavedAt() });
+  let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
+  const localId = root?.docId || null;   // the in-memory doc's identity, captured before any adopt
+
+  if (fileIsAuthoritative) {                             // the file is the newer/authoritative copy
+    let fileRoot;
+    try { fileRoot = fromOpml(await file.text()); } catch (_) { fileRoot = null; }
+    if (!fileRoot) {
       // The AUTHORITATIVE disk copy failed to parse (half-written by a sync tool, corrupt,
       // over-depth). Do NOT rebind it as an auto-write target — the old code did, leaving `root`
       // as the stale/empty boot doc while making the file writable, so the next edit clobbered the
@@ -24464,7 +24488,15 @@ async function reopenWorkspaceDoc(dir, name) {
       flashError('Could not read “' + name + '”. Auto-save is paused so it will not be overwritten. Reopen it, or fix the file and reload.');
       return true;   // the folder IS reachable (keep the workspace); the doc is just write-guarded
     }
-  } else {                                               // local autosave timestamp is newer than the file
+    // Genuine divergence: the file changed under us AND our in-memory copy is the SAME document
+    // (a real edit since our last write). The file wins, but stash the local edits first so the
+    // loss is never silent or unrecoverable — File menu, Restore earlier version (#746/#729).
+    const sameDocDiverged = knownFileMod > 0 && localId && fileRoot.docId && localId === fileRoot.docId;
+    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
+    if (sameDocDiverged && stashPayloadAsPrev(localPayload, localId)) {
+      flashHint('“' + name + '” was updated elsewhere, so the disk version was loaded. Your local copy: File menu, Restore earlier version.');
+    }
+  } else {                                               // local autosave is newer than the file
     // A newer local timestamp does NOT prove the in-memory `root` is THIS file's document. On a fresh
     // boot, restoreAutosave() loaded the last-active doc into `root`, which may be a DIFFERENT document
     // than the one WORKSPACE_KEY points at (the two keys are written at different moments and can
@@ -24493,9 +24525,7 @@ async function reopenWorkspaceDoc(dir, name) {
       // restore point first, and the identity-unknown case says so out loud. adoptDoc mints
       // a docId (ensureDocId) and the next auto-write persists it into the file, so a
       // legacy file takes this branch at most once.
-      let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
-      const localId = root?.docId || null;   // the pre-adopt identity (minted in memory if nothing else)
-      const unknownIdentity = !fileRoot.docId;
+      const unknownIdentity = !fileRoot.docId;   // localPayload/localId are hoisted above (pre-adopt)
       adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
       // Key the restore point where the user will look for it: identity-unknown means the
       // discarded edits are almost certainly THIS document's, so they go under the doc now
@@ -24953,6 +24983,13 @@ function stopWorkspaceWatch() {
 // (2) refocus reload — universal fallback, registered once
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkExternalChange(); });
 window.addEventListener('focus', () => { checkExternalChange(); });
+// (3) low-frequency poll — #749. The FileSystemObserver observes a SINGLE handle and can go
+// silent when a sync tool replaces the file via unlink+create (rename), and the refocus/
+// visibility pull never fires while the tab stays focused and idle. A 30s poll closes that gap:
+// checkExternalChange re-resolves the handle by name and reconciles, so an external change is
+// still caught after the observer detaches. It no-ops when there is no workspace file, and its
+// own guards skip a poll that would race an in-flight write or an open reconcile prompt.
+setInterval(() => { checkExternalChange(); }, 30000);
 
 // ─── plain-text / markdown export ─────────────────────────────────────────────
 // These are interchange formats, not the canonical store (OPML is). Artifacts are
@@ -29266,7 +29303,15 @@ async function writeOpfsAutosave(payload) {
     const w = await fh.createWritable();
     await w.write(payload); await w.close();
     return true;
-  } catch (_) { return false; }
+  } catch (_) {
+    // #748: OPFS is the durable primary, and writeLocalAutosave suppresses its own quota warning
+    // whenever hasOPFS (trusting this sink). If OPFS ALSO fails, there is no folder file to land
+    // on, AND the localStorage buffer is unavailable, there is NO durable copy left — surface the
+    // hard warning instead of failing silently. localStorage runs synchronously earlier in the
+    // same autosave tick, so autosaveDisabled already reflects its outcome; showStorageWarn dedups.
+    if (!workspaceFile && autosaveDisabled) showStorageWarn('hard', 'This document is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
+    return false;
+  }
   finally {
     _opfsWriting = false;
     if (_opfsPending != null) { const p = _opfsPending; _opfsPending = null; writeOpfsAutosave(p); }
@@ -29437,7 +29482,7 @@ function scheduleAutosave() {
   if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
+    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
     if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
     if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
     if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
@@ -29506,7 +29551,7 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 // is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
 // avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
 function writeLocalAutosave(payload) {
-  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now() }));
+  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
   try {
     // UXP-147: roll the OUTGOING value into the prev-snapshot slot before overwriting it, throttled
     // so the snapshot trails by ~SNAPSHOT_EVERY_MS. Skipped past the soft limit (two big copies would
@@ -29555,6 +29600,15 @@ function writeLocalAutosave(payload) {
 // Used by reopenWorkspaceDoc to compare against file.lastModified for the newer-wins rule.
 function lastAutosaveSavedAt() {
   try { const d = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || '{}'); return typeof d.savedAt === 'number' ? d.savedAt : 0; }
+  catch (_) { return 0; }
+}
+// #746: the workspace file's lastModified as we recorded it (_wsKnownModified) at the moment
+// of this autosave — a FILESYSTEM-clock value, comparable like-for-like against the on-disk
+// file.lastModified at boot. 0 when the autosave predates this field or the doc had no folder
+// file. Distinct from lastAutosaveSavedAt (a wall-clock stamp), which cross-device sync skew
+// can make incomparable with a filesystem mtime.
+function lastAutosaveFileModified() {
+  try { const d = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || '{}'); return typeof d.fileModified === 'number' ? d.fileModified : 0; }
   catch (_) { return 0; }
 }
 
