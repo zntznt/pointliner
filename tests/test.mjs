@@ -10331,6 +10331,42 @@ test('reopenWorkspaceDoc: the local-newer branch guards on docId before rebindin
   assert.ok(fn.includes('workspaceFile = null'), 'a corrupt file in this branch must detach + pause auto-save, never rebind');
 });
 
+test('reopenWorkspaceDoc: the file-wins branch is loud and recoverable, never a silent loss (#729, src pins)', () => {
+  const fn = fnBody(_src, 'reopenWorkspaceDoc');
+  // the losing local payload is captured BEFORE adoptDoc overwrites the autosave slot
+  const cap = fn.indexOf('localPayload = localStorage.getItem(AUTOSAVE_KEY)');
+  const adopt = fn.lastIndexOf('adoptDoc(fileRoot');
+  assert.ok(cap !== -1 && cap < adopt, 'the local payload must be captured before the adopt');
+  // stashed under the identity-appropriate key: the now-open doc when identity was unknown
+  // (payload re-keyed to that identity so the restore path's mis-key guard accepts it),
+  // the other doc's own id when provably different
+  assert.ok(/stashPayloadAsPrev\(rekeyPayloadDocId\(localPayload, root\.docId\), root\.docId\)/.test(fn),
+    'the identity-unknown copy is re-keyed and stashed under the now-open doc');
+  assert.ok(/stashPayloadAsPrev\(localPayload, localId\)/.test(fn),
+    'a provably different doc\'s copy is stashed under its own id');
+  // the identity-unknown case says what happened (P4); a provably-different doc is the normal
+  // cross-doc case and stays quiet
+  assert.ok(/if \(unknownIdentity\) \{\s*\n\s*flashHint\(/.test(fn), 'identity-unknown flashes the notice');
+  assert.ok(fn.includes('Restore earlier version'), 'the notice names the recovery door');
+  // the stash helper guards its inputs (no payload / no id → no write, reported false)
+  assert.equal(c.stashPayloadAsPrev(null, 'x'), false);
+  assert.equal(c.stashPayloadAsPrev('payload', null), false);
+});
+
+test('rekeyPayloadDocId — rewrites the embedded identity, preserving everything else (#729)', () => {
+  const payload = JSON.stringify({ root: { docId: 'old-id', children: [{ id: 'n', text: 'kept' }] }, focusedId: 'n', savedAt: 5 });
+  const out = c.rekeyPayloadDocId(payload, 'new-id');
+  const d = JSON.parse(out);
+  assert.equal(d.root.docId, 'new-id', 'the embedded id is rewritten');
+  assert.equal(d.root.children[0].text, 'kept', 'content survives the round-trip');
+  assert.equal(d.savedAt, 5, 'sibling fields survive');
+  // the restore path's mis-key guard is exactly why this exists: key and embedded id must agree
+  assert.equal(c.rekeyPayloadDocId('not json', 'x'), null, 'unreadable payload → null, never a throw');
+  assert.equal(c.rekeyPayloadDocId(JSON.stringify({ noRoot: 1 }), 'x'), null, 'a payload with no root → null');
+  assert.equal(c.rekeyPayloadDocId(null, 'x'), null);
+  assert.equal(c.rekeyPayloadDocId(payload, null), null);
+});
+
 // flashError was referenced by ~10 catch blocks but never defined — an error path threw a
 // ReferenceError instead of surfacing the message. Pin that it's now a real function.
 test('flashError is defined (error toasts no longer throw)', () => {
