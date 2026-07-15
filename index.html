@@ -28962,22 +28962,36 @@ const SNAPSHOT_EVERY_MS = 5 * 60 * 1000;   // 5 min: old enough to predate an un
 // drop oldest until under a byte cap. evictPrevVersions is the pure core (Node-tested).
 const PREV_KEEP_DOCS = 5;              // how many recently-edited docs keep a restore point
 const PREV_BYTE_CAP  = 3_000_000;      // ~3MB total across all kept prev snapshots (well under STORAGE_SOFT_LIMIT)
-// Read the prev-version store as a { [docId]: {prev, at} } map. Migrates the LEGACY single-slot
+// Parse the prev-version store into a { [docId]: {prev, at} } map. Migrates the LEGACY single-slot
 // format (the value was one snapshot string) into the map under its own docId, so an existing
-// restore point survives the upgrade. Returns {} on anything unreadable.
-function readPrevVersions() {
-  let raw; try { raw = localStorage.getItem(AUTOSAVE_PREV_KEY); } catch (_) { return {}; }
+// restore point survives the upgrade. Returns {} on anything unreadable. Pure (Node-tested);
+// readPrevVersions is the thin localStorage wrapper.
+function parsePrevStore(raw) {
   if (!raw) return {};
   let d; try { d = JSON.parse(raw); } catch (_) { return {}; }
   if (!d || typeof d !== 'object') return {};
-  // legacy: the old format was a single snapshot object with a `.root` — re-key it by its docId
-  if (d.root && typeof d.root === 'object') {
+  // Legacy sniff is STRUCTURAL, not key-name-based: a legacy payload's `.root` is the document
+  // tree (no string `.prev`), while a new-format entry always carries one. Testing only for an
+  // object under the `root` key misclassified a per-doc map whose docId is literally "root"
+  // (reachable via a hand-edited <_docid>) as legacy, returned {}, and the next stash rebuilt
+  // from {} — silently discarding EVERY document's restore point (#733).
+  if (d.root && typeof d.root === 'object' && typeof d.root.prev !== 'string') {
     const id = d.root.docId;
     return id ? { [id]: { prev: raw, at: 0 } } : {};
   }
   return d;
 }
-function evictPrevVersions(map, keepN = PREV_KEEP_DOCS, byteCap = PREV_BYTE_CAP) {
+function readPrevVersions() {
+  let raw; try { raw = localStorage.getItem(AUTOSAVE_PREV_KEY); } catch (_) { return {}; }
+  return parsePrevStore(raw);
+}
+// `strict` drops the keep-at-least-the-newest exemption: the quota-budgeted stash (see
+// writeLocalAutosave) passes the headroom REMAINING under the live payload as the cap, and
+// keeping an over-budget snapshot there would make the LIVE autosave write throw — losing a
+// restore point is strictly better than tripping autosaveDisabled (#733). Entry cost is the
+// SERIALIZED size (JSON.stringify escapes the embedded snapshot's quotes/backslashes, which
+// roughly doubles a quote-heavy payload), not the raw length the old cap undercounted with.
+function evictPrevVersions(map, keepN = PREV_KEEP_DOCS, byteCap = PREV_BYTE_CAP, strict = false) {
   if (!map || typeof map !== 'object') return {};
   // newest-first by `at` (missing/garbage `at` sorts oldest so it's evicted first)
   const entries = Object.entries(map)
@@ -28987,8 +29001,9 @@ function evictPrevVersions(map, keepN = PREV_KEEP_DOCS, byteCap = PREV_BYTE_CAP)
   const out = {};
   let bytes = 0;
   for (const [id, v] of entries) {
-    bytes += v.prev.length;
-    if (bytes > byteCap && Object.keys(out).length >= 1) break; // always keep at least the newest one
+    const cost = JSON.stringify(v.prev).length + id.length + 16; // serialized entry ≈ escaped prev + key + syntax
+    if (bytes + cost > byteCap && (strict || Object.keys(out).length >= 1)) break;
+    bytes += cost;
     out[id] = { prev: v.prev, at: v.at || 0 };
   }
   return out;
@@ -29048,6 +29063,13 @@ async function readOpfsAutosave() {
 // Most browsers cap localStorage near 5MB. Warn before we hit the wall so the
 // user can save to a real file rather than discovering a silent autosave loss.
 const STORAGE_SOFT_LIMIT = 4_200_000; // chars — proactive warning threshold
+// The working assumption the code plans around: most browsers cap localStorage near 5M
+// UTF-16 units per origin. The prev-version stash budgets itself against the headroom
+// REMAINING under the live payload (LS_TOTAL_BUDGET - payload.length), so prev snapshots
+// can never crowd the live autosave into a QuotaExceededError — the multi-doc regression
+// where live 2M + prev 3M failed while live 2M alone always fit (#733). The 400k margin
+// under 5M covers the small preference/tab keys sharing the origin.
+const LS_TOTAL_BUDGET = 4_600_000;
 let storageWarnState = null;          // null | 'soft' | 'hard' — avoid re-nagging
 
 const storageWarn     = document.getElementById('storage-warn');
@@ -29277,13 +29299,19 @@ function writeLocalAutosave(payload) {
         // loses this doc's restore point. Key by the outgoing snapshot's docId (not the live root —
         // they match here, but the snapshot is the source of truth for what is being preserved).
         if (prev && prev !== payload) {
+          // Throttle on ATTEMPT, not success: when the stash can't complete (a full store, a
+          // pre-docId payload), advancing only on success collapsed the 5-minute interval and
+          // re-ran the multi-MB parse+evict+stringify on EVERY autosave, guaranteed wasted (#733).
+          _lastSnapshotAt = now;
           try {
             const outId = JSON.parse(prev)?.root?.docId;
             if (outId) {
               const store = readPrevVersions();
               store[outId] = { prev, at: now };
-              localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store)));
-              _lastSnapshotAt = now;
+              // Budget the prev store STRICTLY against the headroom under the live payload — the
+              // live setItem below must never throw because restore points hog the quota (#733).
+              const budget = Math.max(0, LS_TOTAL_BUDGET - payload.length);
+              localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store, PREV_KEEP_DOCS, Math.min(PREV_BYTE_CAP, budget), true)));
             }
           } catch (_) {}
         }
