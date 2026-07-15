@@ -21770,6 +21770,18 @@ function bodyVocab(nodeId, braceStart) {
   if (_bodyVocab?.key !== key) _bodyVocab = { key };
   return _bodyVocab;
 }
+// The variable scope a {= …} / conditional body will actually resolve against: positional
+// variables as of this point (varMapAt — a {name := …} declared above wins over a later
+// global, Stage B) overlaid with own + ancestor numeric properties (#461, nodePropVars'
+// rules: numeric values only, reserved keys excluded) — the same scope the math render
+// composes (renderVarMap + resolveNodeScope). Bare collectVars() omitted own/ancestor
+// property names entirely and hinted global last-wins values for positional vars, so the
+// menu taught names and values the pill would not use (P1). Computed once per completion
+// session via the bodyVocab cache, never per keystroke.
+function completionScopeVars(nodeId) {
+  const node = nodeById(nodeId);
+  return node ? resolveNodeScope(node, ancestorsOf(node), varMapAt(node)) : collectVars();
+}
 // Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 // (fragStart RELATIVE to the char after `{`) for a recognized completing lead — matches
 // may be empty (a recognized lead with nothing to offer, e.g. {= } → we own the menu and
@@ -21780,7 +21792,7 @@ function bodyCompletion(inner, nodeId, braceStart) {
   const vv = bodyVocab(nodeId, braceStart);
   if (/^=/.test(inner)) {                                             // math: {= …}
     const frag = mathFragmentAt(inner, inner.length);
-    return frag ? { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, vv.vars ??= collectVars()) }
+    return frag ? { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) }
                 : { prefix: '', fragStart: inner.length, matches: [] };
   }
   // conditional: {cond: then | else} — the condition (before the top-level `:`) is an evalMath
@@ -21790,7 +21802,7 @@ function bodyCompletion(inner, nodeId, braceStart) {
   // partial condition already reads as a comparison (a bare word is still an ordinary rule/var ref).
   if (splitTopLevel(inner, ':').length === 1 && /[<>=!]=?|[<>]/.test(inner)) {
     const frag = mathFragmentAt(inner, inner.length);
-    if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, vv.vars ??= collectVars()) };
+    if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) };
   }
   let m;
   if ((m = /^(query|roll|count)\s*:/i.exec(inner))) {                 // search: {query|roll|count: …}
