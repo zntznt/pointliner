@@ -636,6 +636,20 @@ test('pluralize / pastTense — common irregulars resolve from the dictionaries 
   assert.equal(c.applyMods('go', ['ed', 'cap']), 'Went');
 });
 
+test('pastTense — CVC doubling now agrees with presentParticiple (#770)', () => {
+  // The two heuristics that should agree used to diverge (stopped/stopping vs stoped/stopping).
+  for (const [base, ed, ing] of [['stop','stopped','stopping'], ['plan','planned','planning'],
+                                 ['rob','robbed','robbing'], ['drop','dropped','dropping']]) {
+    assert.equal(c.pastTense(base), ed, `${base} → ${ed}`);
+    assert.equal(c.presentParticiple(base), ing, `${base} → ${ing} (sibling, unchanged)`);
+  }
+  // words that must NOT double still don't: two-consonant endings, e-endings, w/x/y guards
+  assert.equal(c.pastTense('walk'), 'walked');   // ends in two consonants
+  assert.equal(c.pastTense('play'), 'played');   // y guard (not playyed)
+  assert.equal(c.pastTense('bow'), 'bowed');      // w guard (not bowwed)
+  assert.equal(c.pastTense('love'), 'loved');     // e-ending handled earlier
+});
+
 test('applyMods — folds modifiers left-to-right', () => {
   assert.equal(c.applyMods('dragon', ['a', 'cap']), 'A dragon');
   assert.equal(c.applyMods('dragon', ['cap', 'a']), 'a Dragon');

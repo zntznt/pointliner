@@ -16826,6 +16826,7 @@ function rangeOffset(el, container, off) {
     if (node === container) {
       // Strip ZWSP caret anchors before the point (mirror getCaretOffset).
       if (node.nodeType === 3) count += node.nodeValue.slice(0, off).replace(/​/g, '').length;
+      else if (node.dataset?.token) count += off > 0 ? node.dataset.token.length : 0; // atomic pill AS container: before (0) or after the whole token, never its inner glyphs (#765)
       else for (let i = 0; i < off; i++) countAll(node.childNodes[i]);
       found = true; return;
     }
@@ -17565,6 +17566,10 @@ function pastTense(w) {
   if (irr !== null) return irr;
   if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ied';   // try → tried
   if (/e$/i.test(w)) return w + 'd';                          // love → loved
+  // #770: the same naive CVC doubling presentParticiple uses (run → running), so the two
+  // heuristics agree: stop → stopped, plan → planned (not stoped/planed). Same caveat — a
+  // polysyllabic unstressed verb doubles wrongly (visit → visitted); w/x/y are excluded.
+  if (/[^aeiou][aeiou][^aeiouwxy]$/i.test(w)) return w + w[w.length - 1] + 'ed'; // stop → stopped
   return w + 'ed';                                            // walk → walked, play → played
 }
 
@@ -22540,6 +22545,7 @@ function getCaretOffset(el) {
       // Strip ZWSP caret anchors *before* the caret so the offset stays logical
       // (an anchor the caret sits behind must not inflate the count).
       if (node.nodeType === 3) count += node.nodeValue.slice(0, range.startOffset).replace(/​/g, '').length;
+      else if (node.dataset?.token) count += range.startOffset > 0 ? node.dataset.token.length : 0; // atomic pill AS startContainer: before (0) or after the whole token, never its inner glyphs (#765)
       else for (let i = 0; i < range.startOffset; i++) countAll(node.childNodes[i]);
       found = true; return;
     }
