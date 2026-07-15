@@ -19613,7 +19613,16 @@ function promoteBraceBody(node, body) {
 // Scan all top-level {…} in node.text and promote each valid one. Outer braces
 // win (a nested {b|c} inside {a|{b|c}} rides along in the grammar def). Used as
 // the catch-all on exitEdit and after paste. Returns true if anything changed.
+// #766: key → the LITERAL `{…}` width of a token just promoted from typed shorthand in the most
+// recent promote pass. foldedOffsetFor consults it so a caret offset captured against the user's
+// literal (e.g. `{=1+1}`, 6 chars) is not mistranslated by artifactToShorthand's CANONICAL form
+// (`{= 1+1}`, 7). Reset every promote; every foldedOffsetFor caller does blur()→promote immediately
+// before it, so the map is always fresh for that node (keys are globally unique, so a leftover entry
+// never false-matches another node's token). unfoldedPrefixLen does NOT consult it — it measures the
+// canonical re-unfolded buffer. In-memory only; never serialized.
+let _promotedLit = new Map();
 function promoteInlineShorthand(node) {
+  _promotedLit = new Map();
   const text = node.text;
   if (text.indexOf('{') < 0) return false;
   const codeSpans = codeSpanRanges(text);   // a `{2d6}` inside inline code stays literal (the escape hatch)
@@ -19622,7 +19631,10 @@ function promoteInlineShorthand(node) {
     if (text[i] === '{' && !inCodeSpan(codeSpans, i)) {
       const j = matchBrace(text, i);
       if (j > i) {
+        const litLen = (j + 1) - i;   // the literal {body} width the user actually typed
         const token = promoteBraceBody(node, text.slice(i + 1, j));
+        const km = token && token.match(/^\[\[[a-z]+:([a-z0-9]+)\]\]$/i);
+        if (km) _promotedLit.set(km[1], litLen);
         // token: a [[…]] pill token, OR '' for a sidecar write that leaves no inline trace ({prop …}
         // → a chip, not a pill), OR null = not promotable (keep the brace as literal text). So the
         // guard is "promoted at all" (!= null), not "truthy" — '' must count as consumed.
@@ -19754,7 +19766,9 @@ function unfoldedPrefixLen(node, prefix) {
 // folded text's inline-able tokens, accumulating each one's unfolded ({…}) length;
 // an offset that falls *inside* an unfolded span snaps to just after its token —
 // a caret can sit inside editable {…} text but a splice must never land inside a
-// token. Pure; offsets are monotonic, so [start,end) ranges stay ordered.
+// token. Offsets are monotonic, so [start,end) ranges stay ordered. Reads _promotedLit
+// (#766) for a token just promoted from typed shorthand, whose captured offset was against
+// the user's LITERAL {…} width, not artifactToShorthand's canonical rebuild.
 function foldedOffsetFor(node, offset) {
   const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   const text = node.text;
@@ -19765,7 +19779,8 @@ function foldedOffsetFor(node, offset) {
     u += gap;
     const arr = node[m[1] === 'var' ? 'vars' : m[1]];
     const sh = artifactToShorthand(m[1], arr?.find(r => r.key === m[2]));
-    u += sh == null ? m[0].length : sh.length;
+    const lit = _promotedLit.get(m[2]);   // #766: the literal width if just promoted from typed shorthand
+    u += lit != null ? lit : (sh == null ? m[0].length : sh.length);
     last = m.index + m[0].length;
     if (offset < u) return last; // inside the unfolded span → after the token
   }
