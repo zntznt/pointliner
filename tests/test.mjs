@@ -1353,10 +1353,28 @@ test('picker exclusion + lifecycle wiring pinned in source (one caret menu at a 
   assert.ok(/positionCaretMenu\(braceMenu, content, Math\.min\(fragStart, pos - 1\)\)/.test(trig),
     'body-mode menu anchor must clamp to the char before the caret');
   // Caret-move teardown: Left/Right/Home/End close every caret picker (they re-derive
-  // only on input events, so an open menu would own Enter/Tab at stale offsets).
+  // only on input events, so an open menu would own Enter/Tab at stale offsets). The
+  // hide-list is centralized in hideInlineMenus — pin the helper's coverage once, then
+  // that the caret-move block calls it.
+  const him = fnBody(_src, 'hideInlineMenus');
+  for (const h of ['hideLinkMenu', 'hideSlashMenu', 'hideBraceMenu', 'hideTagMenu', 'hideEmojiMenu', 'hideBracePreview']) {
+    assert.ok(him.includes(h + '()'), `hideInlineMenus must call ${h}`);
+  }
   const kd = fnBody(_src, 'onKeyDown');
-  assert.ok(/(ArrowLeft'[\s\S]{0,120}ArrowRight'[\s\S]{0,120}Home'[\s\S]{0,120}End')[\s\S]{0,220}hideBraceMenu\(\); hideTagMenu\(\); hideEmojiMenu\(\)/.test(kd),
+  assert.ok(/(ArrowLeft'[\s\S]{0,120}ArrowRight'[\s\S]{0,120}Home'[\s\S]{0,120}End')[\s\S]{0,220}hideInlineMenus\(\)/.test(kd),
     'onKeyDown must close the caret pickers on caret-move keys');
+});
+
+test('undo/redo closes the inline pickers before render (no apply against a detached element)', () => {
+  // applyEntry's render() detaches every content element while focusNode re-arms keydown
+  // on the new one; a surviving braceState would make the next Enter apply against the
+  // DETACHED pre-undo DOM — silently reverting the undo in node.text and autosaving text
+  // the user cannot see. The teardown must run before either branch renders.
+  const ae = fnBody(_src, 'applyEntry');
+  assert.ok(ae.includes('hideInlineMenus()'),
+    'applyEntry must tear down the inline pickers (undo/redo is neither a caret move nor an input event)');
+  assert.ok(ae.indexOf('hideInlineMenus()') < ae.indexOf('render()'),
+    'the teardown must precede the render that detaches the menu’s content element');
 });
 
 // ── body-completion vocabulary session cache (keystroke-path perf invariant) ────
