@@ -10422,6 +10422,27 @@ test('reconcileAction — never anchored (known 0/null) → write, nothing to cl
   assert.equal(c.reconcileAction({ diskModified: 0,   knownModified: null, dirty: false }), 'write');
 });
 
+// ── #746: bootPrefersFile — boot-time newer-wins WITHOUT comparing across clocks ──────
+test('bootPrefersFile — like-for-like mtime beats the clock-skew inversion (#746)', () => {
+  // The bug: a synced folder written by a slow-clocked device gives the file a small mtime,
+  // while this browser's wall-clock savedAt is larger, so the file wrongly reads as OLDER.
+  // With a recorded knownFileMod (same filesystem clock), the comparison is robust:
+  // file unchanged since our last write (disk <= known) → local is the newer edit, keep it.
+  assert.equal(c.bootPrefersFile({ diskModified: 500, knownFileMod: 500, localSavedAt: 9e12 }), false);
+  assert.equal(c.bootPrefersFile({ diskModified: 400, knownFileMod: 500, localSavedAt: 9e12 }), false); // stale disk, never mistaken for newer
+  // file changed on disk since our last write → the file is authoritative, even if savedAt is huge
+  assert.equal(c.bootPrefersFile({ diskModified: 600, knownFileMod: 500, localSavedAt: 9e12 }), true);
+});
+
+test('bootPrefersFile — falls back to the wall-clock compare only when no mtime was recorded (#746)', () => {
+  // Pre-#746 autosave (or a doc that never had a folder file): knownFileMod 0 → legacy compare,
+  // so upgrading never changes behavior until a new autosave records the mtime.
+  assert.equal(c.bootPrefersFile({ diskModified: 200, knownFileMod: 0, localSavedAt: 100 }), true);  // file newer-or-equal → file wins
+  assert.equal(c.bootPrefersFile({ diskModified: 100, knownFileMod: 0, localSavedAt: 100 }), true);  // equal → file wins (>=)
+  assert.equal(c.bootPrefersFile({ diskModified: 90,  knownFileMod: 0, localSavedAt: 100 }), false); // local strictly newer → keep local
+  assert.equal(c.bootPrefersFile({ diskModified: 90,  knownFileMod: null, localSavedAt: 100 }), false);
+});
+
 // ── data-safety: switching/creating a folder doc must PERSIST the outgoing one first ──
 // (the tab-switch data-loss regression: the debounced folder write was orphaned by the
 // swap, so recent edits to the doc you left never reached disk). Src pins — the FS path
