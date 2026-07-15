@@ -3566,6 +3566,71 @@ test('table: $< / $> immutable first/last column references', () => {
   assert.equal(computeTable(m, '@2$2=$<+$>')[1][1], '11');
 });
 
+// ── column-op integrity (#751/#752/#753) ─────────────────────────────────────
+// A structural column op (insert/delete/move) must carry the column-associated metadata
+// with the columns: colW/colRole (spliced by the callers), the board/calendar view's stored
+// column index, and the #+TBLFM recipe's absolute $N refs. remapColIndex is the shared core.
+
+test('column ops: remapColIndex — insert shifts indices at/after the insertion point (#752)', () => {
+  const op = { kind: 'insert', at: 1 };
+  assert.equal(c.remapColIndex(0, op), 0);   // before → unchanged
+  assert.equal(c.remapColIndex(1, op), 2);   // at → shifts right
+  assert.equal(c.remapColIndex(3, op), 4);
+});
+
+test('column ops: remapColIndex — delete drops the removed index and decrements those after (#752)', () => {
+  const op = { kind: 'delete', at: 1 };
+  assert.equal(c.remapColIndex(0, op), 0);
+  assert.equal(c.remapColIndex(1, op), null); // the deleted column
+  assert.equal(c.remapColIndex(2, op), 1);
+  assert.equal(c.remapColIndex(3, op), 2);
+});
+
+test('column ops: remapColIndex — move matches mtMoveItem (splice out from, splice in at to) (#751/#752)', () => {
+  // move 0→2 over [A,B,C,D] → [B,C,A,D]: A:0→2, B:1→0, C:2→1, D:3→3
+  const fwd = { kind: 'move', from: 0, to: 2 };
+  assert.deepEqual([0, 1, 2, 3].map(i => c.remapColIndex(i, fwd)), [2, 0, 1, 3]);
+  // move 3→1 over [A,B,C,D] → [A,D,B,C]: A:0→0, B:1→2, C:2→3, D:3→1
+  const back = { kind: 'move', from: 3, to: 1 };
+  assert.deepEqual([0, 1, 2, 3].map(i => c.remapColIndex(i, back)), [0, 2, 3, 1]);
+});
+
+test('column ops: reindexTblfmCols rewrites absolute $N refs, leaves relative $</$>/@row untouched (#753)', () => {
+  // insert at 0 (every column shifts right): $1→$2, $2→$3 …
+  assert.equal(c.reindexTblfmCols('$4=$2*$3', { kind: 'insert', at: 0 }), '$5=$3*$4');
+  // insert after column 0 (at=1): refs to col 0 ($1) stay, the rest shift
+  assert.equal(c.reindexTblfmCols('$3=$1*$2', { kind: 'insert', at: 1 }), '$4=$1*$3');
+  // move follows the columns
+  assert.equal(c.reindexTblfmCols('$3=$1*$2', { kind: 'move', from: 0, to: 2 }), '$2=$3*$1');
+  // relative first/last + @row refs are unaffected by a column op
+  assert.equal(c.reindexTblfmCols('@2$2=$<+$>', { kind: 'insert', at: 0 }), '@2$3=$<+$>');
+  assert.equal(c.reindexTblfmCols('@3$2=@-1$2+$1', { kind: 'insert', at: 0 }), '@3$3=@-1$3+$2');
+});
+
+test('column ops: reindexTblfmCols DROPS a clause that references a deleted column (#753)', () => {
+  // delete column 2 (at=1, 0-based): the clause using $2 is dropped; the survivor decrements $3/$4
+  assert.equal(c.reindexTblfmCols('$4=$2*$3 :: $5=$1+$4', { kind: 'delete', at: 1 }), '$4=$1+$3');
+  // deleting the only referenced column empties the recipe
+  assert.equal(c.reindexTblfmCols('$3=$2*2', { kind: 'delete', at: 1 }), '');
+});
+
+test('column ops: remapNodeColumns follows view.groupBy + #+TBLFM, reverts view on delete of its column (#752/#753)', () => {
+  const mk = () => ({ text: '| a | b | c |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n#+TBLFM: $3=$1*$2',
+                      view: { kind: 'board', groupBy: 1 } });
+  // insert at 0: groupBy 1→2, recipe shifts right
+  const a = mk(); c.remapNodeColumns(a, { kind: 'insert', at: 0 });
+  assert.equal(a.view.groupBy, 2);
+  assert.equal(c.extractTblfm(a.text), '$4=$2*$3');
+  // move the groupBy column: it follows
+  const b = mk(); c.remapNodeColumns(b, { kind: 'move', from: 1, to: 2 });
+  assert.equal(b.view.groupBy, 2);
+  // delete the groupBy column: the board reverts to plain table (no headless grouping)
+  const d = mk(); c.remapNodeColumns(d, { kind: 'delete', at: 1 });
+  assert.equal(d.view, undefined);
+  // and the recipe clause that referenced the deleted column is gone
+  assert.equal(c.extractTblfm(d.text), '');
+});
+
 test('table: cycle detection yields #ERR (loops on itself), not a hang', () => {
   const out = computeTable(tblModel(), '@2$1=@2$2 :: @2$2=@2$1');
   assert.equal(out[1][0], '#ERR (loops on itself)');
