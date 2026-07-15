@@ -18716,6 +18716,22 @@ function tokenUnderCaret(text, offset) {
 // holds EVERY point (empty title -> '') so a resolver can tell "exists, untitled" from
 // "missing" — the cross-doc analog of collectLinks' id set. Walks points only (root.children),
 // never the doc-title root, exactly like collectLinks/linkCandidates.
+// #745: find docIds shared by more than one file. A duplicate docId (a file copied on disk,
+// or a sync-tool conflict copy) collapses the two files in every docId-keyed structure — the
+// cross-doc index (buildWorkspaceIndex's Maps are last-file-wins), backlinks, and the per-doc
+// restore store — so one file silently shadows the other. entries: [{docId, name}]. Returns
+// [{docId, names:[…]}] for each docId in >1 file (names sorted), for the reconcile prompt. Pure.
+function dupDocIdGroups(entries) {
+  const byId = new Map();
+  for (const e of (entries || [])) {
+    if (!e || !e.docId || !e.name) continue;
+    let arr = byId.get(e.docId); if (!arr) { arr = []; byId.set(e.docId, arr); }
+    if (!arr.includes(e.name)) arr.push(e.name);
+  }
+  const groups = [];
+  for (const [docId, names] of byId) if (names.length > 1) groups.push({ docId, names: names.slice().sort() });
+  return groups;
+}
 function buildWorkspaceIndex(docs) {
   const titles = new Map();
   const outgoing = [];
@@ -24481,8 +24497,9 @@ async function connectWorkspace() {
     renderFileName();
     updateTitle();
     renderWorkspaceAffordance();       // also registers the current doc as a tab + renders the strip
-    refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
     flashHint('Folder connected. Saved “' + name + '”');
+    await reconcileDuplicateDocIds(dir);   // #745: repair any duplicate-docId collision before indexing
+    refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
   } catch (e) {
     if (e && e.name === 'AbortError') return; // user cancelled the picker — silent no-op (P4)
     flashError('Could not connect folder: ' + (e && e.message ? e.message : e));
@@ -24503,6 +24520,7 @@ async function reconnectWorkspace() {
       if (!ok) { workspaceDir = null; flashHint('That folder is no longer available. Connect another.'); }
       else      { flashHint('Folder reconnected: “' + (workspaceDir?.name || 'folder') + '”'); await restoreOpenTabs(workspaceDir); }
       renderWorkspaceAffordance();
+      await reconcileDuplicateDocIds(workspaceDir);   // #745: repair any duplicate-docId collision
       refreshWorkspaceIndex();           // CF-1: rebuild after a successful reconnect
     }
   } catch (_) { /* denied / dismissed — stays pending, no error toast */ }
@@ -24999,6 +25017,91 @@ function openReconcileDialog(name) {
     ioBack.classList.add('on');
     theirsBtn.focus();   // a sensible neutral default; Enter here takes the disk version
   });
+}
+
+// #745: let the user resolve a duplicate-docId collision — one button per file to KEEP the shared
+// identity on it; the rest are re-stamped with a fresh id. Mirrors openReconcileDialog. Resolves to
+// the chosen keeper name, or null (Escape / backdrop / "Not now") to defer this group untouched.
+function openDupDocIdDialog(names) {
+  return new Promise(resolve => {
+    ioCard.innerHTML = '';
+    const head = document.createElement('div'); head.className = 'io-head';
+    const ic = document.createElement('div'); ic.className = 'cmd-icon';
+    ic.style.cssText = 'background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)';
+    setIcon(ic, { fa:'fa-solid fa-fingerprint', fb:'⚠' });
+    const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Two files share one identity';
+    head.append(ic, ttl); ioCard.appendChild(head);
+
+    const msg = document.createElement('p');
+    msg.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 16px;line-height:1.55';
+    msg.textContent = 'These files carry the same document identity (one was probably copied on disk), so their links and restore points collide. Keep the identity on one file; the others get a fresh one. Nothing is deleted.';
+    ioCard.appendChild(msg);
+
+    const foot = document.createElement('div'); foot.className = 'io-foot io-foot-stack';
+    function finish(result) { ioBack.removeEventListener('keydown', onKey); closeIo(); resolve(result); }
+    let firstBtn = null;
+    for (const name of names) {
+      const b = document.createElement('button'); b.className = 'io-btn'; b.textContent = 'Keep the identity on “' + name + '”';
+      b.addEventListener('click', () => finish(name));
+      foot.append(b); if (!firstBtn) firstBtn = b;
+    }
+    const later = document.createElement('button'); later.className = 'io-btn'; later.textContent = 'Not now';
+    later.addEventListener('click', () => finish(null));
+    foot.append(later);
+    ioCard.appendChild(foot);
+
+    ioCancel = () => finish(null);   // Escape / backdrop → defer, change nothing (non-destructive default)
+    function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } }
+    ioBack.addEventListener('keydown', onKey);
+    ioReturnFocus = document.activeElement;
+    ioCard.setAttribute('aria-label', 'Two files share one identity');
+    ioBack.classList.add('on');
+    if (firstBtn) firstBtn.focus();
+  });
+}
+
+// #745: scan the folder for files sharing a docId and, per collision group, prompt the user to pick
+// the keeper; every other file in the group is re-stamped with a fresh docId ON DISK. Writing a
+// docId into a file the user didn't open is normally forbidden (the scan invariant), but here it is
+// the user's explicit choice and the only way to repair the collision. Runs on the deliberate
+// connect / reconnect / reopen paths only (never the background index refresh); re-entrancy-guarded.
+let _dupReconcileRunning = false;
+async function reconcileDuplicateDocIds(dir) {
+  if (!dir || _dupReconcileRunning) return;
+  _dupReconcileRunning = true;
+  try {
+    let names;
+    try { names = await listWorkspaceNames(dir); } catch (_) { return; }
+    const entries = [];
+    for (const name of names) {
+      try {
+        const r = fromOpml(await (await (await dir.getFileHandle(name)).getFile()).text());
+        if (r && r.docId) entries.push({ docId: r.docId, name });
+      } catch (_) { /* skip unreadable / unparseable */ }
+    }
+    let reminted = 0;
+    for (const g of dupDocIdGroups(entries)) {
+      const keeper = await openDupDocIdDialog(g.names);
+      if (!keeper) continue;                               // deferred this group — leave both as-is
+      for (const name of g.names) {
+        if (name === keeper) continue;
+        try {
+          if (workspaceFile && fileName === name) {         // the OPEN doc: re-stamp in memory + flush
+            root.docId = uid(); markDirty(); await flushWorkspaceFile();
+          } else {                                          // an unopened file: read, re-stamp, write back
+            const r = fromOpml(await (await (await dir.getFileHandle(name)).getFile()).text());
+            if (!r) continue;
+            r.docId = uid();
+            await safeWriteOpml(dir, name, toOpml(r));
+          }
+          reminted++;
+        } catch (_) { /* leave this file; the next scan re-offers it */ }
+      }
+    }
+    if (reminted) flashHint('Gave ' + reminted + ' file' + (reminted === 1 ? '' : 's') + ' a fresh identity so links and restore points stay separate.');
+  } finally {
+    _dupReconcileRunning = false;
+  }
 }
 
 // sync-safety: detect an external change to the OPEN file and reconcile BEFORE the next
@@ -30233,6 +30336,9 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
   renderWorkspaceAffordance();
   refreshWorkspaceIndex();           // CF-1: build the index from the reopened folder (no-op when none)
   renderDocTabs();
+  // #745: after the doc is on screen, repair any duplicate-docId collision (a file copied on disk),
+  // then re-index. Deferred so the prompt never precedes the first render; no-ops when no dupes.
+  if (workspaceDir) reconcileDuplicateDocIds(workspaceDir).then(() => refreshWorkspaceIndex());
 })();
 
 // UXP-127: reopen the last STANDALONE file (the single-file tier's twin of reopenStoredWorkspace).

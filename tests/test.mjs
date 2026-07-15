@@ -6162,6 +6162,24 @@ test('buildWorkspaceIndex: skips docs missing docId or root; empty input → emp
   assert.equal(idx.titles.get('g').get('n'), 'Node');
 });
 
+test('dupDocIdGroups — flags docIds shared by >1 file, sorted; ignores singletons/garbage (#745)', () => {
+  const groups = c.dupDocIdGroups([
+    { docId: 'x', name: 'b.opml' }, { docId: 'x', name: 'a.opml' },   // a collision (out of order)
+    { docId: 'y', name: 'solo.opml' },                                // a singleton — not a collision
+    { docId: 'z', name: 'p.opml' }, { docId: 'z', name: 'q.opml' }, { docId: 'z', name: 'r.opml' }, // 3-way
+    { docId: '', name: 'no-id.opml' }, { docId: 'w' }, null,          // garbage skipped
+  ]);
+  assert.equal(groups.length, 2, 'only the shared docIds x and z');
+  const gx = groups.find(g => g.docId === 'x');
+  assert.deepEqual(host(gx.names), ['a.opml', 'b.opml'], 'names sorted');
+  const gz = groups.find(g => g.docId === 'z');
+  assert.deepEqual(host(gz.names), ['p.opml', 'q.opml', 'r.opml']);
+  // the same file listed twice for one docId is not a collision
+  assert.deepEqual(host(c.dupDocIdGroups([{ docId: 'x', name: 'a.opml' }, { docId: 'x', name: 'a.opml' }])), []);
+  assert.deepEqual(host(c.dupDocIdGroups([])), []);
+  assert.deepEqual(host(c.dupDocIdGroups(undefined)), []);
+});
+
 // ── cross-document link token (CF-2) ──────────────────────────────────────────
 // renderCrossLinkPill reads the module-level root.docId and workspaceIndex (CF-1) rather
 // than taking them as params, so we set those let-bound globals in the vm realm before each
