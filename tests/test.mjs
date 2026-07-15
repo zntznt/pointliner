@@ -1299,6 +1299,49 @@ test('meterTokenAt / meterCompletions — the point\'s own property keys', () =>
   assert.equal(c.meterCompletions('z', keys).length, 0, 'no matching property → nothing');
 });
 
+test('meterTokenAt matches parseMeter\'s ref grammar — hyphenated keys tokenize and complete (#734)', () => {
+  // parseMeter accepts [A-Za-z][\w-]* — the old \w scan stopped at '-', so `hp-m`
+  // tokenized as just 'm' and picking a completion spliced a corrupted ref (hp-mana).
+  assert.deepEqual(host(c.meterTokenAt('hp/hp-m', 7)), { token: 'hp-m', start: 3 }, 'the hyphen stays in the token');
+  assert.deepEqual(host(c.meterCompletions('hp-m', ['hp', 'hp-max', 'mana']).map(x => x.name)), ['hp-max'],
+    'a hyphenated key is completable');
+  assert.equal(c.meterTokenAt('hp/-m', 5), null, 'a hyphen-leading run is not a valid ref (parseMeter requires a letter start)');
+});
+
+test('consumeTokenEnd — the forward consume uses each mode\'s own token boundary (#732)', () => {
+  // The -is::done repro: text `{query: -is:done}`, caret after the typed `-` (offset 9).
+  // The search boundary (whitespace-delimited, braces excluded) eats the whole old token
+  // `is:done` and stops at `}` — a \w consume stopped at the first `:` and left `:done`
+  // glued to the inserted `-is:` (an unparseable term the live query silently zero-matched).
+  const full = '{query: -is:done}';
+  assert.equal(c.consumeTokenEnd(full, 9, /[^\s{}]/), 16, 'search: consume to the closing brace');
+  assert.equal(c.consumeTokenEnd(full, 9, /\w/), 11, 'the old \\w rule stopped at the colon (the bug)');
+  assert.equal(full.slice(0, 8) + '-is:' + full.slice(c.consumeTokenEnd(full, 9, /[^\s{}]/)), '{query: -is:}',
+    'the spliced result is a clean, parseable field prefix');
+  // math keeps its identifier boundary: consuming past a fragment stops at punctuation
+  assert.equal(c.consumeTokenEnd('{= sqrt(2)', 5, /\w/), 7, 'math: stop at the paren');
+  assert.equal(c.consumeTokenEnd('abc', 3, /\w/), 3, 'caret at end → nothing to consume');
+});
+
+test('has: completion offers only keys the query parser can read back (#734)', () => {
+  // A spaced key (legal per PROP_KEY_RE) would complete to `has:max hp`, which parses as
+  // `has:max` + literal `hp` — a silently wrong search suggested by the app itself.
+  const ctx = { tags: [], vars: [], states: [], propKeys: ['max hp', 'max-hp', 'cost'] };
+  const names = host(c.searchCompletions('has:', ctx).map(x => x.name));
+  assert.ok(names.includes('has:max-hp') && names.includes('has:cost'), 'parseable keys offered');
+  assert.ok(!names.some(n => n.includes(' ')), 'a spaced key is never offered');
+});
+
+test('bodyCompletion branches carry their tokenizer\'s consume boundary (src pins, #732)', () => {
+  const body = fnBody(_src, 'bodyCompletion');
+  assert.ok(/consume: \/\[\^\\s\{\}\]\//.test(body), 'search branch: whitespace-token boundary, braces excluded');
+  assert.ok(/consume: \/\[\\w-\]\//.test(body), 'meter branch: parseMeter\'s [\\w-] ref boundary');
+  assert.ok((body.match(/consume: \/\\w\//g) || []).length >= 2, 'math + conditional branches keep the \\w identifier boundary');
+  const apply = fnBody(_src, 'braceApply');
+  assert.ok(/consumeTokenEnd\(full, caret, consume \|\| \/\\w\/\)/.test(apply),
+    'braceApply must consume with the per-mode boundary from braceState');
+});
+
 test('collectPropKeys — distinct property keys across the whole tree (lowercased, deduped, sorted)', () => {
   const tree = { children: [
     { props: [{ key: 'cost', val: '5' }, { key: 'Owner', val: 'zeo' }], children: [
