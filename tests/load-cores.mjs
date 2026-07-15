@@ -211,7 +211,7 @@ export function loadCores() {
     'collectCallables','filterBraceCandidates','filterBraceForms',
     'mathCompletions','mathFragmentAt','mathFnGroup',
     'searchTokenAt','searchCompletions','oracleCompletions','meterTokenAt','meterCompletions',
-    'applyBraceFormText','consumeTokenEnd',
+    'applyBraceFormText','consumeTokenEnd','bodyCompletion',
     'collectPropKeys',
     'classifyBraceBody','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',

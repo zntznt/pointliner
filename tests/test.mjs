@@ -1117,23 +1117,20 @@ test('filterBraceForms — each scaffold selects the intended placeholder (sel o
 // form family that shipped. Both guarded below. Recipe: guidance/adding-an-artifact.md
 // requires any new {…} sub-form to register a BRACE_FORMS row.
 
-test('BRACE_FORMS parity: every picker scaffold is a recognized brace form (promotes, or is a render-time display)', () => {
+test('BRACE_FORMS parity: every picker scaffold is a recognized brace form', () => {
   // Doc context so the base-dependent scaffolds resolve — the picker's placeholders
   // (name, item) stand in for a real rule/var the user fills in.
   const RULES = { name: ['x'], item: ['sword'], 'item.field': ['1d8'] }, VARS = {};
   // The math scaffold is an empty {= } caret you fill; test a realistic body.
   const FILL = { 'math': '= 1 + 1' };
-  // Meter is a render-time computed display (the [/]-cookie model): {meter: …} stays in
-  // node.text and renders live — it does NOT promote to a token, so it classifies 'literal'.
-  const RENDER_TIME = new Set(['meter']);
+  // EVERY row must classify 'artifact' — meter included since classifyBraceBody grew its
+  // meter branch. The old render-time exemption asserted only notEqual('invalid'), which
+  // 'literal' also satisfies — so the ONE drift this guard exists to catch (a scaffold
+  // that no longer resolves and would insert dead prose) sailed through green (#735).
   for (const f of c.filterBraceForms('')) {
     const body = FILL[f.name] ?? f.insert.slice(1, -1);
-    const cls = c.classifyBraceBody(body, RULES, VARS);
-    if (RENDER_TIME.has(f.name)) {
-      assert.notEqual(cls, 'invalid', `${f.name}: render-time scaffold {${body}} must not read as a broken attempt`);
-    } else {
-      assert.equal(cls, 'artifact', `${f.name}: picker scaffold {${body}} must promote to a pill`);
-    }
+    assert.equal(c.classifyBraceBody(body, RULES, VARS), 'artifact',
+      `${f.name}: picker scaffold {${body}} must be engine-recognized`);
   }
 });
 
@@ -1340,6 +1337,51 @@ test('bodyCompletion branches carry their tokenizer\'s consume boundary (src pin
   const apply = fnBody(_src, 'braceApply');
   assert.ok(/consumeTokenEnd\(full, caret, consume \|\| \/\\w\/\)/.test(apply),
     'braceApply must consume with the per-mode boundary from braceState');
+});
+
+test('bodyCompletion leads tolerate leading whitespace, agreeing with the sniffers (#736)', () => {
+  // The sniffers (queryParts/oracleParts/parseMeter/classifyBraceBody) all .trim() first,
+  // so '{ query: is:todo}' promotes to a pill — completion anchored on the untrimmed inner
+  // and silently never opened for it. The leads now accept the same leading run; fragStart
+  // stays correct because it keys off the matched lead's length.
+  const q = c.bodyCompletion(' query: is:t', 'zz-test', 0);
+  assert.ok(q && q.matches.some(x => x.name === 'is:todo'), '{ query: (leading space) completes search operators');
+  const o = c.bodyCompletion(' oracle: ', 'zz-test', 1);
+  assert.ok(o && o.matches.length >= 5, '{ oracle: (leading space) offers the likelihood bands');
+  const m2 = c.bodyCompletion(' = sq', 'zz-test', 2);
+  assert.ok(m2 && m2.matches.some(x => x.name === 'sqrt'), '{ = (leading space) completes math');
+});
+
+test('the conditional-completion gate requires a real comparison, like condParts (#736)', () => {
+  // The loose /[<>=!]=?/ matched a lone '!' or '=' and popped Functions/Constants inside
+  // prose alternation bodies ({Attack! | s…) where Enter then spliced sqrt() into the pick.
+  assert.equal(c.bodyCompletion('Attack! | s', 'zz-test', 3), null, 'a lone ! is prose, not a comparison');
+  assert.equal(c.bodyCompletion('price = 4 fo', 'zz-test', 4), null, 'a lone = is prose, not a comparison');
+  const cond = c.bodyCompletion('hp > 2 && s'.replace(' && ', ' '), 'zz-test', 5); // 'hp > 2 s'
+  assert.ok(cond && cond.matches.some(x => x.name === 'sqrt'), 'a real comparison still completes the condition');
+});
+
+test('both var-hint sites route through formatVarValue — one precision everywhere (#736)', () => {
+  // 4 vs 6 significant figures for the same variable inside one menu was a shipped P1
+  // divergence; formatVarValue (string-aware, integer-exact, 10 sig figs) is the
+  // CLAUDE.md-mandated single display path.
+  const v = c.mathCompletions('str', { strength: 3.14159265358 }).find(x => x.name === 'strength');
+  assert.equal(v.hint, '= ' + c.formatVarValue(3.14159265358), 'the completion hint IS the house format');
+  assert.ok(/formatVarValue\(item\.val\)/.test(fnBody(_src, 'renderBraceMenu')),
+    'renderBraceMenu\'s name-candidate hint uses the same helper');
+  assert.ok(!/toPrecision\(4\)/.test(fnBody(_src, 'mathCompletions')) && !/toPrecision\(6\)/.test(fnBody(_src, 'renderBraceMenu')),
+    'no hand-rolled precision remains in either menu path');
+});
+
+test('IME composition: triggers are gated and re-derive on commit (src pins, #736)', () => {
+  // Mid-composition input events must not derive picker offsets against uncommitted text
+  // (the commit replaces it with a different-length run → stale splice); on commit the
+  // chain re-runs, since some browsers fire no post-compositionend input event.
+  assert.ok(/if \(e\.isComposing\) \{ hideInlineMenus\(\); return; \}/.test(_src),
+    'the input handler hides the pickers and skips the trigger chain mid-composition');
+  const ce = _src.slice(_src.indexOf("addEventListener('compositionend'"), _src.indexOf("addEventListener('compositionend'") + 900);
+  assert.ok(ce.includes('checkBraceTrigger(content, node.id)'),
+    'compositionend re-runs the trigger chain against the committed text');
 });
 
 test('collectPropKeys — distinct property keys across the whole tree (lowercased, deduped, sorted)', () => {
