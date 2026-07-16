@@ -15190,3 +15190,23 @@ test('#816 wiring: zoom focuses the title; stranded-focus Esc zooms out', () => 
   assert.match(_fix4, /function zoomInto[\s\S]{0,900}querySelector\('\.zoom-title'\)\?\.focus\(\)/, 'childless fallback: the title');
   assert.match(_fix4, /focusedId && activeContentId == null && document\.activeElement === document\.body\) \{ e\.preventDefault\(\); zoomOut\(\); \}/, 'global Esc fallback missing');
 });
+
+// ─── test-user review fix batch 5 (#812/#821/#822/#825) ───────────────────────
+const _fix5 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#812: the mobile quick-bar roll button uses an in-subset glyph', () => {
+  assert.ok(!/id="qb-roll"[^>]*><i class="fa-solid fa-dice"/.test(_fix5), 'fa-dice (not in subset) must not be used');
+  assert.match(_fix5, /id="qb-roll"[^>]*><i class="fa-solid fa-dice-d20"/, 'qb-roll must use fa-dice-d20');
+});
+test('#821: picker labels resolve tokens (pickerTitle → displayText; lp rows → linkText)', () => {
+  assert.match(_fix5, /function pickerTitle[\s\S]{0,400}displayText\(n\)/, 'pickerTitle must use displayText');
+  assert.ok(_fix5.includes('item.textContent = linkText(nd.title)'), 'lp candidate labels must resolve link tokens');
+  // end-to-end: a node whose text carries a link token yields a legible picker label
+  const n = c.mkNode('Budget [[#zzz9|vendor]] of 20000');
+  assert.equal(c.pickerTitle(n), 'Budget vendor of 20000');
+});
+test('#822: filtering default-highlights the first MATCH, not an ancestor', () => {
+  assert.match(_fix5, /const fm = rows\.findIndex\(r => r\.match\); if \(fm >= 0\) activeIdx = fm/, 'first-match highlight missing');
+});
+test('#825: a refused Alt-move flashes why (P4)', () => {
+  assert.match(_fix5, /function moveNode[\s\S]{0,400}flashHint\(dir < 0 \? 'Already first under its parent' : 'Already last under its parent'\)/, 'boundary flash missing');
+});
