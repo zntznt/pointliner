@@ -8258,8 +8258,34 @@ function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splic
 //             done-side states get the muted done styling — the future kanban lanes)
 //   date   -> a date-shaped value renders as the agenda's urgency chip
 //   number -> a numeric value renders through the math formatter
+// B4 (bases round 1): a QUERY base's column roles are INFERRED from its projection,
+// not set by hand — read-only headers never render the Column menu, so `colRole`
+// was unreachable there and Board/Calendar stayed dim forever. The projection
+// already knows: a `due`/`start` field is a date column, a `= expr` field is a
+// number column; `title` and other property keys carry no role. Filtered + aligned
+// exactly like queryTableRows' colList so roles line up with the rendered columns.
+// (No status inference: a point's state keyword lives in its text, which a query
+// column can't project, so Board correctly stays gated on query bases.) Pure.
+function qbaseColRoles(cols) {
+  return (cols || []).filter(c => c && typeof c.field === 'string' && c.field.trim()).map(c => {
+    const f = c.field.trim().toLowerCase();
+    if (f[0] === '=') return 'number';
+    if (DATE_KEYS.has(f)) return 'date';
+    return null;
+  });
+}
+
+// The one accessor every colRole READ site consults: authored bases keep the
+// hand-set node.colRole; query bases derive from the projection. Write sites
+// (mtSetColRole, the cycleColRole keyboard chord) stay authored-only — a query
+// base's roles are a consequence of its columns, not a stored hint.
+function mtColRoles(node) {
+  return node.qbase ? qbaseColRoles(node.qbase.cols) : node.colRole;
+}
+
 function mtCellHtml(node, raw, c) {
-  const role = node.colRole && node.colRole[c];
+  const roles = mtColRoles(node);
+  const role = roles && roles[c];
   const s = String(raw || '').trim();
   if (role && s) {
     if (role === 'status') {
@@ -9029,9 +9055,10 @@ function mtViewSwitcherHtml(node) {
   const kind = node.view?.kind || 'table';
   // UXP-169: Board needs a Status column, Calendar a Date column (mtSetView flashHints the catch).
   // Dim + aria-disabled the button until an eligible column exists, so the control stops advertising
-  // a view it will punt. The click still works (it fires the explaining flashHint), so this softens
-  // the affordance without inferring a role — a role is a hint the user adds, not a schema (vision §3).
-  const roles = node.colRole || [];
+  // a view it will punt. The click still works (it fires the explaining flashHint). On an authored
+  // base a role is a hint the user adds, not a schema (vision §3); on a query base roles are
+  // inferred from the projection (B4) since its read-only headers have no Column menu.
+  const roles = mtColRoles(node) || [];
   const ready = { board: roles.includes('status'), calendar: roles.includes('date') };
   const btn = (k, label) => {
     const dimmed = (k === 'board' || k === 'calendar') && !ready[k];
@@ -9044,13 +9071,13 @@ function mtViewSwitcherHtml(node) {
 
 function mtSetView(node, kind) {
   if (kind === 'board') {
-    const gi = (node.colRole || []).findIndex(r => r === 'status');
+    const gi = (mtColRoles(node) || []).findIndex(r => r === 'status');
     if (gi < 0) { flashHint('Mark a column as Status first (Column menu, Show as); its states become the lanes.'); return; }
     node.view = { kind: 'board', groupBy: gi };
   } else if (kind === 'cards') {
     node.view = { kind: 'cards' };
   } else if (kind === 'calendar') {
-    const di = (node.colRole || []).findIndex(r => r === 'date');
+    const di = (mtColRoles(node) || []).findIndex(r => r === 'date');
     if (di < 0) { flashHint('Mark a column as Date first (Column menu, Show as); its dates place the rows on the calendar.'); return; }
     node.view = { kind: 'calendar', dateBy: di };
   } else node.view = undefined;   // absent = table, so untouched bases serialize clean
@@ -9500,6 +9527,7 @@ function buildTableWidget(node, readOnly) {
   }
   h += '</tr>';
   const _lastShown = _iv.shown;   // number of DATA rows to render inline (header excluded)
+  const _colRoles = mtColRoles(node) || [];   // B4: inferred on query bases, hand-set on authored
   for (let r=1;r<model.rows.length;r++) {
     const isTotal = r === totalRowIdx;
     // clamp: skip data rows past the inline cap, but always keep the footer total row
@@ -9523,7 +9551,7 @@ function buildTableWidget(node, readOnly) {
         // computed cell (so all the edit guards skip it) but blank and Σ-less.
         h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
-        h += `<td class="mt-cell${aCls(model.aligns[c])}${(node.colRole?.[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':ro}>${mtCellHtml(node, model.rows[r][c]||'', c)}</td>`;
+        h += `<td class="mt-cell${aCls(model.aligns[c])}${(_colRoles[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':ro}>${mtCellHtml(node, model.rows[r][c]||'', c)}</td>`;
       }
     }
     h += '</tr>';
@@ -9597,9 +9625,20 @@ function buildTableWidget(node, readOnly) {
     if (raw !== enteredWith && looksLikeCellFormula(raw)) {
       flashHint('Cells hold values. For a formula, open the column menu and use Calculate or Formula.');
     }
+    // B2: the final text is committed — shed sidecar records whose token left the table
+    // (bases never pass through the non-base exitEdit prune; without this an emptied pill
+    // cell leaks its record into OPML forever). Never in the per-keystroke input handler.
+    pruneArtifacts(node);
     // A source-cell edit may feed a formula: recompute and repaint the target cells in
     // place (rebuilding the widget here would steal focus from the next-clicked cell).
-    if (mtRecompute(node)) mtPatchCells(node, cell);
+    // B1: a PROJECTING variable base repaints its sibling cells too, recipe or not — an
+    // in-base column-total pill ({= sum(Monsters.HP)} in a cell) must see the new value
+    // (mtPatchCells skips the active element, so cell-to-cell nav keeps focus).
+    const recomputed = mtRecompute(node);
+    if (recomputed || (node.varbase && !node.qbase)) mtPatchCells(node, cell);
+    // B1: and referencing points ELSEWHERE repaint via a deferred, focus-aware render —
+    // only when the value actually changed on a projecting base.
+    if (raw !== enteredWith && node.varbase && !node.qbase) scheduleVarBaseRender(host);
     scheduleReconcile();
   });
 
@@ -14441,12 +14480,39 @@ function exitEdit(content, node) {
     if (!tblfm && /#\+TBLFM:/i.test(node.text)) flashHint('Put #+TBLFM: on its own line under the table');
     const parsed = parseTable(node.text);
     if (parsed) {
+      // B3: promote typed {…} shorthand PER CELL (the promoteLoadedShorthand base loop), so
+      // the markdown-edit path produces the same pills as the cell focusout and load paths —
+      // never the whole-text promoter (#788, the cross-cell shred).
+      for (const row of parsed.rows) for (let c = 0; c < row.length; c++) {
+        const r = promoteCellShorthand(node, row[c]);
+        if (r.changed) row[c] = r.text;
+      }
       // Normalize: re-serialize so every row has pipe formatting (guards against
       // rows typed without | in the markdown editor), keeping the formula recipe beside it.
       node.text = serializeTable(parsed) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
+      pruneArtifacts(node); // B2: shed records whose token was deleted in the markdown edit
+      // Re-bump the generation AFTER the promote/prune mutations: promoteCellShorthand's
+      // brace classification reads collectVars, which caches varBaseDefsMemo from the
+      // PRE-promotion text under the generation the markDirty above opened — without this
+      // a projecting varbase serves that stale projection until the next edit.
+      markDirty();
       mtRecompute(node); // bake computed values into the formula's target cells
-      content.textContent = '';
-      content.appendChild(buildTableWidget(node, isQueryBase(node)));
+      if (node.varbase && !node.qbase) {
+        // B1: a projecting variable base's values may have changed — repaint every
+        // referencing point, not just this widget (editing has ended, so a full render
+        // is safe; the non-table else-branch below already renders the same way).
+        _pendingVarBaseRender = false;
+        render();
+      } else if (_pendingVarBaseRender) {
+        // A varbase cell edit elsewhere deferred its outline repaint to this exitEdit
+        // (scheduleVarBaseRender found an editor live) — honor it now instead of the
+        // cheap local rebuild, so the deferred reference repaint isn't dropped.
+        _pendingVarBaseRender = false;
+        render();
+      } else {
+        content.textContent = '';
+        content.appendChild(buildTableWidget(node, isQueryBase(node)));
+      }
     } else {
       // User removed the table structure — re-derive type and full re-render.
       const et = deriveTypeFromText(node.text);
@@ -14481,12 +14547,15 @@ function exitEdit(content, node) {
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   markDirty();
-  if (_pendingFullRender) {
+  if (_pendingFullRender || _pendingVarBaseRender) {
     // A structural change during this edit (link-and-create added a point) needs
     // the WHOLE tree repainted, not just this node — safe now that edit is ending
     // (the base-table path likewise calls render() from exitEdit). This also
     // repaints live-title backlink sources for free, so the partial path below is skipped.
+    // _pendingVarBaseRender rides the same door: a varbase cell edit deferred its
+    // outline repaint because this editor was live (B1) — fire it now.
     _pendingFullRender = false;
+    _pendingVarBaseRender = false;
     render();
   } else {
     content.innerHTML = renderContentHTML(node);
@@ -23328,6 +23397,20 @@ function propagateCheckboxToSelection(clickedId) {
 }
 
 // Re-roll a dice token in place (click handler), keeping its formula.
+// B1 (bases round 1): a projecting variable base's TEXT edit also changes variable values,
+// so referencing points elsewhere must repaint — but the cell focusout handler must never
+// render() synchronously (it would steal focus from the next-clicked cell). Defer one tick:
+// if focus is still inside the base (cell-to-cell nav) skip — the NEXT focusout re-schedules;
+// if another editor went live, hand off to its exitEdit via the pending flag; else render now.
+let _pendingVarBaseRender = false;
+function scheduleVarBaseRender(host) {
+  setTimeout(() => {
+    if (host && host.contains(document.activeElement)) return;
+    if (activeContentId != null) { _pendingVarBaseRender = true; return; }
+    render();
+  }, 0);
+}
+
 // Repaint after a roll/edit changed a pill's frozen value. A PROJECTING variable base's
 // cell pill IS a variable value ({Orc.HP}), so every referencing point must repaint —
 // full render(), the rerollPickVar idiom; any other node keeps the cheap single-node
@@ -28886,7 +28969,7 @@ const GUIDE = [
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
   { id:'base-views', cat:'writing',
     title:'Base views',
-    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. A query base figures this out from its own columns (a due or start column is the date), so its Calendar just works. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
     related:['tables','querybase','properties'],
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },

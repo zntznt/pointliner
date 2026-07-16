@@ -74,9 +74,15 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   base-views-vision §0.5: this IS the minimal slice of the "typed fields" deferral, scoped to
   display hints over the untouched cell string (the §3a text-is-truth law; a non-conforming value
   falls through to the plain render, never an error). Rides `node.colRole` + `_colrole`, index-
-  aligned like `colW`. **Still below the line:** editor affordances per role (the in-cell value
-  picker / calendar), image/title roles, and any validation. Views remain deferred until their own
-  proposal.
+  aligned like `colW`. **Query bases infer their roles instead (bases round 1, 2026-07-16):**
+  read-only headers never render the Column menu, so `colRole` was unreachable there and
+  Board/Calendar stayed permanently gated. `qbaseColRoles` derives the array from the projection
+  (a `due`/`start` field → `date`, a `= expr` field → `number`; no status projection exists, so
+  Board correctly stays gated on query bases) and `mtColRoles(node)` is the ONE accessor every
+  colRole READ site consults (cell paint, view switcher, view gates, number right-align); write
+  sites stay authored-only. **Still below the line:** editor affordances per role (the in-cell
+  value picker / calendar), image/title roles, and any validation. Views remain deferred until
+  their own proposal.
 
 - **The view system + the board view (BV-1) — moved above the line 2026-07-02 (owner call, the
   base-views-vision §0b sequence).** `node.view = {kind, groupBy}` (`_view` OPML; absent = table),
@@ -239,6 +245,18 @@ An optional base name namespaces every projection (`monsters.orc.hp` — the pre
 - **Var-panel grouping (shipped 2026-07-16):** each projecting base's names collapse under one
   header in the Variables panel (label = the prefix name or "base", count, default collapsed,
   session-only expand state).
+- **Text edits repaint like re-rolls (bases round 1, 2026-07-16):** editing a cell (or the whole
+  table as markdown) on a projecting base repaints referencing points, not just the widget.
+  In-base sibling pills patch on the cell focusout (`mtPatchCells`, recipe or not); the outline
+  repaints via the deferred, focus-aware `scheduleVarBaseRender` (skipped while focus stays inside
+  the base, handed to the live editor's `exitEdit` via `_pendingVarBaseRender` when one is open —
+  never a synchronous render in focusout, which would steal focus from the next-clicked cell);
+  the markdown-edit path of a projecting base full-`render()`s from `exitEdit`. The base commit
+  paths also prune orphaned pill records (`pruneArtifacts` at the cell focusout and the exitEdit
+  base branch), promote typed `{…}` per cell on the markdown-edit path (mirroring the load path),
+  and re-bump the vars generation after promotion (the brace classification reads `collectVars`,
+  which caches `varBaseDefsMemo` from the pre-promotion text — without the re-bump a projecting
+  base serves the stale projection until the next edit).
 - **Deferred (reopen this doc to build):** the `var:` search operator over projections,
   projected-name shadow markers (no pill to mark).
 
