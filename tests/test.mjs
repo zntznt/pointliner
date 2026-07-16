@@ -5996,18 +5996,18 @@ test('collectUnlinkedRefs: unknown targetId → []', () => {
 
 test('linkifyMention: wraps the first outside-token occurrence', () => {
   const result = c.linkifyMention('the dragon sleeps', 'Dragon', 'drg');
-  assert.equal(result, 'the [[#drg|]] sleeps');
+  assert.equal(result, 'the [[#drg|dragon]] sleeps');   // #805: mention preserved as the label
 });
 
 test('linkifyMention: case-insensitive, preserves surrounding text exactly', () => {
   const result = c.linkifyMention('I saw DRAGON yesterday', 'Dragon', 'drg');
-  assert.equal(result, 'I saw [[#drg|]] yesterday');
+  assert.equal(result, 'I saw [[#drg|DRAGON]] yesterday');   // #805: exact casing kept
 });
 
 test('linkifyMention: only first occurrence is converted', () => {
   const result = c.linkifyMention('dragon and then Dragon', 'Dragon', 'drg');
   // first occurrence gets the link; second stays plain text
-  assert.equal(result, '[[#drg|]] and then Dragon');
+  assert.equal(result, '[[#drg|dragon]] and then Dragon');
 });
 
 test('linkifyMention: null when the only occurrence is inside an existing [[…]] token', () => {
@@ -6029,7 +6029,7 @@ test('linkifyMention: outside-token occurrence wins when token also exists', () 
   const text = '[[#other|Dragon]] the dragon sleeps';
   const result = c.linkifyMention(text, 'Dragon', 'drg');
   // "Dragon" in token label is inside [[…]], "dragon" in prose is outside → prose one links
-  assert.equal(result, '[[#other|Dragon]] the [[#drg|]] sleeps');
+  assert.equal(result, '[[#other|Dragon]] the [[#drg|dragon]] sleeps');
 });
 
 // ── aliases (reserved `aliases` property; aliasesOf / nodeNames pure cores) ────
@@ -15131,4 +15131,35 @@ test('#803 wiring: focus is synchronous when the row exists; rAF only as fallbac
 });
 test('#809 wiring: evalCheck consults aggHasSkippedValues before evaluating', () => {
   assert.match(_fix2, /function evalCheck[\s\S]{0,900}aggHasSkippedValues\(node, raw\)\) return 'error'/, 'skipped-value guard missing from evalCheck');
+});
+
+// ─── test-user review fix batch 3 (#805/#810/#813) ────────────────────────────
+const _fix3 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#805: the pipe carries meaning — render passthrough + title-form creation doors', () => {
+  assert.match(_fix3, /stash\(renderLinkPill\(target, label\)\)/, 'mdInline must pass label through (undefined = title form)');
+  assert.match(_fix3, /stash\(renderCrossLinkPill\(docId, target, label\)\)/, 'cross-doc callsite too');
+  assert.ok(!_fix3.includes('renderLinkPill(target, label ?? '), 'the label ?? \'\' collapse must be gone');
+  assert.match(_fix3, /token = \(workspaceDir && root\.docId\) \? `\[\[\$\{root\.docId\}#\$\{id\}\]\]` : `\[\[#\$\{id\}\]\]`/, 'Copy link must emit the title form');
+  assert.match(_fix3, /token = `\[\[#\$\{nn\.id\}\]\]`/, 'link-and-create must emit the title form');
+  assert.match(_fix3, /`\[\[\$\{chosen\.docId\}#\$\{chosen\.id\}\]\]` : `\[\[#\$\{chosen\.id\}\]\]`/, 'the picker must emit the title form');
+});
+test('#805: linkifyMention wraps the mention as the label (round-trip visible text)', () => {
+  assert.equal(c.linkifyMention('meet Karl Friston today', 'Karl Friston', 'x1'),
+    'meet [[#x1|Karl Friston]] today');
+});
+test('#810: the oracle-play example ships live pills, not dead {action} {subject} references', () => {
+  assert.ok(!_fix3.includes('{action} {subject}'), 'embedded example must not reference unregistered rules');
+  const demo = readFileSync(new URL('../guide/solo-rpg/oracle-play/oracle-play-demo.opml', import.meta.url), 'utf8');
+  assert.ok(!demo.includes('{action} {subject}'), 'demo OPML must not reference unregistered rules');
+  assert.ok(demo.includes('{hide | reveal'), 'demo meaning table must be a live inline alternation');
+});
+test('#813: lossy exports omit app-maintained created/edited timestamps', () => {
+  const r = c.mkRoot ? c.mkRoot() : c.mkNode('root');
+  const a = c.mkNode('task with props');
+  a.props = [{ key: 'created', val: '2026-07-16T12:00' }, { key: 'edited', val: '2026-07-16T12:05' }, { key: 'cost', val: '5' }];
+  r.children = [a];
+  const md = c.toMarkdown(r), txt = c.toPlainText(r);
+  assert.ok(!md.includes('created:') && !md.includes('edited:'), 'markdown must omit timestamps: ' + md);
+  assert.ok(md.includes('cost: 5'), 'user props still export');
+  assert.ok(!txt.includes('created:') && txt.includes('cost: 5'), 'plain text too');
 });

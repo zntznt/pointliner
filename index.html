@@ -5826,9 +5826,10 @@ function renderLinkPill(target, label) {
     const cap = escHtml(label || target);
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ((label || target) + ' (broken link)')}">${cap}</span>`;
   }
-  // Empty label → mirror (transclusion): embed the target's rendered content inline.
-  // When already inside a transclusion (_inlineDepth > 0) fall back to title-only
-  // so A↔B and longer cycles can't recurse; depth is capped at 1.
+  // Empty label WITH a pipe ([[#id|]]) → mirror (transclusion): embed the target's rendered
+  // content inline. No pipe at all ([[#id]], label undefined) falls through to the live-TITLE
+  // reference below — the picker/Copy-link default since #805 (UXP-204). When already inside
+  // a transclusion (_inlineDepth > 0) fall back to title-only so A↔B cycles can't recurse.
   if (label === '') {
     if (_inlineDepth > 0) {
       const title = escHtml(textForDisplay(tn) || '(untitled)');
@@ -5911,10 +5912,14 @@ function mdInline(s) {
   // Mutually exclusive with the same-doc form below: this requires >=1 char before '#',
   // the same-doc form requires none — so neither steals the other and order is irrelevant.
   s = s.replace(/\[\[([a-z0-9]+)#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, docId, target, label) =>
-    stash(renderCrossLinkPill(docId, target, label ?? '')));
-  // node links — [[#TARGETID]] or [[#TARGETID|label]]
+    stash(renderCrossLinkPill(docId, target, label)));
+  // node links — [[#TARGETID]] or [[#TARGETID|label]]. #805 (agent-review, UXP-204): the
+  // pipe now CARRIES MEANING — [[#id]] (no pipe, label undefined) = a live-TITLE reference
+  // (the default every creation door emits); [[#id|]] (pipe, empty label) = the explicit
+  // MIRROR/transclusion; [[#id|text]] = a fixed caption. The old `label ?? ''` collapse made
+  // every picker-made link a whole-body transclusion the moment the target carried prose.
   s = s.replace(/\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, target, label) =>
-    stash(renderLinkPill(target, label ?? '')));
+    stash(renderLinkPill(target, label)));
   // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:). The URL
   // char classes exclude \x00 so a stashed pill/footnote/code placeholder (\x00N\x00) glued to
@@ -7497,7 +7502,7 @@ function copyNodeLink(id) {
   if (!node) return;
   // In a workspace, emit the portable cross-doc form so a paste into another doc links
   // across; in its home doc it resolves same-doc via the renderCrossLinkPill delegation (CF-2).
-  const token = (workspaceDir && root.docId) ? `[[${root.docId}#${id}|]]` : `[[#${id}|]]`;
+  const token = (workspaceDir && root.docId) ? `[[${root.docId}#${id}]]` : `[[#${id}]]`;   // #805: title reference, not a transclusion
   const done = () => flashHint('Link copied');
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(token).then(done, () => fallbackCopy(token, done));
@@ -19929,7 +19934,10 @@ function linkifyMention(text, title, targetId) {
     if (!m) return null;
     const i = from + m.index, e = i + m[0].length;
     if (!spans.some(([a, b]) => i < b && e > a)) {
-      return text.slice(0, i) + `[[#${targetId}|]]` + text.slice(e);
+      // #805: PRESERVE the mention as the label — one-click Link must never rewrite what
+      // the user wrote (the old empty-label form discarded the mention's casing/phrasing
+      // and rendered a transclusion in its place).
+      return text.slice(0, i) + `[[#${targetId}|${text.slice(i, e)}]]` + text.slice(e);
     }
     from = i + 1;
   }
@@ -22989,12 +22997,13 @@ async function lpApply() {
     // full render so the new stub actually appears when this edit exits (exitEdit
     // honors _pendingFullRender — a partial single-node re-render would hide it).
     _pendingFullRender = true;
-    token = `[[#${nn.id}|]]`;
+    token = `[[#${nn.id}]]`;                       // #805: live-title reference
   } else {
     // Pick an existing point — same-doc or cross-doc (the candidate carries a docId for
-    // the portable [[docId#id|]] form, CF-3; same-doc is [[#id|]]).
+    // the portable [[docId#id]] form, CF-3; same-doc is [[#id]]). #805: the picker emits
+    // the TITLE-reference form; the [[#id|]] mirror stays the explicit typed embed.
     const chosen = matches[activeIdx];
-    token = (chosen && chosen.docId) ? `[[${chosen.docId}#${chosen.id}|]]` : `[[#${chosen.id}|]]`;
+    token = (chosen && chosen.docId) ? `[[${chosen.docId}#${chosen.id}]]` : `[[#${chosen.id}]]`;
   }
 
   const fullText = editableText(content);
@@ -26536,7 +26545,10 @@ function toMarkdown(rootNode) {
     // the point's note: plain continuation lines indented under the item
     if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}  ${l}`));
     // per-node properties as a single continuation line
-    if (node.props?.length) out.push(`${indent}  [${node.props.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
+    // #813 (agent-review, UXP-206): app-maintained timestamps stay out of the lossy exports —
+    // four of seven review personas flagged the [created/edited] noise; OPML keeps them.
+    const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase()));
+    if (exProps.length) out.push(`${indent}  [${exProps.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
     // footnote definitions in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -26574,7 +26586,8 @@ function toPlainText(rootNode) {
     // the point's note: continuation lines indented under the item
     if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}\t${l}`));
     // per-node properties as a single continuation line
-    if (node.props?.length) out.push(`${indent}\t[${node.props.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
+    const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase())); // #813
+    if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
     // footnote text in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
@@ -30065,12 +30078,13 @@ const GUIDE = [
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
     title:'Linking points',
-    body:"Build a personal wiki where ideas refer to each other, create a table of contents that jumps to sections or connect a task to its full context note. Type `[[` and pick the point to link to, then click the link to go straight there.\n\nA link tracks the point it points at, so it never goes stale. Leave the label empty and it shows that point's current title, so renaming the point updates every link to it at once. Give it a label (`[[#id|my wording]]`) when you want your own phrasing instead. Leave the label empty and it does something more: the linked point's rendered content appears right there inline, a live mirror of the other point, so a summary can pull in a definition or a stat block without copying it.\n\nLinks are two-way for free: the point you link to lists everything that links to it, covered under backlinks. That turns a pile of points into a connected web you can navigate from either end.",
+    body:"Build a personal wiki where ideas refer to each other, create a table of contents that jumps to sections or connect a task to its full context note. Type `[[` and pick the point to link to, then click the link to go straight there.\n\nA link tracks the point it points at, so it never goes stale. The picker makes a title reference (`[[#id]]`): it shows that point's current title, so renaming the point updates every link to it at once. Give it a label (`[[#id|my wording]]`) when you want your own phrasing instead. And to embed rather than refer, add an empty pipe (`[[#id|]]`): the linked point's rendered content appears right there inline, a live mirror of the other point, so a summary can pull in a definition or a stat block without copying it.\n\nLinks are two-way for free: the point you link to lists everything that links to it, covered under backlinks. That turns a pile of points into a connected web you can navigate from either end.",
     related:['backlinks','cross-doc-links','aliases'],
     examples:[
       { syn:'[[',                   desc:'open the link picker' },
+      { syn:'[[#id]]',              desc:"show the target's live title" },
       { syn:'[[#id|label]]',        desc:'link with your own wording' },
-      { syn:'[[#id|]]',             desc:"show the target's live title" },
+      { syn:'[[#id|]]',             desc:'embed the target inline (a live mirror)' },
       { syn:'Menu → Copy link',     desc:'grab a link to paste elsewhere' },
     ] },
   { id:'backlinks', cat:'links',
@@ -31362,16 +31376,15 @@ const STARTERS = [
   <outline text="## Generators">
     <outline text="Chaos factor (1 calm to 5 chaos): {chaos := 3}"/>
     <outline text="Interrupt check (click to roll): {proceed | interrupted {= chaos}}"/>
-    <outline text="Meaning table (click for two words): {action} {subject}">
-      <outline text="action: hide | reveal | pursue | abandon | protect | betray"/>
-      <outline text="subject: a secret | an ally | a debt | a route | a rumor | a relic"/>
+    <outline text="Meaning table (click each for a word): {hide | reveal | pursue | abandon | protect | betray} {a secret | an ally | a debt | a route | a rumor | a relic}">
+      <outline text="Prefer a named table you can call from anywhere? Define rules with @ then Grammar, or tag points and roll on the tag (see the Campaign oracle example)."/>
     </outline>
     <outline text="Thread deck (click to pull one): {shuffle: the torn letter | the missing sister | the merchant's debt}"/>
   </outline>
   <outline text="## Scene: a yes with a catch">
     <outline text="Will the merchant help me? (likely, with a swing)"/>
     <outline text="Answer: {Yes, and 3 | Yes 9 | Yes, but 3 | No, but 3 | No 3 | No, and 1}"/>
-    <outline text="If it needs a spark, pull two words: {action} {subject}"/>
+    <outline text="If it needs a spark, pull two words from the meaning table above."/>
     <outline text="Result: he will help, but only to settle a debt he owes someone worse. #thread"/>
   </outline>
   <outline text="## How to use it">
