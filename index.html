@@ -3298,11 +3298,31 @@ function collectScoped(node, depth) {
 function childPropNumber(child, prop) {
   const p = (child?.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).trim().toLowerCase());
   if (!p) return null;
-  const raw = String(p.val).trim();
-  if (!raw) return null;                            // blank value is not a number (Number('')===0 would miscount)
+  const raw0 = String(p.val).trim();
+  if (!raw0) return null;                           // blank value is not a number (Number('')===0 would miscount)
+  // #809 (agent-review, UXP-203): accept locale thousands-separators ("3,000" = 3000) —
+  // strictly grouped only, so "1,2" stays non-numeric. A formatted cost silently dropping
+  // out of a budget sum flipped a failing check back to a green pass.
+  const raw = /^-?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(raw0) ? raw0.replace(/,/g, '') : raw0;
   const n = Number(raw);
   if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
   return parseDueDate(raw);                          // else a date-shaped value aggregates as its epoch-day (strict; non-dates → null)
+}
+// #809: does an aggregated property in `expr` skip a child's NON-EMPTY, non-numeric value?
+// A check must ERROR over a skipped value ("12o", stray text), never silently pass a sum
+// computed around the hole — the exact silent-wrong-success P4 exists to prevent. Bare
+// idents only (dotted base.col totals aggregate a base, not children — different animal);
+// date-shaped values parse to epoch-days, so they never flag. Pure; Node-testable.
+function aggHasSkippedValues(node, expr) {
+  let bad = false;
+  String(expr || '').replace(/\b(?:sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*\)/g, (m, prop) => {
+    for (const ch of (node?.children || [])) {
+      const p = (ch.props || []).find(x => (x.key || '').trim().toLowerCase() === prop.toLowerCase());
+      if (p && String(p.val).trim() !== '' && childPropNumber(ch, prop) === null) bad = true;
+    }
+    return m;
+  });
+  return bad;
 }
 
 // ── meter pills: {meter: value/max} → a segmented bar of a numeric property ──────
@@ -3767,6 +3787,7 @@ function evalCheck(node, vars = {}, ancestors = []) {
   // reporting 'pass' just because the number is truthy is a silent wrong-success
   // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
   if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
+  if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
   const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
   // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
   // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
@@ -4389,6 +4410,16 @@ function parseBaseSlash(query) {
 // Set (or, with a falsy val, leave untouched) one date property on a node, replacing
 // any existing same-key prop. Shared by the Schedule dialog and the /due:val slash path.
 function setDateProp(node, key, val) {
+  // #808 (agent-review, UXP-202): resolve relative date input at COMMIT. "tomorrow" /
+  // "today+7" / weekday names stored literally re-anchor every day, so a deadline typed
+  // relatively never actually arrives (and "3d overdue" stays 3d overdue forever). Every
+  // peer scheduler fixes the date at entry; the chip title already implied it. Only the
+  // DATE_KEYS normalize — REPEAT_KEY rides this setter with a phrase value, and an
+  // unparsable value stays as typed (the callers reject it visibly, P4).
+  if (val && DATE_KEYS.has(key) && !/^\d{4}-\d{2}-\d{2}$/.test(String(val).trim())) {
+    const ep = parseDueDate(val);
+    if (ep !== null) val = formatEpochDays(ep);
+  }
   const props = (node.props || []).filter(p => p.key.toLowerCase() !== key);
   if (val) props.push({ key, val });
   node.props = props;
@@ -24384,8 +24415,16 @@ function expandAll() {
   render();
 }
 
-function focusNode(id) {
-  requestAnimationFrame(() => {
+// #803 (agent-review, UXP-200): focus lands SYNCHRONOUSLY when the row already exists in
+// the DOM — the old unconditional rAF deferral left a ~1-frame gap after Enter/Tab during
+// which keystrokes landed on a stale element or nowhere (silent text corruption at fast
+// typing speeds; the review's strongest 5-persona convergence). Structural ops render()
+// before focusing, so the row is present and the caret is live before the next keystroke
+// can arrive. The rAF fallback remains for callers whose row isn't rendered yet
+// (virtual-window scroll-ins).
+function focusNode(id) { _focusNodeGo(id, null); }
+function _focusNodeGo(id, offset) {
+  const go = () => {
     ensureRowVisible(id); // bring the row into the rendered window if it was offscreen
     const el = document.querySelector(`.node-content[data-id="${id}"]`);
     if (!el) return;
@@ -24394,32 +24433,28 @@ function focusNode(id) {
     if (node?.type === 'base') return;
     if (!el.dataset.editing && node) enterEdit(el, node);
     el.focus();
-    const r = document.createRange();
-    r.selectNodeContents(el); r.collapse(false);
-    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-  });
+    if (offset === null) {
+      const r = document.createRange();
+      r.selectNodeContents(el); r.collapse(false);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    } else {
+      try { setCaretByOffset(el, offset); }
+      catch (_) {
+        const r = document.createRange();
+        r.selectNodeContents(el); r.collapse(false);
+        const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      }
+    }
+  };
+  if (document.querySelector(`.node-content[data-id="${id}"]`)) go();
+  else requestAnimationFrame(go);
 }
 
 // Like focusNode but lands the caret at a logical character `offset` (unfolded
 // coordinates — enterEdit unfolds first) instead of at the end. Used by the
 // caret-split (UXP-60) to park the caret at the start of the new half's body.
-function focusNodeAtOffset(id, offset) {
-  requestAnimationFrame(() => {
-    ensureRowVisible(id);
-    const el = document.querySelector(`.node-content[data-id="${id}"]`);
-    if (!el) return;
-    const node = nodeById(id);
-    if (node?.type === 'base') return;
-    if (!el.dataset.editing && node) enterEdit(el, node);
-    el.focus();
-    try { setCaretByOffset(el, offset); }
-    catch (_) {
-      const r = document.createRange();
-      r.selectNodeContents(el); r.collapse(false);
-      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-    }
-  });
-}
+// #803: same sync-when-possible policy as focusNode — one shared body (_focusNodeGo).
+function focusNodeAtOffset(id, offset) { _focusNodeGo(id, offset); }
 
 // ─── arrow-key cross-node navigation ─────────────────────────────────────────
 
@@ -26468,7 +26503,10 @@ function toMarkdown(rootNode) {
     const indent = '  '.repeat(depth);
     if (node.type === 'base') {
       // a table node's text is already a markdown table — emit it as its own block
-      const body = flattenArtifacts(node.text, node, varMap);
+      // #806 (agent-review, UXP-201): exports resolve node links to legible text — the same
+      // linkText displayText already uses (label → live title → workspace-index title → bare
+      // id) — never the raw [[#hexid|]] token that made the exported knowledge graph noise.
+      const body = linkText(flattenArtifacts(node.text, node, varMap));
       body.split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}- ---`);
@@ -26478,7 +26516,7 @@ function toMarkdown(rootNode) {
       // To-dos carry their own markdown (`- [ ]` marker / Org keyword) in node.text —
       // export it verbatim instead of synthesizing a marker from type+checked.
       const isTodo = node.type === 'todo';
-      let body = flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap);
+      let body = linkText(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap)); // #806: links → titles
       const hLvl = { h1:1, h2:2, h3:3, h4:4, h5:5, h6:6 }[node.type];
       if (node.type === 'quote') body = `> ${body}`;
       else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
@@ -26519,7 +26557,7 @@ function toPlainText(rootNode) {
   function emit(node, depth) {
     const indent = '\t'.repeat(depth);
     if (node.type === 'base') {
-      stripInlineMd(flattenArtifacts(node.text, node, varMap)).split('\n').forEach(l => out.push(indent + l));
+      stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))).split('\n').forEach(l => out.push(indent + l)); // #806
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
       const dlabel = stripInlineMd(textForDisplay(node));
@@ -26527,7 +26565,7 @@ function toPlainText(rootNode) {
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
-      let body = stripInlineMd(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap));
+      let body = stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap))); // #806: links → titles
       if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
