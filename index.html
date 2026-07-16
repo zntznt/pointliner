@@ -2470,6 +2470,7 @@ function computeIndent() { return window.innerWidth <= 560 ? 16 : 24; }
 // Touch devices have no hover, so hover-revealed affordances need touch fallbacks.
 const IS_TOUCH = matchMedia('(hover:none) and (pointer:coarse)').matches;
 let bulletLongPressed = false;  // set by a bullet long-press so the trailing click won't also zoom
+let _zoomToastShown = false;    // #823: the first bullet-click zoom of a session explains itself, once
 const EST_ROW = 30;    // height estimate for not-yet-measured rows
 const OVERSCAN = 10;   // extra rows rendered above/below the viewport
 let flatRows  = [];    // ordered visible rows: { node, depth, parent, searchCtx?, highlight? }
@@ -10528,7 +10529,12 @@ function renderRow(r) {
       if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
       // every point (incl. a base) zooms in on a bullet click; the hover/long-press menu
       // carries the per-node ops (dismiss it so it doesn't linger over the zoomed view)
-      if (node.type !== 'divider') { hideBpop(); zoomInto(node.id); }
+      if (node.type !== 'divider') {
+        hideBpop(); zoomInto(node.id);
+        // #823 (agent-review): the first bullet-click zoom of a session explains itself —
+        // a first-timer reads the view swap as "my list disappeared" (P4). Once per session.
+        if (!_zoomToastShown) { _zoomToastShown = true; flashHint('Zoomed into one point. Esc or the breadcrumb takes you back'); }
+      }
     });
     // Keyboard: Enter/Space on the focused bullet opens its menu (beside mousedown/hover).
     bullet.addEventListener('keydown', e => {
@@ -17324,6 +17330,11 @@ function createBaseAt(nodeId, rows, cols) {
     const el = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (el) el.blur();
   }
+  // #824 (agent-review): a point that already CONTAINS a markdown table converts THAT
+  // table in place (the same promoteStaticTable path as the table's own ▦ button) —
+  // /base used to drop an unrelated empty starter beside it, disagreeing with the button.
+  const tr = findFirstTableRange(node.text);
+  if (tr) { promoteStaticTable(node, tr.l0, tr.l1); return; }
   const plan = planBaseConvert(node.text, starterTableText(rows, cols));
   pushUndo();
   if (plan.mode === 'in-place') {
@@ -30490,7 +30501,13 @@ function openGuide(initialId) {
     if (e.key === 'ArrowDown') { e.preventDefault(); const n = items[i+1]; if (n) { n.focus(); selectItem(n.dataset.id); } }
     else if (e.key === 'ArrowUp') { e.preventDefault(); const p = items[i-1]; if (p) { p.focus(); selectItem(p.dataset.id); } else searchEl.focus(); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); pane.focus(); }
-    else if (e.key === 'Escape') { e.stopPropagation(); searchEl.focus(); }
+    // #826 (agent-review): Esc from the nav CLOSES the guide — the old focus-the-search
+    // move was invisible, so "Esc, Esc, nothing happened" read as a broken contract
+    // (the shortcut list says "Esc: close panel").
+    else if (e.key === 'Escape') { e.stopPropagation(); close(); }
+  });
+  pane.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }   // #826: same from the reading pane
   });
   searchEl.addEventListener('input', () => {
     filterQ = searchEl.value;

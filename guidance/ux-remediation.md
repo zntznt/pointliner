@@ -2788,6 +2788,26 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
 - **Fix:** `moveNode`'s boundary guard flashes "Already first/last under its parent" (P4) instead
   of returning silently.
 
+### UXP-215 ✓ /base ignored an existing markdown table (#824) 🟡 — **RESOLVED**
+- **Fix:** `createBaseAt` checks `findFirstTableRange(node.text)` first and routes an existing
+  table through `promoteStaticTable` — the same path as the table's own ▦ Convert button — instead
+  of dropping an unrelated empty starter beside it. The verb and the button now agree.
+
+### UXP-216 ✓ Guide Esc was an invisible no-op from the nav/entry (#826) 🟡 — **RESOLVED**
+- **Fix:** Esc from the guide's nav list and from the reading pane CLOSES the guide (the old nav
+  Esc only moved focus to the search box — invisible, so "Esc, Esc, nothing" read as broken; the
+  shortcut list promises "Esc: close panel"). Search-box Esc already closed; click-away unchanged.
+
+### UXP-217 ✓ Bullet-click zoom unannounced; hover-in-edit DECLINED per #455 (#823) 🟡 — **RESOLVED (partial by design)**
+- **Fixed half:** the first bullet-click zoom of a session flashes "Zoomed into one point. Esc or
+  the breadcrumb takes you back" (P4) — the first-timer's "my list disappeared!" moment now
+  explains itself. Once per session (`_zoomToastShown`).
+- **Declined half (recorded):** re-enabling the hover popup during edit mode conflicts with the
+  deliberate #455 decision (the menu positions over the content; a cursor drifting into the gutter
+  mid-type would cover the text). Reversing a recorded decision is an owner call, not a fix-batch
+  side effect — if beginner menu access while editing is wanted, that is a design pass on the
+  bullet interaction model (e.g. click-opens-menu), flagged here for the owner.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the

@@ -15210,3 +15210,18 @@ test('#822: filtering default-highlights the first MATCH, not an ancestor', () =
 test('#825: a refused Alt-move flashes why (P4)', () => {
   assert.match(_fix5, /function moveNode[\s\S]{0,400}flashHint\(dir < 0 \? 'Already first under its parent' : 'Already last under its parent'\)/, 'boundary flash missing');
 });
+
+// ─── test-user review fix batch 6 (#823/#824/#826) ────────────────────────────
+const _fix6 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#824: /base on a table-bearing point converts in place via promoteStaticTable', () => {
+  assert.match(_fix6, /function createBaseAt[\s\S]{0,900}findFirstTableRange\(node\.text\);\s*\n\s*if \(tr\) \{ promoteStaticTable\(node, tr\.l0, tr\.l1\); return; \}/,
+    'createBaseAt must route an existing table through promoteStaticTable');
+});
+test('#826: Esc closes the guide from the nav and the reading pane', () => {
+  assert.match(_fix6, /ArrowRight'\) \{ e\.preventDefault\(\); pane\.focus\(\); \}[\s\S]{0,400}Escape'\) \{ e\.stopPropagation\(\); close\(\); \}/, 'nav Esc must close');
+  assert.match(_fix6, /pane\.addEventListener\('keydown', e => \{\s*\n\s*if \(e\.key === 'Escape'\) \{ e\.stopPropagation\(\); close\(\); \}/, 'pane Esc must close');
+});
+test('#823: the first bullet-click zoom flashes a one-time explanation', () => {
+  assert.ok(_fix6.includes('let _zoomToastShown = false;'), 'session flag missing');
+  assert.match(_fix6, /zoomInto\(node\.id\);[\s\S]{0,400}_zoomToastShown = true; flashHint\('Zoomed into one point\. Esc or the breadcrumb takes you back'\)/, 'zoom toast missing');
+});
