@@ -302,8 +302,11 @@ An optional base name namespaces every projection (`monsters.orc.hp` — the pre
   opens the Variables panel from the slash menu (beside the toolbar button and Ctrl/Cmd+Shift+V).
   The in-app concept guide gained a **bases-overview** entry (which table-family feature to reach
   for), and user-facing copy says "table"/"base", never "grid" (§8).
-- **Deferred (reopen this doc to build):** the `var:` search operator over projections,
-  projected-name shadow markers (no pill to mark).
+- **`var:` over projections (shipped 2026-07-16, the below-the-line pass):** `var:orc.hp` (and
+  the hierarchical `var:orc`, the #tag rule) matches the projecting BASE — the matcher checks
+  `varBaseDefsMemo` beside `node.vars` declarations, and the parser admits dots. Documented in
+  the `?` panel row and the search guide entry.
+- **Deferred (reopen this doc to build):** projected-name shadow markers (no pill to mark).
 
 ### 7c. The two L-size structural items — considered, decided, recorded (round 4, 2026-07-16)
 
