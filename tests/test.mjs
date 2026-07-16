@@ -5849,7 +5849,7 @@ test('link-and-create: a mid-edit create defers a full render to exit (wiring gu
   // re-render would hide it). Guard the flag wiring against silent regression.
   const src = readFileSync(_htmlPath, 'utf8');
   assert.ok(src.includes('_pendingFullRender = true'), 'lpApply create branch must set _pendingFullRender');
-  assert.ok(src.includes('if (_pendingFullRender)'), 'exitEdit must honor _pendingFullRender with a full render()');
+  assert.ok(src.includes('if (_pendingFullRender || _pendingVarBaseRender)'), 'exitEdit must honor _pendingFullRender with a full render()');
 });
 
 // ── collectUnlinkedRefs & linkifyMention (unlinked references) ────────────────
@@ -12164,6 +12164,77 @@ test('mtCellHtml — status/date/number roles shape the paint; non-conforming va
   assert.doesNotMatch(c.mtCellHtml(node, 'TODO', 3), /todo-state/);
   const bare = { dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
   assert.doesNotMatch(c.mtCellHtml(bare, 'TODO', 0), /todo-state/);
+});
+
+// ── Bases round 1 (B1–B4): correctness fixes ─────────────────────────────────
+test('qbaseColRoles — roles inferred from the projection, aligned to the rendered columns (B4)', () => {
+  const roles = host(c.qbaseColRoles([
+    { name: 'Point', field: 'title' },
+    { name: 'Due', field: 'due' },
+    { name: 'Begin', field: ' Start ' },          // case/space-insensitive
+    { name: 'Left', field: '= daysuntil(due)' },  // formula projection -> number
+    { name: 'Owner', field: 'owner' },            // plain prop -> no role
+  ]));
+  assert.deepEqual(roles, [null, 'date', 'date', 'number', null]);
+  // filtered exactly like queryTableRows' colList, so indexes line up with rendered columns
+  assert.deepEqual(host(c.qbaseColRoles([{ field: '  ' }, null, { field: 'due' }, { name: 'x' }])), ['date']);
+  assert.deepEqual(host(c.qbaseColRoles([])), []);
+  assert.deepEqual(host(c.qbaseColRoles(undefined)), []);
+});
+
+test('mtColRoles — query bases infer, authored bases keep the hand-set roles (B4)', () => {
+  assert.deepEqual(c.mtColRoles({ colRole: ['status', null] }), ['status', null]);
+  const q = { qbase: { expr: 'is:todo', cols: [{ name: 'P', field: 'title' }, { name: 'D', field: 'due' }] } };
+  assert.deepEqual(host(c.mtColRoles(q)), [null, 'date']);
+  assert.equal(c.mtColRoles({}), undefined);
+  // and mtCellHtml consults it: a query base's due column paints date chips with no colRole set
+  const qn = Object.assign({ dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] }, q);
+  assert.match(c.mtCellHtml(qn, '2199-01-01', 1), /ag-chip/);
+  assert.doesNotMatch(c.mtCellHtml(qn, '2199-01-01', 0), /ag-chip/);
+});
+
+test('bases round 1 — B4 read sites + write sites stay split (source pins)', () => {
+  // every colRole READ site consults mtColRoles: the cell paint, the switcher, the view gates,
+  // and the number right-align in the row loop
+  assert.ok(/const roles = mtColRoles\(node\);\n\s*const role = roles && roles\[c\];/.test(fnBody(_src, 'mtCellHtml')), 'mtCellHtml reads via the accessor');
+  assert.ok(/const roles = mtColRoles\(node\) \|\| \[\];/.test(fnBody(_src, 'mtViewSwitcherHtml')), 'the switcher ready-state reads via the accessor');
+  const sv = fnBody(_src, 'mtSetView');
+  assert.equal((sv.match(/mtColRoles\(node\)/g) || []).length, 2, 'both view gates (board + calendar) read via the accessor');
+  assert.ok(/_colRoles\[c\] === 'number'/.test(_src), 'the right-align check reads the hoisted roles');
+  // write sites stay authored-only: mtSetColRole and the Alt+R cycle never touch a qbase (the
+  // keyboard chord lives below buildTableWidget's readOnly return, verified by position)
+  assert.ok(!/mtColRoles/.test(fnBody(_src, 'mtSetColRole')), 'the role writer still writes node.colRole directly');
+});
+
+test('bases round 1 — B1/B2/B3 wiring (source pins)', () => {
+  const btw = fnBody(_src, 'buildTableWidget');
+  // B1a: the cell-focusout repaint fires on a projecting varbase even without a #+TBLFM recipe
+  assert.ok(/recomputed \|\| \(node\.varbase && !node\.qbase\)/.test(btw), 'in-base sibling repaint covers varbases');
+  // B1b: cross-outline refs repaint via the deferred, focus-aware render — only on a real change
+  assert.ok(/raw !== enteredWith && node\.varbase && !node\.qbase\) scheduleVarBaseRender\(host\)/.test(btw), 'focusout schedules the outline repaint');
+  const svr = fnBody(_src, 'scheduleVarBaseRender');
+  assert.ok(/contains\(document\.activeElement\)/.test(svr) && /_pendingVarBaseRender = true/.test(svr) && /render\(\)/.test(svr),
+    'the deferred render is focus-aware and hands off to a live editor');
+  const ee = fnBody(_src, 'exitEdit');
+  assert.ok(/_pendingFullRender \|\| _pendingVarBaseRender/.test(ee), 'exitEdit consumes the pending varbase render (non-base tail)');
+  assert.ok(/else if \(_pendingVarBaseRender\)/.test(ee), 'exitEdit consumes it on the base local-rebuild path too');
+  // B1c: the markdown-edit path of a projecting varbase re-renders the whole outline
+  assert.ok(/node\.varbase && !node\.qbase/.test(ee), 'exitEdit base branch forks on a projecting varbase');
+  // B2: bases prune orphaned sidecar records at both commit chokepoints
+  assert.ok(/pruneArtifacts\(node\)/.test(btw), 'the cell focusout prunes after the final commit');
+  assert.equal((ee.match(/pruneArtifacts\(node\)/g) || []).length, 2, 'exitEdit prunes on the base branch AND the prose path');
+  // ...but never in the per-keystroke input handler (would shed a record mid-typing)
+  const inputIdx = btw.indexOf("addEventListener('input'");
+  if (inputIdx >= 0) {
+    const inputChunk = btw.slice(inputIdx, btw.indexOf('addEventListener', inputIdx + 10));
+    assert.ok(!/pruneArtifacts/.test(inputChunk), 'no prune in the input handler');
+  }
+  // B3: markdown-edit promotes typed {…} per cell — never the whole serialized text (#788)
+  assert.ok(/promoteCellShorthand\(node, row\[c\]\)/.test(ee), 'the base exitEdit branch promotes per cell');
+  // and the promote/prune mutations re-bump the vars generation: promoteCellShorthand's brace
+  // classification reads collectVars, which caches varBaseDefsMemo from the PRE-promotion text —
+  // without a fresh markDirty a projecting varbase serves that stale projection until the next edit
+  assert.ok(/markDirty\(\);\s*\n\s*mtRecompute\(node\)/.test(ee), 'the base branch re-bumps the generation after promote/prune');
 });
 
 // ── BV-1: boardLanes, the board view's pure lane model ───────────────────────

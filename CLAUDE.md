@@ -594,6 +594,13 @@ text). **A cell that IS a single dice/grammar pill projects its FROZEN roll** (`
 via the pick channel) — the pill is the store, no rolls sidecar; a re-roll/edit on a projecting
 base goes through `repaintAfterRoll` (full `render()`, the `rerollPickVar` idiom) so every
 referencing point repaints; the base bullet menu's Pills section is the keyboard re-roll door.
+**Text edits repaint the same way (bases round 1):** a cell focusout patches in-base sibling
+pills (`mtPatchCells`, recipe or not) and schedules the deferred, focus-aware
+`scheduleVarBaseRender` for the outline (never a synchronous render in focusout; handed to a
+live editor's `exitEdit` via `_pendingVarBaseRender`); the markdown-edit path of a projecting
+base full-`render()`s. Both base commit paths prune orphaned pill records and the exitEdit base
+branch re-bumps the generation after per-cell promotion (the classification pass caches
+`varBaseDefsMemo` from pre-promotion text).
 **Column totals**: `{= sum(base.col)}` (also `avg/count/min/max`) aggregates a NAMED base's
 column via `aggregateVarBaseColumn` over the vars map (`expandAggExpr(expr, node, vars?)` — the
 prop group admits dots; bare props keep the child-prop meaning; unmatched dotted calls stay
@@ -883,8 +890,11 @@ mtCellHtml is the role-aware paint wrapper at every data-cell paint site — sta
 knownStates/keywordIsDone chips (custom sequences included, the future kanban lanes),
 date -> parseDueDate + formatDueDate urgency chips, number -> formatMathResult +
 auto-right-align; display hints only, cell text untouched, raw on edit, non-conforming
-values fall through; Column menu "Show as" door via mtSetColRole; editors and further
-roles stay below the line) ·
+values fall through; Column menu "Show as" door via mtSetColRole; a QUERY base's roles
+are inferred from its projection instead — qbaseColRoles (due/start field -> date,
+= expr -> number) behind the one accessor mtColRoles that every colRole READ site
+consults, so Calendar/Cards open read-only on query bases while write sites stay
+authored-only; editors and further roles stay below the line) ·
 Query bases (QP-2 Phase A, the bases-direction §4 above-the-line move under the
 base-views-vision §0b mission thesis: a base whose ROWS are a live search. node.qbase =
 {expr, cols:[{name,field}]} (_qbase OPML); pure core queryTableRows projects each match
