@@ -2838,6 +2838,27 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
   places plausibly; the warm click is unchanged. DOM-timing fix, no pure core to pin; all 1341 tests
   stay green.
 
+### UXP-220 ✓ Concept Guide must-fix batch: five misleading/dead-end entries (#834) 🟡 — **RESOLVED**
+Five in-app GUIDE fixes (the Concept Guide review's must-fix batch), all copy in the `const GUIDE = [`
+array; no behavior changes:
+- **Paragraph inversion documented (P2/P1):** `point-types` now teaches the app's one sanctioned
+  keyboard inversion (Paragraph: Enter = line break, Shift+Enter = new point) with a `/paragraph`
+  example row. Searching "paragraph" in the guide now finds the entry (was "No results" — the guide
+  search indexes bodies, so the new sentence covers it; `para` was already in `covers`).
+- **Untypeable `w = {weapon}` corrected (P1):** `gen-conditions` + `recipe-npc` taught a form the
+  parser rejects (`parseVarDecl` requires `:=`; plain `=` is inert text). Both now show
+  `{w := {weapon}}`. Verified headless end-to-end: the typed form promotes to a pick var and
+  `{w}`/`{w.dmg}` stay consistent across re-rolls (dagger→1d4, longsword→1d8, warhammer→1d10).
+  The same wrong form mirrored in `guide/generating-text.md` + `guide/cookbook.md` — fixed in the
+  same change (the guide-drift rule).
+- **`progress` stale claim (P1):** "Grandchildren are not counted" contradicted the shipped depth
+  scopes (UXP-159). Body now teaches `[/subtree]` / `[/N]` (+ `[%subtree]`/`[%2]`), with two new
+  example rows, matching the `@progress` insert-menu desc.
+- **`overview` nav naming (P2):** "Cookbook recipes" → "Put it together recipes" (the actual CATS
+  label a reader scans the left nav for).
+- **`backlinks` front door (P2):** the entry now says HOW the panel opens (rises from the bottom
+  when you click into a linked-to point, updates as you move).
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
