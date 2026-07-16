@@ -2213,7 +2213,7 @@ body:not(.v-guided) .bm-desc{display:none}
         <div class="sh-row"><kbd>a | b</kbd><span>either side matches (OR); spaces around the pipe, AND binds tighter</span></div>
         <div class="sh-row"><kbd>has:key</kbd><kbd>key:value</kbd><span>property filters, like <code>has:owner</code> or <code>owner:zeo</code>; quote a spaced value: <code>area:"Home Reno"</code></span></div>
         <div class="sh-row"><kbd>key:&gt;N</kbd><kbd>key:&lt;=N</kbd><span>numeric property compare, like <code>cost:&gt;100</code> or <code>score:&lt;=3.5</code></span></div>
-        <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>)</span></div>
+        <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>, <code>var:orc.hp</code> finds the base that projects it)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><kbd>priority:none</kbd><span>to-do priority (<code>priority:a</code>/<code>b</code>); <code>none</code> = unprioritized, <code>any</code> = has one</span></div>
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
         <div class="sh-row"><kbd>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
@@ -13504,7 +13504,9 @@ function parseSearchQuery(q) {
     else if ((t = tok.match(/^priority:([A-Za-z])$/i))) terms.push({ neg, kind: 'priority', value: t[1].toUpperCase() });
     // QX-3: var:NAME finds the point that DECLARES variable NAME (not reference pills).
     // Before the generic prop arm (like priority:) so `var` is not a free-form key:value.
-    else if ((t = tok.match(/^var:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'var', value: t[1].toLowerCase() });
+    // Dots admitted for variable-base projections (var:orc.hp, var:monsters.orc.hp) —
+    // and a bare var:orc matches every projected orc.* name, the tag-hierarchy rule.
+    else if ((t = tok.match(/^var:([\w][\w.-]*)$/i))) terms.push({ neg, kind: 'var', value: t[1].toLowerCase() });
     // QX-4: numeric comparison on any own property (cost:>100). key:value is EXACT-only,
     // so a `>N` value never fit the generic prop arm below (it fell to literal text). This is
     // the one real parser extension: the two-char ops (>=|<=) MUST precede (>|<) so >= wins
@@ -13712,7 +13714,12 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
   if (term.kind === 'var') {
     // QX-3: match the DECLARING point. A declaration has a truthy expr (the same test
     // collectVars uses); a display-only reference pill has an empty expr, so it never matches.
-    return (node.vars || []).some(v => v.expr && (v.name || '').toLowerCase() === term.value);
+    // Hierarchical on dots (the #tag rule): var:orc matches orc AND orc.hp; an exact
+    // dotted name matches only itself. A projecting variable base declares its projected
+    // names (varBaseDefsMemo), so var:monsters.orc.hp finds the base.
+    const hit = name => { const n = (name || '').toLowerCase(); return n === term.value || n.startsWith(term.value + '.'); };
+    return (node.vars || []).some(v => v.expr && hit(v.name))
+      || (isVarBase(node) && varBaseDefsMemo(node).some(d => hit(d.name)));
   }
   return stripMd(textForDisplay(node)).toLowerCase().includes(term.value)
     || (!!node.note && node.note.toLowerCase().includes(term.value));
@@ -29207,7 +29214,7 @@ const GUIDE = [
       { syn:'has:key / key:value',    desc:'property filters (has:owner, owner:zeo); quote a spaced value: area:"Home Reno"' },
       { syn:'key:>N / key:<=N',       desc:'numeric property compare (cost:>100, score:<=3.5)' },
       { syn:'state:value',            desc:'sequence status (state:waiting, state:done)' },
-      { syn:'var:name',               desc:'the point that declares a variable (var:strength)' },
+      { syn:'var:name',               desc:'the declaring point (var:strength; var:orc.hp finds the projecting base)' },
       { syn:'priority:A',             desc:'to-do priority (priority:a, priority:b); priority:none = unprioritized, priority:any = has one' },
       { syn:'due:today / due:overdue',desc:'deadline filters' },
       { syn:'due:week / due:month',   desc:'due within the next seven / 30 days, not overdue (add | due:overdue to include past-due)' },

@@ -12354,6 +12354,27 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
   assert.ok(/e\.key !== 'Tab' && e\.key !== 'Enter'/.test(w) && /x\.dataset\.c === cell\.dataset\.c/.test(w), 'Enter/Tab mirror the authored-cell grammar');
 });
 
+// ── var: over projections (the last §7b deferral bar shadow markers) ─────────
+test('var: matches projecting bases, hierarchically on dots', () => {
+  // parser: dots admitted; still never a free-form key:value
+  const t1 = host(c.parseSearchQuery('var:orc.hp'));
+  assert.deepEqual(t1, [{ neg: false, kind: 'var', value: 'orc.hp' }]);
+  assert.equal(host(c.parseSearchQuery('-var:orc'))[0].neg, true);
+  // a projecting base matches by exact dotted name AND by segment prefix
+  const vb = mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 12 |', 'Monsters');
+  const hitExact = c.termMatchesNode({ neg: false, kind: 'var', value: 'monsters.orc.hp' }, vb);
+  const hitPrefix = c.termMatchesNode({ neg: false, kind: 'var', value: 'monsters' }, vb);
+  const miss = c.termMatchesNode({ neg: false, kind: 'var', value: 'goblin' }, vb);
+  assert.equal(hitExact, true, 'exact dotted projection matches the base');
+  assert.equal(hitPrefix, true, 'a name segment matches hierarchically (the #tag rule)');
+  assert.equal(miss, false);
+  // a plain declared variable still matches exactly; a reference pill (empty expr) never does
+  const decl = c.mkNode('x [[var:k1]]'); decl.vars = [{ key: 'k1', name: 'strength', expr: '5' }];
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'var', value: 'strength' }, decl), true);
+  const ref = c.mkNode('x [[var:k2]]'); ref.vars = [{ key: 'k2', name: 'strength', expr: '' }];
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'var', value: 'strength' }, ref), false);
+});
+
 // ── FR-1 per-role cell editors ───────────────────────────────────────────────
 test('FR-1 editors — popover + menu doors + commit routing (source pins)', () => {
   const pop = fnBody(_src, 'showCellEditorPop');
