@@ -12311,7 +12311,9 @@ test('Phase B — queryTableRows uncapped; qbaseModel wiring (pins)', () => {
   // source pins: the conditional cap, the qids channel, the strip toggle, the tr stamp
   const qm = fnBody(_src, 'qbaseModel');
   assert.ok(/node\.qbase\.showAll \? Infinity : QBASE_ROW_CAP/.test(qm), 'showAll lifts the cap');
-  assert.ok(/qids: \[null, \.\.\.q\.rows\.map\(r => r\.id\)\]/.test(qm), 'the model carries row identity, header slot null');
+  assert.ok(/let qids = \[null, \.\.\.q\.rows\.map\(r => r\.id\)\]/.test(qm), 'the model carries row identity, header slot null');
+  // SV-2: the configured sort reorders rows and qids TOGETHER (identity survives ordering)
+  assert.ok(/order\.map\(i => rows\[i\]\)/.test(qm) && /order\.map\(i => qids\[i\]\)/.test(qm), 'the sort keeps rows and qids aligned');
   assert.ok(/data-nid="\$\{escQ\(nid\)\}"/.test(fnBody(_src, 'buildTableWidget')), 'each query row is stamped with its source id');
   assert.ok(/Show all \$\{escHtml\(String\(qm\.total\)\)\}/.test(_src) && /Cap at \$\{QBASE_ROW_CAP\}/.test(_src), 'the strip toggle names both states');
   assert.ok(/node\.qbase\.showAll = !node\.qbase\.showAll/.test(_src), 'the toggle flips the persisted flag');
@@ -12352,6 +12354,119 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
   assert.ok(/mtWireQBaseEdit\(host, node\)/.test(btw), 'wired before the readOnly return');
   // P1 nav parity: Enter/Shift+Enter move by column, Tab by cell, inside the wiring
   assert.ok(/e\.key !== 'Tab' && e\.key !== 'Enter'/.test(w) && /x\.dataset\.c === cell\.dataset\.c/.test(w), 'Enter/Tab mirror the authored-cell grammar');
+});
+
+// ── SV-1: one-shot role-aware row sort ───────────────────────────────────────
+test('mtSortRows — role-aware, blanks sink, pinned edges, stable (SV-1)', () => {
+  const SEQS = [{ key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3 }];
+  const rows = [
+    ['Task', 'Cost', 'Due', 'State'],
+    ['a', '10',  '2199-02-01', 'DONE'],
+    ['b', '2',   '',           'TODO'],
+    ['c', '',    '2199-01-05', 'NEXT'],
+    ['d', '9.5', '2199-01-20', 'banana'],
+    ['TOTAL', '21.5', '', ''],
+  ];
+  const last = 4;   // TOTAL is the pinned footer
+  // number: numeric, not lexicographic (2 < 9.5 < 10); blank + non-numeric sink
+  const byCost = host(c.mtSortRows(host(rows), 1, 'asc', 'number', host(SEQS), last));
+  assert.deepEqual(byCost.map(r => r[0]), ['Task', 'b', 'd', 'a', 'c', 'TOTAL']);
+  // desc reverses values but blanks STILL sink
+  const byCostD = host(c.mtSortRows(host(rows), 1, 'desc', 'number', host(SEQS), last));
+  assert.deepEqual(byCostD.map(r => r[0]), ['Task', 'a', 'd', 'b', 'c', 'TOTAL']);
+  // date: epoch order, blank sinks
+  const byDue = host(c.mtSortRows(host(rows), 2, 'asc', 'date', host(SEQS), last));
+  assert.deepEqual(byDue.map(r => r[0]), ['Task', 'c', 'd', 'a', 'b', 'TOTAL']);
+  // status: the owning sequence's DECLARED order, unknown keyword sinks
+  const bySt = host(c.mtSortRows(host(rows), 3, 'asc', 'status', host(SEQS), last));
+  assert.deepEqual(bySt.map(r => r[0]), ['Task', 'b', 'c', 'a', 'd', 'TOTAL']);
+  // plain text: locale, case-insensitive; ties keep document order (stable)
+  const tie = [['H', 'V'], ['x', 'same'], ['y', 'same'], ['z', 'alpha']];
+  const byTxt = host(c.mtSortRows(host(tie), 1, 'asc', null, host(SEQS), 3));
+  assert.deepEqual(byTxt.map(r => r[0]), ['H', 'z', 'x', 'y']);
+  // purity: the input array order is untouched
+  assert.equal(rows[1][0], 'a');
+  // wiring: the menu door exists, the applier guards qbase, commits + pushes undo
+  const sb = fnBody(_src, 'mtSortBase');
+  assert.ok(/if \(node\.qbase\) return/.test(sb), 'a query base never sorts here (SV-2 owns that)');
+  assert.ok(/pushUndo\(\);/.test(sb) && /mtCommit\(node, m\)/.test(sb) && /mtCommitEpilogue\(node\)/.test(sb),
+    'the sort is an undoable data operation through the shared commit tail');
+  const scp = fnBody(_src, 'showColPanel');
+  assert.ok(/addSection\('Sort rows', true\)/.test(scp) && /mtSortBase\(node, colIdx, 'asc'\)/.test(scp), 'the Column menu door exists');
+});
+
+// ── SV-2: persisted sort on query bases ─────────────────────────────────────
+test('parseQBaseSort + the qbase sort wiring (SV-2)', () => {
+  const cols = [{ name: 'Point', field: 'title' }, { name: 'Due', field: 'due' }, { name: 'Left', field: '= cost * 2' }];
+  // blank = document order; label OR field matches, case-insensitive; desc optional
+  assert.equal(c.parseQBaseSort('', cols), null);
+  assert.deepEqual(host(c.parseQBaseSort('Due desc', cols)), { col: 1, dir: 'desc' });
+  assert.deepEqual(host(c.parseQBaseSort('due', cols)), { col: 1, dir: 'asc' });
+  assert.deepEqual(host(c.parseQBaseSort('left ASC', cols)), { col: 2, dir: 'asc' });
+  assert.equal(c.parseQBaseSort('nosuch', cols), undefined, 'unknown column is invalid, not silent');
+  // mtSortOrder is the shared core; SV-1's mtSortRows delegates to it
+  assert.deepEqual(host(c.mtSortOrder(host([['H'], ['b'], ['a'], ['c']]), 0, 'asc', null, host([]), 3)), [2, 1, 3]);
+  assert.ok(/mtSortOrder\(rows, col, dir, role, seqs, lastDataRow\)/.test(fnBody(_src, 'mtSortRows')), 'one comparator, two consumers');
+  // qbaseModel applies the configured sort inside the generation memo, rows+qids together
+  const qm = fnBody(_src, 'qbaseModel');
+  assert.ok(/node\.qbase\.sort/.test(qm) && /qbaseColRoles\(node\.qbase\.cols\)\[srt\.col\]/.test(qm),
+    'the sort is role-aware, formula columns included');
+  // the editor field round-trips + preserves showAll; the create path threads it; the strip names it
+  assert.ok(/parseQBaseSort\(v\.sort, parseQBaseCols\(v\.cols\)\) !== undefined/.test(fnBody(_src, 'openQBaseDialog')),
+    'an unknown sort column blocks the save with an explaining preview');
+  const eq = fnBody(_src, 'editQBase');
+  assert.ok(/\.\.\.\(sort \? \{ sort \} : \{\}\)/.test(eq) && /showAll: true/.test(eq), 'saving keeps sort AND showAll');
+  assert.ok(/qbaseCreateAt\(nodeId, expr, cols, sort\)/.test(_src), 'the create dialog threads the sort');
+  assert.ok(/mt-qbase-sort/.test(fnBody(_src, 'mtBaseChromeHtml')), 'the strip names an active sort');
+});
+
+// ── var: over projections (the last §7b deferral bar shadow markers) ─────────
+test('var: matches projecting bases, hierarchically on dots', () => {
+  // parser: dots admitted; still never a free-form key:value
+  const t1 = host(c.parseSearchQuery('var:orc.hp'));
+  assert.deepEqual(t1, [{ neg: false, kind: 'var', value: 'orc.hp' }]);
+  assert.equal(host(c.parseSearchQuery('-var:orc'))[0].neg, true);
+  // a projecting base matches by exact dotted name AND by segment prefix
+  const vb = mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 12 |', 'Monsters');
+  const hitExact = c.termMatchesNode({ neg: false, kind: 'var', value: 'monsters.orc.hp' }, vb);
+  const hitPrefix = c.termMatchesNode({ neg: false, kind: 'var', value: 'monsters' }, vb);
+  const miss = c.termMatchesNode({ neg: false, kind: 'var', value: 'goblin' }, vb);
+  assert.equal(hitExact, true, 'exact dotted projection matches the base');
+  assert.equal(hitPrefix, true, 'a name segment matches hierarchically (the #tag rule)');
+  assert.equal(miss, false);
+  // a plain declared variable still matches exactly; a reference pill (empty expr) never does
+  const decl = c.mkNode('x [[var:k1]]'); decl.vars = [{ key: 'k1', name: 'strength', expr: '5' }];
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'var', value: 'strength' }, decl), true);
+  const ref = c.mkNode('x [[var:k2]]'); ref.vars = [{ key: 'k2', name: 'strength', expr: '' }];
+  assert.equal(c.termMatchesNode({ neg: false, kind: 'var', value: 'strength' }, ref), false);
+});
+
+// ── FR-1 per-role cell editors ───────────────────────────────────────────────
+test('FR-1 editors — popover + menu doors + commit routing (source pins)', () => {
+  const pop = fnBody(_src, 'showCellEditorPop');
+  // roles gate the popover; anything else hides it (typing stays the primary path)
+  assert.ok(/role !== 'date' && role !== 'status'/.test(pop), 'only Date/Status cells get a popover');
+  assert.ok(/buildDatePicker\(/.test(pop), 'a date cell reuses the Schedule dialog calendar');
+  assert.ok(/boardLanes\(/.test(pop) && /seq\.states/.test(pop), 'a status cell offers its owning sequence states');
+  // the caret invariant: picks act on mousedown + preventDefault, focus BEFORE write
+  assert.ok(/addEventListener\('mousedown', e => \{ e\.preventDefault\(\); write\(/.test(pop), 'state picks keep the cell focused');
+  assert.ok(/cell\.focus\(\);\s*\/\/ focus FIRST|cell\.focus\(\);\s*\n\s*cell\.textContent = v/.test(pop.replace(/focus FIRST[^\n]*/, 'focus FIRST')), 'write focuses the cell before setting the value (a query focusin re-reads the model)');
+  // both edit paths show it on focusin and hide it, deferred, on focusout
+  const btw = fnBody(_src, 'buildTableWidget');
+  assert.ok(/showCellEditorPop\(node, cell\)/.test(btw), 'authored focusin shows the popover');
+  assert.ok(/scheduleCellPopHide\(cell\)/.test(btw), 'authored focusout schedules the hide');
+  const w = fnBody(_src, 'mtWireQBaseEdit');
+  assert.ok(/showCellEditorPop\(node, cell\)/.test(w) && /scheduleCellPopHide\(cell\)/.test(w), 'query cells get the same treatment');
+  assert.ok(/_focusGrid/.test(w), 'a query date cell has a keyboard door into the grid');
+  // the keyboard doors in the cell context menu route through the ONE cell writer
+  const scp = fnBody(_src, 'showColPanel');
+  assert.ok(/addSection\('Set to', true\)/.test(scp) && /mtSetCellValue\(node, rowIdx, colIdx, kw\)/.test(scp), 'a status cell lists its states in the menu');
+  assert.ok(/Pick a date \(calendar\)/.test(scp), 'a date cell opens the calendar from the menu');
+  // the menu writer routes by base kind: authored -> model + epilogue; query -> Phase C
+  const sv = fnBody(_src, 'mtSetCellValue');
+  assert.ok(/mtCommit\(node, m\);\s*\n\s*mtCommitEpilogue\(node\)/.test(sv), 'authored writes commit + run the epilogue');
+  assert.ok(/qbaseFieldWritable\(field\)/.test(sv) && /setProp\(src, field, val\)/.test(sv) && /pushUndo/.test(sv), 'query writes go through the Phase C path, undo-local');
+  assert.ok(/no longer matches this query/.test(sv), 'a membership-breaking menu write is announced');
 });
 
 test('round 3 — /variables door, cell-pill menu, base settings menu, copy (source pins)', () => {

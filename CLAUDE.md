@@ -902,7 +902,11 @@ mtCellHtml is the role-aware paint wrapper at every data-cell paint site — sta
 knownStates/keywordIsDone chips (custom sequences included, the future kanban lanes),
 date -> parseDueDate + formatDueDate urgency chips, number -> formatMathResult +
 auto-right-align; display hints only, cell text untouched, raw on edit, non-conforming
-values fall through; Column menu "Show as" door via mtSetColRole; a QUERY base's roles
+values fall through; Column menu "Show as" door via mtSetColRole; per-role EDITORS: a
+focused Date/Status cell gets a popover (showCellEditorPop — the Schedule calendar /
+the owning sequence's state chips; mousedown+preventDefault picks, commit through the
+cell's own path) with menu twins ("Set to" / "Pick a date" via mtSetCellValue, the one
+menu-path cell writer routing authored→epilogue, query→Phase C); a QUERY base's roles
 are inferred from its projection instead — qbaseColRoles (due/start field -> date,
 = expr -> number) behind the one accessor mtColRoles that every colRole READ site
 consults, so Calendar/Cards open read-only on query bases while write sites stay
@@ -923,7 +927,10 @@ persisted; per-row source identity via model.qids + tr data-nid; refreshTable re
 focus by source id); Phase C shipped: plain-PROPERTY cells write through to the source
 point (qbaseFieldWritable gates the paint + commit; blur resolves data-nid → setProp,
 never node.text; pushUndo per commit + a flash naming the change, incl. a row leaving
-the query; title/= columns and query boards/cards stay read-only) ·
+the query; title/= columns and query boards/cards stay read-only); SV-2 shipped: a
+persisted config sort — qbase.sort {col,dir} in the _qbase JSON, role-aware via the
+shared mtSortOrder (formula columns included), applied inside the generation memo,
+named in the strip, edited as the dialog's Sort rows field (parseQBaseSort)) ·
 Self-contained HTML export (C1: File menu → **Self-contained HTML** — `exportSelfContainedHtml` clones the page, empties the rendered DOM, and inlines the outline as OPML in the `#pl-embedded-doc` `<script type="application/xml">` data-island via the pure core `embedOpmlIntoHtml` / `extractEmbeddedOpml`; opening the file re-runs the app and `restoreEmbeddedDoc` hydrates from the island — winning over local autosave — into **display mode** with a one-time snapshot notice; the data-island is empty in the app shell, so the live editor is untouched; see the "Export — self-contained HTML" section above).
 Details: `guidance/features.md`
 

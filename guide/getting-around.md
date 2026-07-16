@@ -154,8 +154,9 @@ nothing is stored, it is always a view of the live outline.
 
 Type `/` and choose **Query base** (or `/querybase`), then give it a search and one column per line
 (`title`, a property key or `= formula`; put `Name:` in front to label a column). The strip above the grid
-shows the search and the live match count; click it (or press `Enter` on it) to change the query or
-columns. A broad query is capped at 100 rows so it cannot freeze the page; when the cap bites, the
+shows the search and the live match count; click it (or press `Enter` on it) to change the query,
+columns or sort. The optional **Sort rows** field orders the results by any column, formula columns
+included ("Due desc", "cost"); the strip names an active sort, and blank keeps document order. A broad query is capped at 100 rows so it cannot freeze the page; when the cap bites, the
 strip shows **100 of N** and a **Show all** button lifts it (the choice is remembered, and the same
 button caps it again). Property columns are editable in place: type in a `due` or `cost` cell and the value is
 written to the matching point itself (a message names what changed where, and one undo takes it

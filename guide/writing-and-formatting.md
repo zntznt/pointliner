@@ -100,6 +100,10 @@ column renders known state keywords as colored chips (including states from your
 done side muted), a **Date** column shows each date as a color-coded urgency chip, and a **Number**
 column right-aligns and formats. The cell text stays plain (edit it and you see the raw value); the
 role only changes how it is shown, and a value that does not fit its role just renders as text.
+Roles also help you enter values: while a **Date** cell is focused a small calendar opens under it
+(click a day to fill the date), and a **Status** cell offers its states as clickable chips. Typing
+still works exactly as before; the cell menu (`Shift+F10`) has the same choices under **Set to**
+and **Pick a date**.
 
 Once a column is marked **Status**, the base can show itself as a **board**: click **Board** in the
 strip above the grid and each state becomes a lane, each row a card (the other columns show on the
@@ -131,6 +135,11 @@ around.
   roles above.
 - `Alt+,` and `Alt+.` (the `<` and `>` keys) **narrow and widen** the focused column.
 - On a **board**, focus a card and press `Alt+Left` / `Alt+Right` to move it between lanes.
+
+A column's menu can also **sort the rows** (ascending or descending): the sort writes the new
+order into the table itself, one undo restores the old order, and the comparison follows the
+column's role, so a Number column sorts numerically, a Date column by date, and a Status column by
+your sequence's own state order. Blank cells always sink to the bottom.
 
 Deleting a column or row stays in the column menu (open it with `Shift+F10` on a cell), so a stray
 keystroke never destroys data. That same cell menu also lists the focused cell's **pill actions**:
