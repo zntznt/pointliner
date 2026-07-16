@@ -251,12 +251,22 @@ An optional base name namespaces every projection (`monsters.orc.hp` — the pre
   repaints via the deferred, focus-aware `scheduleVarBaseRender` (skipped while focus stays inside
   the base, handed to the live editor's `exitEdit` via `_pendingVarBaseRender` when one is open —
   never a synchronous render in focusout, which would steal focus from the next-clicked cell);
-  the markdown-edit path of a projecting base full-`render()`s from `exitEdit`. The base commit
-  paths also prune orphaned pill records (`pruneArtifacts` at the cell focusout and the exitEdit
-  base branch), promote typed `{…}` per cell on the markdown-edit path (mirroring the load path),
-  and re-bump the vars generation after promotion (the brace classification reads `collectVars`,
-  which caches `varBaseDefsMemo` from the pre-promotion text — without the re-bump a projecting
-  base serves the stale projection until the next edit).
+  the markdown-edit path of a projecting base full-`render()`s from `exitEdit`. Both commit
+  chokepoints share ONE extracted tail — `mtCommitEpilogue(node)` (round 2): prune orphaned pill
+  records, re-bump the vars generation past the per-cell promotion (the brace classification
+  reads `collectVars`, which caches `varBaseDefsMemo` from the pre-promotion text — without the
+  re-bump a projecting base serves the stale projection until the next edit), then re-run the
+  recipe; it returns whether sibling cells are due a repaint. `isVarBase(node)` is the single
+  "projecting variable base" predicate (was seven inline twins). The markdown-edit path still
+  promotes typed `{…}` per cell before the epilogue (mirroring the load path).
+- **Model reads split by intent (round 2, 2026-07-16):** paint paths (the widget build, `mtPatchCells`,
+  the cell focusin) read `mtModelRead(node)` — a ver-guarded, text-checked per-node parse memo in the
+  `varBaseDefsMemo` family whose returned model is SHARED and treated as immutable — while every path
+  that mutates rows then `mtCommit()`s stays on `mtModel(node)` (a fresh parse, safe to mutate). The
+  per-keystroke cell input handler reuses its own last-commit parse (`_mtEditSession`), keyed on the
+  text it just committed so any foreign mutation (recompute, undo, a slash apply) self-invalidates it.
+  The variables panel no longer rebuilds synchronously inside `markDirty` (per keystroke); it
+  debounces one trailing rebuild (`scheduleVarPanelUpdate`), while `openVarPanel` stays synchronous.
 - **Deferred (reopen this doc to build):** the `var:` search operator over projections,
   projected-name shadow markers (no pill to mark).
 
