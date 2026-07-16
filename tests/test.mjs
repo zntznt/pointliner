@@ -15070,3 +15070,65 @@ test('#819 wiring: Enter at offset 0 inserts an empty sibling ABOVE instead of s
   assert.match(_fix, /function insertSiblingAfter[\s\S]{0,2400}if \(foff === 0\) \{[\s\S]{0,600}parent\.children\.splice\(idx, 0, nn0\)/,
     'insertSiblingAfter must special-case the offset-0 split');
 });
+
+// ─── test-user review fix batch 2 (#803/#806/#808/#809) ───────────────────────
+
+test('#809: childPropNumber accepts strictly-grouped thousands separators', () => {
+  const kid = (val) => { const n = c.mkNode('x'); n.props = [{ key: 'cost', val }]; return n; };
+  assert.equal(c.childPropNumber(kid('3,000'), 'cost'), 3000);
+  assert.equal(c.childPropNumber(kid('1,234.5'), 'cost'), 1234.5);
+  assert.equal(c.childPropNumber(kid('1,2'), 'cost'), null);      // not a grouping — stays non-numeric
+  assert.equal(c.childPropNumber(kid('12o'), 'cost'), null);
+});
+
+test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a check errors, never passes', () => {
+  const p = c.mkNode('Budget');
+  const kid = (val) => { const n = c.mkNode('item'); n.props = [{ key: 'cost', val }]; return n; };
+  p.children = [kid('8000'), kid('12o')];
+  assert.equal(c.aggHasSkippedValues(p, 'sum(cost) <= budget'), true);
+  p.children = [kid('8000'), kid('3,000')];                        // comma form now parses — no flag
+  assert.equal(c.aggHasSkippedValues(p, 'sum(cost) <= budget'), false);
+  p.children = [kid('8000'), kid('')];                             // blank = deliberately unset — no flag
+  assert.equal(c.aggHasSkippedValues(p, 'sum(cost) <= budget'), false);
+  // end-to-end: the check verdict is 'error', not a silent 'pass'
+  const chk = c.mkNode('Budget'); chk.props = [{ key: 'check', val: 'sum(cost) <= 20000' }];
+  chk.children = [kid('8000'), kid('12o')];
+  assert.equal(c.evalCheck(chk, {}), 'error');
+});
+
+test('#808: setDateProp resolves relative dates to ISO at commit; repeat phrases untouched', () => {
+  const n = c.mkNode('task');
+  c.setDateProp(n, 'due', 'tomorrow');
+  const due = n.props.find(p => p.key === 'due').val;
+  assert.match(due, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(due, c.formatEpochDays(c.parseDueDate('tomorrow')));
+  c.setDateProp(n, 'start', 'today+7');
+  assert.match(n.props.find(p => p.key === 'start').val, /^\d{4}-\d{2}-\d{2}$/);
+  c.setDateProp(n, 'due', '2026-12-25');                           // ISO stays byte-identical
+  assert.equal(n.props.find(p => p.key === 'due').val, '2026-12-25');
+  c.setDateProp(n, 'repeat', 'every week');                        // non-date key: never normalized
+  assert.equal(n.props.find(p => p.key === 'repeat').val, 'every week');
+});
+
+test('#806: Markdown/plain-text exports resolve node links via linkText — never the raw token', () => {
+  const r = c.mkRoot ? c.mkRoot() : c.mkNode('root');
+  const a = c.mkNode('see [[#qqq1|My Label]] and [[#zzzzzz42|]] end');
+  r.children = [a];
+  const md = c.toMarkdown(r);
+  assert.ok(md.includes('My Label'), 'explicit label must win');
+  assert.ok(!md.includes('[[#'), 'no raw link token may survive export: ' + md);
+  assert.ok(md.includes('zzzzzz42'), 'unresolvable target degrades to its bare id');
+  const txt = c.toPlainText(r);
+  assert.ok(!txt.includes('[[#'), 'plain text too: ' + txt);
+});
+
+const _fix2 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#803 wiring: focus is synchronous when the row exists; rAF only as fallback', () => {
+  assert.ok(_fix2.includes('function _focusNodeGo'), 'shared focus body missing');
+  assert.match(_fix2, /function focusNode\(id\) \{ _focusNodeGo\(id, null\); \}/, 'focusNode must delegate');
+  assert.match(_fix2, /function focusNodeAtOffset\(id, offset\) \{ _focusNodeGo\(id, offset\); \}/, 'focusNodeAtOffset must delegate');
+  assert.match(_fix2, /if \(document\.querySelector\(`\.node-content\[data-id="\$\{id\}"\]`\)\) go\(\);\s*\n\s*else requestAnimationFrame\(go\)/, 'sync-if-present gate missing');
+});
+test('#809 wiring: evalCheck consults aggHasSkippedValues before evaluating', () => {
+  assert.match(_fix2, /function evalCheck[\s\S]{0,900}aggHasSkippedValues\(node, raw\)\) return 'error'/, 'skipped-value guard missing from evalCheck');
+});

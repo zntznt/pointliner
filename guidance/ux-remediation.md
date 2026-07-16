@@ -2677,6 +2677,44 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
   as content. Pinned: task/keyword/quote/ol/plain cases + the byte-identity round-trip
   `splitForSibling → mergeBodyText → mergeUpText === original`.
 
+### UXP-200 ✓ Keystrokes dropped in the post-Enter/Tab focus gap (#803) 🔴 — **RESOLVED**
+- **Problem:** `focusNode`/`focusNodeAtOffset` deferred ALL focus placement to `requestAnimationFrame`,
+  leaving a ~1-frame gap after Enter/Tab/structural ops during which keystrokes landed on a stale
+  element or nowhere — silent text corruption at fast typing ("eggs"→"ggs"; the review's strongest
+  convergence, 5 of 7 personas, organic at human speed under CPU load).
+- **Fix:** both funnel into `_focusNodeGo(id, offset)`, which runs **synchronously when the row is
+  already in the DOM** (structural ops `render()` first, so it always is) and keeps the rAF only as
+  the fallback for rows not yet rendered (virtual-window scroll-ins). Verified headless: typing at
+  5ms/char and 0ms/char across Enter + Tab boundaries harvests every character in the right point
+  (previously mangled at those speeds).
+
+### UXP-201 ✓ Exports emitted raw `[[#hexid|]]` link tokens (#806) 🟡 — **RESOLVED**
+- **Problem:** `toMarkdown`/`toPlainText` called `flattenArtifacts` (which never handled node-link
+  tokens), so every internal link exported as an opaque hex id — the knowledge graph became noise.
+- **Fix:** the four exporter call sites now wrap in **`linkText`** — the existing canonical resolver
+  displayText already used (label → live title → workspace-index title → bare id) — rather than
+  teaching `flattenArtifacts` about links, which would have leaked resolved titles into the
+  unlinked-references matcher (three tests caught exactly that on the first attempt). Pinned:
+  exports contain the label / degrade to a bare id, and no `[[#` survives.
+
+### UXP-202 ✓ Relative due dates floated forever (#808) 🔴 — **RESOLVED**
+- **Problem:** `tomorrow`/`today+N`/weekday input was stored literally and re-anchored every day —
+  a deadline typed relatively never arrived, and "3d overdue" stayed 3d overdue forever.
+- **Fix:** `setDateProp` — the one chokepoint both the Schedule dialog and `/due:` share — resolves
+  a parseable non-ISO value to its concrete ISO date at commit (`formatEpochDays(parseDueDate(v))`).
+  `REPEAT_KEY` rides the same setter with a phrase value and is exempt; an unparsable value stays
+  as typed for the callers' visible rejection (P4). Pinned: `tomorrow`/`today+7` → ISO, ISO stays
+  byte-identical, repeat phrases untouched.
+
+### UXP-203 ✓ Aggregations silently skipped non-numeric values — checks false-passed (#809) 🔴 — **RESOLVED**
+- **Problem:** a child cost of `3,000` (or `12o`) silently dropped out of `sum(cost)`, flipping a
+  failing budget check back to a green ✓ — the exact silent-wrong-success P4 exists to prevent.
+- **Fix (both halves):** `childPropNumber` accepts strictly-grouped thousands separators ("3,000" =
+  3000; "1,2" stays non-numeric), and the new pure `aggHasSkippedValues(node, expr)` makes
+  `evalCheck` return **`error`** whenever an aggregated property skips a child's non-empty,
+  non-numeric value (blank stays a deliberate unset; date-shaped values parse and never flag; dotted
+  `base.col` totals are out of scope by construction). Pinned: comma/typo/blank/end-to-end verdict.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
