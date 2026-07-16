@@ -211,7 +211,8 @@ warhammer.dmg: 1d10
 dagger.dmg:    1d4
 ```
 
-**`@` → Variable**, random pick: `w = {weapon}`. Then in a point:
+**`@` → Variable**, random pick: name `w`, value `{weapon}` (or type `{w := {weapon}}` inline).
+Then in a point:
 
 ```
 She draws her {w} and strikes for {w.dmg} damage. The {w} gleams.

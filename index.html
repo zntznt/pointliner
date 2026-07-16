@@ -29514,7 +29514,7 @@ const GUIDE = [
 
   { id:'overview', cat:'getting-around',
     title:'Start here',
-    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nThree keys put everything within reach without memorizing anything. Type `{` and a menu lists every kind of pill you can write, with a scaffold to fill in and a help mark that opens its guide. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table), and `@` anywhere to insert a pill from a dialog. If you are not sure how to write something, type `{` and browse. The rest of this guide tours what those menus hold; if you would rather not read, open the Cookbook recipes at the end for finished examples you can copy.",
+    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nThree keys put everything within reach without memorizing anything. Type `{` and a menu lists every kind of pill you can write, with a scaffold to fill in and a help mark that opens its guide. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table), and `@` anywhere to insert a pill from a dialog. If you are not sure how to write something, type `{` and browse. The rest of this guide tours what those menus hold; if you would rather not read, open the Put it together recipes at the end for finished examples you can copy.",
     related:['brace-picker','point-types','dice','search-ops'],
     examples:[
       { syn:'Enter / Tab',    desc:'new point, then nest it under the one above' },
@@ -29634,7 +29634,7 @@ const GUIDE = [
   // ── Writing & formatting (guide) ──────────────────────────────────────────
   { id:'point-types', cat:'writing', covers:['ul','ol','h1','h2','h3','para','code','divider','quote','base'],
     title:'Point types',
-    body:"Give your outline real document structure. Add headings to divide a long document into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.",
+    body:"Give your outline real document structure. Add headings to divide a long document into sections, numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a passage or a table for data you'd otherwise put in a spreadsheet. Type / at the start of a point to open the menu and pick a type.\n\nOne type changes a key: a Paragraph is a prose block, so Enter makes a line break and Shift+Enter starts the next point, the reverse of everywhere else. Reach it with /paragraph when a point is a passage rather than a list.",
     related:['inline-md','todo-syntax','overview'],
     examples:[
       { syn:'# Heading',    desc:'heading (one to six # marks for smaller sizes)' },
@@ -29642,6 +29642,7 @@ const GUIDE = [
       { syn:'``` or ~~~',   desc:'code block' },
       { syn:'--- or ***',   desc:'divider line' },
       { syn:'/base',        desc:'editable spreadsheet table' },
+      { syn:'/paragraph',   desc:'prose block: Enter is a line break, Shift+Enter is a new point' },
     ] },
   { id:'secret', cat:'writing', covers:['secret'],
     title:'Secret and spoiler blocks',
@@ -29763,11 +29764,13 @@ const GUIDE = [
     ] },
   { id:'progress', cat:'todos', covers:['progress'],
     title:'Progress bars',
-    body:"Put a live tally on a project, a checklist or any parent point and see how much is done at a glance. As you check off the work underneath, the number updates on its own, with nothing to track by hand. Type `[/]` for a count like 2/5, or `[%]` for a percentage.\n\nIt counts two things together: any checkboxes in the point's own text, and each of its direct child points that is a task. A child counts as done when its box is ticked or its status keyword sits on the done side of its sequence (so a `#DONE` child counts, a `#TODO` child does not), which means a mix of checkboxes and status points tallies correctly. Grandchildren are not counted, so a cookie measures one level, the immediate work under that point.\n\nThe cookie is plain text that recomputes as the outline changes, so it saves and shares like any point and needs no setup. Put one in a heading to track a phase, or several down a page for an at-a-glance dashboard.",
+    body:"Put a live tally on a project, a checklist or any parent point and see how much is done at a glance. As you check off the work underneath, the number updates on its own, with nothing to track by hand. Type `[/]` for a count like 2/5, or `[%]` for a percentage.\n\nIt counts two things together: any checkboxes in the point's own text, and each of its child points that is a task. A child counts as done when its box is ticked or its status keyword sits on the done side of its sequence (so a `#DONE` child counts, a `#TODO` child does not), which means a mix of checkboxes and status points tallies correctly. By default the tally measures one level, the immediate work under that point; write `[/subtree]` to count every level beneath it, or a number like `[/2]` to reach that many levels down. The same scopes work on a percentage (`[%subtree]`, `[%2]`).\n\nThe cookie is plain text that recomputes as the outline changes, so it saves and shares like any point and needs no setup. Put one in a heading to track a phase, or several down a page for an at-a-glance dashboard.",
     related:['todo-syntax','clock','meter'],
     examples:[
       { syn:'[/]', desc:'a count, e.g. 2/5 done' },
       { syn:'[%]', desc:'a percentage, e.g. 40% done' },
+      { syn:'[/subtree]', desc:'count every level beneath, not just direct children' },
+      { syn:'[/2]', desc:'count two levels down (any depth number works)' },
       { syn:'@ then Progress', desc:'insert one from the menu' },
     ] },
   { id:'clock', cat:'todos', covers:['clock'],
@@ -29988,7 +29991,7 @@ const GUIDE = [
       { syn:'sword.damage: 1d8',  desc:'give an item a detail' },
       { syn:'{weapon.damage}',    desc:'read a detail of a picked item' },
       { syn:'{w.name.cap}',       desc:'shape a detail with a modifier' },
-      { syn:'w = {weapon}',       desc:'freeze one pick in a variable…' },
+      { syn:'{w := {weapon}}',    desc:'freeze one pick in a variable…' },
       { syn:'{w.name} {w.damage}',desc:'…then read its details together' },
     ] },
   { id:'deck', cat:'generators', covers:['deck'],
@@ -30158,7 +30161,7 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Click into a point and the Linked from panel rises from the bottom of the screen whenever other points link to it or mention its title; it updates as you move between points. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
     related:['point-links','link-graph','cross-doc-links'],
     examples:[
       { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
@@ -30260,7 +30263,7 @@ const GUIDE = [
     examples:[
       { syn:'weapon: longsword | warhammer | dagger', desc:'a rule of choices (@ Grammar)' },
       { syn:'longsword.dmg: 1d8',                      desc:'give a choice its own field' },
-      { syn:'w = {weapon}',                            desc:'freeze one pick in a variable (@ Variable)' },
+      { syn:'{w := {weapon}}',                         desc:'freeze one pick in a variable (or use @ Variable)' },
       { syn:'She draws her {w} for {w.dmg}.',          desc:'both mentions are the same weapon' },
     ] },
   { id:'recipe-budget', cat:'recipes', related:['properties','rollups','check','search-ops'],
