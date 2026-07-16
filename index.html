@@ -9064,6 +9064,12 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   [[null, 'Plain text'], ['status', 'Status'], ['date', 'Date'], ['number', 'Number']]
     .forEach(([role, label]) => addItem(label, { active: curRole === role, onApply: () => mtSetColRole(node, colIdx, role) }));
 
+  // SV-1: the one-shot sort (a data operation — writes the order, undoable). Role-aware:
+  // the Show as section above it decides how this column compares.
+  addSection('Sort rows', true);
+  addItem('Ascending', { onApply: () => mtSortBase(node, colIdx, 'asc') });
+  addItem('Descending', { onApply: () => mtSortBase(node, colIdx, 'desc') });
+
   addSection('Alignment', true);
   [['left','Left'],['center','Center'],['right','Right']]
     .forEach(([al, label]) => addItem(label, { active: al === curAlign, onApply: () => mtSetAlign(node, colIdx, al) }));
@@ -9270,6 +9276,55 @@ function mtBaseChromeHtml(node, model, readOnly) {
   if (left || showSwitcher)
     h += `<div class="mt-baseheader"><div class="mt-base-left">${left}</div>${showSwitcher ? mtViewSwitcherHtml(node) : ''}</div>`;
   return h;
+}
+
+// SV-1: sort a base's data rows by one column, role-aware — numeric compare for a
+// number column, epoch-day for a date, the OWNING SEQUENCE's declared state order for
+// a status (the boardLanes vocabulary: a sort by the user's own workflow), locale
+// strings otherwise. Blanks and non-conforming values sink to the bottom in BOTH
+// directions (missing data is not a small value); ties keep document order (stable).
+// Pure: returns a NEW rows array (header + sorted data + pinned tail), never mutates.
+function mtSortRows(rows, col, dir, role, seqs, lastDataRow) {
+  const head = rows.slice(0, 1), data = rows.slice(1, lastDataRow + 1), tail = rows.slice(lastDataRow + 1);
+  let seqOrder = null;
+  if (role === 'status') {
+    const { seq } = boardLanes({ aligns: [], rows }, col, seqs, lastDataRow);
+    seqOrder = new Map(); seq.states.forEach((kw, i) => seqOrder.set(kw.toUpperCase(), i));
+  }
+  const keyOf = raw => {
+    const v = String(raw ?? '').trim();
+    if (!v) return null;
+    if (role === 'number') { const n = Number(v); return Number.isFinite(n) ? n : null; }
+    if (role === 'date') return parseDueDate(v);
+    if (role === 'status') { const i = seqOrder.get(v.toUpperCase()); return i === undefined ? null : i; }
+    return v.toLowerCase();
+  };
+  const mul = dir === 'desc' ? -1 : 1;
+  const dec = data.map((r, i) => ({ r, i, k: keyOf(r[col]) }));
+  dec.sort((a, b) => {
+    if (a.k === null && b.k === null) return a.i - b.i;
+    if (a.k === null) return 1;
+    if (b.k === null) return -1;
+    const c = (typeof a.k === 'number' && typeof b.k === 'number') ? a.k - b.k : String(a.k).localeCompare(String(b.k));
+    return c !== 0 ? mul * c : a.i - b.i;
+  });
+  return [...head, ...dec.map(d => d.r), ...tail];
+}
+// The one-shot sort door (saved-views-proposal SV-1): a DATA operation — the new order
+// is committed to the text (text stays truth, nothing persisted, idempotent), one undo
+// restores. Header and Calculate footer stay pinned; a query base never sorts here (its
+// rows are a rendering — SV-2 orders those in qbase config).
+function mtSortBase(node, colIdx, dir) {
+  if (node.qbase) return;
+  const m = mtModel(node);
+  const lastDataRow = mtLastDataRow(node, m);
+  pushUndo();
+  m.rows = mtSortRows(m.rows, colIdx, dir, (mtColRoles(node) || [])[colIdx] || null, allSequences(), lastDataRow);
+  mtCommit(node, m);
+  mtCommitEpilogue(node);   // recompute the recipe over the new order; projections re-bump
+  refreshTable(node);
+  const colName = String(m.rows[0]?.[colIdx] || 'column ' + (colIdx + 1)).trim() || 'column ' + (colIdx + 1);
+  flashHint(`Sorted rows by ${colName}, ${dir === 'desc' ? 'descending' : 'ascending'}. Undo restores the old order.`);
 }
 
 // QP-2 Phase C: write-through cells. A query base's plain-property cells edit the SOURCE
@@ -29344,7 +29399,7 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets and the rest. Cells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has sorting, delete, the Width presets and the rest. Cells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
     related:['base-views','querybase'],
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'a typed table that renders formatted' },

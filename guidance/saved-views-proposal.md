@@ -1,6 +1,7 @@
 # Saved views, filters & sorts — proposal (owner decision requested)
 
-**Status: DRAFT — awaiting owner sign-off. No code exists for this proposal.**
+**Status: APPROVED as recommended (owner, 2026-07-16) — SV-1 + SV-2 build; SV-3/SV-4 recorded NO.
+SV-1 shipped 2026-07-16; SV-2 next.**
 
 The last below-the-line item of the bases program (owner call, 2026-07-16: "work the
 remaining below-the-line items"). Everything else in `bases-direction.md` §4's deferred

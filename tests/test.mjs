@@ -12354,6 +12354,45 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
   assert.ok(/e\.key !== 'Tab' && e\.key !== 'Enter'/.test(w) && /x\.dataset\.c === cell\.dataset\.c/.test(w), 'Enter/Tab mirror the authored-cell grammar');
 });
 
+// ── SV-1: one-shot role-aware row sort ───────────────────────────────────────
+test('mtSortRows — role-aware, blanks sink, pinned edges, stable (SV-1)', () => {
+  const SEQS = [{ key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'], doneFrom: 3 }];
+  const rows = [
+    ['Task', 'Cost', 'Due', 'State'],
+    ['a', '10',  '2199-02-01', 'DONE'],
+    ['b', '2',   '',           'TODO'],
+    ['c', '',    '2199-01-05', 'NEXT'],
+    ['d', '9.5', '2199-01-20', 'banana'],
+    ['TOTAL', '21.5', '', ''],
+  ];
+  const last = 4;   // TOTAL is the pinned footer
+  // number: numeric, not lexicographic (2 < 9.5 < 10); blank + non-numeric sink
+  const byCost = host(c.mtSortRows(host(rows), 1, 'asc', 'number', host(SEQS), last));
+  assert.deepEqual(byCost.map(r => r[0]), ['Task', 'b', 'd', 'a', 'c', 'TOTAL']);
+  // desc reverses values but blanks STILL sink
+  const byCostD = host(c.mtSortRows(host(rows), 1, 'desc', 'number', host(SEQS), last));
+  assert.deepEqual(byCostD.map(r => r[0]), ['Task', 'a', 'd', 'b', 'c', 'TOTAL']);
+  // date: epoch order, blank sinks
+  const byDue = host(c.mtSortRows(host(rows), 2, 'asc', 'date', host(SEQS), last));
+  assert.deepEqual(byDue.map(r => r[0]), ['Task', 'c', 'd', 'a', 'b', 'TOTAL']);
+  // status: the owning sequence's DECLARED order, unknown keyword sinks
+  const bySt = host(c.mtSortRows(host(rows), 3, 'asc', 'status', host(SEQS), last));
+  assert.deepEqual(bySt.map(r => r[0]), ['Task', 'b', 'c', 'a', 'd', 'TOTAL']);
+  // plain text: locale, case-insensitive; ties keep document order (stable)
+  const tie = [['H', 'V'], ['x', 'same'], ['y', 'same'], ['z', 'alpha']];
+  const byTxt = host(c.mtSortRows(host(tie), 1, 'asc', null, host(SEQS), 3));
+  assert.deepEqual(byTxt.map(r => r[0]), ['H', 'z', 'x', 'y']);
+  // purity: the input array order is untouched
+  assert.equal(rows[1][0], 'a');
+  // wiring: the menu door exists, the applier guards qbase, commits + pushes undo
+  const sb = fnBody(_src, 'mtSortBase');
+  assert.ok(/if \(node\.qbase\) return/.test(sb), 'a query base never sorts here (SV-2 owns that)');
+  assert.ok(/pushUndo\(\);/.test(sb) && /mtCommit\(node, m\)/.test(sb) && /mtCommitEpilogue\(node\)/.test(sb),
+    'the sort is an undoable data operation through the shared commit tail');
+  const scp = fnBody(_src, 'showColPanel');
+  assert.ok(/addSection\('Sort rows', true\)/.test(scp) && /mtSortBase\(node, colIdx, 'asc'\)/.test(scp), 'the Column menu door exists');
+});
+
 // ── var: over projections (the last §7b deferral bar shadow markers) ─────────
 test('var: matches projecting bases, hierarchically on dots', () => {
   // parser: dots admitted; still never a free-form key:value
