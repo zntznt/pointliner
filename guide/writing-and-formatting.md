@@ -136,6 +136,11 @@ around.
 - `Alt+,` and `Alt+.` (the `<` and `>` keys) **narrow and widen** the focused column.
 - On a **board**, focus a card and press `Alt+Left` / `Alt+Right` to move it between lanes.
 
+A column's menu can also **sort the rows** (ascending or descending): the sort writes the new
+order into the table itself, one undo restores the old order, and the comparison follows the
+column's role, so a Number column sorts numerically, a Date column by date, and a Status column by
+your sequence's own state order. Blank cells always sink to the bottom.
+
 Deleting a column or row stays in the column menu (open it with `Shift+F10` on a cell), so a stray
 keystroke never destroys data. That same cell menu also lists the focused cell's **pill actions**:
 a cell holding a `{2d6}` pill shows Re-roll, Edit and Freeze rows there, since a focused cell shows
