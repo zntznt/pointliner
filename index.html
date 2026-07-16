@@ -2205,7 +2205,7 @@ body:not(.v-guided) .bm-desc{display:none}
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
         <div class="sh-row"><kbd>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
         <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from the points below this one (rolls on your live outline)</span></div>
-        <div class="sh-row"><kbd>/querybase</kbd><span>a live grid of matching points: title, properties or a per-point formula as columns</span></div>
+        <div class="sh-row"><kbd>/querybase</kbd><span>a live base of matching points: title, properties or a per-point formula as columns</span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -7231,8 +7231,8 @@ const BLOCK_CMDS = [
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'secret',  icon:'🙈',   fa:'fa-solid fa-eye-slash',     label:'Secret',     desc:'Hide a line behind a blur until you click or press it to reveal. Good for GM notes or a twist you do not want to see yet.', ex:'>! hidden text', section:'Blocks' },
-  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'Interactive data grid with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
-  { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A grid whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'A structured table with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
+  { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A base whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-stamp',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or bare /due to open the Schedule dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
@@ -7242,6 +7242,7 @@ const BLOCK_CMDS = [
   { id:'note',    icon:'≡',    fa:'fa-solid fa-pen',           label:'Note',       desc:'Add a plain-text note under this point for context that does not belong on the line. Opens the note editor right below the point, no dialog.', ex:'/note', section:'Organize' },
   { id:'refile',  icon:'⇄',    fa:'fa-solid fa-arrow-right-arrow-left', label:'Refile', desc:'Move this point and its children under another point. Type /refile:title to move it there directly (or /refile:top to lift it out), or /refile to pick from a tree.', ex:'/refile:Inbox · /refile:top', section:'Organize' },
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
+  { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -8957,7 +8958,18 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   const lastDataRow = mtLastDataRow(node, model);
   const rowOps = rowIdx != null && rowIdx >= 1 && rowIdx <= lastDataRow;
 
-  addSection('Calculate');
+  // Cell pills (bases round 3): a focused cell shows its RAW token, so the rendered
+  // pill's click target does not exist while navigating by keyboard — surface the same
+  // re-roll/edit/freeze actions here, in the cell's own context menu (Shift+F10), with
+  // the same labels as the bullet menu's Pills section (P1).
+  const cellRaw = rowOps ? String(model.rows[rowIdx]?.[colIdx] ?? '') : '';
+  const pillRows = cellRaw.includes('[[') ? collectPillActions(node, cellRaw) : [];
+  if (pillRows.length) {
+    addSection('Cell pills');
+    for (const pr of pillRows) addItem(pr.label, { onApply: pr.fn });
+  }
+
+  addSection('Calculate', pillRows.length > 0);
   [['sum','Sum'],['avg','Average'],['count','Count'],['min','Min'],['max','Max'],['none','None']]
     .forEach(([fn, label]) => addItem(label, { active: fn === curAgg, onApply: () => mtApplyAggregate(node, colIdx, fn) }));
 
@@ -9243,17 +9255,37 @@ function mtWireBaseChrome(host, node) {
   }
 }
 
-// The rows-cap menu: All / 5 / 10 / 20, applied to node.baseRows (null = all). Reuses
-// the shared mt-colpanel menu chrome so it matches the Column/Row/card menus.
+// The rows-cap section: All / 5 / 10 / 20, applied to node.baseRows (null = all).
+// Shared by the chrome rows button's menu and the unified base settings menu.
+function mtAddRowsCapSection(node, addSection, addItem, divider = false) {
+  const cur = (Number.isFinite(node.baseRows) && node.baseRows > 0) ? node.baseRows : null;
+  const apply = v => { node.baseRows = v; markDirty(); refreshTable(node); };
+  addSection('Rows in the outline', divider);
+  addItem('All', { active: cur == null, onApply: () => apply(null) });
+  [5, 10, 20].forEach(n => addItem(String(n), { active: cur === n, onApply: () => apply(n) }));
+}
+// The rows-cap menu (the chrome button's pointer path). Reuses the shared
+// mt-colpanel menu chrome so it matches the Column/Row/card menus.
 function showBaseRowsMenu(node, anchorEl) {
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const { addSection, addItem } = mtMenuBuilder(panel);
-  const cur = (Number.isFinite(node.baseRows) && node.baseRows > 0) ? node.baseRows : null;
-  const apply = v => { node.baseRows = v; markDirty(); refreshTable(node); };
-  addSection('Rows in the outline');
-  addItem('All', { active: cur == null, onApply: () => apply(null) });
-  [5, 10, 20].forEach(n => addItem(String(n), { active: cur === n, onApply: () => apply(n) }));
+  mtAddRowsCapSection(node, addSection, addItem);
+  mtOpenMenu(panel, anchorEl);
+}
+// The unified whole-base settings menu (bases round 3): view + outline rows cap in
+// ONE surface, opened from the base bullet menu — so the menu hub lists every
+// whole-base setting instead of leaving view/rows as chrome-only buttons. The
+// chrome (the view switcher strip, the rows button) stays the on-widget path.
+function showBaseSettingsMenu(node, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const kind = node.view?.kind || 'table';
+  addSection('View');
+  [['table','Table'],['board','Board'],['cards','Cards'],['calendar','Calendar']]
+    .forEach(([k, label]) => addItem(label, { active: kind === k, onApply: () => mtSetView(node, k) }));
+  mtAddRowsCapSection(node, addSection, addItem, true);
   mtOpenMenu(panel, anchorEl);
 }
 
@@ -15857,10 +15889,13 @@ function freezePillToText(node, type, key) {
 // where the pill has a separate editor, an edit row. A short suffix (expr/name/result)
 // disambiguates when a point has several pills. Skips records whose token is gone (a
 // dead sidecar pruned on exitEdit). Returns [] when the node has no live pills.
-function collectPillActions(node) {
+function collectPillActions(node, scopeText = null) {
   if (!node) return [];
   const rows = [];
-  const has = (type, key) => node.text.includes(`[[${type}:${key}]]`);
+  // scopeText narrows the haystack to ONE base cell's raw string (the cell context
+  // menu), so only that cell's pills surface; default = the whole point.
+  const hay = scopeText != null ? scopeText : node.text;
+  const has = (type, key) => hay.includes(`[[${type}:${key}]]`);
   const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
   const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
   const FRZ = { fa:'fa-solid fa-snowflake', fb:'❄' };   // UXP-137: freeze-to-text (degrades to ❄)
@@ -15901,6 +15936,7 @@ function collectPillActions(node) {
   // ORDINAL in node.text — the same position-based targeting advanceClockAt uses. This is the
   // keyboard door for pills that carry tabindex="-1" (never in the Tab order): a sighted
   // keyboard-only user reaches them here, in the Shift+F10 hub, not by tabbing.
+  if (scopeText != null) return rows;   // clocks/spoilers target node-text ordinals, not one cell
   manualClocksOf(node.text).forEach((c, i) => {
     const suffix = tag(`${c.done}/${c.total}`);
     rows.push({ icon:{ fa:'fa-solid fa-circle-half-stroke', fb:'◔' }, label:'Advance clock' + suffix, fn:() => advanceClockOrdinal(node, i, 1) });
@@ -16101,6 +16137,15 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     if (tr) actions.push({
       sec:'Organize', icon: { fa:'fa-solid fa-table-cells', fb:'▦' }, label: 'Convert table to base',
       fn: () => { hideBpop(); promoteStaticTable(node, tr.l0, tr.l1); },
+    });
+  } else {
+    // Bases round 3: the one settings surface — view + rows shown lived only as chrome
+    // buttons on the widget; the menu hub lists them too, so every whole-base setting
+    // is reachable from the base menu (prim so a hover open shows the door as well).
+    actions.push({
+      sec:'Base', prim:true, icon: { fa:'fa-solid fa-table-list', fb:'▤' },
+      label: 'View & rows shown',
+      fn: () => { hideBpop(); showBaseSettingsMenu(node, bulletEl); },
     });
   }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
@@ -16676,6 +16721,12 @@ function slashApply() {
   }
   if (trigger !== '@' && cmd.id === 'journal') {
     openJournalEntry();
+    return;
+  }
+  // /variables opens the panel in place (the keyboard door beside the toolbar button
+  // and the Ctrl/Cmd+Shift+V chord); the caret stays where it was.
+  if (trigger !== '@' && cmd.id === 'variables') {
+    openVarPanel();
     return;
   }
   // /secret writes a ">! " prefix at the start of the caret's line (a spoiler is a
@@ -29011,12 +29062,24 @@ const GUIDE = [
       { syn:'![alt](url)',             desc:'image' },
       { syn:':dragon: :fire: :dice:',   desc:'emoji: type the whole name, or : and part of it to pick from a list' },
     ] },
+  // Pure concept entry (no covers — /base and /querybase are covered by their own
+  // entries): the one page that says WHICH of the table-family features to reach for.
+  { id:'bases-overview', cat:'writing',
+    title:'Tables & bases: which one?',
+    body:"Pointliner has one table syntax and three ways to power it up, and it helps to know which one you want. A typed table (| pipe rows in any point) is for display: it renders formatted, but you edit it as text. A base (/base) is the interactive kind: click into cells, add formulas and Calculate footers, and switch views (Table, Board, Cards, Calendar). A query base (/querybase) is a base whose rows are a live search over your outline: always current, read only. And any base can also declare its rows as variables (the bullet menu's Use rows as variables): a stat block whose cells you read as {Orc.HP} in text, math and dice.\n\nRule of thumb: prose with a small table in it, type pipes. Data you keep and edit, /base. A live report over your points, /querybase. Numbers your pills should read, turn on variables.",
+    related:['tables','base-views','querybase','varbase'],
+    examples:[
+      { syn:'| A | B |',   desc:'typed table: display only' },
+      { syn:'/base',       desc:'interactive: cells, formulas, views' },
+      { syn:'/querybase',  desc:'rows from a live search' },
+      { syn:'{Orc.HP}',    desc:'a variable base cell, read anywhere' },
+    ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets and the rest. Cells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets and the rest. Cells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
     related:['base-views','querybase'],
     examples:[
-      { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },
+      { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'a typed table that renders formatted' },
       { syn:'/base',                            desc:'editable table (cells, formulas)' },
       { syn:'Alt + ← / →',                      desc:'move the focused column; Alt+↑/↓ moves the row' },
       { syn:'Alt + Shift + arrow',              desc:'insert a column (←/→) or row (↑/↓) on that side' },
@@ -29027,7 +29090,7 @@ const GUIDE = [
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
   { id:'base-views', cat:'writing',
     title:'Base views',
-    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable grid), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. A query base figures this out from its own columns (a due or start column is the date), so its Calendar just works. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable one), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. A query base figures this out from its own columns (a due or start column is the date), so its Calendar just works. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
     related:['tables','querybase','properties'],
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },
@@ -29403,7 +29466,7 @@ const GUIDE = [
       { syn:'{= weekday(today)}',  desc:'0=Sun…6=Sat (also year, month, quarter)' },
       { syn:'{= km2mi(10)}',       desc:'km to miles (c2f, kg2lb, l2gal…)' },
     ] },
-  { id:'variables', cat:'compute', covers:['var'], related:['math','gen-conditions','recipe-crit'],
+  { id:'variables', cat:'compute', covers:['var','variables'], related:['math','gen-conditions','recipe-crit'],
     title:'Variables',
     body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, and options split on the bar like `{tone := warm | cool}` make a random pick.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the outline, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
     examples:[

@@ -128,7 +128,8 @@ r = 5
 ```
 
 Variables can reference other variables (`area = pi*r^2`). Change `r` and every dependent pill
-updates live. A variable that holds *text* (a quoted string or a random pick, both below) can't be
+updates live. To see every variable in the document with its current value, open the **Variables
+panel**: type `/variables`, press `Ctrl/Cmd+Shift+V`, or use the toolbar. A variable that holds *text* (a quoted string or a random pick, both below) can't be
 used as a number; it fails visibly rather than guessing.
 
 **Declare one by typing.** Besides the `@` → Variable dialog, you can write a declaration inline
