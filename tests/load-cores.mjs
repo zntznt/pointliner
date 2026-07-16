@@ -233,7 +233,7 @@ export function loadCores() {
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','queryRows','queryParts','countParts','pickFromQuery','stripQueryTags','queryCountIn','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','cycleColRole','qbaseColRoles','mtColRoles','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
-    'mtSortRows', // SV-1 one-shot sort
+    'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting
 
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',

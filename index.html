@@ -603,6 +603,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-qbase-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));display:inline-flex;font-size:.9em}
 .mt-qbase-expr{font-family:var(--mono);font-size:.92em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt-qbase-count{font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
+.mt-qbase-sort{font-size:.8em;color:var(--muted);white-space:nowrap}
 .mt-qbase-empty{font-size:.85em;color:var(--muted)}
 /* base view switcher (BV-1): text buttons in the reserved strip */
 .mt-base-views{display:flex;align-items:center;gap:2px;flex:1}
@@ -8498,6 +8499,21 @@ function queryRowsMemo(expr, hostId) {
   return result;
 }
 const QBASE_ROW_CAP = 100;
+// SV-2: parse the query editor's sort field against the column list. Blank -> null
+// (document order). Otherwise a column (its label or field, case-insensitive) plus an
+// optional direction word: "Due desc", "cost", "Left asc". Unknown column -> undefined
+// (invalid, the dialog preview explains). Pure.
+function parseQBaseSort(text, cols) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  const m = t.match(/^(.*?)(?:\s+(asc|desc))?$/i);
+  const name = (m[1] || '').trim().toLowerCase();
+  if (!name) return null;
+  const list = qbaseColList(cols);
+  const idx = list.findIndex(cd => (cd.name || cd.field).trim().toLowerCase() === name || cd.field.trim().toLowerCase() === name);
+  if (idx < 0) return undefined;
+  return { col: idx, dir: (m[2] || 'asc').toLowerCase() };
+}
 function isQueryBase(node) { return node?.type === 'base' && !!node.qbase; }
 // The rendered-column list: entries with a usable field, exactly as queryTableRows
 // projects them — the ONE filter every index-aligned consumer shares (roles, the
@@ -8521,11 +8537,23 @@ function qbaseModel(node) {
   // user's deliberate choice, priced honestly in guidance/performance.md §Bases.
   const cap = node.qbase.showAll ? Infinity : QBASE_ROW_CAP;
   const q = queryTableRows(node.qbase.expr, node.qbase.cols, root, node.id, cap);
+  let rows = [q.header, ...q.rows.map(r => r.cells)];
+  let qids = [null, ...q.rows.map(r => r.id)];
+  // SV-2: the configured sort orders the RENDERING (nothing hidden, no data moved) —
+  // role-aware via the shared order core, formula columns included; applied once per
+  // generation inside this memo, so a plain re-render does zero sort work.
+  const srt = node.qbase.sort;
+  if (srt && Number.isInteger(srt.col) && srt.col >= 0 && srt.col < rows[0].length) {
+    const role = qbaseColRoles(node.qbase.cols)[srt.col];
+    const order = mtSortOrder(rows, srt.col, srt.dir === 'desc' ? 'desc' : 'asc', role, allSequences(), rows.length - 1);
+    rows = [rows[0], ...order.map(i => rows[i])];
+    qids = [null, ...order.map(i => qids[i])];
+  }
   const model = { aligns: q.header.map(() => null),
-                  rows: [q.header, ...q.rows.map(r => r.cells)],
+                  rows,
                   // row identity (Phase B): the matched node id per data row, header slot null —
                   // index-aligned with rows so the widget can stamp each <tr> with its source.
-                  qids: [null, ...q.rows.map(r => r.id)],
+                  qids,
                   qmeta: { total: q.total, shown: q.rows.length, truncated: q.truncated } };
   _qbaseCache.set(node.id, { ver: _varsVer, cfg, model });
   return model;
@@ -9244,6 +9272,9 @@ function mtBaseChromeHtml(node, model, readOnly) {
       + `<span class="mt-qbase-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
       + `<span class="mt-qbase-expr">${escHtml(node.qbase.expr)}</span>`
       + (qm.total === 0 ? `<span class="mt-qbase-empty">no matches</span>` : '')
+      + (node.qbase.sort && qbaseColList(node.qbase.cols)[node.qbase.sort.col]
+        ? `<span class="mt-qbase-sort">by ${escHtml((qbaseColList(node.qbase.cols)[node.qbase.sort.col].name || qbaseColList(node.qbase.cols)[node.qbase.sort.col].field).trim())} ${node.qbase.sort.dir === 'desc' ? '↓' : '↑'}</span>`
+        : '')
       + `<span class="mt-qbase-count">${escHtml(count)}</span></div>${capBtn}</div>`;
   }
   // Left controls (outline view only, not when this base is the zoomed item): a collapse
@@ -9284,8 +9315,10 @@ function mtBaseChromeHtml(node, model, readOnly) {
 // strings otherwise. Blanks and non-conforming values sink to the bottom in BOTH
 // directions (missing data is not a small value); ties keep document order (stable).
 // Pure: returns a NEW rows array (header + sorted data + pinned tail), never mutates.
-function mtSortRows(rows, col, dir, role, seqs, lastDataRow) {
-  const head = rows.slice(0, 1), data = rows.slice(1, lastDataRow + 1), tail = rows.slice(lastDataRow + 1);
+// The order core, shared by SV-1 (authored one-shot sort) and SV-2 (query-base config
+// sort): returns the DATA-row indices (1..lastDataRow) in sorted order, so callers with
+// parallel arrays (a query base's rows + qids) reorder everything consistently.
+function mtSortOrder(rows, col, dir, role, seqs, lastDataRow) {
   let seqOrder = null;
   if (role === 'status') {
     const { seq } = boardLanes({ aligns: [], rows }, col, seqs, lastDataRow);
@@ -9300,7 +9333,8 @@ function mtSortRows(rows, col, dir, role, seqs, lastDataRow) {
     return v.toLowerCase();
   };
   const mul = dir === 'desc' ? -1 : 1;
-  const dec = data.map((r, i) => ({ r, i, k: keyOf(r[col]) }));
+  const dec = [];
+  for (let i = 1; i <= lastDataRow; i++) dec.push({ i, k: keyOf(rows[i]?.[col]) });
   dec.sort((a, b) => {
     if (a.k === null && b.k === null) return a.i - b.i;
     if (a.k === null) return 1;
@@ -9308,7 +9342,11 @@ function mtSortRows(rows, col, dir, role, seqs, lastDataRow) {
     const c = (typeof a.k === 'number' && typeof b.k === 'number') ? a.k - b.k : String(a.k).localeCompare(String(b.k));
     return c !== 0 ? mul * c : a.i - b.i;
   });
-  return [...head, ...dec.map(d => d.r), ...tail];
+  return dec.map(d => d.i);
+}
+function mtSortRows(rows, col, dir, role, seqs, lastDataRow) {
+  const order = mtSortOrder(rows, col, dir, role, seqs, lastDataRow);
+  return [...rows.slice(0, 1), ...order.map(i => rows[i]), ...rows.slice(lastDataRow + 1)];
 }
 // The one-shot sort door (saved-views-proposal SV-1): a DATA operation — the new order
 // is committed to the text (text stays truth, nothing persisted, idempotent), one undo
@@ -17858,6 +17896,7 @@ function openInsertDialog(opts) {
   head.append(ic, ttl); dialogHelp(head, opts.guideId); ioCard.appendChild(head);
 
   const inputs = {};
+  const _previewFns = [];
   opts.fields.forEach((f, i) => {
     const wrap = document.createElement('div'); wrap.className = 'io-field';
     const lab = document.createElement('label'); lab.textContent = f.label;
@@ -17882,10 +17921,17 @@ function openInsertDialog(opts) {
       else if (e.key === 'Enter' && (!area || e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     });
     wrap.append(lab, inp);
-    // live preview — updates on every keystroke; also updated when chips insert text
+    // live preview — updates on every keystroke; also updated when chips insert text.
+    // The callback also receives ALL current field values (second arg) so a preview can
+    // depend on a sibling field (the query editor's sort validates against its columns);
+    // the ioCard-level input delegate below refreshes every preview on any field edit.
     if (f.preview) {
       const prev = document.createElement('div'); prev.className = 'io-preview';
-      const updatePrev = () => { prev.innerHTML = f.preview(inp.value); };
+      const updatePrev = () => {
+        const all = {}; for (const k in inputs) all[k] = inputs[k].value;
+        prev.innerHTML = f.preview(inp.value, all);
+      };
+      _previewFns.push(updatePrev);
       inp.addEventListener('input', updatePrev);
       updatePrev();
       wrap.appendChild(prev);
@@ -17901,6 +17947,9 @@ function openInsertDialog(opts) {
   cancelBtn.addEventListener('click', cancel);
   okBtn.addEventListener('click', submit);
   foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
+
+  // cross-field previews stay live: any field edit refreshes every preview
+  if (_previewFns.length > 1) ioCard.addEventListener('input', () => _previewFns.forEach(fn => fn()));
 
   const vals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].value.trim(); return v; };
   const valid = () => opts.fields.every(f => !f.required || vals()[f.key]) && (!opts.validate || opts.validate(vals()));
@@ -22206,7 +22255,7 @@ function parseQBaseCols(text) {
   return out.length ? out : null;
 }
 
-function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: title', onResult }) {
+function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: title', sortText = '', onResult }) {
   openInsertDialog({
     icon: { fa: 'fa-solid fa-magnifying-glass', fb: '\u{1F50D}' },
     guideId: 'querybase',   // #466
@@ -22227,19 +22276,40 @@ function openQBaseDialog({ title, submitLabel, expr = '', colsText = 'Title: tit
           return cols.map(cd => `<span class="todo-state">${escHtml(cd.name)}</span>`).join(' ');
         },
         hint: 'Each line is a column: "title" shows the point (clickable), a property key like due or cost shows that value, and "= formula" computes per point (rollups like sum(cost) work). Put "Name:" in front to label a column.' },
+      // SV-2: sort as config — a column name, optionally with desc. Blank = document order.
+      { key: 'sort', label: 'Sort rows (optional)', placeholder: 'Due desc', value: sortText,
+        preview: (v, all) => {
+          const cols = parseQBaseCols(all?.cols ?? '');
+          if (!v.trim()) return '<span class="io-preview-ok">Document order</span>';
+          if (!cols) return '<span class="io-preview-bad">Fix the columns first</span>';
+          const srt = parseQBaseSort(v, cols);
+          if (srt === undefined) return '<span class="io-preview-bad">No column by that name. Use a column label or field from above.</span>';
+          const cd = qbaseColList(cols)[srt.col];
+          return `<span class="io-preview-ok">Sorted by ${escHtml((cd.name || cd.field).trim())}, ${srt.dir === 'desc' ? 'descending' : 'ascending'}</span>`;
+        },
+        hint: 'A column from above, plus desc for high-to-low: "Due desc", "cost". Formula columns sort too. Blank keeps document order.' },
     ],
-    validate: v => !!v.expr.trim() && !!parseQBaseCols(v.cols),
-    onSubmit: v => onResult(v.expr.trim(), parseQBaseCols(v.cols)),
+    validate: v => !!v.expr.trim() && !!parseQBaseCols(v.cols)
+      && parseQBaseSort(v.sort, parseQBaseCols(v.cols)) !== undefined,
+    onSubmit: v => { const cols = parseQBaseCols(v.cols); onResult(v.expr.trim(), cols, parseQBaseSort(v.sort, cols)); },
   });
 }
 
 function editQBase(node) {
   if (!node?.qbase) return;
+  const cur = node.qbase.sort;
+  const curList = qbaseColList(node.qbase.cols);
   openQBaseDialog({
     title: 'Edit query base', submitLabel: 'Save',
     expr: node.qbase.expr,
     colsText: node.qbase.cols.map(cd => (cd.name && cd.name !== cd.field) ? `${cd.name}: ${cd.field}` : cd.field).join('\n'),
-    onResult: (expr, cols) => { node.qbase = { expr, cols, ...(node.qbase.showAll ? { showAll: true } : {}) }; markDirty(); refreshTable(node); },
+    sortText: cur && curList[cur.col] ? `${(curList[cur.col].name || curList[cur.col].field).trim()}${cur.dir === 'desc' ? ' desc' : ''}` : '',
+    onResult: (expr, cols, sort) => {
+      node.qbase = { expr, cols,
+        ...(node.qbase.showAll ? { showAll: true } : {}),
+        ...(sort ? { sort } : {}) };
+      markDirty(); refreshTable(node);
+    },
   });
 }
 
@@ -22289,12 +22359,12 @@ function openVarBaseDialog(node) {
 // Create a query base at a point, mirroring createBaseAt's non-destructive rule:
 // an empty point becomes the query base in place; a content-bearing point keeps
 // its text and the base lands as the next sibling.
-function qbaseCreateAt(nodeId, expr, cols) {
+function qbaseCreateAt(nodeId, expr, cols, sort = null) {
   const node = nodeById(nodeId); if (!node) return;
   if (activeContentId === nodeId)
     document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`)?.blur();
   pushUndo();
-  const cfg = { expr, cols };
+  const cfg = { expr, cols, ...(sort ? { sort } : {}) };
   if (!node.text.trim()) {
     node.text = ''; node.type = 'base'; node.checked = false; node.qbase = cfg;
     markDirty(); render(); focusNode(nodeId); return;
@@ -23526,7 +23596,7 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   if (id === 'base') { createBaseAt(nodeId, 3, 3); return; }
   if (id === 'querybase') {
     openQBaseDialog({ title: 'New query base', submitLabel: 'Create',
-      onResult: (expr, cols) => qbaseCreateAt(nodeId, expr, cols) });
+      onResult: (expr, cols, sort) => qbaseCreateAt(nodeId, expr, cols, sort) });
     return;
   }
   // block type — swap prefix in node.text to match the new type. Converting away

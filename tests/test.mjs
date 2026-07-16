@@ -12311,7 +12311,9 @@ test('Phase B — queryTableRows uncapped; qbaseModel wiring (pins)', () => {
   // source pins: the conditional cap, the qids channel, the strip toggle, the tr stamp
   const qm = fnBody(_src, 'qbaseModel');
   assert.ok(/node\.qbase\.showAll \? Infinity : QBASE_ROW_CAP/.test(qm), 'showAll lifts the cap');
-  assert.ok(/qids: \[null, \.\.\.q\.rows\.map\(r => r\.id\)\]/.test(qm), 'the model carries row identity, header slot null');
+  assert.ok(/let qids = \[null, \.\.\.q\.rows\.map\(r => r\.id\)\]/.test(qm), 'the model carries row identity, header slot null');
+  // SV-2: the configured sort reorders rows and qids TOGETHER (identity survives ordering)
+  assert.ok(/order\.map\(i => rows\[i\]\)/.test(qm) && /order\.map\(i => qids\[i\]\)/.test(qm), 'the sort keeps rows and qids aligned');
   assert.ok(/data-nid="\$\{escQ\(nid\)\}"/.test(fnBody(_src, 'buildTableWidget')), 'each query row is stamped with its source id');
   assert.ok(/Show all \$\{escHtml\(String\(qm\.total\)\)\}/.test(_src) && /Cap at \$\{QBASE_ROW_CAP\}/.test(_src), 'the strip toggle names both states');
   assert.ok(/node\.qbase\.showAll = !node\.qbase\.showAll/.test(_src), 'the toggle flips the persisted flag');
@@ -12391,6 +12393,31 @@ test('mtSortRows — role-aware, blanks sink, pinned edges, stable (SV-1)', () =
     'the sort is an undoable data operation through the shared commit tail');
   const scp = fnBody(_src, 'showColPanel');
   assert.ok(/addSection\('Sort rows', true\)/.test(scp) && /mtSortBase\(node, colIdx, 'asc'\)/.test(scp), 'the Column menu door exists');
+});
+
+// ── SV-2: persisted sort on query bases ─────────────────────────────────────
+test('parseQBaseSort + the qbase sort wiring (SV-2)', () => {
+  const cols = [{ name: 'Point', field: 'title' }, { name: 'Due', field: 'due' }, { name: 'Left', field: '= cost * 2' }];
+  // blank = document order; label OR field matches, case-insensitive; desc optional
+  assert.equal(c.parseQBaseSort('', cols), null);
+  assert.deepEqual(host(c.parseQBaseSort('Due desc', cols)), { col: 1, dir: 'desc' });
+  assert.deepEqual(host(c.parseQBaseSort('due', cols)), { col: 1, dir: 'asc' });
+  assert.deepEqual(host(c.parseQBaseSort('left ASC', cols)), { col: 2, dir: 'asc' });
+  assert.equal(c.parseQBaseSort('nosuch', cols), undefined, 'unknown column is invalid, not silent');
+  // mtSortOrder is the shared core; SV-1's mtSortRows delegates to it
+  assert.deepEqual(host(c.mtSortOrder(host([['H'], ['b'], ['a'], ['c']]), 0, 'asc', null, host([]), 3)), [2, 1, 3]);
+  assert.ok(/mtSortOrder\(rows, col, dir, role, seqs, lastDataRow\)/.test(fnBody(_src, 'mtSortRows')), 'one comparator, two consumers');
+  // qbaseModel applies the configured sort inside the generation memo, rows+qids together
+  const qm = fnBody(_src, 'qbaseModel');
+  assert.ok(/node\.qbase\.sort/.test(qm) && /qbaseColRoles\(node\.qbase\.cols\)\[srt\.col\]/.test(qm),
+    'the sort is role-aware, formula columns included');
+  // the editor field round-trips + preserves showAll; the create path threads it; the strip names it
+  assert.ok(/parseQBaseSort\(v\.sort, parseQBaseCols\(v\.cols\)\) !== undefined/.test(fnBody(_src, 'openQBaseDialog')),
+    'an unknown sort column blocks the save with an explaining preview');
+  const eq = fnBody(_src, 'editQBase');
+  assert.ok(/\.\.\.\(sort \? \{ sort \} : \{\}\)/.test(eq) && /showAll: true/.test(eq), 'saving keeps sort AND showAll');
+  assert.ok(/qbaseCreateAt\(nodeId, expr, cols, sort\)/.test(_src), 'the create dialog threads the sort');
+  assert.ok(/mt-qbase-sort/.test(fnBody(_src, 'mtBaseChromeHtml')), 'the strip names an active sort');
 });
 
 // ── var: over projections (the last §7b deferral bar shadow markers) ─────────
