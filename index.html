@@ -9509,12 +9509,21 @@ function buildTableWidget(node, readOnly) {
     if (mtNavSel === cell) mtNavSel = null;
     if (slashState?.cell && slashState.content === cell) hideSlashMenu();
     if (cell.classList.contains('mt-computed')) return;
-    const raw = cell.textContent;
+    let raw = cell.textContent;
     const enteredWith = cell.dataset.enterVal ?? '';   // value when the cell was focused
     delete cell.dataset.enterVal;
     const m = mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
     mtCommit(node, m);
+    // Promote typed {…} shorthand on exit, per cell — the same promote-on-blur model as
+    // prose (and the same result the load path now produces). A typed {2d6}/{= …}/{Orc.HP}
+    // becomes its pill; anything unpromotable stays literal text (the escape hatch).
+    const promo = promoteCellShorthand(node, raw);
+    if (promo.changed) {
+      raw = promo.text;
+      m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
+      mtCommit(node, m);
+    }
     cell.innerHTML = mtCellHtml(node, raw, +cell.dataset.c);
     forceIncludeId = null;
     // P4: a spreadsheet-style `=…` formula typed into a cell is dead text here — bases
@@ -19972,6 +19981,34 @@ function promoteInlineShorthand(node) {
   return changed;
 }
 
+// Promote {…} shorthand inside ONE base cell string. The promoteInlineShorthand walk,
+// scoped to a cell: records land on the base node's sidecars (promoteBraceBody), tokens
+// splice into the returned cell string; the caller commits via mtCommit. Operating on the
+// UNESCAPED cell (mtSplitRow already turned \| back into |) is what makes this safe where
+// the whole-text walk was not: a brace can only close within its own cell, so `{a | b}`
+// promotes as an alternation instead of matchBrace spanning a row delimiter and eating a
+// cell boundary (the cross-cell shred). No _promotedLit bookkeeping: cells have no
+// unfold/caret translation (a cell shows raw tokens while editing). Same-cell declare-
+// then-reference ({x := 5} {x} in one cell) leaves the reference literal on this pass —
+// the declaration's token isn't committed yet; the next edit or reload promotes it.
+function promoteCellShorthand(node, cellText) {
+  const text = String(cellText ?? '');
+  if (text.indexOf('{') < 0) return { text, changed: false };
+  const codeSpans = codeSpanRanges(text);   // `{2d6}` inside inline code stays literal
+  let out = '', i = 0, changed = false;
+  while (i < text.length) {
+    if (text[i] === '{' && !inCodeSpan(codeSpans, i)) {
+      const j = matchBrace(text, i);
+      if (j > i) {
+        const token = promoteBraceBody(node, text.slice(i + 1, j));
+        if (token != null) { out += token; i = j + 1; changed = true; continue; }
+      }
+    }
+    out += text[i++];
+  }
+  return { text: out, changed };
+}
+
 // Promote {…} shorthand across a whole loaded document. The edit-commit path
 // promotes a node on blur, but a doc arriving via OPML/HTML import (adoptDoc)
 // never passes through that path, so its typed {2d6}/{= …}/{a|b} would otherwise
@@ -19992,7 +20029,26 @@ function promoteLoadedShorthand(rootNode) {
     pass = 0;
     (function walk(node) {
       if (!node) return;
-      if (node.text && promoteInlineShorthand(node)) pass++;
+      if (node.type === 'base' && !node.qbase) {
+        // A base promotes PER CELL, never through the whole serialized table: the whole-text
+        // walk ran matchBrace over the escaped text, where a `{a | b}` cell's brace spanned a
+        // row delimiter and the promotion ate a cell boundary (column shift). Per-cell, a
+        // brace can only close inside its own cell — and this makes load and the cell
+        // focusout path produce identical results.
+        if (node.text && node.text.indexOf('{') >= 0) {
+          const m = mtModelText(node.text);
+          let cellChanged = false;
+          for (const row of m.rows) for (let c = 0; c < row.length; c++) {
+            const r = promoteCellShorthand(node, row[c]);
+            if (r.changed) { row[c] = r.text; cellChanged = true; }
+          }
+          if (cellChanged) {
+            const tblfm = extractTblfm(node.text);
+            node.text = serializeTable(m) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
+            pass++;
+          }
+        }
+      } else if (node.text && promoteInlineShorthand(node)) pass++;
       for (const c of node.children || []) walk(c);
     })(rootNode);
     total += pass;
@@ -28707,7 +28763,7 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets and the rest.",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a grid automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has delete, the Width presets and the rest. Cells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
     related:['base-views','querybase'],
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'simple table that shows as a grid' },

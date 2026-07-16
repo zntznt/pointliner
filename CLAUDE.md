@@ -593,6 +593,14 @@ base is a declaration site at its document position. Cell rule (NOT `varDeclIsPi
 cells are a recorded deferral). Bare row names deliberately do NOT project (rules would silently
 shadow them). Full direction: `guidance/bases-direction.md` §7b; the recorded P5 note:
 `guidance/ux-discipline.md` §2.
+**Base cells promote typed `{…}` PER CELL, never through the whole serialized table.**
+`promoteCellShorthand(node, cellText)` is the cell-scoped promoteInlineShorthand (records to the
+node sidecars, token spliced into the cell string); the cell `focusout` handler runs it after
+`mtCommit`, and `promoteLoadedShorthand` uses a per-cell base branch for the same reason the
+whole-text walk was a bug: it ran `matchBrace` over the ESCAPED serialized text, so a `{a | b}`
+cell's brace spanned a row delimiter and the promotion ate a cell boundary (column shift). Per
+cell, a brace can only close inside its own cell, and load/focusout produce identical results.
+Cells show raw `[[type:key]]` tokens while being edited (no unfold there, by design).
 
 **Declarative data packs (plugins) merge into both collectors.** `root.plugins`
 (the `<_plugins>` OPML head element) is a list of **pure-data** packs — extensibility
