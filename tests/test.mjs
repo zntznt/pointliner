@@ -12511,6 +12511,95 @@ test('promoteInlineShorthand: a {…} inside inline `code` stays LITERAL (the es
   assert.ok(n.text.startsWith('`{a|b}` and real [[dice:'), 'the coded brace stays, the real one promotes');
 });
 
+// ── per-cell base promotion (PR C) ─────────────────────────────────────────────
+const mkCellNode = () => ({ id: 'cn1', text: '', type: 'base', dice: [], math: [], vars: [], grammar: [], est: [], markov: [], seq: [], query: [], children: [] });
+
+test('promoteCellShorthand — dice/math/alternation promote; the record lands on the node sidecar', () => {
+  const n = mkCellNode();
+  let r = c.promoteCellShorthand(n, 'roll {2d6} now');
+  assert.equal(r.changed, true);
+  assert.match(r.text, /^roll \[\[dice:[a-z0-9]+\]\] now$/);
+  assert.equal(n.dice.length, 1, 'the dice record is on the node before the caller commits the text');
+  r = c.promoteCellShorthand(n, '{= 2 + 3}');
+  assert.match(r.text, /^\[\[math:[a-z0-9]+\]\]$/);
+  assert.equal(n.math.length, 1);
+  r = c.promoteCellShorthand(n, '{a | b 2 | c}');
+  assert.match(r.text, /^\[\[grammar:[a-z0-9]+\]\]$/, 'a pipe INSIDE a cell brace is an alternation, not a cell boundary');
+  assert.equal(n.grammar.length, 1);
+});
+
+test('promoteCellShorthand — unknown, quoted, unclosed, and code-span bodies stay literal', () => {
+  const n = mkCellNode();
+  assert.deepEqual(host(c.promoteCellShorthand(n, 'plain text')), { text: 'plain text', changed: false });
+  assert.deepEqual(host(c.promoteCellShorthand(n, '{nosuchrule}')), { text: '{nosuchrule}', changed: false });
+  assert.deepEqual(host(c.promoteCellShorthand(n, '{unclosed')), { text: '{unclosed', changed: false });
+  assert.deepEqual(host(c.promoteCellShorthand(n, '`{2d6}` docs')), { text: '`{2d6}` docs', changed: false }, 'inline code is the escape hatch');
+  assert.equal(n.dice.length + n.math.length + n.grammar.length, 0, 'nothing promoted, nothing pushed');
+});
+
+test('promoteCellShorthand — a dotted variable ref promotes to a var pill (vm root pattern)', () => {
+  const root = c.mkRoot();
+  const vb = c.mkNode('| Name | HP |\n| --- | --- |\n| Orc | 12 |'); vb.type = 'base'; vb.varbase = {};
+  root.children.push(vb);
+  c._context.__posRoot = root;
+  vm.runInContext('root = __posRoot; resetDocCaches();', c._context);
+  try {
+    const n = mkCellNode();
+    const r = c.promoteCellShorthand(n, '{Orc.HP}');
+    assert.match(r.text, /^\[\[var:[a-z0-9]+\]\]$/, 'a known dotted name becomes a display-only var pill');
+    assert.equal(n.vars[0].name, 'Orc.HP');
+    assert.equal(n.vars[0].expr, '');
+  } finally {
+    vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('promoteLoadedShorthand — a base promotes PER CELL; the {a | b} cross-cell shred is fixed', () => {
+  // Before the per-cell branch, the whole-text walk ran matchBrace over the ESCAPED table
+  // text: the `{foo \| bar}` cell's brace spanned a row delimiter and the promotion ate a
+  // cell boundary, shifting columns. Now each cell promotes in isolation.
+  const root = c.mkRoot();
+  // node.text holds the SERIALIZED form: the in-cell pipe is escaped as \| (mtSplitRow unescapes)
+  const base = c.mkNode('| A | B |\n| --- | --- |\n| {foo \\| bar} | keep |');
+  base.type = 'base';
+  root.children.push(base);
+  c._context.__posRoot = root;
+  vm.runInContext('root = __posRoot; resetDocCaches();', c._context);
+  try {
+    c.promoteLoadedShorthand(root);
+    const m = c.mtModelText(base.text);
+    assert.equal(m.rows[0].length, 2, 'still two columns');
+    assert.equal(m.rows[1].length, 2, 'the data row still has two cells');
+    assert.match(m.rows[1][0], /^\[\[grammar:[a-z0-9]+\]\]$/, 'the {foo | bar} cell promoted as ONE alternation pill');
+    assert.equal(m.rows[1][1], 'keep', 'the neighboring cell is untouched (no column shift)');
+    // plain typed shorthand in a cell promotes on load too (load/focusout parity)
+    const root2 = c.mkRoot();
+    const b2 = c.mkNode('| A |\n| --- |\n| {2d6} |'); b2.type = 'base';
+    root2.children.push(b2);
+    c._context.__posRoot2 = root2;
+    vm.runInContext('root = __posRoot2; resetDocCaches();', c._context);
+    c.promoteLoadedShorthand(root2);
+    assert.match(c.mtModelText(b2.text).rows[1][0], /^\[\[dice:[a-z0-9]+\]\]$/);
+    // a non-base node still promotes through the whole-text walk
+    const root3 = c.mkRoot();
+    const p = c.mkNode('roll {2d6}');
+    root3.children.push(p);
+    c._context.__posRoot3 = root3;
+    vm.runInContext('root = __posRoot3; resetDocCaches();', c._context);
+    c.promoteLoadedShorthand(root3);
+    assert.match(p.text, /\[\[dice:[a-z0-9]+\]\]/);
+  } finally {
+    vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('cell focusout promotes typed {…} (source pin)', () => {
+  // the focusout handler runs promoteCellShorthand after the first mtCommit and re-commits
+  // on change, so a typed {2d6} becomes its pill the moment the cell is left.
+  assert.ok(/const promo = promoteCellShorthand\(node, raw\);/.test(_src), 'focusout runs the cell promoter');
+  assert.ok(/if \(promo\.changed\) \{\s*raw = promo\.text;/.test(_src), 'a change swaps in the promoted text and re-commits before the repaint');
+});
+
 // ── Inbox reorder (change which capture # an inbox answers to) + the long-label delete fix ──
 test('reorderInboxList: moves a slot, no-ops on same/out-of-range, trims trailing nulls', () => {
   const L = ['a', 'b', 'c', 'd'];

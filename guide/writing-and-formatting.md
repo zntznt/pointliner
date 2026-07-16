@@ -89,6 +89,11 @@ For a table you can **click into and edit cell by cell** (or add formulas), type
 Static tables can also carry a spreadsheet formula line; see
 [table formulas](computing-numbers.md#table-formulas-briefly).
 
+Base cells take **pills** the same way a point does: type `{2d6}`, `{= price * 1.1}` or `{Orc.HP}`
+in a cell and it becomes the live pill when you leave the cell (the cell's `@` menu inserts the
+same things by dialog). While a cell is being edited it shows the raw token; leave the cell and it
+renders. Anything that does not promote stays literal text, the usual escape hatch.
+
 A base column can also be given a **display role** from its Column menu (**Show as**): a **Status**
 column renders known state keywords as colored chips (including states from your own
 [sequences](tasks-and-organizing.md#custom-workflows), so `PLANNED ACTIVE | CLEARED` becomes chips with the
