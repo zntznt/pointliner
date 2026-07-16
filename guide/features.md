@@ -103,6 +103,9 @@ A live calculator that can see your outline. Math pills recompute on their own. 
   slots, any gauge), read live from the point's properties. ([meters](tasks-and-organizing.md#meters))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
   ([variables](computing-numbers.md#variables-in-math))
+- **Variable bases.** Mark a base so every row declares variables: row Orc, column HP reads as
+  `{Orc.HP}` in text and `{= Orc.HP + 5}` in math, live as you edit the cells.
+  ([variable bases](computing-numbers.md#variable-bases-a-table-of-variables))
 
 ## Dates, planning and journaling
 

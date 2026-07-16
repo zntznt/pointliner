@@ -187,6 +187,42 @@ child is not in scope.)
 
 ---
 
+## Variable bases (a table of variables)
+
+Keep a stat block, a price list, or any table of named things in a **base**, and read every cell as
+a variable. Open the base's bullet menu and choose **Use rows as variables**: each row then declares
+one variable per column, named `Row.Column`.
+
+```
+| Name   | HP  | AC          |
+| ------ | --- | ----------- |
+| Orc    | 12  | = 10+2      |
+| Goblin | 2d6 | = Orc.AC - 1|
+```
+
+With that base marked, `{Orc.HP}` drops 12 into any text and `{= Orc.HP + 5}` computes 17. Edit a
+cell and every reference updates live.
+
+Cells follow one simple rule:
+
+- a cell starting with **`=`** computes, and may reference other variables, including other cells
+  (`= Orc.AC - 1` in Goblin's row tracks Orc's; circular references are caught, never hang);
+- a plain **number** is a number;
+- **anything else is text**, kept exactly as written (so the `2d6` above is the three-character
+  text `2d6`, not a roll).
+
+The first column works too: `{Orc.Name}` is the display name exactly as typed ("Hill Giant" keeps
+its space and caps), so `{Orc.Name.s}` says "Orcs" using the usual
+[text modifiers](generating-text.md#shape-the-words-modifiers).
+
+Give the base a **name** in the dialog to file every row under it, like `{Monsters.Orc.HP}`. That
+keeps two bases that both have an `Orc` row from colliding. The dialog previews every name the base
+will declare and warns about anything it has to skip (a row it can't name, a column that matches a
+text modifier). A `$` badge on the base shows the feature is on; click it to change the name, or use
+the bullet menu's **Stop using rows as variables** to turn it off.
+
+---
+
 ## Roll a number up your outline (aggregation)
 
 This is the one that makes the math pill see the *tree*. A `{= …}` expression can **roll up a

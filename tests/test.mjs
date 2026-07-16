@@ -1405,7 +1405,10 @@ test('bodyCompletion branches carry their tokenizer\'s consume boundary (src pin
   const body = fnBody(_src, 'bodyCompletion');
   assert.ok(/consume: \/\[\^\\s\{\}\]\//.test(body), 'search branch: whitespace-token boundary, braces excluded');
   assert.ok(/consume: \/\[\\w-\]\//.test(body), 'meter branch: parseMeter\'s [\\w-] ref boundary');
-  assert.ok((body.match(/consume: \/\\w\//g) || []).length >= 2, 'math + conditional branches keep the \\w identifier boundary');
+  // PR B (variable bases): the math + conditional identifier boundary gained the dot so a
+  // dotted variable (orc.hp) completes as ONE token; mathFragmentAt's validator still keeps
+  // decimals (3.5) from ever opening a menu.
+  assert.ok((body.match(/consume: \/\[\\w\.\]\//g) || []).length >= 2, 'math + conditional branches use the dotted identifier boundary');
   const apply = fnBody(_src, 'braceApply');
   assert.ok(/consumeTokenEnd\(full, caret, consume \|\| \/\\w\/\)/.test(apply),
     'braceApply must consume with the per-mode boundary from braceState');
@@ -2268,6 +2271,49 @@ test('varBaseDefsMemo — one parse per generation, fresh after a bump', () => {
   } finally {
     vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);
   }
+});
+
+test('varBasePreview — names, kinds, values, and the full warning matrix (PR B)', () => {
+  const n = mkVarBase(VB_TEXT);
+  const p = c.varBasePreview(n, '', {});
+  const by = Object.fromEntries(p.names.map(x => [x.name, x]));
+  assert.equal(by['orc.hp'].kind, 'number');
+  assert.equal(by['orc.hp'].val, 12);
+  assert.equal(by['orc.ac'].kind, 'formula');
+  assert.equal(by['orc.ac'].val, 12);
+  assert.equal(by['goblin.ac'].val, 11, 'intra-base chains resolve in the preview');
+  assert.equal(by['goblin.hp'].kind, 'text');
+  // a candidate prefix applies in the preview
+  const pre = c.varBasePreview(n, 'Monsters', {});
+  assert.ok(pre.names.some(x => x.name === 'monsters.orc.hp'));
+  // docVars flow in through the pick channel: a formula referencing an OUTSIDE var resolves
+  const ext = mkVarBase('| Name | X |\n| --- | --- |\n| A | = bonus + 1 |');
+  const pe = c.varBasePreview(ext, '', { bonus: 4 });
+  assert.equal(pe.names.find(x => x.name === 'a.x').val, 5);
+  // warnings: dup rows, unusable row name, modifier-named column, unresolvable formula
+  const wDup = c.varBasePreview(mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 1 |\n| Orc | 2 |'), '', {});
+  assert.ok(wDup.warnings.some(w => /more than once/.test(w)));
+  const wRow = c.varBasePreview(mkVarBase('| Name | HP |\n| --- | --- |\n| *** | 1 |'), '', {});
+  assert.ok(wRow.warnings.some(w => /no usable name/.test(w)));
+  const wMod = c.varBasePreview(mkVarBase('| Name | s |\n| --- | --- |\n| Orc | 1 |'), '', {});
+  assert.ok(wMod.warnings.some(w => /text modifier/.test(w)));
+  const wBad = c.varBasePreview(mkVarBase('| Name | X |\n| --- | --- |\n| A | = nosuchvar |'), '', {});
+  assert.ok(wBad.warnings.some(w => /can't compute/.test(w)));
+});
+
+test('mathFragmentAt — a dotted variable fragment completes as one token; decimals never menu (PR B)', () => {
+  assert.deepEqual(host(c.mathFragmentAt('= orc.h', 7)), { prefix: 'orc.h', start: 2 });
+  assert.deepEqual(host(c.mathFragmentAt('= monsters.orc.hp', 17)), { prefix: 'monsters.orc.hp', start: 2 });
+  assert.equal(c.mathFragmentAt('= 3.5', 5), null, 'a decimal is not an identifier fragment');
+  assert.deepEqual(host(c.mathFragmentAt('= 1+cost', 8)), { prefix: 'cost', start: 4 });
+});
+
+test('variable-base UI wiring (source pins)', () => {
+  assert.ok(/label: node\.varbase \? 'Variable names' : 'Use rows as variables'/.test(_src), 'the base menu door exists');
+  assert.ok(/Stop using rows as variables/.test(_src), 'the turn-off door exists');
+  assert.ok(/mt-varbase-badge/.test(_src) && /openVarBaseDialog\(node\)/.test(_src), 'the badge renders and opens the dialog');
+  assert.ok(/if \(inner !== '' && !\/\^\[a-z_\]\[\\w\.\]\*\$\/i\.test\(inner\)\)/.test(_src), 'the { picker gate admits dots');
+  assert.ok(/filter\(nm => !nm\.includes\('\.'\)\)/.test(_src), 'the var dialog grid excludes dotted names');
 });
 
 test('toOpml/fromOpml — _varbase emit + parse sites exist (source pins; DOM parse is browser-verified)', () => {

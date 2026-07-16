@@ -594,6 +594,10 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 /* base view switcher (BV-1): text buttons in the reserved strip */
 .mt-base-views{display:flex;align-items:center;gap:2px;flex:1}
 .mt-view-btn{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
+/* variable-base badge (§7b): the always-visible "rows declare variables" cue + dialog door */
+.mt-varbase-badge{font-family:var(--font);font-size:.72em;font-weight:600;color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent);border:1px solid color-mix(in srgb,var(--acc) 30%,transparent);border-radius:var(--r-sm);padding:1px 7px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.mt-varbase-badge:hover{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.mt-varbase-badge:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .mt-view-btn:hover{color:var(--fg);background:var(--cbg)}
 .mt-view-btn.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}/* UXP-166: the one active-toggle recipe (DL §4) */
 .mt-view-btn-dim{opacity:.45}/* UXP-169: Board/Calendar with no eligible column — dimmed so it stops advertising a view it punts; still clickable (the click flashHints how to enable it) */
@@ -1981,6 +1985,7 @@ body:not(.v-guided) .bm-desc{display:none}
 #var-panel-list{overflow-y:auto;padding:8px 16px 12px;flex:1;display:flex;flex-wrap:wrap;gap:6px 20px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;align-content:flex-start}
 .vp-row{display:flex;align-items:baseline;gap:5px;font-size:13px}
 .vp-name{font-weight:500;font-family:var(--mono)}
+.vp-prefix{color:var(--muted);font-weight:400}/* a dotted projection's row/base prefix reads muted */
 .vp-eq{color:var(--muted);font-size:11px}
 .vp-val{font-family:var(--mono);font-size:12px;color:var(--acc)}
 .vp-cycle{color:var(--bad);font-size:11px}
@@ -8308,6 +8313,54 @@ function varBaseDefsMemo(node) {
   if (node.id != null) _varBaseDefsCache.set(node.id, defs);
   return defs;
 }
+
+// Pure: what WOULD this base project under a candidate name? The dialog's live preview
+// (P4: the addressable names, each kind and resolved value, plus every warning) so nothing
+// is silently unreachable or mysteriously renamed. `docVars` is the surrounding document's
+// resolved map (values seeded through the pick channel so intra-base chains AND references
+// to outside variables both resolve). Node-testable.
+// Returns { names: [{ name, kind: 'formula'|'number'|'text', ok, val }], warnings: [string] }.
+function varBasePreview(node, name, docVars = {}) {
+  const trial = { id: node.id, type: 'base', text: node.text, qbase: node.qbase, varbase: { name } };
+  const projected = varBaseDefs(trial);
+  const warnings = [];
+  const m = mtModelText(node.text);
+  const header = (m?.rows[0] || []).map(h => varBaseName(h));
+  // resolution context: the doc's resolved values as frozen picks, then the trial's defs on top
+  const defs = Object.create(null), picks = Object.create(null), order = [];
+  for (const k of Object.keys(docVars)) { defs[k] = String(docVars[k]); picks[k] = String(docVars[k]); order.push(k); }
+  for (const d of projected) {
+    if (!(d.name in defs)) order.push(d.name);
+    defs[d.name] = d.expr;
+    if (d.pick !== undefined) picks[d.name] = d.pick; else delete picks[d.name];
+  }
+  const { resolved } = resolveVarDefs(defs, picks, order);
+  const seen = new Set();
+  const names = projected.map(d => {
+    const kind = d.pick !== undefined ? 'text' : (/^-?\d/.test(d.expr.trim()) && Number.isFinite(Number(d.expr)) ? 'number' : 'formula');
+    const ok = d.name in resolved;
+    if (seen.has(d.name)) warnings.push(`"${d.name}" appears more than once; the last row wins.`);
+    seen.add(d.name);
+    return { name: d.name, kind, ok, val: resolved[d.name] };
+  });
+  // rows whose name segment can't be used
+  if (m) {
+    const last = mtHasFooter(extractTblfm(node.text)) ? m.rows.length - 2 : m.rows.length - 1;
+    for (let r = 1; r <= last; r++) {
+      const raw = String((m.rows[r] || [])[0] ?? '').trim();
+      if (raw && !varBaseName(raw)) warnings.push(`Row "${raw}" has no usable name, so it is skipped.`);
+    }
+    // columns whose header can't be used, or shadows a text modifier
+    (m.rows[0] || []).forEach((h, c) => {
+      const raw = String(h ?? '').trim();
+      const col = header[c];
+      if (raw && !col) warnings.push(`Column "${raw}" has no usable name, so it is skipped.`);
+      else if (col && col in MODIFIERS) warnings.push(`Column "${raw}" matches the .${col} text modifier, so {Row.${col}} changes text instead of reading the cell. Read it in math ({= row.${col}}) or rename the column.`);
+    });
+  }
+  for (const n of names) if (n.kind === 'formula' && !n.ok) warnings.push(`"${n.name}" can't compute yet (check the cells or variables it references).`);
+  return { names, warnings };
+}
 // ── query base (QP-2 Phase A) ───────────────────────────────────────────────
 // A base carrying node.qbase = { expr, cols:[{name, field}] } sources its rows from
 // a live search instead of node.text. Read-only in v1 (bases-direction §4): the
@@ -8975,6 +9028,16 @@ function mtBaseChromeHtml(node, model, readOnly) {
         + ` aria-label="Set how many rows to show in the outline (currently ${escQ(capLabel.slice(6))})" title="Rows shown in the outline">${escHtml(capLabel)}</button>`;
     }
   }
+  // Variable-base cue (bases-direction §7b): a small `$` badge whenever rows project as
+  // variables. A real button (opens the naming dialog), always visible (never hover-gated,
+  // so touch sees it), zoomed or not.
+  if (node.varbase && !node.qbase) {
+    const ns = node.varbase.name ? `under "${node.varbase.name}"` : 'like Orc.HP';
+    left += `<button type="button" class="mt-varbase-badge"`
+      + ` aria-label="Rows declare variables ${escQ(ns)}. Press Enter to edit the base name."`
+      + ` title="Rows declare variables ${escQ(ns)}. Click to edit">`
+      + `<i class="fa-solid fa-dollar-sign" aria-hidden="true"></i>${node.varbase.name ? ' ' + escHtml(node.varbase.name) : ''}</button>`;
+  }
   const showSwitcher = (!readOnly || node.qbase) && !(node.collapsed && !zoomed);
   if (left || showSwitcher)
     h += `<div class="mt-baseheader"><div class="mt-base-left">${left}</div>${showSwitcher ? mtViewSwitcherHtml(node) : ''}</div>`;
@@ -9012,6 +9075,15 @@ function mtWireBaseChrome(host, node) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); }
     });
   });
+  // variable-base badge: opens the naming dialog (mousedown + preventDefault per the caret
+  // invariant, Enter/Space for keyboard — the view-button pattern).
+  const vbb = host.querySelector('.mt-varbase-badge');
+  if (vbb) {
+    vbb.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); openVarBaseDialog(node); });
+    vbb.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openVarBaseDialog(node); }
+    });
+  }
   // collapse chevron: toggle node.collapsed (reuses the outline collapse field), refresh.
   const cb = host.querySelector('.mt-base-collapse');
   if (cb) {
@@ -15829,6 +15901,13 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
         fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as Markdown'); hideBpop(); } },
       { sec:'Table', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with formulas',
         fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
+      // Variable base (bases-direction §7b): the front door for projecting rows as
+      // document variables. Authored bases only (this arm never runs for a query base).
+      { sec:'Table', icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' },
+        label: node.varbase ? 'Variable names' : 'Use rows as variables',
+        fn: () => { hideBpop(); openVarBaseDialog(node); } },
+      ...(node.varbase ? [{ sec:'Table', icon:{ fa:'fa-solid fa-xmark', fb:'✕' }, label:'Stop using rows as variables',
+        fn: () => { hideBpop(); pushUndo(); delete node.varbase; markDirty(); refreshTable(node); flashHint('Rows no longer declare variables.'); } }] : []),
     );
   }
   // A non-base point that contains a static markdown table gets the §6 promote door
@@ -20388,7 +20467,9 @@ function tokenLeftOfCaret(text, caret, scanRe, validRe) {
   return validRe.test(token) ? { token, start: i } : null;
 }
 function mathFragmentAt(body, caret) {
-  const t = tokenLeftOfCaret(body, caret, /\w/, /^[A-Za-z_]\w*$/);
+  // Dots consume so a dotted variable fragment (orc.hp) completes as ONE token; the
+  // validator still requires an identifier start, so `3.5` never opens a menu.
+  const t = tokenLeftOfCaret(body, caret, /[\w.]/, /^[A-Za-z_][\w.]*$/);
   return t ? { prefix: t.token, start: t.start } : null;   // callers read `prefix`
 }
 // One-line glosses for every math completion (shown in Guided under the signature hint), so a
@@ -21557,6 +21638,49 @@ function editQBase(node) {
   });
 }
 
+// Variable base: turn a base's rows into document variables (bases-direction §7b). The
+// dialog is the one config surface — an optional namespace name plus a live preview of
+// every addressable name (P4: nothing silently unreachable or mysteriously renamed).
+const VARBASE_PREVIEW_CAP = 12;
+function varBasePreviewHtml(node, name) {
+  const p = varBasePreview(node, name, collectVars());
+  if (!p.names.length) {
+    return '<span class="io-preview-bad">No rows project yet. The first column holds each row\'s name; every other column becomes Row.Column.</span>';
+  }
+  const shown = p.names.slice(0, VARBASE_PREVIEW_CAP);
+  let h = shown.map(n => {
+    const val = n.val === undefined ? '?' : formatVarValue(n.val);
+    return `<span class="todo-state${n.ok ? '' : ' todo-state-isheld'}" title="${escQ(n.kind)}">${escHtml(n.name)} = ${escHtml(String(val))}</span>`;
+  }).join(' ');
+  if (p.names.length > shown.length) h += ` <span class="io-preview-ok">and ${p.names.length - shown.length} more</span>`;
+  for (const w of p.warnings.slice(0, 6)) h += `<div class="io-preview-bad">${escHtml(w)}</div>`;
+  if (p.warnings.length > 6) h += `<div class="io-preview-bad">and ${p.warnings.length - 6} more warnings</div>`;
+  return h;
+}
+function openVarBaseDialog(node) {
+  if (!node || node.type !== 'base' || node.qbase) return;
+  const on = !!node.varbase;
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-dollar-sign', fb: '$' },
+    guideId: 'varbase',
+    title: on ? 'Variable names' : 'Use rows as variables',
+    submitLabel: on ? 'Save' : 'Turn on',
+    fields: [
+      { key: 'name', label: 'Base name (optional)', placeholder: 'e.g. Monsters',
+        value: node.varbase?.name || '',
+        preview: v => varBasePreviewHtml(node, v),
+        hint: 'Each row becomes variables you can use anywhere: {Orc.HP} in text, {= Orc.HP + 5} in math. A cell starting with = computes (it can reference other variables); a number is a number; anything else is text. Naming the base puts every row under that name, like Monsters.Orc.HP.' },
+    ],
+    onSubmit: v => {
+      pushUndo();
+      node.varbase = { name: varBaseName(v.name) || undefined };
+      markDirty();
+      refreshTable(node);
+      flashHint(on ? 'Variable names updated.' : 'Rows now declare variables. Use them like {Orc.HP} or {= Orc.HP + 5}.');
+    },
+  });
+}
+
 // Create a query base at a point, mirroring createBaseAt's non-destructive rule:
 // an empty point becomes the query base in place; a content-bearing point keeps
 // its text and the base lands as the next sibling.
@@ -21707,7 +21831,9 @@ const VAR_CHIPS = [
 
 function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefined, existing = null, onResult }) {
   const varMap  = collectVars();
-  const allDefs = Object.keys(_varActiveExprs).sort().map(nm => ({
+  // Dotted names (variable-base projections) are excluded: a card would seed a name that
+  // can never pass VAR_NAME_RE validation here — those are edited on their base instead.
+  const allDefs = Object.keys(_varActiveExprs).filter(nm => !nm.includes('.')).sort().map(nm => ({
     name: nm, expr: _varActiveExprs[nm], val: varMap[nm],
   }));
   let mode = kind === 'pick' ? 'pick' : 'formula'; // value type: formula | random pick
@@ -22281,7 +22407,7 @@ function bodyCompletion(inner, nodeId, braceStart) {
   const vv = bodyVocab(nodeId, braceStart);
   if (/^\s*=/.test(inner)) {                                          // math: {= …} (leads tolerate leading space — the sniffers .trim(), so '{ query:' promotes; completion must agree)
     const frag = mathFragmentAt(inner, inner.length);
-    return frag ? { prefix: frag.prefix, fragStart: frag.start, consume: /\w/, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) }
+    return frag ? { prefix: frag.prefix, fragStart: frag.start, consume: /[\w.]/, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) }
                 : { prefix: '', fragStart: inner.length, matches: [] };
   }
   // conditional: {cond: then | else} — the condition (before the top-level `:`) is an evalMath
@@ -22291,7 +22417,7 @@ function bodyCompletion(inner, nodeId, braceStart) {
   // partial condition already reads as a comparison (a bare word is still an ordinary rule/var ref).
   if (splitTopLevel(inner, ':').length === 1 && /==|!=|<|>/.test(inner)) {   // condParts' own comparison sniff: a lone '!' or '=' is prose, not a conditional
     const frag = mathFragmentAt(inner, inner.length);
-    if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, consume: /\w/, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) };
+    if (frag && frag.prefix) return { prefix: frag.prefix, fragStart: frag.start, consume: /[\w.]/, matches: mathCompletions(frag.prefix, vv.vars ??= completionScopeVars(nodeId)) };
   }
   let m;
   if ((m = /^\s*(query|roll|count)\s*:/i.exec(inner))) {              // search: {query|roll|count: …}
@@ -22349,8 +22475,10 @@ function checkBraceTrigger(content, nodeId) {
     positionCaretMenu(braceMenu, content, Math.min(fragStart, pos - 1));
     return;
   }
-  // Bare identifier prefix (or empty) only — not dice or alternation (bodies handled above)
-  if (inner !== '' && !/^[a-z_]\w*$/i.test(inner)) { hideBraceMenu(); return; }
+  // Bare identifier prefix (or empty) only — not dice or alternation (bodies handled above).
+  // Dots admitted so a dotted variable ({Orc.HP}, a variable-base projection) keeps its
+  // completion menu alive past the `.`; a garbage dotted prefix just matches no candidates.
+  if (inner !== '' && !/^[a-z_][\w.]*$/i.test(inner)) { hideBraceMenu(); return; }
   const prefix = inner.toLowerCase();
   // Forms first (fixed, always-present discovery), then this doc's names.
   const matches = [...filterBraceForms(prefix), ...filterBraceCandidates(collectCallables(), prefix)];
@@ -26557,7 +26685,14 @@ function updateVarPanelContent() {
   for (const nm of names) {
     const row = document.createElement('div');
     row.className = 'vp-row';
-    const nameEl = document.createElement('span'); nameEl.className = 'vp-name'; nameEl.textContent = nm;
+    const nameEl = document.createElement('span'); nameEl.className = 'vp-name';
+    // A dotted name (a variable-base projection) renders its prefix muted so the field
+    // reads at a glance; dotted names cluster together in the sorted flat list.
+    const lastDot = nm.lastIndexOf('.');
+    if (lastDot > 0) {
+      const pre = document.createElement('span'); pre.className = 'vp-prefix'; pre.textContent = nm.slice(0, lastDot + 1);
+      nameEl.appendChild(pre); nameEl.appendChild(document.createTextNode(nm.slice(lastDot + 1)));
+    } else nameEl.textContent = nm;
     const eqEl   = document.createElement('span'); eqEl.className   = 'vp-eq';   eqEl.textContent = '=';
     row.appendChild(nameEl); row.appendChild(eqEl);
     if (_varCycles.has(nm)) {
@@ -28974,6 +29109,16 @@ const GUIDE = [
       { syn:'{= 2 * area}',desc:'use a number in a calculation' },
       { syn:'STR: 14 then {= STR + 2}', desc:'a property is a variable (inherits from ancestors)' },
       { syn:'{r := 1d20} {r == 20: Critical!}', desc:'capture one roll, then test it' },
+    ] },
+  { id:'varbase', cat:'compute', related:['variables','math','tables'],
+    title:'Variable bases',
+    body:"Keep a stat block, a price list or any table of named things in a base, and read every cell as a variable. Open the base's bullet menu and choose Use rows as variables: each row then declares one variable per column, named Row.Column. A base with a Name column holding Orc and an HP column holding 12 gives you `{Orc.HP}` in text and `{= Orc.HP + 5}` in math, updating live as you edit the cells.\n\nCells follow one simple rule. A cell starting with `=` computes, and it can reference other variables, including other cells (`= Orc.AC - 1` in Goblin's row tracks Orc's). A plain number is a number. Anything else is text, kept exactly as written. The first column works too: `{Orc.Name}` is the display name as typed, so `{Orc.Name.s}` says Orcs.\n\nGive the base a name in the dialog to file every row under it, like `{Monsters.Orc.HP}`, which keeps two bases with an Orc row apart. The dialog previews every name the base will declare and warns about anything it has to skip. A `$` badge on the base shows the feature is on; click it to change the name, or use the bullet menu to turn it off.",
+    examples:[
+      { syn:'{Orc.HP}',            desc:'read a cell anywhere' },
+      { syn:'{= Orc.HP + 5}',      desc:'use it in a calculation' },
+      { syn:'= Orc.AC - 1',        desc:'a cell that tracks another cell' },
+      { syn:'{Orc.Name.s}',        desc:'the display name, pluralized' },
+      { syn:'{Monsters.Orc.HP}',   desc:'a named base files rows under it' },
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
