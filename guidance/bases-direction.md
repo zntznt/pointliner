@@ -26,9 +26,9 @@ Read alongside: `ux-discipline.md` (the binding UX standard — vocabulary + pri
 
 ## 2. A base and its views — the object/view split
 
-A **base** is a structured data object that lives in its own dedicated point. The **table view** is the base's default (and currently only) view — the interactive grid you see and edit. A **static markdown table** written inline in any point is a separate, independent thing: the portable, read-only rendered form of pipe-table markdown, not a view of a base.
+A **base** is a structured data object that lives in its own dedicated point. The **table view** is the base's default view — the interactive grid you see and edit — and since BV-1…3 (2026-07) it is one of four: **Table, Board, Cards, Calendar**. A **static markdown table** written inline in any point is a separate, independent thing: the portable, read-only rendered form of pipe-table markdown, not a view of a base.
 
-This naming matters: "table" is a display form (and a markdown primitive); "base" is the data object. When future views arrive (cards, board, list), "table view" becomes one named view of a base rather than the thing itself — the naming holds.
+This naming matters: "table" is a display form (and a markdown primitive); "base" is the data object. The views proved the split: "table view" is one named view of a base rather than the thing itself — the naming held.
 
 | | **Table** (static) | **Base** (dynamic) |
 |---|---|---|
@@ -256,7 +256,10 @@ An optional base name namespaces every projection (`monsters.orc.hp` — the pre
   records, re-bump the vars generation past the per-cell promotion (the brace classification
   reads `collectVars`, which caches `varBaseDefsMemo` from the pre-promotion text — without the
   re-bump a projecting base serves the stale projection until the next edit), then re-run the
-  recipe; it returns whether sibling cells are due a repaint. `isVarBase(node)` is the single
+  recipe; it returns WHICH repaint is due — `'full'` after a recipe recompute, `'tokens'` on a
+  projecting varbase with no recipe (round 4, measured: only cells holding pill tokens can
+  change from a sibling value edit, and patching all N×C cells cost ~870 ms at 5k rows —
+  `mtPatchCells`' token scope makes the blur O(pills)). `isVarBase(node)` is the single
   "projecting variable base" predicate (was seven inline twins). The markdown-edit path still
   promotes typed `{…}` per cell before the epilogue (mirroring the load path).
 - **Model reads split by intent (round 2, 2026-07-16):** paint paths (the widget build, `mtPatchCells`,
@@ -279,6 +282,25 @@ An optional base name namespaces every projection (`monsters.orc.hp` — the pre
   for), and user-facing copy says "table"/"base", never "grid" (§8).
 - **Deferred (reopen this doc to build):** the `var:` search operator over projections,
   projected-name shadow markers (no pill to mark).
+
+### 7c. The two L-size structural items — considered, decided, recorded (round 4, 2026-07-16)
+
+- **In-widget row virtualization: NO for now.** Measured (`guidance/performance.md` §Bases): a
+  base is comfortable to a few hundred rows and usable to ~1k; widget build is linear in cells
+  (~230 ms at 5k rows on slow hardware). The existing **rows cap** (BC: All/5/10/20) is the
+  mechanism — a capped base paints like a 20-row one in the outline — and virtualizing rows
+  *inside* a `<table>` (sticky header, focus/selection continuity, drag targets across a
+  virtual window) is high-complexity for a case the cap already covers. **Revisit trigger:** a
+  real workflow needs a >1k-row base fully expanded (zoomed) at typing speed.
+- **`node.base = {}` field consolidation: NO for now.** Today a base rides seven parallel node
+  fields (`colW`, `colRole`, `view`, `baseRows`, `qbase`, `varbase`, plus the shared
+  `collapsed`) with seven OPML attrs, each hand-wired through clone/serialize/column ops. A
+  single `node.base` object would give one-stop clone + serialize, but does not remove the real
+  per-field work (the index-aligned arrays still need every column-op remap), costs a load-time
+  migration plus churn across a stable, heavily test-pinned area, and the field inventory has
+  stopped growing (the views/roles/qbase/varbase build-out is complete per
+  `generative-status.md`). **Revisit trigger:** the next time a NEW per-base field must be
+  added — do the consolidation then, when a change is already touching every wiring site.
 
 ---
 

@@ -8551,16 +8551,24 @@ function mtCommitEpilogue(node) {
   pruneArtifacts(node);
   markDirty();
   const recomputed = mtRecompute(node);
-  return recomputed || isVarBase(node);
+  // 'full' — a recipe recomputed, target cells changed; 'tokens' — a projecting varbase
+  // whose values feed in-base pill cells only; false — nothing to repaint.
+  return recomputed ? 'full' : (isVarBase(node) ? 'tokens' : false);
 }
 
-function mtPatchCells(node, exceptCell) {
+function mtPatchCells(node, exceptCell, onlyTokenCells = false) {
   const host = mtHost(node.id); if (!host) return;
   const m = mtModelRead(node);
   host.querySelectorAll('.mt-cell').forEach(cell => {
     if (cell === exceptCell) return;
     if (cell === document.activeElement && !cell.classList.contains('mt-computed')) return;
-    cell.innerHTML = mtCellHtml(node, m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '', +cell.dataset.c);
+    const raw = m.rows[+cell.dataset.r]?.[+cell.dataset.c] || '';
+    // Token scope (round 4, measured): on a projecting varbase with NO recipe, the only
+    // sibling cells a value edit can change are the ones holding pill tokens (an in-base
+    // {= sum(...)} total); a plain cell's paint depends on its own string alone. Patching
+    // all N×C cells cost ~870ms at 5k rows — token cells only is O(pills).
+    if (onlyTokenCells && !raw.includes('[[')) return;
+    cell.innerHTML = mtCellHtml(node, raw, +cell.dataset.c);
   });
 }
 
@@ -9715,7 +9723,8 @@ function buildTableWidget(node, readOnly) {
     // cells in place when it says so — rebuilding the widget here would steal focus
     // from the next-clicked cell (mtPatchCells skips the active element, so
     // cell-to-cell nav keeps focus). Never any of this in the per-keystroke handler.
-    if (mtCommitEpilogue(node)) mtPatchCells(node, cell);
+    const repaint = mtCommitEpilogue(node);
+    if (repaint) mtPatchCells(node, cell, repaint === 'tokens');
     // B1: and referencing points ELSEWHERE repaint via a deferred, focus-aware render —
     // only when the value actually changed on a projecting base.
     if (raw !== enteredWith && isVarBase(node)) scheduleVarBaseRender(host);
@@ -15975,8 +15984,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   bpopReturnFocus = opts.keyboard ? nodeId : null;
 
   // A base is a special structured object: no type switcher (it can't be turned into
-  // another block type), and its menu leads with the base copy ops (mirroring the
-  // header ⋯ menu) before the shared node actions.
+  // another block type), and its menu leads with the base ops before the shared
+  // node actions.
   const isBase = node.type === 'base';
 
   if (!isBase) {
@@ -16108,7 +16117,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
         } },
     );
   } else if (isBase) {
-    // Base copy ops lead the menu (mirroring the header ⋯ menu), before the shared actions.
+    // Base copy ops lead the menu, before the shared actions.
     actions.unshift(
       { sec:'Base', icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as Markdown',
         fn: () => {

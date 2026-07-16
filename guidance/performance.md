@@ -90,6 +90,82 @@ touch lower in practice — the payload also carries sidecars + `focusedId` etc.
 
 ---
 
+## Bases (measured 2026-07-16 · `main` @ post-#792 · Linux container, headless Chromium)
+
+Bases are the one surface the outline's row virtualization does NOT cover: a base is a
+single outline row whose widget holds ALL its cell DOM. Measured through the live code
+paths (real `input` events in a cell, the real focusout commit), 4 columns per row.
+**Hardware caveat:** this section was measured on a slower container CPU than the Apple
+Silicon numbers above — compare within this table, not across sections.
+
+| rows | widget build | full render (doc w/ base) | cell keystroke (med) | focusout commit | focusout, projecting varbase |
+|-----:|-------------:|--------------------------:|---------------------:|----------------:|------------------------------:|
+| 100  | ~10 ms  | ~45 ms   | 0.3 ms | ~1 ms  | ~5 ms |
+| 500  | ~25 ms  | ~150 ms  | ~1 ms  | ~1 ms  | ~18 ms |
+| 1k   | ~45 ms  | ~240 ms  | ~1.5 ms | ~3 ms | ~28 ms |
+| 5k   | ~230 ms | ~1.6 s   | ~7–20 ms | ~12 ms | ~150 ms |
+
+- **The envelope: a base is comfortable to a few hundred rows, usable to ~1k.** Widget
+  build is linear in cells; typing stays flat (the per-keystroke session parse reuse) until
+  the whole-table serialize itself grows (~5k rows).
+- **The lever is the rows cap, not virtualization.** The BC rows cap (All/5/10/20) clips
+  the inline DOM; a capped 5k-row base paints like a 20-row one in the outline. In-widget
+  row virtualization was CONSIDERED AND REJECTED for now (bases-direction §7c): sticky
+  header/focus/selection across a virtual window inside a `<table>` is high-complexity for
+  a case the cap already handles. Revisit trigger: a real workflow needs a >1k-row base
+  fully expanded (zoomed) at typing speed.
+- **The varbase focusout was the real hot spot — fixed in the same pass.** The B1 sibling
+  repaint patched ALL N×C cells on every cell blur of a projecting base (~870 ms at 5k
+  rows). `mtPatchCells` is now token-scoped there (only cells holding pill tokens can
+  change from a sibling edit): ~5 ms at 100 rows, ~150 ms at 5k (the residue is the
+  commit epilogue's prune + recompute over the large text, plus the cell scan).
+- **Query bases are bounded by their cap** (`QBASE_ROW_CAP` 100): the projected model over
+  5k matching points computes in ~8 ms cold and is generation-memoized (0 ms warm).
+- **Varbase projection cost rides the vars generation:** `collectVars` with a 5k-row
+  projection is ~50–80 ms per cold read — lazy (only on the next read after an edit), but
+  a reason big reference tables belong capped, not sprawling.
+
+<details>
+<summary>Bases harness (browser console, throwaway tab — same rules as the main harness)</summary>
+
+```js
+(() => {
+  const ms = t0 => +(performance.now() - t0).toFixed(2);
+  const mkBase = (rows, cols = 4, varbase = false) => {
+    const header = ['Name', ...Array.from({ length: cols - 1 }, (_, i) => 'C' + (i + 1))];
+    const lines = ['| ' + header.join(' | ') + ' |', '| ' + header.map(() => '---').join(' | ') + ' |'];
+    for (let r = 0; r < rows; r++) lines.push('| Row' + r + ' | ' + Array.from({ length: cols - 1 }, (_, i) => (r * 7 + i) % 100).join(' | ') + ' |');
+    const n = mkNode(lines.join('\n')); n.type = 'base';
+    if (varbase) n.varbase = { name: 'Data' };
+    return n;
+  };
+  const out = [];
+  for (const N of [100, 500, 1000, 5000]) for (const vb of [false, true]) {
+    const base = mkBase(N, 4, vb);
+    root = mkRoot(); root.children = [base, mkNode(vb ? 'ref {= sum(Data.C1)}' : 'plain')];
+    buildIndex(root, null); resetDocCaches(); if (vb) promoteLoadedShorthand(root); focusedId = null;
+    let t = performance.now(); render(); const rnd = ms(t);
+    t = performance.now(); buildTableWidget(base, false); const bw = ms(t);
+    markDirty(); t = performance.now(); collectVars(); const cv = ms(t);
+    const cell = document.querySelector(`.md-table-host[data-id="${base.id}"] td[data-r="1"][data-c="1"]`);
+    cell.focus(); cell.dataset.enterVal = cell.textContent;
+    const times = [];
+    for (let k = 0; k < 20; k++) { cell.textContent = '4' + 'x'.repeat(k);
+      const t0 = performance.now();
+      cell.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'x' }));
+      times.push(performance.now() - t0); }
+    times.sort((a, b) => a - b);
+    const t1 = performance.now(); cell.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); const foc = ms(t1);
+    out.push({ rows: N, varbase: vb, render: rnd, widgetBuild: bw, collectVars: cv, keyMed: +times[10].toFixed(2), focusout: foc });
+  }
+  console.table(out);
+})();
+```
+
+</details>
+
+---
+
 ## The three ceilings, ranked by what a user hits first
 
 1. **Storage wall (~17k nodes).** Not speed — `localStorage` ~5 MB. Handled gracefully

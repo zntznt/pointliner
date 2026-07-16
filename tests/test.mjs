@@ -12214,8 +12214,11 @@ test('bases round 1 — B1/B2/B3 wiring (source pins)', () => {
   const epi = fnBody(_src, 'mtCommitEpilogue');
   assert.ok(/pruneArtifacts\(node\);\s*\n\s*markDirty\(\);\s*\n\s*const recomputed = mtRecompute\(node\)/.test(epi),
     'the epilogue prunes, re-bumps the generation, then recomputes — in that order');
-  assert.ok(/recomputed \|\| isVarBase\(node\)/.test(epi), 'in-base sibling repaint covers projecting varbases');
-  assert.ok(/if \(mtCommitEpilogue\(node\)\) mtPatchCells\(node, cell\)/.test(btw), 'the cell focusout runs the epilogue and patches in place');
+  assert.ok(/recomputed \? 'full' : \(isVarBase\(node\) \? 'tokens' : false\)/.test(epi),
+    'the epilogue names the repaint: full on recompute, token cells on a projecting varbase');
+  assert.ok(/if \(repaint\) mtPatchCells\(node, cell, repaint === 'tokens'\)/.test(btw), 'the cell focusout runs the epilogue and patches in place');
+  // ...and the token scope skips pill-less cells (round 4, the measured 870ms-at-5k fix)
+  assert.ok(/onlyTokenCells && !raw\.includes\('\[\['\)/.test(fnBody(_src, 'mtPatchCells')), 'token scope patches only pill cells');
   // B1b: cross-outline refs repaint via the deferred, focus-aware render — only on a real change
   assert.ok(/raw !== enteredWith && isVarBase\(node\)\) scheduleVarBaseRender\(host\)/.test(btw), 'focusout schedules the outline repaint');
   const svr = fnBody(_src, 'scheduleVarBaseRender');

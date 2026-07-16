@@ -601,7 +601,9 @@ live editor's `exitEdit` via `_pendingVarBaseRender`); the markdown-edit path of
 base full-`render()`s. Both base commit chokepoints (cell focusout + the exitEdit base branch)
 share ONE tail — `mtCommitEpilogue(node)`: prune orphaned pill records, re-bump the generation
 past the per-cell promotion (the classification pass caches `varBaseDefsMemo` from
-pre-promotion text), re-run the recipe. `isVarBase(node)` is the one "projecting variable
+pre-promotion text), re-run the recipe — returning WHICH repaint is due (`'full'` after a
+recompute; `'tokens'` on a projecting varbase, where `mtPatchCells` patches only pill-token
+cells — the measured round-4 fix, ~870ms → O(pills) at 5k rows). `isVarBase(node)` is the one "projecting variable
 base" predicate. **Base model reads split by intent (round 2):** paint paths (widget build,
 `mtPatchCells`, cell focusin) read `mtModelRead(node)` — a ver-guarded + text-checked per-node
 parse memo whose model is SHARED and treated as immutable — while every path that mutates rows
@@ -961,8 +963,10 @@ The product direction is now set. Read these before proposing or building:
   TiddlyWiki / Decker, each mapped to a code seam + a P5 verdict). Candidate material for the
   roadmap's interleaving clause — **not a commitment**; companion to `outliner-frontier-report.md`.
 - `guidance/performance.md` — **measured performance baseline** (per-keystroke / render / scroll /
-  search / autosave / undo across 1k–50k nodes, the three ceilings, why virtualization + lazy
-  caches hold). Comfortable to ~10k; the hard limit is **storage (~17k via localStorage), not lag**.
+  search / autosave / undo across 1k–50k nodes, plus the **bases sweep** — a base's widget is NOT
+  row-virtualized, so its envelope is a few hundred rows comfortable / ~1k usable, with the rows
+  cap as the lever — the three ceilings, why virtualization + lazy caches hold). Comfortable to
+  ~10k; the hard limit is **storage (~17k via localStorage), not lag**.
   Dated + commit-tagged with a re-run harness embedded — re-measure and update before claiming a perf
   win/regression, and fire the **real `input`-event keystroke path on a fully-expanded tree** (a bare
   `render()` call lies).
@@ -1019,8 +1023,8 @@ scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
   clone can leave `main` pointing at an old snapshot, and you won't notice: your branch will pass
   its own outdated tests. Sanity-check you're current — the test count and recently-merged
   files/dirs (e.g. `guidance/`, the latest UXP entries) should match the latest work. As of the
-  last refresh of this doc `node --test tests/test.mjs` reported **659 tests, all passing**; treat a
-  *lower* count than that as a likely stale base and **STOP** to investigate. (The number only grows,
+  last refresh of this doc (2026-07-16) `node --test tests/test.mjs` reported **1303 tests, all
+  passing**; treat a *lower* count than that as a likely stale base and **STOP** to investigate. (The number only grows,
   so it drifts upward over time — it's a floor, not an exact match. Trust the runner's reported total,
   not a `grep -c 'test('`, which over-counts.)
 - **Parallel review fleets file GitHub Issues, never tree writes.** When several agents review/evaluate
