@@ -15163,3 +15163,30 @@ test('#813: lossy exports omit app-maintained created/edited timestamps', () => 
   assert.ok(md.includes('cost: 5'), 'user props still export');
   assert.ok(!txt.includes('created:') && txt.includes('cost: 5'), 'plain text too');
 });
+
+// ─── test-user review fix batch 4 (#814/#815/#816/#817) ───────────────────────
+const _fix4 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#814 wiring: Tab/Shift+Tab/Alt-move preserve the caret offset', () => {
+  assert.ok(_fix4.includes('function caretOffsetIfEditing'), 'capture helper missing');
+  for (const fn of ['indentNode', 'outdentNode', 'moveNode']) {
+    const body = _fix4.slice(_fix4.indexOf('function ' + fn));
+    const seg = body.slice(0, body.indexOf('\n}'));
+    assert.ok(seg.includes('caretOffsetIfEditing(id)'), fn + ' must capture the caret');
+    assert.ok(seg.includes('focusNodeAtOffset(id, off)'), fn + ' must restore the caret');
+  }
+});
+test('#815 wiring: downward arrow entry lands on the first line', () => {
+  const body = _fix4.slice(_fix4.indexOf('function navigateToNext'));
+  const seg = body.slice(0, body.indexOf('\nfunction ', 10));
+  assert.ok(seg.includes('r.collapse(true)'), 'navigateToNext must collapse to start');
+  const prev = _fix4.slice(_fix4.indexOf('function navigateToPrev'));
+  assert.ok(prev.slice(0, prev.indexOf('\nfunction ', 10)).includes('collapse(false)'), 'navigateToPrev keeps end-landing');
+});
+test('#817 wiring: keyboard paste targets the row cursor before the last-row fallback', () => {
+  assert.match(_fix4, /el\?\.dataset\?\.id \?\? selFocusId \?\? selAnchorId \?\?/, 'paste must consult selFocusId/selAnchorId');
+});
+test('#816 wiring: zoom focuses the title; stranded-focus Esc zooms out', () => {
+  assert.match(_fix4, /function zoomInto[\s\S]{0,800}focusNode\(vp\.children\[0\]\.id\)/, 'zoomInto must focus the first child (Esc there zooms out)');
+  assert.match(_fix4, /function zoomInto[\s\S]{0,900}querySelector\('\.zoom-title'\)\?\.focus\(\)/, 'childless fallback: the title');
+  assert.match(_fix4, /focusedId && activeContentId == null && document\.activeElement === document\.body\) \{ e\.preventDefault\(\); zoomOut\(\); \}/, 'global Esc fallback missing');
+});

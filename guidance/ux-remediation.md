@@ -2748,6 +2748,28 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
 - **Fix:** both exporters filter `TIMESTAMP_KEYS` from the props continuation line; user props
   still export; OPML (the storage format) keeps the timestamps. Pinned end-to-end.
 
+### UXP-207 ✓ Tab/Shift+Tab/Alt-move teleported the caret to end-of-line (#814) 🟡 — **RESOLVED**
+- **Fix:** `caretOffsetIfEditing(id)` captures the edit-buffer offset before the structural op;
+  `indentNode`/`outdentNode`/`moveNode` restore via `focusNodeAtOffset` (the Enter-split idiom —
+  the text is unchanged, so unfolded coordinates round-trip). Headless-verified: offset 8 stays 8
+  across Tab, Shift+Tab, and Alt+move. The power-user persona's #1 switching blocker.
+
+### UXP-208 ✓ Downward arrow entry landed at end-of-line; interior lines unreachable (#815) 🟡 — **RESOLVED**
+- **Fix:** `navigateToNext` collapses to START (first line); `navigateToPrev` keeps its end-landing
+  (that IS the last line — the symmetric twin). A multi-line point's interior lines are now
+  reachable by vertical navigation from both directions. Column preservation stays deferred.
+
+### UXP-209 ✓ Keyboard paste ignored the row cursor (#817) 🟡 — **RESOLVED**
+- **Fix:** the Ctrl+V row-mode handler targets `selFocusId ?? selAnchorId` before the last-row
+  fallback (focus sits on `<body>` in row-cursor mode, so the old activeElement path always fell
+  through to the document end).
+
+### UXP-210 ✓ Ctrl+Enter zoom was a keyboard dead-end (#816) 🟡 — **RESOLVED**
+- **Fix:** `zoomInto` lands focus IN the zoomed view — the first child point (whose Esc handler
+  already implements the one-rung zoom-out of §3/#406), falling back to the editable title on a
+  childless point — plus a global Esc→`zoomOut()` when zoomed with focus stranded on `<body>`
+  (post-dialog). Headless-verified: keyboard-only zoom now round-trips, one rung per Esc.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
