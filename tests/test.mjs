@@ -2101,6 +2101,184 @@ test('renderPosVarMaps — intra-point positional: a ref reads the nearest decla
   }
 });
 
+// ── variable bases: rows project as dotted document variables ────────────────
+const mkVarBase = (text, name) => {
+  const n = c.mkNode(text);
+  n.type = 'base';
+  n.varbase = name !== undefined ? { name } : {};
+  return n;
+};
+const VB_TEXT = '| Name | HP | AC |\n| --- | --- | --- |\n| Orc | 12 | = 10+2 |\n| Goblin | 2d6 | = orc.ac - 1 |';
+
+test('varBaseName — sanitize/skip table', () => {
+  assert.equal(c.varBaseName('Hill Giant'), 'hill_giant');
+  assert.equal(c.varBaseName('HP (max)'), 'hp_max');
+  assert.equal(c.varBaseName('  Orc  '), 'orc');
+  assert.equal(c.varBaseName('already_fine'), 'already_fine');
+  assert.equal(c.varBaseName('3rd Level'), null, 'digit-leading after sanitize → skipped');
+  assert.equal(c.varBaseName(''), null);
+  assert.equal(c.varBaseName('***'), null, 'nothing identifier-like survives');
+});
+
+test('varBaseDefs — projection shape, classification, col-0 under its own header', () => {
+  const defs = c.varBaseDefs(mkVarBase(VB_TEXT));
+  const by = Object.fromEntries(defs.map(d => [d.name, d]));
+  // col 0 projects under its own header: the display string, verbatim
+  assert.equal(by['orc.name'].pick, 'Orc');
+  assert.equal(by['goblin.name'].pick, 'Goblin');
+  // bare number → formula def of the literal
+  assert.equal(by['orc.hp'].expr, '12');
+  assert.equal(by['orc.hp'].pick, undefined);
+  // leading = → formula (chains allowed)
+  assert.equal(by['orc.ac'].expr, '10+2');
+  assert.equal(by['goblin.ac'].expr, 'orc.ac - 1');
+  // no = and not a number → TEXT verbatim (dice-looking cells defer to text in v1)
+  assert.equal(by['goblin.hp'].pick, '2d6');
+  // header row itself never projects
+  assert.ok(!('name.name' in by) && !('hp.hp' in by));
+});
+
+test('varBaseDefs — prefix, skips, dup last-wins, guards', () => {
+  // opt-in prefix namespaces every name
+  const pre = c.varBaseDefs(mkVarBase(VB_TEXT, 'Monsters'));
+  assert.ok(pre.some(d => d.name === 'monsters.orc.hp'));
+  assert.ok(!pre.some(d => d.name === 'orc.hp'), 'prefix replaces the bare form');
+  // display-name row like "Hill Giant" keeps its display string as the .name value
+  const hg = c.varBaseDefs(mkVarBase('| Name | HP |\n| --- | --- |\n| Hill Giant | 30 |'));
+  assert.equal(hg.find(d => d.name === 'hill_giant.name').pick, 'Hill Giant');
+  // skip rules: empty cell, #ERR cell, token cell, unsanitizable row name
+  const sk = c.varBaseDefs(mkVarBase('| Name | A | B | C |\n| --- | --- | --- | --- |\n| Orc |  | #ERR (x) | [[dice:k1]] |\n| *** | 1 | 2 | 3 |'));
+  const names = sk.map(d => d.name);
+  assert.deepEqual(host(names), ['orc.name'], 'empty/#ERR/token cells and the unaddressable row all skip');
+  // duplicate row names: last wins
+  const dup = c.varBaseDefs(mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 1 |\n| Orc | 2 |'));
+  assert.equal(dup.filter(d => d.name === 'orc.hp').length, 2, 'both emitted; the resolver last-wins');
+  // guards: a plain base, a query base, and a non-base project nothing
+  const plain = c.mkNode(VB_TEXT); plain.type = 'base';
+  assert.deepEqual(host(c.varBaseDefs(plain)), []);
+  const qb = mkVarBase(VB_TEXT); qb.qbase = { expr: 'x', cols: [] };
+  assert.deepEqual(host(c.varBaseDefs(qb)), []);
+  assert.deepEqual(host(c.varBaseDefs(c.mkNode('| a | b |'))), []);
+});
+
+test('varBaseDefs — the footer total row never projects', () => {
+  const n = mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 12 |\n|  | 12 |\n#+TBLFM: @>$2=vsum(@2$2..@-1$2)');
+  const names = c.varBaseDefs(n).map(d => d.name);
+  assert.deepEqual(host(names), ['orc.name', 'orc.hp'], 'the aggregate footer row is excluded');
+});
+
+test('collectVars — a variable base resolves: numbers, formulas, chains, text (explicit root)', () => {
+  const root = c.mkRoot();
+  root.children.push(mkVarBase(VB_TEXT));
+  const vars = c.collectVars(root);
+  assert.equal(vars['orc.hp'], 12);
+  assert.equal(vars['orc.ac'], 12);                       // = 10+2
+  assert.equal(vars['goblin.ac'], 11);                    // chains through orc.ac
+  assert.equal(vars['orc.name'], 'Orc');                  // text stays a string
+  assert.equal(vars['goblin.hp'], '2d6');                 // dice-looking cell is text in v1
+});
+
+test('collectVars — a two-cell cycle is dropped, never hangs', () => {
+  const root = c.mkRoot();
+  root.children.push(mkVarBase('| Name | X |\n| --- | --- |\n| A | = b.x |\n| B | = a.x |'));
+  const vars = c.collectVars(root);
+  assert.ok(!('a.x' in vars) && !('b.x' in vars), 'both cycle members dropped');
+});
+
+test('collectVars — a later [[var:]] declaration cannot collide (dotted names are base-only), but base-vs-base last-wins holds', () => {
+  const root = c.mkRoot();
+  root.children.push(mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 1 |'));
+  root.children.push(mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 2 |'));
+  assert.equal(c.collectVars(root)['orc.hp'], 2, 'the later base wins the shared name');
+});
+
+test('varMapAt — a variable base is a positional declaration site (vm root pattern)', () => {
+  const root = c.mkRoot();
+  const before = c.mkNode('above');
+  const vb = mkVarBase(VB_TEXT);
+  const after = c.mkNode('below');
+  root.children.push(before, vb, after);
+  c._context.__posRoot = root;
+  vm.runInContext('root = __posRoot; resetDocCaches();', c._context);
+  try {
+    assert.equal(c.varMapAt(after)['orc.hp'], 12, 'a point below the base sees its projections');
+    assert.ok(!('orc.hp' in c.varMapAt(before)), 'a point above the base does not');
+  } finally {
+    vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('resolveBrace — dotted variable reads: 2-seg, modifiers, prefixed, precedence, escape hatch', () => {
+  const vars = { 'orc.hp': 12, 'orc.name': 'Orc', 'monsters.orc.hp': 12, 'monsters.orc.type': 'undead' };
+  const ctx = (rules = {}) => ({ rules, vars, depth: 0, stack: [] });
+  assert.equal(c.resolveBrace('orc.hp', ctx()), '12');
+  assert.equal(c.resolveBrace('Orc.Name.s', { rules: {}, vars: { 'orc.name': 'Orc' }, depth: 0, stack: [] }), 'Orcs', 'fieldModParts + dotted var + pluralize');
+  assert.equal(c.resolveBrace('monsters.orc.hp', ctx()), '12', 'the prefixed 3-seg read');
+  assert.equal(c.resolveBrace('monsters.orc.type.cap', ctx()), 'Undead', '3-seg + modifier tail');
+  // a dotted RULE beats the dotted var (rules win, matching bare-ident precedence)
+  assert.equal(c.resolveBrace('orc.hp', ctx(c.parseRules('orc.hp: 99').rules)), '99');
+  // an unresolvable long dotted body stays literal (the escape hatch — pins today's behavior)
+  assert.equal(c.resolveBrace('a.b.c', { rules: {}, vars: {}, depth: 0, stack: [] }), 'a.b.c');
+  // an unresolvable 2-seg body keeps its ? marker (fieldParts claims it, unchanged)
+  assert.equal(c.resolveBrace('no.pe', { rules: {}, vars: {}, depth: 0, stack: [] }), '{no.pe?}');
+  // bare {Orc} does NOT resolve from a varbase row (no bare projection — recorded decision)
+  assert.equal(c.resolveBrace('orc', { rules: {}, vars, depth: 0, stack: [] }), '{orc?}');
+});
+
+test('evalMath — dotted identifiers resolve; existing dot meanings untouched', () => {
+  const vars = { 'orc.hp': 12, 'monsters.orc.hp': 7, x: 2 };
+  assert.equal(c.evalMath('orc.hp + 5', vars), 17);
+  assert.equal(c.evalMath('monsters.orc.hp * 2', vars), 14);
+  assert.equal(c.evalMath('nope.nada', vars), null, 'unknown dotted name fails to null, as before');
+  assert.equal(c.evalMath('3.5 + 1', {}), 4.5, 'decimals untouched');
+  assert.equal(c.evalMath('.5 + .5', {}), 1, 'leading-dot decimals untouched');
+  assert.equal(c.evalMath('x.5', vars), null, 'ident-dot-digit stays an error, as before');
+  assert.equal(c.evalMath('orc.hp(3)', vars), null, 'a dotted name is never a function');
+});
+
+test('mathErrorReason — a dotted name reports as ONE identifier', () => {
+  assert.equal(c.mathErrorReason('orc.hp + 5', {}), 'bad ref', 'unknown dotted → bad ref (not two idents)');
+  assert.equal(c.mathErrorReason('orc.hp + 5', { 'orc.hp': 12 }), '', 'known dotted → no complaint');
+  assert.equal(c.mathErrorReason('orc.hp + 5', { 'orc.hp': 'text' }), 'non-numeric', 'string-valued dotted named correctly');
+});
+
+test('classify/promote lockstep — dotted vars style and promote as artifacts', () => {
+  const vars = { 'orc.hp': 12, 'monsters.orc.hp': 7 };
+  assert.equal(c.classifyBraceBody('orc.hp', {}, vars), 'artifact');
+  assert.equal(c.classifyBraceBody('monsters.orc.hp', {}, vars), 'artifact');
+  assert.equal(c.classifyBraceBody('monsters.orc.hp.cap', {}, vars), 'artifact');
+  assert.equal(c.classifyBraceBody('a.b.c', {}, {}), 'literal', 'unresolvable long dotted stays literal');
+  assert.equal(c.classifyBraceBody('file.name', {}, {}), 'literal', 'the A6 prose escape hatch is unchanged');
+});
+
+test('varBaseDefsMemo — one parse per generation, fresh after a bump', () => {
+  const root = c.mkRoot();
+  const vb = mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 12 |');
+  root.children.push(vb);
+  c._context.__posRoot = root;
+  vm.runInContext('root = __posRoot; resetDocCaches();', c._context);
+  try {
+    const a = c.varBaseDefsMemo(vb);
+    assert.ok(a === c.varBaseDefsMemo(vb), 'same generation → identical array (memo hit)');
+    vb.text = '| Name | HP |\n| --- | --- |\n| Orc | 99 |';
+    vm.runInContext('resetDocCaches();', c._context);
+    const b = c.varBaseDefsMemo(vb);
+    assert.ok(a !== b, 'a generation bump re-projects');
+    assert.equal(b.find(d => d.name === 'orc.hp').expr, '99');
+  } finally {
+    vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('toOpml/fromOpml — _varbase emit + parse sites exist (source pins; DOM parse is browser-verified)', () => {
+  assert.ok(/_varbase="\$\{ex\(JSON\.stringify\(n\.varbase\)\)\}"/.test(_src), 'toOpml emits _varbase');
+  assert.ok(/getAttribute\('_varbase'\)/.test(_src), 'fromOpml reads _varbase');
+  // and the emitted OPML actually carries it
+  const root = c.mkRoot();
+  root.children.push(mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 12 |', 'Monsters'));
+  assert.ok(c.toOpml(root).includes('_varbase='), 'a varbase node serializes its flag');
+});
+
 test('collectVars — a variable named "constructor" resolves, not crashes', () => {
   // VAR_NAME_RE accepts it, so it's reachable from the dialog. On plain-object maps
   // pass 1 threw (allKeysForName.constructor is the inherited Object function —

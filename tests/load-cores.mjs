@@ -167,6 +167,7 @@ export function loadCores() {
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'strCondVerdict',
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'pastTense', 'presentParticiple', 'fieldParts', 'fieldModParts',
+    'dottedVarParts', 'resolveDottedVar', 'varBaseName', 'varBaseDefs', 'varBaseDefsMemo', 'varMapAt',   // variable bases (dotted projections)
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'renderPosVarMaps',   // #767 positional per-pill var maps
