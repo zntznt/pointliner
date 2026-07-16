@@ -589,9 +589,16 @@ everything (`monsters.orc.hp`). The pure `varBaseDefs(node)` (memoized: `varBase
 self-invalidating per-node Map like `_varMapAtCache`) is consumed at exactly TWO gather hooks —
 `collectVars`'s walk and `collectNodeDecls` (covering both positional walks) — so a variable
 base is a declaration site at its document position. Cell rule (NOT `varDeclIsPick`): leading
-`=` → formula, bare number → number, else frozen TEXT verbatim (so a `2d6` cell is text; pick
-cells are a recorded deferral). Bare row names deliberately do NOT project (rules would silently
-shadow them). Full direction: `guidance/bases-direction.md` §7b; the recorded P5 note:
+`=` → formula, bare number → number, else frozen TEXT verbatim (so a plain-text `2d6` cell is
+text). **A cell that IS a single dice/grammar pill projects its FROZEN roll** (`total`/`result`
+via the pick channel) — the pill is the store, no rolls sidecar; a re-roll/edit on a projecting
+base goes through `repaintAfterRoll` (full `render()`, the `rerollPickVar` idiom) so every
+referencing point repaints; the base bullet menu's Pills section is the keyboard re-roll door.
+**Column totals**: `{= sum(base.col)}` (also `avg/count/min/max`) aggregates a NAMED base's
+column via `aggregateVarBaseColumn` over the vars map (`expandAggExpr(expr, node, vars?)` — the
+prop group admits dots; bare props keep the child-prop meaning; unmatched dotted calls stay
+literal → #ERR). Bare row names deliberately do NOT project (rules would silently shadow them).
+Full direction: `guidance/bases-direction.md` §7b; the recorded P5 note:
 `guidance/ux-discipline.md` §2.
 **Base cells promote typed `{…}` PER CELL, never through the whole serialized table.**
 `promoteCellShorthand(node, cellText)` is the cell-scoped promoteInlineShorthand (records to the
