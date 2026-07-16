@@ -324,6 +324,10 @@ A field read takes [modifiers](#shape-the-words-modifiers) too, chained after th
 One field, then any number of modifiers. (Two fields deep, like `{a.b.c}` where `b` and `c` are
 both fields, isn't a thing; you'll get the `{…?}` marker.)
 
+The same dotted read also reaches **variable bases**: mark a base so each row declares variables,
+and `{Orc.HP}` reads the HP cell of the Orc row, live (with a named base, `{Monsters.Orc.HP}`).
+See [variable bases](computing-numbers.md#variable-bases-a-table-of-variables).
+
 ---
 
 ## Roll tables
