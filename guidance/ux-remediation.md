@@ -2715,6 +2715,39 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
   non-numeric value (blank stays a deliberate unset; date-shaped values parse and never flag; dotted
   `base.col` totals are out of scope by construction). Pinned: comma/typo/blank/end-to-end verdict.
 
+### UXP-204 ✓ Every created link was a whole-body transclusion (#805) 🔴 — **RESOLVED**
+- **Problem:** the `[[` picker, Copy link, link-and-create, and linkify all emitted `[[#id|]]`, and
+  the render collapsed `[[#id]]` into the same form (`label ?? ''`) — so the moment a target
+  carried prose, every "link" embedded its entire rendered body (a one-line note measured 186px;
+  the PKM persona's single blocker), with no UI door to a plain title reference.
+- **Fix (better than the issue's suggested frozen labels — keeps rename propagation):** the pipe
+  now carries meaning. `[[#id]]` (no pipe) = a **live-title reference** — what every creation door
+  now emits (picker, Copy link, link-and-create, cross-doc forms); `[[#id|]]` (empty pipe, typed) =
+  the **explicit mirror/transclusion**; `[[#id|text]]` = a fixed caption. One-line render change
+  (pass `label` through instead of `?? ''` — `renderLinkPill` already handled `undefined` as
+  title). `linkifyMention` now preserves the mention as the label (`[[#id|Karl Friston]]`), so
+  one-click Link never rewrites prose. Copy reconciled in the guide entry, `guide/links-and-
+  references.md`, and CLAUDE.md. Headless-verified: picker link = one-line title reference
+  (28px, was 186px); typed `[[#id|]]` still transcludes. Existing mirrors in saved docs are
+  untouched (`[[#id|]]` semantics unchanged).
+
+### UXP-205 ✓ The oracle-play example shipped a dead meaning table (#810) 🔴 — **RESOLVED**
+- **Problem:** `{action} {subject}` referenced rules written as plain child bullets, which never
+  register (rules live on grammar records) — the flagship solo-play example promised "every {…}
+  pill is live" and wasn't, in both the embedded example and the guide demo OPML.
+- **Fix:** the meaning table is now two **live inline alternations** (`{hide | reveal | …}
+  {a secret | an ally | …}`) — plain-text authorable, promotes on load, click each for a word —
+  with a child note pointing at the two named-table patterns (@ Grammar rules; tag + roll on the
+  tag). Both copies fixed in the same change; the walkthrough MD already taught the correct
+  grammar-dialog pattern and is untouched. Pinned: no `{action} {subject}` in either copy.
+
+### UXP-206 ✓ Lossy exports stamped [created/edited] noise on every point (#813) 🟡 — **RESOLVED**
+- **Problem:** `toMarkdown`/`toPlainText` emitted the app-maintained timestamp props as
+  `[created: … · edited: …]` continuation lines — 4 of 7 review personas flagged it (session log,
+  manuscript, Zettelkasten, grocery list all polluted); no toggle existed.
+- **Fix:** both exporters filter `TIMESTAMP_KEYS` from the props continuation line; user props
+  still export; OPML (the storage format) keeps the timestamps. Pinned end-to-end.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the

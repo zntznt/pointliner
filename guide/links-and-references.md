@@ -14,8 +14,10 @@ sections or connect a task to its full context note.
 Type **`[[`** and pick the point to link to. Two things make these links low-maintenance:
 
 - **The link always shows the current title**, so renaming a point keeps every link to it correct.
-- **Leave the label empty** and the linked point's content appears *inline* wherever the link is
-  placed (a live transclusion, not just a reference).
+  The picker writes this form: `[[#id]]`, a title reference.
+- **Add an empty pipe** (`[[#id|]]`, typed) and the linked point's content appears *inline*
+  wherever the link is placed (a live transclusion, not just a reference). Embedding is an
+  explicit choice; picking from the `[[` menu never transcludes.
 
 A point is also findable under other names if you give it [aliases](tasks-and-organizing.md#nicknames-aliases),
 so the `[[` picker finds the right point whichever name you reach for.

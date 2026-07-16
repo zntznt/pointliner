@@ -671,9 +671,11 @@ the re-entrancy note above). Missing target → `.node-link-broken`. **Cross-doc
 workspace-wide index CF-1, navigation CF-2, the folder-spanning `[[` picker CF-3, cross-doc
 backlinks CF-4, "+ New note" CF-5; see `guidance/features.md`). Creation paths: typing `[[`
 opens the **link picker** (always on since
-UXP-4, rollout kill switch retired 2026-07-02; candidates via the pure `linkCandidates`, applied as the live-title form
-`[[#id|]]`; the trigger regex excludes `#` so a raw token is never intercepted), or
-"Copy link" → `[[#id|]]` + paste (the keyboard-first power path). Because live
+UXP-4, rollout kill switch retired 2026-07-02; candidates via the pure `linkCandidates`, applied as the live-TITLE form
+`[[#id]]` — no pipe; since #805/UXP-204 the pipe carries meaning: `[[#id]]` = title reference (every creation door's
+default), `[[#id|]]` = the explicit typed mirror/transclusion, `[[#id|text]]` = fixed caption — the trigger regex
+excludes `#` so a raw token is never intercepted), or
+"Copy link" → `[[#id]]` + paste (the keyboard-first power path). Because live
 titles are render-time values, `exitEdit` repaints on-screen backlink sources when
 a node's text changes, so a rename never leaves stale captions/mirrors visible.
 

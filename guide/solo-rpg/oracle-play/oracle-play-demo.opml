@@ -7,16 +7,15 @@
       <outline text="Generators" _id="orp00010">
         <outline text="Chaos factor (1 calm .. 5 chaos): {chaos := 3}" _id="orp00011"/>
         <outline text="Interrupt check (click to roll): {proceed | interrupted {= chaos}}" _id="orp00012"/>
-        <outline text="Meaning table (click for two words): {action} {subject}" _id="orp00013">
-          <outline text="action: hide | reveal | pursue | abandon | protect | betray" _id="orp00014"/>
-          <outline text="subject: a secret | an ally | a debt | a route | a rumor | a relic" _id="orp00015"/>
+        <outline text="Meaning table (click each for a word): {hide | reveal | pursue | abandon | protect | betray} {a secret | an ally | a debt | a route | a rumor | a relic}" _id="orp00013">
+          <outline text="Prefer a named table you can call from anywhere? Define rules with @ then Grammar, or tag points and roll on the tag (see the Campaign oracle example)." _id="orp00014"/>
         </outline>
         <outline text="Thread deck (click to pull one to feature): {shuffle: the torn letter | the missing sister | the merchant's debt}" _id="orp00016"/>
       </outline>
       <outline text="Scene: A yes with a catch" _id="orp00020">
         <outline text="? Will the merchant help me?  (likely, with a swing)" _id="orp00021"/>
         <outline text="-&gt; {Yes, and 3 | Yes 9 | Yes, but 3 | No, but 3 | No 3 | No, and 1}" _id="orp00022"/>
-        <outline text="If the answer needs a spark, pull two words: {action} {subject}" _id="orp00023"/>
+        <outline text="If the answer needs a spark, pull two words from the meaning table above." _id="orp00023"/>
         <outline text="=&gt; He will help, but only to settle a debt he owes someone worse. #thread/merchants-debt" _id="orp00024"/>
       </outline>
       <outline text="Between scenes" _id="orp00030">
