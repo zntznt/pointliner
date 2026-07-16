@@ -479,6 +479,9 @@ before anything visible.
 2. **The direction is approved, reframed.** Not "add Notion views" but §0b: a base view system in
    service of the generative layer, each view justified by composition with the engine.
 3. **Phase C write-through stays a line** (see §0b), revisited only on demonstrated need.
+   *(Superseded 2026-07-16, owner call: Phase C SHIPPED for plain-property columns — see
+   `bases-direction.md` §4 for the record and how the §0.4 footguns were answered. Query
+   boards/cards remain read-only; title/`=` columns remain read-only.)*
 4. **The catalogue is the possibility map; the build set is minimal and generative-first.**
 
 *(The original open framing of these four, kept for the record:)*

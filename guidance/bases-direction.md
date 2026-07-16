@@ -66,9 +66,19 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   "Show all N" / "Cap at 100" toggle (`qbase.showAll`, riding the `_qbase` JSON; the query editor
   preserves it) — and **row identity**: `qbaseModel` carries the matched node id per row (`qids`),
   each `<tr>` is stamped `data-nid`, and `refreshTable` restores focus to the SAME source row after
-  a rebuild (result order may shift, so it re-finds by id). This move leaves the saved-views
-  database layer (filter/sort predicates persisted as data operations, named view libraries)
-  BELOW the line; cell write-through to foreign points (Phase C) is next under the same owner call. Views + typed fields also remain deferred here until their own build
+  a rebuild (result order may shift, so it re-finds by id). **Phase C shipped 2026-07-16 (same owner
+  call):** a query base's plain-PROPERTY cells write through to the source point —
+  `qbaseFieldWritable` (a field that is not `title` and not a `=` formula) marks the cell
+  editable (`.mt-qcell`, an explaining `title`), focusin swaps the role chip for the raw value,
+  and blur resolves `tr.data-nid → nodeById → setProp` — never `node.text` (a point owns its own
+  text). The §0.4 footguns are answered head-on: every commit is ANNOUNCED (a flash naming the
+  field and the point, including when the edit makes the row leave the query — the membership
+  check against the recomputed `qids`), and undo-LOCAL (`pushUndo` per commit, one Ctrl/Cmd+Z
+  restores the foreign point). Enter/Shift+Enter/Tab mirror the authored-cell grammar (P1); the
+  repaint rides the deferred, focus-aware `scheduleVarBaseRender`. Query boards/cards stay
+  read-only (no status projection exists to drag, and views paint through the same read-only
+  branches). This move leaves ONLY the saved-views database layer (filter/sort predicates
+  persisted as data operations, named view libraries) BELOW the line. Views + typed fields also remain deferred here until their own build
   proposal is approved; the approved *direction* for them is `base-views-vision.md` §0b (views in
   service of the generative layer).
 

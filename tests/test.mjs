@@ -12321,6 +12321,39 @@ test('Phase B — queryTableRows uncapped; qbaseModel wiring (pins)', () => {
   assert.ok(/closest\('tr\[data-nid\]'\)/.test(rt) && /CSS\.escape\(focusNid\)/.test(rt), 'refreshTable restores focus by source id');
 });
 
+// ── QP-2 Phase C: write-through cells ────────────────────────────────────────
+test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pins)', () => {
+  // the shared rendered-column filter (roles, paint, and edit stay index-aligned)
+  const cols = [{ name: 'P', field: 'title' }, null, { field: '  ' }, { name: 'D', field: 'due' }, { name: 'X', field: '= a + 1' }];
+  const list = host(c.qbaseColList(cols));
+  assert.deepEqual(list.map(x => x.field), ['title', 'due', '= a + 1']);
+  // writable = a plain property key; title (a link) and '=' (computed) stay read-only
+  assert.equal(c.qbaseFieldWritable('due'), true);
+  assert.equal(c.qbaseFieldWritable(' Cost '), true);
+  assert.equal(c.qbaseFieldWritable('title'), false);
+  assert.equal(c.qbaseFieldWritable('= daysuntil(due)'), false);
+  assert.equal(c.qbaseFieldWritable(''), false);
+  assert.equal(c.qbaseFieldWritable(null), false);
+  // the shared filter is consumed at all three sites
+  assert.ok(/const colList = qbaseColList\(cols\)/.test(fnBody(_src, 'queryTableRows')), 'queryTableRows shares the filter');
+  assert.ok(/qbaseColList\(cols\)\.map/.test(fnBody(_src, 'qbaseColRoles')), 'qbaseColRoles shares the filter');
+  const btw = fnBody(_src, 'buildTableWidget');
+  assert.ok(/qbaseColList\(node\.qbase\.cols\)\.map\(x => x\.field\.trim\(\)\)/.test(btw), 'the paint shares the filter');
+  // paint: writable qbase cells are contenteditable and badged; others stay read-only
+  assert.ok(/qEdit = _qFields && qbaseFieldWritable\(_qFields\[c\]\)/.test(btw), 'only writable columns edit');
+  assert.ok(/mt-qcell/.test(btw) && /write to the matching point's/.test(btw), 'editable cells carry the class + explaining title');
+  // the wiring: raw swap on focus, source-prop write + undo + flash + membership check on blur
+  const w = fnBody(_src, 'mtWireQBaseEdit');
+  assert.ok(/mtModelRead\(node\)\.rows/.test(w), 'focusin swaps the chip for the raw value');
+  assert.ok(/pushUndo\(\);\s*\n\s*setProp\(src, field, raw\);\s*\n\s*markDirty\(\)/.test(w), 'blur writes the source prop with undo-locality');
+  assert.ok(/qids\.includes\(nid\)/.test(w) && /no longer matches this query/.test(w), 'a membership-breaking edit is announced, never silent');
+  assert.ok(/scheduleVarBaseRender\(host\)/.test(w), 'the repaint is deferred + focus-aware');
+  assert.ok(/qbaseFieldWritable\(field\)/.test(w), 'the commit re-checks writability');
+  assert.ok(/mtWireQBaseEdit\(host, node\)/.test(btw), 'wired before the readOnly return');
+  // P1 nav parity: Enter/Shift+Enter move by column, Tab by cell, inside the wiring
+  assert.ok(/e\.key !== 'Tab' && e\.key !== 'Enter'/.test(w) && /x\.dataset\.c === cell\.dataset\.c/.test(w), 'Enter/Tab mirror the authored-cell grammar');
+});
+
 test('round 3 — /variables door, cell-pill menu, base settings menu, copy (source pins)', () => {
   // the /variables command exists, is covered in the GUIDE, and opens the panel in place
   assert.ok(/id:'variables', icon:'\$'/.test(_src), 'BLOCK_CMDS carries /variables');

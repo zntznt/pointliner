@@ -918,9 +918,12 @@ so buildTableWidget renders it through its readOnly path (zero edit surface). Th
 above the grid is the one affordance (query + live count, click/Enter opens the editor);
 /querybase door; base bullet menu swaps in Edit query + frozen Copy as Markdown;
 mtRecompute + raw-markdown edit guarded off; title links join the Tab order in-grid.
-Read-only in v1; Phase B shipped (the strip's Show all/Cap toggle — qbase.showAll,
+Phase B shipped (the strip's Show all/Cap toggle — qbase.showAll,
 persisted; per-row source identity via model.qids + tr data-nid; refreshTable restores
-focus by source id); write-through (Phase C) is the next below-the-line item) ·
+focus by source id); Phase C shipped: plain-PROPERTY cells write through to the source
+point (qbaseFieldWritable gates the paint + commit; blur resolves data-nid → setProp,
+never node.text; pushUndo per commit + a flash naming the change, incl. a row leaving
+the query; title/= columns and query boards/cards stay read-only) ·
 Self-contained HTML export (C1: File menu → **Self-contained HTML** — `exportSelfContainedHtml` clones the page, empties the rendered DOM, and inlines the outline as OPML in the `#pl-embedded-doc` `<script type="application/xml">` data-island via the pure core `embedOpmlIntoHtml` / `extractEmbeddedOpml`; opening the file re-runs the app and `restoreEmbeddedDoc` hydrates from the island — winning over local autosave — into **display mode** with a one-time snapshot notice; the data-island is empty in the app shell, so the live editor is untouched; see the "Export — self-contained HTML" section above).
 Details: `guidance/features.md`
 

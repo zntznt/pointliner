@@ -581,6 +581,8 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 /* query base strip: the read-only grid's one affordance (edit query + columns).
    Same --pill hue as the query pill so the two query surfaces read as one family. */
+.mt-qcell{cursor:text}
+.mt-qcell:hover{background:color-mix(in srgb,var(--acc) 5%,transparent)}
 .mt-qbase-strip{display:flex;align-items:stretch;gap:4px;margin-bottom:2px}
 .mt-qbase-strip .mt-qbase-head{flex:1;margin-bottom:0}
 .mt-qbase-cap{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:var(--r-md);padding:2px 10px;cursor:pointer;white-space:nowrap}
@@ -8277,7 +8279,7 @@ function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splic
 // (No status inference: a point's state keyword lives in its text, which a query
 // column can't project, so Board correctly stays gated on query bases.) Pure.
 function qbaseColRoles(cols) {
-  return (cols || []).filter(c => c && typeof c.field === 'string' && c.field.trim()).map(c => {
+  return qbaseColList(cols).map(c => {
     const f = c.field.trim().toLowerCase();
     if (f[0] === '=') return 'number';
     if (DATE_KEYS.has(f)) return 'date';
@@ -8490,6 +8492,19 @@ function queryRowsMemo(expr, hostId) {
 }
 const QBASE_ROW_CAP = 100;
 function isQueryBase(node) { return node?.type === 'base' && !!node.qbase; }
+// The rendered-column list: entries with a usable field, exactly as queryTableRows
+// projects them — the ONE filter every index-aligned consumer shares (roles, the
+// role/edit paint, the write-through wiring). Pure.
+function qbaseColList(cols) {
+  return (cols || []).filter(c => c && typeof c.field === 'string' && c.field.trim());
+}
+// Phase C: a column WRITES THROUGH when it projects a plain property key — the exact
+// complement of queryTableRows' special forms ('title' is a link, a '=' projection is
+// computed per row; both stay read-only). Pure.
+function qbaseFieldWritable(field) {
+  const f = String(field || '').trim();
+  return !!f && f !== 'title' && f[0] !== '=';
+}
 function qbaseModel(node) {
   const cfg = JSON.stringify(node.qbase);
   const hit = _qbaseCache.get(node.id);
@@ -9226,6 +9241,63 @@ function mtBaseChromeHtml(node, model, readOnly) {
   return h;
 }
 
+// QP-2 Phase C: write-through cells. A query base's plain-property cells edit the SOURCE
+// point's property — resolved id -> node -> field, never node.text (a point owns its own
+// text; title and '=' columns stay read-only). The §0.4 footguns are answered head-on:
+// never silent (every commit flashes what changed on which point, including when the edit
+// makes the row leave the query), and undo-local (one snapshot per commit, so a single
+// Ctrl/Cmd+Z restores the foreign point). Commit on blur; Enter/Shift+Enter and
+// Tab/Shift+Tab navigate exactly like authored cells (P1).
+function mtWireQBaseEdit(host, node) {
+  if (!node.qbase) return;
+  const SEL = 'td.mt-qcell';
+  host.addEventListener('focusin', e => {
+    const cell = e.target.closest(SEL); if (!cell) return;
+    // show the raw value for editing (the display may be a role chip)
+    cell.textContent = mtModelRead(node).rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    cell.dataset.enterVal = cell.textContent;
+  });
+  host.addEventListener('keydown', e => {
+    const cell = e.target.closest(SEL); if (!cell) return;
+    if (e.key !== 'Tab' && e.key !== 'Enter') return;
+    e.preventDefault();   // Tab would insert \t in contenteditable; Enter a newline
+    const cells = [...host.querySelectorAll(SEL)];
+    let next = null;
+    if (e.key === 'Tab') {
+      next = cells[cells.indexOf(cell) + (e.shiftKey ? -1 : 1)];
+    } else {
+      // Enter → down one row, same column; Shift+Enter → up (the authored-cell grammar)
+      const col = cells.filter(x => x.dataset.c === cell.dataset.c);
+      next = col[col.indexOf(cell) + (e.shiftKey ? -1 : 1)];
+    }
+    if (next) next.focus(); else cell.blur();
+  });
+  host.addEventListener('focusout', e => {
+    const cell = e.target.closest(SEL); if (!cell) return;
+    const raw = cell.textContent.trim();
+    const was = (cell.dataset.enterVal ?? '').trim();
+    delete cell.dataset.enterVal;
+    const c = +cell.dataset.c;
+    if (raw === was) { cell.innerHTML = mtCellHtml(node, was, c); return; }   // untouched: restore the role paint
+    const nid = cell.closest('tr[data-nid]')?.dataset.nid;
+    const src = nid ? nodeById(nid) : null;
+    const field = qbaseColList(node.qbase.cols)[c]?.field.trim();
+    if (!src || !field || !qbaseFieldWritable(field)) { cell.innerHTML = mtCellHtml(node, was, c); return; }
+    pushUndo();
+    setProp(src, field, raw);
+    markDirty();
+    cell.innerHTML = mtCellHtml(node, raw, c);   // immediate feedback in place
+    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);
+    const stillMatches = qbaseModel(node).qids.includes(nid);
+    flashHint((raw ? `Updated ${field} on "${title}".` : `Cleared ${field} on "${title}".`)
+      + (stillMatches ? '' : ' It no longer matches this query.'));
+    // The source point's outline row and this grid's rows both repaint on the deferred,
+    // focus-aware render — the same discipline as a varbase cell edit (never a
+    // synchronous render inside focusout; it would steal the next-clicked cell's focus).
+    scheduleVarBaseRender(host);
+  });
+}
+
 // Wire the shared base chrome (query strip + view switcher + the query base's
 // keyboard-reachable links). Runs for read-only widgets too, so it must precede
 // buildTableWidget's readOnly early return.
@@ -9648,6 +9720,9 @@ function buildTableWidget(node, readOnly) {
   h += '</tr>';
   const _lastShown = _iv.shown;   // number of DATA rows to render inline (header excluded)
   const _colRoles = mtColRoles(node) || [];   // B4: inferred on query bases, hand-set on authored
+  // Phase C: a query base's plain-property columns write THROUGH to the source point, so
+  // those cells (and only those) are editable inside the otherwise read-only grid.
+  const _qFields = node.qbase ? qbaseColList(node.qbase.cols).map(x => x.field.trim()) : null;
   for (let r=1;r<model.rows.length;r++) {
     const isTotal = r === totalRowIdx;
     // clamp: skip data rows past the inline cap, but always keep the footer total row
@@ -9672,7 +9747,8 @@ function buildTableWidget(node, readOnly) {
         // computed cell (so all the edit guards skip it) but blank and Σ-less.
         h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
-        h += `<td class="mt-cell${aCls(model.aligns[c])}${(_colRoles[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':ro}>${mtCellHtml(node, model.rows[r][c]||'', c)}</td>`;
+        const qEdit = _qFields && qbaseFieldWritable(_qFields[c]);
+        h += `<td class="mt-cell${aCls(model.aligns[c])}${(_colRoles[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}${qEdit?' mt-qcell':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':(qEdit?` contenteditable="true" title="Edits write to the matching point's ${escQ(_qFields[c])} property"`:ro)}>${mtCellHtml(node, model.rows[r][c]||'', c)}</td>`;
       }
     }
     h += '</tr>';
@@ -9687,6 +9763,7 @@ function buildTableWidget(node, readOnly) {
   host.dataset.id = node.id;
   host.innerHTML = h;
   mtWireBaseChrome(host, node);
+  mtWireQBaseEdit(host, node);   // Phase C: property cells write through (before the readOnly return)
   // Seed the roving tab stop (#443): exactly one cell carries tabindex 0 so Tab enters the
   // grid at a predictable cell (the first data cell, falling back to any cell — e.g. a
   // read-only query base whose only cells are computed). Applies to readOnly grids too.
@@ -13627,7 +13704,7 @@ function pickFromQuery(expr, rootNode, hostId) {
 //                 the host base's sidecars (§0.1). Errors surface as '#ERR' (P4).
 // Returns { header, rows: [{id, cells}], total, truncated }. Pure.
 function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
-  const colList = (cols || []).filter(c => c && typeof c.field === 'string' && c.field.trim());
+  const colList = qbaseColList(cols);
   const header = colList.map(c => (c.name || c.field).trim());
   const terms = parseSearchQuery(expr || '');
   if (!terms.length || !colList.length) return { header, rows: [], total: 0, truncated: false };
@@ -23538,7 +23615,8 @@ function propagateCheckboxToSelection(clickedId) {
 // Re-roll a dice token in place (click handler), keeping its formula.
 // B1 (bases round 1): a projecting variable base's TEXT edit also changes variable values,
 // so referencing points elsewhere must repaint — but the cell focusout handler must never
-// render() synchronously (it would steal focus from the next-clicked cell). Defer one tick:
+// render() synchronously (it would steal focus from the next-clicked cell). Also the
+// deferred-repaint path for a query base's write-through commits (Phase C). Defer one tick:
 // if focus is still inside the base (cell-to-cell nav) skip — the NEXT focusout re-schedules;
 // if another editor went live, hand off to its exitEdit via the pending flag; else render now.
 let _pendingVarBaseRender = false;
