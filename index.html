@@ -2403,7 +2403,7 @@ body:not(.v-guided) .bm-desc{display:none}
   <button class="eb-btn" id="qb-capture" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox" aria-hidden="true"></i></button>
   <button class="eb-btn" id="qb-new" title="New point" aria-label="New point at the end">+</button>
   <button class="eb-btn" id="qb-insert" title="New point with the insert menu" aria-label="New point with the insert menu">@</button>
-  <button class="eb-btn" id="qb-roll" title="Roll templates" aria-label="Insert a roll template" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-dice" aria-hidden="true"></i></button>
+  <button class="eb-btn" id="qb-roll" title="Roll templates" aria-label="Insert a roll template" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-dice-d20" aria-hidden="true"></i></button><!-- #812: fa-dice is NOT in the FA subset (painted blank); fa-dice-d20 is -->
   <span class="eb-spacer"></span>
   <button class="eb-btn" id="qb-help" title="Help &amp; guide" aria-label="Help and concept guide">?</button>
 </div>
@@ -12416,7 +12416,10 @@ function stampTemplate(nodeId, name) {
 // clean "Base" (not its raw table markdown — mirrors crumbLabel), a blank point a
 // placeholder. Centralized so the flat and tree views never disagree.
 function pickerTitle(n) {
-  return n.type === 'base' ? 'Base' : (textForDisplay(n) || '(untitled)');
+  // #821 (agent-review): picker rows are user-facing labels — resolve artifact tokens and
+  // links to their display text (displayText = flatten + linkText + strip), so the refile/
+  // capture tree never prints a raw [[math:x827xhf4]] at the user. Base rows stay 'Base'.
+  return n.type === 'base' ? 'Base' : (displayText(n) || '(untitled)');
 }
 
 // Pure model behind the point-tree navigator (the reusable tree powering the refile
@@ -12650,6 +12653,11 @@ function buildTreePicker(opts) {
       .filter(l => q === '' || l.title.toLowerCase().includes(ql))
       .map(l => ({ id: l.id, title: l.title, depth: 0, hasChildren: false, expanded: false, match: true, top: true }));
     rows = [...lead, ...treeRows(rootNode, { expanded, excludeId, excludeIds, query: q })];
+    // #822 (agent-review): while filtering, default-highlight the first row that actually
+    // MATCHES the query — ancestors are shown for context but must not steal Enter (they
+    // used to: typing "Chapter Two" highlighted the book title and refiled to the wrong
+    // destination). Browsing (no query) keeps the positional highlight.
+    if (q !== '' && rows.length) { const fm = rows.findIndex(r => r.match); if (fm >= 0) activeIdx = fm; }
     if (activeIdx >= rows.length) activeIdx = Math.max(0, rows.length - 1);
     renderTreeRows(listEl, rows, {
       activeIdx, filtering: q !== '', emptyText: opts.emptyText,
@@ -22905,7 +22913,7 @@ function renderLinkMenu() {
   lpState.matches.forEach((nd, i) => {
     const item = document.createElement('div');
     item.className = 'lp-item' + (i === lpState.activeIdx ? ' hi' : '');
-    item.textContent = nd.title;
+    item.textContent = linkText(nd.title);   // #821: resolve link tokens in candidate labels — never raw [[#hexid|]]
     // CF-3: a cross-doc row (from another workspace doc) carries a docId — show its doc
     // name so it's clear the point lives elsewhere (P4) and name the doc in the aria-label
     // (P3). A row never has both: alias matching is current-doc-only.
@@ -24408,7 +24416,11 @@ function moveNode(id, dir) {
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
   const ni = idx + dir;
-  if (ni < 0 || ni >= parent.children.length) return;
+  if (ni < 0 || ni >= parent.children.length) {
+    // #825 (agent-review): a refused move must say why, not silently no-op (P4).
+    flashHint(dir < 0 ? 'Already first under its parent' : 'Already last under its parent');
+    return;
+  }
   const off = caretOffsetIfEditing(id);   // #814
   pushUndo();
   [parent.children[idx], parent.children[ni]] = [parent.children[ni], parent.children[idx]];

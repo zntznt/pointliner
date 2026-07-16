@@ -2770,6 +2770,24 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
   childless point — plus a global Esc→`zoomOut()` when zoomed with focus stranded on `<body>`
   (post-dialog). Headless-verified: keyboard-only zoom now round-trips, one rung per Esc.
 
+### UXP-211 ✓ Blank mobile quick-bar button — fa-dice not in the FA subset (#812) 🟡 — **RESOLVED**
+- **Fix:** `#qb-roll` uses `fa-dice-d20` (verified in-subset; the pill icon uses it already). The
+  one-line fix the issue suggested; a subset-coverage regression test remains a good follow-on.
+
+### UXP-212 ✓ Pickers leaked raw [[type:key]] tokens (#821) 🟡 — **RESOLVED**
+- **Fix:** `pickerTitle` (the refile/capture tree picker's one label chokepoint) routes through
+  `displayText` (flatten + linkText + strip), and the `[[` picker's candidate rows resolve link
+  tokens via `linkText`. Pinned end-to-end: a node with a link token yields a legible label.
+
+### UXP-213 ✓ Refile picker default-selected the match's ancestor (#822) 🟡 — **RESOLVED**
+- **Fix:** while filtering, the tree picker default-highlights the first row with `match: true`
+  (treeRows already carried the flag) — ancestors stay visible as context but no longer steal
+  Enter. Browsing (no query) keeps the positional highlight.
+
+### UXP-214 ✓ Alt-move refusal at a boundary was silent (#825) 🟡 — **RESOLVED**
+- **Fix:** `moveNode`'s boundary guard flashes "Already first/last under its parent" (P4) instead
+  of returning silently.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
