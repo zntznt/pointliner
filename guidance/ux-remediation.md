@@ -2808,6 +2808,17 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
   side effect — if beginner menu access while editing is wanted, that is a design pass on the
   bullet interaction model (e.g. click-opens-menu), flagged here for the owner.
 
+### UXP-218 ✓ Two #827 grab-bag items: 2-arg log + Ctrl+Shift+Z redo 🟢 — **RESOLVED**
+- **`log(x, base)` (student persona):** FN2 gained `log(x, base)` and evalMath's function dispatch is
+  now ARITY-FIRST (`args.length === N && name in FNn`) rather than first-table-wins, so an overloaded
+  name resolves by arg count. `log(1024, 2)` = 10; 1-arg `log(100)` stays base-10 (FN1); wrong-arity
+  calls still error. Verified: log/pow/sqrt/min/max/atan2/date all intact.
+- **Ctrl+Shift+Z redo (novelist persona):** the chord was dead because the handler checked
+  `e.key === 'Z'` (uppercase) but browsers report LOWERCASE `'z'` with Ctrl held even when Shift is
+  down (root-caused with a capture-phase keydown probe). Now accepts `'z'` or `'Z'`. Headless-verified:
+  type → Ctrl+Z removes → Ctrl+Shift+Z restores. Ctrl+Y unchanged.
+- The rest of #827 (hashtag digit-guard, guide keywords overlapping #835, copy nits) stays open on #827.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the

@@ -21148,6 +21148,7 @@ function intGcd(a, b) {
 }
 const FN2 = Object.assign(Object.create(null), {
   atan2: Math.atan2, pow: Math.pow, hypot: Math.hypot,
+  log: (x, b) => Math.log(x) / Math.log(b),                        // #827: 2-arg log(x, base) — log(1024, 2) = 10 (1-arg log stays base-10 in FN1)
   daysbetween: (a, b) => Math.abs(Math.round(b) - Math.round(a)),  // whole days between two dates
   pctof: (part, whole) => part / whole * 100,                      // part as a percentage of whole (÷0 → ∞)
   pctchange: (from, to) => (to - from) / from * 100,               // percent change from→to (÷0 → ∞)
@@ -21487,9 +21488,13 @@ function evalMath(input, vars = {}) {
         while (peek() === ',') { eat(); args.push(ternary()); }
       }
       expect(')');
-      if (name in FN1) { if (args.length !== 1) throw 0; return FN1[name](args[0]); }
-      if (name in FN2) { if (args.length !== 2) throw 0; return FN2[name](args[0], args[1]); }
-      if (name in FN3) { if (args.length !== 3) throw 0; return FN3[name](args[0], args[1], args[2]); }
+      // #827: dispatch by ARITY, not first-table-wins — a name may be overloaded across tables
+      // (log is 1-arg base-10 in FN1 AND 2-arg log(x, base) in FN2). Arg count picks the table;
+      // a name present but at the wrong arity falls through to the throw below (still an error).
+      if (args.length === 1 && name in FN1) return FN1[name](args[0]);
+      if (args.length === 2 && name in FN2) return FN2[name](args[0], args[1]);
+      if (args.length === 3 && name in FN3) return FN3[name](args[0], args[1], args[2]);
+      if ((name in FN1 || name in FN2 || name in FN3) && !(name === 'min' || name === 'max' || name === 'avg')) throw 0;
       if (args.length < 2) throw 0;
       // #544: avg is a variadic mean beside min/max. Like them, it requires ≥2 args, so the single-
       // bare-identifier child rollup avg(prop) (substituted before evalMath by expandAggExpr) is
@@ -30619,7 +30624,10 @@ document.addEventListener('keydown', e => {
   // control (and the menu) is the reliable path; this is a best-effort accelerator.
   if (ctrl && !e.shiftKey && !e.altKey && /^Digit[1-6]$/.test(e.code)) { e.preventDefault(); collapseToLevel(+e.code.slice(5)); return; }
   if (ctrl && !e.shiftKey && e.key==='z') { e.preventDefault(); undo(); }
-  if (ctrl && (e.key==='y' || (e.shiftKey && e.key==='Z'))) { e.preventDefault(); redo(); }
+  // #827: accept both 'z' and 'Z' for Ctrl/Cmd+Shift+Z redo — with Ctrl held, browsers report
+  // the LOWERCASE key even though Shift is down (the old 'Z'-only check never matched, so the
+  // redo chord was dead; Ctrl+Y still worked). Undo above already uses lowercase 'z'.
+  if (ctrl && (e.key==='y' || (e.shiftKey && (e.key==='z' || e.key==='Z')))) { e.preventDefault(); redo(); }
   // multi-select shortcuts
   if (ctrl && e.key==='c' && !e.shiftKey && selectedIds.size > 0) { e.preventDefault(); copySelection(); }
   if (ctrl && e.key==='x' && selectedIds.size > 0) {

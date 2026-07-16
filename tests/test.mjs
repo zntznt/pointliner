@@ -15225,3 +15225,20 @@ test('#823: the first bullet-click zoom flashes a one-time explanation', () => {
   assert.ok(_fix6.includes('let _zoomToastShown = false;'), 'session flag missing');
   assert.match(_fix6, /zoomInto\(node\.id\);[\s\S]{0,400}_zoomToastShown = true; flashHint\('Zoomed into one point\. Esc or the breadcrumb takes you back'\)/, 'zoom toast missing');
 });
+
+// ─── #827 slice: 2-arg log + Ctrl+Shift+Z redo (UXP-218) ──────────────────────
+test('#827: log(x, base) is a 2-arg overload; 1-arg log stays base-10', () => {
+  assert.equal(c.evalMath('log(1024, 2)', {}), 10);
+  assert.equal(c.evalMath('log(8, 2)', {}), 3);
+  assert.equal(c.evalMath('log(100)', {}), 2);        // FN1 base-10 unchanged
+  assert.equal(c.evalMath('log2(8)', {}), 3);
+  assert.equal(c.evalMath('sqrt(1, 2)', {}), null);   // still errors on wrong arity
+  assert.equal(c.evalMath('pow(2, 10)', {}), 1024);   // other FN2 intact
+  assert.equal(c.evalMath('min(3, 1, 2)', {}), 1);    // variadic intact
+});
+const _f827 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#827: FN2 arity-aware dispatch + redo accepts lowercase z', () => {
+  assert.ok(_f827.includes('log: (x, b) => Math.log(x) / Math.log(b)'), '2-arg log missing from FN2');
+  assert.match(_f827, /args\.length === 1 && name in FN1/, 'dispatch must be arity-first');
+  assert.match(_f827, /e\.shiftKey && \(e\.key==='z' \|\| e\.key==='Z'\)/, 'redo must accept lowercase z');
+});
