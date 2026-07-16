@@ -581,12 +581,16 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 /* query base strip: the read-only grid's one affordance (edit query + columns).
    Same --pill hue as the query pill so the two query surfaces read as one family. */
+.mt-qbase-strip{display:flex;align-items:stretch;gap:4px;margin-bottom:2px}
+.mt-qbase-strip .mt-qbase-head{flex:1;margin-bottom:0}
+.mt-qbase-cap{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:var(--r-md);padding:2px 10px;cursor:pointer;white-space:nowrap}
+.mt-qbase-cap:hover{color:var(--fg);border-color:color-mix(in srgb,var(--acc) 40%,var(--bdr))}
 .mt-qbase-head{--pill:#4a6b8a;display:flex;align-items:center;gap:6px;padding:4px 8px;margin-bottom:2px;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.85em;cursor:pointer;user-select:none}
 .mt-qbase-head:hover{border-color:color-mix(in srgb,var(--pill) 40%,var(--bdr))}
 /* UXP-179: the base-view focusable controls share ONE canonical focus recipe (DL §4) — a solid
    accent outline, not a suppressed-outline --ring ghost (which failed the §3 3:1 non-text floor and
    vanished under forced-colors). Folded into one selector list so they can't drift apart again. */
-.mt-qbase-head:focus-visible,.mt-view-btn:focus-visible,.bv-card:focus-visible,.cv-btn:focus-visible,.mt-base-collapse:focus-visible,.mt-base-rows:focus-visible,.mt-base-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.mt-qbase-head:focus-visible,.mt-qbase-cap:focus-visible,.mt-view-btn:focus-visible,.bv-card:focus-visible,.cv-btn:focus-visible,.mt-base-collapse:focus-visible,.mt-base-rows:focus-visible,.mt-base-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .mt-qbase-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));display:inline-flex;font-size:.9em}
 .mt-qbase-expr{font-family:var(--mono);font-size:.92em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt-qbase-count{font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
@@ -2095,7 +2099,7 @@ body:not(.v-guided) .bm-desc{display:none}
   .md-task-pad{display:block;position:absolute;left:-8px;top:-6px;width:40px;height:40px}
   /* base header strip: the view switcher / Rows / collapse controls are desktop-compact
      (~20px); give them a real tap height on touch (the checkbox 24px floor, comfortably) */
-  .mt-view-btn,.mt-base-rows{padding:8px 10px}
+  .mt-view-btn,.mt-base-rows,.mt-qbase-cap{padding:8px 10px}
   .mt-base-collapse{width:34px;height:34px}
   .mt-base-more{padding:11px 8px}
   .nt-ol>.node-row>.bullet .bullet-dot,.nt-divider>.node-row>.bullet .bullet-dot{opacity:.45}
@@ -8490,9 +8494,16 @@ function qbaseModel(node) {
   const cfg = JSON.stringify(node.qbase);
   const hit = _qbaseCache.get(node.id);
   if (hit && hit.ver === _varsVer && hit.cfg === cfg) return hit.model;
-  const q = queryTableRows(node.qbase.expr, node.qbase.cols, root, node.id, QBASE_ROW_CAP);
+  // Phase B: the default cap keeps a broad query from painting thousands of rows; an
+  // explicit, persisted opt-out (qbase.showAll, riding the _qbase JSON) lifts it — the
+  // user's deliberate choice, priced honestly in guidance/performance.md §Bases.
+  const cap = node.qbase.showAll ? Infinity : QBASE_ROW_CAP;
+  const q = queryTableRows(node.qbase.expr, node.qbase.cols, root, node.id, cap);
   const model = { aligns: q.header.map(() => null),
                   rows: [q.header, ...q.rows.map(r => r.cells)],
+                  // row identity (Phase B): the matched node id per data row, header slot null —
+                  // index-aligned with rows so the widget can stamp each <tr> with its source.
+                  qids: [null, ...q.rows.map(r => r.id)],
                   qmeta: { total: q.total, shown: q.rows.length, truncated: q.truncated } };
   _qbaseCache.set(node.id, { ver: _varsVer, cfg, model });
   return model;
@@ -8576,7 +8587,14 @@ function refreshTable(node) {
   mtRecompute(node); // computed cells reflect the latest source values
   const host = mtHost(node.id);
   if (!host) { render(); return; }
-  host.replaceWith(buildTableWidget(node, isQueryBase(node)));
+  // Phase B row identity: if focus is inside this widget on a row stamped with its
+  // source node id (a query base's link), restore it to the SAME source row after the
+  // rebuild — result order may have shifted, so re-find by id, not by index.
+  const focusNid = host.contains(document.activeElement)
+    ? document.activeElement.closest('tr[data-nid]')?.dataset.nid : null;
+  const fresh = buildTableWidget(node, isQueryBase(node));
+  host.replaceWith(fresh);
+  if (focusNid) fresh.querySelector(`tr[data-nid="${CSS.escape(focusNid)}"] .node-link`)?.focus();
   scheduleReconcile();
 }
 
@@ -9160,13 +9178,21 @@ function mtBaseChromeHtml(node, model, readOnly) {
     // + preventDefault per the caret invariant, plus Enter/Space for keyboard).
     const qm = model.qmeta || { total: 0, shown: 0, truncated: false };
     const count = qm.truncated ? `${qm.shown} of ${qm.total}` : String(qm.total);
-    h += `<div class="mt-qbase-head" role="button" tabindex="0"`
+    // Phase B: when the default cap bites (or has been lifted), a real sibling button
+    // toggles it — a sibling, not a child, because the head is itself role=button (the
+    // editor door) and interactive-inside-interactive is an a11y fault.
+    const capBtn = qm.truncated
+      ? `<button type="button" class="mt-qbase-cap" aria-label="Show all ${escQ(String(qm.total))} matching points (currently capped at ${QBASE_ROW_CAP})">Show all ${escHtml(String(qm.total))}</button>`
+      : (node.qbase.showAll && qm.total > QBASE_ROW_CAP
+        ? `<button type="button" class="mt-qbase-cap" aria-label="Cap the list at ${QBASE_ROW_CAP} rows (currently showing all ${escQ(String(qm.total))})">Cap at ${QBASE_ROW_CAP}</button>`
+        : '');
+    h += `<div class="mt-qbase-strip"><div class="mt-qbase-head" role="button" tabindex="0"`
       + ` aria-label="Query base: ${escQ(node.qbase.expr)}. ${escQ(count)} matching point${qm.total === 1 ? '' : 's'}. Press Enter to edit the query and columns."`
       + ` title="Edit query and columns">`
       + `<span class="mt-qbase-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
       + `<span class="mt-qbase-expr">${escHtml(node.qbase.expr)}</span>`
       + (qm.total === 0 ? `<span class="mt-qbase-empty">no matches</span>` : '')
-      + `<span class="mt-qbase-count">${escHtml(count)}</span></div>`;
+      + `<span class="mt-qbase-count">${escHtml(count)}</span></div>${capBtn}</div>`;
   }
   // Left controls (outline view only, not when this base is the zoomed item): a collapse
   // chevron and a rows-cap control. A collapsed base renders just this strip; a capped one
@@ -9216,6 +9242,14 @@ function mtWireBaseChrome(host, node) {
           l.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
         }
       });
+    });
+  }
+  const qcap = host.querySelector('.mt-qbase-cap');
+  if (qcap) {
+    const toggle = () => { node.qbase.showAll = !node.qbase.showAll; if (!node.qbase.showAll) delete node.qbase.showAll; markDirty(); refreshTable(node); };
+    qcap.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); toggle(); });
+    qcap.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggle(); }
     });
   }
   const qh = host.querySelector('.mt-qbase-head');
@@ -9618,7 +9652,8 @@ function buildTableWidget(node, readOnly) {
     const isTotal = r === totalRowIdx;
     // clamp: skip data rows past the inline cap, but always keep the footer total row
     if (!isTotal && !_zoomed && r > _lastShown) continue;
-    h += `<tr data-r="${r}"${isTotal ? ' class="mt-total-row"' : ''}>`;
+    const nid = model.qids?.[r];
+    h += `<tr data-r="${r}"${nid ? ` data-nid="${escQ(nid)}"` : ''}${isTotal ? ' class="mt-total-row"' : ''}>`;
     // The Calculate footer row is data-only (computed) and stays pinned last — no
     // reorder/menu handle; a plain inert stub keeps the column count aligned.
     if (!readOnly) h += isTotal
@@ -21926,7 +21961,7 @@ function editQBase(node) {
     title: 'Edit query base', submitLabel: 'Save',
     expr: node.qbase.expr,
     colsText: node.qbase.cols.map(cd => (cd.name && cd.name !== cd.field) ? `${cd.name}: ${cd.field}` : cd.field).join('\n'),
-    onResult: (expr, cols) => { node.qbase = { expr, cols }; markDirty(); refreshTable(node); },
+    onResult: (expr, cols) => { node.qbase = { expr, cols, ...(node.qbase.showAll ? { showAll: true } : {}) }; markDirty(); refreshTable(node); },
   });
 }
 

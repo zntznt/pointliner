@@ -12296,6 +12296,31 @@ test('round 3 — collectPillActions cell scope (the cell-menu pill door)', () =
   assert.equal(host(c.collectPillActions(cn, 'x')).length, 0, 'cell scope skips them');
 });
 
+// ── QP-2 Phase B: cap, show-all, row identity ────────────────────────────────
+test('Phase B — queryTableRows uncapped; qbaseModel wiring (pins)', () => {
+  const root = { children: Array.from({ length: 150 }, (_, i) => ({ id: 'n' + i, text: '#TODO t' + i, children: [] })) };
+  const capped = host(c.queryTableRows('is:todo', [{ name: 'P', field: 'title' }], root, null, 100));
+  assert.equal(capped.rows.length, 100);
+  assert.equal(capped.total, 150);
+  assert.equal(capped.truncated, true);
+  const all = host(c.queryTableRows('is:todo', [{ name: 'P', field: 'title' }], root, null, Infinity));
+  assert.equal(all.rows.length, 150);
+  assert.equal(all.truncated, false);
+  // rows carry their source id — the identity the widget stamps per <tr>
+  assert.equal(all.rows[0].id, 'n0');
+  // source pins: the conditional cap, the qids channel, the strip toggle, the tr stamp
+  const qm = fnBody(_src, 'qbaseModel');
+  assert.ok(/node\.qbase\.showAll \? Infinity : QBASE_ROW_CAP/.test(qm), 'showAll lifts the cap');
+  assert.ok(/qids: \[null, \.\.\.q\.rows\.map\(r => r\.id\)\]/.test(qm), 'the model carries row identity, header slot null');
+  assert.ok(/data-nid="\$\{escQ\(nid\)\}"/.test(fnBody(_src, 'buildTableWidget')), 'each query row is stamped with its source id');
+  assert.ok(/Show all \$\{escHtml\(String\(qm\.total\)\)\}/.test(_src) && /Cap at \$\{QBASE_ROW_CAP\}/.test(_src), 'the strip toggle names both states');
+  assert.ok(/node\.qbase\.showAll = !node\.qbase\.showAll/.test(_src), 'the toggle flips the persisted flag');
+  assert.ok(/\.\.\.\(node\.qbase\.showAll \? \{ showAll: true \} : \{\}\)/.test(_src), 'editing the query preserves showAll');
+  // focus restore across the widget rebuild re-finds the SAME source row by id
+  const rt = fnBody(_src, 'refreshTable');
+  assert.ok(/closest\('tr\[data-nid\]'\)/.test(rt) && /CSS\.escape\(focusNid\)/.test(rt), 'refreshTable restores focus by source id');
+});
+
 test('round 3 — /variables door, cell-pill menu, base settings menu, copy (source pins)', () => {
   // the /variables command exists, is covered in the GUIDE, and opens the panel in place
   assert.ok(/id:'variables', icon:'\$'/.test(_src), 'BLOCK_CMDS carries /variables');
