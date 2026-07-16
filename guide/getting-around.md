@@ -155,8 +155,10 @@ nothing is stored, it is always a view of the live outline.
 Type `/` and choose **Query base** (or `/querybase`), then give it a search and one column per line
 (`title`, a property key or `= formula`; put `Name:` in front to label a column). The strip above the grid
 shows the search and the live match count; click it (or press `Enter` on it) to change the query or
-columns. The grid itself is read-only: edit the matching points and the rows follow. Click any
-title to jump to that point.
+columns. A broad query is capped at 100 rows so it cannot freeze the page; when the cap bites, the
+strip shows **100 of N** and a **Show all** button lifts it (the choice is remembered, and the same
+button caps it again). The grid itself is read-only: edit the matching points and the rows follow.
+Click any title to jump to that point.
 
 ## Searching all your documents
 

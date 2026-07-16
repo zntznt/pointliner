@@ -61,9 +61,14 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   rows come from a search over the outline, **read-only in v1**: the query and column projections are
   the base's config; the rows recompute from the live document (memoized per generation, capped). Full
   design + the red-team corrections it must honor: `query-base-proposal.md` and
-  `base-views-vision.md` §0. This move is ONE item: the saved-views database layer (filter/sort
-  predicates persisted as data operations, named view libraries) and cell write-through to foreign
-  points remain BELOW the line. Views + typed fields also remain deferred here until their own build
+  `base-views-vision.md` §0. **Phase B shipped 2026-07-16 (owner call: work the below-the-line
+  items):** the default cap (`QBASE_ROW_CAP` 100) gains an explicit, persisted opt-out — the strip's
+  "Show all N" / "Cap at 100" toggle (`qbase.showAll`, riding the `_qbase` JSON; the query editor
+  preserves it) — and **row identity**: `qbaseModel` carries the matched node id per row (`qids`),
+  each `<tr>` is stamped `data-nid`, and `refreshTable` restores focus to the SAME source row after
+  a rebuild (result order may shift, so it re-finds by id). This move leaves the saved-views
+  database layer (filter/sort predicates persisted as data operations, named view libraries)
+  BELOW the line; cell write-through to foreign points (Phase C) is next under the same owner call. Views + typed fields also remain deferred here until their own build
   proposal is approved; the approved *direction* for them is `base-views-vision.md` §0b (views in
   service of the generative layer).
 
