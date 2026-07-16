@@ -7448,7 +7448,17 @@ function commitActiveEdit() {
   if (activeContentId == null) return;
   document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
 }
-function zoomInto(id) { focusedId = id; render(); } // render() commits any active edit
+function zoomInto(id) {
+  focusedId = id; render();   // render() commits any active edit
+  // #816 (agent-review, UXP-210): land keyboard focus IN the zoomed view — Ctrl+Enter used
+  // to strand focus on <body>, making the advertised "Esc = zoom out" dead (the Esc handlers
+  // live on the point contents / title). The first child point is the landing: its Esc
+  // handler already implements zoom-out, so one press honors the contract, and it's where
+  // a keyboard user zooms to work. A childless point falls back to the editable title.
+  const vp = nodeById(id);
+  if (vp?.children?.length) focusNode(vp.children[0].id);
+  else document.querySelector('.zoom-title')?.focus();
+}
 function zoomTo(id)   { focusedId = id; render(); }
 
 // Fit the zoomed point's title inside its max height (--zoom-title-max). Shrink the font
@@ -24306,18 +24316,30 @@ function mergeUpInto(id) {
   return true;
 }
 
+// #814 (agent-review, UXP-207): a structural op on the point being edited preserves the
+// caret — Tab/Shift+Tab/Alt-move used to teleport it to end-of-line (focusNode collapses
+// to end), fighting the indent-mid-thought flow. The offset is captured against the edit
+// buffer and restored into the identical re-rendered buffer (the text doesn't change, so
+// unfolded coordinates round-trip). The power-user persona's #1 switching blocker.
+function caretOffsetIfEditing(id) {
+  const ed = document.querySelector(`.node-content[data-id="${id}"][data-editing]`);
+  return ed ? getCaretOffset(ed) : null;
+}
+
 function indentNode(id) {
   const parent = parentOf(id);
   if (!parent) return;
   const idx = parent.children.findIndex(c => c.id === id);
   if (idx === 0) return;
   const np = parent.children[idx-1];
+  const off = caretOffsetIfEditing(id);   // #814
   pushUndo();
   const [node] = parent.children.splice(idx,1);
   np.children.push(node);
   parentMap.set(node.id, np);
   if (np.collapsed) np.collapsed = false;
-  markDirty(); render(); focusNode(id);
+  markDirty(); render();
+  off === null ? focusNode(id) : focusNodeAtOffset(id, off);
 }
 
 function outdentNode(id) {
@@ -24326,13 +24348,15 @@ function outdentNode(id) {
   if (focusedId && parent.id === focusedId) return;
   const gp = parentOf(parent.id);
   if (!gp) return;
+  const off = caretOffsetIfEditing(id);   // #814
   pushUndo();
   const idx = parent.children.findIndex(c => c.id === id);
   const [node] = parent.children.splice(idx,1);
   const pi = gp.children.findIndex(c => c.id === parent.id);
   gp.children.splice(pi+1, 0, node);
   parentMap.set(node.id, gp);
-  markDirty(); render(); focusNode(id);
+  markDirty(); render();
+  off === null ? focusNode(id) : focusNodeAtOffset(id, off);
 }
 
 function deleteNode(id) {
@@ -24385,10 +24409,12 @@ function moveNode(id, dir) {
   const idx = parent.children.findIndex(c => c.id === id);
   const ni = idx + dir;
   if (ni < 0 || ni >= parent.children.length) return;
+  const off = caretOffsetIfEditing(id);   // #814
   pushUndo();
   [parent.children[idx], parent.children[ni]] = [parent.children[ni], parent.children[idx]];
   markDirty();
-  render(); focusNode(id);
+  render();
+  off === null ? focusNode(id) : focusNodeAtOffset(id, off);
 }
 
 function setCollapsed(id, val) {
@@ -24548,7 +24574,11 @@ function navigateToNext(id) {
     const el = document.querySelector(`.node-content[data-id="${nextNode.id}"]`);
     if (!el) return;
     el.focus();
-    const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+    // #815 (agent-review, UXP-208): DOWNWARD entry lands on the FIRST line (collapse to
+    // start) — landing at the end made a multi-line point's interior lines unreachable by
+    // vertical navigation (Down entered at line N, one more Down exited). Upward entry
+    // (navigateToPrev) keeps its end-landing: that IS the last line, the symmetric twin.
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(true);
     const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
   });
 }
@@ -30572,7 +30602,10 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {
     e.preventDefault();
     const el = document.activeElement?.closest?.('.node[data-id]');
-    const id = el?.dataset?.id ?? (flatRows.length ? flatRows[flatRows.length - 1].node.id : null);
+    // #817 (agent-review, UXP-209): in row-cursor mode focus sits on <body>, so the old
+    // activeElement→last-row fallback pasted at the DOCUMENT END. Target the row cursor
+    // (then the selection anchor) before falling back to the last row.
+    const id = el?.dataset?.id ?? selFocusId ?? selAnchorId ?? (flatRows.length ? flatRows[flatRows.length - 1].node.id : null);
     if (id) pasteFromNodeClipboard(id);
   }
   // Backspace deletes the selection too — on Mac the only "delete" key IS Backspace
@@ -30580,6 +30613,10 @@ document.addEventListener('keydown', e => {
   // (activeContentId == null), so in-text Backspace is never intercepted.
   if ((e.key==='Delete' || e.key==='Backspace') && selectedIds.size > 0 && activeContentId == null && !ctrl) { e.preventDefault(); deleteSelected(); }
   if (e.key==='Escape' && selectedIds.size > 0 && activeContentId == null) { clearSelection(); }
+  // #816: zoomed with focus stranded on <body> (a dialog close, a stray blur) — the
+  // advertised Esc = zoom out must still fire even though the title/content handlers
+  // can't see the key. Runs after the selection-clear above (back-out order, P1-3).
+  else if (e.key==='Escape' && focusedId && activeContentId == null && document.activeElement === document.body) { e.preventDefault(); zoomOut(); }
   if (e.key==='Tab' && selectedIds.size > 0 && activeContentId == null) {
     e.preventDefault();
     if (e.shiftKey) outdentSelected(); else indentSelected();
