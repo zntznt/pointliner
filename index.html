@@ -3424,8 +3424,13 @@ function aggregateChildren(node, fn, prop, depth = 1) {
 // NO key matches (the base/column doesn't exist — the caller leaves the call literal so
 // evalMath surfaces a visible #ERR, P4); a matched-but-non-numeric column aggregates its
 // numerics (sum 0 / count 0 / min-max identity, parallel to the child rollups). Pure.
+const _aggColReCache = new Map();   // 'base.col' -> compiled matcher; bounded by distinct totals in the doc
 function aggregateVarBaseColumn(fn, base, col, vars) {
-  const re = new RegExp('^' + base + '\\.[a-z0-9_]+\\.' + col + '$');   // base/col are \w-only idents, regex-safe
+  // base/col are \w-only idents, regex-safe; a column-total pill re-runs this every
+  // render pass, so the compiled matcher is cached per base.col instead of rebuilt.
+  const reKey = base + '.' + col;
+  let re = _aggColReCache.get(reKey);
+  if (!re) { re = new RegExp('^' + base + '\\.[a-z0-9_]+\\.' + col + '$'); _aggColReCache.set(reKey, re); }
   const vals = [];
   let matched = false;
   for (const k of Object.keys(vars || {})) {
@@ -5233,7 +5238,7 @@ function collectVars(rootNode) {
     // A variable base projects its rows as dotted defs at ITS document position (the same
     // last-wins ordering as any declaration). Not pushed into `events`: there is no
     // per-name [[var:]] pill to shadow-mark (cosmetic gap, documented in bases-direction).
-    if (node.type === 'base' && node.varbase && !node.qbase) {
+    if (isVarBase(node)) {
       for (const d of varBaseDefsMemo(node)) {
         if (!(d.name in defs)) order.push(d.name);
         defs[d.name] = d.expr;
@@ -5330,7 +5335,7 @@ function collectNodeDecls(node, add) {
   // A variable base is a declaration site like any other: its projected rows enter the
   // positional walk here (covers varMapAt AND renderPosVarMaps), after the node's own
   // token decls. Guarded so a plain or query base contributes nothing.
-  if (node.type === 'base' && node.varbase && !node.qbase) {
+  if (isVarBase(node)) {
     for (const d of varBaseDefsMemo(node)) add(d.name, d.expr, d.pick);
   }
 }
@@ -8343,8 +8348,15 @@ function varBaseName(seg) {
 // Skips: the header row; the footer total row; a row whose col-0 doesn't sanitize; an
 // empty cell; a computed `#ERR` cell; a cell carrying an [[type:key]] artifact token.
 // Duplicate names: last wins (the variable system's universal rule).
+// The "projecting variable base" predicate, extracted from its seven inline twins:
+// an authored base opted into row projection. Query bases never project (rows from a
+// live search would make variables appear/disappear as the document changes).
+function isVarBase(node) {
+  return !!(node && node.type === 'base' && node.varbase && !node.qbase);
+}
+
 function varBaseDefs(node) {
-  if (!node || node.type !== 'base' || !node.varbase || node.qbase) return [];
+  if (!isVarBase(node)) return [];
   const m = mtModelText(node.text);            // never mtModel — no qbase recursion
   if (!m || !m.rows.length) return [];
   const prefix = varBaseName(node.varbase.name || '');
@@ -8485,6 +8497,25 @@ function qbaseModel(node) {
   return model;
 }
 function mtModel(node) { return node.qbase ? qbaseModel(node) : mtModelText(node.text); }
+// Read-only twin of mtModel for PAINT paths (widget build, cell patch, focusin): they
+// re-parse the SAME committed text several times per render pass. Self-invalidating
+// per-node Map in the varMapAt/varBaseDefsMemo family (ver-guarded, per-node, NOT a
+// collector — the collector-identity test does not cover it), with a text check on top
+// so even a bump-free mutation can never serve a stale grid. The returned model is
+// SHARED and must be treated as immutable — every path that mutates rows then
+// mtCommit()s stays on mtModel() (a fresh parse, safe to mutate).
+let _mtModelReadCacheVer = -1, _mtModelReadCache = new Map(); // doc-cache: mtModelRead, keyed by node id
+let _mtEditSession = null;   // {id, model, text} — the cell input handler's last-commit parse (self-invalidating via the text key)
+function mtModelRead(node) {
+  if (node.qbase) return qbaseModel(node);   // already generation+config memoized
+  if (node.id == null) return mtModelText(node.text);
+  if (_mtModelReadCacheVer !== _varsVer) { _mtModelReadCache = new Map(); _mtModelReadCacheVer = _varsVer; }
+  const hit = _mtModelReadCache.get(node.id);
+  if (hit && hit.text === node.text) return hit.model;
+  const model = mtModelText(node.text);
+  _mtModelReadCache.set(node.id, { text: node.text, model });
+  return model;
+}
 // Serialize the grid back to node.text, preserving the trailing #+TBLFM: recipe (Org
 // keeps formulas beside the table; cells hold the literal/computed values). Without
 // this, any cell edit would drop the formula line.
@@ -8507,9 +8538,24 @@ function mtRecompute(node) {
 }
 // Repaint every computed (non-focused) cell from the current model without rebuilding
 // the widget — keeps DOM identity so cell-to-cell focus survives a recompute.
+// The shared tail of BOTH base commit chokepoints — the cell focusout and exitEdit's
+// markdown branch (extracted from their near-twin sequences): shed sidecar records
+// whose token left the table, re-bump the generation (a cell promotion's brace
+// classification reads collectVars, which may have cached varBaseDefsMemo from
+// pre-promotion text — without a fresh bump a projecting base serves that stale
+// projection until the next edit), then re-run the recipe. Returns true when sibling
+// cells are due a repaint (a recipe recomputed, or a projecting variable base whose
+// values feed in-base total pills).
+function mtCommitEpilogue(node) {
+  pruneArtifacts(node);
+  markDirty();
+  const recomputed = mtRecompute(node);
+  return recomputed || isVarBase(node);
+}
+
 function mtPatchCells(node, exceptCell) {
   const host = mtHost(node.id); if (!host) return;
-  const m = mtModel(node);
+  const m = mtModelRead(node);
   host.querySelectorAll('.mt-cell').forEach(cell => {
     if (cell === exceptCell) return;
     if (cell === document.activeElement && !cell.classList.contains('mt-computed')) return;
@@ -9121,7 +9167,7 @@ function mtBaseChromeHtml(node, model, readOnly) {
   // Variable-base cue (bases-direction §7b): a small `$` badge whenever rows project as
   // variables. A real button (opens the naming dialog), always visible (never hover-gated,
   // so touch sees it), zoomed or not.
-  if (node.varbase && !node.qbase) {
+  if (isVarBase(node)) {
     const ns = node.varbase.name ? `under "${node.varbase.name}"` : 'like Orc.HP';
     left += `<button type="button" class="mt-varbase-badge"`
       + ` aria-label="Rows declare variables ${escQ(ns)}. Press Enter to edit the base name."`
@@ -9443,7 +9489,7 @@ function buildCalendarWidget(node, model, readOnly) {
 }
 
 function buildTableWidget(node, readOnly) {
-  const model = mtModel(node);
+  const model = mtModelRead(node);   // paint-only — never mutated (views receive it read-only too)
   if (node.view?.kind === 'board') return buildBoardWidget(node, model, readOnly || !!node.qbase);
   if (node.view?.kind === 'cards') return buildCardsWidget(node, model, readOnly || !!node.qbase);
   if (node.view?.kind === 'calendar') return buildCalendarWidget(node, model, readOnly || !!node.qbase);
@@ -9578,7 +9624,7 @@ function buildTableWidget(node, readOnly) {
     if (cell.classList.contains('mt-computed')) { mtPointerFocus = false; return; }
     mtClearSelection();
     forceIncludeId = node.id;
-    const m = mtModel(node);
+    const m = mtModelRead(node);
     cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
     cell.dataset.enterVal = cell.textContent;   // value on entry — for the focusout formula-signpost diff
     // Keyboard-driven focus (Tab into the grid, arrow/Tab/Enter cell nav): select the
@@ -9590,9 +9636,15 @@ function buildTableWidget(node, readOnly) {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
     if (cell.classList.contains('mt-computed')) return;
     mtNavSel = null;
-    const m = mtModel(node);
+    // Per-keystroke: reuse the parse from this session's LAST commit — mtCommit
+    // serialized exactly that model into node.text, so re-parsing it back out on the
+    // next keystroke was pure waste. The text check self-invalidates on any foreign
+    // mutation between keystrokes (recompute, undo, a slash apply, another commit).
+    const m = (_mtEditSession && _mtEditSession.id === node.id && _mtEditSession.text === node.text)
+      ? _mtEditSession.model : mtModel(node);
     m.rows[+cell.dataset.r][+cell.dataset.c] = cell.textContent;
     mtCommit(node, m);
+    _mtEditSession = { id: node.id, model: m, text: node.text };   // key on the text just committed
     checkCellSlash(cell, node);
   });
   host.addEventListener('focusout', e => {
@@ -9625,20 +9677,16 @@ function buildTableWidget(node, readOnly) {
     if (raw !== enteredWith && looksLikeCellFormula(raw)) {
       flashHint('Cells hold values. For a formula, open the column menu and use Calculate or Formula.');
     }
-    // B2: the final text is committed — shed sidecar records whose token left the table
-    // (bases never pass through the non-base exitEdit prune; without this an emptied pill
-    // cell leaks its record into OPML forever). Never in the per-keystroke input handler.
-    pruneArtifacts(node);
-    // A source-cell edit may feed a formula: recompute and repaint the target cells in
-    // place (rebuilding the widget here would steal focus from the next-clicked cell).
-    // B1: a PROJECTING variable base repaints its sibling cells too, recipe or not — an
-    // in-base column-total pill ({= sum(Monsters.HP)} in a cell) must see the new value
-    // (mtPatchCells skips the active element, so cell-to-cell nav keeps focus).
-    const recomputed = mtRecompute(node);
-    if (recomputed || (node.varbase && !node.qbase)) mtPatchCells(node, cell);
+    // B2: the final text is committed — the shared epilogue sheds records whose token
+    // left the table (bases never pass through the non-base exitEdit prune), re-bumps
+    // the generation past the promotion, and re-runs the recipe. Repaint the sibling
+    // cells in place when it says so — rebuilding the widget here would steal focus
+    // from the next-clicked cell (mtPatchCells skips the active element, so
+    // cell-to-cell nav keeps focus). Never any of this in the per-keystroke handler.
+    if (mtCommitEpilogue(node)) mtPatchCells(node, cell);
     // B1: and referencing points ELSEWHERE repaint via a deferred, focus-aware render —
     // only when the value actually changed on a projecting base.
-    if (raw !== enteredWith && node.varbase && !node.qbase) scheduleVarBaseRender(host);
+    if (raw !== enteredWith && isVarBase(node)) scheduleVarBaseRender(host);
     scheduleReconcile();
   });
 
@@ -14490,14 +14538,8 @@ function exitEdit(content, node) {
       // Normalize: re-serialize so every row has pipe formatting (guards against
       // rows typed without | in the markdown editor), keeping the formula recipe beside it.
       node.text = serializeTable(parsed) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
-      pruneArtifacts(node); // B2: shed records whose token was deleted in the markdown edit
-      // Re-bump the generation AFTER the promote/prune mutations: promoteCellShorthand's
-      // brace classification reads collectVars, which caches varBaseDefsMemo from the
-      // PRE-promotion text under the generation the markDirty above opened — without this
-      // a projecting varbase serves that stale projection until the next edit.
-      markDirty();
-      mtRecompute(node); // bake computed values into the formula's target cells
-      if (node.varbase && !node.qbase) {
+      mtCommitEpilogue(node); // B2 prune + the post-promotion generation re-bump + recipe recompute
+      if (isVarBase(node)) {
         // B1: a projecting variable base's values may have changed — repaint every
         // referencing point, not just this widget (editing has ended, so a full render
         // is safe; the non-table else-branch below already renders the same way).
@@ -16016,9 +16058,9 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     // Query base: the query is the source of truth, so 'Edit query' replaces the
     // markdown/TBLFM ops; Copy as Markdown freezes the computed grid (titles baked in).
     actions.unshift(
-      { sec:'Table', icon:{ fa:'fa-solid fa-magnifying-glass', fb:'\u{1F50D}' }, label:'Edit query',
+      { sec:'Base', icon:{ fa:'fa-solid fa-magnifying-glass', fb:'\u{1F50D}' }, label:'Edit query',
         fn: () => { hideBpop(); editQBase(node); } },
-      { sec:'Table', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
+      { sec:'Base', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
         fn: () => {
           const m = mtModel(node);
           const md = serializeTable({ aligns: m.aligns, rows: m.rows })
@@ -16032,22 +16074,22 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   } else if (isBase) {
     // Base copy ops lead the menu (mirroring the header ⋯ menu), before the shared actions.
     actions.unshift(
-      { sec:'Table', icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as Markdown',
+      { sec:'Base', icon:{ fa:'fa-solid fa-pen', fb:'✎' }, label:'Edit as Markdown',
         fn: () => {
           hideBpop();
           const content = document.querySelector(`.node-content[data-id="${nodeId}"]`);
           if (content) { enterEdit(content, node); content.focus(); }
         } },
-      { sec:'Table', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
+      { sec:'Base', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
         fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as Markdown'); hideBpop(); } },
-      { sec:'Table', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with formulas',
+      { sec:'Base', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with formulas',
         fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
       // Variable base (bases-direction §7b): the front door for projecting rows as
       // document variables. Authored bases only (this arm never runs for a query base).
-      { sec:'Table', icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' },
+      { sec:'Base', icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' },
         label: node.varbase ? 'Variable names' : 'Use rows as variables',
         fn: () => { hideBpop(); openVarBaseDialog(node); } },
-      ...(node.varbase ? [{ sec:'Table', icon:{ fa:'fa-solid fa-xmark', fb:'✕' }, label:'Stop using rows as variables',
+      ...(node.varbase ? [{ sec:'Base', icon:{ fa:'fa-solid fa-xmark', fb:'✕' }, label:'Stop using rows as variables',
         fn: () => { hideBpop(); pushUndo(); delete node.varbase; markDirty(); refreshTable(node); flashHint('Rows no longer declare variables.'); } }] : []),
     );
   }
@@ -16094,9 +16136,11 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   const shown = full ? actions : actions.filter(a => a.prim);
 
   // Render section by section, each under a static uppercase heading. Fixed section
-  // order; a section with no rows is skipped. Base copy ops ('Table') lead; 'Danger'
-  // (Delete) sits last, alone, so it's not adjacent to Move down.
-  const SECTION_ORDER = ['Table','Navigate','Annotate','Pills','Organize','More','Danger'];
+  // order; a section with no rows is skipped. Base ops lead ('Base' — the canonical
+  // vocabulary term for the interactive grid object, ux-discipline §1; 'table' is the
+  // static markdown form); 'Danger' (Delete) sits last, alone, so it's not adjacent
+  // to Move down.
+  const SECTION_ORDER = ['Base','Navigate','Annotate','Pills','Organize','More','Danger'];
   const bySec = new Map();
   for (const a of shown) { if (!bySec.has(a.sec)) bySec.set(a.sec, []); bySec.get(a.sec).push(a); }
   for (const sec of SECTION_ORDER) {
@@ -23416,7 +23460,7 @@ function scheduleVarBaseRender(host) {
 // full render(), the rerollPickVar idiom; any other node keeps the cheap single-node
 // repaint. Returns the node's content element (for the celebratory flash class).
 function repaintAfterRoll(node) {
-  if (node.type === 'base' && node.varbase && !node.qbase) {
+  if (isVarBase(node)) {
     render();
     return document.querySelector(`.node-content[data-id="${CSS.escape(node.id)}"]`);
   }
@@ -24230,6 +24274,7 @@ function performMultiDrop(ids, targetId, position) {
 // collectors — the collector-identity test does not cover them):
 //   renderPosVarMaps  (_posVarMapCacheVer)     ← per-pill positional maps (#767)
 //   varBaseDefs       (_varBaseDefsCacheVer)   ← variable-base row projections (varBaseDefsMemo)
+//   mtModelRead       (_mtModelReadCacheVer)   ← base grid parse for PAINT paths (text-checked on top; write paths stay on mtModel)
 //
 // markDirty does this on every edit, but a fresh document load (newFile/openFile/
 // restore) replaces `root` without an edit — so the previous document's caches
@@ -24271,8 +24316,21 @@ function markDirty() {
   _varsVer++; // invalidate collectVars() cache
   updateDirtyDot();
   scheduleAutosave();
-  if (document.getElementById('var-panel')?.classList.contains('on')) updateVarPanelContent();
+  scheduleVarPanelUpdate();
   if (agendaOpen) renderAgenda();
+}
+// markDirty fires per keystroke (prose and base cells alike); rebuilding the whole
+// variables panel synchronously on every one is work the user can't perceive — and a
+// projecting variable base multiplies the panel's row count. One trailing rebuild after
+// a quiet beat instead. openVarPanel still updates synchronously, so opening is instant.
+let _varPanelTimer = null;
+function scheduleVarPanelUpdate() {
+  if (!document.getElementById('var-panel')?.classList.contains('on')) return;
+  if (_varPanelTimer) return;
+  _varPanelTimer = setTimeout(() => {
+    _varPanelTimer = null;
+    if (document.getElementById('var-panel')?.classList.contains('on')) updateVarPanelContent();
+  }, 150);
 }
 
 // ─── undo / redo ─────────────────────────────────────────────────────────────

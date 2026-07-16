@@ -598,9 +598,15 @@ referencing point repaints; the base bullet menu's Pills section is the keyboard
 pills (`mtPatchCells`, recipe or not) and schedules the deferred, focus-aware
 `scheduleVarBaseRender` for the outline (never a synchronous render in focusout; handed to a
 live editor's `exitEdit` via `_pendingVarBaseRender`); the markdown-edit path of a projecting
-base full-`render()`s. Both base commit paths prune orphaned pill records and the exitEdit base
-branch re-bumps the generation after per-cell promotion (the classification pass caches
-`varBaseDefsMemo` from pre-promotion text).
+base full-`render()`s. Both base commit chokepoints (cell focusout + the exitEdit base branch)
+share ONE tail — `mtCommitEpilogue(node)`: prune orphaned pill records, re-bump the generation
+past the per-cell promotion (the classification pass caches `varBaseDefsMemo` from
+pre-promotion text), re-run the recipe. `isVarBase(node)` is the one "projecting variable
+base" predicate. **Base model reads split by intent (round 2):** paint paths (widget build,
+`mtPatchCells`, cell focusin) read `mtModelRead(node)` — a ver-guarded + text-checked per-node
+parse memo whose model is SHARED and treated as immutable — while every path that mutates rows
+then `mtCommit()`s stays on `mtModel(node)` (fresh parse); the per-keystroke cell handler
+reuses its own last-commit parse, self-invalidating via the committed text.
 **Column totals**: `{= sum(base.col)}` (also `avg/count/min/max`) aggregates a NAMED base's
 column via `aggregateVarBaseColumn` over the vars map (`expandAggExpr(expr, node, vars?)` — the
 prop group admits dots; bare props keep the child-prop meaning; unmatched dotted calls stay

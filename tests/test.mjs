@@ -2326,7 +2326,7 @@ test('aggregateVarBaseColumn + expandAggExpr — named-base column totals (PR D)
 
 test('repaintAfterRoll + panel groups (source pins, PR D)', () => {
   const fn = fnBody(_src, 'repaintAfterRoll');
-  assert.ok(/node\.type === 'base' && node\.varbase && !node\.qbase/.test(fn) && /render\(\)/.test(fn),
+  assert.ok(/isVarBase\(node\)/.test(fn) && /render\(\)/.test(fn),
     'a projecting varbase re-roll re-renders the outline (the rerollPickVar idiom)');
   for (const f of ['rerollDice', 'rerollGrammar', 'editDice', 'editGrammar']) {
     assert.ok(fnBody(_src, f).includes('repaintAfterRoll('), `${f} routes its repaint through repaintAfterRoll`);
@@ -12208,10 +12208,16 @@ test('bases round 1 — B4 read sites + write sites stay split (source pins)', (
 
 test('bases round 1 — B1/B2/B3 wiring (source pins)', () => {
   const btw = fnBody(_src, 'buildTableWidget');
-  // B1a: the cell-focusout repaint fires on a projecting varbase even without a #+TBLFM recipe
-  assert.ok(/recomputed \|\| \(node\.varbase && !node\.qbase\)/.test(btw), 'in-base sibling repaint covers varbases');
+  // B1/B2 (via the round-2 extraction): BOTH commit chokepoints run the shared epilogue —
+  // prune orphaned records, re-bump the generation past the promotion, re-run the recipe —
+  // and the focusout repaints sibling cells when it says so (recompute OR projecting varbase)
+  const epi = fnBody(_src, 'mtCommitEpilogue');
+  assert.ok(/pruneArtifacts\(node\);\s*\n\s*markDirty\(\);\s*\n\s*const recomputed = mtRecompute\(node\)/.test(epi),
+    'the epilogue prunes, re-bumps the generation, then recomputes — in that order');
+  assert.ok(/recomputed \|\| isVarBase\(node\)/.test(epi), 'in-base sibling repaint covers projecting varbases');
+  assert.ok(/if \(mtCommitEpilogue\(node\)\) mtPatchCells\(node, cell\)/.test(btw), 'the cell focusout runs the epilogue and patches in place');
   // B1b: cross-outline refs repaint via the deferred, focus-aware render — only on a real change
-  assert.ok(/raw !== enteredWith && node\.varbase && !node\.qbase\) scheduleVarBaseRender\(host\)/.test(btw), 'focusout schedules the outline repaint');
+  assert.ok(/raw !== enteredWith && isVarBase\(node\)\) scheduleVarBaseRender\(host\)/.test(btw), 'focusout schedules the outline repaint');
   const svr = fnBody(_src, 'scheduleVarBaseRender');
   assert.ok(/contains\(document\.activeElement\)/.test(svr) && /_pendingVarBaseRender = true/.test(svr) && /render\(\)/.test(svr),
     'the deferred render is focus-aware and hands off to a live editor');
@@ -12219,22 +12225,57 @@ test('bases round 1 — B1/B2/B3 wiring (source pins)', () => {
   assert.ok(/_pendingFullRender \|\| _pendingVarBaseRender/.test(ee), 'exitEdit consumes the pending varbase render (non-base tail)');
   assert.ok(/else if \(_pendingVarBaseRender\)/.test(ee), 'exitEdit consumes it on the base local-rebuild path too');
   // B1c: the markdown-edit path of a projecting varbase re-renders the whole outline
-  assert.ok(/node\.varbase && !node\.qbase/.test(ee), 'exitEdit base branch forks on a projecting varbase');
-  // B2: bases prune orphaned sidecar records at both commit chokepoints
-  assert.ok(/pruneArtifacts\(node\)/.test(btw), 'the cell focusout prunes after the final commit');
-  assert.equal((ee.match(/pruneArtifacts\(node\)/g) || []).length, 2, 'exitEdit prunes on the base branch AND the prose path');
+  assert.ok(/isVarBase\(node\)/.test(ee), 'exitEdit base branch forks on a projecting varbase');
+  // B2: the base branch runs the same epilogue (prune + generation re-bump + recompute)
+  assert.ok(/mtCommitEpilogue\(node\)/.test(ee), 'exitEdit base branch runs the shared epilogue');
+  assert.ok(/pruneArtifacts\(node\)/.test(ee), 'the prose path keeps its own prune');
   // ...but never in the per-keystroke input handler (would shed a record mid-typing)
   const inputIdx = btw.indexOf("addEventListener('input'");
   if (inputIdx >= 0) {
     const inputChunk = btw.slice(inputIdx, btw.indexOf('addEventListener', inputIdx + 10));
-    assert.ok(!/pruneArtifacts/.test(inputChunk), 'no prune in the input handler');
+    assert.ok(!/pruneArtifacts|mtCommitEpilogue/.test(inputChunk), 'no prune/epilogue in the input handler');
   }
   // B3: markdown-edit promotes typed {…} per cell — never the whole serialized text (#788)
   assert.ok(/promoteCellShorthand\(node, row\[c\]\)/.test(ee), 'the base exitEdit branch promotes per cell');
-  // and the promote/prune mutations re-bump the vars generation: promoteCellShorthand's brace
-  // classification reads collectVars, which caches varBaseDefsMemo from the PRE-promotion text —
-  // without a fresh markDirty a projecting varbase serves that stale projection until the next edit
-  assert.ok(/markDirty\(\);\s*\n\s*mtRecompute\(node\)/.test(ee), 'the base branch re-bumps the generation after promote/prune');
+});
+
+// ── Bases round 2: model memo, perf quick wins, vocabulary ───────────────────
+test('round 2 — isVarBase + mtModelRead (the paint-path parse memo)', () => {
+  assert.equal(c.isVarBase({ type: 'base', varbase: {} }), true);
+  assert.equal(c.isVarBase({ type: 'base', varbase: {}, qbase: { expr: 'x', cols: [] } }), false, 'query bases never project');
+  assert.equal(c.isVarBase({ type: 'ul', varbase: {} }), false, 'only a base projects');
+  assert.equal(c.isVarBase({ type: 'base' }), false);
+  assert.equal(c.isVarBase(null), false);
+  // mtModelRead: unchanged text serves the SAME shared model object; a text change invalidates
+  const n = { id: 'mm1', type: 'base', text: '| A | B |\n| --- | --- |\n| 1 | 2 |' };
+  const m1 = c.mtModelRead(n);
+  assert.equal(c.mtModelRead(n), m1, 'unchanged text hits the memo');
+  n.text = '| A | B |\n| --- | --- |\n| 9 | 2 |';
+  const m2 = c.mtModelRead(n);
+  assert.notEqual(m2, m1, 'a text change misses (self-invalidating, no bump needed)');
+  assert.equal(m2.rows[1][0], '9');
+  // the WRITE path stays fresh-parse — mutation-safe by construction
+  assert.notEqual(c.mtModel(n), c.mtModel(n), 'mtModel returns a fresh parse every call');
+});
+
+test('round 2 — perf wiring + canonical vocabulary (source pins)', () => {
+  // the variables-panel rebuild is debounced out of markDirty (it ran synchronously per keystroke)
+  const md = fnBody(_src, 'markDirty');
+  assert.ok(/scheduleVarPanelUpdate\(\)/.test(md) && !/updateVarPanelContent\(\)/.test(md), 'markDirty defers the panel rebuild');
+  assert.ok(/setTimeout/.test(fnBody(_src, 'scheduleVarPanelUpdate')), 'the panel update is a trailing debounce');
+  assert.ok(/updateVarPanelContent\(\)/.test(fnBody(_src, 'openVarPanel')), 'opening the panel still updates synchronously');
+  // the per-keystroke cell handler reuses the session parse, self-invalidating via the committed text
+  const btw = fnBody(_src, 'buildTableWidget');
+  assert.ok(/_mtEditSession && _mtEditSession\.id === node\.id && _mtEditSession\.text === node\.text/.test(btw),
+    'the input handler reuses the last-commit parse, text-keyed');
+  // the column-total matcher compiles once per base.col
+  assert.ok(/_aggColReCache/.test(fnBody(_src, 'aggregateVarBaseColumn')), 'the aggregate regex is cached');
+  // paint paths read through the memo; write paths stay on mtModel
+  assert.ok(/const m = mtModelRead\(node\)/.test(fnBody(_src, 'mtPatchCells')), 'mtPatchCells reads via the memo');
+  assert.ok(/const model = mtModelRead\(node\)/.test(btw), 'the widget paint reads via the memo');
+  assert.ok(!/mtModelRead/.test(fnBody(_src, 'mtRecompute')), 'recompute (a write path) stays on the fresh parse');
+  // the base menu section header speaks the canonical term (ux-discipline §1: base, not table)
+  assert.ok(/SECTION_ORDER = \['Base',/.test(_src) && !/sec:'Table'/.test(_src), "the base menu section says 'Base'");
 });
 
 // ── BV-1: boardLanes, the board view's pure lane model ───────────────────────
