@@ -211,15 +211,24 @@ Cells follow one simple rule:
 - **anything else is text**, kept exactly as written (so the `2d6` above is the three-character
   text `2d6`, not a roll).
 
+**Want a rolled, re-rollable value? Make the cell a pill.** Type `{2d6}` in the cell and it
+becomes a dice pill when you leave it; the pill's frozen roll is the variable's value, and
+clicking the pill re-rolls it, updating every reference. A grammar pill works the same way for
+text (a `{undead | humanoid}` cell gives a re-rollable Type). From the keyboard, the base's
+bullet menu lists a Re-roll entry for each pill in the base.
+
 The first column works too: `{Orc.Name}` is the display name exactly as typed ("Hill Giant" keeps
 its space and caps), so `{Orc.Name.s}` says "Orcs" using the usual
 [text modifiers](generating-text.md#shape-the-words-modifiers).
 
 Give the base a **name** in the dialog to file every row under it, like `{Monsters.Orc.HP}`. That
-keeps two bases that both have an `Orc` row from colliding. The dialog previews every name the base
-will declare and warns about anything it has to skip (a row it can't name, a column that matches a
-text modifier). A `$` badge on the base shows the feature is on; click it to change the name, or use
-the bullet menu's **Stop using rows as variables** to turn it off.
+keeps two bases that both have an `Orc` row from colliding. A named base can also **total a
+column**: `{= sum(Monsters.HP)}` adds the HP cell of every row (`avg`, `count`, `min` and `max`
+work the same way), live as cells change, rolled cells included. The dialog previews every name
+the base will declare and warns about anything it has to skip (a row it can't name, a column that
+matches a text modifier). A `$` badge on the base shows the feature is on; click it to change the
+name, or use the bullet menu's **Stop using rows as variables** to turn it off. In the Variables
+panel, a base's names fold under one collapsible header so your own variables stay in front.
 
 ---
 

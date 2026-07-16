@@ -1986,6 +1986,12 @@ body:not(.v-guided) .bm-desc{display:none}
 .vp-row{display:flex;align-items:baseline;gap:5px;font-size:13px}
 .vp-name{font-weight:500;font-family:var(--mono)}
 .vp-prefix{color:var(--muted);font-weight:400}/* a dotted projection's row/base prefix reads muted */
+/* variable-base panel group header: one collapsible row per projecting base */
+.vp-group{display:flex;align-items:center;gap:5px;width:100%;font-family:var(--font);font-size:12px;font-weight:600;color:var(--fg);background:none;border:none;border-top:1px solid var(--bdr);padding:5px 0 3px;margin-top:3px;cursor:pointer;text-align:left}
+.vp-group:hover{color:var(--acc)}
+.vp-group:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
+.vp-group-chev{color:var(--muted);font-size:10px}
+.vp-group-count{color:var(--muted);font-weight:400;margin-left:auto}
 .vp-eq{color:var(--muted);font-size:11px}
 .vp-val{font-family:var(--mono);font-size:12px;color:var(--acc)}
 .vp-cycle{color:var(--bad);font-size:11px}
@@ -3412,9 +3418,46 @@ function aggregateChildren(node, fn, prop, depth = 1) {
 // additive (a comma'd `min(a, b)` keeps the numeric path; the regex needs one ident,
 // no comma). The spreadsheet MIN(col) vs MIN(a,b) split. Pure; a null node aggregates
 // over an empty child set, which is how node-less validation stays valid.
-function expandAggExpr(expr, node) {
+// Column totals over a NAMED variable base: aggregate the numeric values of every key
+// matching base.<row>.col in the resolved vars map ({= sum(Monsters.HP)} adds the HP cell
+// of every row, dice-cell rolls included since they resolve as numbers). Returns null when
+// NO key matches (the base/column doesn't exist — the caller leaves the call literal so
+// evalMath surfaces a visible #ERR, P4); a matched-but-non-numeric column aggregates its
+// numerics (sum 0 / count 0 / min-max identity, parallel to the child rollups). Pure.
+function aggregateVarBaseColumn(fn, base, col, vars) {
+  const re = new RegExp('^' + base + '\\.[a-z0-9_]+\\.' + col + '$');   // base/col are \w-only idents, regex-safe
+  const vals = [];
+  let matched = false;
+  for (const k of Object.keys(vars || {})) {
+    if (!re.test(k)) continue;
+    matched = true;
+    const v = vars[k];
+    if (typeof v === 'number' && isFinite(v)) vals.push(v);
+  }
+  if (!matched) return null;
+  if (fn === 'count') return vals.length;
+  if (fn === 'sum')   return vals.reduce((a, b) => a + b, 0);
+  if (fn === 'avg')   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  if (fn === 'min')   return vals.length ? Math.min(...vals) : Infinity;
+  if (fn === 'max')   return vals.length ? Math.max(...vals) : -Infinity;
+  return null;
+}
+
+function expandAggExpr(expr, node, vars = null) {
   if (!expr) return expr;
   let e = String(expr);
+  // Lazy vars: only resolved when a dotted (variable-base column) prop is actually seen,
+  // so the common bare-prop path pays nothing. Callers with a positional map pass it in.
+  const varsMap = () => (vars ??= collectVars());
+  // A dotted prop = a variable-base COLUMN total (base.col, NAMED bases only — an
+  // unprefixed base's columns would be ambiguous with the child-prop rollups). Exactly 2
+  // segments and no scope arg; anything else stays literal → visible #ERR.
+  const dottedArm = (m, fn, prop, scope) => {
+    const segs = prop.split('.');
+    if (segs.length !== 2 || scope !== undefined) return m;
+    const v = aggregateVarBaseColumn(fn, segs[0].toLowerCase(), segs[1].toLowerCase(), varsMap());
+    return v === null ? m : '(' + v + ')';
+  };
   // count("query") — the QUERY-count overload (F5-lite): a QUOTED argument counts the
   // points matching a search within the node's subtree, substituted to a number here so
   // evalMath never sees a string (the same translation model as every rollup below).
@@ -3432,8 +3475,9 @@ function expandAggExpr(expr, node) {
   // sum(cost, subtree) = whole subtree, sum(cost, 2) = two levels. An UNRECOGNIZED scope leaves
   // the call literal so evalMath surfaces #ERR (never a silent wrong depth).
   if (/\b(?:sum|avg|count)\s*\(/.test(e)) {
-    e = e.replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g,
+    e = e.replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g,
       (m, fn, prop, scope) => {
+        if (prop.includes('.')) return dottedArm(m, fn, prop, scope);   // base.col column total
         const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
         if (depth === null) return m;   // bad scope → literal → #ERR downstream
         return '(' + aggregateChildren(node, fn, prop, depth) + ')';
@@ -3445,8 +3489,9 @@ function expandAggExpr(expr, node) {
   // falls through to evalMath. `max(cost)` (1 arg) and `max(cost, subtree)` still roll up;
   // `max(hp, 10)` / `min(x, 5)` compute the numeric max/min the user intends.
   if (/\b(?:min|max)\s*\(/.test(e)) {
-    e = e.replace(/\b(min|max)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree)\s*)?\)/g,
+    e = e.replace(/\b(min|max)\s*\(\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:,\s*(self|children|subtree)\s*)?\)/g,
       (m, fn, prop, scope) => {
+        if (prop.includes('.')) return dottedArm(m, fn, prop, scope);   // base.col column extremal
         const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
         if (depth === null) return m;
         return '(' + aggregateChildren(node, fn, prop, depth) + ')';
@@ -3702,7 +3747,7 @@ function evalCheck(node, vars = {}, ancestors = []) {
   // reporting 'pass' just because the number is truthy is a silent wrong-success
   // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
   if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
-  const expanded = expandAggExpr(raw, node);
+  const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
   // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
   // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
   const scope = resolveNodeScope(node, ancestors, vars);
@@ -8288,8 +8333,26 @@ function varBaseDefs(node) {
       const col = header[c];
       if (!col) continue;
       const cell = String(row[c] ?? '').trim();
-      if (!cell || /^#ERR\b/.test(cell) || /\[\[[a-z]+:[a-z0-9]+\]\]/i.test(cell)) continue;
+      if (!cell || /^#ERR\b/.test(cell)) continue;
       const name = (prefix ? prefix + '.' : '') + rowName + '.' + col;
+      // A cell that IS a single dice/grammar pill projects its FROZEN roll — the pill is the
+      // store (its record holds the frozen total/result, re-rolls on click, rides _dice/_grammar
+      // through OPML). A numeric roll flows through the pick channel and coerces to a number, so
+      // {= Orc.HP + 5} and sum(base.col) read it. Any other token type, a token mixed with text,
+      // or a stale token with no record → skipped, as before.
+      const one = cell.match(/^\[\[(dice|grammar):([a-z0-9]+)\]\]$/i);
+      if (one) {
+        const t = one[1].toLowerCase();
+        if (t === 'dice') {
+          const rec = node.dice?.find(d => d.key === one[2]);
+          if (rec && rec.total !== undefined) out.push({ name, expr: rec.expr, pick: String(rec.total), roll: true });
+        } else {
+          const rec = node.grammar?.find(g => g.key === one[2]);
+          if (rec && rec.result !== undefined) out.push({ name, expr: rec.def || '', pick: String(rec.result), roll: true });
+        }
+        continue;
+      }
+      if (/\[\[[a-z]+:[a-z0-9]+\]\]/i.test(cell)) continue;   // other/mixed token cells never project
       if (cell[0] === '=') {
         const expr = cell.slice(1).trim();
         if (expr) out.push({ name, expr, pick: undefined });
@@ -8321,7 +8384,7 @@ function varBaseDefsMemo(node) {
 // to outside variables both resolve). Node-testable.
 // Returns { names: [{ name, kind: 'formula'|'number'|'text', ok, val }], warnings: [string] }.
 function varBasePreview(node, name, docVars = {}) {
-  const trial = { id: node.id, type: 'base', text: node.text, qbase: node.qbase, varbase: { name } };
+  const trial = { id: node.id, type: 'base', text: node.text, qbase: node.qbase, dice: node.dice, grammar: node.grammar, varbase: { name } };
   const projected = varBaseDefs(trial);
   const warnings = [];
   const m = mtModelText(node.text);
@@ -8337,7 +8400,7 @@ function varBasePreview(node, name, docVars = {}) {
   const { resolved } = resolveVarDefs(defs, picks, order);
   const seen = new Set();
   const names = projected.map(d => {
-    const kind = d.pick !== undefined ? 'text' : (/^-?\d/.test(d.expr.trim()) && Number.isFinite(Number(d.expr)) ? 'number' : 'formula');
+    const kind = d.roll ? 'roll' : d.pick !== undefined ? 'text' : (/^-?\d/.test(d.expr.trim()) && Number.isFinite(Number(d.expr)) ? 'number' : 'formula');
     const ok = d.name in resolved;
     if (seen.has(d.name)) warnings.push(`"${d.name}" appears more than once; the last row wins.`);
     seen.add(d.name);
@@ -19594,7 +19657,7 @@ function rerollGrammar(node, key) {
     markDirty();
     announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
     if (willReshuffle) flashHint('Deck reshuffled');
-    const el = repaintNodeContent(node);
+    const el = repaintAfterRoll(node);
     el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
     return;
   }
@@ -19604,7 +19667,7 @@ function rerollGrammar(node, key) {
   g.result = result;
   markDirty();
   announce(`Re-generated: ${g.result}`);
-  const el = repaintNodeContent(node);
+  const el = repaintAfterRoll(node);
   el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
 }
 
@@ -19625,7 +19688,7 @@ function editGrammar(node, key) {
         if (!fresh) return;
         Object.assign(g, fresh);
         markDirty();
-        repaintNodeContent(node);
+        repaintAfterRoll(node);
       },
     });
     return;
@@ -19637,7 +19700,7 @@ function editGrammar(node, key) {
     onResult: roll => {
       Object.assign(g, { def: roll.def, origin: roll.origin, result: roll.result });
       markDirty();
-      repaintNodeContent(node);
+      repaintAfterRoll(node);
     },
   });
 }
@@ -21368,12 +21431,12 @@ function renderMathPill(key, m) {
   // Recompute with current vars so math stays live when variables change; expand
   // sum/avg/count(prop) against the point being rendered so subtree aggregation
   // stays live as children change (cookieNode = the current render node).
-  const expr = expandAggExpr(m.expr, cookieNode);
   // Scope = doc vars, then ANCESTOR props (farthest → nearest), then the render node's OWN
   // props on top (resolveNodeScope, #461 — the ancestor-inheritance half; #460 shipped own-node).
   // So a `{= STR + 2}` pill on a scene under a `STR:14` character point reads 16, and its own
   // `STR:` (if any) still wins. A no-prop node + no-prop ancestors yields renderVarMap unchanged.
   const vmap = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap;   // #767: vars visible AT this pill's position
+  const expr = expandAggExpr(m.expr, cookieNode, vmap);   // vmap: base.col column totals read the positional map
   const scope = resolveNodeScope(cookieNode, ancestorsOf(cookieNode), vmap);
   const fresh = evalMath(expr, scope);          // positional: vars visible at this node, own props on top
   if (fresh === null) {
@@ -21725,7 +21788,7 @@ function openVarBaseDialog(node) {
       { key: 'name', label: 'Base name (optional)', placeholder: 'e.g. Monsters',
         value: node.varbase?.name || '',
         preview: v => varBasePreviewHtml(node, v),
-        hint: 'Each row becomes variables you can use anywhere: {Orc.HP} in text, {= Orc.HP + 5} in math. A cell starting with = computes (it can reference other variables); a number is a number; anything else is text. Naming the base puts every row under that name, like Monsters.Orc.HP.' },
+        hint: 'Each row becomes variables you can use anywhere: {Orc.HP} in text, {= Orc.HP + 5} in math. A cell starting with = computes (it can reference other variables); a number is a number; anything else is text. For a rolled, re-rollable value, make the cell a pill: type {2d6} in it and click the pill to re-roll. Naming the base puts every row under that name, like Monsters.Orc.HP, and lets you total a column with {= sum(Monsters.HP)}.' },
     ],
     onSubmit: v => {
       pushUndo();
@@ -23265,6 +23328,18 @@ function propagateCheckboxToSelection(clickedId) {
 }
 
 // Re-roll a dice token in place (click handler), keeping its formula.
+// Repaint after a roll/edit changed a pill's frozen value. A PROJECTING variable base's
+// cell pill IS a variable value ({Orc.HP}), so every referencing point must repaint —
+// full render(), the rerollPickVar idiom; any other node keeps the cheap single-node
+// repaint. Returns the node's content element (for the celebratory flash class).
+function repaintAfterRoll(node) {
+  if (node.type === 'base' && node.varbase && !node.qbase) {
+    render();
+    return document.querySelector(`.node-content[data-id="${CSS.escape(node.id)}"]`);
+  }
+  return repaintNodeContent(node);
+}
+
 function rerollDice(node, key) {
   const d = node?.dice?.find(x => x.key === key);
   if (!d) return;
@@ -23276,7 +23351,7 @@ function rerollDice(node, key) {
   d.total = total; d.parts = parts;
   markDirty();
   announce(`${d.expr} re-rolled: ${diceTotalStr(d)}`);
-  const el = repaintNodeContent(node);
+  const el = repaintAfterRoll(node);
   el?.querySelector(`.dice-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('dice-rolled');
 }
 
@@ -23292,7 +23367,7 @@ function editDice(node, key) {
     onResult: roll => {
       Object.assign(d, { expr: roll.expr, total: roll.total, parts: roll.parts });
       markDirty();
-      repaintNodeContent(node);
+      repaintAfterRoll(node);
     },
   });
 }
@@ -26716,18 +26791,60 @@ function openVarPanel() { updateVarPanelContent(); varPanelEl.classList.add('on'
 function closeVarPanel() { varPanelEl.classList.remove('on'); }
 function toggleVarPanel() { if (isVarPanelOpen()) closeVarPanel(); else openVarPanel(); }
 
+// Variable-base panel groups: a base's ~rows×cols projections collapse under one header so
+// hand-declared variables stay front and center. Session-only expand state (default collapsed).
+let _vpExpandedGroups = new Set();
+function vpRow(nm, vars) {
+  const row = document.createElement('div');
+  row.className = 'vp-row';
+  const nameEl = document.createElement('span'); nameEl.className = 'vp-name';
+  // A dotted name (a variable-base projection) renders its prefix muted so the field
+  // reads at a glance.
+  const lastDot = nm.lastIndexOf('.');
+  if (lastDot > 0) {
+    const pre = document.createElement('span'); pre.className = 'vp-prefix'; pre.textContent = nm.slice(0, lastDot + 1);
+    nameEl.appendChild(pre); nameEl.appendChild(document.createTextNode(nm.slice(lastDot + 1)));
+  } else nameEl.textContent = nm;
+  const eqEl   = document.createElement('span'); eqEl.className   = 'vp-eq';   eqEl.textContent = '=';
+  row.appendChild(nameEl); row.appendChild(eqEl);
+  if (_varCycles.has(nm)) {
+    const cycleEl = document.createElement('span'); cycleEl.className = 'vp-cycle'; cycleEl.textContent = '↻ cycle';
+    row.appendChild(cycleEl);
+  } else {
+    const val = vars[nm];
+    const valEl = document.createElement('span'); valEl.className = 'vp-val';
+    valEl.textContent = val === undefined ? '?'
+      : typeof val === 'string' ? val   // random pick — frozen text, not a number
+      : Number.isInteger(val) ? String(val) : String(+val.toPrecision(6));
+    row.appendChild(valEl);
+  }
+  return row;
+}
 function updateVarPanelContent() {
   const list = document.getElementById('var-panel-list');
   if (!list) return;
   const vars = collectVars();          // also refreshes _varActiveExprs/_varCycles
   const names = Object.keys(_varActiveExprs).sort();
+  // Partition by OWNING variable base: each projecting base's name set becomes one
+  // collapsible group; everything else (hand-declared vars) stays the flat list.
+  const groups = [];   // [{ key, label, names: Set }]
+  (function walk(n) {
+    if (!n) return;
+    if (n.type === 'base' && n.varbase && !n.qbase) {
+      const defs = varBaseDefsMemo(n);
+      if (defs.length) groups.push({ key: n.id, label: n.varbase.name || 'base', names: new Set(defs.map(d => d.name)) });
+    }
+    for (const c of n.children || []) walk(c);
+  })(root);
+  const owned = new Set(); for (const g of groups) for (const nm of g.names) owned.add(nm);
+  const flat = names.filter(nm => !owned.has(nm));
   // Content signature: skip the rebuild when nothing a user would see has changed.
   // markDirty fires on every keystroke while the panel is open, and the list carries
   // aria-live="polite" — re-emitting an identical list on each keystroke would spam a
-  // screen reader. Guarding the rebuild means AT only hears a change when one happens
-  // (and saves needless DOM thrash too).
-  const sig = JSON.stringify(names.map(nm =>
-    [nm, _varCycles.has(nm) ? '↻' : (vars[nm] === undefined ? '?' : vars[nm])]));
+  // screen reader. Includes group membership + expand state so AT hears real changes only.
+  const sig = JSON.stringify([names.map(nm =>
+    [nm, _varCycles.has(nm) ? '↻' : (vars[nm] === undefined ? '?' : vars[nm])]),
+    groups.map(g => [g.key, g.label, g.names.size, _vpExpandedGroups.has(g.key)])]);
   if (list.dataset.sig === sig) return;
   list.dataset.sig = sig;
   list.innerHTML = '';
@@ -26738,31 +26855,23 @@ function updateVarPanelContent() {
     list.appendChild(empty);
     return;
   }
-  for (const nm of names) {
-    const row = document.createElement('div');
-    row.className = 'vp-row';
-    const nameEl = document.createElement('span'); nameEl.className = 'vp-name';
-    // A dotted name (a variable-base projection) renders its prefix muted so the field
-    // reads at a glance; dotted names cluster together in the sorted flat list.
-    const lastDot = nm.lastIndexOf('.');
-    if (lastDot > 0) {
-      const pre = document.createElement('span'); pre.className = 'vp-prefix'; pre.textContent = nm.slice(0, lastDot + 1);
-      nameEl.appendChild(pre); nameEl.appendChild(document.createTextNode(nm.slice(lastDot + 1)));
-    } else nameEl.textContent = nm;
-    const eqEl   = document.createElement('span'); eqEl.className   = 'vp-eq';   eqEl.textContent = '=';
-    row.appendChild(nameEl); row.appendChild(eqEl);
-    if (_varCycles.has(nm)) {
-      const cycleEl = document.createElement('span'); cycleEl.className = 'vp-cycle'; cycleEl.textContent = '↻ cycle';
-      row.appendChild(cycleEl);
-    } else {
-      const val = vars[nm];
-      const valEl = document.createElement('span'); valEl.className = 'vp-val';
-      valEl.textContent = val === undefined ? '?'
-        : typeof val === 'string' ? val   // random pick — frozen text, not a number
-        : Number.isInteger(val) ? String(val) : String(+val.toPrecision(6));
-      row.appendChild(valEl);
-    }
-    list.appendChild(row);
+  for (const nm of flat) list.appendChild(vpRow(nm, vars));
+  for (const g of groups) {
+    const shown = names.filter(nm => g.names.has(nm));
+    if (!shown.length) continue;
+    const open = _vpExpandedGroups.has(g.key);
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'vp-group';
+    head.setAttribute('aria-expanded', String(open));
+    head.innerHTML = `<span class="vp-group-chev" aria-hidden="true">${open ? '▾' : '▸'}</span> ${escHtml(g.label)} <span class="vp-group-count">${shown.length}</span>`;
+    head.addEventListener('click', () => {
+      if (_vpExpandedGroups.has(g.key)) _vpExpandedGroups.delete(g.key); else _vpExpandedGroups.add(g.key);
+      list.dataset.sig = '';   // force the rebuild the toggle asks for
+      updateVarPanelContent();
+    });
+    list.appendChild(head);
+    if (open) for (const nm of shown) list.appendChild(vpRow(nm, vars));
   }
 }
 
@@ -29168,13 +29277,15 @@ const GUIDE = [
     ] },
   { id:'varbase', cat:'compute', related:['variables','math','tables'],
     title:'Variable bases',
-    body:"Keep a stat block, a price list or any table of named things in a base, and read every cell as a variable. Open the base's bullet menu and choose Use rows as variables: each row then declares one variable per column, named Row.Column. A base with a Name column holding Orc and an HP column holding 12 gives you `{Orc.HP}` in text and `{= Orc.HP + 5}` in math, updating live as you edit the cells.\n\nCells follow one simple rule. A cell starting with `=` computes, and it can reference other variables, including other cells (`= Orc.AC - 1` in Goblin's row tracks Orc's). A plain number is a number. Anything else is text, kept exactly as written. The first column works too: `{Orc.Name}` is the display name as typed, so `{Orc.Name.s}` says Orcs.\n\nGive the base a name in the dialog to file every row under it, like `{Monsters.Orc.HP}`, which keeps two bases with an Orc row apart. The dialog previews every name the base will declare and warns about anything it has to skip. A `$` badge on the base shows the feature is on; click it to change the name, or use the bullet menu to turn it off.",
+    body:"Keep a stat block, a price list or any table of named things in a base, and read every cell as a variable. Open the base's bullet menu and choose Use rows as variables: each row then declares one variable per column, named Row.Column. A base with a Name column holding Orc and an HP column holding 12 gives you `{Orc.HP}` in text and `{= Orc.HP + 5}` in math, updating live as you edit the cells.\n\nCells follow one simple rule. A cell starting with `=` computes, and it can reference other variables, including other cells (`= Orc.AC - 1` in Goblin's row tracks Orc's). A plain number is a number. Anything else is text, kept exactly as written. For a rolled, re-rollable value, make the cell a pill: type `{2d6}` in it and the pill's frozen roll becomes the variable; click the pill to re-roll and every reference updates. The first column works too: `{Orc.Name}` is the display name as typed, so `{Orc.Name.s}` says Orcs.\n\nGive the base a name in the dialog to file every row under it, like `{Monsters.Orc.HP}`, which keeps two bases with an Orc row apart. A named base can also total a column: `{= sum(Monsters.HP)}` adds the HP cell of every row (avg, count, min and max work too). The dialog previews every name the base will declare and warns about anything it has to skip. A `$` badge on the base shows the feature is on; click it to change the name, or use the bullet menu to turn it off. In the Variables panel, a base's names fold under one header so your own variables stay in front.",
     examples:[
       { syn:'{Orc.HP}',            desc:'read a cell anywhere' },
       { syn:'{= Orc.HP + 5}',      desc:'use it in a calculation' },
       { syn:'= Orc.AC - 1',        desc:'a cell that tracks another cell' },
+      { syn:'{2d6} in a cell',     desc:'a frozen roll; click the pill to re-roll' },
       { syn:'{Orc.Name.s}',        desc:'the display name, pluralized' },
       { syn:'{Monsters.Orc.HP}',   desc:'a named base files rows under it' },
+      { syn:'{= sum(Monsters.HP)}',desc:'total a named base\'s column' },
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',

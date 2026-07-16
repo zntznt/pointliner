@@ -226,9 +226,21 @@ An optional base name namespaces every projection (`monsters.orc.hp` — the pre
 - **Deliberately NOT projected:** bare row names (`{Orc}` alone) — bare identifiers share the
   grammar-rule namespace and rules win, a silent-shadow P1 trap; the display name is addressable as
   `{Orc.Name}` (column 0 under its own header) instead. Adding bare projection later is compatible.
-- **Deferred (reopen this doc to build):** pick/dice cells (needs a per-base rolls store to freeze
-  rolls on), `sum(dotted)` child rollups, the `var:` search operator over projections, per-prefix var
-  panel grouping, projected-name shadow markers (no pill to mark).
+- **Pill cells (shipped 2026-07-16, the follow-up round):** a cell that IS a single dice/grammar
+  pill projects its FROZEN roll (`total`/`result`) through the pick channel — the pill is the store
+  (no rolls sidecar; the record already freezes, re-rolls on click, and rides `_dice`/`_grammar`).
+  Type `{2d6}` in a cell (the per-cell promotion, PR #788), click the pill to re-roll; `repaintAfterRoll` gives a
+  projecting base the full-`render()` treatment so every referencing point repaints. Mixed
+  token+text cells and other pill types still skip.
+- **Column totals (shipped 2026-07-16):** `{= sum(base.col)}` / `avg`/`count`/`min`/`max` aggregate
+  a NAMED base's column across all rows (`aggregateVarBaseColumn` over the resolved vars map; the
+  `expandAggExpr` prop group admits one dot). Bare props keep the child-prop meaning unchanged;
+  unmatched/3-segment/scoped dotted calls stay literal → visible `#ERR`.
+- **Var-panel grouping (shipped 2026-07-16):** each projecting base's names collapse under one
+  header in the Variables panel (label = the prefix name or "base", count, default collapsed,
+  session-only expand state).
+- **Deferred (reopen this doc to build):** the `var:` search operator over projections,
+  projected-name shadow markers (no pill to mark).
 
 ---
 

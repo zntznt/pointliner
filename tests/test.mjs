@@ -2273,6 +2273,68 @@ test('varBaseDefsMemo — one parse per generation, fresh after a bump', () => {
   }
 });
 
+test('varBaseDefs — a single dice/grammar pill cell projects its FROZEN roll (PR D)', () => {
+  const n = mkVarBase('| Name | HP | Type |\n| --- | --- | --- |\n| Orc | [[dice:d1]] | [[grammar:g1]] |');
+  n.dice = [{ key: 'd1', expr: '2d6', total: 7, parts: [] }];
+  n.grammar = [{ key: 'g1', def: 'origin: undead | humanoid', origin: 'origin', result: 'undead', anon: true }];
+  const by = Object.fromEntries(c.varBaseDefs(n).map(d => [d.name, d]));
+  assert.equal(by['orc.hp'].pick, '7', 'the dice pill projects its frozen total through the pick channel');
+  assert.equal(by['orc.hp'].roll, true);
+  assert.equal(by['orc.type'].pick, 'undead', 'the grammar pill projects its frozen result');
+  assert.equal(by['orc.type'].roll, true);
+  // resolution end-to-end: the numeric roll coerces to a number, so math composes
+  const root = c.mkRoot(); root.children.push(n);
+  const vars = c.collectVars(root);
+  assert.equal(vars['orc.hp'], 7);
+  assert.equal(c.evalMath('orc.hp + 5', vars), 12);
+  assert.equal(vars['orc.type'], 'undead');
+  // the dialog preview labels a pill cell 'roll'
+  const p = c.varBasePreview(n, '', {});
+  assert.equal(p.names.find(x => x.name === 'orc.hp').kind, 'roll');
+});
+
+test('varBaseDefs — mixed/stale/other token cells still skip (PR D)', () => {
+  const n = mkVarBase('| Name | A | B | C |\n| --- | --- | --- | --- |\n| Orc | [[dice:d1]] bonus | [[dice:nope]] | [[math:m1]] |');
+  n.dice = [{ key: 'd1', expr: '2d6', total: 7, parts: [] }];
+  n.math = [{ key: 'm1', expr: '1+1' }];
+  const names = c.varBaseDefs(n).map(d => d.name);
+  assert.deepEqual(host(names), ['orc.name'], 'token+text, stale token, and non-dice/grammar tokens all skip');
+});
+
+test('aggregateVarBaseColumn + expandAggExpr — named-base column totals (PR D)', () => {
+  const vars = { 'monsters.orc.hp': 12, 'monsters.goblin.hp': 7, 'monsters.orc.type': 'undead',
+                 'monsters.orc.name': 'Orc', 'other.a.hp': 99, hp: 3 };
+  assert.equal(c.aggregateVarBaseColumn('sum', 'monsters', 'hp', vars), 19);
+  assert.equal(c.aggregateVarBaseColumn('avg', 'monsters', 'hp', vars), 9.5);
+  assert.equal(c.aggregateVarBaseColumn('count', 'monsters', 'hp', vars), 2);
+  assert.equal(c.aggregateVarBaseColumn('min', 'monsters', 'hp', vars), 7);
+  assert.equal(c.aggregateVarBaseColumn('max', 'monsters', 'hp', vars), 12);
+  assert.equal(c.aggregateVarBaseColumn('count', 'monsters', 'type', vars), 0, 'text column: matched but no numerics');
+  assert.equal(c.aggregateVarBaseColumn('sum', 'nosuch', 'hp', vars), null, 'no matching keys → null (caller leaves literal)');
+  // through expandAggExpr + evalMath
+  const ax = e => c.expandAggExpr(e, null, vars);
+  assert.equal(c.evalMath(ax('sum(Monsters.HP) + 1'), vars), 20);
+  assert.equal(c.evalMath(ax('max(monsters.hp) - min(monsters.hp)'), vars), 5);
+  assert.equal(ax('sum(NoSuch.HP)'), 'sum(NoSuch.HP)', 'unknown base stays literal → visible #ERR');
+  assert.equal(ax('sum(a.b.c)'), 'sum(a.b.c)', '3-segment prop stays literal');
+  assert.equal(ax('sum(Monsters.HP, subtree)'), 'sum(Monsters.HP, subtree)', 'a scope on a dotted prop stays literal');
+  // bare props keep the child-prop meaning byte-for-byte (regression)
+  const kid = c.mkNode('k'); kid.props = [{ key: 'cost', val: '4' }];
+  const parent = c.mkNode('p'); parent.children.push(kid);
+  assert.equal(c.expandAggExpr('sum(cost)', parent, vars), '(4)');
+});
+
+test('repaintAfterRoll + panel groups (source pins, PR D)', () => {
+  const fn = fnBody(_src, 'repaintAfterRoll');
+  assert.ok(/node\.type === 'base' && node\.varbase && !node\.qbase/.test(fn) && /render\(\)/.test(fn),
+    'a projecting varbase re-roll re-renders the outline (the rerollPickVar idiom)');
+  for (const f of ['rerollDice', 'rerollGrammar', 'editDice', 'editGrammar']) {
+    assert.ok(fnBody(_src, f).includes('repaintAfterRoll('), `${f} routes its repaint through repaintAfterRoll`);
+  }
+  assert.ok(/vp-group/.test(_src) && /_vpExpandedGroups/.test(_src) && /aria-expanded/.test(fnBody(_src, 'updateVarPanelContent')),
+    'the var panel groups a base\'s projections under a collapsible, announced header');
+});
+
 test('varBasePreview — names, kinds, values, and the full warning matrix (PR B)', () => {
   const n = mkVarBase(VB_TEXT);
   const p = c.varBasePreview(n, '', {});
@@ -8526,7 +8588,7 @@ test('word count: cores + front door wired (src pins)', () => {
 });
 
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
-  assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode)'), 'renderMathPill live-aggregation wiring missing');
+  assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode, vmap)'), 'renderMathPill live-aggregation wiring missing (PR D: the positional vmap feeds base.col column totals)');
   assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
   assert.ok(_src.includes("id:'rollups'") && _src.includes("syn:'{= sum(cost)}'"), 'GUIDE rollups entry or sum example missing');
   assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
