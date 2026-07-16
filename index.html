@@ -14452,15 +14452,26 @@ function attachContentEvents(content, node) {
     }
     if (content.dataset.editing) return;
     e.preventDefault();
+    // #820: capture the click position RELATIVE to this content element BEFORE
+    // enterEdit swaps innerHTML. On a cold load a heading above can still be
+    // under-measured (it renders near base size until the first reflow grows it to
+    // full size); entering edit forces that reflow, which shifts THIS point down by
+    // ~one line. Resolving the raw screen coordinates against the shifted layout lands
+    // the caret a line too high (the first-click misplacement). Re-anchoring the click
+    // to the element's POST-swap rect absorbs the shift: the element's own internal
+    // layout (width, font, wrapping) is unchanged by the swap, so the same relative
+    // point maps to the intended caret. Warm clicks have no shift, so dx/dy match the
+    // raw coordinates and this is a no-op.
+    const rBefore = content.getBoundingClientRect();
+    const dx = e.clientX - rBefore.left, dy = e.clientY - rBefore.top;
     enterEdit(content, node);
     content.focus();
-    // enterEdit swaps innerHTML (display → edit mode), so the layout changes before
-    // caretFromPoint runs. Validate the returned range is inside THIS content element;
-    // if it's not (coordinates now land in a neighbour's DOM, or there's no caret
-    // point), fall back to the END of the content rather than leaving the caret at the
-    // start where focus() put it.
+    const rAfter = content.getBoundingClientRect();
+    // Validate the returned range is inside THIS content element; if it's not
+    // (coordinates land in a neighbour's DOM, or there's no caret point), fall back to
+    // the END of the content rather than leaving the caret where focus() put it.
     const s = window.getSelection();
-    const r = caretFromPoint(e.clientX, e.clientY);
+    const r = caretFromPoint(rAfter.left + dx, rAfter.top + dy);
     if (r && content.contains(r.startContainer)) { s.removeAllRanges(); s.addRange(r); }
     else { const rng = document.createRange(); rng.selectNodeContents(content); rng.collapse(false); s.removeAllRanges(); s.addRange(rng); }
   });

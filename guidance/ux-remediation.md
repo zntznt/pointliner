@@ -2819,6 +2819,25 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
   type → Ctrl+Z removes → Ctrl+Shift+Z restores. Ctrl+Y unchanged.
 - The rest of #827 (hashtag digit-guard, guide keywords overlapping #835, copy nits) stays open on #827.
 
+### UXP-219 ✓ First click in a heading-bearing doc misplaced the caret ~one line (#820) 🟡 — **RESOLVED**
+- **Symptom (P4/P1):** the very first click into a wrapping point on a cold page load landed the
+  caret about one visual line too high (e.g. offset 40 where the click was over offset 112); every
+  click after that was exact. Reproduced only in documents with a heading above the clicked point.
+- **Root cause:** a heading renders near base size on a cold load and only grows to full size on the
+  first reflow. Entering edit mode forces that reflow, so the heading jumps taller (measured 28.3px →
+  47.9px) and pushes the clicked point down by that delta (~one line) BETWEEN the click and the caret
+  resolution. `enterEdit` swaps the content's innerHTML, then `caretFromPoint(e.clientX, e.clientY)`
+  resolved the now-stale screen coordinates against the shifted layout, landing a line too high.
+- **Fix:** the click handler captures the click position RELATIVE to the content element before
+  `enterEdit`, then re-anchors it to the element's post-swap rect (`caretFromPoint(rAfter.left+dx,
+  rAfter.top+dy)`). The element's own internal layout (width, font, wrapping) is unchanged by the
+  swap, so the same relative point maps to the intended caret regardless of how the element moved.
+  Warm clicks have no shift, so the re-anchored coordinates equal the raw ones (no-op, no regression).
+- **Verified headless (throwaway):** cold first click on a wrapping prose point under an h1 now lands
+  exactly at the display-truth offset across three click lines (40/112/189); a bold-bearing point
+  places plausibly; the warm click is unchanged. DOM-timing fix, no pure core to pin; all 1341 tests
+  stay green.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
