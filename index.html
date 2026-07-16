@@ -581,6 +581,13 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 /* query base strip: the read-only grid's one affordance (edit query + columns).
    Same --pill hue as the query pill so the two query surfaces read as one family. */
+#mt-cellpop{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;max-width:340px;box-shadow:var(--sh-1)}
+#mt-cellpop.on{display:block}
+#mt-cellpop .cal{display:block;margin-top:0;background:transparent;border:none;padding:0;width:296px}
+.mt-cellpop-states{display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:320px}
+.mt-cellpop-states .todo-state{cursor:pointer}
+.mt-cellpop-none{font-size:.78em;font-weight:600;color:var(--muted);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
+.mt-cellpop-none:hover{color:var(--fg)}
 .mt-qcell{cursor:text}
 .mt-qcell:hover{background:color-mix(in srgb,var(--acc) 5%,transparent)}
 .mt-qbase-strip{display:flex;align-items:stretch;gap:4px;margin-bottom:2px}
@@ -9028,6 +9035,30 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
       onApply: () => requestAnimationFrame(() => openFormulaDialog(node, cellLhs, 'Cell', { r: rowIdx, c: colIdx })) });
   }
 
+  // FR-1 per-role editors, the keyboard doors: a Status cell lists its sequence's
+  // states to set directly; a Date cell opens the calendar (focused into the grid).
+  // The popover itself is the pointer path; these menu rows are its Shift+F10 twin.
+  const cellRole = (mtColRoles(node) || [])[colIdx];
+  if (rowOps && cellRole === 'status') {
+    const mr = mtModelRead(node);
+    const { seq } = boardLanes(mr, colIdx, allSequences(), mtLastDataRow(node, mr));
+    const curVal = String(mr.rows[rowIdx]?.[colIdx] || '').trim().toUpperCase();
+    addSection('Set to', true);
+    seq.states.forEach(kw => addItem(kw, { active: kw === curVal, onApply: () => mtSetCellValue(node, rowIdx, colIdx, kw) }));
+    addItem('Clear', { active: curVal === '', onApply: () => mtSetCellValue(node, rowIdx, colIdx, '') });
+  }
+  if (rowOps && cellRole === 'date') {
+    addSection('Date', true);
+    addItem('Pick a date (calendar)…', { onApply: () => requestAnimationFrame(() => {
+      // the panel's close restored focus to the cell; re-open its popover and enter the grid
+      const cellEl = mtHost(node.id)?.querySelector(`td[data-r="${rowIdx}"][data-c="${colIdx}"]`);
+      if (!cellEl) return;
+      cellEl.focus();
+      showCellEditorPop(node, cellEl);
+      _cellPopEl?._focusGrid?.();
+    }) });
+  }
+
   addSection('Show as', true);
   const curRole = (node.colRole && node.colRole[colIdx]) || null;
   [[null, 'Plain text'], ['status', 'Status'], ['date', 'Date'], ['number', 'Number']]
@@ -9256,9 +9287,20 @@ function mtWireQBaseEdit(host, node) {
     // show the raw value for editing (the display may be a role chip)
     cell.textContent = mtModelRead(node).rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
     cell.dataset.enterVal = cell.textContent;
+    showCellEditorPop(node, cell);   // FR-1: inferred Date columns get the calendar too
   });
   host.addEventListener('keydown', e => {
     const cell = e.target.closest(SEL); if (!cell) return;
+    // FR-1 keyboard door: the cell context menu is authored-only (its column ops write
+    // node.text), so a query date cell enters its calendar grid on the same menu key.
+    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      if ((mtColRoles(node) || [])[+cell.dataset.c] === 'date') {
+        e.preventDefault();
+        showCellEditorPop(node, cell);
+        _cellPopEl?._focusGrid?.();
+        return;
+      }
+    }
     if (e.key !== 'Tab' && e.key !== 'Enter') return;
     e.preventDefault();   // Tab would insert \t in contenteditable; Enter a newline
     const cells = [...host.querySelectorAll(SEL)];
@@ -9274,6 +9316,7 @@ function mtWireQBaseEdit(host, node) {
   });
   host.addEventListener('focusout', e => {
     const cell = e.target.closest(SEL); if (!cell) return;
+    scheduleCellPopHide(cell);   // FR-1: deferred — a move INTO the popover keeps it open
     const raw = cell.textContent.trim();
     const was = (cell.dataset.enterVal ?? '').trim();
     delete cell.dataset.enterVal;
@@ -9296,6 +9339,100 @@ function mtWireQBaseEdit(host, node) {
     // synchronous render inside focusout; it would steal the next-clicked cell's focus).
     scheduleVarBaseRender(host);
   });
+}
+
+// ── FR-1 per-role cell editors ────────────────────────────────────────────────
+// While a Date- or Status-role cell is focused for editing, a popover under the cell
+// offers the value: the Schedule dialog's calendar (buildDatePicker) for a date, the
+// owning sequence's states for a status. Picks act on mousedown + preventDefault (the
+// caret invariant — the cell keeps focus), write into the cell, and fire 'input' so the
+// authored per-keystroke commit runs (a query cell commits on blur, the Phase C path).
+// Typing stays primary: the popover is an affordance, never a gate — any typed value
+// still lands, and a non-conforming one falls through to plain text as always.
+let _cellPopEl = null, _cellPopFor = null;
+function hideCellPop() { if (_cellPopEl) { _cellPopEl.classList.remove('on'); _cellPopEl.innerHTML = ''; _cellPopFor = null; } }
+function showCellEditorPop(node, cell) {
+  const role = (mtColRoles(node) || [])[+cell.dataset.c];
+  if (role !== 'date' && role !== 'status') { hideCellPop(); return; }
+  if (!_cellPopEl) { _cellPopEl = document.createElement('div'); _cellPopEl.id = 'mt-cellpop'; document.body.appendChild(_cellPopEl); }
+  const pop = _cellPopEl;
+  pop.innerHTML = ''; _cellPopFor = cell; pop._focusGrid = null;
+  const write = v => {
+    cell.focus();          // focus FIRST: a query cell's focusin re-reads the model, so write after
+    cell.textContent = v;
+    cell.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+  };
+  if (role === 'date') {
+    const picker = buildDatePicker({
+      initialEpoch: parseDueDate(cell.textContent.trim()),
+      onPick: ep => write(formatEpochDays(ep)),
+      onEscape: () => cell.focus(),
+    });
+    pop.appendChild(picker.el);
+    pop._focusGrid = () => picker.focusGrid();
+  } else {
+    const m = mtModelRead(node);
+    const { seq } = boardLanes(m, +cell.dataset.c, allSequences(), mtLastDataRow(node, m));
+    const wrap = document.createElement('div'); wrap.className = 'mt-cellpop-states';
+    for (const kw of seq.states) {
+      const b = document.createElement('span');
+      b.className = 'todo-state todo-state-' + escQ(kw.toLowerCase()) + (keywordIsDone(kw) ? ' todo-state-isdone' : (keywordIsHeld(kw) ? ' todo-state-isheld' : ''));
+      b.textContent = kw;
+      b.setAttribute('role', 'button');
+      b.setAttribute('aria-label', 'Set to ' + kw);
+      b.addEventListener('mousedown', e => { e.preventDefault(); write(kw); });
+      wrap.appendChild(b);
+    }
+    const none = document.createElement('span');
+    none.className = 'mt-cellpop-none'; none.textContent = 'Clear';
+    none.setAttribute('role', 'button'); none.setAttribute('aria-label', 'Clear the state');
+    none.addEventListener('mousedown', e => { e.preventDefault(); write(''); });
+    wrap.appendChild(none);
+    pop.appendChild(wrap);
+  }
+  const r = cell.getBoundingClientRect();
+  pop.style.left = r.left + 'px'; pop.style.top = (r.bottom + 2) + 'px';
+  pop.classList.add('on');
+  requestAnimationFrame(() => {
+    const pr = pop.getBoundingClientRect();
+    if (pr.right > window.innerWidth - 8) pop.style.left = (window.innerWidth - pr.width - 8) + 'px';
+    if (pr.bottom > window.innerHeight - 8) pop.style.top = (r.top - pr.height - 2) + 'px';
+  });
+}
+// The deferred hide shared by both cell focusout paths: only a genuine focus-leave
+// closes the popover (moving INTO it — the calendar grid — keeps it open; moving to
+// another role cell re-shows it for that cell via its own focusin).
+function scheduleCellPopHide(cell) {
+  setTimeout(() => {
+    const a = document.activeElement;
+    if (_cellPopFor === cell && !(_cellPopEl && _cellPopEl.contains(a)) && a !== cell) hideCellPop();
+  }, 0);
+}
+// Write ONE cell's value through the correct commit path — the keyboard door's writer
+// (the cell context menu's Set to / Pick a date rows). Authored: model + the shared
+// commit epilogue; query: the Phase C write-through (source prop, undo, announce).
+function mtSetCellValue(node, r, c, val) {
+  if (node.qbase) {
+    const q = qbaseModel(node);
+    const src = q.qids[r] ? nodeById(q.qids[r]) : null;
+    const field = qbaseColList(node.qbase.cols)[c]?.field.trim();
+    if (!src || !field || !qbaseFieldWritable(field)) return;
+    pushUndo();
+    setProp(src, field, val);
+    markDirty();
+    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);
+    const stillMatches = qbaseModel(node).qids.includes(src.id);
+    flashHint((val ? `Updated ${field} on "${title}".` : `Cleared ${field} on "${title}".`)
+      + (stillMatches ? '' : ' It no longer matches this query.'));
+    refreshTable(node);
+  } else {
+    const m = mtModel(node);
+    if (!m.rows[r]) return;
+    m.rows[r][c] = val;
+    mtCommit(node, m);
+    mtCommitEpilogue(node);
+    refreshTable(node);
+  }
 }
 
 // Wire the shared base chrome (query strip + view switcher + the query base's
@@ -9783,6 +9920,7 @@ function buildTableWidget(node, readOnly) {
     // whole cell for type-to-overwrite. Pointer focus keeps the browser's click caret.
     if (!mtPointerFocus) mtSelectCellContents(cell);
     mtPointerFocus = false;
+    showCellEditorPop(node, cell);   // FR-1: a Date/Status cell offers its values in a popover
   });
   host.addEventListener('input', e => {
     const cell = e.target.closest('.mt-cell'); if (!cell) return;
@@ -9837,6 +9975,7 @@ function buildTableWidget(node, readOnly) {
     // cell-to-cell nav keeps focus). Never any of this in the per-keystroke handler.
     const repaint = mtCommitEpilogue(node);
     if (repaint) mtPatchCells(node, cell, repaint === 'tokens');
+    scheduleCellPopHide(cell);   // FR-1: close the role popover on a genuine focus-leave
     // B1: and referencing points ELSEWHERE repaint via a deferred, focus-aware render —
     // only when the value actually changed on a projecting base.
     if (raw !== enteredWith && isVarBase(node)) scheduleVarBaseRender(host);

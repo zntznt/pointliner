@@ -100,6 +100,10 @@ column renders known state keywords as colored chips (including states from your
 done side muted), a **Date** column shows each date as a color-coded urgency chip, and a **Number**
 column right-aligns and formats. The cell text stays plain (edit it and you see the raw value); the
 role only changes how it is shown, and a value that does not fit its role just renders as text.
+Roles also help you enter values: while a **Date** cell is focused a small calendar opens under it
+(click a day to fill the date), and a **Status** cell offers its states as clickable chips. Typing
+still works exactly as before; the cell menu (`Shift+F10`) has the same choices under **Set to**
+and **Pick a date**.
 
 Once a column is marked **Status**, the base can show itself as a **board**: click **Board** in the
 strip above the grid and each state becomes a lane, each row a card (the other columns show on the

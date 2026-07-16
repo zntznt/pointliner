@@ -95,9 +95,16 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   (a `due`/`start` field → `date`, a `= expr` field → `number`; no status projection exists, so
   Board correctly stays gated on query bases) and `mtColRoles(node)` is the ONE accessor every
   colRole READ site consults (cell paint, view switcher, view gates, number right-align); write
-  sites stay authored-only. **Still below the line:** editor affordances per role (the in-cell
-  value picker / calendar), image/title roles, and any validation. Views remain deferred until
-  their own proposal.
+  sites stay authored-only. **Per-role editors shipped 2026-07-16 (owner call: the
+  below-the-line pass):** while a Date or Status cell is focused, a popover under the cell offers
+  the value — the Schedule dialog's calendar (`buildDatePicker`) for a date, the owning sequence's
+  state chips for a status (`showCellEditorPop`; picks act on mousedown + preventDefault so the
+  cell keeps focus, write into the cell, and commit through the cell's own path — authored via the
+  'input' commit, query via the Phase C blur write-through). Typing stays primary: the popover is
+  an affordance, never a gate or a validator. Keyboard doors: the cell context menu gains "Set to"
+  (states, through the one `mtSetCellValue` writer) and "Pick a date (calendar)…"; a query date
+  cell (no context menu — its column ops are authored-only) enters the grid on the same
+  Shift+F10 key. **Still below the line:** image/title roles and any validation.
 
 - **The view system + the board view (BV-1) — moved above the line 2026-07-02 (owner call, the
   base-views-vision §0b sequence).** `node.view = {kind, groupBy}` (`_view` OPML; absent = table),
