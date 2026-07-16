@@ -5180,6 +5180,17 @@ function collectVars(rootNode) {
         events.push({ name: nm, key: v.key, isDecl: false });
       }
     }
+    // A variable base projects its rows as dotted defs at ITS document position (the same
+    // last-wins ordering as any declaration). Not pushed into `events`: there is no
+    // per-name [[var:]] pill to shadow-mark (cosmetic gap, documented in bases-direction).
+    if (node.type === 'base' && node.varbase && !node.qbase) {
+      for (const d of varBaseDefsMemo(node)) {
+        if (!(d.name in defs)) order.push(d.name);
+        defs[d.name] = d.expr;
+        if (d.pick !== undefined) pickVals[d.name] = d.pick;
+        else delete pickVals[d.name];
+      }
+    }
     for (const c of node.children) gather(c);
   }
   // Pack variables (formula-only) declared FIRST, so a document var of the same name
@@ -5266,6 +5277,12 @@ function collectNodeDecls(node, add) {
     const v = node.vars?.find(v => v.key === m[1]);
     if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined);
   }
+  // A variable base is a declaration site like any other: its projected rows enter the
+  // positional walk here (covers varMapAt AND renderPosVarMaps), after the node's own
+  // token decls. Guarded so a plain or query base contributes nothing.
+  if (node.type === 'base' && node.varbase && !node.qbase) {
+    for (const d of varBaseDefsMemo(node)) add(d.name, d.expr, d.pick);
+  }
 }
 
 // #767: per-pill POSITIONAL variable maps for a point that declares a variable in its OWN text.
@@ -5277,7 +5294,7 @@ function collectNodeDecls(node, add) {
 // before the token. resolveVarDefs eagerly snapshots, so `defs` can grow in place between tokens.
 // Returns Map(key -> resolved map), or null for the common point that declares nothing inline —
 // every pill then shares varMapAt(node), an identical result at zero extra cost. Cached on _varsVer.
-let _posVarMapCacheVer = -1, _posVarMapCache = new Map();
+let _posVarMapCacheVer = -1, _posVarMapCache = new Map(); // doc-cache: renderPosVarMaps, keyed by node id (see resetDocCaches registry)
 function renderPosVarMaps(node) {
   if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
@@ -6604,7 +6621,7 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
   // crossing the boundary reads as 'estimate', not 'bad ref' (the `to` looks like
   // an unknown name) or a bare syntax error. Same sniff as estParts.
   if ((/\bto\b/i.test(s) && /\d/.test(s)) || /\b(?:normal|uniform)\s*\(/i.test(s)) return 'estimate';
-  const re = /[A-Za-z_]\w*/g;
+  const re = /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*/g;   // a dotted name (variable-base projection) is ONE identifier
   let m, sawNonNumeric = false, sawBadRef = false;
   while ((m = re.exec(s)) !== null) {
     if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;  // followed by '(' → function call, not a var
@@ -6957,7 +6974,8 @@ function toOpml(r) {
       n.note             ? `_note="${ex(n.note)}"` : '',
       n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
       n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
-      n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '', // query-base config (QP-2)
+      n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '',
+    n.varbase          ? `_varbase="${ex(JSON.stringify(n.varbase))}"` : '', // query-base config (QP-2)
       n.colRole?.some(x => x != null) ? `_colrole="${ex(JSON.stringify(n.colRole))}"` : '', // column display roles (FR-1)
       n.view             ? `_view="${ex(JSON.stringify(n.view))}"` : '', // base view config (BV-1)
       (Number.isFinite(n.baseRows) && n.baseRows > 0) ? `_baserows="${n.baseRows}"` : '', // inline row cap
@@ -7087,6 +7105,8 @@ function fromOpml(xml) {
     if (crAttr) { try { const a = JSON.parse(crAttr); if (Array.isArray(a)) n.colRole = a; } catch(_) {} }
     const qbAttr = el.getAttribute('_qbase');
     if (qbAttr) { try { const o = JSON.parse(qbAttr); if (o && typeof o.expr === 'string' && Array.isArray(o.cols)) n.qbase = o; } catch(_) {} }
+    const vbAttr = el.getAttribute('_varbase');
+    if (vbAttr) { try { const o = JSON.parse(vbAttr); if (o && typeof o === 'object' && !Array.isArray(o) && (o.name === undefined || typeof o.name === 'string')) n.varbase = o; } catch(_) {} }
     // Legacy migration: convert old [[varref:KEY]] tokens to display-only [[var:KEY]] records
     const legacyVarrefs = el.getAttribute('_varrefs');
     if (legacyVarrefs) {
@@ -8214,6 +8234,80 @@ function mtCellHtml(node, raw, c) {
 }
 
 function mtModelText(text) { return parseTable(stripTblfm(text)) || parseTable(starterTableText()); }
+
+// ── variable base (rows project as document variables) ───────────────────────
+// A base carrying node.varbase = { name?: string } projects each DATA row as dotted
+// document variables: row "Orc" + column "HP" → `orc.hp` (with a base name "Monsters"
+// → `monsters.orc.hp`). Column 0 projects under its own header too (`orc.name` = "Orc",
+// the display string), so {Orc.Name} renders the name and {Orc.Name.s} pluralizes.
+// The defs merge into the variable system at the base's document position (the two
+// gather hooks in collectVars/collectNodeDecls), so nearest-above/last-wins positional
+// semantics hold like any declaration site. Query bases never project (rows from a live
+// search would make variables appear/disappear as the document changes).
+
+// Pure: one addressable name segment from user cell/header text. Lowercase, runs of
+// non-identifier chars collapse to single underscores, edge underscores stripped; must
+// land on VAR_NAME_RE (so a digit-leading or empty segment returns null → skipped).
+// "Hill Giant" → hill_giant · "HP (max)" → hp_max · "3rd Level" → null.
+function varBaseName(seg) {
+  const s = String(seg || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  return VAR_NAME_RE.test(s) ? s : null;
+}
+
+// Pure over the node: project a variable base's rows into variable defs.
+// Returns [{ name, expr, pick }]: `pick` undefined = a formula def (resolved through
+// evalMath, so chains work); `pick` set = a frozen TEXT literal (returned verbatim by
+// resolveVarDefs' pick channel, never rolled — a `2d6` cell is text in v1).
+// Cell classification is deliberately NOT varDeclIsPick (which reads a single bare word
+// as a formula/alias — wrong for data like Type=undead). The cell rule, spreadsheet-
+// familiar and consistent with the app's own {= } sigil:
+//   leading `=`  → formula (the rest of the cell; `= orc.ac - 1` chains),
+//   bare number  → number (a formula def of the literal),
+//   anything else → text, verbatim.
+// Skips: the header row; the footer total row; a row whose col-0 doesn't sanitize; an
+// empty cell; a computed `#ERR` cell; a cell carrying an [[type:key]] artifact token.
+// Duplicate names: last wins (the variable system's universal rule).
+function varBaseDefs(node) {
+  if (!node || node.type !== 'base' || !node.varbase || node.qbase) return [];
+  const m = mtModelText(node.text);            // never mtModel — no qbase recursion
+  if (!m || !m.rows.length) return [];
+  const prefix = varBaseName(node.varbase.name || '');
+  const header = m.rows[0].map(h => varBaseName(h));
+  const last = mtHasFooter(extractTblfm(node.text)) ? m.rows.length - 2 : m.rows.length - 1;
+  const out = [];
+  for (let r = 1; r <= last; r++) {
+    const row = m.rows[r] || [];
+    const rowName = varBaseName(row[0]);
+    if (!rowName) continue;                    // unaddressable row → skipped whole
+    for (let c = 0; c < row.length; c++) {     // c=0 included: col 0 under its own header
+      const col = header[c];
+      if (!col) continue;
+      const cell = String(row[c] ?? '').trim();
+      if (!cell || /^#ERR\b/.test(cell) || /\[\[[a-z]+:[a-z0-9]+\]\]/i.test(cell)) continue;
+      const name = (prefix ? prefix + '.' : '') + rowName + '.' + col;
+      if (cell[0] === '=') {
+        const expr = cell.slice(1).trim();
+        if (expr) out.push({ name, expr, pick: undefined });
+      } else if (cell !== '' && Number.isFinite(Number(cell))) {
+        out.push({ name, expr: cell, pick: undefined });
+      } else {
+        out.push({ name, expr: cell, pick: cell });
+      }
+    }
+  }
+  return out;
+}
+// Memo: the parse + classify pass must not run once per varMapAt call (collectVars
+// rebuilds every markDirty). Ver-guarded per-node Map, the _varMapAtCache precedent —
+// NOT a tenth collector (self-invalidating; see the resetDocCaches doc-comment).
+let _varBaseDefsCacheVer = -1, _varBaseDefsCache = new Map(); // doc-cache: varBaseDefs, keyed by node id
+function varBaseDefsMemo(node) {
+  if (_varBaseDefsCacheVer !== _varsVer) { _varBaseDefsCache = new Map(); _varBaseDefsCacheVer = _varsVer; }
+  if (node.id != null && _varBaseDefsCache.has(node.id)) return _varBaseDefsCache.get(node.id);
+  const defs = varBaseDefs(node);
+  if (node.id != null) _varBaseDefsCache.set(node.id, defs);
+  return defs;
+}
 // ── query base (QP-2 Phase A) ───────────────────────────────────────────────
 // A base carrying node.qbase = { expr, cols:[{name, field}] } sources its rows from
 // a live search instead of node.text. Read-only in v1 (bases-direction §4): the
@@ -13943,15 +14037,21 @@ function classifyBraceBody(body, rules, vars) {
   const fp = fieldParts(body);                                         // {weapon.damage}
   if (fp) {
     const b = fp.base.toLowerCase();
-    // artifact only when it resolves (direct sub-rule, or the base is a known rule/var);
-    // else 'literal' so prose like {file.name} with no such rule stays plain text.
-    return (rules[`${b}.${fp.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) ? 'artifact' : 'literal';
+    // artifact only when it resolves (direct sub-rule, a dotted VARIABLE — a variable-base
+    // projection like orc.hp — or the base is a known rule/var); else 'literal' so prose
+    // like {file.name} with no such rule stays plain text.
+    return (rules[`${b}.${fp.field.toLowerCase()}`] || Object.prototype.hasOwnProperty.call(vars, `${b}.${fp.field.toLowerCase()}`) || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) ? 'artifact' : 'literal';
   }
   const fmp0 = fieldModParts(body);                                    // {weapon.damage.cap} (#545)
   if (fmp0) {
     const b = fmp0.base.toLowerCase();
-    return (rules[`${b}.${fmp0.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) ? 'artifact' : 'literal';
+    return (rules[`${b}.${fmp0.field.toLowerCase()}`] || Object.prototype.hasOwnProperty.call(vars, `${b}.${fmp0.field.toLowerCase()}`) || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) ? 'artifact' : 'literal';
   }
+  const dvp0 = dottedVarParts(body);                                   // {monsters.orc.hp[.mod…]}
+  // artifact iff the longest-dotted-prefix + all-modifier-tail rule resolves against the vars
+  // map (mirrors resolveDottedVar). An unresolvable body does NOT claim — fall through to the
+  // later sniffs, exactly like the resolveBrace branch, so it ends 'literal' the same way.
+  if (dvp0 && resolveDottedVar(dvp0.segs, vars) != null) return 'artifact';
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (estParts(body)) return 'artifact';                               // {5 to 10}
@@ -13991,13 +14091,32 @@ function braceTypeLabel(body, rules, vars) {
   rules = rules || {}; vars = vars || {};
   const fp0 = fieldParts(body);                                        // {weapon.damage}
   if (fp0) {
-    const b = fp0.base.toLowerCase();
-    if (rules[`${b}.${fp0.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) return ['grammar', body];
+    const b = fp0.base.toLowerCase(), dotted = `${b}.${fp0.field.toLowerCase()}`;
+    // a dotted VARIABLE (variable-base projection) labels as a var with its live value,
+    // like a bare {knownVar}; rules keep claiming the grammar label first.
+    if (rules[dotted] || rules[b]) return ['grammar', body];
+    if (Object.prototype.hasOwnProperty.call(vars, dotted)) {
+      const val = vars[dotted];
+      const display = typeof val === 'string' ? val : +Number(val).toPrecision(4);
+      return ['var', body + ' = ' + display];
+    }
+    if (Object.prototype.hasOwnProperty.call(vars, b)) return ['grammar', body];
   }
   const fmp1 = fieldModParts(body);                                    // {weapon.damage.cap} (#545)
   if (fmp1) {
-    const b = fmp1.base.toLowerCase();
-    if (rules[`${b}.${fmp1.field.toLowerCase()}`] || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) return ['grammar', body];
+    const b = fmp1.base.toLowerCase(), dotted = `${b}.${fmp1.field.toLowerCase()}`;
+    if (rules[dotted] || Object.prototype.hasOwnProperty.call(vars, dotted) || rules[b] || Object.prototype.hasOwnProperty.call(vars, b)) return ['grammar', body];
+  }
+  const dvp1 = dottedVarParts(body);                                   // {monsters.orc.hp[.mod…]}
+  if (dvp1 && resolveDottedVar(dvp1.segs, vars) != null) {
+    const bare = dvp1.segs.join('.').toLowerCase();
+    // an exact dotted var with no modifier tail labels as a var; a modifier tail → grammar
+    if (Object.prototype.hasOwnProperty.call(vars, bare)) {
+      const val = vars[bare];
+      const display = typeof val === 'string' ? val : +Number(val).toPrecision(4);
+      return ['var', body + ' = ' + display];
+    }
+    return ['grammar', body];
   }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
@@ -17747,6 +17866,35 @@ function fieldModParts(body) {
   return { base: segs[0], field: segs[1], mods };
 }
 
+// Detect a LONG dotted reference (≥3 identifier segments, e.g. a prefixed variable-base
+// projection {monsters.orc.hp}, optionally with a trailing modifier chain). Syntactic only —
+// like fieldModParts it does not check anything resolves. Checked AFTER fieldModParts, whose
+// all-modifier-tail shape wins the overlap; here the tail may mix (the resolver splits the
+// longest dotted name found in the vars map from any trailing modifiers). Returns the segment
+// list or null.
+function dottedVarParts(body) {
+  const segs = (body || '').trim().split('.');
+  if (segs.length < 3) return null;
+  if (!segs.every(s => /^[a-z_]\w*$/i.test(s))) return null;
+  return { segs };
+}
+
+// Resolve a long dotted reference against the vars map: the LONGEST dotted prefix (≥2
+// segments) present in `vars` is the name; every remaining segment must be a modifier
+// (applied left-to-right). Returns the string, or null when nothing resolves (the caller
+// falls through, so an unrelated {a.b.c} body stays literal text — the escape hatch).
+function resolveDottedVar(segs, vars) {
+  if (!vars) return null;
+  for (let cut = segs.length; cut >= 2; cut--) {
+    const name = segs.slice(0, cut).join('.').toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(vars, name)) continue;
+    const mods = segs.slice(cut).map(m => m.toLowerCase());
+    if (!mods.every(m => m in MODIFIERS)) return null;   // a non-modifier tail after a real name → not a ref
+    return applyMods(formatVarValue(vars[name]), mods);
+  }
+  return null;
+}
+
 // Resolve a base.field read to its expanded string, or null when undefined (A6). The
 // three resolutions, shared by the plain field branch and the modifier chain (#545):
 // 1. a directly-named sub-rule ({sword.damage} → rule `sword.damage`);
@@ -17757,6 +17905,10 @@ function fieldModParts(body) {
 // 3. neither → null (callers show the visible {…?} marker, P4).
 function resolveField(base, field, ctx) {
   if (ctx.rules[`${base}.${field}`]) return expandRule(`${base}.${field}`, ctx);
+  // Dotted VARIABLE (a variable-base projection: orc.hp): checked after the exact dotted
+  // RULE (rules keep winning over vars, matching bare-ident precedence) and before the A6
+  // pick-var indirection below. One hook covers both fieldParts and fieldModParts callers.
+  if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, `${base}.${field}`)) return formatVarValue(ctx.vars[`${base}.${field}`]);
   let v;
   if (ctx.rules[base]) v = expandRule(base, ctx);
   else if (ctx.vars && Object.prototype.hasOwnProperty.call(ctx.vars, base)) v = formatVarValue(ctx.vars[base]);
@@ -17951,6 +18103,15 @@ function resolveBrace(body, ctx) {
     // phase 2): resolve the field exactly like the plain form, then fold applyMods.
     const s = resolveField(fmp.base.toLowerCase(), fmp.field.toLowerCase(), ctx);
     return s != null ? applyMods(s, fmp.mods) : `{${body}?}`;   // undefined → marker, mods not applied
+  }
+  const dvp = dottedVarParts(body);
+  if (dvp) {
+    // {a.b.c…} — a LONG dotted reference (a prefixed variable-base projection like
+    // {monsters.orc.hp}, optionally ending in modifiers). Only resolves when the longest
+    // dotted prefix is a real variable; otherwise DON'T claim the body — fall through so
+    // an unrelated dotted phrase stays literal text exactly as before this branch existed.
+    const s = resolveDottedVar(dvp.segs, ctx.vars);
+    if (s != null) return s;
   }
   const rp = repeatParts(body);
   if (rp) {
@@ -19615,21 +19776,48 @@ function promoteBraceBody(node, body) {
   // through → stays literal, the escape hatch for prose like {file.name}.
   const fp = fieldParts(body);
   if (fp) {
-    const b = fp.base.toLowerCase();
-    if (collectRules()[`${b}.${fp.field.toLowerCase()}`] || collectRules()[b] || b in collectVars()) {
+    const b = fp.base.toLowerCase(), dotted = `${b}.${fp.field.toLowerCase()}`;
+    // rules first (existing precedence); then a dotted VARIABLE (a variable-base projection
+    // like orc.hp) promotes to a DISPLAY-ONLY var pill — a live value read, exactly like a
+    // bare {knownVar}; the A6 base-rule/var indirection keeps its grammar wrap last.
+    if (collectRules()[dotted] || collectRules()[b]) {
+      const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+      if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+    }
+    if (dotted in collectVars()) {
+      const rec = { key: varKey(), name: body, expr: '' };
+      (node.vars ||= []).push(rec);
+      return `[[var:${rec.key}]]`;
+    }
+    if (b in collectVars()) {
       const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
       if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
     }
   }
   // field-then-modifier chain: {weapon.damage.cap} → the same anonymous grammar wrap as
-  // the plain field read (#545, A6 phase 2). Undefined base → falls through → literal.
+  // the plain field read (#545, A6 phase 2). A dotted VARIABLE with a modifier tail also
+  // routes through grammar (mods are a text op — the A1 rule). Undefined base → literal.
   const fmp = fieldModParts(body);
   if (fmp) {
     const b = fmp.base.toLowerCase();
-    if (collectRules()[`${b}.${fmp.field.toLowerCase()}`] || collectRules()[b] || b in collectVars()) {
+    if (collectRules()[`${b}.${fmp.field.toLowerCase()}`] || `${b}.${fmp.field.toLowerCase()}` in collectVars() || collectRules()[b] || b in collectVars()) {
       const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
       if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
     }
+  }
+  // long dotted reference: {monsters.orc.hp} → a display-only var pill when the exact
+  // dotted name is a variable; with a trailing modifier chain → the grammar wrap. An
+  // unresolvable body falls through → stays literal (the escape hatch).
+  const dvp = dottedVarParts(body);
+  if (dvp && resolveDottedVar(dvp.segs, collectVars()) != null) {
+    const bare = dvp.segs.join('.').toLowerCase();
+    if (bare in collectVars()) {
+      const rec = { key: varKey(), name: body, expr: '' };
+      (node.vars ||= []).push(rec);
+      return `[[var:${rec.key}]]`;
+    }
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // repeat: {3x: template} → an anonymous grammar wrapping the body in a synthetic
   // origin rule so it unfolds/refolds/prunes/exports via the grammar machinery. The
@@ -20412,6 +20600,15 @@ function evalMath(input, vars = {}) {
   function ident() {
     let name = '';
     while (/[a-z0-9_]/.test(peek())) name += eat();
+    // Dotted names (variable-base projections: orc.hp, monsters.orc.hp): consume a `.` only
+    // when an identifier char follows, so `3.5`, `.5` and a trailing `x.5` keep their current
+    // meaning (the dot stays unconsumed and the expression fails exactly as before). Inert on
+    // existing docs: a dotted name that is not in `vars` throws → null, the same observable
+    // result the unconsumed-tail guard produced before this change.
+    while (peek() === '.' && /[a-z_]/.test(s[pos + 1] || '')) {
+      name += eat();
+      while (/[a-z0-9_]/.test(peek())) name += eat();
+    }
     if (name === 'today') return _today;            // dynamic — stays current per call
     if (name in MATH_CONSTS) return MATH_CONSTS[name];
     // When followed by '(' treat as a function call — don't let a document variable
@@ -23687,6 +23884,10 @@ function performMultiDrop(ids, targetId, position) {
 //   8. stateCmds        (_stateCmdsCacheVer)   ← no rootNode override; reads live state via allSequences()
 //   9. varMapAt         (_varMapAtCacheVer)    ← per-node positional scope; a Map keyed on node id, reset on generation bump
 //  10. collectPropKeys  (_propKeysCacheVer)    ← distinct property keys, the has:/key: completion vocabulary
+// Self-invalidating per-node Maps in the same family (ver-guarded like varMapAt, not
+// collectors — the collector-identity test does not cover them):
+//   renderPosVarMaps  (_posVarMapCacheVer)     ← per-pill positional maps (#767)
+//   varBaseDefs       (_varBaseDefsCacheVer)   ← variable-base row projections (varBaseDefsMemo)
 //
 // markDirty does this on every edit, but a fresh document load (newFile/openFile/
 // restore) replaces `root` without an edit — so the previous document's caches

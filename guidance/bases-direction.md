@@ -200,6 +200,38 @@ A static table follows the toggle (it is inline prose markup, so it lives in the
 
 ---
 
+## 7b. Variable bases (rows project as document variables)
+
+**Shipped direction (2026-07-16, owner-approved plan; the recorded P5 note lives in `ux-discipline.md` §2).**
+An authored base may be marked a **variable base** (`node.varbase = { name? }`, OPML `_varbase`; a query
+base never qualifies — rows computed from a live search would make variables appear and disappear).
+Column 0 holds item names; every column (including column 0, under its own header) projects each data
+row as **dotted document variables**: row "Orc" + column "HP" → `orc.hp`, readable in grammar
+(`{Orc.HP}`) and math (`{= Orc.HP + 5}`), chaining through `resolveVarDefs` like any formula variable.
+An optional base name namespaces every projection (`monsters.orc.hp` — the prefix replaces the bare form).
+
+- **Projection** is the pure `varBaseDefs(node)` (memoized per generation — `varBaseDefsMemo`, the
+  `_varMapAtCache` self-invalidating precedent), consumed at TWO gather hooks: `collectVars`'s walk and
+  `collectNodeDecls` (which covers both positional walks — `varMapAt` and `renderPosVarMaps`). A variable
+  base is therefore a **declaration site at its document position**: nearest-above wins, last-wins on
+  name collisions, exactly like `{name := …}` declarations.
+- **Cell classification** (deliberately NOT `varDeclIsPick`, which reads a single bare word as an alias
+  formula — wrong for data like `Type = undead`): leading `=` → formula (chains allowed); bare number →
+  number; anything else → frozen TEXT verbatim (the `pickVals` channel — never rolled). So a `2d6` cell
+  is text in v1.
+- **Name sanitization** (`varBaseName`): lowercase, non-identifier runs → `_`, must land on
+  `VAR_NAME_RE` or the segment is skipped ("Hill Giant" → `hill_giant`; "3rd Level" → skipped). The
+  header row, the footer total row, empty cells, `#ERR` cells, and cells carrying `[[type:key]]` tokens
+  never project.
+- **Deliberately NOT projected:** bare row names (`{Orc}` alone) — bare identifiers share the
+  grammar-rule namespace and rules win, a silent-shadow P1 trap; the display name is addressable as
+  `{Orc.Name}` (column 0 under its own header) instead. Adding bare projection later is compatible.
+- **Deferred (reopen this doc to build):** pick/dice cells (needs a per-base rolls store to freeze
+  rolls on), `sum(dotted)` child rollups, the `var:` search operator over projections, per-prefix var
+  panel grouping, projected-name shadow markers (no pill to mark).
+
+---
+
 ## 8. Canonical vocabulary (feeds `ux-discipline.md` §1)
 
 Binding terms for UI copy, `aria-label`s, docs, and this file:
