@@ -12354,6 +12354,34 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
   assert.ok(/e\.key !== 'Tab' && e\.key !== 'Enter'/.test(w) && /x\.dataset\.c === cell\.dataset\.c/.test(w), 'Enter/Tab mirror the authored-cell grammar');
 });
 
+// ── FR-1 per-role cell editors ───────────────────────────────────────────────
+test('FR-1 editors — popover + menu doors + commit routing (source pins)', () => {
+  const pop = fnBody(_src, 'showCellEditorPop');
+  // roles gate the popover; anything else hides it (typing stays the primary path)
+  assert.ok(/role !== 'date' && role !== 'status'/.test(pop), 'only Date/Status cells get a popover');
+  assert.ok(/buildDatePicker\(/.test(pop), 'a date cell reuses the Schedule dialog calendar');
+  assert.ok(/boardLanes\(/.test(pop) && /seq\.states/.test(pop), 'a status cell offers its owning sequence states');
+  // the caret invariant: picks act on mousedown + preventDefault, focus BEFORE write
+  assert.ok(/addEventListener\('mousedown', e => \{ e\.preventDefault\(\); write\(/.test(pop), 'state picks keep the cell focused');
+  assert.ok(/cell\.focus\(\);\s*\/\/ focus FIRST|cell\.focus\(\);\s*\n\s*cell\.textContent = v/.test(pop.replace(/focus FIRST[^\n]*/, 'focus FIRST')), 'write focuses the cell before setting the value (a query focusin re-reads the model)');
+  // both edit paths show it on focusin and hide it, deferred, on focusout
+  const btw = fnBody(_src, 'buildTableWidget');
+  assert.ok(/showCellEditorPop\(node, cell\)/.test(btw), 'authored focusin shows the popover');
+  assert.ok(/scheduleCellPopHide\(cell\)/.test(btw), 'authored focusout schedules the hide');
+  const w = fnBody(_src, 'mtWireQBaseEdit');
+  assert.ok(/showCellEditorPop\(node, cell\)/.test(w) && /scheduleCellPopHide\(cell\)/.test(w), 'query cells get the same treatment');
+  assert.ok(/_focusGrid/.test(w), 'a query date cell has a keyboard door into the grid');
+  // the keyboard doors in the cell context menu route through the ONE cell writer
+  const scp = fnBody(_src, 'showColPanel');
+  assert.ok(/addSection\('Set to', true\)/.test(scp) && /mtSetCellValue\(node, rowIdx, colIdx, kw\)/.test(scp), 'a status cell lists its states in the menu');
+  assert.ok(/Pick a date \(calendar\)/.test(scp), 'a date cell opens the calendar from the menu');
+  // the menu writer routes by base kind: authored -> model + epilogue; query -> Phase C
+  const sv = fnBody(_src, 'mtSetCellValue');
+  assert.ok(/mtCommit\(node, m\);\s*\n\s*mtCommitEpilogue\(node\)/.test(sv), 'authored writes commit + run the epilogue');
+  assert.ok(/qbaseFieldWritable\(field\)/.test(sv) && /setProp\(src, field, val\)/.test(sv) && /pushUndo/.test(sv), 'query writes go through the Phase C path, undo-local');
+  assert.ok(/no longer matches this query/.test(sv), 'a membership-breaking menu write is announced');
+});
+
 test('round 3 — /variables door, cell-pill menu, base settings menu, copy (source pins)', () => {
   // the /variables command exists, is covered in the GUIDE, and opens the panel in place
   assert.ok(/id:'variables', icon:'\$'/.test(_src), 'BLOCK_CMDS carries /variables');

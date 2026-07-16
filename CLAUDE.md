@@ -902,7 +902,11 @@ mtCellHtml is the role-aware paint wrapper at every data-cell paint site — sta
 knownStates/keywordIsDone chips (custom sequences included, the future kanban lanes),
 date -> parseDueDate + formatDueDate urgency chips, number -> formatMathResult +
 auto-right-align; display hints only, cell text untouched, raw on edit, non-conforming
-values fall through; Column menu "Show as" door via mtSetColRole; a QUERY base's roles
+values fall through; Column menu "Show as" door via mtSetColRole; per-role EDITORS: a
+focused Date/Status cell gets a popover (showCellEditorPop — the Schedule calendar /
+the owning sequence's state chips; mousedown+preventDefault picks, commit through the
+cell's own path) with menu twins ("Set to" / "Pick a date" via mtSetCellValue, the one
+menu-path cell writer routing authored→epilogue, query→Phase C); a QUERY base's roles
 are inferred from its projection instead — qbaseColRoles (due/start field -> date,
 = expr -> number) behind the one accessor mtColRoles that every colRole READ site
 consults, so Calendar/Cards open read-only on query bases while write sites stay
