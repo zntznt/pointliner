@@ -257,7 +257,7 @@ export function loadCores() {
     'todayISO','journalFileName','isoParts','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
     'propDeclParts','setProp','parsePropSlash','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC
-    'splitForSibling', 'inFence', 'mergeUpText',
+    'splitForSibling', 'inFence', 'mergeUpText', 'mergeBodyText',
     'flatRowStep',
     'splitTopLevel', 'olNum',   // #452 boundary coverage
     'duplicateTitleIds',        // #468 is:duplicate-title

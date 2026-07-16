@@ -3090,6 +3090,7 @@ const TASK_TALLY_G  = new RegExp('^[ \\t]*(?:[-*+]|\\d+\\.)[ \\t]+' + TASK_BOX.s
 const TASK_STRIP_RE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '\\s*');                             // strip a UL task marker (textForDisplay/applyBlockCmd)
 const TASK_STRIP_G  = new RegExp('^\\s*[-*+]\\s+(?:' + TASK_BOX.source + '\\s*)?', 'gm');              // stripMd (per line)
 const TASK_KEEP_RE  = new RegExp('^[-*+]\\s+(' + TASK_BOX.source + ')\\s*');                           // strip lead but KEEP the box (export)
+const TASK_STRIP_ONE = new RegExp('^[-*+]\\s+' + TASK_BOX.source + '[ \\t]?');                         // #818: strip marker + AT MOST ONE space (mergeBodyText — boundary whitespace survives)
 function isTaskFirst(text) { return TASK_FIRST_RE.test(text == null ? '' : String(text)); }
 // #437: toggle the to-do marker on the line the caret is in — a plain line gains `- [ ]`, a task
 // line loses it (becomes plain, body kept). The touch edit-bar's front door for "make this tickable".
@@ -15003,6 +15004,12 @@ function exitEdit(content, node) {
         const src = nodeById(srcId);
         if (src) repaintNodeContent(src);
       }
+      // #801 (agent-review, UXP-194): an edit commit can change document-wide computed
+      // state — variables, words()/rollup inputs, check props — so repaint every OTHER
+      // visible point that displays computed values. Without this, a {= 2*pi*r} pill keeps
+      // its old number after r changes and a words(subtree) target never ticks (the values
+      // recompute per render; only this repaint was missing after the partial-repaint work).
+      repaintComputedDependents(node.id);
     }
   }
   if (activeContentId === node.id) activeContentId = null;
@@ -15013,6 +15020,30 @@ function exitEdit(content, node) {
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
   delete content.dataset.prevText;
   hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
+}
+
+// #801 (agent-review, UXP-194): repaint visible points whose DISPLAY depends on
+// document-wide computed state — math pills (vars, rollups, words()), var pills,
+// estimate rollups, query pills, progress cookies — plus visible check chips. A full
+// render() is unsafe here (exitEdit runs inside a blur that may be mid-click into
+// another point), so patch innerHTML per node: the same surgical idiom as the
+// backlink-source repaint in exitEdit. Skips the just-committed node (already
+// repainted), live editors (never clobber a caret), and bases (own machinery).
+function repaintComputedDependents(exceptId) {
+  document.querySelectorAll('.node-content[data-id]').forEach(el => {
+    const nid = el.dataset.id;
+    if (nid === exceptId || el.dataset.editing) return;
+    const n = nodeById(nid);
+    if (!n || n.type === 'base') return;
+    if ((n.math?.length) || (n.vars?.length) || (n.est?.length) || (n.query?.length) || /\[[\/%]/.test(n.text))
+      el.innerHTML = renderContentHTML(n);
+  });
+  document.querySelectorAll('.prop-check[data-props-id]').forEach(chip => {
+    const n = nodeById(chip.dataset.propsId);
+    if (!n) return;
+    const fresh = buildCheckChip(n);
+    if (fresh) chip.replaceWith(fresh); else chip.remove();
+  });
 }
 
 function caretFromPoint(x, y) {
@@ -15192,7 +15223,11 @@ const INLINE_MENU_NAV = [
     // into the text). The keyboard twin of the mouse-only .bm-help mark (P3, #736).
     help: () => { const it = braceState?.matches[braceState.activeIdx]; openBraceHelp(it?.guide || 'brace-picker'); } },
   { open: () => tagState && isTagMenuOpen(),     move: tagMove,   apply: tagApply,   hide: hideTagMenu },
-  { open: () => emojiState && isEmojiMenuOpen(), move: emojiMove, apply: emojiApply, hide: hideEmojiMenu },
+  { open: () => emojiState && isEmojiMenuOpen(), move: emojiMove, apply: emojiApply, hide: hideEmojiMenu,
+    // #804 (agent-review, UXP-196): an UNENGAGED emoji menu (opened by a bare `:` with no
+    // filter chars typed and no arrowing) must never steal Enter/Tab — the menu closes and
+    // the key falls through to its normal meaning (new point / indent). P1: Enter = new point.
+    canApply: () => !!emojiState?.engaged },
 ];
 
 function onKeyDown(e, id, content) {
@@ -15293,7 +15328,12 @@ function onKeyDown(e, id, content) {
     if (!m.open()) continue;
     if (e.key==='ArrowDown')            { e.preventDefault(); m.move(1);  return; }
     if (e.key==='ArrowUp')              { e.preventDefault(); m.move(-1); return; }
-    if (e.key==='Enter'||e.key==='Tab') { e.preventDefault(); m.apply();  return; }
+    if (e.key==='Enter'||e.key==='Tab') {
+      // #804: a menu may decline the apply (unengaged emoji hint) — it closes and the
+      // key falls through to its structural meaning instead of being swallowed.
+      if (m.canApply && !m.canApply()) { m.hide(); break; }
+      e.preventDefault(); m.apply();  return;
+    }
     if (e.key==='Escape')               { e.preventDefault(); m.hide();   return; }
     if (e.key==='F1' && m.help)         { e.preventDefault(); m.help();   return; }   // help for the highlighted row (preventDefault beats the browser's own F1)
     break;   // this menu owns the popup; unhandled keys fall through (matches the old blocks)
@@ -23454,12 +23494,16 @@ function checkEmojiTrigger(content, nodeId) {
   const before = editableText(content).slice(0, pos);
   // `:` + word chars, boundary-guarded so a colon following a letter/digit (a time like
   // 12:30, a ratio, a ::before) never fires — same guard shape as checkTagTrigger's `#`.
-  const m = before.match(/(?<![a-zA-Z0-9]):([a-z0-9_+-]*)$/i);
+  // #804 (agent-review, UXP-196): the guard also excludes `)`/`:`/`]`/`}` so code colons
+  // (`def f(x):`, C++ `std::`) never open the menu and steal the next Enter.
+  const m = before.match(/(?<![a-zA-Z0-9):\]}]):([a-z0-9_+-]*)$/i);
   if (!m) { hideEmojiMenu(); return; }
   const colonAt = pos - m[1].length - 1;
   const matches = filterEmojiCandidates(m[1]);
   if (!matches.length) { hideEmojiMenu(); return; }
-  emojiState = { nodeId, content, colonAt, prefix: m[1], activeIdx: 0, matches: matches.slice(0, 60) };
+  // #804: `engaged` gates Enter/Tab-apply — a bare `:` shows the menu as a HINT, but it
+  // only owns Enter once the user has typed a filter char (or arrowed, see emojiMove).
+  emojiState = { nodeId, content, colonAt, prefix: m[1], activeIdx: 0, matches: matches.slice(0, 60), engaged: m[1].length > 0 };
   renderEmojiMenu();
   positionCaretMenu(emojiMenu, content, colonAt); // anchor at the `:`, which always exists
 }
@@ -23493,6 +23537,7 @@ function renderEmojiMenu() {
 
 function emojiMove(dir) {
   if (!emojiState) return;
+  emojiState.engaged = true;   // #804: arrowing = deliberate engagement — Enter may now apply
   const n = emojiState.matches.length;
   emojiState.activeIdx = (emojiState.activeIdx + dir + n) % n;
   renderEmojiMenu();
@@ -24049,6 +24094,31 @@ function mergeUpText(prevText, body) {
   return { text: p + b, offset: p.length };
 }
 
+// #818 (agent-review, UXP-199): the body a merge carries up — the marker/keyword prefix
+// stripped but the whitespace that FOLLOWED it preserved, so a caret-split point rejoins
+// byte-identically. textForDisplay is wrong here: it trims (right for breadcrumbs), which
+// glued `- [ ] alpha|beta` back together as `alphabeta`. Each form strips its marker plus
+// at most ONE canonical space; any further boundary whitespace is content. Pure.
+function mergeBodyText(node) {
+  const t = node?.text == null ? '' : String(node.text);
+  const prefix = BLOCK_PREFIX_MAP[node?.type];
+  if (prefix && t.startsWith(prefix)) return t.slice(prefix.length);   // heading/quote: exact slice, no trim
+  if (node?.type === 'divider') return textForDisplay(node);           // break line is the "prefix" — label only
+  if (node?.type === 'ol') {
+    const m = t.match(/^\s*\d+\.[ \t]?/);
+    if (m) return t.slice(m[0].length);
+  }
+  const tm = t.match(TASK_STRIP_ONE);                                  // `- [ ] ` (one space) — extra spaces survive
+  if (tm) return t.slice(tm[0].length);
+  const pt = parseTodo(t);
+  if (pt.keyword) {                                                    // `#KW [#A] ` — one space each, escape the keyword
+    const kw = pt.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const km = t.match(new RegExp('^#' + kw + '[ \\t]?(?:\\[#[A-Za-z0-9]\\][ \\t]?)?'));
+    if (km) return t.slice(km[0].length);
+  }
+  return t;
+}
+
 // Token-keyed sidecars (the 8 with prune functions). Cloned whole onto a split's new
 // half; each node's pruneArtifacts then sheds the records whose token lives elsewhere
 // (clone-both-then-prune — safer than partitioning by key). props/note stay on the
@@ -24103,6 +24173,20 @@ function insertSiblingAfter(id) {
     ed.blur();                                    // exit edit: refold + promote + prune → srcNode.text folded
     const foff = foldedOffsetFor(srcNode, off);
     const cont = continuationPrefix(srcNode.text);
+    // #819 (agent-review, UXP-198): Enter at the very START never splits — the leading half
+    // would be EMPTY, and (children stay on the leading half, the mid-text rule) it would
+    // divorce the children onto an empty point. Peer-standard instead: an empty continuation
+    // sibling ABOVE; text + children stay together; caret stays at the start of the text.
+    if (foff === 0) {
+      const nn0 = cont ? mkNode(cont, deriveTypeFromText(cont) || 'ul')
+                       : mkNode('', inheritedType(srcNode.type));
+      parent.children.splice(idx, 0, nn0);
+      nodeMap.set(nn0.id, nn0); parentMap.set(nn0.id, parent);
+      markDirty();
+      render();
+      focusNodeAtOffset(id, 0);
+      return;
+    }
     const { before, after } = splitForSibling(srcNode.text, foff, cont);
     const nn = mkNode(after, deriveTypeFromText(after) || 'ul');
     cloneArtifactSidecars(srcNode, nn);           // clone-both-then-prune
@@ -24159,7 +24243,7 @@ function mergeUpInto(id) {
   if (ed) ed.blur();                              // commit the active edit → node.text final + folded
 
   const oldPrevText = target.text;
-  const body = textForDisplay(node);              // prefix/marker stripped; folded tokens preserved
+  const body = mergeBodyText(node);               // marker stripped, boundary whitespace PRESERVED (#818); folded tokens intact
   const { text: merged, offset: joinFolded } = mergeUpText(oldPrevText, body);
   const joinPrefix = merged.slice(0, joinFolded); // target's text minus any trailing blank line — the seam
   target.text = merged;
@@ -24973,6 +25057,13 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   updateTitle();
   document.getElementById('search-box').value = '';            // normalization #1: clear stale search UI on every swap (the <input> path skipped this)
   document.getElementById('search-clear').classList.remove('on');
+  // #807 (agent-review, UXP-197): reset the doc caches BEFORE the migrations — they consult
+  // knownStates()/collectSequences(), which until this bump still served the OUTGOING doc's
+  // cached state set, so an incoming doc's custom-sequence keywords (#BACKLOG …) read as
+  // unknown and migrateTodoText prepended task markers: silent, permanent text mutation on
+  // File→Open. (The reset after buildIndex below stays — migrations/promotions may populate
+  // caches mid-run with half-migrated data; that final bump re-clears them.)
+  resetDocCaches();
   migrateNodePrefixes(root);
   normalizeCalendarBindings(root); // #653: every adopted doc gets the {calendars, gamelog} shape (mkRoot has it, but a legacy import / self-contained HTML may not)
   promoteLoadedShorthand(root);   // typed-but-unpromoted {…} from an imported/loaded doc → fresh pills
@@ -30815,14 +30906,29 @@ function scheduleAutosave() {
   // pending flag re-fires the autosave the moment reconcile completes.
   if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
-    const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
-    if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
-    if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
-    if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
-    maybeBackupNudge(payload.length);                    // UXP-119: gentle backup reminder on the weakest durability tier
-  }, 800);
+  autosaveTimer = setTimeout(writeAutosavePayloadNow, 800);
 }
+// The debounce body, extracted so the pagehide flush below can run it synchronously.
+function writeAutosavePayloadNow() {
+  autosaveTimer = null;
+  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
+  if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
+  if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+  if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
+  maybeBackupNudge(payload.length);                    // UXP-119: gentle backup reminder on the weakest durability tier
+}
+// #802 (agent-review, UXP-195): text typed in the debounce window must survive a tab
+// close — flush the PENDING autosave synchronously on pagehide/hidden (the localStorage
+// write is sync; OPFS/folder writes are fired best-effort). Without this, the last
+// ~800ms of typing silently vanished on close: the beforeunload guard only covers
+// disk-mode (unsavedToDisk), and browser-storage mode exited inside the window.
+function flushPendingAutosave() {
+  if (!autosaveTimer) return;                          // nothing pending — already written
+  clearTimeout(autosaveTimer);
+  writeAutosavePayloadNow();
+}
+window.addEventListener('pagehide', flushPendingAutosave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPendingAutosave(); });
 // UXP-119: on the weakest durability tier (no File System Access, so no folder auto-write and
 // "Save" is a plain download), the notes live in this browser only and vanish on clear-site-data.
 // Nudge once per session, after the doc has real content, to download a backup — reusing the soft

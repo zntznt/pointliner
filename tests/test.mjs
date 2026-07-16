@@ -15010,3 +15010,63 @@ test('#652 — chronicle: cursor persistence + strip/button/source wiring', () =
   assert.ok(cti.includes('collectChronicleDates('), 'the timeline must include the chronicle source');
   assert.ok(_src.includes("chronicle: 'Chronicle'"), 'the chronicle timeline toggle label is missing');
 });
+
+// ─── test-user review fixes (issues #801/#802/#804/#807/#818/#819) ───────────
+
+// #818 / UXP-199: mergeBodyText strips the marker but PRESERVES boundary whitespace
+test('mergeBodyText: task marker strips one space, boundary whitespace survives', () => {
+  assert.equal(c.mergeBodyText(c.mkNode('- [ ]  beta')), ' beta');   // marker space + boundary space
+  assert.equal(c.mergeBodyText(c.mkNode('- [ ] beta')), 'beta');     // canonical single space
+  assert.equal(c.mergeBodyText(c.mkNode('- [x]  done half')), ' done half');
+});
+test('mergeBodyText: keyword form strips #KW (+priority) with one space each', () => {
+  assert.equal(c.mergeBodyText(c.mkNode('#TODO  beta')), ' beta');
+  assert.equal(c.mergeBodyText(c.mkNode('#TODO [#A]  beta')), ' beta');
+  assert.equal(c.mergeBodyText(c.mkNode('#TODO beta')), 'beta');
+});
+test('mergeBodyText: block prefixes slice exactly; plain text untouched', () => {
+  const q = c.mkNode('>  quoted'); q.type = 'quote';
+  assert.equal(c.mergeBodyText(q), ' quoted');
+  assert.equal(c.mergeBodyText(c.mkNode('plain words')), 'plain words');
+  const ol = c.mkNode('1.  item'); ol.type = 'ol';
+  assert.equal(c.mergeBodyText(ol), ' item');
+});
+test('mergeBodyText: split→merge round-trips a to-do byte-identically (the #818 repro)', () => {
+  const orig = '- [ ] alpha beta';
+  const { before, after } = c.splitForSibling(orig, 11, '- [ ] ');   // caret after "alpha"
+  assert.equal(before, '- [ ] alpha');
+  assert.equal(after, '- [ ]  beta');
+  const rejoined = c.mergeUpText(before, c.mergeBodyText(c.mkNode(after))).text;
+  assert.equal(rejoined, orig);                                       // was "- [ ] alphabeta"
+});
+
+// src wiring pins for the DOM-path fixes
+const _fix = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#801 wiring: exitEdit repaints computed dependents on text change', () => {
+  assert.ok(_fix.includes('function repaintComputedDependents'), 'helper missing');
+  assert.match(_fix, /node\.text !== prevText\) \{[\s\S]{0,900}repaintComputedDependents\(node\.id\)/,
+    'exitEdit partial path must repaint computed dependents when text changed');
+});
+test('#802 wiring: pending autosave flushes on pagehide/hidden', () => {
+  assert.ok(_fix.includes('function flushPendingAutosave'), 'flush fn missing');
+  assert.match(_fix, /addEventListener\('pagehide', flushPendingAutosave\)/, 'pagehide hook missing');
+  assert.match(_fix, /visibilitychange[\s\S]{0,120}hidden[\s\S]{0,60}flushPendingAutosave\(\)/, 'hidden hook missing');
+  assert.match(_fix, /autosaveTimer = setTimeout\(writeAutosavePayloadNow, 800\)/, 'debounce must reuse the extracted body');
+});
+test('#804 wiring: emoji trigger excludes code colons; unengaged menu never steals Enter', () => {
+  assert.match(_fix, /\(\?<!\[a-zA-Z0-9\):\\\]\}\]\):/, 'lookbehind must exclude ) : ] }');
+  assert.match(_fix, /engaged: m\[1\]\.length > 0/, 'engagement flag missing from emojiState');
+  assert.match(_fix, /canApply: \(\) => !!emojiState\?\.engaged/, 'emoji canApply gate missing');
+  assert.match(_fix, /if \(m\.canApply && !m\.canApply\(\)\) \{ m\.hide\(\); break; \}/, 'dispatcher fall-through missing');
+});
+test('#807 wiring: adoptDoc resets doc caches BEFORE the migrations', () => {
+  const fn = _fix.slice(_fix.indexOf('function adoptDoc'));
+  const reset = fn.indexOf('resetDocCaches()');
+  const mig = fn.indexOf('migrateNodePrefixes(root)');
+  assert.ok(reset >= 0 && mig >= 0 && reset < mig,
+    'resetDocCaches() must run before migrateNodePrefixes(root) in adoptDoc');
+});
+test('#819 wiring: Enter at offset 0 inserts an empty sibling ABOVE instead of splitting', () => {
+  assert.match(_fix, /function insertSiblingAfter[\s\S]{0,2400}if \(foff === 0\) \{[\s\S]{0,600}parent\.children\.splice\(idx, 0, nn0\)/,
+    'insertSiblingAfter must special-case the offset-0 split');
+});

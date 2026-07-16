@@ -2613,6 +2613,70 @@ These are **not non-conformances** — the standard is satisfied — just nice-t
 - 🟢 **Table arrow-key cell nav** — `↑/↓/←/→` to cross cells and `Shift+Arrow` to extend the selection (beyond the conformant `Tab`/`Enter` nav from UXP-2). Today arrows move the caret within the cell; P2-3 is met without this.
 - 🟢 **`mdInline` per-token sidecar scans** — each `[[type:key]]` match does a linear `.find` over the node's sidecar array, so rendering is O(tokens × sidecar size) per node. Harmless at realistic pill counts (single-digit per point); a `Map` keyed by `key` in `renderContentHTML` retires it whenever a render pass is touched anyway. From the engine audit, verified still present — a perf nit, not a defect.
 
+## Test-user review fixes (July 2026) — UXP-194…199
+
+> Source: the seven-persona test-user review (live headless-Chromium sessions; findings filed as
+> `agent-review` issues #801–#827). This is fix batch 1 — the correctness core. Each entry cites
+> its issue; the issue carries the full evidence.
+
+### UXP-194 ✓ Computed pills went stale on ordinary edits (#801) 🔴 — **RESOLVED**
+- **Problem:** an edit commit repainted only the edited point (the narrowed-repaint perf work), so
+  every OTHER visible computed display lied until a full render: `{= 2*pi*r}` kept the old value
+  after `r` changed, `{= words(subtree)}` never ticked, a `words(subtree) >= 500` check chip stayed
+  ✗ after the target was crossed. Two personas independently; orchestrator-reproduced.
+- **Fix:** `repaintComputedDependents(exceptId)` — on a text-changed `exitEdit`, patch the innerHTML
+  of every other visible non-base point whose display depends on doc-wide state (math/vars/est/query
+  sidecars, progress cookies) and rebuild visible check chips (`buildCheckChip` replaceWith). A full
+  `render()` stays unsafe there (exitEdit can run inside a mid-click blur), so this reuses the
+  backlink-source surgical-repaint idiom. Verified headless: var→dependent-pill, words() at creation
+  + on child edit, check chips.
+
+### UXP-195 ✓ Pending autosave lost on tab close (#802) 🔴 — **RESOLVED**
+- **Problem:** the 800ms autosave debounce had no leave-flush — text typed in the final window
+  before closing the tab silently vanished (the `beforeunload` guard covers disk mode only). The
+  first-timer persona hit it organically twice.
+- **Fix:** the debounce body extracted to `writeAutosavePayloadNow()`; `flushPendingAutosave()` runs
+  it synchronously on `pagehide` and `visibilitychange→hidden` when a timer is pending (localStorage
+  write is sync; OPFS/folder writes fire best-effort). Pinned: debounce reuses the extracted body +
+  both hooks present.
+
+### UXP-196 ✓ Emoji menu hijacked Enter after code colons (#804) 🔴 — **RESOLVED**
+- **Problem:** `def f(x):` + Enter replaced the colon with an emoji (menu open, unfiltered, first
+  candidate preselected); Shift+Enter inserted `:100:` and ate the line break. Every Python/C++
+  colon line was a landmine (P1: Enter = new point, inverted).
+- **Fix:** two gates. (1) The trigger lookbehind also excludes `)`, `:`, `]`, `}` so code colons
+  never open the menu. (2) `emojiState.engaged` — set by typing ≥1 filter char or arrowing — gates
+  apply: the shared `INLINE_MENU_NAV` dispatcher gained an optional `canApply`; an unengaged emoji
+  menu closes and lets Enter/Tab **fall through** to their structural meaning instead of being
+  swallowed. Verified headless: `def bfs(g, s):` + Enter → colon intact, new point created.
+
+### UXP-197 ✓ Opening an .opml mutated custom-state keyword tasks (#807) 🔴 — **RESOLVED**
+- **Problem:** `adoptDoc` ran `migrateNodePrefixes` BEFORE `resetDocCaches()`, so `parseTodo`'s
+  `knownStates()` served the OUTGOING doc's cached state set — an incoming doc's custom-sequence
+  keywords (`#BACKLOG …`) read as unknown and the legacy-todo migration prepended task markers:
+  silent, permanent text mutation on File→Open (PM persona, verified 2×; ordering source-verified).
+- **Fix:** `resetDocCaches()` now runs right before the migrations (the post-`buildIndex` reset
+  stays — migrations may populate caches mid-run with half-migrated data). Pinned: reset-before-
+  migrate order asserted against the source.
+
+### UXP-198 ✓ Enter at the start of a parent divorced its children (#819) 🟡 — **RESOLVED**
+- **Problem:** the UXP-60 caret-split keeps children on the leading half — correct mid-text, wrong
+  at offset 0 where the leading half is EMPTY: the children ended up on an empty point above while
+  the text moved below (the novelist orphaned a chapter's scenes making room for a title).
+- **Fix:** `insertSiblingAfter` special-cases `foff === 0`: an empty continuation sibling is
+  inserted ABOVE, text + children stay together, caret stays at the start of the text (peer
+  standard). Also removes the latent double-marker case (`splitForSibling(text, 0, cont)` used to
+  prepend `cont` to a text that still carried its own marker). Verified headless.
+
+### UXP-199 ✓ Backspace merge-up glued words on marker-bearing points (#818) 🟡 — **RESOLVED**
+- **Problem:** `mergeUpInto` took the merged-in body from `textForDisplay`, which strips the task
+  marker/keyword AND trims the whitespace after it — so split `- [ ] alpha beta`, merge back →
+  `- [ ] alphabeta`. Split→merge was not identity (power-user persona, UI + core level).
+- **Fix:** new pure core `mergeBodyText(node)` — strips each marker form plus at most ONE canonical
+  space (`TASK_STRIP_ONE`; ol/keyword/block-prefix forms likewise), preserving boundary whitespace
+  as content. Pinned: task/keyword/quote/ol/plain cases + the byte-identity round-trip
+  `splitForSibling → mergeBodyText → mergeUpText === original`.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the
