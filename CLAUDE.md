@@ -872,7 +872,11 @@ shows and the controls vanish. Collapsed = chrome + a .mt-base-more zoom-in foot
 capped = table body clamped (Calculate footer kept) + a "zoom in for N more" footer.
 Controls in mtBaseChromeHtml's left cluster: a .col-chevron collapse toggle + a
 .mt-base-rows All/5/10/20 menu (showBaseRowsMenu); switcher hidden when collapsed;
-mtCollapsedHost gives all views the same collapsed strip) ·
+mtCollapsedHost gives all views the same collapsed strip; the base bullet menu's
+"View & rows shown" opens the unified settings menu — view + rows cap in one surface,
+mtAddRowsCapSection shared with the chrome rows button — and the cell context menu
+(Shift+F10) leads with the focused cell's pill actions via collectPillActions'
+cell-scope override, bases round 3) ·
 Calendar view (BV-3: {kind:'calendar', dateBy} on the first date-role column, guarded
 with the P4 fix hint; pure calBaseItems (strict parseDueDate, invalid/blank rows
 surfaced as an undated strip, never dropped) feeds the agenda's agendaMonthCells;

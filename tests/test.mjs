@@ -6926,7 +6926,7 @@ test('UXP-36: GUIDE registry declaration is present', () => {
 // some entry's `covers` array or its own `id` field.
 test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
   const BLOCK_IDS = ['ul','ol','todo','h1','h2','h3','para','code','divider','quote',
-    'base','template','due','check','alias','journal'];
+    'base','template','due','check','alias','journal','variables'];
   // Extract all id:' and covers:[' values from the GUIDE source block
   const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
   const coveredIds = new Set();
@@ -12276,6 +12276,44 @@ test('round 2 — perf wiring + canonical vocabulary (source pins)', () => {
   assert.ok(!/mtModelRead/.test(fnBody(_src, 'mtRecompute')), 'recompute (a write path) stays on the fresh parse');
   // the base menu section header speaks the canonical term (ux-discipline §1: base, not table)
   assert.ok(/SECTION_ORDER = \['Base',/.test(_src) && !/sec:'Table'/.test(_src), "the base menu section says 'Base'");
+});
+
+// ── Bases round 3: UX coherence ──────────────────────────────────────────────
+test('round 3 — collectPillActions cell scope (the cell-menu pill door)', () => {
+  const n = c.mkNode('| A |\n| --- |\n| [[dice:k1]] |');
+  n.dice = [{ key: 'k1', expr: '2d6', total: 7 }];
+  const all = host(c.collectPillActions(n));
+  assert.ok(all.some(r => /Re-roll dice/.test(r.label)), 'node scope surfaces the dice actions');
+  const scoped = host(c.collectPillActions(n, '[[dice:k1]]'));
+  assert.ok(scoped.some(r => /Re-roll dice/.test(r.label)), 'the owning cell scope surfaces them too');
+  assert.equal(host(c.collectPillActions(n, '5')).length, 0, 'a pill-less cell scope surfaces nothing');
+  // clocks are node-ordinal actions — never under a cell scope
+  const cn = c.mkNode('| A |\n| --- |\n| x |\n\n[o 2/6]');
+  assert.ok(host(c.collectPillActions(cn)).some(r => /clock/i.test(r.label)), 'node scope keeps clocks');
+  assert.equal(host(c.collectPillActions(cn, 'x')).length, 0, 'cell scope skips them');
+});
+
+test('round 3 — /variables door, cell-pill menu, base settings menu, copy (source pins)', () => {
+  // the /variables command exists, is covered in the GUIDE, and opens the panel in place
+  assert.ok(/id:'variables', icon:'\$'/.test(_src), 'BLOCK_CMDS carries /variables');
+  assert.ok(/cmd\.id === 'variables'\) \{\s*\n\s*openVarPanel\(\)/.test(_src), 'the apply branch opens the panel');
+  assert.ok(/covers:\['var','variables'\]/.test(_src), 'the GUIDE variables entry covers the command id');
+  // Shift+F10 on a pill cell lists that cell's re-roll/edit/freeze actions
+  const scp = fnBody(_src, 'showColPanel');
+  assert.ok(/collectPillActions\(node, cellRaw\)/.test(scp) && /addSection\('Cell pills'\)/.test(scp),
+    'the cell context menu surfaces the focused cell\'s pill actions');
+  // the unified base-settings menu: view + rows cap in one surface, doored from the bullet menu
+  const sbm = fnBody(_src, 'showBaseSettingsMenu');
+  assert.ok(/addSection\('View'\)/.test(sbm) && /mtSetView\(node, k\)/.test(sbm) && /mtAddRowsCapSection\(node/.test(sbm),
+    'the settings menu lists the view and the rows cap');
+  assert.ok(/mtAddRowsCapSection\(node, addSection, addItem\)/.test(fnBody(_src, 'showBaseRowsMenu')),
+    'the chrome rows menu shares the extracted section');
+  assert.ok(/label: 'View & rows shown'/.test(_src) && /showBaseSettingsMenu\(node, bulletEl\)/.test(_src),
+    'the base bullet menu carries the settings door');
+  // the overview guide entry exists; command copy says table/base, never grid
+  assert.ok(/id:'bases-overview'/.test(_src), 'the bases overview guide entry exists');
+  assert.ok(/desc:'A structured table with editable cells/.test(_src), 'the /base desc says table');
+  assert.ok(/desc:'A base whose rows come from a live search/.test(_src), 'the /querybase desc says base');
 });
 
 // ── BV-1: boardLanes, the board view's pure lane model ───────────────────────

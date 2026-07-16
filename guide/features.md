@@ -102,6 +102,7 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 - **Meters.** Drop `{meter: hp/hpmax}` for a bar of a number against its maximum (HP, spell
   slots, any gauge), read live from the point's properties. ([meters](tasks-and-organizing.md#meters))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
+  The Variables panel (`/variables` or `Ctrl/Cmd+Shift+V`) lists them all with live values.
   ([variables](computing-numbers.md#variables-in-math))
 - **Variable bases.** Mark a base so every row declares variables: row Orc, column HP reads as
   `{Orc.HP}` in text and `{= Orc.HP + 5}` in math, live as you edit the cells.

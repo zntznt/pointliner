@@ -267,6 +267,16 @@ An optional base name namespaces every projection (`monsters.orc.hp` — the pre
   text it just committed so any foreign mutation (recompute, undo, a slash apply) self-invalidates it.
   The variables panel no longer rebuilds synchronously inside `markDirty` (per keystroke); it
   debounces one trailing rebuild (`scheduleVarPanelUpdate`), while `openVarPanel` stays synchronous.
+- **UX coherence (bases round 3, 2026-07-16):** the base bullet menu carries a **"View & rows
+  shown"** door opening `showBaseSettingsMenu` — view + outline rows cap in ONE menu surface
+  (`mtAddRowsCapSection` is shared with the chrome rows button's menu), so every whole-base
+  setting is reachable from the base menu, not only as chrome buttons. The **cell context menu**
+  (Shift+F10) leads with a "Cell pills" section when the focused cell holds pill tokens
+  (`collectPillActions(node, cellRaw)` — the cell-scope override; clocks/spoilers stay
+  node-scoped), since a focused cell shows the raw token with nothing to click. `/variables`
+  opens the Variables panel from the slash menu (beside the toolbar button and Ctrl/Cmd+Shift+V).
+  The in-app concept guide gained a **bases-overview** entry (which table-family feature to reach
+  for), and user-facing copy says "table"/"base", never "grid" (§8).
 - **Deferred (reopen this doc to build):** the `var:` search operator over projections,
   projected-name shadow markers (no pill to mark).
 

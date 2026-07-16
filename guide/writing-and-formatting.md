@@ -75,7 +75,7 @@ everything.
 ## Tables
 
 Put information in columns to compare options, lay out a small dataset or present a schedule. Type
-rows separated by `|` bars with a row of dashes under the header, and it formats as a grid
+rows separated by `|` bars with a row of dashes under the header, and it formats as a table
 automatically:
 
 ```
@@ -109,7 +109,9 @@ the same data. A board sourced from a [query base](getting-around.md#query-bases
 
 In the outline (when you are not zoomed into it), a base can be **collapsed** to a single line
 with the chevron in its header strip, and its **row count capped** (the **Rows** control: All, 5,
-10 or 20) so a long base does not stretch the page. When rows are hidden, a **Zoom in to see N
+10 or 20) so a long base does not stretch the page. The base's bullet menu carries the same
+settings under **View & rows shown**, so everything about a base is also reachable from its one
+menu. When rows are hidden, a **Zoom in to see N
 more** line appears at the bottom; click it (or zoom into the base) to see everything. Collapse and
 the cap only apply in the outline; a zoomed-in base always shows in full. **Cards** is the third
 view: every row becomes a card in a grid, with the first column as the title and images as covers.
@@ -131,7 +133,9 @@ around.
 - On a **board**, focus a card and press `Alt+Left` / `Alt+Right` to move it between lanes.
 
 Deleting a column or row stays in the column menu (open it with `Shift+F10` on a cell), so a stray
-keystroke never destroys data.
+keystroke never destroys data. That same cell menu also lists the focused cell's **pill actions**:
+a cell holding a `{2d6}` pill shows Re-roll, Edit and Freeze rows there, since a focused cell shows
+the raw token with nothing to click.
 
 ## Footnotes, links and images
 
