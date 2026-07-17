@@ -12893,6 +12893,33 @@ test('FR-1 editors — popover + menu doors + commit routing (source pins)', () 
   assert.ok(/no longer matches this query/.test(sv), 'a membership-breaking menu write is announced');
 });
 
+// ── IA-1: a base converts back to text (freedom of form) ─────────────────────
+test('baseToStaticText — authored base round-trips as a static table; wiring (IA-1)', () => {
+  // authored base: cells + the #+TBLFM recipe are preserved (the static table still computes)
+  const authored = { type: 'base', text: '| A | B |\n| --- | --- |\n| 1 | 2 |\n#+TBLFM: @>$2=vsum(@2$2..@2$2)' };
+  const out = c.baseToStaticText(authored);
+  assert.ok(/\| A \| B \|/.test(out) && /\| 1 \|/.test(out), 'the grid survives');
+  assert.ok(/#\+TBLFM:/.test(out), 'the formula recipe is kept, so the static table still computes');
+  // a base with no recipe: just the grid, no trailing tblfm line
+  const plain = { type: 'base', text: '| X |\n| --- |\n| a |' };
+  assert.ok(!/#\+TBLFM:/.test(c.baseToStaticText(plain)), 'no recipe, no tblfm line');
+  // authored path is pure (delegates to baseRecipeMarkdown); the qbase arm is browser-verified
+  assert.ok(/node\.qbase \? serializeTable\(mtModel\(node\)\) : baseRecipeMarkdown\(node\.text\)/.test(fnBody(_src, 'baseToStaticText')),
+    'qbase freezes its projection; authored keeps its cells + recipe');
+  // the mutator drops every base view-state field, re-derives the type, prunes, is undoable
+  const cbt = fnBody(_src, 'convertBaseToText');
+  assert.ok(/pushUndo\(\)/.test(cbt), 'undoable — one Ctrl/Cmd+Z restores the base');
+  assert.ok(/delete node\.qbase; delete node\.varbase; delete node\.view;/.test(cbt)
+    && /delete node\.colRole; delete node\.colW; delete node\.baseRows;/.test(cbt),
+    'every base view-state field is dropped');
+  assert.ok(/node\.type = deriveTypeFromText\(node\.text\) \|\| 'ul'/.test(cbt), 'the node becomes a normal point');
+  assert.ok(/pruneArtifacts\(node\)/.test(cbt), 'orphaned sidecar records are shed; frozen pill records stay');
+  // the door: a primary base-menu action wired to the mutator (leaving is as discoverable as entering)
+  assert.ok(/sec:'Base', prim:true, icon: \{ fa:'fa-solid fa-file-lines'.*\n?\s*label: 'Convert to text'/.test(_src)
+    || /label: 'Convert to text',\s*\n\s*fn: \(\) => \{ hideBpop\(\); convertBaseToText\(nodeId\); \}/.test(_src),
+    'the Convert to text door exists and calls convertBaseToText');
+});
+
 test('round 3 — /variables door, cell-pill menu, base settings menu, copy (source pins)', () => {
   // the /variables command exists, is covered in the GUIDE, and opens the panel in place
   assert.ok(/id:'variables', icon:'\$'/.test(_src), 'BLOCK_CMDS carries /variables');

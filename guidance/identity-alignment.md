@@ -18,7 +18,7 @@ self-contained HTML. The items below are the deltas, not a rebuild.
 
 ## Tier 1 — the app is not yet loyal here (build items)
 
-### IA-1 · A base has no exit back to text (§3b, freedom of form) — **the sharpest gap**
+### IA-1 · A base has no exit back to text (§3b, freedom of form) — **the sharpest gap** ✓ DONE (#858)
 Every structure must be "one way of organizing thought, never THE way: opt-in,
 reversible." Entering a base is one verb (`/base`, non-destructive); leaving one is not:
 there is no "turn this base back into plain points / a typed table" door — the exit today
@@ -30,6 +30,15 @@ row) — undoable, announced, the inverse of "Convert table to base." Audit the 
 structures for the same one-way smell (properties → delete cleanly ✓; sequences →
 deletable ✓; varbase → "Stop using rows as variables" ✓; board/views → switch back ✓).
 **Size:** S-M. The one genuinely missing verb.
+**Shipped 2026-07-17 (closes #858):** the base bullet menu gains a primary "Convert to text"
+door (`convertBaseToText` + the pure-ish `baseToStaticText`). An authored/variable base keeps its
+cell literals + the `#+TBLFM:` recipe, so the static table still computes and round-trips; a query
+base freezes its current projection (title cells stay `[[#id]]` links that still navigate). Frozen
+cell pills survive via the kept sidecars; every base view-state field is dropped; the node lands in
+DISPLAY mode showing the rendered table (not edit mode); one undo restores the base. The audit of
+the other structures held: properties/sequences delete cleanly, varbase has its off-switch,
+views switch back — bases were the one missing reverse verb.
+**Whole program filed as issues 2026-07-17:** IA-1…9 = #858…#866.
 
 ### IA-2 · The first 30 seconds must deliver the atom (§7, §10.1)
 The perception hypothesis lives or dies in the first minutes: type `{2d6}` → it becomes a
@@ -101,7 +110,7 @@ follow-ups.
 
 ## Order of work
 
-1. **IA-1** (the missing exit verb — the one place the app contradicts §3b today)
+1. ~~**IA-1** (the missing exit verb — the one place the app contradicts §3b today)~~ ✓ #858
 2. **IA-2 + IA-3** together (one first-minutes pass: audit, reorder, translate)
 3. **IA-4** (the substrate review — analysis PR ending in an owner decision)
 4. **IA-5 + IA-6** (the exit story; the menu table)

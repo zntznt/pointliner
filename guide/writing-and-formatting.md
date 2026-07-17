@@ -141,6 +141,12 @@ order into the table itself, one undo restores the old order, and the comparison
 column's role, so a Number column sorts numerically, a Date column by date, and a Status column by
 your sequence's own state order. Blank cells always sink to the bottom.
 
+A base is never a trap: the base's own menu has **Convert to text**, which turns it back into a plain
+markdown table in the same point (the reverse of turning a table into a base). You get a normal,
+freeform table you can edit as text, delete, or rewrite as prose. Formulas and pill values come
+along, and one undo restores the base if you change your mind. A structure is always one *optional*
+way to hold your work, never the only way.
+
 On **touch**, press and hold a column header (or tap the small arrow at its right edge) to open
 the column menu; the base's bullet menu lists the same thing under **Column options**, so every
 column operation (Calculate, formulas, Show as, sorting, widths) works by finger too.

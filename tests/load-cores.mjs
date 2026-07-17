@@ -207,7 +207,7 @@ export function loadCores() {
     'tableBlockEnd', 'splitPastedPoints',
     'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtApplyAggregate', 'aggKindLabel',
     'tblfmGetAssign', 'tblfmSetAssign',
-    'mtModelText', 'mtModel', 'mtModelRead', 'isVarBase', 'baseFrozenMarkdown', 'baseRecipeMarkdown',
+    'mtModelText', 'mtModel', 'mtModelRead', 'isVarBase', 'baseFrozenMarkdown', 'baseRecipeMarkdown', 'baseToStaticText',
     'mtColumnLabel',   // #811: the columns-menu door's per-column label
     'parseTodo','formatTodo','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
