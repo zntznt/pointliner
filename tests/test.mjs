@@ -13160,6 +13160,17 @@ test('DIAL: LEAN is the keyboard canvas — blind menu shows a one-line match ti
   assert.ok(_src.includes('body.v-lean .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean must still reveal a pencil on keyboard focus (P3)');
 });
 
+// IA-2 (perception hypothesis): the first cue leads with the atom
+test('first-run atom: the entry hint and the tour intro lead with a live pill (IA-2)', () => {
+  // the blank-canvas entry hint leads with the concrete atom {2d6}, not the / menu or the @ dialog
+  assert.ok(/const entryHint = isStandardOrLean\(\) \? '' : 'Try \{2d6\} for a live pill/.test(_src),
+    'the entry-point cue leads with {2d6} (the fastest path to the first live pill)');
+  // the Welcome tour's intro paragraph carries a real, clickable {2d6} pill (not only the
+  // illustrative "{curly-brace}"), so the first paragraph delivers the atom hands-on
+  const intro = _src.slice(_src.indexOf('const FIRST_RUN_EXAMPLES'), _src.indexOf('const FIRST_RUN_EXAMPLES') + 1200);
+  assert.ok(/Here is one now, click it: \{2d6\}/.test(intro), 'the tour intro has a clickable {2d6} in the first paragraph');
+});
+
 test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {
   // 1. empty-state hints strip in standard AND lean (isStandardOrLean), not just lean
   assert.ok(_src.includes("const entryHint = isStandardOrLean() ? '' :"), 'the entry-point hint must strip in standard + lean');

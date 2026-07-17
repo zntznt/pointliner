@@ -40,7 +40,7 @@ the other structures held: properties/sequences delete cleanly, varbase has its 
 views switch back — bases were the one missing reverse verb.
 **Whole program filed as issues 2026-07-17:** IA-1…9 = #858…#866.
 
-### IA-2 · The first 30 seconds must deliver the atom (§7, §10.1)
+### IA-2 · The first 30 seconds must deliver the atom (§7, §10.1) ✓ DONE (#859)
 The perception hypothesis lives or dies in the first minutes: type `{2d6}` → it becomes a
 live pill → click → it re-rolls. The Welcome tour and empty-state hints exist; what needs
 verifying is that the ATOM is the first thing they teach — before outliner mechanics,
@@ -50,8 +50,16 @@ screen, the examples banner) against one measure: how many seconds/keystrokes fr
 fresh open to a live pill the user made themselves. Reorder/rewrite copy so the atom
 leads. No new UI expected — copy and ordering.
 **Size:** S (audit) + S (copy fixes).
+**Shipped 2026-07-17 (closes #859):** the audit found the first-run path was already largely
+atom-forward — a genuinely-fresh boot loads the Welcome tour (`FIRST_RUN_EXAMPLES`) whose intro
+paragraph opens by naming the atom. Two gaps closed: (1) the blank-canvas entry-point hint led with
+`/` (outliner mechanics) and buried pills behind the `@` dialog; it now leads with the concrete atom
+(`Try {2d6} for a live pill · / for a to-do or heading · or just write`), the fastest path to the
+first live pill; (2) the tour intro described the atom but its first paragraph had no clickable pill
+(the illustrative `{curly-brace}` is not one), so it now carries a real `{2d6}` (`Here is one now,
+click it: {2d6}`). Both browser-verified; source-pinned.
 
-### IA-3 · Philosophy-speak sweep in user-facing copy (§3, the translation rule)
+### IA-3 · Philosophy-speak sweep in user-facing copy (§3, the translation rule) ✓ DONE (#860, verified clean)
 "Text should be alive" and its cousins are internal steering; external copy speaks in
 problems a stranger recognizes. The rule is new, so shipped copy predates it.
 **Action:** sweep the first-run banner, empty-state hints, the `?` panel intro, the GUIDE
@@ -59,6 +67,12 @@ category intros, and dialog hint lines for belief-language; translate to problem
 where found. (The command descs are terse and mostly fine; this is about the greeting
 surfaces.)
 **Size:** S.
+**Done 2026-07-17 (closes #860):** the sweep of the greeting surfaces — the empty-state hints, the
+examples banner ("These are live examples to explore. Click any pill…"), the dialog hint lines, and
+the GUIDE/concept-guide copy — found NO philosophy-speak: the copy is already problem- and
+action-oriented, exactly what the translation rule wants (the belief-language lives only in the
+internal docs). No user-facing string needed the translation. Recorded as verified-clean rather than
+changed, and the §3 rule now stands as the guard for future greeting copy.
 
 ## Tier 2 — loyalty checks that likely pass but must be verified (review items)
 
@@ -111,7 +125,7 @@ follow-ups.
 ## Order of work
 
 1. ~~**IA-1** (the missing exit verb — the one place the app contradicts §3b today)~~ ✓ #858
-2. **IA-2 + IA-3** together (one first-minutes pass: audit, reorder, translate)
+2. ~~**IA-2 + IA-3** together (one first-minutes pass: audit, reorder, translate)~~ ✓ #859 (atom-forward hint + tour pill) · #860 (copy verified clean)
 3. **IA-4** (the substrate review — analysis PR ending in an owner decision)
 4. **IA-5 + IA-6** (the exit story; the menu table)
 
