@@ -54,6 +54,11 @@ next to it. The pill unfolds back to the `{…}` you typed; fix it and click awa
 - **No AI required.** The generative layer is deterministic and local: dice, grammars, a
   real expression engine, Monte-Carlo estimates. Nothing phones a model; if AI vanished
   tomorrow, Pointliner would work exactly the same.
+- **It slots in and out of how you already think.** Freeform text is the primary surface;
+  every structure (tables, boards, properties, workflows) is one optional, reversible way
+  to organize it, never the required way. And leaving is always whole: Markdown, plain
+  text, OPML, or a runnable HTML take everything with you. Pointliner earns its place in
+  your process instead of locking the door behind you.
 
 ## What it will never be
 

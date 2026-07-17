@@ -129,6 +129,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | File | What it is |
 | --- | --- |
 | `ux-remediation.md` | Every UX non-conformance as a tracked defect (append-only record) + the syntax-sprawl guard |
+| `identity-alignment.md` | **ACTIVE program** — the gap list between `product-identity.md` and the shipped app (IA-1…9, tiered, each ending in a PR or a recorded decision) |
 | `generative-status.md` | Completion ledger for the generative + computational lane |
 | `backlog.md` | Consolidated feature gaps with status marks |
 | `features.md` | The exhaustive engine-level feature reference (contributor-facing; the user inventory is `guide/features.md`) |

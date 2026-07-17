@@ -958,9 +958,11 @@ Details: `guidance/features.md`
 ## Direction, roadmap & backlog
 
 The product direction is now set. Read these before proposing or building:
-- `guidance/product-identity.md` — **the binding identity** (the customer per roadmap #515,
-  the 90%-core, the belief, the never-build list, who it is NOT for, the competitive frame,
-  the flagged open "why now" question). The first stop for any scope/positioning decision.
+- `guidance/product-identity.md` — **the binding identity** (the 90%-core, the tools-for-
+  thought lineage + accepted test, the two freedoms, the never-build list, who it is NOT
+  for, the substrate test, the open questions + held hypotheses). The first stop for any
+  scope/positioning decision. Its gap list against the shipped app is
+  `guidance/identity-alignment.md` (ACTIVE; IA-1 the missing base→text exit verb leads).
 - `guidance/ux-discipline.md` — **the binding UX standard** (vocabulary, the five principles,
   keyboard grammar, the closed syntax inventory, patterns, conformance matrix). Read before
   any UI work; clear `guidance/ux-definition-of-done.md` before merge.
