@@ -218,50 +218,64 @@ Pointliner is a note app, whatever this document says. The claim is falsifiable 
 observed use, and the product surfaces (the `{2d6}`-first onboarding, the `?` cheat
 sheet, the concept guide) exist precisely to keep the engine from being missable.
 
-**8c. "Why now?" — a working thesis (first draft, 2026-07-17; owner to refine).** This was the
-one blank the doc refused to fake. It now carries an argued thesis — stated AS a thesis, not a fact:
-a claim about the market moment, not a built truth. It builds directly on the AI-independence fact
-(§6).
+**8c. "Why now?" — a working thesis (refined 2026-07-17; owner to keep refining).** This was the
+one blank the doc refused to fake. It carries an argued thesis, stated AS a thesis — a claim about
+the market moment, not a built truth — and built on the AI-independence fact (§6).
 
-*The thesis, in one line:* **Pointliner is the deterministic, own-it answer to the generative
-moment.** The AI wave (2023–2025) did two things at once, and Pointliner sits exactly at the fold
-between them:
+*The thesis, in one line:* **Pointliner is the legible, ownable answer that the AI moment made
+possible to explain.**
 
-1. **It made "your text should generate and compute" a mainstream expectation.** Three years ago,
-   telling someone "your notes can roll, generate, and compute in place" was a niche pitch; the AI
-   wave trained the whole culture to expect text that *does things*. The appetite Pointliner feeds is
-   now normal, where it used to need explaining.
-2. **It produced its own discontents** — outputs you can't reproduce (a model answers differently
-   every time, unverifiable), cloud and subscription dependence, privacy surrendered by default, and
-   a real, growing fatigue among people who want tools they can trust and own.
+**AI is the contrast, not the fuel.** The temptation is to say the AI wave created an appetite for
+"text that generates" and Pointliner rides it. That is the weak version, and it is probably wrong:
+the appetite AI created is for *an LLM in your notes* (open-ended, semantic, "write this for me"),
+not for a dice roller or a grammar. Pointliner is generative *without* AI (§6), so riding the AI
+appetite would contradict the product. The real gift the wave gave Pointliner is **legibility**.
+Before 2023, "your notes can generate and compute in place" had no reference point and was genuinely
+hard to explain. Now everyone has used generation-in-a-document (ChatGPT in a doc), so the pitch
+lands in one sentence: *like that, but deterministic, local, and yours.* The wave didn't create
+demand for our thing; it created the vocabulary and the foil that make our thing finally sayable.
 
-Pointliner delivers the generativity and computation the moment made people **want**, in the form the
-same moment made people newly **value**: deterministic (a dice roll is a dice roll, a grammar
-reproduces from its seed, math is math — reproducible and trustworthy), local (yours, offline), and
-unsubscribed. So "why *now*, not next year": the appetite is at its peak *and* the fatigue is at its
-peak, a convergence that is partly time-bound — in 2022 the appetite wasn't mainstream, and if LLM
-tools eventually satisfy it fully, the window narrows.
+**And the wave produced its own discontents**, which is where "deterministic" stops being a quality
+and becomes the differentiator: outputs you can't reproduce, cloud/subscription dependence, privacy
+surrendered by default, and real fatigue. Deterministic generativity isn't merely "trustworthy" — it
+is a **medium primitive**: a `{2d6}` composes with `{= …}`, lives in a file forever, and re-runs on
+your machine, where an LLM call is a rented capability that returns an uncomposable blob. That is §3's
+belief ("generation is a writing primitive, not a separate app") stated as the reason the *timing*
+favors us: the moment taught people the difference between a primitive they own and a feature they
+rent.
 
-*The honest limits (this is a thesis, held to the doc's fact bar):*
-- **No forcing catalyst.** Nothing makes someone switch *today* specifically; the argument is "the
-  moment is unusually favorable," not "act now or lose it." The time-bound-ness of the favorable
-  conditions is the reason to lead now rather than later — a probabilistic argument, not a deadline.
-- **The load-bearing ingredient is the AI counterwave**, and it is the one genuinely *time-sensitive*
-  element. The others are real but are tailwinds, not catalysts: local-first has matured from fringe
-  (2019) to a reachable audience (an *enabling condition* — the audience is ready), the single-file
-  web platform matured enough to carry a capable app in one HTML file with real disk access (you
-  couldn't have built this as credibly in 2018), and subscription fatigue has been true for years and
-  will be true next year (a standing tailwind, no "now"). The solo-RPG surge is the *beachhead
-  audience*, not the timing (and per §2, provenance not positioning).
-- **Falsifiable.** If the mainstream appetite for generative text turns out fully satisfied by LLM
-  tools — if people do not mind non-reproducibility, cloud, and subscription — the broad "why now"
-  evaporates and Pointliner is a strong niche tool for a deterministic-preferring audience (still
-  viable, but no wide moment). Watch for that; do not overclaim the moment against it.
+*The honest temporal argument (why now, not next year):* not a demand deadline — a **positioning
+window**. The category "generative notes" is being *defined right now*; the mental slot for "the
+deterministic, own-it one" is cheapest to claim before the category sets and someone else's framing
+hardens. That is a real reason to move now, and an honest one — it is about naming, not urgency.
 
-*Where this shows up externally:* nowhere as a slogan (the belief-translation rule, §3, still holds).
-It shapes *emphasis* — the README's "No AI required" bullet and the "runnable, yours, offline" frame
-are this thesis executed as product facts, not as a timing pitch. The thesis is for strategy
-(fundraising, positioning, deciding what to build next), not for the front page.
+*Two why-nows, kept separate (the market's is real; the user's is weak):*
+- **Market why-now: real but soft.** The legibility is fresh and the discontent is near its peak — a
+  favorable moment, partly time-bound (if LLM-notes tools normalize the tradeoffs, the contrast
+  dulls). Favorable, not act-or-lose.
+- **User why-now: weak, and we should admit it.** For an individual, inertia wins; nothing forces a
+  switch *today*. The only real user trigger is a *concrete present pain* — you are copying numbers
+  between your notes and a spreadsheet this week, or you need a random table for tonight — not the
+  grand moment. The market thesis sells the category; a specific pain sells the download.
+
+*The wedge inside the moment (a sentiment hypothesis, not measured):* the communities most actively
+rejecting AI-generated content right now are creative ones — including the solo-RPG and worldbuilding
+crowd, the beachhead (§2). For them a generator that is provably **not AI** is not a compromise, it is
+the point. If that sentiment is real, the beachhead and the why-now align: Pointliner is the
+generative tool a person who dislikes generative-AI can love. (Flagged as a hypothesis about a
+community's mood; validate before leaning on it.)
+
+*Falsification (confront the strongest objection):* the thesis fails if the appetite people formed is
+specifically for **LLM capability** — semantic, open-ended, do-it-for-me — and does not transfer to
+deterministic, mechanical generativity at all. If "generative notes" means only "AI in my notes" to
+the market, then AI is not our foil but our replacement, the legibility cuts against us, and
+Pointliner is a strong *niche* tool for a deterministic-preferring minority (still viable — no wide
+moment). Watch for it; do not overclaim the moment.
+
+*Where this shows up externally:* nowhere as a slogan (the §3 translation rule holds). It shapes
+*emphasis* — the README's "No AI required" bullet and the "runnable, yours, offline" frame are this
+thesis as product facts. The thesis is for strategy (positioning, fundraising, what to build next),
+not the front page.
 
 ## 9. How this file is used
 
