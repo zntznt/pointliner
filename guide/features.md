@@ -86,8 +86,10 @@ A live calculator that can see your outline. Math pills recompute on their own. 
   ([expressions](computing-numbers.md#expressions))
 - **Logic.** Combine comparisons with `and(…)` / `or(…)` / `not(x)`; one check can assert several
   rules at once. ([functions](computing-numbers.md#functions))
-- **Units and dates.** Convert units (`{= c2f(20)}`), do date math (`{= daysuntil(due)}`).
-  ([units](computing-numbers.md#units) · [dates](computing-numbers.md#dates))
+- **Units and dates.** Convert units (`{= convert(10, km, mi)}` or `{= c2f(20)}`), and declare your
+  own units (a currency, a fictional measure) under File then Custom units. Do date math
+  (`{= daysuntil(due)}`).
+  ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
   spreadsheet column. ([aggregation](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
 - **Word counts.** `{= words(subtree)}` counts the prose under a heading; per-point notes stay out

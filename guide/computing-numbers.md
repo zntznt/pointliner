@@ -63,7 +63,8 @@ number goes:
 
 ## Units
 
-Conversions are just functions, named `from2to`:
+There are two ways to convert. The pair-functions named `from2to` are handy for the common
+ones, including temperature (a shift, not a ratio, so it stays a function):
 
 ```
 {= c2f(20)}      → 68      Celsius to Fahrenheit (and f2c the other way)
@@ -71,6 +72,43 @@ Conversions are just functions, named `from2to`:
 {= kg2lb(70)}    → 154.3   lb2kg
 {= mph2kmh(60)}  kmh2mph, l2gal, gal2l
 ```
+
+Or use the general `convert(x, from, to)`, which reads the unit names as words and works across a
+whole table of built-in units. Many are ready with nothing to set up:
+
+```
+{= convert(10, km, mi)}    → 6.21    length: m, km, cm, mm, mi, yd, ft, in
+{= convert(70, kg, lb)}    → 154.3   mass: kg, g, mg, lb, oz, stone
+{= convert(2, l, cup)}     volume: l, ml, gal, qt, pt, cup
+{= convert(90, min, hr)}   time: s, min, hr, day, week
+```
+
+Conversions only work **within one dimension**: converting a length to a mass is left unresolved
+(shown as `#ERR`) rather than guessed. The result is an ordinary number, so it composes with the
+rest of math: `{= convert(weight, kg, lb) * price_per_lb}`.
+
+### Your own units
+
+When the built-ins aren't enough, teach the document your own, like a currency or a fictional
+measure. Open **File then Custom units** and declare them one per line:
+
+```
+cp                a bare name is a new base unit (copper pieces)
+sp = 10 cp        "name = number unit" relates it to an earlier line
+gp = 10 sp        so gp chains up: 1 gp = 100 cp
+league = 3 mi     or extend a built-in dimension (leagues are length)
+```
+
+Then convert across your table like any other unit:
+
+```
+{= convert(2, gp, cp)}     → 200
+{= convert(5, league, km)} → 24.14
+```
+
+A bare name starts a new dimension of its own; `name = number unit` relates it to a built-in
+(`m`, `kg`, `l`, `s`, and their friends) or to a unit you defined on an earlier line. Reopen the
+dialog any time to edit, or **Clear units** to remove them (the built-ins always stay).
 
 ---
 

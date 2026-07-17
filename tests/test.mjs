@@ -12820,6 +12820,51 @@ test('mtSortRows — role-aware, blanks sink, pinned edges, stable (SV-1)', () =
 });
 
 // ── SV-2: persisted sort on query bases ─────────────────────────────────────
+// ── #875 units: a declarable convert() table ─────────────────────────────────
+test('units — parse decls, convert, normalize, and the substitution (SR-6)', () => {
+  // built-in ratio conversions (factors exact); unitTable(null) hands back the built-in table
+  const B = host(c.unitTable(null));
+  assert.equal(Math.round(c.convertUnits(10, 'km', 'mi', B) * 100) / 100, 6.21);
+  assert.equal(c.convertUnits(1, 'kg', 'g', B), 1000);
+  assert.equal(c.convertUnits(2, 'day', 'hr', B), 48);
+  assert.equal(c.convertUnits(1, 'km', 'kg', B), null, 'dimension mismatch → null');
+  assert.equal(c.convertUnits(1, 'km', 'furlong', B), null, 'unknown unit → null');
+  assert.equal(c.convertUnits('x', 'km', 'mi', B), null, 'non-number → null');
+  // declared units: a bare base, a chain, and extending a built-in dimension
+  const { value: t, warnings } = c.parseUnitDecls('cp\nsp = 10 cp\ngp = 10 sp\nleague = 3 mi\nbad = five sp\nglorp = 2 nope');
+  assert.equal(t.cp.ratio, 1); assert.equal(t.cp.dim, 'cp');
+  assert.equal(t.sp.ratio, 10); assert.equal(t.gp.ratio, 100);
+  assert.equal(t.gp.dim, 'cp', 'the chain shares the base dimension');
+  assert.equal(t.league.dim, 'length', 'a declared unit extends a built-in dimension');
+  assert.equal(Math.round(t.league.ratio), 4828);
+  assert.ok(warnings.some(w => /bad/.test(w)) && warnings.some(w => /nope/.test(w)), 'malformed lines warn, not throw');
+  // convert across a declared chain
+  const merged = { ...B, ...t };
+  assert.equal(c.convertUnits(1, 'gp', 'cp', merged), 100);
+  assert.equal(c.convertUnits(100, 'cp', 'gp', merged), 1);
+  // normalize drops garbage; keeps valid
+  assert.equal(c.normalizeUnits({ gp: { dim: 'coin', ratio: 100 }, bad: { dim: 'x', ratio: -1 }, junk: 5 }).gp.ratio, 100);
+  assert.ok(!('bad' in c.normalizeUnits({ gp: { dim: 'coin', ratio: 100 }, bad: { dim: 'x', ratio: -1 } })));
+  assert.equal(c.normalizeUnits({ bad: { ratio: 0 } }), null, 'all-garbage → null');
+  // splitArgsTopLevel keeps nested commas
+  assert.deepEqual(host(c.splitArgsTopLevel('max(a,b), km, mi')), ['max(a,b)', ' km', ' mi']);
+  // replaceConvert substitutes to a number; the value arg is evaluated; nesting composes; bad → #ERR
+  const ev = s => ({ '10': 10, '2*5': 10, '(1000)': 1000 }[s.trim()] ?? Number(s));
+  assert.equal(c.replaceConvert('convert(10, km, mi)', ev, B).startsWith('('), true);
+  assert.match(c.replaceConvert('convert(10, km, kg)', ev, B), /#ERR/);
+  assert.match(c.replaceConvert('convert(2*5, m, cm)', v => eval(v), B), /\(1000\)/, 'value arg evaluated: 10 m = 1000 cm');
+  // end-to-end through expandAggExpr + evalMath (built-ins, no root needed)
+  assert.equal(c.evalMath(c.expandAggExpr('convert(1000, m, km) + 5', null), {}), 6);
+  // unitsToText reconstructs editable declarations (round-trip for the dialog): a new base is a
+  // bare line; a derived unit reads "name = ratio base"; a built-in-dimension extension names m/etc.
+  const { value: rt } = c.parseUnitDecls('cp\nsp = 10 cp\nleague = 3 mi');
+  const txt = c.unitsToText(host(rt));
+  assert.match(txt, /^cp$/m, 'a new base is a bare line');
+  assert.match(txt, /^sp = 10 cp$/m, 'a derived unit names its base');
+  assert.match(txt, /^league = 4828\.032 m$/m, 'a built-in-dimension extension names the built-in base');
+  assert.equal(c.unitsToText(null), '', 'no units → empty text');
+});
+
 test('parseQBaseSort + the qbase sort wiring (SV-2)', () => {
   const cols = [{ name: 'Point', field: 'title' }, { name: 'Due', field: 'due' }, { name: 'Left', field: '= cost * 2' }];
   // blank = document order; label OR field matches, case-insensitive; desc optional
