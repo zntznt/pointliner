@@ -508,7 +508,14 @@ conditionals (`a>b ? x : y` and `if(cond,then,else)`), constants (`pi`,`e`,`tau`
 `FN1` (unary), `FN2` (binary), `FN3` (ternary — `date(y,m,d)`), plus variadic
 `min`/`max`. `FN1` holds the math fns (`sqrt`,`sin`,`log`,…), the **unit
 conversions** (`c2f`, `km2mi`, … named `from2to`), and the **date component fns**
-(`year`/`month`/`day`/`weekday`). **Dates are epoch-day numbers** — `evalMath`
+(`year`/`month`/`day`/`weekday`). Beside the fixed `from2to` pairs there is a **declarable
+unit table** (SR-6 / #875): `convert(x, from, to)` reads unit names as words against a built-in
+ratio table (length/mass/volume/time) plus the doc's own `root.units` (declared via File →
+Custom units, `parseUnitDecls`/`unitTable`/`convertUnits`, round-tripping the `<_units>` head
+element). It is **not** an evalMath primitive — it is substituted to a number in the
+`expandAggExpr` pre-pass (`replaceConvert`, innermost-first) so evalMath stays number-only, the
+same model as the `sum(prop)` rollups. Multiplicative units only (same-dimension → value, cross-
+dimension → `#ERR`); temperature stays on the affine `c2f`/`f2c` FNs. **Dates are epoch-day numbers** — `evalMath`
 *always returns a number*, so dates compose with arithmetic and variables; date
 *formatting* is a display-layer concern only (`asdate(...)` is a numeric identity,
 and the math pill renders the result as an ISO date via `formatEpochDays` /
@@ -761,8 +768,10 @@ in an inline brace **and** at the rule-alternation level — `name: a | b {= w}`
 **Yes/no oracle** (the `@` "Oracle (yes/no)" door — a likelihood picker over original/neutral
 odds bands building an anonymous `Yes N | No M` weighted-alt pill; the odds field accepts A5
 `{= expr}` weights; `openOracleDialog`/`ORACLE_BANDS`) ·
-Math (incl. unit conversion + date math; **subtree aggregation** `{= sum|avg|count(prop)}`
-rolls up a child points' property — `expandAggExpr`/`aggregateChildren`, render-time, live) ·
+Math (incl. unit conversion + date math; **declarable units** `{= convert(x, from, to)}` over a
+built-in ratio table plus doc-declared `root.units` — File → Custom units, SR-6/#875; **subtree
+aggregation** `{= sum|avg|count(prop)}` rolls up a child points' property —
+`expandAggExpr`/`aggregateChildren`, render-time, live) ·
 **Uncertainty fields / estimates** (B2, frontier F3 — first-in-class: `@estimate` or `{5 to 10}`,
 an uncertain value sampled Monte-Carlo and shown as `mean ± [p5,p95]` + a unicode sparkline; click
 to re-sample. A **separate sampler** (`sampleUncertain`/`rngFromSeed`) since a distribution can't

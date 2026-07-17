@@ -246,12 +246,16 @@ Small copy/ordering fixes, one PR. Behavior unchanged.
 Each points an already-proven pattern at a new surface, inside the one-language / no-new-syntax /
 deterministic / plain-text tenets. Build on demand, not on spec — these are proposals, owner to pick.
 
-- **SR-6 · Units as a declarable table (issue #875).** `FN1` hardcodes ~14 pairwise conversions
-  (`c2f`, `km2mi`, …). This is the calendars/sequences move untaken: "what is a quantity" (built-in
-  SI/imperial → any declared `{dimension, ratios}` table) feeding one `evalMath` primitive
-  `convert(x, from, to)`. Declarative data only, deterministic, composes with all math (result is a
-  number). **OUT (recorded):** unit-suffixed literals (`3mi`) — that is new syntax (P5). The
-  `convert()` FN form is in-bounds. Size: M. *Highest capability-per-risk.*
+- **SR-6 · Units as a declarable table (issue #875). SHIPPED.** `FN1` hardcoded ~14 pairwise
+  conversions (`c2f`, `km2mi`, …); the calendars/sequences move applied to "what is a quantity":
+  a built-in ratio table (length/mass/volume/time) plus any doc-declared `root.units`, feeding the
+  `convert(x, from, to)` form. Declarative data only, deterministic, composes with all math (result
+  is a number). Not an evalMath primitive — substituted to a number in the `expandAggExpr` pre-pass
+  (`replaceConvert`), so the number-only invariant holds. Cores: `parseUnitDecls`/`unitTable`/
+  `convertUnits`/`replaceConvert`/`unitsToText`; front door File → Custom units (`openUnitsDialog`);
+  `<_units>` OPML head element; GUIDE `custom-units`. **OUT (recorded, held):** unit-suffixed literals
+  (`3mi`) — that is new syntax (P5). The `convert()` FN form is in-bounds. Was: *highest
+  capability-per-risk.*
 - **SR-7 · Let estimates read variables (issue #876).** `parseUncertain`/`sampleUncAst` are a
   second evaluator with NO `vars` param, so `{cost_low to cost_high}` is impossible and no variable
   can hold a distribution. Small high-value: thread `collectVars()` into the sampler (a scalar var

@@ -2339,6 +2339,7 @@ body:not(.v-guided) .bm-desc{display:none}
         <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
         <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
         <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
+        <div class="cmd-item" id="btn-units"><div class="cmd-icon" data-fa="fa-solid fa-arrow-right-arrow-left" data-fb="⇄">⇄</div><div class="cmd-info"><span class="cmd-label">Custom units</span><span class="cmd-desc">Define your own units, then convert with {= convert(x, from, to)}</span></div></div>
         <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
       </div>
 
@@ -3522,6 +3523,149 @@ function aggregateVarBaseColumn(fn, base, col, vars) {
   return null;
 }
 
+// ── units: a declarable conversion table (SR-6 / #875) ────────────────────────
+// The calendars/sequences substrate pattern applied to "what is a quantity": a built-in
+// ratio table + the doc's own declared units, converted by one evalMath-family primitive
+// `convert(x, from, to)`. Multiplicative units only — temperature stays on the affine
+// c2f/f2c FNs (an OFFSET conversion a ratio table can't express). No unit-suffix literals
+// (`3mi`): that is a new sigil, out by P5; the function form is the in-bounds generalization.
+// Each entry: { dim, ratio } to that dimension's base (ratio 1). Names lowercased; the
+// value stays a NUMBER end-to-end (convert composes with all math/rollups). Pure.
+const BUILTIN_UNITS = {
+  // length (base: meter) — factors exact
+  m:{dim:'length',ratio:1}, meter:{dim:'length',ratio:1}, meters:{dim:'length',ratio:1},
+  km:{dim:'length',ratio:1000}, cm:{dim:'length',ratio:0.01}, mm:{dim:'length',ratio:0.001},
+  mi:{dim:'length',ratio:1609.344}, mile:{dim:'length',ratio:1609.344}, miles:{dim:'length',ratio:1609.344},
+  yd:{dim:'length',ratio:0.9144}, yard:{dim:'length',ratio:0.9144}, yards:{dim:'length',ratio:0.9144},
+  ft:{dim:'length',ratio:0.3048}, foot:{dim:'length',ratio:0.3048}, feet:{dim:'length',ratio:0.3048},
+  in:{dim:'length',ratio:0.0254}, inch:{dim:'length',ratio:0.0254}, inches:{dim:'length',ratio:0.0254},
+  // mass (base: kilogram)
+  kg:{dim:'mass',ratio:1}, g:{dim:'mass',ratio:0.001}, mg:{dim:'mass',ratio:1e-6},
+  lb:{dim:'mass',ratio:0.45359237}, lbs:{dim:'mass',ratio:0.45359237}, pound:{dim:'mass',ratio:0.45359237}, pounds:{dim:'mass',ratio:0.45359237},
+  oz:{dim:'mass',ratio:0.028349523125}, stone:{dim:'mass',ratio:6.35029318},
+  // volume (base: liter, US)
+  l:{dim:'volume',ratio:1}, liter:{dim:'volume',ratio:1}, liters:{dim:'volume',ratio:1},
+  ml:{dim:'volume',ratio:0.001}, gal:{dim:'volume',ratio:3.785411784}, gallon:{dim:'volume',ratio:3.785411784}, gallons:{dim:'volume',ratio:3.785411784},
+  qt:{dim:'volume',ratio:0.946352946}, pt:{dim:'volume',ratio:0.473176473}, cup:{dim:'volume',ratio:0.2365882365}, cups:{dim:'volume',ratio:0.2365882365},
+  // time (base: second) — only fixed-length units; month/year vary, so excluded
+  s:{dim:'time',ratio:1}, sec:{dim:'time',ratio:1}, second:{dim:'time',ratio:1}, seconds:{dim:'time',ratio:1},
+  min:{dim:'time',ratio:60}, minute:{dim:'time',ratio:60}, minutes:{dim:'time',ratio:60},
+  hr:{dim:'time',ratio:3600}, hour:{dim:'time',ratio:3600}, hours:{dim:'time',ratio:3600},
+  day:{dim:'time',ratio:86400}, days:{dim:'time',ratio:86400}, week:{dim:'time',ratio:604800}, weeks:{dim:'time',ratio:604800},
+};
+// Parse the units-declaration text into a resolved table (the dialog's core). Each non-empty
+// line is one of:  "name" → a NEW base unit (ratio 1, its own new dimension named after it);
+// "name = N ref" → 1 name = N of ref, so ratio = N·ratio[ref] and dim = dim[ref] (ref must
+// already resolve — a built-in or an earlier line, so leagues extend built-in length, gp/sp/cp
+// chain from a bare base). Case-insensitive; `#` comments and blanks skipped; a malformed line
+// is skipped with a warning (P4), never a throw. Pure (builtins injected). Returns
+// { value: {name:{dim,ratio}}, warnings:[…] }.
+function parseUnitDecls(text, builtins = BUILTIN_UNITS) {
+  const table = Object.create(null), warnings = [];
+  const look = n => table[n] || builtins[n] || null;
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    if (!line || line[0] === '#') continue;
+    const m = line.match(/^([A-Za-z][\w]*)\s*(?:=\s*(.+))?$/);
+    if (!m) { warnings.push('Skipped (not a unit line): ' + line); continue; }
+    const name = m[1].toLowerCase();
+    if (m[2] === undefined) { table[name] = { dim: name, ratio: 1 }; continue; }  // bare → new base
+    const rhs = m[2].trim().match(/^(-?\d+(?:\.\d+)?)\s+([A-Za-z][\w]*)$/);
+    if (!rhs) { warnings.push('"' + line + '": use "name = number unit", like "gp = 10 sp"'); continue; }
+    const n = parseFloat(rhs[1]), ref = look(rhs[2].toLowerCase());
+    if (!(n > 0)) { warnings.push('"' + line + '": the multiple must be a positive number'); continue; }
+    if (!ref) { warnings.push('"' + line + '": unknown unit "' + rhs[2] + '" (define it above, or use a built-in)'); continue; }
+    table[name] = { dim: ref.dim, ratio: n * ref.ratio };
+  }
+  return { value: table, warnings };
+}
+// The doc's live table: built-ins + declared units (a doc name wins on a tie — the packVars
+// precedent). normalizeUnits re-validates a loaded/tampered root.units so a hostile <_units>
+// can never inject a NaN/negative ratio.
+function unitTable(rootNode = (typeof root !== 'undefined' ? root : null)) {
+  const u = rootNode && rootNode.units;
+  return (u && typeof u === 'object') ? { ...BUILTIN_UNITS, ...u } : { ...BUILTIN_UNITS };
+}
+function normalizeUnits(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = {};
+  for (const k of Object.keys(raw)) {
+    const e = raw[k];
+    if (e && typeof e === 'object' && typeof e.dim === 'string' && Number.isFinite(e.ratio) && e.ratio > 0)
+      out[String(k).toLowerCase()] = { dim: e.dim, ratio: e.ratio };
+  }
+  return Object.keys(out).length ? out : null;
+}
+// The built-in base unit of each built-in dimension (the ratio-1 anchor), so unitsToText can
+// name a reconstructed derived unit against the right base. Custom dimensions carry their own
+// ratio-1 base in root.units.
+const UNIT_DIM_BASE = { length: 'm', mass: 'kg', volume: 'l', time: 's' };
+// Reconstruct editable declaration text from a resolved table (the dialog's round-trip, the
+// calendarToText precedent — canonical, not byte-identical: a chain gp=10 sp reads back as
+// gp = 100 cp, mathematically identical). A ratio-1 unit in a NEW dimension is a bare base
+// line; everything else is "name = ratio base". Insertion order (bases first) is preserved.
+function unitsToText(units) {
+  if (!units || typeof units !== 'object') return '';
+  const customBase = {};
+  for (const [name, e] of Object.entries(units)) if (e.ratio === 1 && !customBase[e.dim]) customBase[e.dim] = name;
+  const lines = [];
+  for (const [name, e] of Object.entries(units)) {
+    const base = UNIT_DIM_BASE[e.dim] || customBase[e.dim];
+    if (e.ratio === 1 && !UNIT_DIM_BASE[e.dim] && customBase[e.dim] === name) lines.push(name);   // a new base
+    else if (base && base !== name) lines.push(name + ' = ' + e.ratio + ' ' + base);
+    else lines.push(name);
+  }
+  return lines.join('\n');
+}
+// Same-dimension multiplicative convert; null on unknown unit / dimension mismatch / non-number.
+function convertUnits(value, from, to, table) {
+  const a = table[String(from).trim().toLowerCase()], b = table[String(to).trim().toLowerCase()];
+  if (!a || !b || a.dim !== b.dim || !Number.isFinite(value)) return null;
+  return value * a.ratio / b.ratio;
+}
+// Split on TOP-LEVEL commas only (commas inside nested parens stay). Pure helper for convert().
+function splitArgsTopLevel(s) {
+  const parts = []; let depth = 0, cur = '';
+  for (const ch of String(s)) {
+    if (ch === '(') { depth++; cur += ch; }
+    else if (ch === ')') { depth--; cur += ch; }
+    else if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  parts.push(cur); return parts;
+}
+// Replace every convert(valueExpr, from, to) with its numeric result (innermost-first, so
+// convert(convert(…),…) composes), evaluating the value arg via evalFn (injected → testable).
+// A bad convert becomes #ERR so evalMath surfaces the failure (P4). Pure.
+function replaceConvert(str, evalFn, table) {
+  let s = String(str), guard = 0;
+  while (guard++ < 64) {
+    const start = s.search(/\bconvert\s*\(/i);
+    if (start < 0) break;
+    const open = s.indexOf('(', start);
+    let depth = 0, close = -1;
+    for (let i = open; i < s.length; i++) {
+      if (s[i] === '(') depth++;
+      else if (s[i] === ')') { if (--depth === 0) { close = i; break; } }
+    }
+    if (close < 0) break;   // unbalanced → leave the rest untouched
+    const inner = s.slice(open + 1, close);
+    if (/\bconvert\s*\(/i.test(inner)) {   // nested convert in the value arg → resolve it first
+      s = s.slice(0, open + 1) + replaceConvert(inner, evalFn, table) + s.slice(close);
+      continue;
+    }
+    const parts = splitArgsTopLevel(inner);
+    let repl = '#ERR';
+    if (parts.length === 3) {
+      const v = evalFn(parts[0].trim());
+      const r = (typeof v === 'number' && Number.isFinite(v)) ? convertUnits(v, parts[1], parts[2], table) : null;
+      if (r !== null) repl = '(' + r + ')';
+    }
+    s = s.slice(0, start) + repl + s.slice(close + 1);
+  }
+  return s;
+}
+
 function expandAggExpr(expr, node, vars = null) {
   if (!expr) return expr;
   let e = String(expr);
@@ -3592,6 +3736,13 @@ function expandAggExpr(expr, node, vars = null) {
     // spell words(2, notes). Any other second token fails the match → literal → #ERR (P4).
     e = e.replace(/\bwords\s*\(\s*(self|children|subtree|\d+)\s*(?:,\s*(notes)\s*)?\)/g,
       (_, scope, notes) => '(' + subtreeWords(node, scope, notes !== undefined) + ')');
+  }
+  // convert(valueExpr, from, to) — unit conversion over the doc's table (built-ins + declared
+  // units), substituted to a number before evalMath (the rollup model, so units stay function-
+  // shaped and evalMath stays number-only). The value arg is itself evaluated, so it composes
+  // with variables and the rollups substituted above; from/to are bare unit names. #875.
+  if (/\bconvert\s*\(/i.test(e)) {
+    e = replaceConvert(e, v => evalMath(v, varsMap()), unitTable());
   }
   return e;
 }
@@ -7156,7 +7307,8 @@ function toOpml(r) {
   // single-calendar (or no-calendar) doc stays byte-identical — the empty-skip discipline.
   const calsHas = r.calendars && Object.keys(r.calendars).length;
   const gamelogHas = r.gamelog && r.gamelog.targetId != null;
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '');
+  const unitsHas = r.units && typeof r.units === 'object' && Object.keys(r.units).length;   // #875: declared units only, built-ins never serialized
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -7314,7 +7466,12 @@ function fromOpml(xml) {
       const g = JSON.parse(gamelogRaw || 'null');
       return (g && typeof g === 'object' && typeof g.targetId === 'string') ? { targetId: g.targetId, calendarId: typeof g.calendarId === 'string' ? g.calendarId : null, cursor: Number.isSafeInteger(g.cursor) ? g.cursor : null } : null;
     } catch(_) { return null; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, docId, journal,
+  // #875 declared units: the doc's own convert() table, re-validated on load (a tampered
+  // <_units> drops to null, never injects a NaN/negative ratio). Default undefined, so a
+  // legacy doc loads unchanged and convert() still works off the built-ins.
+  const unitsRaw      = doc.querySelector('head > _units')?.textContent?.trim();
+  const units         = (() => { try { return normalizeUnits(JSON.parse(unitsRaw || 'null')) || undefined; } catch(_) { return undefined; } })();
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, journal,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -11459,6 +11616,69 @@ function openCalendarDialog() {
     rm.addEventListener('click', () => { closeIo(); applyCalendarChange(null); });
     foot.insertBefore(rm, foot.querySelector('.io-btn.primary'));
   }
+}
+
+// ─── the Custom units dialog (SR-6 / #875) ───────────────────────────────────
+// File → Custom units. Text-first authoring on the same openInsertDialog scaffold as the
+// calendar/seq/pack dialogs: one declaration textarea, a live preview naming what parsed and
+// what didn't (P4). The declared units feed the evalMath-family primitive convert(x, from, to)
+// and stack on top of the built-in ratio table. Two preset chips are the format tutorial (P2).
+const UNIT_PRESETS = [
+  { label: 'Example: coins', text: 'cp\nsp = 10 cp\ngp = 10 sp\npp = 10 gp' },
+  { label: 'Example: distances', text: 'league = 3 mi\npace = 30 in\nrod = 16.5 ft' },
+];
+function openUnitsDialog() {
+  const err = (msg) => '<span class="io-preview-bad">' + escHtml(msg) + '</span>';
+  const ok  = (msg) => '<span class="io-preview-note">' + escHtml(msg) + '</span>';
+  const declsPrev = v => {
+    const { value, warnings } = parseUnitDecls(v);
+    const names = Object.keys(value);
+    const parts = [];
+    if (names.length) {
+      const dims = new Set(names.map(n => value[n].dim)).size;
+      parts.push(ok(names.length + ' unit' + (names.length === 1 ? '' : 's') + ' across ' + dims + ' dimension' + (dims === 1 ? '' : 's') + '. Use like {= convert(10, ' + names[0] + ', ' + (names[1] || names[0]) + ')}'));
+    } else if (v.trim()) {
+      parts.push(ok('No units yet. One name per line; "name = number unit" to relate them.'));
+    }
+    if (warnings.length) parts.push(err(warnings[0]));
+    return parts.join(' ');
+  };
+  const fillDecls = (preset) => {
+    const inp = document.getElementById('io-fld-decls');
+    if (inp) { inp.value = preset.text; inp.dispatchEvent(new Event('input', { bubbles: false })); }
+  };
+  const hasUnits = root.units && typeof root.units === 'object' && Object.keys(root.units).length;
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },
+    title: 'Custom units',
+    guideId: 'custom-units',
+    submitLabel: hasUnits ? 'Save changes' : 'Define units',
+    fields: [
+      { key: 'decls', label: 'Units, one per line', type: 'textarea', rows: 7, value: unitsToText(root.units),
+        placeholder: 'cp\nsp = 10 cp\ngp = 10 sp\nleague = 3 mi', preview: declsPrev,
+        chips: UNIT_PRESETS.map(p => ({ label: p.label, title: 'Fill the field with this example', insert: () => fillDecls(p) })),
+        hint: 'A bare name is a new base unit. "name = number unit" relates it to a built-in (m, kg, l, s, and their friends) or an earlier line. Convert with {= convert(x, from, to)}; same-dimension only.' },
+    ],
+    onSubmit: vals => applyUnitsChange(vals.decls),
+  });
+  // Editing existing units also offers clearing them, the calendar dialog's footer grammar.
+  if (hasUnits) {
+    const foot = ioCard.querySelector('.io-foot');
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'io-btn danger'; rm.textContent = 'Clear units';
+    rm.title = 'Remove every custom unit (the built-in ones stay)';
+    rm.addEventListener('click', () => { closeIo(); applyUnitsChange(''); });
+    foot.insertBefore(rm, foot.querySelector('.io-btn.primary'));
+  }
+}
+// THE one path for every root.units change: parse, snapshot for undo, store the resolved table
+// (or clear when empty), re-render so every convert() pill recomputes, and flash the outcome.
+function applyUnitsChange(text) {
+  const { value } = parseUnitDecls(text);
+  const names = Object.keys(value);
+  pushUndo();
+  root.units = names.length ? Object.assign({}, value) : undefined;
+  markDirty(); render();
+  flashHint(names.length ? '✓ ' + names.length + ' custom unit' + (names.length === 1 ? '' : 's') + ' defined' : '✓ Custom units cleared');
 }
 
 // ─── inline date-picker calendar ─────────────────────────────────────────────
@@ -29778,6 +29998,7 @@ document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { cl
 document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
 document.getElementById('btn-calendar')?.addEventListener('click', () => { closeFileMenu(); openCalendarDialog(); });   // #527
+document.getElementById('btn-units')?.addEventListener('click', () => { closeFileMenu(); openUnitsDialog(); });   // #875
 document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
 // the File-menu row is a CYCLE button (guided → standard → lean → …): the label names where the next
 // press lands + the desc names the current tier, so the user always sees both. Refreshed on menu open.
@@ -30778,6 +30999,16 @@ const GUIDE = [
       { syn:'{= moonphase(due, 28, 0)}', desc:'a moon phase glyph for a 28-day cycle' },
       { syn:'{= weekday(today)}',  desc:'0=Sun…6=Sat (also year, month, quarter)' },
       { syn:'{= km2mi(10)}',       desc:'km to miles (c2f, kg2lb, l2gal…)' },
+    ] },
+  { id:'custom-units', cat:'compute', related:['math-dates','math','varbase'],
+    title:'Custom units',
+    body:"Convert between units in a calculation with convert(x, from, to), and teach the document your own units when the built-ins aren't enough. Many common units are built in already (m, km, mi, ft, in for length; kg, g, lb, oz for mass; l, ml, gal, cup for volume; s, min, hr, day for time), so {= convert(10, km, mi)} works with nothing to set up. To add your own, like a currency or a fictional measure, open File then Custom units and declare them one per line: a bare name is a new base unit, and \"name = number unit\" relates it to a built-in or an earlier line, so gp = 10 sp chains from a cp base and league = 3 mi extends the built-in distances. Conversions only work within one dimension, so converting length to mass is left unresolved rather than guessed. The result is an ordinary number, so it composes with the rest of math: {= convert(weight, kg, lb) * price}. Temperature stays on the c2f and f2c functions, since that is a shift, not a ratio.",
+    examples:[
+      { syn:'{= convert(10, km, mi)}', desc:'built-in units need no setup' },
+      { syn:'File → Custom units',     desc:'declare units for this document' },
+      { syn:'gp = 10 sp',              desc:'relate a unit to an earlier one (a coin chain)' },
+      { syn:'league = 3 mi',           desc:'extend a built-in dimension' },
+      { syn:'{= convert(2, gp, cp)}',  desc:'convert across your declared chain' },
     ] },
   { id:'variables', cat:'compute', covers:['var','variables'], related:['math','gen-conditions','recipe-crit'],
     title:'Variables',
@@ -31968,6 +32199,7 @@ function applyAutosaveData(data) {
   root = data.root;
   root.appearance = normalizeAppearance(root.appearance); // #464: a pre-feature autosave has none; guarantee the {tags,props} shape
   root.calendar = normalizeCalendar(root.calendar); // #527: same hole as appearance — a tampered/stale autosave calendar must re-validate here or every date-chip render throws
+  if (root.units) root.units = normalizeUnits(root.units) || undefined; // #875: same re-validate for a tampered/stale autosave units table
   normalizeCalendarBindings(root); // #653: guarantee {calendars, gamelog} shape + re-validate each named calendar (a pre-feature or tampered autosave has none / could be broken)
   migrateNodePrefixes(root);
   buildIndex(root, null); resetDocCaches();
