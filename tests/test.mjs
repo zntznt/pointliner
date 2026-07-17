@@ -14466,6 +14466,24 @@ test('clock/spoiler (#701) — SOURCE PIN: pills are tabindex=-1 (out of the Tab
   assert.match(cpa, /toggleSpoilersOf\(node\.id\)/, 'collectPillActions surfaces a spoiler reveal action');
 });
 
+test('clock (#702) — SOURCE PIN: touch step-back is an IS_TOUCH long-press that swallows its own tap tail', () => {
+  // Touch has no Shift, so step-back on a manual clock is a 450ms long-press (tap still
+  // advances); Shift+click stays the desktop step-back twin. Two tail rules: (1) a FIRED
+  // hold must suppress the trailing synthesized click, or the click would also advance and
+  // net the step to zero; (2) because a browser may suppress that click entirely after its
+  // own long-press handling, the flag must self-clear after release (the
+  // attachBulletTouchGestures endDrag precedent), or the NEXT tap on a clock is swallowed.
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  assert.match(src, /step-back on a manual clock is a LONG-PRESS[\s\S]{0,400}?if \(IS_TOUCH\) \{/,
+    'the clock long-press block exists and is gated on IS_TOUCH (desktop untouched)');
+  assert.match(src, /_clockLongPressed = true;[\s\S]{0,200}?advanceClockAt\(clk, -1\)/,
+    'a fired hold flags the trailing click BEFORE stepping the clock back');
+  assert.match(src, /if \(clk && !_clockLongPressed\) advanceClockAt\(clk, e\.shiftKey \? -1 : 1\)/,
+    'the click handler advances only when no hold fired, and Shift+click stays the desktop step-back');
+  assert.match(src, /if \(_clockLongPressed\) setTimeout\(\(\) => \{ _clockLongPressed = false; \}, 350\)/,
+    'the flag self-clears after release, so a browser-suppressed trailing click cannot swallow the next tap');
+});
+
 // ── meter pills {meter: value/max} (#648) ──────────────────────────────────
 // A computed bar of a numeric property, in the sparkline/clock unicode-string idiom
 // (never SVG). These pins guard the pure cores that both the pill and the export share.

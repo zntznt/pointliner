@@ -7395,7 +7395,7 @@ const INSERT_CMDS = [
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Insert' },
-  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back. Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Insert' },
+  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Insert' },
   { id:'meter',    icon:'▰',  fa:'',   label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Reads the point’s own properties: {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Add a style word for a row of icons: {meter: hp/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: hp/hpmax}  ·  {meter: hp/5 hearts}', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
@@ -27164,8 +27164,16 @@ if (IS_TOUCH) {
   outlineEl.addEventListener('pointermove', e => {
     if (lpTimer && (Math.abs(e.clientX - lpX) > 10 || Math.abs(e.clientY - lpY) > 10)) cancelLp();  // moved → a scroll, not a hold
   });
-  outlineEl.addEventListener('pointerup', cancelLp);
-  outlineEl.addEventListener('pointercancel', cancelLp);
+  // Release: stop a pending hold. If a hold DID fire, its trailing click may never arrive
+  // (a browser can suppress the click after its own long-press handling), so clear the
+  // suppression flag ourselves once any such click would have fired — else the NEXT tap on
+  // a clock is silently swallowed (the attachBulletTouchGestures endDrag precedent).
+  const releaseLp = () => {
+    cancelLp();
+    if (_clockLongPressed) setTimeout(() => { _clockLongPressed = false; }, 350);
+  };
+  outlineEl.addEventListener('pointerup', releaseLp);
+  outlineEl.addEventListener('pointercancel', releaseLp);
 }
 // Reveal is transient DOM state only (never written to node.text), so a spoiler
 // re-conceals on the next render — that is deliberate for the self-blinding use.
