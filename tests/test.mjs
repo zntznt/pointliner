@@ -2101,6 +2101,25 @@ test('C1 front-door + hydrate wiring (src pins)', () => {
   assert.ok(_src.includes('if (loadedFromEmbed) return;'), 'embed-wins-over-autosave guard missing');
 });
 
+// #854: a docId-less (legacy) autosave payload must restore at boot. applyAutosaveData's
+// backfill branch calls scheduleAutosave(), which reads _showingExamples — declared with
+// `let`, so if the declaration sits BELOW the restoreAutosave IIFE the read is a TDZ
+// ReferenceError, swallowed by restoreAutosave's catch, and the app silently boots the
+// Examples doc instead of the user's document. The boot path is DOM-bound (not harvestable
+// by load-cores), so pin the load-bearing pure part: source order + the backfill branch.
+test('#854: _showingExamples is declared above the boot restore (TDZ order pin)', () => {
+  const decl = _src.indexOf('let _showingExamples = false;');
+  const iife = _src.indexOf('(function restoreAutosave()');
+  assert.ok(decl > -1, '_showingExamples declaration missing');
+  assert.ok(iife > -1, 'restoreAutosave boot IIFE missing');
+  assert.ok(decl < iife, '_showingExamples must be declared before restoreAutosave runs, or the docId backfill TDZ-crashes the restore (#854)');
+  const adopting = _src.indexOf('let _adoptingExamples = false;');
+  assert.ok(adopting > -1 && adopting < iife, '_adoptingExamples must be hoisted with it');
+  // the backfill branch itself: a legacy payload gets a docId AND schedules its persistence
+  // (a read-only session never markDirty()s, so nothing else would save the new identity)
+  assert.ok(/if \(!root\.docId\) \{ ensureDocId\(root\); scheduleAutosave\(\); \}/.test(_src), 'legacy-docId backfill branch missing from applyAutosaveData');
+});
+
 // ── collectVars / collectRules (explicit root, parameterized) ───────────────
 const mkVarRoot = (decls) => {
   const root = c.mkRoot();
@@ -8710,10 +8729,21 @@ test('word count: subtreeWords scopes — subtree / self / children', () => {
   assert.equal(c.subtreeWords(null, 'subtree'), 0);
 });
 
-test('word count: a per-point note counts as prose', () => {
+// #827 owner decision (deliberate behavior change): per-point notes are EXCLUDED from
+// words() by default in every scope; the optional third arg (spelled `words(scope, notes)`
+// at the expr layer) opts them back in.
+test('word count: a per-point note is excluded by default; the notes arg opts it in (#827)', () => {
   const n = c.mkNode('title words here');                      // 3
   n.note = 'a note with five words';                            // 5
-  assert.equal(c.subtreeWords(n, 'self'), 8);
+  assert.equal(c.subtreeWords(n, 'self'), 3, 'default: note words do not count');
+  assert.equal(c.subtreeWords(n, 'self', true), 8, 'withNotes: note words count');
+  const p = c.mkNode('parent');                                 // 1
+  const kid = c.mkNode('kid words'); kid.note = 'noted twice';  // 2 text + 2 note
+  p.children = [kid];
+  assert.equal(c.subtreeWords(p, 'subtree'), 3, 'default excludes descendant notes too');
+  assert.equal(c.subtreeWords(p, 'subtree', true), 5, 'withNotes includes descendant notes');
+  assert.equal(c.subtreeWords(p, 'children'), 2);
+  assert.equal(c.subtreeWords(p, 'children', true), 4);
 });
 
 test('word count: expandAggExpr substitutes words(scope); reading-time idiom; unknown scope literal', () => {
@@ -8725,13 +8755,22 @@ test('word count: expandAggExpr substitutes words(scope); reading-time idiom; un
   assert.equal(c.evalMath(c.expandAggExpr('words(subtree) / 5', root), {}), 1); // {= words(subtree)/200} reading-time idiom
   assert.equal(c.expandAggExpr('words(foo)', root), 'words(foo)');              // unknown scope → left literal (→ #ERR)
   assert.equal(c.expandAggExpr('words(subtree)', null), '(0)');                 // node-less validation → 0
+  // #827: the `notes` opt-in arg, on every scope form (keyword + numeric depth)
+  root.note = 'two words';
+  assert.equal(c.expandAggExpr('words(self)', root), '(2)', 'default: own note excluded');
+  assert.equal(c.expandAggExpr('words(self, notes)', root), '(4)', 'notes arg: own note counted');
+  assert.equal(c.expandAggExpr('words(subtree, notes)', root), '(7)');
+  assert.equal(c.expandAggExpr('words(1, notes)', root), '(7)', 'composes with a numeric depth');
+  assert.equal(c.expandAggExpr('words(self,notes)', root), '(4)', 'space after the comma optional');
+  assert.equal(c.expandAggExpr('words(self, foo)', root), 'words(self, foo)', 'unknown second token → literal (→ #ERR)');
 });
 
 test('word count: cores + front door wired (src pins)', () => {
   assert.ok(_src.includes('function countWords'), 'countWords core missing');
   assert.ok(_src.includes('function subtreeWords'), 'subtreeWords core missing');
-  assert.ok(_src.includes('subtreeWords(node, scope)'), 'expandAggExpr words branch missing');
+  assert.ok(_src.includes('subtreeWords(node, scope, notes !== undefined)'), 'expandAggExpr words branch missing (#827: the notes opt-in arg)');
   assert.ok(_src.includes("syn:'{= words(subtree)}'"), 'GUIDE words front-door example missing (P2/P5-4)');
+  assert.ok(_src.includes("syn:'{= words(subtree, notes)}'"), 'GUIDE notes-opt-in example missing (#827, P2)');
 });
 
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
@@ -13600,6 +13639,22 @@ test('Done-button badge wiring: syncDoneBadge sets the count + recovery aria-lab
   // the badge markup + the reveal CSS
   assert.ok(_src.includes('id="btn-done-badge"'), 'the badge span is in the button');
   assert.ok(/#btn-done\.has-hidden \.tbtn-badge\{[^}]*display:inline-flex/.test(_src), 'the badge shows only under .has-hidden');
+});
+
+// #827 owner decision (deliberate behavior change): the show-done default is FLIPPED to
+// shown. Completed points stay visible, struck through, until the user hides them. A user's
+// explicitly persisted preference (the showDone boolean in the autosave payload) still wins
+// on restore; only the fresh/unset default changed.
+test('#827: show-done defaults ON; the button ships pressed; a persisted preference still wins (src pins)', () => {
+  assert.ok(/let showDone\s*=\s*true;/.test(_src), 'showDone must default to true (owner decision #827)');
+  // the toolbar button's static state must match the default (no boot sync exists for a fresh profile)
+  assert.ok(/id="btn-done" class="tbtn-toggle active"[^>]*aria-pressed="true"/.test(_src), 'btn-done must ship active + aria-pressed="true" to match the default');
+  // restore honors a stored boolean either way — the persisted-preference-wins contract
+  assert.ok(_src.includes("typeof data.showDone === 'boolean'"), 'applyAutosaveData must keep honoring a stored showDone');
+  // an explicit toggle persists even in a session with no edits
+  assert.ok(/btn\.classList\.toggle\('active', showDone\);[\s\S]{0,400}?scheduleAutosave\(\);/.test(_src), 'the Done toggle must scheduleAutosave so the choice survives a no-edit session');
+  // the struck-through treatment for visible done points
+  assert.ok(/\.nt-todo\.checked>\.node-row>\.node-content\{[^}]*line-through/.test(_src), 'done points must render struck through when shown');
 });
 
 // ── Code-quality audit fixes: derived-hint re-derivation + sidecar carry ──

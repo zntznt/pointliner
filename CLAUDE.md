@@ -522,8 +522,9 @@ parse (strict `parseDueDate`); a plain word still → `null` (skipped). **Word c
 family over *prose* (2026-06-19):** `{= words(subtree|self|children)}` — `subtreeWords`/`countWords`,
 the *same* `expandAggExpr` substitution, so it resolves in pills, the math/check dialogs, and export
 alike — counts words in a **scope** rather than a property: `subtree` = self + every descendant (so it
-**recurses**, unlike the direct-children property rollups), `self`, or `children` (a per-point note
-counted too). Reading time is composition (`{= words(subtree)/200}`); there is no separate `readtime`.
+**recurses**, unlike the direct-children property rollups), `self`, or `children`. A per-point note
+is **excluded by default** (#827 owner decision); the optional second arg `words(scope, notes)` opts
+notes back in. Reading time is composition (`{= words(subtree)/200}`); there is no separate `readtime`.
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,

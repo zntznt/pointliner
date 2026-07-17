@@ -2274,7 +2274,7 @@ body:not(.v-guided) .bm-desc{display:none}
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
-    <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
+    <button id="btn-done" class="tbtn-toggle active" title="Done points" aria-label="Done points" aria-pressed="true"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
     <button id="btn-notes" class="tbtn-toggle active" title="Notes" aria-label="Notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
     </div>
   </div>
@@ -2482,7 +2482,7 @@ body:not(.v-guided) .bm-desc{display:none}
 
 let root      = mkRoot();
 let focusedId = null;
-let showDone  = false;
+let showDone  = true;   // #827 owner decision: completed points stay visible (struck through) by default; a persisted preference in the autosave payload still wins on restore
 let showNotes = true;   // global notes visibility (the header toggle); hidden notes leave a .note-ind mark
 // The verbosity dial — a 3-POSITION control (guided → standard → lean), cycled by ⌘⇧. / the File-menu
 // row. Tiers strip progressively more guidance (ux.md dial table), never features:
@@ -3585,8 +3585,13 @@ function expandAggExpr(expr, node, vars = null) {
   if (/\bwords\s*\(/.test(e)) {
     // UXP-159: words() now shares the depth vocabulary — words(subtree|self|children) plus words(2)
     // for an exact depth. A bad scope stays literal so evalMath surfaces #ERR (P4).
-    e = e.replace(/\bwords\s*\(\s*(self|children|subtree|\d+)\s*\)/g,
-      (_, scope) => '(' + subtreeWords(node, scope) + ')');
+    // #827: per-point notes are excluded by default; `words(scope, notes)` opts them in. The
+    // opt-in is an optional second closed-keyword argument, mirroring the sum(prop, scope)
+    // two-arg form already in this family — no new delimiter (P5) — and it composes with every
+    // scope, including numeric depths, where a parallel keyword set (subtree_notes, …) could not
+    // spell words(2, notes). Any other second token fails the match → literal → #ERR (P4).
+    e = e.replace(/\bwords\s*\(\s*(self|children|subtree|\d+)\s*(?:,\s*(notes)\s*)?\)/g,
+      (_, scope, notes) => '(' + subtreeWords(node, scope, notes !== undefined) + ')');
   }
   return e;
 }
@@ -3626,16 +3631,18 @@ function countWords(text) {
 }
 
 // Pure: word count over a SCOPE of `node`. The scope is the shared depth vocabulary (UXP-159):
-//   self     → node's own text+note only
+//   self     → node's own text only
 //   children → direct children only, NOT self (the legacy count-the-parts keyword)
 //   subtree  → node's own words PLUS every descendant's (self-inclusive)
 //   N (a depth) → node's own words plus descendants down to N levels (self-inclusive)
 // The keyword `children` keeps its historical NO-self meaning; a numeric depth is self-inclusive (a
 // number reads as "me plus N levels down"), so words(children) and words(1) intentionally differ.
-// A per-point note is prose too, so it counts. `scope` may be a keyword or a number. Node-testable.
-function subtreeWords(node, scope) {
+// Per-point notes are EXCLUDED by default (#827 owner decision: a note is annotation about the
+// prose, not the prose a writing target measures); `withNotes` opts them back in, spelled
+// `words(scope, notes)` at the expr layer. `scope` may be a keyword or a number. Node-testable.
+function subtreeWords(node, scope, withNotes = false) {
   if (!node) return 0;
-  const own = n => countWords(n.text) + countWords(n.note);
+  const own = n => countWords(n.text) + (withNotes ? countWords(n.note) : 0);
   const t = String(scope == null ? '' : scope).trim().toLowerCase();
   if (t === 'self') return own(node);
   if (t === 'children') return (node.children || []).reduce((a, c) => a + own(c), 0);  // legacy: no self
@@ -21514,7 +21521,7 @@ const MATH_FN_DESC = {
   or:'1 if any is true, else 0', not:'flip a true/false (1/0)',
   // aggregates over children
   sum:"add up a property across this point's children", avg:"average a property across children",
-  count:"how many children have the property", words:'count words in a scope (subtree, self, children)',
+  count:"how many children have the property", words:'count words in a scope (subtree, self, children); words(scope, notes) counts notes too',
   // dates
   year:'the year of a date', month:'the month of a date (1 to 12)', day:'the day of the month', weekday:'the day of the week',
   quarter:'the quarter of the year (1 to 4)', daysuntil:'days from today until a date', daysbetween:'days between two dates',
@@ -29621,6 +29628,10 @@ document.getElementById('btn-done').addEventListener('click', () => {
   // so AT reads "Done points, pressed" not "Hide done points, pressed" (which fought itself).
   btn.setAttribute('aria-pressed', String(showDone));
   btn.classList.toggle('active', showDone);
+  // Persist the explicit choice (rides the autosave payload, like the sibling Notes toggle). With
+  // the show-done default flipped ON (#827), a user who hides done must keep that across reloads
+  // even in a session with no edits; without this, only the next content edit would save it.
+  scheduleAutosave();
   render();
 });
 
@@ -30374,7 +30385,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
@@ -30384,6 +30395,7 @@ const GUIDE = [
       { syn:'{= count(cost)}',desc:'how many children have a cost' },
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
       { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
+      { syn:'{= words(subtree, notes)}', desc:'include per-point notes in the count' },
     ] },
   { id:'check', cat:'compute', covers:['check'], related:['rollups','properties','recipe-budget'],
     title:'Checks & rules',
@@ -30485,13 +30497,13 @@ const GUIDE = [
     ] },
   { id:'appearance-controls', cat:'files',
     title:'Appearance & display',
-    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or reveal completed tasks you'd normally keep out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Show done points is the checkmark button in the toolbar; turn it on and finished to-dos and DONE points reappear in the outline.\n\nHow much guidance the app shows is adjustable too. The File menu's Verbosity row cycles three tiers: Guided shows point hints, pill tooltips and the search cheatsheet; Standard turns those teaching aids off but keeps the menus and edit pencils; Lean also trims the / and @ menus to just what you type. `Ctrl/Cmd+Shift+.` steps quieter and `Ctrl/Cmd+Shift+,` brings the guidance back.",
+    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or tuck completed tasks out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Done points is the checkmark button in the toolbar: finished to-dos and DONE points stay in the outline, struck through, until you turn the button off to hide them; turn it back on and they reappear.\n\nHow much guidance the app shows is adjustable too. The File menu's Verbosity row cycles three tiers: Guided shows point hints, pill tooltips and the search cheatsheet; Standard turns those teaching aids off but keeps the menus and edit pencils; Lean also trims the / and @ menus to just what you type. `Ctrl/Cmd+Shift+.` steps quieter and `Ctrl/Cmd+Shift+,` brings the guidance back.",
     related:['appearance'],
     examples:[
       { syn:'File → Theme',      desc:'cycle system, light then dark' },
       { syn:'File → Color',      desc:'pick an accent color' },
       { syn:'File → Full width', desc:'widen or narrow the editing column' },
-      { syn:'Show done points',  desc:'toolbar button: reveal completed points' },
+      { syn:'Done points',  desc:'toolbar button: show or hide completed points (shown by default)' },
       { syn:'File → Verbosity',  desc:'cycle Guided, Standard then Lean (how much the app teaches)' },
     ] },
   { id:'appearance', cat:'files',
@@ -31526,7 +31538,12 @@ function applyAutosaveData(data) {
   applyTheme();
   if (typeof data.fullWidth === 'boolean') { fullWidth = data.fullWidth; applyWidth(); }
   dirty = false; // restored state is "clean" relative to disk
-  if (!root.docId) { ensureDocId(root); scheduleAutosave(); } // backfill legacy autosave
+  // Backfill a legacy (pre-ensureDocId) autosave. The scheduleAutosave IS needed: the restore
+  // sets dirty=false and a read-only session never markDirty()s, so nothing else would persist
+  // the assigned docId and every boot would mint a new identity (breaking the per-docId
+  // earlier-version snapshots + cross-doc links). Safe mid-hydration: the _opfsReconciled boot
+  // gate defers the actual write until reconcile completes (adoptDoc's "normalization #2" idiom).
+  if (!root.docId) { ensureDocId(root); scheduleAutosave(); }
   return true;
 }
 
@@ -31573,6 +31590,14 @@ async function restoreEarlierVersion() {
   } catch (_) { flashHint('Could not read the earlier version'); return false; }
 }
 
+// UXP-126 first-run Examples state. DECLARED here, ABOVE the boot restore, because the restore
+// path reads it: applyAutosaveData's legacy-docId backfill calls scheduleAutosave(), which checks
+// _showingExamples. When these lived beside the examples code far below, that read was a TDZ
+// ReferenceError, swallowed by restoreAutosave's catch, so a docId-less autosave silently booted
+// as the Examples doc (#854). The examples logic itself (startBlankOutline / maybeShowFirstRun)
+// stays below with FIRST_RUN_EXAMPLES; only the flag declarations are hoisted.
+let _showingExamples = false;
+let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
 let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from localStorage?
 (function restoreAutosave() {
   if (loadedFromEmbed) return; // a shared snapshot is authoritative over local autosave
@@ -32086,8 +32111,8 @@ const STARTERS = [
   },
 ];
 
-let _showingExamples = false;
-let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
+// (_showingExamples / _adoptingExamples are declared above the boot restore — see the
+// hoist note beside restoreAutosave, #854.)
 function startBlankOutline() {
   _showingExamples = false;
   hideExamplesBanner();

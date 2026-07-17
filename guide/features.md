@@ -89,7 +89,9 @@ A live calculator that can see your outline. Math pills recompute on their own. 
   ([units](computing-numbers.md#units) · [dates](computing-numbers.md#dates))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
   spreadsheet column. ([aggregation](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
-- **Word counts.** `{= words(subtree)}` counts everything under a heading.
+- **Word counts.** `{= words(subtree)}` counts the prose under a heading; per-point notes stay out
+  of the count unless you write `{= words(subtree, notes)}`.
+  ([word counts](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
 - **Uncertain estimates.** `{5 to 10}` models a range with a little distribution sparkline, and the
   uncertainty propagates through math. ([estimates](computing-numbers.md#uncertain-values-estimates))
 - **Self-checking outlines.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
