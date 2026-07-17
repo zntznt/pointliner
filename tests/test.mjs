@@ -15326,3 +15326,20 @@ test('#827: FN2 arity-aware dispatch + redo accepts lowercase z', () => {
   assert.match(_f827, /args\.length === 1 && name in FN1/, 'dispatch must be arity-first');
   assert.match(_f827, /e\.shiftKey && \(e\.key==='z' \|\| e\.key==='Z'\)/, 'redo must accept lowercase z');
 });
+
+// ── #565 starters: the embedded example gallery stays well-formed ─────────────
+// A source-shape pin (fromOpml needs a real DOMParser, absent in Node): every
+// gallery entry is present, each embeds a single `# heading` OPML subtree, and
+// the user-facing copy carries no em dash (the house punctuation rule).
+const _fStarters = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('starters (#565) — gallery entries present, heading-rooted, em-dash-free', () => {
+  const start = _fStarters.indexOf('const STARTERS = [');
+  const block = _fStarters.slice(start, _fStarters.indexOf('\n];', start));
+  assert.ok(start > -1, 'STARTERS array present');
+  for (const id of ['campaign-oracle', 'oracle-play', 'character-sheet', 'project-tracker', 'reading-log', 'life-dashboard', 'meal-planner', 'trip-planner', 'decision-helper', 'flashcards', 'home-inventory', 'worldbuilding'])
+    assert.ok(block.includes(`id: '${id}'`), `starter ${id} present`);
+  const opmls = block.split('opml: `').slice(1);
+  assert.equal(opmls.length, 12, 'one embedded OPML per starter');
+  for (const o of opmls) assert.match(o, /<outline text="# /, 'each starter roots in a # heading subtree');
+  assert.ok(!block.includes('—'), 'no em dashes in starter copy (user-facing)');
+});
