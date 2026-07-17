@@ -255,6 +255,8 @@ export function loadCores() {
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
     'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'evictPrevVersions',   // per-doc previous-version store eviction (bounded restore history)
+    'withPrevStoreLock',   // #846: cross-tab prev-store RMW lock (sync fallback pinned here)
+    'updatePeers', 'peerHoldsDoc',   // #847: multi-tab presence bookkeeping (pure)
     'calWeekLen','calWeekHeads','calMonthTitle','calDayLabel','calDayShort',   // #527 PR-A: the render-label layer
     'parseCalMonths','parseCalWeek','parseCalEras','calendarToText','auditCalendarSwitch','buildCalendarFromFields','dateFormsHint',   // #527 PR-C: the dialog grammars + the switch audit
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',

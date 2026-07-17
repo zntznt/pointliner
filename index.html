@@ -18281,6 +18281,45 @@ ioBack.addEventListener('keydown', e => {
   }
 });
 
+// ── #844: guard rails for the shared #io-card ─────────────────────────────────
+// Every dialog shares this ONE card and every opener starts by wiping it, so two
+// overlapping opens used to wedge each other: the open dialog's buttons vanished, its
+// Promise never settled, and whatever awaited it hung. Worst case that was the sync
+// reconcile prompt — _wsReconciling stayed true for the whole session and folder
+// auto-write silently died while the UI still claimed auto-save. Three rails, none of
+// which changes how a USER-opened dialog replaces another (that stays the model):
+//  (1) withBgDialog — BACKGROUND-initiated dialogs (the sync reconcile prompt, the
+//      duplicate-identity prompt) run one at a time and WAIT for the card to be free
+//      instead of wiping a user-facing dialog.
+//  (2) registerIoPending + a childList observer — a promise-backed dialog that IS
+//      torn down by another opener settles with its non-destructive dismissal default
+//      instead of never, so no awaiting flow can wedge.
+//  (3) every promise dialog's finish() is idempotent and removes its own ioBack
+//      keydown listener on ANY teardown, so a superseded dialog's stale listener can
+//      never act on (or close) the next dialog.
+function ioCardBusy() { return ioBack.classList.contains('on'); }
+let _bgDialogChain = Promise.resolve();   // background dialogs are strictly serialized
+function withBgDialog(open) {
+  const run = _bgDialogChain.then(async () => {
+    while (ioCardBusy()) await new Promise(r => setTimeout(r, 300));   // defer + retry, never wipe
+    return open();
+  });
+  _bgDialogChain = run.then(() => {}, () => {});   // keep the queue alive whatever open() does
+  return run;
+}
+// The one live promise-backed dialog: { owner, alive(), dismiss() }. dismiss() is that
+// dialog's own finish(default, superseded=true) — idempotent, removes its listener, and
+// does NOT touch the card (it already belongs to whoever tore it down).
+let _ioPending = null;
+function registerIoPending(rec) {
+  const prev = _ioPending;
+  _ioPending = rec;
+  if (prev) prev.dismiss();   // a promise dialog replaced another promise dialog directly
+}
+new MutationObserver(() => {   // a non-promise opener wiped a pending promise dialog
+  if (_ioPending && !_ioPending.alive()) { const p = _ioPending; _ioPending = null; p.dismiss(); }
+}).observe(ioCard, { childList: true });
+
 // Lightweight destructive-action confirmation. Returns a Promise that resolves
 // to true (confirmed) or false (cancelled). Reuses the io-back/io-card overlay.
 function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'OK', cancelLabel = 'Cancel' }) {
@@ -18304,17 +18343,29 @@ function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'O
     const okBtn     = document.createElement('button'); okBtn.className = 'io-btn danger'; okBtn.textContent = confirmLabel;
     foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
 
-    function finish(result) { closeIo(); resolve(result); }
+    // #844: finish is idempotent and ALWAYS detaches this dialog's keydown listener (the
+    // backdrop-cancel path used to leave it attached forever, so a later dialog's Escape
+    // ran the stale handler too). When superseded by another opener, it resolves WITHOUT
+    // touching the card — the card already belongs to the new dialog.
+    let done = false;
+    function finish(result, superseded) {
+      if (done) return; done = true;
+      if (_ioPending && _ioPending.owner === finish) _ioPending = null;
+      ioBack.removeEventListener('keydown', onKey);
+      if (!superseded) closeIo();
+      resolve(result);
+    }
     cancelBtn.addEventListener('click', () => finish(false));
     okBtn.addEventListener('click',     () => finish(true));
     ioCancel = () => finish(false);
 
     // Keyboard: Escape = cancel, Enter = confirm
     function onKey(e) {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); ioBack.removeEventListener('keydown', onKey); finish(false); }
-      if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); ioBack.removeEventListener('keydown', onKey); finish(document.activeElement === okBtn); }  // UX audit: Enter on Cancel must NOT confirm
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+      if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); finish(document.activeElement === okBtn); }  // UX audit: Enter on Cancel must NOT confirm
     }
     ioBack.addEventListener('keydown', onKey);
+    registerIoPending({ owner: finish, alive: () => ioCard.contains(foot), dismiss: () => finish(false, true) });   // #844
 
     ioReturnFocus = document.activeElement;
     ioCard.setAttribute('aria-label', title);
@@ -25429,6 +25480,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   // clears the memory (it has no disk identity to reopen).
   if (hasFSA) { if (fh && !wf) saveLastFileHandle(fh, fname); else if (!fh) clearLastFileHandle(); }
   _wsWarned = false;    // fresh doc → a later lost-access event may warn again
+  _wsPromptSnooze = 0;  // #845: a dismissed prompt's snooze belongs to the outgoing doc, not this one
   focusedId = null;
   clearTimeout(searchDebounce);
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
@@ -25453,6 +25505,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   const assigned = !root.docId; ensureDocId(root);
   if (assigned) scheduleAutosave();                            // normalization #2: a freshly-assigned docId persists; final dirty state stays clean
   markClean();
+  plAnnounce('open');   // #847: tell peer tabs which document this tab now holds (they reply if they hold it too)
   // idea 5: restore a remembered zoom for this doc — but only if that point STILL EXISTS (the file
   // may have changed on disk since we left). Guarded by nodeById; a missing/absent id stays at root.
   if (restoreFocusId && nodeById(restoreFocusId)) focusedId = restoreFocusId;
@@ -25656,6 +25709,8 @@ let _wsKnownSize = 0;      // sync-safety #840: byte size (File.size) captured w
 let _wsSelfWriting = false;// sync-safety: true across our own atomic write+move, so the FileSystemObserver / refocus detector ignores the change WE just made (else it'd flag our own save as external and loop).
 let _wsReconciling = false;// sync-safety: a reconcile prompt is open; suppress autosave + further detection until the user decides.
 let _wsForceWrite = false; // sync-safety: the user chose "keep mine" — the next flush overwrites disk without re-checking staleness (one-shot, avoids a prompt loop).
+let _wsPromptSnooze = 0;   // #845: epoch-ms until which a DISMISSED reconcile prompt is not re-asked. Dismissal defers the decision (writes stay paused); it never picks a side.
+const WS_PROMPT_SNOOZE_MS = 2 * 60 * 1000;   // the re-ask window after Escape/backdrop on the reconcile prompt
 const WORKSPACE_KEY = 'workspaceDir';
 const OPEN_TABS_KEY = 'openTabs';   // IndexedDB: the persisted list of open document tabs
 const LASTFILE_KEY  = 'lastFile';   // IndexedDB: the last STANDALONE (non-folder) FileSystemFileHandle + name (UXP-127)
@@ -26248,7 +26303,7 @@ async function reopenWorkspaceDoc(dir, name) {
     const sameDocDiverged = knownFileMod > 0 && localId && fileRoot.docId && localId === fileRoot.docId;
     adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
     if (sameDocDiverged) {
-      const stashed = stashPayloadAsPrev(localPayload, localId);
+      const stashed = await stashPayloadAsPrev(localPayload, localId);
       flashHint(stashed
         ? '“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy: File menu, Restore earlier version.'
         : '“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy could not be kept as a restore point; storage may be full.');
@@ -26291,8 +26346,8 @@ async function reopenWorkspaceDoc(dir, name) {
       // earlier version" offers them directly. A provably DIFFERENT document's edits belong
       // to that other document — keyed under its own id, they surface when it is opened again.
       const stashed = unknownIdentity
-        ? stashPayloadAsPrev(rekeyPayloadDocId(localPayload, root.docId), root.docId)
-        : stashPayloadAsPrev(localPayload, localId);
+        ? await stashPayloadAsPrev(rekeyPayloadDocId(localPayload, root.docId), root.docId)
+        : await stashPayloadAsPrev(localPayload, localId);
       // #845: a losing local copy always gets a flash, and the failure variant is honest — a
       // failed stash (localStorage full) means the discarded copy is NOT recoverable, which is
       // the one case the old success-gated wording left the user uninformed about.
@@ -26540,7 +26595,7 @@ async function deleteWorkspaceDoc(name) {
     // restore point under its own docId, so "deleted by accident" is never a total
     // loss (the #729 discipline: destruction is visible AND leaves a recovery trail).
     let payload = null; try { payload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
-    stashed = stashPayloadAsPrev(payload, root?.docId);
+    stashed = await stashPayloadAsPrev(payload, root?.docId); // async since #846 (prev-store lock)
     clearTimeout(autosaveTimer);   // a pending debounce would flush to the deleted file
     markClean();                   // nothing left to flush; the doc is deliberately gone
     workspaceFile = null;          // no auto-write target
@@ -26688,6 +26743,12 @@ async function flushWorkspaceFile() {
 // _wsReconciling flag pauses autosave so we never race a write against the decision.
 async function handleExternalChange(canReloadLossless) {
   if (_wsReconciling) return;
+  // #847: another tab of this browser holds the same document (presence via the
+  // BroadcastChannel below). Its auto-write looks like an external change here, and the
+  // silent reload would wipe THIS tab's undo stack without a word. While that presence
+  // is known, always ask instead of reloading silently.
+  let cleanTwoTab = false;
+  if (canReloadLossless && peerHasSameDoc()) { canReloadLossless = false; cleanTwoTab = true; }
   if (canReloadLossless) {
     try {
       const file = await workspaceFile.getFile();
@@ -26701,15 +26762,29 @@ async function handleExternalChange(canReloadLossless) {
       adoptDoc(fromOpml(await file.text()), { fileName, fileHandle: workspaceFile, workspaceFile });
       _wsKnownModified = file.lastModified || 0;
       _wsKnownSize = file.size || 0;               // #840: size fingerprint rides the same anchor
-      const stashed = stashPayloadAsPrev(localPayload, localId);
+      const stashed = await stashPayloadAsPrev(localPayload, localId); // async since #846 (prev-store lock)
       flashHint('Reloaded “' + displayName(fileName) + '”. It was updated elsewhere (sync).'
         + (stashed ? ' Your previous copy: File menu, Restore earlier version.' : ''));
     } catch (_) { /* unreadable — leave the in-memory copy; next write will reconcile again */ }
     return;
   }
+  if (Date.now() < _wsPromptSnooze) return;        // #845: prompt was just dismissed — re-ask later; nothing is written meanwhile
+  // #844: the flag is set/cleared in try/finally so NO path (a throw, a superseded
+  // prompt) can leave it stuck — a stuck true silently kills folder auto-write for the
+  // whole session while the UI still claims auto-save.
   _wsReconciling = true;
-  const choice = await openReconcileDialog(fileName);
-  _wsReconciling = false;
+  let choice = 'later';
+  const wf = workspaceFile;   // the file this divergence belongs to; a doc swap while deferred voids the prompt
+  try {
+    // #844: a background prompt DEFERS while any other dialog is open (withBgDialog) —
+    // it must never wipe a user-facing dialog off the shared card. If the user swapped
+    // documents during the deferral, the prompt is stale: don't ask about (or act on)
+    // a file that is no longer open; the new doc's own detection governs from here.
+    choice = await withBgDialog(() => (workspaceFile === wf ? openReconcileDialog(fileName, cleanTwoTab) : 'stale'));
+  } finally {
+    _wsReconciling = false;
+  }
+  if (choice === 'stale') return;
   if (choice === 'theirs') {                       // load the disk version, discard local edits
     try {
       const file = await workspaceFile.getFile();
@@ -26721,7 +26796,7 @@ async function handleExternalChange(canReloadLossless) {
       adoptDoc(fromOpml(await file.text()), { fileName, fileHandle: workspaceFile, workspaceFile });
       _wsKnownModified = file.lastModified || 0;
       _wsKnownSize = file.size || 0;               // #840: size fingerprint rides the same anchor
-      const stashed = stashPayloadAsPrev(localPayload, localId);
+      const stashed = await stashPayloadAsPrev(localPayload, localId); // async since #846 (prev-store lock)
       flashHint('Loaded the version from disk.' + (stashed ? ' Your previous copy: File menu, Restore earlier version.' : ''));
     } catch (e) { flashError('Could not load the disk version: ' + (e.message || e)); }
   } else if (choice === 'copy') {                  // save mine under a new name, then load theirs
@@ -26735,19 +26810,30 @@ async function handleExternalChange(canReloadLossless) {
       refreshWorkspaceIndex();
       flashHint('Saved your version as “' + displayName(copyName) + '” and loaded the disk version.');
     } catch (e) { flashError('Could not save a copy: ' + (e.message || e)); }
-  } else {                                          // 'mine' (or dismissed) → keep local, overwrite disk
+  } else if (choice === 'mine') {                   // the explicit button only — never a dismissal default (#845)
     // #842 (recorded asymmetry): no stash of the DISK version here, deliberately — it usually
     // survives in the sync tool's own history/trash, and serializing a foreign tree into the
     // bounded localStorage restore budget could evict a real local restore point to keep it.
     _wsForceWrite = true;                            // the next write wins without re-checking (our explicit choice)
     flushWorkspaceFile();
+  } else {                                          // 'later': Escape / backdrop / superseded — keep BOTH versions untouched
+    // #845: dismissal defers the decision. The pre-write staleness check already keeps
+    // the folder write paused while the versions diverge; the snooze just stops the
+    // prompt from re-opening on the very next autosave tick. Say what happened (P4).
+    _wsPromptSnooze = Date.now() + WS_PROMPT_SNOOZE_MS;
+    flashHint('Nothing was changed. Saving to the folder is paused; you will be asked again.');
   }
 }
 
 // sync-safety: the 3-way reconcile prompt. Modeled on openConfirmDialog (same io-card
 // harness, fully keyboard-solvable — Tab between buttons, Enter activates the focused
-// one, Escape = keep mine). Resolves to 'mine' | 'theirs' | 'copy'.
-function openReconcileDialog(name) {
+// one). Resolves to 'mine' | 'theirs' | 'copy' | 'later'. Escape / backdrop / being
+// superseded resolve 'later' — decide later, write nothing — because dismissal is the
+// least-informed gesture and must never pick the destructive option (#845: the old
+// 'mine' default force-overwrote the disk version, i.e. another device's work, on a
+// bare Escape). `cleanTwoTab` only adjusts the copy: the local doc has no unsaved
+// edits, but another tab holds it so the silent reload was suppressed (#847).
+function openReconcileDialog(name, cleanTwoTab) {
   return new Promise(resolve => {
     ioCard.innerHTML = '';
     const head = document.createElement('div'); head.className = 'io-head';
@@ -26759,7 +26845,9 @@ function openReconcileDialog(name) {
 
     const msg = document.createElement('p');
     msg.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 16px;line-height:1.55';
-    msg.textContent = '“' + displayName(name) + '” was updated elsewhere (another device or sync) while you had unsaved changes here. Choose which version to keep. Nothing is overwritten until you pick.';
+    msg.textContent = cleanTwoTab
+      ? '“' + displayName(name) + '” was updated elsewhere, and it is also open in another tab of this browser. Choose which version to keep. Nothing is overwritten until you pick; press Escape to decide later.'
+      : '“' + displayName(name) + '” was updated elsewhere (another device or sync) while you had unsaved changes here. Choose which version to keep. Nothing is overwritten until you pick; press Escape to decide later.';
     ioCard.appendChild(msg);
 
     // Stacked footer (io-foot-stack): three full-width choices read as "pick one"
@@ -26770,21 +26858,29 @@ function openReconcileDialog(name) {
     const copyBtn   = document.createElement('button'); copyBtn.className = 'io-btn';        copyBtn.textContent   = 'Save mine as a copy';
     foot.append(theirsBtn, copyBtn, mineBtn); ioCard.appendChild(foot);
 
-    function finish(result) { ioBack.removeEventListener('keydown', onKey); closeIo(); resolve(result); }
+    let done = false;   // #844: idempotent finish; a stale/superseded listener can never act
+    function finish(result, superseded) {
+      if (done) return; done = true;
+      if (_ioPending && _ioPending.owner === finish) _ioPending = null;
+      ioBack.removeEventListener('keydown', onKey);
+      if (!superseded) closeIo();
+      resolve(result);
+    }
     copyBtn.addEventListener('click',   () => finish('copy'));
     theirsBtn.addEventListener('click', () => finish('theirs'));
     mineBtn.addEventListener('click',   () => finish('mine'));
-    ioCancel = () => finish('mine');   // Escape / backdrop → keep mine (the non-destructive default for the user's live work)
+    ioCancel = () => finish('later');   // #845: Escape / backdrop → decide later, change NOTHING (never the destructive overwrite)
 
     function onKey(e) {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish('mine'); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish('later'); }
       else if (e.key === 'Enter') {
         e.preventDefault(); e.stopPropagation();
         const a = document.activeElement;
-        finish(a === theirsBtn ? 'theirs' : a === copyBtn ? 'copy' : 'mine');
+        finish(a === theirsBtn ? 'theirs' : a === copyBtn ? 'copy' : a === mineBtn ? 'mine' : 'later');
       }
     }
     ioBack.addEventListener('keydown', onKey);
+    registerIoPending({ owner: finish, alive: () => ioCard.contains(foot), dismiss: () => finish('later', true) });   // #844
 
     ioReturnFocus = document.activeElement;
     ioCard.setAttribute('aria-label', 'This document changed on disk');
@@ -26812,7 +26908,14 @@ function openDupDocIdDialog(names) {
     ioCard.appendChild(msg);
 
     const foot = document.createElement('div'); foot.className = 'io-foot io-foot-stack';
-    function finish(result) { ioBack.removeEventListener('keydown', onKey); closeIo(); resolve(result); }
+    let done = false;   // #844: idempotent finish; a stale/superseded listener can never act
+    function finish(result, superseded) {
+      if (done) return; done = true;
+      if (_ioPending && _ioPending.owner === finish) _ioPending = null;
+      ioBack.removeEventListener('keydown', onKey);
+      if (!superseded) closeIo();
+      resolve(result);
+    }
     let firstBtn = null;
     for (const name of names) {
       const b = document.createElement('button'); b.className = 'io-btn'; b.textContent = 'Keep the identity on “' + displayName(name) + '”';
@@ -26827,6 +26930,7 @@ function openDupDocIdDialog(names) {
     ioCancel = () => finish(null);   // Escape / backdrop → defer, change nothing (non-destructive default)
     function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } }
     ioBack.addEventListener('keydown', onKey);
+    registerIoPending({ owner: finish, alive: () => ioCard.contains(foot), dismiss: () => finish(null, true) });   // #844
     ioReturnFocus = document.activeElement;
     ioCard.setAttribute('aria-label', 'Two files share one identity');
     ioBack.classList.add('on');
@@ -26855,7 +26959,8 @@ async function reconcileDuplicateDocIds(dir) {
     }
     let reminted = 0;
     for (const g of dupDocIdGroups(entries)) {
-      const keeper = await openDupDocIdDialog(g.names);
+      // #844: a background prompt defers while any other dialog is open, never wiping it
+      const keeper = await withBgDialog(() => openDupDocIdDialog(g.names));
       if (!keeper) continue;                               // deferred this group — leave both as-is
       for (const name of g.names) {
         if (name === keeper) continue;
@@ -26928,6 +27033,70 @@ window.addEventListener('focus', () => { checkExternalChange(); });
 // still caught after the observer detaches. It no-ops when there is no workspace file, and its
 // own guards skip a poll that would race an in-flight write or an open reconcile prompt.
 setInterval(() => { checkExternalChange(); }, 30000);
+
+// ── #847: same-origin multi-tab presence (lightweight; deliberately NOT live sync) ──
+// Two Pointliner tabs holding the SAME document degrade each other: each tab's flush
+// looks external to the other, so they trade reconcile prompts, and the silent lossless
+// reload wipes the clean tab's undo stack without a word. Full multi-tab sync is out of
+// scope; this is presence only: announce which doc this tab holds on a BroadcastChannel,
+// reply when a peer announces the doc we hold, show a soft notice ONCE per doc per
+// session, and (in handleExternalChange above) prefer PROMPT over silent reload while a
+// peer is known. Feature-detected: without BroadcastChannel everything here is inert.
+// Pure cores: updatePeers / peerHoldsDoc (Node-pinned).
+const PEER_TTL_MS = 90 * 1000;        // a peer counts as present while heard from inside this window
+const PEER_HEARTBEAT_MS = 25 * 1000;  // < TTL/3: two missed beats still keep presence alive; a crashed tab ages out
+const TAB_ID = uid();                 // this tab's session identity on the channel
+let _plPeers = {};                    // { tabId: { docId, at } } — which doc each peer tab holds
+let _plChannel = null;
+const _plNoticed = new Set();         // docIds whose two-tab notice already showed this session
+
+// Pure: fold one presence message into the peers map (a new map; a malformed or unknown
+// message returns the map unchanged). 'open'/'here' record the peer's doc; 'close' drops it.
+function updatePeers(peers, msg, now = Date.now()) {
+  const base = (peers && typeof peers === 'object') ? peers : {};
+  if (!msg || typeof msg !== 'object' || typeof msg.tab !== 'string' || !msg.tab) return base;
+  if (msg.type === 'close') {
+    if (!(msg.tab in base)) return base;
+    const out = { ...base }; delete out[msg.tab]; return out;
+  }
+  if ((msg.type === 'open' || msg.type === 'here') && typeof msg.docId === 'string' && msg.docId) {
+    return { ...base, [msg.tab]: { docId: msg.docId, at: now } };
+  }
+  return base;
+}
+// Pure: is any peer holding `docId` fresh enough to count as present?
+function peerHoldsDoc(peers, docId, now = Date.now(), ttl = PEER_TTL_MS) {
+  if (!docId || !peers) return false;
+  return Object.values(peers).some(p => p && p.docId === docId && (now - (p.at || 0)) <= ttl);
+}
+function peerHasSameDoc() { return !!_plChannel && peerHoldsDoc(_plPeers, root && root.docId); }
+function plAnnounce(type) {
+  if (!_plChannel) return;
+  const docId = root && root.docId;
+  if (!docId && type !== 'close') return;          // nothing to claim yet (a docId mints on adopt/first save)
+  try { _plChannel.postMessage({ type, tab: TAB_ID, docId: docId || '' }); } catch (_) {}
+}
+// The soft notice, once per doc per session, whenever same-doc presence is learned (P4).
+function maybePeerNotice() {
+  const id = root && root.docId;
+  if (!id || _plNoticed.has(id) || !peerHoldsDoc(_plPeers, id)) return;
+  _plNoticed.add(id);
+  flashHint('This document is open in another tab. Edits in two tabs can conflict; close one to avoid repeated save prompts.');
+}
+(function initTabPresence() {
+  if (typeof BroadcastChannel === 'undefined') return;   // rare embedding: presence off, everything else unaffected
+  try { _plChannel = new BroadcastChannel('pointliner'); } catch (_) { _plChannel = null; return; }
+  _plChannel.onmessage = (e) => {
+    const msg = e && e.data;
+    if (!msg || msg.tab === TAB_ID) return;
+    _plPeers = updatePeers(_plPeers, msg);
+    if (msg.type === 'open' && msg.docId && root && msg.docId === root.docId) plAnnounce('here');   // reply so the opener learns of us at once
+    maybePeerNotice();
+  };
+  window.addEventListener('pagehide', () => plAnnounce('close'));   // best-effort; the TTL covers a crashed tab
+  setInterval(() => plAnnounce('here'), PEER_HEARTBEAT_MS);         // keeps presence fresh across long sessions
+  setTimeout(() => plAnnounce('open'), 0);                          // after the boot restore settles this tab's doc
+})();
 
 // ─── plain-text / markdown export ─────────────────────────────────────────────
 // These are interchange formats, not the canonical store (OPML is). Artifacts are
@@ -31265,19 +31434,42 @@ function readPrevVersions() {
   let raw; try { raw = localStorage.getItem(AUTOSAVE_PREV_KEY); } catch (_) { return {}; }
   return parsePrevStore(raw);
 }
+// #846: the prev-version store is ONE localStorage JSON map maintained by read-modify-
+// write, and two same-origin tabs interleaving that RMW can silently drop a freshly-
+// stashed restore point (tab A reads, tab B reads, A writes, B writes without A's
+// entry). navigator.locks serializes the RMW across tabs (present on every Chromium the
+// workspace targets, plus modern Firefox/Safari; feature-detected). `fn` must do its
+// READ inside itself so the read+write both run under the lock. Where locks are
+// unavailable, fn runs synchronously exactly as before: single-tab correct, and the
+// cross-tab window stays the (tiny) pre-lock status quo rather than a new failure mode.
+// Returns a Promise: async callers await it (stashPayloadAsPrev), the sync autosave
+// path fires-and-forgets it (see writeLocalAutosave).
+function withPrevStoreLock(fn) {
+  if (typeof navigator !== 'undefined' && 'locks' in navigator && navigator.locks && typeof navigator.locks.request === 'function') {
+    return navigator.locks.request('pl-prev-store', async () => { fn(); }).catch(() => {});
+  }
+  try { fn(); } catch (_) {}
+  return Promise.resolve();
+}
 // Preserve an autosave payload as a restore point under the given docId, immediately
 // (no snapshot throttle — callers use this when the payload is about to be DISCARDED,
 // not merely rotated: the reconnect file-wins path stashes the losing local copy so
 // "the file won" is always one Restore click away from recoverable, never a silent
-// loss, #729). Best-effort like every prev-store write; returns whether it stuck.
-function stashPayloadAsPrev(prev, docId) {
+// loss, #729). Best-effort like every prev-store write; resolves to whether it stuck.
+// #846: async — the read-modify-write runs under the cross-tab prev-store lock, and the
+// callers (reopenWorkspaceDoc's stash sites) await it, so "did it stick" stays truthful.
+async function stashPayloadAsPrev(prev, docId) {
   if (!prev || !docId) return false;
-  try {
-    const store = readPrevVersions();
-    store[docId] = { prev, at: Date.now() };
-    localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store)));
-    return true;
-  } catch (_) { return false; }
+  let ok = false;
+  await withPrevStoreLock(() => {
+    try {
+      const store = readPrevVersions();
+      store[docId] = { prev, at: Date.now() };
+      localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store)));
+      ok = true;
+    } catch (_) {}
+  });
+  return ok;
 }
 // Rewrite an autosave payload's embedded docId. The reconnect stash keys an identity-
 // unknown local copy under the doc NOW on screen — but earlierVersionForCurrentDoc
@@ -31638,12 +31830,21 @@ function writeLocalAutosave(payload) {
           try {
             const outId = JSON.parse(prev)?.root?.docId;
             if (outId) {
-              const store = readPrevVersions();
-              store[outId] = { prev, at: now };
               // Budget the prev store STRICTLY against the headroom under the live payload — the
               // live setItem below must never throw because restore points hog the quota (#733).
               const budget = Math.max(0, LS_TOTAL_BUDGET - payload.length);
-              localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store, PREV_KEEP_DOCS, Math.min(PREV_BYTE_CAP, budget), true)));
+              // #846: the store is shared by every same-origin tab, so the read-modify-write runs
+              // under the cross-tab lock (see withPrevStoreLock). THIS caller is synchronous (the
+              // autosave tick and the pagehide flush) and cannot await, so the RMW is queued
+              // fire-and-forget with the READ taken INSIDE the lock — it merges over whatever
+              // another tab wrote last instead of clobbering it. Best-effort by design: a closing
+              // tab may outrun the queued write, and the rolling snapshot is a throttled nicety;
+              // the live AUTOSAVE_KEY write below stays synchronous.
+              withPrevStoreLock(() => {
+                const store = readPrevVersions();
+                store[outId] = { prev, at: now };
+                localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(evictPrevVersions(store, PREV_KEEP_DOCS, Math.min(PREV_BYTE_CAP, budget), true)));
+              });
             }
           } catch (_) {}
         }
