@@ -1,11 +1,10 @@
 # Pointliner
 
-**The single-file outliner that talks back.** Write nested points like any outliner;
-type inside `{curly braces}` and the text becomes a live widget. `{2d6}` rolls,
-`{= sum(cost)}` keeps a running total of the points beneath it, `{roll: #idea}` draws a
-random point from your own document, and a check flags the budget that just overflowed.
-The whole app is one `index.html`: it runs with the wifi off, needs nothing installed,
-and keeps your work in files you own.
+**Type `{2d6}` in a point and it rolls. Type `{= sum(cost)}` and it keeps a live total
+of the points beneath it.** Pointliner is an outliner whose text is alive: dice, running
+totals, random draws from your own document, checks that flag a budget the moment it
+overflows. The whole app is one `index.html`: it runs with the wifi off, needs nothing
+installed, and keeps your work in files you own.
 
 Pointliner was born at the solo-RPG table, and that is still where it is sharpest:
 [the dice, the oracle, and the journal in one place](guide/solo-rpg/README.md), with your
