@@ -11061,6 +11061,36 @@ test('reconcileAction — never anchored (known 0/null) → write, nothing to cl
   assert.equal(c.reconcileAction({ diskModified: 0,   knownModified: null, dirty: false }), 'write');
 });
 
+// ── #840: the byte-size fingerprint — an external write in the SAME mtime bucket ──
+// mtime alone cannot tell an external write stamped into our own mtime bucket (FAT/exFAT
+// 2s granularity, second-truncating or mtime-preserving sync tools) from our own unchanged
+// write. The size tiebreak catches it; sizes-unknown keeps the mtime-only verdict.
+test('reconcileAction #840 — same mtime + SAME size stays write (own unchanged write, no prompt after every autosave)', () => {
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: true }), 'write');
+  assert.equal(c.reconcileAction({ diskModified: 90,  knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: false }), 'write');
+});
+test('reconcileAction #840 — same mtime + DIFFERENT size is external (was the silent clobber)', () => {
+  // Kill scenario: device A anchors known=T; device B's edit syncs down stamped T; without the
+  // size check A read disk==known → write → A's next flush overwrote B's edit with no prompt.
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5321, knownSize: 5000, dirty: true }),  'prompt');
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5321, knownSize: 5000, dirty: false }), 'reload');
+  // an OLDER disk mtime with different bytes (a sync tool restoring a version with its source
+  // mtime preserved) is external too — the whole disk<=known branch takes the size tiebreak
+  assert.equal(c.reconcileAction({ diskModified: 90,  knownModified: 100, diskSize: 4200, knownSize: 5000, dirty: true }),  'prompt');
+  // a truncated-to-empty disk file (size 0) differs from a real anchored size → external
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 0, knownSize: 5000, dirty: false }), 'reload');
+});
+test('reconcileAction #840 — size unknown keeps the mtime-only verdict (backward compat)', () => {
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, dirty: true }), 'write');                                   // no sizes at all (pre-#840 caller shape)
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: undefined, knownSize: 5000, dirty: true }), 'write');
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5000, knownSize: 0, dirty: true }), 'write');     // knownSize 0 = never anchored
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: NaN, knownSize: 5000, dirty: true }), 'write');
+});
+test('reconcileAction #840 — a NEWER disk mtime is external regardless of an equal size', () => {
+  assert.equal(c.reconcileAction({ diskModified: 200, knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: true }),  'prompt');
+  assert.equal(c.reconcileAction({ diskModified: 200, knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: false }), 'reload');
+});
+
 // ── #746: bootPrefersFile — boot-time newer-wins WITHOUT comparing across clocks ──────
 test('bootPrefersFile — like-for-like mtime beats the clock-skew inversion (#746)', () => {
   // The bug: a synced folder written by a slow-clocked device gives the file a small mtime,
@@ -15495,4 +15525,68 @@ test('starters (#565) — gallery entries present, heading-rooted, em-dash-free'
   assert.equal(opmls.length, 12, 'one embedded OPML per starter');
   for (const o of opmls) assert.match(o, /<outline text="# /, 'each starter roots in a # heading subtree');
   assert.ok(!block.includes('—'), 'no em dashes in starter copy (user-facing)');
+});
+
+// ─── workspace sync-safety batch (#840/#842/#845 items 1+2) ───────────────────
+const _fSync = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#840 — the size fingerprint is anchored wherever the mtime anchor is set', () => {
+  // one shared declaration next to the mtime anchor
+  assert.ok(_fSync.includes('let _wsKnownSize = 0;'), '_wsKnownSize declared');
+  // anchorWorkspaceFile captures both from ONE getFile() (post-write, connect, writeH)
+  assert.match(_fSync, /async function anchorWorkspaceFile\(\) \{\s*\n\s*if \(!workspaceFile\) \{ _wsKnownModified = 0; _wsKnownSize = 0; return; \}[\s\S]{0,400}_wsKnownSize = f\.size \|\| 0;/,
+    'anchorWorkspaceFile must reset + capture the size with the mtime');
+  // every direct `_wsKnownModified = file.lastModified` anchor site carries the size twin
+  const direct = _fSync.split('_wsKnownModified = file.lastModified || 0;').length - 1;
+  const twins  = _fSync.split('_wsKnownSize = file.size || 0;').length - 1;
+  assert.ok(direct >= 5, 'expected the reopen/switch/reload/theirs/copy direct anchor sites, saw ' + direct);
+  assert.equal(twins, direct, 'every direct mtime anchor site must set _wsKnownSize from the same File');
+  // teardown resets both
+  assert.match(_fSync, /function stopWorkspaceWatch\(\) \{[\s\S]{0,200}_wsKnownModified = 0;\s*\n\s*_wsKnownSize = 0;/, 'stopWorkspaceWatch must drop the size anchor too');
+});
+test('#840 — the flush pre-write gate and the change detector pass both fingerprints', () => {
+  assert.match(_fSync, /let diskModified = _wsKnownModified, diskSize = _wsKnownSize;\s*\n\s*try \{ const f = await workspaceFile\.getFile\(\); diskModified = f\.lastModified \|\| 0; diskSize = f\.size \|\| 0; \} catch \(_\) \{\}\s*\n\s*const action = reconcileAction\(\{ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty: true \}\);/,
+    'flushWorkspaceFile pre-write staleness gate must compare size too');
+  assert.match(_fSync, /catch \(_\) \{ return; \}\s*\n\s*const action = reconcileAction\(\{ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty \}\);/,
+    'checkExternalChange must compare size too');
+});
+test('#842 — BOTH mid-session losing-copy branches stash the local copy before adopting (the #729/#746 doctrine)', () => {
+  const fn = _fSync.slice(_fSync.indexOf('async function handleExternalChange('), _fSync.indexOf('function openReconcileDialog('));
+  // the silent 'reload' branch: capture pre-adopt, stash, and point at the restore door
+  const reload = fn.slice(0, fn.indexOf('_wsReconciling = true;'));
+  assert.match(reload, /localPayload = localStorage\.getItem\(AUTOSAVE_KEY\);[\s\S]{0,700}adoptDoc\(fromOpml\(await file\.text\(\)\)[\s\S]{0,400}stashPayloadAsPrev\(localPayload, localId\)/,
+    'reload branch must capture the payload pre-adopt and stash it');
+  assert.ok(reload.includes("(stashed ? ' Your previous copy: File menu, Restore earlier version.' : '')"), 'reload flash must carry the restore pointer when stashed');
+  // the 'theirs' choice: same capture-pre-adopt + stash + pointer
+  const theirs = fn.slice(fn.indexOf("if (choice === 'theirs')"), fn.indexOf("else if (choice === 'copy')"));
+  assert.match(theirs, /localPayload = localStorage\.getItem\(AUTOSAVE_KEY\);[\s\S]{0,700}adoptDoc\(fromOpml\(await file\.text\(\)\)[\s\S]{0,400}stashPayloadAsPrev\(localPayload, localId\)/,
+    "'theirs' must capture the payload pre-adopt and stash it");
+  assert.ok(theirs.includes("(stashed ? ' Your previous copy: File menu, Restore earlier version.' : '')"), "'theirs' flash must carry the restore pointer when stashed");
+  // the recorded asymmetry: 'mine' deliberately does NOT stash the foreign disk tree
+  const mine = fn.slice(fn.indexOf("// 'mine' (or dismissed)"));
+  assert.ok(!mine.includes('stashPayloadAsPrev'), "'mine' must not stash (recorded asymmetry)");
+});
+test('#845 item 1 — every boot losing-copy path flashes, honestly, whether or not the stash stuck', () => {
+  const fn = _fSync.slice(_fSync.indexOf('async function reopenWorkspaceDoc('), _fSync.indexOf('function unmarkedFilesNote('));
+  // sameDocDiverged: the old code gated the whole hint on stash success — silence exactly when storage is full
+  assert.ok(!fn.includes('sameDocDiverged && stashPayloadAsPrev'), 'the success-gated hint must be gone');
+  assert.match(fn, /if \(sameDocDiverged\) \{\s*\n\s*const stashed = stashPayloadAsPrev\(localPayload, localId\);/, 'sameDocDiverged must stash then branch the flash');
+  // three honest failure variants (sameDocDiverged, identity-unknown, provably-different)
+  const failures = fn.split('could not be kept as a restore point; storage may be full.').length - 1;
+  assert.equal(failures, 3, 'all three losing-copy paths must name a failed stash');
+  // the provably-different-document branch (flashed nothing at all before) now speaks
+  assert.match(fn, /\} else if \(localId\) \{[\s\S]{0,600}The document open before was kept; open it and use File menu, Restore earlier version\./,
+    'the different-document branch must flash');
+});
+test('#845 item 2 — unmarkedFilesNote (pure): the no-docId scan skip is named, not silent', () => {
+  assert.equal(c.unmarkedFilesNote(0), '');
+  assert.equal(c.unmarkedFilesNote(null), '');
+  assert.equal(c.unmarkedFilesNote(-2), '');
+  assert.equal(c.unmarkedFilesNote(1), '1 file in the folder carries no identity mark yet, so links and search skip it; open it to stamp it.');
+  assert.equal(c.unmarkedFilesNote(3), '3 files in the folder carry no identity mark yet, so links and search skip them; open one to stamp it.');
+  assert.ok(!c.unmarkedFilesNote(1).includes('—') && !c.unmarkedFilesNote(2).includes('—'), 'user-facing copy carries no em dash');
+});
+test('#845 item 2 — scanWorkspace counts the skips and the broken-links report surfaces them', () => {
+  assert.match(_fSync, /if \(!r\.docId\) \{ unmarked\+\+; continue; \}/, 'the scan must count, not silently continue');
+  assert.match(_fSync, /const idx = buildWorkspaceIndex\(docs\);\s*\n\s*idx\.unmarked = unmarked;\s*\n\s*return idx;/, 'the count must ride the returned index');
+  assert.match(_fSync, /const unmarkedMsg = unmarkedFilesNote\(workspaceIndex \? workspaceIndex\.unmarked : 0\);/, 'the broken-links report must consume the count');
 });

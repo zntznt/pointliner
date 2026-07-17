@@ -196,6 +196,7 @@ export function loadCores() {
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
     'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
     'reconcileAction', 'bootPrefersFile', 'tmpWriteName', 'treeDepthExceeds',   // sync-safety + WAVE-3 ingestion depth clamp
+    'unmarkedFilesNote',                        // #845: no-docId files skipped by the folder scan, surfaced in the broken-links report
     'displayName', 'toFileName',                // file-name display/normalize
 
     'embedOpmlIntoHtml', 'extractEmbeddedOpml',

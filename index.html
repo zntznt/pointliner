@@ -12489,6 +12489,17 @@ function showBrokenLinksReport() {
     : (workspaceIndex ? 'No broken links in this document or across the folder.' : 'No broken links in this document.');
   ioCard.appendChild(sub);
 
+  // #845: files the folder scan skipped for lacking an identity mark cause exactly the breakage
+  // this report is opened to diagnose (links read broken, folder search misses them), so the
+  // explanation and the remedy are named here rather than skipped in silence.
+  const unmarkedMsg = unmarkedFilesNote(workspaceIndex ? workspaceIndex.unmarked : 0);
+  if (unmarkedMsg) {
+    const um = document.createElement('p');
+    um.style.cssText = 'font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.5';
+    um.textContent = unmarkedMsg;
+    ioCard.appendChild(um);
+  }
+
   if (rows.length) {
     const list = document.createElement('div'); list.className = 'tpl-list';
     rows.forEach(r => {
@@ -25641,6 +25652,7 @@ let workspaceIndex = null; // CF-1: the in-memory cross-doc link/backlink index 
 let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
 let _wsWarned = false;     // one lost-access warning per event — never re-nag per tick (reset on reconnect/disconnect/swap)
 let _wsKnownModified = 0;  // sync-safety: lastModified of the workspace file as we last READ or WROTE it. The pre-write staleness check compares disk vs this; anchored on every load (anchorWorkspaceFile) and after every successful write (post-write getFile().lastModified, NOT wall-clock, so our own writes never read as external).
+let _wsKnownSize = 0;      // sync-safety #840: byte size (File.size) captured with the SAME getFile() as _wsKnownModified, everywhere the anchor is set. The second fingerprint: an external write landing in the same mtime bucket (FAT/exFAT 2s granularity, second-truncating or mtime-preserving sync tools) is caught by its size differing. 0 = never anchored (size-unknown → mtime-only verdict).
 let _wsSelfWriting = false;// sync-safety: true across our own atomic write+move, so the FileSystemObserver / refocus detector ignores the change WE just made (else it'd flag our own save as external and loop).
 let _wsReconciling = false;// sync-safety: a reconcile prompt is open; suppress autosave + further detection until the user decides.
 let _wsForceWrite = false; // sync-safety: the user chose "keep mine" — the next flush overwrites disk without re-checking staleness (one-shot, avoids a prompt loop).
@@ -25778,10 +25790,28 @@ function workspaceDocList(names) {
 //   - disk newer AND unsaved edits      → genuine divergence          → 'prompt'
 // `knownModified` null/0 (never anchored, e.g. a brand-new file) is treated as
 // "we own it" → 'write' (there is nothing on disk we could be clobbering).
-function reconcileAction({ diskModified, knownModified, dirty }) {
+//
+// #840: mtime alone cannot distinguish an EXTERNAL write that landed in the same
+// mtime bucket — FAT/exFAT's 2s granularity, sync clients truncating to whole
+// seconds, sync tools that preserve the SOURCE file's mtime — from our own
+// unchanged write. So the anchor carries a second fingerprint: the BYTE SIZE of
+// the file as we last read/wrote it (`_wsKnownSize`, File.size — free on the same
+// getFile()). At disk <= known, a DIFFERENT size proves the bytes are not our last
+// write → external (prompt/reload by dirty). Sizes unknown (either side missing /
+// non-finite, or knownSize 0 = never anchored) keep the mtime-only verdict, so a
+// pre-#840 caller or a fresh anchor never regresses to a false prompt.
+// RESIDUAL (documented, accepted): an external write with an identical mtime AND
+// an identical byte size remains undetectable — mtime+size is the practical
+// fingerprint short of hashing the file on every check.
+function reconcileAction({ diskModified, knownModified, diskSize, knownSize, dirty }) {
   const disk = Number(diskModified) || 0;
   const known = Number(knownModified) || 0;
-  if (disk <= known) return 'write';     // disk is what we last saw — safe
+  if (disk <= known) {
+    const ds = Number(diskSize), ks = Number(knownSize);
+    const sizesKnown = Number.isFinite(ds) && Number.isFinite(ks) && ks > 0;
+    if (!sizesKnown || ds === ks) return 'write';   // disk is what we last saw — safe
+    // same mtime bucket but different bytes → an external write we would otherwise clobber
+  }
   return dirty ? 'prompt' : 'reload';    // disk changed externally
 }
 
@@ -26136,10 +26166,16 @@ async function reopenWorkspaceDoc(dir, name) {
     // Genuine divergence: the file changed under us AND our in-memory copy is the SAME document
     // (a real edit since our last write). The file wins, but stash the local edits first so the
     // loss is never silent or unrecoverable — File menu, Restore earlier version (#746/#729).
+    // #845: the losing copy ALWAYS gets a flash — a failed stash (localStorage full, the likeliest
+    // case on a large doc) is exactly when silence would hide an unrecoverable loss, so the
+    // failure variant says so honestly instead of gating the whole hint on success.
     const sameDocDiverged = knownFileMod > 0 && localId && fileRoot.docId && localId === fileRoot.docId;
     adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
-    if (sameDocDiverged && stashPayloadAsPrev(localPayload, localId)) {
-      flashHint('“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy: File menu, Restore earlier version.');
+    if (sameDocDiverged) {
+      const stashed = stashPayloadAsPrev(localPayload, localId);
+      flashHint(stashed
+        ? '“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy: File menu, Restore earlier version.'
+        : '“' + displayName(name) + '” was updated elsewhere, so the disk version was loaded. Your local copy could not be kept as a restore point; storage may be full.');
     }
   } else {                                               // local autosave is newer than the file
     // A newer local timestamp does NOT prove the in-memory `root` is THIS file's document. On a fresh
@@ -26181,14 +26217,24 @@ async function reopenWorkspaceDoc(dir, name) {
       const stashed = unknownIdentity
         ? stashPayloadAsPrev(rekeyPayloadDocId(localPayload, root.docId), root.docId)
         : stashPayloadAsPrev(localPayload, localId);
+      // #845: a losing local copy always gets a flash, and the failure variant is honest — a
+      // failed stash (localStorage full) means the discarded copy is NOT recoverable, which is
+      // the one case the old success-gated wording left the user uninformed about.
       if (unknownIdentity) {
         flashHint(stashed
           ? 'This file carries no identity mark, so the file\'s version was kept. Your newer local copy: File menu, Restore earlier version.'
-          : 'This file carries no identity mark, so the file\'s version was kept.');
+          : 'This file carries no identity mark, so the file\'s version was kept. Your newer local copy could not be kept as a restore point; storage may be full.');
+      } else if (localId) {
+        // Provably a DIFFERENT document was open here; its copy is keyed under its own identity
+        // and surfaces in Restore earlier version when that document is opened again.
+        flashHint(stashed
+          ? 'Loaded “' + displayName(name) + '” from the folder. The document open before was kept; open it and use File menu, Restore earlier version.'
+          : 'Loaded “' + displayName(name) + '” from the folder. The document open before could not be kept as a restore point; storage may be full.');
       }
     }
   }
   _wsKnownModified = file.lastModified || 0;             // sync-safety: anchor to the on-disk version
+  _wsKnownSize = file.size || 0;                         // #840: size fingerprint rides the same anchor
   startWorkspaceWatch();                                 // sync-safety: watch the reopened file
   _wsWarned = false;
   return true;
@@ -26204,17 +26250,33 @@ async function reopenWorkspaceDoc(dir, name) {
 // on-disk copy and the current doc auto-writes continuously (#104), so its scanned
 // slice is ~live; sub-tick precision (overlaying the live tree) is a CF-2 concern,
 // not built here. Full re-scan each time — folders are small; incremental is later.
+// #845: the scan's no-docId skip must not be a SILENT hole in the index — a file whose
+// <_docid> was stripped by an external tool drops out of links, folder search and the [[
+// picker while still opening fine from the switcher, which reads as inexplicable breakage.
+// This pure note surfaces the count where the breakage shows (the broken-links report).
+// Opening a file stamps an identity (adoptDoc → ensureDocId), so the remedy is real.
+// Returns '' when there is nothing to say. (Node-tested.)
+function unmarkedFilesNote(count) {
+  const n = Number(count) || 0;
+  if (n <= 0) return '';
+  return n === 1
+    ? '1 file in the folder carries no identity mark yet, so links and search skip it; open it to stamp it.'
+    : n + ' files in the folder carry no identity mark yet, so links and search skip them; open one to stamp it.';
+}
 async function scanWorkspace(dir) {
   const docs = [];
+  let unmarked = 0;                      // #845: files skipped for lacking a <_docid>, surfaced via unmarkedFilesNote
   for (const name of await listWorkspaceNames(dir)) {
     try {
       const fh = await dir.getFileHandle(name);
       const r = fromOpml(await (await fh.getFile()).text());
-      if (!r.docId) continue;            // no stable address yet -> not cross-link-targetable
+      if (!r.docId) { unmarked++; continue; }   // no stable address yet -> not cross-link-targetable
       docs.push({ docId: r.docId, name, root: r });
     } catch (_) { /* skip unreadable / unparseable file */ }
   }
-  return buildWorkspaceIndex(docs);
+  const idx = buildWorkspaceIndex(docs);
+  idx.unmarked = unmarked;
+  return idx;
 }
 
 // Rebuild the index from the connected folder. Call (do NOT await — background) after any
@@ -26283,6 +26345,7 @@ async function switchWorkspaceDoc(name) {
       window.scrollTo(0, Math.min(saved.scrollY, Math.max(0, document.body.scrollHeight - window.innerHeight)));
     }));
     _wsKnownModified = file.lastModified || 0;                  // sync-safety: anchor to the version we just read
+    _wsKnownSize = file.size || 0;                              // #840: size fingerprint rides the same anchor
     startWorkspaceWatch();                                      // sync-safety: watch the newly-open file
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
     _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;  // affordance registers the tab + renders the strip
@@ -26427,8 +26490,12 @@ function degradeWorkspace(msg) {
 // which is the safe direction). Reads the LIVE handle's lastModified, so this is the
 // filesystem's clock, not wall-clock — our own writes won't later read as external.
 async function anchorWorkspaceFile() {
-  if (!workspaceFile) { _wsKnownModified = 0; return; }
-  try { _wsKnownModified = (await workspaceFile.getFile()).lastModified || 0; }
+  if (!workspaceFile) { _wsKnownModified = 0; _wsKnownSize = 0; return; }
+  try {
+    const f = await workspaceFile.getFile();
+    _wsKnownModified = f.lastModified || 0;
+    _wsKnownSize = f.size || 0;            // #840: the same getFile() carries the byte-size fingerprint
+  }
   catch (_) { /* keep the prior anchor; a real loss surfaces via degradeWorkspace on write */ }
 }
 
@@ -26481,9 +26548,9 @@ async function flushWorkspaceFile() {
     // it exactly once: the user explicitly chose "keep mine" in the reconcile prompt, so
     // overwriting is their decision, not a silent clobber (and it avoids a prompt loop).
     if (!_wsForceWrite) {
-      let diskModified = _wsKnownModified;
-      try { diskModified = (await workspaceFile.getFile()).lastModified || 0; } catch (_) {}
-      const action = reconcileAction({ diskModified, knownModified: _wsKnownModified, dirty: true });
+      let diskModified = _wsKnownModified, diskSize = _wsKnownSize;
+      try { const f = await workspaceFile.getFile(); diskModified = f.lastModified || 0; diskSize = f.size || 0; } catch (_) {}
+      const action = reconcileAction({ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty: true });
       if (action !== 'write') {                     // disk changed externally → reconcile, do not overwrite
         _wsWriting = false; _wsPending = false;
         await handleExternalChange(action === 'reload');
@@ -26513,9 +26580,19 @@ async function handleExternalChange(canReloadLossless) {
   if (canReloadLossless) {
     try {
       const file = await workspaceFile.getFile();
+      // #842: dirty===false only proves memory matches OUR last flush — a last-writer-wins sync
+      // tool may have already discarded that flushed content on disk, and adopting theirs would
+      // then discard it from memory too (the rolling snapshot trails by up to 5 minutes). Stash
+      // the local copy as an immediate restore point, captured BEFORE the adopt rewrites the
+      // autosave slot — the same #729/#746 doctrine as every boot-time losing-copy path.
+      let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
+      const localId = root?.docId || null;
       adoptDoc(fromOpml(await file.text()), { fileName, fileHandle: workspaceFile, workspaceFile });
       _wsKnownModified = file.lastModified || 0;
-      flashHint('Reloaded “' + displayName(fileName) + '”. It was updated elsewhere (sync).');
+      _wsKnownSize = file.size || 0;               // #840: size fingerprint rides the same anchor
+      const stashed = stashPayloadAsPrev(localPayload, localId);
+      flashHint('Reloaded “' + displayName(fileName) + '”. It was updated elsewhere (sync).'
+        + (stashed ? ' Your previous copy: File menu, Restore earlier version.' : ''));
     } catch (_) { /* unreadable — leave the in-memory copy; next write will reconcile again */ }
     return;
   }
@@ -26525,9 +26602,16 @@ async function handleExternalChange(canReloadLossless) {
   if (choice === 'theirs') {                       // load the disk version, discard local edits
     try {
       const file = await workspaceFile.getFile();
+      // #842: the discarded local edits get an immediate restore point (payload captured before
+      // the adopt rewrites the autosave slot) — a mid-session loss is held to the same "never
+      // silent or unrecoverable" doctrine as the boot-time reconcile paths (#729/#746).
+      let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
+      const localId = root?.docId || null;
       adoptDoc(fromOpml(await file.text()), { fileName, fileHandle: workspaceFile, workspaceFile });
       _wsKnownModified = file.lastModified || 0;
-      flashHint('Loaded the version from disk.');
+      _wsKnownSize = file.size || 0;               // #840: size fingerprint rides the same anchor
+      const stashed = stashPayloadAsPrev(localPayload, localId);
+      flashHint('Loaded the version from disk.' + (stashed ? ' Your previous copy: File menu, Restore earlier version.' : ''));
     } catch (e) { flashError('Could not load the disk version: ' + (e.message || e)); }
   } else if (choice === 'copy') {                  // save mine under a new name, then load theirs
     try {
@@ -26536,10 +26620,14 @@ async function handleExternalChange(canReloadLossless) {
       const file = await workspaceFile.getFile();  // then adopt theirs as the active doc
       adoptDoc(fromOpml(await file.text()), { fileName, fileHandle: workspaceFile, workspaceFile });
       _wsKnownModified = file.lastModified || 0;
+      _wsKnownSize = file.size || 0;               // #840: size fingerprint rides the same anchor
       refreshWorkspaceIndex();
       flashHint('Saved your version as “' + displayName(copyName) + '” and loaded the disk version.');
     } catch (e) { flashError('Could not save a copy: ' + (e.message || e)); }
   } else {                                          // 'mine' (or dismissed) → keep local, overwrite disk
+    // #842 (recorded asymmetry): no stash of the DISK version here, deliberately — it usually
+    // survives in the sync tool's own history/trash, and serializing a foreign tree into the
+    // bounded localStorage restore budget could evict a real local restore point to keep it.
     _wsForceWrite = true;                            // the next write wins without re-checking (our explicit choice)
     flushWorkspaceFile();
   }
@@ -26690,9 +26778,9 @@ async function reconcileDuplicateDocIds(dir) {
 let _wsObserver = null;
 async function checkExternalChange() {
   if (!workspaceFile || _wsSelfWriting || _wsReconciling || _wsWriting) return;
-  let diskModified = _wsKnownModified;
-  try { diskModified = (await workspaceFile.getFile()).lastModified || 0; } catch (_) { return; }
-  const action = reconcileAction({ diskModified, knownModified: _wsKnownModified, dirty });
+  let diskModified = _wsKnownModified, diskSize = _wsKnownSize;
+  try { const f = await workspaceFile.getFile(); diskModified = f.lastModified || 0; diskSize = f.size || 0; } catch (_) { return; }
+  const action = reconcileAction({ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty });
   if (action === 'reload') await handleExternalChange(true);
   else if (action === 'prompt') await handleExternalChange(false);
 }
@@ -26709,6 +26797,7 @@ function startWorkspaceWatch() {
 function stopWorkspaceWatch() {
   if (_wsObserver) { try { _wsObserver.disconnect(); } catch (_) {} _wsObserver = null; }
   _wsKnownModified = 0;
+  _wsKnownSize = 0;
 }
 // (2) refocus reload — universal fallback, registered once
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkExternalChange(); });
