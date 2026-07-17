@@ -188,6 +188,9 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 .logo:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:var(--r-xs)}
 .logo-mark{width:17px;height:17px;color:var(--acc);flex-shrink:0;display:block}
 .logo:hover{opacity:.75}
+/* #827 item 1: the "File ▾" cue beside the wordmark — the visible name for the menu the
+   welcome copy points at. The .mt-view-btn text-button recipe (.78em/600/muted, --r-sm). */
+.logo-file-cue{font-size:.78em;font-weight:600;color:var(--muted);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 7px;line-height:1;white-space:nowrap}
 
 .spacer{flex:1}
 .dirty-dot{width:6px;height:6px;border-radius:50%;background:var(--acc);display:none;flex-shrink:0}
@@ -954,6 +957,13 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .node-content h4.md-h{font-size:1.05em;font-variation-settings:'opsz' 14}
 .node-content h5.md-h{font-size:.8em;font-weight:600;text-transform:uppercase;letter-spacing:.07em}
 .node-content h6.md-h{font-size:.8em;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+/* #827 item 10: a pill inside a heading inherits the heading scale (.86em of an h1's 2em
+   nearly doubles it), dominating the line. A pill is a computed value — body content, not
+   display type — so inside any .md-h it steps back to the body pill size: .86 of the body's
+   1.0625rem (keep the two in sync with the body font-size rule). Rem-anchored so every
+   heading level, the zoomed step-downs, and the phone overrides all land on one pill scale;
+   the smaller box also stops stretching the heading's tighter line box. */
+.md-h :is(.dice-roll,.mk-roll,.gr-roll,.math-roll,.est-pill,.var-pill,.seq-pill){font-size:calc(.86 * 1.0625rem)}
 /* UXP-108: inside a zoomed page the .zoom-title (30px / opsz 60, 22px mobile) is the masthead,
    so descendant headings step down beneath it — a `# child` must not out-size/out-grade the title
    of the page it lives on (DL §2). h1→1.5em (~25.5px) / opsz 60 sits clearly under the 30px title
@@ -1876,6 +1886,15 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .logo{padding:4px 3px}
   .logo-mark{width:20px;height:20px}
   #toolbar-row{gap:6px;padding:0 8px}
+  /* #827 item 14: seven icon toggles no longer fit one 390px row at touch tap sizes — the
+     cluster compressed into a scrollbar-less hidden overflow, clipping the Notes toggle with
+     no affordance. Let the row wrap instead: the cluster is flex-shrink:0 here so, when it
+     does not fit, it drops whole onto its own full-width line (and wraps internally on
+     ultra-narrow screens) rather than compressing into the scroll. Everything stays visible;
+     the toolbar's ResizeObserver re-pads the outline below the taller bar. Desktop-narrow
+     windows (28px buttons) still fit one row, so nothing changes there. */
+  #toolbar-row{height:auto;min-height:44px;flex-wrap:wrap}
+  #tbtn-cluster{flex-shrink:0;flex-wrap:wrap;overflow:visible;max-width:100%;margin-left:auto}
   /* Phone: put the search magnifier immediately after the logo (hide the first spacer,
      the one between the dirty-dot and the search wrap), and keep the second spacer so it
      pushes the 5 icon toggles to the right. */
@@ -2039,7 +2058,15 @@ body:not(.v-guided) .bm-desc{display:none}
   .mt-rowh{width:22px;min-width:22px}
   .mt-rowh::before{opacity:.5}
   /* name-pill header: keep a comfortable tap height (tap around the pill = Column menu) */
-  .mt-colhead{padding-top:5px;padding-bottom:5px}
+  .mt-colhead{padding-top:5px;padding-bottom:5px;padding-right:34px}
+  /* #811: the ▾ Column-menu door needs a real finger target. The name pill fills the
+     header, so a center tap lands in name edit and the mouse's click-around-the-pill
+     zone is sub-finger-size. Give the ▾ its own tap column at the header's right edge
+     (pointer-events back on — the header click handler already routes any non-pill tap
+     to the Column menu; a click after a pan never fires, so scrolling over it is safe)
+     and pad the header (above) so a long name never sits under it. Press-and-hold
+     anywhere on the header is the other touch door (attachBaseHeaderTouchMenu). */
+  .mt-col-open{pointer-events:auto;top:0;right:0;transform:none;width:32px;height:100%;display:inline-flex;align-items:center;justify-content:center}
   /* toolbar controls: meet the coarse-pointer tap-target floor (~44px). The icon/level/
      logo buttons are 28px tall on desktop; give them a 44px touch height (keep the visual
      compact — padding/min-height grows the hit area, the glyph stays put). */
@@ -2178,7 +2205,10 @@ body:not(.v-guided) .bm-desc{display:none}
 <script type="application/xml" id="pl-embedded-doc"></script>
 <div id="toolbar">
   <div id="toolbar-row">
-    <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-menu" aria-label="Pointliner menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span></span>
+    <!-- #827 item 1: the logo alone never read as a menu door — the welcome copy says "open the
+         File menu" but nothing on screen said File. The "File ▾" cue names the door (it stays
+         visible on phones where the wordmark hides); one button, same click/keyboard semantics. -->
+    <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-menu" aria-label="File menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span><span class="logo-file-cue" aria-hidden="true">File ▾</span></span>
     <span class="dirty-dot" id="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
     <span class="spacer"></span>
     <div id="search-wrap">
@@ -2247,7 +2277,7 @@ body:not(.v-guided) .bm-desc{display:none}
   <div id="chronicle-strip" role="region" aria-label="Chronicle"></div>
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
-<div id="file-menu" role="dialog" aria-modal="true" aria-label="Pointliner menu">
+<div id="file-menu" role="dialog" aria-modal="true" aria-label="File menu">
   <!-- Header + two-pane body mirror the concept guide (#603): a title-and-search header row, then a
        category nav on the left and the selected category's actions on the right. Rows keep their ids
        so every handler wired elsewhere by id still fires; only their grouping/presentation changed. -->
@@ -3639,9 +3669,10 @@ const APPEARANCE_ICONS = ['fa-tag', 'fa-dollar-sign', 'fa-calendar-day', 'fa-inb
   'fa-circle-check', 'fa-clipboard-check', 'fa-calculator', 'fa-image', 'fa-folder-open',
   'fa-pen', 'fa-dice-d20', 'fa-circle-nodes', 'fa-link'];  // ONLY in-subset glyphs (verified against FA_GLYPHS)
 // A valid hashtag name: `[\w-]+` segments joined by `/` (mirrors the mdInline / collectTags
-// grammar). Used to reject a color on a name that could never render as a #tag. Pure.
+// grammar, incl. the #827 first-segment-needs-a-letter rule — a bare number like "1" could
+// never render as a #tag). Used to reject a color on a name that could never render. Pure.
 function isValidTagName(name) {
-  return /^[\w-]+(?:\/[\w-]+)*$/.test(String(name || '').replace(/^#/, ''));
+  return /^(?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*$/.test(String(name || '').replace(/^#/, ''));
 }
 // The swatch color for a tag, or null. Hierarchical like tag search: a color set on `thread`
 // also colors `thread/torn-letter` (the nearest configured ancestor wins). Pure.
@@ -5984,7 +6015,12 @@ function mdInline(s) {
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
   // hashtags: segments are [\w-]+, joined by / for nested tags (#thread/torn-letter).
   // A trailing / is NOT consumed (so "#a/" tags as #a), keeping the slug clean.
-  s = s.replace(/(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g, (_,t) => {
+  // #827 item 3: the FIRST segment must contain at least one letter — the (?=[\d_-]*[a-zA-Z])
+  // lookahead — so a bare number ("#1 priority", "#2024") stays plain text instead of
+  // false-positiving into a tag pill; digits elsewhere still tag (#v2, #2024-plans).
+  // This rule is mirrored in collectTags, parseSearchQuery/termMatchesNode, and
+  // isValidTagName — the three-place lockstep (CLAUDE.md); change one, change all.
+  s = s.replace(/(?<![a-zA-Z0-9])#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)/g, (_,t) => {
     const col = tagColorOf(t); // #464: an on-brand swatch, hierarchical (nearest configured ancestor)
     return `<a class="hashtag" data-tag="#${t}"${col ? ` data-color="${col}"` : ''} role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`;
   });
@@ -8981,6 +9017,16 @@ function hideColPanel() {
   const ret = mtPanelReturn; mtPanelReturn = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }
+// One-shot dismissal guard (#811). Menus opened from a MOUSEDOWN-activated control
+// (a bullet-menu row via mkCmdItem, the chrome Rows button, a Column-options list
+// row) get the SAME gesture's trailing click delivered AFTER the panel is open —
+// and it lands outside the panel, so the document-level outside-click closed the
+// menu in the same breath it opened (the header/row-handle openers never hit this:
+// they open on CLICK and stop propagation). The opener arms the guard; the next
+// click inside the window is that tail and is swallowed once. An unconsumed guard
+// (keyboard activation has no click tail) expires harmlessly.
+let _mtPanelOpenGuard = 0;
+function mtGuardPanelDismiss() { _mtPanelOpenGuard = Date.now() + 350; }
 
 // Shared builders for the column/row dropdown menus (§7.1 menu pattern: role=menu/
 // menuitem, arrow/Enter/Esc nav, reduced-motion). Both reuse the one #mt-colpanel
@@ -9184,6 +9230,53 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   }
 
   mtOpenMenu(panel, anchorEl);
+}
+
+// Touch door to the Column menu (#811): PRESS AND HOLD a column header. The mouse
+// path (click the header around the name pill) has no finger-sized target — the
+// pill fills the header, so a tap lands in name edit. Mirrors the bullet's
+// attachBulletTouchGestures: a 450ms hold opens the menu, movement past slop
+// hands the gesture back to the native pan/scroll, and a fired hold swallows its
+// own tap tail (touchend preventDefault) so the name pill under the finger never
+// enters edit and the trailing click can't dismiss the just-opened panel. No
+// touch-action change: a stationary hold needs none, and the grid's pan must stay
+// native (see the base touch-action note in the hover:none CSS). A focused pill
+// (name edit in progress) keeps its native selection behavior. Attached only on
+// touch devices (IS_TOUCH), only on editable grids (read-only bases render
+// .mt-headcell, never .mt-colhead, so the selector cannot match there).
+function attachBaseHeaderTouchMenu(host, node) {
+  let timer = null, sx = 0, sy = 0, fired = false;
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  host.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;   // a real mouse has the click zone + hover cues
+    const colhead = e.target.closest('.mt-colhead');
+    if (!colhead || e.target.closest('.mt-col-resize')) return;
+    const pill = e.target.closest('.mt-name-pill');
+    if (pill && pill === document.activeElement) return;   // mid name-edit: native selection wins
+    sx = e.clientX; sy = e.clientY; fired = false;
+    cancel();
+    timer = setTimeout(() => {
+      timer = null; fired = true;
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+      showColPanel(node, +colhead.dataset.c, colhead);
+    }, 450);
+  });
+  host.addEventListener('pointermove', e => {
+    if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel();   // a pan/scroll, not a hold
+  });
+  host.addEventListener('pointerup', cancel);
+  host.addEventListener('pointercancel', () => { cancel(); fired = false; });
+  // A fired hold must swallow its own tap tail: without this the synthesized click
+  // focuses the contenteditable name pill (name edit) under the open menu, and the
+  // document-level outside-click handler closes the panel the hold just opened.
+  host.addEventListener('touchend', e => {
+    if (!fired) return;
+    fired = false;
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+  // Chromium fires contextmenu at its own long-press threshold; the Column menu is
+  // already open by then — suppress the competing native callout for the fired hold.
+  host.addEventListener('contextmenu', e => { if (fired) e.preventDefault(); });
 }
 
 // ── whole-base operations (surfaced on the base bullet's menu) ────────────────
@@ -9659,6 +9752,7 @@ function mtAddRowsCapSection(node, addSection, addItem, divider = false) {
 // The rows-cap menu (the chrome button's pointer path). Reuses the shared
 // mt-colpanel menu chrome so it matches the Column/Row/card menus.
 function showBaseRowsMenu(node, anchorEl) {
+  mtGuardPanelDismiss();   // opened on mousedown: its own click tail must not dismiss it
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const { addSection, addItem } = mtMenuBuilder(panel);
@@ -9670,6 +9764,7 @@ function showBaseRowsMenu(node, anchorEl) {
 // whole-base setting instead of leaving view/rows as chrome-only buttons. The
 // chrome (the view switcher strip, the rows button) stays the on-widget path.
 function showBaseSettingsMenu(node, anchorEl) {
+  mtGuardPanelDismiss();   // opened from a bullet-menu row (mousedown): guard the click tail
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const { addSection, addItem } = mtMenuBuilder(panel);
@@ -9678,6 +9773,37 @@ function showBaseSettingsMenu(node, anchorEl) {
   [['table','Table'],['board','Board'],['cards','Cards'],['calendar','Calendar']]
     .forEach(([k, label]) => addItem(label, { active: kind === k, onApply: () => mtSetView(node, k) }));
   mtAddRowsCapSection(node, addSection, addItem, true);
+  mtOpenMenu(panel, anchorEl);
+}
+// Pure: the user-facing label for a base column — the header cell's text with
+// markdown stripped, or "Column N" when blank. (Node-testable; the columns door.)
+function mtColumnLabel(model, c) {
+  const nm = stripMd(String(model.rows?.[0]?.[c] ?? '')).trim();
+  return nm || 'Column ' + (c + 1);
+}
+// The bullet-menu door to per-column ops (#811): list the base's columns; picking
+// one opens its Column menu (Calculate, Formula, Show as, Sort, Alignment, Width,
+// Insert/Move/Delete). The on-widget doors (click around the name pill, the ▾,
+// the touch press-and-hold) stay the direct paths; this one rides the bullet menu,
+// which every input method can open. The pick defers a frame, like the Column
+// panel's Formula item, so hideColPanel's focus-restore runs before the Column
+// menu claims focus.
+function showBaseColumnsMenu(node, anchorEl) {
+  mtGuardPanelDismiss();   // opened from a bullet-menu row (mousedown): guard the click tail
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const model = mtModelRead(node);
+  addSection('Column options');
+  model.aligns.forEach((_, c) => {
+    addItem(mtColumnLabel(model, c), { onApply: () => requestAnimationFrame(() => {
+      // The re-open replaces the columns list with the picked column's menu; the pick's
+      // own click tail lands outside the re-anchored panel, so guard this hop too.
+      mtGuardPanelDismiss();
+      const th = mtHost(node.id)?.querySelector(`th[data-c="${c}"]`);
+      showColPanel(node, c, th || anchorEl);
+    }) });
+  });
   mtOpenMenu(panel, anchorEl);
 }
 
@@ -10139,6 +10265,9 @@ function buildTableWidget(node, readOnly) {
       showRowPanel(node, +rh.dataset.r, rh);
     }
   });
+  // #811: the touch door to the same Column menu — press and hold a column header
+  // (a finger tap on the header lands on the name pill, which is name edit).
+  if (IS_TOUCH) attachBaseHeaderTouchMenu(host, node);
   // column resize: drag the right-edge grip; double-click it to auto-fit (clear width)
   host.addEventListener('mousedown', e => {
     const grip = e.target.closest('.mt-col-resize'); if (!grip) return;
@@ -10581,7 +10710,7 @@ function renderRow(r) {
   // the user is past that, so they strip to a bare '…' (ux.md dial table: empty-state hints "hidden" in
   // Lean). The 'Section label…' placeholder stays — it NAMES what the field is, a label, not a helper.
   const paraHint = isStandardOrLean() ? '…' : 'Prose block. Enter = line break · ⇧+Enter = new point';
-  const entryHint = isStandardOrLean() ? '' : 'Type / for blocks, @ to insert or just write';
+  const entryHint = isStandardOrLean() ? '' : 'Type / for a to-do, heading or list · @ for a pill · or just write';
   content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? paraHint : (isEntryPoint ? entryHint : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
@@ -13625,7 +13754,9 @@ function parseSearchQuery(q) {
     // a|b, a negated -|, and a quoted "|" all stay literal text (the escape hatch).
     if (tok === '|' && !neg) { terms.push({ kind: 'or' }); continue; }
     let t;
-    if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)) && t[1].length <= 512) terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
+    // #827 item 3: the first segment needs a letter (mdInline/collectTags lockstep), so a
+    // "#1" query is a literal text search — matching the "#1 priority" prose it no longer tags.
+    if ((t = tok.match(/^#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)$/)) && t[1].length <= 512) terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
     // a >512-char "#tag" (never a real hashtag) falls through to a text term, so termMatchesNode
     // never feeds it to `new RegExp('...#'+value+'...')` — a ~32k tag exceeds V8's regex program
     // limit and throws mid-render(). (Adversarial pass, blast: crash.) The `else if` chain below
@@ -13822,7 +13953,9 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     // doc-wide index: is any point linking TO this one (same-document; the cross-doc
     // index is CF-4's, not this filter's).
     if (term.value === 'link' && /\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|[^\]\n]*)?\]\]/i.test(node.text || '')) return true;
-    if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\w-]/.test(tagScanText(node.text))) return true;
+    // (#827 item 3: the sniff requires a letter before any /, mirroring the tag grammar,
+    // so a bare "#1" no longer counts as carrying a tag)
+    if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\d_-]*[a-zA-Z]/.test(tagScanText(node.text))) return true;
     if (term.value === 'backlink') {
       const lk = links || collectLinks();
       if ((lk.backlinks[node.id] || []).length) return true;
@@ -14985,7 +15118,7 @@ function exitEdit(content, node) {
     // the tag roster may have crossed the "worth rolling on" threshold — nudge once about
     // {roll: #tag}. Cheap: the tag-count scan only runs when a tag was newly typed, and the
     // Guided-only + once-ever guards inside short-circuit the rest.
-    if (/(?<![a-zA-Z0-9])#[\w-]/.test(node.text) && node.text !== prevText) maybeNudgeRoll();
+    if (/(?<![a-zA-Z0-9])#[\d_-]*[a-zA-Z]/.test(node.text) && node.text !== prevText) maybeNudgeRoll();   // the #827 letter rule: a bare "#1" is not a tag, so it never nudges
     const tblfm = extractTblfm(node.text); // the user may have typed/edited a #+TBLFM: line
     // A #+TBLFM: fragment that didn't land on its own line can't be associated with the
     // grid; surface it instead of silently dropping the formula (P4 feedback).
@@ -16330,7 +16463,9 @@ _mtColPanel.addEventListener('keydown', e => {
 });
 document.addEventListener('click', e => {
   // The header-cell opener stops propagation when it opens the panel, so a click that
-  // reaches here is always "outside" — close unless it landed inside the panel.
+  // reaches here is always "outside" — close unless it landed inside the panel. A
+  // mousedown-activated opener's own click tail is swallowed once by the guard (#811).
+  if (Date.now() < _mtPanelOpenGuard) { _mtPanelOpenGuard = 0; return; }
   if (!e.target.closest('#mt-colpanel')) hideColPanel();
 });
 
@@ -16617,6 +16752,15 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       sec:'Base', prim:true, icon: { fa:'fa-solid fa-table-list', fb:'▤' },
       label: 'View & rows shown',
       fn: () => { hideBpop(); showBaseSettingsMenu(node, bulletEl); },
+    });
+    // #811: per-column ops from the bullet menu too. The header's own doors need a
+    // pointer on the header; this one rides the menu every input method can open
+    // (touch long-press on the bullet included). Authored bases only: a query
+    // base's projected headers are read-only and have no Column menu.
+    if (!node.qbase) actions.push({
+      sec:'Base', prim:true, icon: { fa:'fa-solid fa-table-cells', fb:'▥' },
+      label: 'Column options',
+      fn: () => { hideBpop(); showBaseColumnsMenu(node, bulletEl); },
     });
   }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
@@ -19347,7 +19491,9 @@ function collectTags(rootNode) {
   if (useCache) rootNode = root;
   if (useCache && _tagsCacheVer === _varsVer && _tagsCached) return _tagsCached;
   const counts = new Map();
-  const TAG_RE = /(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g; // mirror mdInline's hashtag rule (nested tags via /)
+  // mirror mdInline's hashtag rule (nested tags via /; #827 item 3: the first segment
+  // needs a letter, so a bare "#1" is never indexed as a tag)
+  const TAG_RE = /(?<![a-zA-Z0-9])#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)/g;
   function walk(n) {
     // Blank [[…]] tokens (link/artifact targets) AND the leading org priority marker
     // `[#A]` (UXP-109), so neither the `#id` inside a link nor the `#A` inside a priority
@@ -20068,8 +20214,14 @@ function renderSeqGenPill(key, g) {
   const cta = ended ? 'Spent. Edit to reset'
     : willRecycle ? 'Last card. Click to reshuffle and draw'
     : ('Click to ' + verb);
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${cta}"`
-    + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${cta}">`
+  // #827 item 6: a shuffle deck's position is invisible beyond the last-card whisper —
+  // say how many cards remain in the bag in the title/aria (the glanceable count). Only
+  // for a mid-round deck: a pristine bag is undefined (lazy), and the empty-bag boundary
+  // is already voiced by the "Last card" cta. Display-layer only; draw state untouched.
+  const left = g.mode === 'shuffle' && Array.isArray(g.bag) && g.bag.length > 0 && !ended
+    ? `${g.bag.length} of ${g.items.length} cards left. ` : '';
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${left}${cta}"`
+    + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${left}${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -20094,8 +20246,12 @@ function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)"><span class="gr-ico"><i class="fa-solid fa-shuffle" aria-hidden="true"></i></span> ?</span>`;
   if (g.mode) return renderSeqGenPill(key, g);   // a stateful sequence rides on the grammar record
   // a non-anon record's origin is a user-declared, doc-wide callable name —
-  // show it (the named-table affordance: tells you what {name} calls)
-  const name = !g.anon && g.origin ? g.origin : '';
+  // show it (the named-table affordance: tells you what {name} calls).
+  // #827 item 15: the dialog placeholder's default start rule is literally named
+  // "origin", so that one is NOT a chosen name — captioning it ("origin | result")
+  // reads as noise. Hide the caption for it (and for anon records); a real name
+  // (loot, monster) keeps teaching what {name} calls.
+  const name = !g.anon && g.origin && g.origin.toLowerCase() !== 'origin' ? g.origin : '';
   const nameTag = name ? `<span class="gr-name" title="Callable as {${escQ(name)}}">${escHtml(name)}</span>` : '';
   // UXP-140/145: an oracle answer gets a whisper of valence — a leading-Yes tints the result plate
   // faintly positive, a leading-No muted. The INK stays full-contrast --fg (the verdict is
@@ -29514,17 +29670,18 @@ const GUIDE = [
 
   { id:'overview', cat:'getting-around',
     title:'Start here',
-    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nThree keys put everything within reach without memorizing anything. Type `{` and a menu lists every kind of pill you can write, with a scaffold to fill in and a help mark that opens its guide. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table), and `@` anywhere to insert a pill from a dialog. If you are not sure how to write something, type `{` and browse. The rest of this guide tours what those menus hold; if you would rather not read, open the Put it together recipes at the end for finished examples you can copy.",
+    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nThree keys put everything within reach without memorizing anything. Type `{` and a menu lists every kind of pill you can write, with a scaffold to fill in and a help mark that opens its guide. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table), and `@` anywhere to insert a pill from a dialog. If you are not sure how to write something, type `{` and browse. The rest of this guide tours what those menus hold; if you would rather not read, open the Put it together recipes at the end for finished examples you can copy, or choose Start from an example in the File menu to drop a ready-made, fully live example (a solo-RPG oracle, a character sheet, a campaign log) into your document to click through and then delete.",
     related:['brace-picker','point-types','dice','search-ops'],
     examples:[
       { syn:'Enter / Tab',    desc:'new point, then nest it under the one above' },
       { syn:'{2d6}',          desc:'a live pill: roll two dice, click to re-roll' },
       { syn:'{',              desc:'a menu of every pill you can write' },
       { syn:'/',              desc:'change what a point is (heading, to-do, table)' },
+      { syn:'File → Start from an example', desc:'drop in a ready-made live example to explore' },
     ] },
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
-    body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks or spot everything that's overdue. Type words and every word must appear. Put a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.",
+    body:"Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks or spot everything that's overdue. Type words and every word must appear.\n\nPut a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.",
     related:['saved-searches','query','hashtags'],
     examples:[
       { syn:'word word',              desc:'all terms must match' },
@@ -29588,7 +29745,7 @@ const GUIDE = [
     ] },
   { id:'refile', cat:'getting-around', covers:['refile'],
     title:'Refile a point',
-    body:"Move a point and everything under it to a new home far across the outline: drop a stray idea into the right project, tuck a finished item under an archive or pull a buried note up to the top. Type /refile:name to move it under the point with that title (or /refile:top to lift it out of all nesting), or /refile on its own to browse the whole outline as a searchable tree: type to filter, walk it with the arrow keys, then press Enter to move the point there as the chosen parent's last child. It's the searchable alternative to dragging or indenting one step at a time.",
+    body:"Move a point and everything under it to a new home far across the outline: drop a stray idea into the right project, tuck a finished point under an archive or pull a buried point up to the top. Type /refile:name to move it under the point with that title (or /refile:top to lift it out of all nesting), or /refile on its own to browse the whole outline as a searchable tree: type to filter, walk it with the arrow keys, then press Enter to move the point there as the chosen parent's last child. It's the searchable alternative to dragging or indenting one step at a time.",
     related:['move-nest','multi-select'],
     examples:[
       { syn:'/refile:Archive',  desc:'move it under the Archive point, inline' },
@@ -29646,7 +29803,7 @@ const GUIDE = [
     ] },
   { id:'secret', cat:'writing', covers:['secret'],
     title:'Secret and spoiler blocks',
-    body:"Hide a line behind a blur until you choose to reveal it. Start a line with >! and it becomes a spoiler: in reading view it shows as a soft blur, and a click (or Enter or Space when it has focus) reveals it, click again to hide it. It is good for two things. Hand someone a self-contained copy of a document and your GM notes or answers stay covered until they look. Or blind yourself: write down an oracle result, a clue or a twist you do not want to see yet, and reveal it only when the story reaches it. A spoiler can span several lines, one >! per line, and pills and links inside it still work once revealed. Revealing is not saved, so a spoiler is blurred again next time the point is drawn. In an exported Markdown or text file a spoiler line is written with a (spoiler) label in front so a reader is warned before they read it.",
+    body:"Hide a line behind a blur until you choose to reveal it. Start a line with >! and it becomes a spoiler: in reading view it shows as a soft blur, and a click (or Enter or Space when it has focus) reveals it, click again to hide it. It is good for two things. Hand someone a self-contained copy of a document and your game master (GM) notes or answers stay covered until they look. Or blind yourself: write down an oracle result, a clue or a twist you do not want to see yet, and reveal it only when the story reaches it. A spoiler can span several lines, one >! per line, and pills and links inside it still work once revealed. Revealing is not saved, so a spoiler is blurred again next time the point is drawn. In an exported Markdown or text file a spoiler line is written with a (spoiler) label in front so a reader is warned before they read it.",
     related:['inline-md','point-types'],
     examples:[
       { syn:'>! hidden text',   desc:'a spoiler line, blurred until revealed' },
@@ -29681,7 +29838,7 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead. In a base, arrow keys move between cells, Alt with an arrow moves the whole column (left/right) or row (up/down), Alt+Shift with an arrow inserts a column or row on that side, Alt+R cycles a column's role (Plain, Status, Date, Number), and Alt with , or . narrows or widens the column; the column menu (or Shift+F10 on a cell) has sorting, delete, the Width presets and the rest. Cells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead.\n\nIn a base, arrow keys move between cells, and the Alt combinations below move, insert and resize columns and rows and set a column's role without leaving the keyboard; the column menu (or Shift+F10 on a cell) has sorting, delete, the Width presets and the rest. On touch, press and hold a column header (or tap the arrow at its right edge) to open that menu; the base's bullet menu lists it too, under Column options.\n\nCells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
     related:['base-views','querybase'],
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'a typed table that renders formatted' },
@@ -29695,12 +29852,15 @@ const GUIDE = [
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
   { id:'base-views', cat:'writing',
     title:'Base views',
-    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable one), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. A query base figures this out from its own columns (a due or start column is the date), so its Calendar just works. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.",
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable one), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. A query base figures this out from its own columns (a due or start column is the date), so its Calendar just works. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.\n\nA long base can also stay out of the way in the outline. The chevron at its top left collapses it to a one-line strip (click it again, or zoom in, to see the rows), and the Rows button beside it caps how many rows show there (All, 5, 10 or 20), with a Zoom in to see more footer for the rest. Zoomed into the base, every row always shows. The view and the rows cap are also in the point's menu under View & rows shown.",
     related:['tables','querybase','properties'],
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },
       { syn:'Alt + R',        desc:'mark a column Status or Date (so Board / Calendar can use it)' },
       { syn:'Alt + ← / →',    desc:'move the focused board card to the previous or next lane' },
+      { syn:'▶ (top left of a base)', desc:'collapse it to one line in the outline' },
+      { syn:'Rows: all',      desc:'cap the rows shown in the outline; zoom in to see the rest' },
+      { syn:'Menu → View & rows shown', desc:'the view and rows settings from the point menu' },
     ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
@@ -29710,6 +29870,7 @@ const GUIDE = [
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
       { syn:'[text](url)',       desc:'link (type it, or @ → Link)' },
+      { syn:'![alt](url)',       desc:'image (type it, or @ → Image)' },
     ] },
   { id:'notes', cat:'writing', covers:['note'],
     title:'Per-point notes',
@@ -29745,7 +29906,7 @@ const GUIDE = [
     ] },
   { id:'sort-children', cat:'todos',
     title:'Sort by state and priority',
-    body:"Tidy a busy list into working order in one move: bring the open work to the top and let the finished items sink. Open the bullet menu of the parent point and choose Sort children by state / priority, and its child points reorder by their to-do state and priority. Unfinished points come before done ones, higher priority before lower (an A before a B before a C, unmarked last), and within the same state they follow the order of their workflow. It is one undo away if you preferred the old order, and it sorts only the direct children of that point, not the whole tree. The option appears once a point has two or more children.",
+    body:"Tidy a busy list into working order in one move: bring the open work to the top and let the finished points sink. Open the bullet menu of the parent point and choose Sort children by state / priority, and its child points reorder by their to-do state and priority. Unfinished points come before done ones, higher priority before lower (an A before a B before a C, unmarked last), and within the same state they follow the order of their workflow. It is one undo away if you preferred the old order, and it sorts only the direct children of that point, not the whole tree. The option appears once a point has two or more children.",
     related:['todo-syntax','sequences','properties'],
     examples:[
       { syn:'Menu → Sort children by state / priority', desc:"reorder a point's children" },
@@ -29775,7 +29936,7 @@ const GUIDE = [
     ] },
   { id:'clock', cat:'todos', covers:['clock'],
     title:'Progress clocks',
-    body:"A clock you fill in segments, for tracking a rising danger, a countdown or any fuse that fills as a situation develops. It comes in two forms. A manual clock, [o 0/6], is yours to advance whenever the story says so: click it to advance one segment, or Shift+click to step it back. On a touch screen, tap to advance and press and hold to step back. From the keyboard, open the point's menu (Shift+F10 or the bullet menu): its Pills section lists Advance clock and Step clock back. A counting clock, [o /6] with the count left empty, fills itself from the checked sub-points and #DONE children beneath it, exactly the way a progress bar counts. Add or finish a sub-point and it advances, delete or reopen one and it drops back. On a counting clock, the sub-point whose completion fills the last segment is marked with a small filled ring, so you can see which one finished it. Change the 6 for any size, such as a 4 or an 8. Either form shows as a ring that fills up, with the exact count beside it, and exports as that ring and count (a half-full six-clock reads as a filled half-ring next to 3/6).",
+    body:"A clock you fill in segments, for tracking a rising danger, a countdown or any fuse that fills as a situation develops. It comes in two forms. A manual clock, [o 0/6], is yours to advance whenever the story says so: click it to advance one segment, or Shift+click to step it back. On a touch screen, tap to advance and press and hold to step back. From the keyboard, open the point's menu (Shift+F10 or the bullet menu): its Pills section lists Advance clock and Step clock back.\n\nA counting clock, [o /6] with the count left empty, fills itself from the checked sub-points and #DONE children beneath it, exactly the way a progress bar counts. Add or finish a sub-point and it advances, delete or reopen one and it drops back. On a counting clock, the sub-point whose completion fills the last segment is marked with a small filled ring, so you can see which one finished it.\n\nChange the 6 for any size, such as a 4 or an 8. Either form shows as a ring that fills up, with the exact count beside it, and exports as that ring and count (a half-full six-clock reads as a filled half-ring next to 3/6).",
     related:['progress','meter'],
     examples:[
       { syn:'[o 0/6]',        desc:'a manual clock, click to advance (Shift+click steps back)' },
@@ -29784,7 +29945,7 @@ const GUIDE = [
     ] },
   { id:'meter', cat:'todos', covers:['meter'],
     title:'Meters',
-    body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change. You can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row. If a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
+    body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change.\n\nYou can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row.\n\nIf a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
     related:['progress','clock'],
     examples:[
       { syn:'{meter: hp/hpmax}', desc:'a bar of one property over another' },
@@ -29823,9 +29984,9 @@ const GUIDE = [
     body:"Jot down a task, an idea or a quick note the moment it strikes without leaving what you're doing or hunting for the right spot. It works with nothing set up: with no inbox chosen, captures land at the top level of the document. What you type is Markdown-aware, so a typed `- [ ]` becomes a to-do.\n\nCapture is a toolbar strip, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (or the toolbar inbox button) to toggle it open below the toolbar with the cursor in its input, while the outline stays fully visible and usable underneath. The strip stays open after each capture with a running count, so you can empty your head in one sitting. Enter captures, Shift+Enter adds a line break, Esc closes.\n\nSet up to 10 inboxes, numbered 1 to 10, and capture into any of them from anywhere; each entry lands as a new point at the bottom of that inbox. `Ctrl/Cmd+Shift+1` through 0 open the strip targeting inbox 1 to 10. If a numbered slot has no inbox yet and a point is selected, that point becomes that inbox. `Ctrl/Cmd+Alt+1` through 0 sets the current point as inbox 1 to 10, and the point's menu adds or removes an inbox slot too.\n\nWhile the strip is open the same number keys switch the destination (they move the selector, they do not reopen it). Click the destination name to open the inbox manager, where you pick a slot or add and remove inboxes inline; the small ↗ next to the name jumps to that inbox point. In the manager, clicking a chip (its number badge or its name) selects it as the capture target, and each chip's own ↗ jumps to that inbox's point. To change which number a chip answers to, reorder the chips: drag one, or focus it and press Alt+Left or Alt+Right.\n\nWhen Pointliner is installed as an app (or open on the web), you can also capture from a link. Opening it with `?append=your%20text` in the address adds that text as a point to your inbox, and sharing a page or selection to Pointliner from your system share menu does the same. It is added as plain text, never run as a pill, and the address is cleaned up so a reload will not add it twice; with no inbox set it lands at the top level, like any capture.",
     related:['templates','journal'],
     examples:[
-      { syn:'⌘⇧I / toolbar button', desc:'toggle the Capture strip from anywhere' },
-      { syn:'⌘⇧1 … ⌘⇧0',           desc:'capture straight to inbox 1 to 10' },
-      { syn:'⌘⌥1 … ⌘⌥0',           desc:'set the current point as inbox 1 to 10' },
+      { syn:'Ctrl/Cmd+Shift+I / toolbar button', desc:'toggle the Capture strip from anywhere' },
+      { syn:'Ctrl/Cmd+Shift+1 … 0',   desc:'capture straight to inbox 1 to 10' },
+      { syn:'Ctrl/Cmd+Alt+1 … 0',     desc:'set the current point as inbox 1 to 10' },
       { syn:'Menu → Set as inbox N', desc:'add this point as the next inbox slot' },
       { syn:'- [ ] buy milk',       desc:'a typed task captures as a to-do' },
       { syn:'?append=Buy milk',     desc:'capture from a link or the share menu' },
@@ -29840,16 +30001,6 @@ const GUIDE = [
     ] },
 
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
-  { id:'custom-calendars', cat:'dates',
-    title:'Custom calendars',
-    body:"Give a document its own fictional calendar: your world's months, week length, day names, and era, plus the current in-world date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, dates in the document speak that calendar: due dates, the agenda month and week, the date picker, and date math. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as your story moves. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.\n\nReal and in-world dates can coexist in one document, because a date's calendar is decided by where the point lives. Your journal always reads the real calendar, even in a fiction-calendar document, so it keeps tracking actual days. To keep a campaign log in world time, make its home point, open its bullet menu and choose Bind as in-world log: every date inside that subtree then reads the campaign's calendar while the rest of the document stays on the regular one. The timeline lays each row out under its own calendar, real and in-world months on separate axes.",
-    related:['dates','agenda','chronicle'],
-    examples:[
-      { syn:'File → Custom calendar', desc:"define or edit this document's calendar" },
-      { syn:'Firstfrost: 30',         desc:'a month line: name and day count' },
-      { syn:'due: 1204-04-12',        desc:"dates use the calendar's own year-month-day" },
-      { syn:'Menu → Bind as in-world log', desc:'this subtree reads the campaign calendar; the rest stays real' },
-    ] },
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
     body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.",
@@ -29864,7 +30015,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done items sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a seven-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar) or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centered one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
+    body:"See all your upcoming work without scrolling the outline. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done points sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a seven-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar) or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centered one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
     related:['dates','timeline','custom-calendars'],
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
@@ -29900,6 +30051,16 @@ const GUIDE = [
       { syn:'Menu → Bind as in-world log', desc:'make this point the chronicle home' },
       { syn:'◂ / ▸',           desc:'step the in-world day back or forward' },
       { syn:'Click the date',  desc:'jump the cursor to a day you name' },
+    ] },
+  { id:'custom-calendars', cat:'dates',
+    title:'Custom calendars',
+    body:"Give a document its own fictional calendar: your world's months, week length, day names, and era, plus the current in-world date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, dates in the document speak that calendar: due dates, the agenda month and week, the date picker, and date math. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as your story moves. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.\n\nReal and in-world dates can coexist in one document, because a date's calendar is decided by where the point lives. Your journal always reads the real calendar, even in a fiction-calendar document, so it keeps tracking actual days. To keep a campaign log in world time, make its home point, open its bullet menu and choose Bind as in-world log: every date inside that subtree then reads the campaign's calendar while the rest of the document stays on the regular one. The timeline lays each row out under its own calendar, real and in-world months on separate axes.",
+    related:['dates','agenda','chronicle'],
+    examples:[
+      { syn:'File → Custom calendar', desc:"define or edit this document's calendar" },
+      { syn:'Firstfrost: 30',         desc:'a month line: name and day count' },
+      { syn:'due: 1204-04-12',        desc:"dates use the calendar's own year-month-day" },
+      { syn:'Menu → Bind as in-world log', desc:'this subtree reads the campaign calendar; the rest stays real' },
     ] },
 
   // ── Generators (guide) ────────────────────────────────────────────────────
@@ -29996,7 +30157,7 @@ const GUIDE = [
     ] },
   { id:'deck', cat:'generators', covers:['deck'],
     title:'Decks & repeats',
-    body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. A number after shuffle deals that many cards at once ({shuffle 3: …}), the classic 'draw three, no duplicates'. You can also expand a template multiple times at once, and each expansion rolls independently, so you get several different results in one click.",
+    body:"Step through a list without repeating, cycle through states in rotation or deal from a shuffled deck. Useful for flashcard sequences, rotating chores, non-repeating daily prompts or any 'what's next' situation. Write a mode word before the colon: `{shuffle: a|b|c}` deals the choices without repeating, `{cycle: …}` goes in order and loops, `{once: …}` runs through and stops, and `{stopping: …}` advances then stays on the last. Click the pill to draw the next one.\n\nA number after shuffle deals that many cards at once (`{shuffle 3: …}`), the classic 'draw three, no duplicates'. To get several results in one click instead, repeat a template: `{3x: {beast}}` expands it three times, each rolled independently.",
     related:['grammar','dice','oracle'],
     examples:[
       { syn:'{shuffle: a|b|c}', desc:'deal without repeats' },
@@ -30100,7 +30261,7 @@ const GUIDE = [
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
-    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-` and `*`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
+    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-`, `*` and `/`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
     related:['math','rollups'],
     examples:[
       { syn:'{5 to 10}',      desc:'a 90% range, most likely 5 to 10' },
@@ -30111,7 +30272,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max. By default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point (a live writing target), and reading time is just words(subtree) / 200.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
@@ -30124,7 +30285,7 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'], related:['rollups','properties','recipe-budget'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough items, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog. Write the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough points, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog.\n\nWrite the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
@@ -30199,34 +30360,37 @@ const GUIDE = [
   // ── Files & workspace (guide) ─────────────────────────────────────────────
   { id:'saving', cat:'files',
     title:'Saving your work',
-    body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step. If auto-save has overwritten something you wanted back, open the File menu and choose Restore earlier version to roll back to the last auto-saved snapshot.",
+    body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step. Sync is whatever you already use: the file is yours, so keeping it in Dropbox, iCloud or a git repository carries it between machines with no account or server.\n\nIf auto-save has overwritten something you wanted back, open the File menu and choose Restore earlier version to roll back to the last auto-saved snapshot. And when you use Pointliner at its web address, an Install Pointliner row appears in the File menu once your browser offers it: installed, the app opens in its own window and keeps working offline.",
     related:['export','workspace-documents'],
     examples:[
       { syn:`${MOD}+S`,              desc:'save to your file (or download a copy if your browser can’t write to disk)' },
       { syn:`${MOD}+O`,              desc:'open a saved file' },
       { syn:'File → Connect folder', desc:'auto-save into a folder (Chromium only)' },
       { syn:'File → Restore earlier version', desc:'roll back to the last auto-saved snapshot' },
+      { syn:'File → Install Pointliner', desc:'install the web app (shown when your browser offers it)' },
     ] },
   { id:'workspace-documents', cat:'files',
     title:'Working with a folder of documents',
-    body:"Keep a whole library of documents in one folder on your computer and move between them the way you would tabs: a project document, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge or a similar browser only) and every document saves to disk as you type and reopens right where you left it after a reload. Open File then Switch document to see all the documents in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a document any time by clicking its name at the top left and typing a new one. Each document also remembers where you were: switch away and come back and it restores your zoom and scroll position. File then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
+    body:"Keep a whole library of documents in one folder on your computer and move between them the way you would tabs: a project document, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge or a similar browser only) and every document saves to disk as you type and reopens right where you left it after a reload.\n\nOpen File then Switch document to see all the documents in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a document any time by clicking its name at the top left and typing a new one. Each document also remembers where you were: switch away and come back and it restores your zoom and scroll position.\n\nThe documents you open also line up as a tab strip under the toolbar, so switching back is one click. The ✕ on a tab closes it (the file stays in the folder), the + at the end opens another and your open tabs come back after a reload. From the keyboard, `Ctrl/Cmd+Shift+]` and `[` cycle through the tabs and Alt+1 to 9 jumps straight to one.\n\nFile then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
     related:['saving','cross-doc-links','workspace-search'],
     examples:[
       { syn:'File → Connect folder…',   desc:'link a folder of documents (Chromium only)' },
       { syn:'File → Switch document…',  desc:'list, open, create or delete documents' },
       { syn:'+ New document',           desc:'start a fresh document, named as you like' },
       { syn:'Click the file name',      desc:'rename the current document' },
+      { syn:'Ctrl/Cmd+Shift+] / [',     desc:'next or previous document tab (Alt+1 to 9 jumps)' },
       { syn:'File → Disconnect folder', desc:'return to a single file' },
     ] },
   { id:'appearance-controls', cat:'files',
     title:'Appearance & display',
-    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or reveal completed tasks you'd normally keep out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Show done points is the checkmark button in the toolbar; turn it on and finished to-dos and DONE points reappear in the outline.",
+    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or reveal completed tasks you'd normally keep out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Show done points is the checkmark button in the toolbar; turn it on and finished to-dos and DONE points reappear in the outline.\n\nHow much guidance the app shows is adjustable too. The File menu's Verbosity row cycles three tiers: Guided shows point hints, pill tooltips and the search cheatsheet; Standard turns those teaching aids off but keeps the menus and edit pencils; Lean also trims the / and @ menus to just what you type. `Ctrl/Cmd+Shift+.` steps quieter and `Ctrl/Cmd+Shift+,` brings the guidance back.",
     related:['appearance'],
     examples:[
       { syn:'File → Theme',      desc:'cycle system, light then dark' },
       { syn:'File → Color',      desc:'pick an accent color' },
       { syn:'File → Full width', desc:'widen or narrow the editing column' },
       { syn:'Show done points',  desc:'toolbar button: reveal completed points' },
+      { syn:'File → Verbosity',  desc:'cycle Guided, Standard then Lean (how much the app teaches)' },
     ] },
   { id:'appearance', cat:'files',
     title:'Tag colors & property icons',
@@ -30239,7 +30403,7 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.",
     related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },
@@ -32025,7 +32189,15 @@ requestAnimationFrame(() => {
   // Otherwise focus the first node so the user can start typing immediately.
   // Desktop only: on touch, focusing a contenteditable pops the soft keyboard over
   // half the screen before the user has seen the document. They tap when ready.
-  if (flatRows.length > 0 && !IS_TOUCH) focusNode(flatRows[0].node.id);
+  // #827 item 11: a RESTORED document is the same read-first situation as a snapshot —
+  // dropping into edit-mode-on-point-1 renders its first point as raw markdown and unfolds
+  // its pills, so reopening the app looked broken. Open restored docs in display mode
+  // (click-anywhere-to-edit is one click away); keep the caret only when the restored doc
+  // is effectively blank (one empty point — e.g. New then reload), where typing is the
+  // only sensible next act. A fresh no-autosave boot (Examples failed / blank fallback)
+  // still focuses, so the new-doc experience is unchanged.
+  const blankDoc = flatRows.length === 1 && !(flatRows[0].node.text || '').trim() && !(flatRows[0].node.children || []).length;
+  if (flatRows.length > 0 && !IS_TOUCH && (!_restoredFromAutosave || blankDoc)) focusNode(flatRows[0].node.id);
 });
 
 // Reopen on load (Phase 1, steps 3–5a): if a workspace folder was connected in a previous

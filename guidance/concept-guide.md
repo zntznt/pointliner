@@ -48,15 +48,24 @@ Grep for `const GUIDE = [` and `function openGuide(` to find them.
 | field | rule |
 |---|---|
 | `id` | kebab-case, unique across all entries. |
-| `cat` | one of the eight category ids below — must match a `CATS` entry in `openGuide`, or the entry renders in no group. |
+| `cat` | one of the ten category ids below — must match a `CATS` entry in `openGuide`, or the entry renders in no group. |
 | `title` | short noun phrase; it's the left-list label. **Raw text** — `openGuide` runs it through `escHtml`, so write `&`, not `&amp;`. |
 | `body` | AP-style prose (see below). `escHtml`'d at render, so **no HTML and no entities** — write the literal `&`, `<`, `'`. **AP punctuation only; the em dash is banned in GUIDE copy** (CLAUDE.md, cleared wholesale in PR #158) — rewrite, never a `—`. Two authoring conveniences run after `escHtml` (so they can't inject): a **blank line** (`\n\n`) starts a new paragraph — keep each paragraph 2 to 4 sentences and give any entry past ~400 chars real paragraph breaks; and a **backtick pair** wraps an inline syntax token as `code` (`` `is:todo` ``, `` `Ctrl/Cmd+Shift+I` ``) — a lone backtick stays literal. A single-paragraph, backtick-free body renders exactly as before. |
 | `examples` | array of `{ syn, desc }`. `syn` = the literal key/menu-path/syntax the user types or clicks; `desc` = a lowercase-leading short gloss. Both are `escHtml`'d. Use `[]` if none. |
-| `covers` | **optional.** Array of `BLOCK_CMDS`/`INSERT_CMDS` ids this entry documents. Only add command ids here — it's the drift-guard contract, not a free-text tag. A bullet-menu-only feature (e.g. properties, notes) has no command id, so omit `covers`. |
+| `covers` | **optional.** Array of `BLOCK_CMDS`/`INSERT_CMDS` ids this entry documents. Only add command ids here — it's the drift-guard contract, not a free-text tag. A chrome-only feature (e.g. capture, saved searches) has no command id, so omit `covers`. |
+| `related` | **optional.** Array of other GUIDE entry ids, rendered as "See also" chips below the examples (a click navigates to that entry). A drift-guard test (#597) asserts every id names a real entry, so a typo fails loudly. |
 
-The eight categories (the `CATS` list in `openGuide`, in display order):
-`getting-around` · `writing` · `todos` · `dates` · `generators` · `compute` · `links` · `files`.
-Adding a ninth means adding to `CATS` too, or its entries render orphaned.
+There is no `keywords` field: the guide search indexes `title` + the category label +
+`body` + the `examples` (plus `searchText` where present), so to make an entry findable
+under a synonym, work the synonym into the body. The five Shortcuts nav entries are the
+one exception to the shape above — instead of `body`/`examples` they carry `scrollTo`
+(their section anchor) plus `bodyHtml()`/`searchText()` functions that build and index
+the keyboard-reference page from the essential rows.
+
+The ten categories (the `CATS` list in `openGuide`, in display order):
+`shortcuts` · `getting-around` · `writing` · `todos` · `dates` · `generators` · `compute` ·
+`links` · `files` · `recipes`.
+Adding an eleventh means adding to `CATS` too, or its entries render orphaned.
 
 ---
 
@@ -85,11 +94,14 @@ loudly instead of letting the guard pass vacuously.
 shipped uncovered because nobody updated the list, and the guard was later lost entirely in a
 refactor. #596 rebuilt it deriving from the registries so neither can recur.)
 
-Beyond commands, several shipped features are **bullet-menu / toolbar only** (no command
-id): capture/inbox, refile, properties, per-point notes, saved searches, hashtags,
-multi-select, zoom, the folder-of-notes workspace, appearance controls. These are NOT
-caught by the drift guard at all — keeping them documented is a manual discipline, the
-same P2-discoverable obligation as any feature.
+Beyond commands, several shipped features are **chrome-only** — a toolbar button, a
+bullet-menu row or a keyboard chord, with no `/` or `@` command id: capture/inbox, saved
+searches, hashtags, multi-select, zoom, sort children, the agenda and timeline, document
+tabs, the base view and rows controls, the folder-of-documents workspace, appearance
+controls. These are NOT caught by the drift guard at all — keeping them documented is a
+manual discipline, the same P2-discoverable obligation as any feature. (Refile,
+properties and per-point notes used to sit on this list; today they are the `/refile`,
+`/prop` and `/note` commands, so the guard covers them.)
 
 ---
 

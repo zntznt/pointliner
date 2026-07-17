@@ -2859,6 +2859,85 @@ array; no behavior changes:
 - **`backlinks` front door (P2):** the entry now says HOW the panel opens (rises from the bottom
   when you click into a linked-to point, updates as you move).
 
+### UXP-221 ✓ Base column ops unreachable by touch; base menus self-dismissing (#811) 🔴 — **RESOLVED**
+- **Finding:** at 390×844 with a coarse pointer, every per-column operation on a base (Calculate,
+  Column formula, Show as, Sort, Alignment, Width, Insert/Move/Delete) was unreachable: the mouse
+  door is "click the header around the name pill," but the pill fills the header, so a finger tap
+  (even dead-center) lands in name edit; the ▾ cue was visible on touch but `pointer-events:none`;
+  and the base bullet menu offered no per-column door. Violates the touch invariant (P2/P3). The
+  sibling finding (no swipe-left outdent) was already fixed on main inside `attachSwipeIndent` and
+  was re-verified, not re-implemented.
+- **Fix — three doors + one shared repair:** (1) press-and-hold a column header opens the Column
+  menu (`attachBaseHeaderTouchMenu`, the `attachBulletTouchGestures` pattern: 450ms hold, 10px slop
+  cancel to the native pan, fired hold swallows its own tap tail so the pill never enters edit
+  underneath; IS_TOUCH-gated, read-only grids never match); (2) the ▾ becomes a real tap target on
+  touch (hover:none CSS: pointer-events restored, a 32px full-height zone, header right-padding) —
+  taps ride the existing header click handler; (3) a "Column options" base bullet-menu row (authored
+  bases) lists the columns by name (`mtColumnLabel`, pure + pinned) and opens the picked column's
+  menu — also the universal keyboard/AT door. (4) Root repair the new door exposed: menus opened from
+  a MOUSEDOWN-activated control (bullet-menu rows via `mkCmdItem`, the chrome Rows button) had the
+  same gesture's trailing click delivered at document level after the panel opened, closing it in
+  the same breath — "View & rows shown" and the Rows cap menu were broken this way on mouse AND
+  touch. A one-shot `_mtPanelOpenGuard` (armed by the mousedown-based openers, consumed by exactly
+  one click, 350ms expiry) swallows the tail; the #417 opener/closer pin asserts the ordering.
+- **Copy:** the GUIDE `tables` entry + `guide/writing-and-formatting.md` gained one touch sentence
+  each. Verified headless at 390×844 hasTouch (22/22 checks: long-press to Calculate, ▾ tap,
+  bullet-menu chain, swipe both directions) and at 1280×800 mouse (header click still name-edits;
+  outside click still dismisses).
+
+### UXP-222 ✓ Concept Guide should-fix batch: deck mechanism, sequencing, coverage, search misses (#835) 🟡 — **RESOLVED**
+The guide had drifted from the shipped app in five ways, fixed against the code (every claim
+verified before writing): the `deck` entry never stated its base mechanism — it now opens with
+`{shuffle: a|b|c}` and names all four mode words (verified against `seqParts`) plus the `{3x: …}`
+repeat syntax; `custom-calendars` led the Dates category while presuming everything sequenced after
+it — moved after `chronicle` (pure array move); base inline collapse + the rows cap had zero guide
+presence — documented in `base-views` against the real control names (the ▶ chevron, `Rows: all`,
+the "View & rows shown" door); "word count" and "sync" returned No results in guide search — the
+searchable phrases were added to `rollups` and `saving`, and the empty-point placeholder now teaches
+concrete block types ("/ for a to-do, heading or list" instead of "/ for blocks"); and four
+chrome-level features (example starters, the verbosity tiers, the document-tabs strip, PWA install)
+had no concept-layer home — each gained a sentence and example row in `overview`,
+`appearance-controls`, `workspace-documents` and `saving`.
+
+### UXP-223 ✓ Concept Guide polish batch + governing-doc drift (#836) 🟢 — **RESOLVED**
+Copy-level non-conformances across the guide, plus drift in the governing doc itself:
+"items"-for-points vocabulary (`refile`, `sort-children`, `agenda`, `check`); OPML and "GM"
+unglossed (`export`, `secret`); Mac-only key glyphs in `capture-inbox` example rows (normalized to
+the `Ctrl/Cmd+…` house form); wall paragraphs in `clock`, `meter`, `tables` (whose mid-body chord
+list duplicated its own example rows and was slimmed), `check`, `workspace-documents`, `search-ops`
+and `rollups`; `estimates` omitting that division is supported (`parseUncertain` handles `/`);
+`footnotes` covering `image` with no image example row. `guidance/concept-guide.md` still said "the
+eight categories" (CATS has ten), carried a stale bullet-menu-only feature list (refile/prop/note
+are BLOCK_CMDS ids today), and did not document the `related:[…]` field. All fixed; one stale
+finding (the `estimates` wall-paragraph claim — it already had breaks) recorded as no-change.
+
+### UXP-224 ✓ #827 grab-bag remainder: File door, digit tags, deck count, phone toolbar, restore mode, heading pills, "origin" caption 🟢 — **RESOLVED**
+- **(1) File menu invisible (P2):** a "File ▾" cue inside `#logo-btn` (the `.mt-view-btn` text
+  recipe; visible on phones where the wordmark hides); button + dialog aria both read "File menu",
+  matching the ~10 copy sites that say "open the File menu". Click/keyboard handlers untouched.
+- **(3) Digit-only hashtag false positive (P1):** a tag's FIRST segment must now contain at least
+  one letter (`(?=[\d_-]*[a-zA-Z])`), applied in lockstep at `mdInline`, `collectTags`,
+  `parseSearchQuery` (a `#1` query falls through to literal text — the escape hatch), the `has:tag`
+  sniff, the roll nudge, and `isValidTagName`; `#1`/`#2024` stay plain text, `#v2`/`#2024-plans`
+  still tag. Pinned by a three-site agreement test.
+- **(6) Deck feel (P2):** `renderSeqGenPill` titles "N of M cards left." mid-round (display layer;
+  the Last-card cta and the UXP-120 reshuffle flash unchanged; pinned).
+- **(10) Heading-scale pills (design language):** pills inside `.md-h` step back to the body pill
+  size (`calc(.86 * 1.0625rem)`, rem-anchored across heading levels and zoom).
+- **(11) Reopen landed in raw-markdown edit on point 1 (P1/P2):** the boot focus is gated on
+  `!_restoredFromAutosave` — a restored doc opens read-first like a snapshot; a restored-but-blank
+  doc still gets the caret.
+- **(12) Dimmed Board button:** already shipped by UXP-169; re-verified headless, no change.
+- **(14) 390px toolbar clip (P2/P3):** at ≤560px `#toolbar-row` wraps and `#tbtn-cluster` drops
+  whole to its own right-aligned line instead of compressing into scrollbar-less hidden overflow;
+  the ResizeObserver re-pads the body. Verified at 390×844: all toggles in-viewport.
+- **(15) "origin" caption noise (P4):** `renderGrammarPill` hides the caption when the rule name is
+  the placeholder default `origin`; real names keep teaching `{name}`.
+- **Items 2/4/5 stay open on #827 as owner product decisions** (hide-done default; `words()`
+  counting notes — if wanted, add a new scope value rather than changing `subtree`'s meaning (P1);
+  frozen-conditional staleness — recommend a display-layer "inputs changed" whisper over any reversal
+  of the freeze model). Tests 1341 → 1345 green across the batch; headless-verified per finding.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the

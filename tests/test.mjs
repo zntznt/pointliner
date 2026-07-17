@@ -2998,6 +2998,11 @@ test('isValidTagName — accepts the hashtag grammar, rejects unrenderable names
   assert.equal(c.isValidTagName('café'), false, 'non-word chars rejected (would never render)');
   assert.equal(c.isValidTagName(''), false);
   assert.equal(c.isValidTagName('a/'), false, 'a trailing slash is not a valid segment');
+  // #827 item 3: the first segment needs a letter — a bare number never renders as a tag
+  assert.equal(c.isValidTagName('1'), false, 'digit-only never renders as a tag');
+  assert.equal(c.isValidTagName('2024/plans'), false, 'digit-only FIRST segment never renders');
+  assert.equal(c.isValidTagName('v2'), true, 'digits are fine once a letter is present');
+  assert.equal(c.isValidTagName('2024-plans'), true, 'a letter later in the first segment is fine');
 });
 
 test('appearance dialog — review fixes wired (focus by section, name validation, renamed menu)', () => {
@@ -4452,6 +4457,18 @@ test('aggKindLabel: maps each aggregate kind to its footer label', () => {
   assert.equal(aggKindLabel(mtColAggKind('@>$2=vmean(@2$2..@-1$2)', 2)), 'Average');
 });
 
+// #811: mtColumnLabel — the per-column label the bullet menu's Column options door
+// lists (header text, markdown stripped; a blank or missing header falls back to
+// the positional "Column N" so every column stays pickable).
+test('mtColumnLabel: header text, markdown stripped, blank fallback', () => {
+  const model = { aligns: ['left', 'left', 'left'], rows: [['Name', '**HP**', '  ']] };
+  assert.equal(c.mtColumnLabel(model, 0), 'Name');
+  assert.equal(c.mtColumnLabel(model, 1), 'HP');          // emphasis stripped
+  assert.equal(c.mtColumnLabel(model, 2), 'Column 3');    // blank cell → positional
+  assert.equal(c.mtColumnLabel(model, 5), 'Column 6');    // out of range → positional
+  assert.equal(c.mtColumnLabel({ aligns: [], rows: [] }, 0), 'Column 1');   // no header row
+});
+
 // mtApplyAggregate is DOM-adjacent but its DOM calls no-op through vm stubs,
 // so the node.text mutation is fully testable. We verify the stale-value fix:
 // setting a column to None must blank its total cell, not leave a stale literal.
@@ -5646,6 +5663,32 @@ test('collectTags: status keywords (#TODO) count deliberately; explicit root byp
   assert.deepEqual(host(c.collectTags(other)), [{ name: 'different', count: 1 }]);
 });
 
+test('#827 item 3: a digit-only hashtag stays plain text in all three lockstep sites', () => {
+  // The rule: a tag's FIRST segment must contain at least one letter, so "#1 priority"
+  // and "#2024" stay prose; digits elsewhere still tag (#v2, #2024-plans). Mirrored in
+  // mdInline (render), collectTags (index), and parseSearchQuery/termMatchesNode (search).
+  // 1) render (mdInline)
+  assert.ok(!c.mdInline('#1 priority').includes('class="hashtag"'), 'render: #1 is not a tag pill');
+  assert.ok(c.mdInline('#v2 ship').includes('data-tag="#v2"'), 'render: #v2 still tags');
+  assert.ok(c.mdInline('the #2024-plans doc').includes('data-tag="#2024-plans"'), 'render: digits before a letter tag');
+  assert.ok(!c.mdInline('#2024/plans').includes('class="hashtag"'), 'render: a digit-only first segment stays text even with a nested tail');
+  // 2) index (collectTags)
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('#1 priority, #v2 and #2024-plans, plus #_1'));
+  assert.deepEqual(host(c.collectTags(root)).map(t => t.name).sort(), ['2024-plans', 'v2']);
+  // 3) search: #1 falls through to a literal text term (the escape hatch), so it still
+  // finds the "#1 priority" prose it no longer tags; #v2 stays a tag term.
+  const t1 = c.parseSearchQuery('#1');
+  assert.equal(t1[0].kind, 'text');
+  assert.equal(t1[0].value, '#1');
+  assert.equal(c.parseSearchQuery('#v2')[0].kind, 'tag');
+  assert.equal(c.termMatchesNode(t1[0], c.mkNode('#1 priority'), [], {}), true, 'literal fall-through still matches the prose');
+  // has:tag agrees: a point whose only sigil is "#1" carries no tag
+  const hasTag = { neg: false, kind: 'has', value: 'tag' };
+  assert.equal(c.termMatchesNode(hasTag, c.mkNode('#1 priority'), [], {}), false);
+  assert.equal(c.termMatchesNode(hasTag, c.mkNode('#v2 ship'), [], {}), true);
+});
+
 test('filterTagCandidates: case-insensitive prefix; a lone exact match offers nothing', () => {
   const tags = [{ name: 'alpha', count: 2 }, { name: 'Alps', count: 1 }, { name: 'beta', count: 1 }];
   assert.deepEqual(c.filterTagCandidates(tags, 'al').map(t => t.name), ['alpha', 'Alps']);
@@ -5781,6 +5824,32 @@ test('pill aria-labels: each renderer emits an accurate label', () => {
 test('pill aria-labels: dead-record fallbacks are labeled too', () => {
   assert.ok(c.renderDicePill('k', null).includes('aria-label="Dice roll (missing data)"'));
   assert.ok(c.renderGrammarPill('g', null).includes('aria-label="Grammar (missing data)"'));
+});
+
+test('#827 item 15: the default "origin" rule name is never shown as a pill caption', () => {
+  // A dialog-made grammar whose start rule kept the placeholder name `origin` reads
+  // "origin | result" — noise, not a name. The caption (and its Callable-as title) hide
+  // for it, exactly like an anon record; a real name (loot) keeps teaching {name}.
+  const dflt = c.renderGrammarPill('g', { key: 'g', def: 'origin: A still wind rises', origin: 'origin', result: 'A still wind rises' });
+  assert.ok(!dflt.includes('gr-name'), 'no caption span for the default origin name');
+  assert.ok(!dflt.includes('Callable as'), 'no Callable-as title for the default origin name');
+  assert.ok(dflt.includes('aria-label="Grammar: A still wind rises. Click to re-generate"'), dflt);
+  const named = c.renderGrammarPill('r', { key: 'r', def: 'loot: a sword', origin: 'loot', result: 'a sword' });
+  assert.ok(named.includes('gr-name') && named.includes('Callable as {loot}'), 'a real callable name keeps its caption');
+});
+
+test('#827 item 6: a shuffle deck titles its remaining-card count (display layer only)', () => {
+  // Mid-round: the bag holds what remains after the shown draw.
+  const mid = c.renderSeqGenPill('s', { key: 's', mode: 'shuffle', items: ['a', 'b', 'c', 'd'], bag: [2, 0], last: 1, result: 'b' });
+  assert.ok(mid.includes('title="Deck (shuffle). 2 of 4 cards left. Click to draw the next"'), mid);
+  assert.ok(mid.includes('2 of 4 cards left. Click to draw the next"'), 'aria-label carries the count too');
+  // The empty-bag boundary is voiced by the Last-card cta, not a redundant "0 of N".
+  const last = c.renderSeqGenPill('s', { key: 's', mode: 'shuffle', items: ['a', 'b'], bag: [], last: 0, result: 'a' });
+  assert.ok(last.includes('Last card. Click to reshuffle and draw'), last);
+  assert.ok(!last.includes('cards left'), 'no count at the reshuffle boundary');
+  // A cycle pill never counts (it rotates; nothing depletes).
+  const cyc = c.renderSeqGenPill('s', { key: 's', mode: 'cycle', items: ['a', 'b'], pos: 1, result: 'a' });
+  assert.ok(!cyc.includes('cards left'), cyc);
 });
 
 test('diceTotalStr: success pools and Fate totals format like the pill', () => {
@@ -13113,7 +13182,22 @@ test('board card opener and the document closer agree on the click event (#417)'
   const body = clickBody.slice(0, clickBody.indexOf('});'));
   assert.ok(body.includes('showCardMenu('), 'the click listener is the one that opens the menu');
   assert.ok(body.includes('e.stopPropagation()'), 'the opener must stop propagation so the document closer never sees the opening click');
-  assert.ok(/document\.addEventListener\('click', e => \{[^]{0,300}hideColPanel\(\)/.test(_src), 'the document-level closer must listen on click, matching the opener');
+  const closers = [..._src.matchAll(/document\.addEventListener\('click', e => \{/g)]
+    .map(m => _src.slice(m.index, _src.indexOf('});', m.index)));
+  const closer = closers.find(b => b.includes('hideColPanel()'));
+  assert.ok(closer, 'the document-level closer must listen on click, matching the opener');
+  // #811: a mousedown-activated opener (a bullet-menu row via mkCmdItem, the chrome Rows
+  // button, a Column-options list row) gets its own gesture's trailing click delivered at
+  // document level AFTER the panel opens — outside the panel, so the closer shut the menu
+  // in the same breath it opened. The one-shot guard must swallow that tail BEFORE the
+  // outside-click close runs (armed by mtGuardPanelDismiss in the mousedown-based openers).
+  assert.ok(closer.includes('_mtPanelOpenGuard')
+    && closer.indexOf('_mtPanelOpenGuard') < closer.indexOf('hideColPanel()'),
+    'the opener-tail guard must run before the outside-click close (#811)');
+  for (const opener of ['function showBaseRowsMenu', 'function showBaseSettingsMenu', 'function showBaseColumnsMenu']) {
+    const body = _src.slice(_src.indexOf(opener), _src.indexOf('mtOpenMenu(panel', _src.indexOf(opener)));
+    assert.ok(body.includes('mtGuardPanelDismiss()'), `${opener} is mousedown-activated and must arm the dismissal guard (#811)`);
+  }
 });
 
 // ── toastGate (#391): the shared toast element has error priority ──
