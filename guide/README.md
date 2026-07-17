@@ -51,7 +51,9 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
 - **[Links and references](links-and-references.md)** is `[[` links with live titles, backlinks,
   unlinked mentions and links across a folder of documents.
 - **[Files and export](files-and-export.md)** is saving, a folder of documents, appearance, and sharing
-  or exporting (Markdown, plain text, self-contained HTML).
+  or exporting (Markdown, plain text, self-contained HTML). Your work is always plain text you own,
+  and its **Taking your work elsewhere** section is the no-lock-in exit story: OPML for a full-fidelity
+  archive you can reopen, Markdown/text for readable snapshots, HTML to hand someone a live copy.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides for the pill families above.
 - **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.

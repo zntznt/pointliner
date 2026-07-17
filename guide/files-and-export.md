@@ -69,6 +69,29 @@ and choose **Export to Markdown** (that point and everything under it), or **sel
 and use **Export .md** on the selection bar. The file is named after the first point, and pills are
 frozen to their current values (the same one-way snapshot as the full Markdown export).
 
+## Taking your work elsewhere
+
+Your work is never trapped here. Whatever you write stays plain text you own, and there are three
+ways out depending on what you want to keep:
+
+- **OPML is the full-fidelity form.** It is Pointliner's native save format, and it is the only
+  export you can open **back into the app** with everything intact: every pill still live, every
+  property, date, note, link and base exactly as you left them. If you want to move your whole
+  document to another machine or keep a true archive, use the OPML file (it is what a connected
+  folder saves, and what **File, Open** reads).
+- **Markdown and plain text are readable snapshots.** They are meant for posting, sharing, or
+  pasting into another app, so they are **one-way**: each pill is frozen to the value it is showing
+  at export time. A `{2d6}` becomes the number it last rolled, `{= sum(cost)}` becomes the total,
+  a grammar pill becomes the text it generated. You get a clean, ordinary document that reads
+  anywhere, but the live behavior does not come along (that is the point of a snapshot).
+- **The self-contained HTML keeps everything live for someone without the app.** It packs the whole
+  app and your document into one file that re-rolls and recomputes on their machine, no install and
+  no account. It is the way to hand a working generator or tracker to a person who does not use
+  Pointliner.
+
+Plain text everywhere, no lock-in: Pointliner is built to slot into your process and let you leave
+it whenever you want, taking your work with you.
+
 ---
 
 **Next:** [Getting around](getting-around.md), [Tasks and organizing](tasks-and-organizing.md), or
