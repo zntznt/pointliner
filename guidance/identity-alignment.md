@@ -76,7 +76,7 @@ changed, and the §3 rule now stands as the guard for future greeting copy.
 
 ## Tier 2 — loyalty checks that likely pass but must be verified (review items)
 
-### IA-4 · The substrate review of chronicle / lore dates / custom calendars (§8a, §9.2)
+### IA-4 · The substrate review of chronicle / lore dates / custom calendars (§8a, §9.2) ✓ ANALYSIS DONE (#861 — owner to ratify)
 The recorded owner unease: genuinely good solo-RPG tools, but did they reach the
 substrate or encode a schema? First-pass reading to structure the review: custom
 calendars look substrate-shaped (they generalize "what is a date" the way sequences
@@ -88,6 +88,50 @@ for an ordered record with a moving now?"
 each with either a generalization proposal or a keep-as-is note; ends in an owner
 decision recorded in `product-identity.md` §8a.
 **Size:** M (analysis + decision; build only if a generalization is chosen).
+
+**Verdict (2026-07-17, read against the shipped code — the reassuring answer):** none of the
+three is a rigid domain schema. The unease is unwarranted for what's there; the one real finding is
+an un-factored substrate, not a rushed one.
+
+- **Custom calendars → SUBSTRATE (passes cleanly, keep as-is).** Dates are epoch-day *integers*; a
+  calendar is a general `{months:[{name,days}], week:{length,days}, eras, epochDay}` bijection
+  between (y,m,d) and epoch-days (`normalizeCalendar`/`calToEpoch`/`calComponents`). Gregorian is the
+  built-in instance; a custom calendar is another instance of the same structure. Every date seam
+  reads through `activeCalendar()`/`calComponents(epoch, cal)`, date math still works (epochs are
+  numbers), and there is zero migration (a date string carries no calendar marker — its calendar is
+  decided by WHERE the point lives, `resolveCalendarId`). This is the *sequences* pattern exactly:
+  sequences generalized "what is a to-do state" (built-in TODO/DONE → any declared state set),
+  custom calendars generalize "what is a date" (built-in Gregorian → any declared calendar). Textbook
+  substrate — it lets you think in your world's time while composing with all date computation.
+- **Lore dates → INSTANCE of two substrates (passes, thinnest possible, keep as-is).** A point with a
+  `when:`/`date:` property = "this happened," surfaced as a neutral timeline row
+  (`collectLoreDates`). No node type, no sidecar, no schema — a recognized *property key* (substrate
+  1) feeding the *timeline* (substrate 2). There is nothing to generalize; it is already the
+  substrate expressed as a convention.
+- **Chronicle → substrate-REUSE with an un-extracted generalization, NOT a rigid schema.** The
+  dating mechanism (`collectChronicleDates`: a home subtree organized `Y > M > D > beats`,
+  tree-position dating) is *identical* to the journal (`collectJournalDates`). The chronicle is
+  effectively "the journal, generalized to any designated home and any calendar" — the journal is the
+  *rigid* special case (home hardcoded to the name "Journal", hardcoded Gregorian); the chronicle is
+  the more general version. So the real finding is: **the journal and the chronicle are two instances
+  of ONE un-extracted substrate — "a dated log subtree" — and the near-duplicate collectors are the
+  tell.** Two edges are domain-shaped: (a) `root.gamelog = {targetId, calendarId, cursor}` is a
+  *singular* binding ("one designated game log per doc"; the code even notes "#653 scopes this to the
+  two logs; a general per-subtree `calendar:` prop is the deferred wider version"); (b) the CURSOR
+  (`gamelog.cursor`, the "moving now") is the one genuinely novel construct, welded to the gamelog —
+  and it is exactly the owner's substrate question, "the general instrument for an ordered record
+  with a moving now." A journal could want a "today" marker; a reading log a "currently reading" one.
+
+**Recommendation: keep all three shipped; record the finding; DO NOT refactor now.** The
+substrate-completing move for the chronicle would be to extract "dated log" (unifying journal +
+chronicle) and make the moving-now cursor a property of any dated log — a REFACTOR toward the
+substrate, not a removal. But forcing it now would itself violate the discipline's own "build the
+general instrument on demand, not on spec" rule (the same rule that governs the deferred list).
+**Revisit trigger:** the next time the journal or the chronicle needs a substantive change, unify
+them then — the change is already touching the duplicated code, so the extraction is nearly free.
+The cursor generalization waits for a second real caller (a journal/log that wants a now-marker).
+**Owner decision requested:** ratify keep-as-is + the recorded refactor trigger, or direct the
+unification now.
 
 ### IA-5 · The exit story, stated where users look (§3b, freedom to leave)
 The exports exist and are good; what's missing is the FRAMING — the guide never says
@@ -126,7 +170,7 @@ follow-ups.
 
 1. ~~**IA-1** (the missing exit verb — the one place the app contradicts §3b today)~~ ✓ #858
 2. ~~**IA-2 + IA-3** together (one first-minutes pass: audit, reorder, translate)~~ ✓ #859 (atom-forward hint + tour pill) · #860 (copy verified clean)
-3. **IA-4** (the substrate review — analysis PR ending in an owner decision)
+3. ~~**IA-4** (the substrate review — analysis PR ending in an owner decision)~~ ✓ #861 — verdict written, owner to ratify (recommendation: keep-as-is + a recorded unification trigger)
 4. **IA-5 + IA-6** (the exit story; the menu table)
 
 Each lands as its own PR against this file; an item closes by linking the PR or the
