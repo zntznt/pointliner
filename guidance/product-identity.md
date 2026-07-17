@@ -194,12 +194,21 @@ document that thinks along. (The same demo in its native habitat is the first ca
 
 ## 8. Open questions (flagged, not papered over)
 
-**8a. The chronicle/lore/custom-calendar set is under the substrate test.** The owner's
-recorded unease (2026-07-17): these are genuinely good solo-RPG tools, but the question
-is *"have I reached the substrate of that tool yet, or did I rush to solve a problem with
-a rigid schema?"* No removal is decided; the set stays shipped. But it is the standing
-example of the substrate test (§9) applied to our own work, and future domain-shaped
-features get asked the same question BEFORE they ship, not after.
+**8a. The chronicle/lore/custom-calendar set — substrate review DONE (IA-4, 2026-07-17;
+owner to ratify).** The owner's recorded unease was *"did I rush to solve a problem with a rigid
+schema?"* The review against the shipped code (full verdict: `identity-alignment.md` IA-4) is
+reassuring: **none of the three is a rigid schema.** Custom calendars are clean substrate (a general
+`{months, week, eras}` bijection over epoch-day integers — the *sequences* pattern applied to "what
+is a date"); lore dates are the thinnest possible instance (a recognized property key feeding the
+timeline). The chronicle is substrate-REUSE (its dating is identical to the journal's; it is the
+journal generalized to any home and any calendar) with one real finding: **the journal and chronicle
+are two instances of an un-extracted "dated log" substrate**, and the moving-now cursor is a novel
+construct welded to the singular `gamelog` binding. **Recommendation (owner to ratify): keep all
+three shipped; do not refactor now** — the substrate-completing move (unify journal + chronicle,
+generalize the cursor) is a clean-up toward the substrate, not a removal, and per the "build the
+general instrument on demand, not on spec" rule it waits for a real trigger (recorded: the next
+substantive change to either log). This entry stays the standing example of the substrate test (§9)
+turned on our own work — the answer was "not a schema," and the discipline caught the duplication.
 
 **8b. The falsification test for the tools-for-thought claim.** "Tools for thought" is
 a category with a history of vague claims, so this doc states what would DISPROVE ours:
