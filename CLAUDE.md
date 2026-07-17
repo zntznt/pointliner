@@ -37,12 +37,11 @@ are out of scope — not deferred, out.
 
 **Product identity (binding — the scope filter for any product/positioning call):**
 the canonical answers live in `guidance/product-identity.md`; the two that steer builds:
-(1) **the app is at its core a TOOL for thinking in writing, not a solo-RPG product**
-— solo-RPG is the founding problem and flagship proof, and the requirements solving it
-forced (natively generative + computational, freely restructurable, private plain text)
-are what make the tool serve freeform, adaptable thought in general (owner, 2026-07-16/17,
-amending roadmap #515's "THE customer" phrasing; the full causal chain is
-`product-identity.md` §2); (2) **the §0b mission test** — a feature earns its place where it composes with
+(1) **the identity is the substrate — a tool for thought** (owner, 2026-07-17): an
+instrument for freeform, adaptable thinking in writing. Solo-RPG is the origin and stays
+served structurally (bases are the richer form of RPG tables), but it is provenance, not
+positioning — do not lead docs, copy, or pitches with the origin story (the one full
+telling is `product-identity.md` §2, which amends roadmap #515); (2) **the §0b mission test** — a feature earns its place where it composes with
 the generative/computational `{…}` layer; parity with database/PKM apps is the scope creep
 the fences exist to stop. The core, if someone deletes 90% of the features: any bullet can
 generate or compute. When a proposal leans database-parity, cite that file before building.
