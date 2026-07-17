@@ -1,11 +1,17 @@
 # Pointliner
 
-**The single-file RPG toolkit where the dice, the oracle, and the journal live in
-one place.** Roll `{2d6}` in the middle of a scene, ask a `{roll: #npc}` oracle that draws
-from your own cast, keep the log right beside it, and let the same document quietly total
-your inventory and flag your overloaded sheet while you play. It is all one `index.html`,
-runs with the wifi off, needs nothing installed, and (the pleasant surprise) it is also a
-sharp computational outliner for anything else you want to think in.
+**The single-file outliner that talks back.** Write nested points like any outliner;
+type inside `{curly braces}` and the text becomes a live widget. `{2d6}` rolls,
+`{= sum(cost)}` keeps a running total of the points beneath it, `{roll: #idea}` draws a
+random point from your own document, and a check flags the budget that just overflowed.
+The whole app is one `index.html`: it runs with the wifi off, needs nothing installed,
+and keeps your work in files you own.
+
+Pointliner was born at the solo-RPG table, and that is still where it is sharpest:
+[the dice, the oracle, and the journal in one place](guide/solo-rpg/README.md), with your
+own cast and open threads as the random tables. The same engine runs a research inbox, a
+project tracker, or a budget just as readily; live computation over your own notes is a
+general-purpose trick that happens to be excellent at dragons.
 
 **[→ Try it now](https://zntznt.com/pointliner/)** · no account, no install, runs in your browser.
 
@@ -14,7 +20,7 @@ sharp computational outliner for anything else you want to think in.
 ## The 30-second version
 
 Underneath, Pointliner is an outliner: nested bullet points, markdown, collapse, zoom,
-to-dos, dates, links, search. What makes it a play surface is **pills**. Type something
+to-dos, dates, links, search. What makes it different is **pills**. Type something
 inside `{curly braces}` and, when you click away, it turns into a small live widget, so
 your dice, tables, oracles, and sheet math all live in the same document as your notes:
 
@@ -90,19 +96,20 @@ right) is the always-there cheat sheet for every syntax.
 
 The outliner is self-explanatory; the pills have a friendly guide.
 
-- **[Solo RPG guides](guide/solo-rpg/README.md)** are the place to start for the use
-  Pointliner is built around: playing and journaling a solo tabletop game in one file.
-  Thirteen worked cases, each with a walkthrough and an importable demo `.opml` you can open
-  and take apart, from a Lonelog-style session log to a living oracle that rolls on your own
-  cast, a campaign calendar, and full open-licence systems (Ironsworn, Cairn, Maze Rats).
 - **[The pill guide](guide/README.md)** covers the one big idea, then the two engine
-  families that back all of the above:
+  families behind everything:
   - **[Generating text](guide/generating-text.md):** alternation, weights, named rules,
     modifiers (`{beast.a}` becomes "an ogre"), conditionals, decks, oracles, Markov chains.
   - **[Computing numbers](guide/computing-numbers.md):** expressions, units, dates,
     variables, subtree roll-ups, uncertain estimates, checks, table formulas.
   - **[Cookbook](guide/cookbook.md):** copy-paste recipes such as a name generator, a
     dungeon stocker, a yes/no oracle, a self-linting budget, a Fermi estimate, a card deck.
+- **[Solo RPG guides](guide/solo-rpg/README.md)** are the flagship worked examples, from
+  the table Pointliner was born at: thirteen cases, each with a walkthrough and an
+  importable demo `.opml` you can open and take apart, from a Lonelog-style session log to
+  a living oracle that rolls on your own cast, a campaign calendar, and full open-licence
+  systems (Ironsworn, Cairn, Maze Rats). The demos are the fastest way to see the whole
+  engine at work, dice or no dice.
 - **In-app:** the **`?` panel** is the look-it-up reference; the **Concept guide** button
   (in the file menu / `?` panel) explains every feature with examples.
 
