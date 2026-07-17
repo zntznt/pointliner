@@ -3014,6 +3014,75 @@ render pass, clears on click, survives OPML round-trip).
 - **This closes #827 in full** (items 7/8 in UXP-218; 1/3/6/10/11/12/14/15 in UXP-224; 9/13 via
   UXP-220/222; 2/4/5 here and in UXP-227).
 
+### UXP-229 ✓ Sync-safety size fingerprint + the restore-point doctrine on every losing-copy path (#840, #842, #845 items 1+2) 🔴 — **RESOLVED**
+- **Was:** external change was discriminated by `lastModified` alone, so a cross-device edit landing
+  in the same mtime bucket (FAT/exFAT 2s granularity, second-truncating or mtime-preserving sync
+  clients) read as our own write and the next flush silently clobbered it (#840). The mid-session
+  'reload' and 'theirs' adopts dropped the in-memory copy with no stash, unlike every boot-time
+  losing path (#842, P4 silent loss). The boot-reconcile hints were gated on stash success, so a
+  full localStorage (the likeliest failure) made the discarded copy silently unrecoverable, and the
+  provably-different-document branch flashed nothing at all (#845 item 1). `scanWorkspace` silently
+  skipped files lacking a `<_docid>`, so their links read broken and folder search missed them with
+  no explanation anywhere (#845 item 2).
+- **Now:** `_wsKnownSize` rides every `_wsKnownModified` anchor (same `getFile()`);
+  `reconcileAction({…, diskSize, knownSize})` treats same-bucket-different-size as external,
+  sizes-unknown keeps the mtime-only verdict (no false prompt after an own autosave); the flush
+  pre-write gate and `checkExternalChange` pass both fingerprints. Both mid-session losing branches
+  stash the pre-adopt autosave payload and point at File menu, Restore earlier version ('mine'
+  deliberately does not stash the foreign disk tree; asymmetry recorded in a comment). All three
+  boot losing-copy paths always flash, with an honest could-not-be-kept variant on stash failure.
+  The folder scan counts no-docId skips and the broken-links report names them with the remedy
+  (pure `unmarkedFilesNote`).
+- **Residual (recorded):** an external write with identical mtime AND identical byte size remains
+  undetectable; documented in the `reconcileAction` comment. Pinned: the extended `reconcileAction`
+  truth table, `unmarkedFilesNote`, and source pins; OPFS-driven headless E2E proved the old
+  silent-clobber verdict and the new detection side by side.
+
+### UXP-230 ✓ Workspace file operations could destroy or misrepresent folder contents (#839, #841, #843, #848) 🔴 — **RESOLVED**
+- **Defects:** `connectWorkspace` wrote the current doc over an existing same-named folder file with
+  no collision guard — the blank-doc derived name is `outline.opml`, the likeliest name in a real
+  notebook, and `getFileHandle({create:true})` opens-then-truncates content this browser never saw,
+  unrecoverable in-app (#839, critical). `deleteWorkspaceDoc` left the write machinery pointing at
+  the deleted file, so the switch/new fallthrough's pre-swap flush recreated it with full content,
+  propagating over sync (#841). A deleted or externally-removed document's tab persisted, flashing
+  "Could not open" forever (#843). `reconcileDuplicateDocIds`' read→mutate→write on a non-open loser
+  file could clobber a sync update landing in between (#848).
+- **Fix:** connect decides before touching the folder (pure `docIsBlank` + `connectWriteDecision`:
+  free name → create; taken + blank doc → adopt the existing document, read-only; taken + content →
+  `uniqueWorkspaceName`, announced). Delete stashes the doc's last autosave as a restore point
+  (named in the flash), then neutralizes the write target (clear debounce, markClean, drop
+  workspaceFile, stop watch) strictly between a successful removeEntry and the switch; tabs prune
+  on delete and self-heal on a failed switch; the dup-docId re-stamp re-checks the file mtime just
+  before writing and skips on change. Pinned (pure cores + src-order pins); headless-verified
+  old-vs-new via OPFS handles (the old build reproduces all three reproducible kills).
+- **Known gap (recorded, candidate follow-up):** the delete-time restore point is keyed under the
+  deleted doc's id, and "Restore earlier version" lists only the current doc's points — the
+  insurance exists but has no menu door after the switch; the flash words it accordingly. A small
+  restore-points browser would close this.
+
+### UXP-231 ✓ Workspace dialogs: background prompts wedged flows; dismissal picked the destructive option (#844, #845 item 3, #846, #847) 🟡 — **RESOLVED**
+- **Defects:** every dialog shares one `#io-card`; a BACKGROUND opener (sync reconcile, dup-id)
+  wiping an open dialog wedged its Promise forever — worst case `_wsReconciling` stuck true, folder
+  auto-write silently dead while the UI claimed auto-save; stacked `ioBack` keydown listeners let a
+  dead dialog close a live one (#844). Escape/backdrop on the reconcile prompt resolved 'mine' and
+  force-overwrote the disk version (another device's work) on the least-informed gesture (#845
+  item 3). Two tabs interleaving the AUTOSAVE_PREV_KEY read-modify-write could drop a fresh restore
+  point (#846). Zero same-origin multi-tab coordination: two tabs on one doc traded prompts and the
+  silent reload wiped the clean tab's undo stack wordlessly (#847).
+- **Fixes:** `withBgDialog` defers background dialogs while the card is busy (never wipes a user
+  dialog); `_wsReconciling` cleared in try/finally; every promise dialog's `finish()` is idempotent,
+  removes its listener on any teardown, and a superseded dialog settles with its non-destructive
+  default; a doc swap during deferral voids the prompt. Dismissal resolves **'later'**: both
+  versions untouched, folder writes stay paused, a 2-minute snooze then re-ask, and the flash states
+  it (P4); the dialog copy says what Escape does; only the explicit button force-writes.
+  `withPrevStoreLock` (navigator.locks `'pl-prev-store'`, read inside the lock; synchronous fallback
+  where locks are absent) wraps both RMW sites; `stashPayloadAsPrev` is async + awaited at every
+  call site. Lightweight presence on `BroadcastChannel('pointliner')` (feature-detected, inert
+  elsewhere): open/here/close + heartbeat/TTL, a once-per-doc soft notice, and
+  prompt-instead-of-silent-reload while a peer holds the doc (pure `updatePeers`/`peerHoldsDoc`,
+  pinned). Verified headless with two real tabs over localhost (40/40), including the
+  confirm-survives-background-reconcile deferral and interleaved cross-tab stashes both surviving.
+
 ## Closing order (recommended)
 
 1. **Correctness defects** — engine-audit batch closed (UXP-30…34); the durable residue is the

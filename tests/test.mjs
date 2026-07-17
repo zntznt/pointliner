@@ -6516,6 +6516,47 @@ test('workspaceFileName: sanitizes path separators and reserved characters', () 
   assert.equal(c.workspaceFileName(odd, 'unsaved'), 'outline.opml');
 });
 
+// ── #839: connect-collision guard cores (connect must never overwrite a folder file) ──
+test('docIsBlank: a fresh doc is blank; any text, note, props, or doc config is not (#839)', () => {
+  const blank = c.mkRoot(); blank.children.push(c.mkNode(''));
+  assert.equal(c.docIsBlank(blank), true, 'the fresh-boot doc (one empty point) is blank');
+  const ws = c.mkRoot(); ws.children.push(c.mkNode('   \n  '));
+  assert.equal(c.docIsBlank(ws), true, 'whitespace-only text is still blank');
+  assert.equal(c.docIsBlank(null), true);
+  const texted = c.mkRoot(); texted.children.push(c.mkNode('real content'));
+  assert.equal(c.docIsBlank(texted), false);
+  const nested = c.mkRoot(); const p = c.mkNode(''); p.children.push(c.mkNode('deep')); nested.children.push(p);
+  assert.equal(c.docIsBlank(nested), false, 'text anywhere in the tree counts');
+  const noted = c.mkRoot(); const n = c.mkNode(''); n.note = 'a note'; noted.children.push(n);
+  assert.equal(c.docIsBlank(noted), false, 'a per-point note counts');
+  const propped = c.mkRoot(); const q = c.mkNode(''); q.props = [{ key: 'due', val: '2026-01-01' }]; propped.children.push(q);
+  assert.equal(c.docIsBlank(propped), false, 'a property counts');
+  const templated = c.mkRoot(); templated.templates = [{ name: 't', node: {} }];
+  assert.equal(c.docIsBlank(templated), false, 'doc-level templates count');
+  const saved = c.mkRoot(); saved.savedSearches = ['#tag'];
+  assert.equal(c.docIsBlank(saved), false, 'saved searches count');
+  const packed = c.mkRoot(); packed.plugins = [{ id: 'p1' }];
+  assert.equal(c.docIsBlank(packed), false, 'data packs count');
+});
+
+test('connectWriteDecision: free name creates; taken + blank adopts; taken + content uniquifies (#839)', () => {
+  assert.deepEqual(host(c.connectWriteDecision({ existing: [], name: 'outline.opml', blank: true })),
+    { action: 'create', name: 'outline.opml' });
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['other.opml'], name: 'outline.opml', blank: false })),
+    { action: 'create', name: 'outline.opml' });
+  // THE #839 kill case: blank doc + the folder already holds outline.opml → open it, write nothing
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['outline.opml'], name: 'outline.opml', blank: true })),
+    { action: 'adopt', name: 'outline.opml' });
+  // real content + collision → collision-safe name; the existing file is never the target
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['outline.opml'], name: 'outline.opml', blank: false })),
+    { action: 'create', name: 'outline-2.opml' });
+  // case-insensitive, like the rest of the filename layer
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['OUTLINE.OPML'], name: 'outline.opml', blank: true })),
+    { action: 'adopt', name: 'outline.opml' });
+  assert.deepEqual(host(c.connectWriteDecision({ existing: undefined, name: 'x.opml', blank: true })),
+    { action: 'create', name: 'x.opml' });
+});
+
 test('lastAutosaveSavedAt: returns 0 when localStorage has no autosave', () => {
   // The vm sandbox's localStorage stub returns null from getItem — same as a fresh session.
   assert.equal(c.lastAutosaveSavedAt(), 0);
@@ -11061,6 +11102,36 @@ test('reconcileAction — never anchored (known 0/null) → write, nothing to cl
   assert.equal(c.reconcileAction({ diskModified: 0,   knownModified: null, dirty: false }), 'write');
 });
 
+// ── #840: the byte-size fingerprint — an external write in the SAME mtime bucket ──
+// mtime alone cannot tell an external write stamped into our own mtime bucket (FAT/exFAT
+// 2s granularity, second-truncating or mtime-preserving sync tools) from our own unchanged
+// write. The size tiebreak catches it; sizes-unknown keeps the mtime-only verdict.
+test('reconcileAction #840 — same mtime + SAME size stays write (own unchanged write, no prompt after every autosave)', () => {
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: true }), 'write');
+  assert.equal(c.reconcileAction({ diskModified: 90,  knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: false }), 'write');
+});
+test('reconcileAction #840 — same mtime + DIFFERENT size is external (was the silent clobber)', () => {
+  // Kill scenario: device A anchors known=T; device B's edit syncs down stamped T; without the
+  // size check A read disk==known → write → A's next flush overwrote B's edit with no prompt.
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5321, knownSize: 5000, dirty: true }),  'prompt');
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5321, knownSize: 5000, dirty: false }), 'reload');
+  // an OLDER disk mtime with different bytes (a sync tool restoring a version with its source
+  // mtime preserved) is external too — the whole disk<=known branch takes the size tiebreak
+  assert.equal(c.reconcileAction({ diskModified: 90,  knownModified: 100, diskSize: 4200, knownSize: 5000, dirty: true }),  'prompt');
+  // a truncated-to-empty disk file (size 0) differs from a real anchored size → external
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 0, knownSize: 5000, dirty: false }), 'reload');
+});
+test('reconcileAction #840 — size unknown keeps the mtime-only verdict (backward compat)', () => {
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, dirty: true }), 'write');                                   // no sizes at all (pre-#840 caller shape)
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: undefined, knownSize: 5000, dirty: true }), 'write');
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: 5000, knownSize: 0, dirty: true }), 'write');     // knownSize 0 = never anchored
+  assert.equal(c.reconcileAction({ diskModified: 100, knownModified: 100, diskSize: NaN, knownSize: 5000, dirty: true }), 'write');
+});
+test('reconcileAction #840 — a NEWER disk mtime is external regardless of an equal size', () => {
+  assert.equal(c.reconcileAction({ diskModified: 200, knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: true }),  'prompt');
+  assert.equal(c.reconcileAction({ diskModified: 200, knownModified: 100, diskSize: 5000, knownSize: 5000, dirty: false }), 'reload');
+});
+
 // ── #746: bootPrefersFile — boot-time newer-wins WITHOUT comparing across clocks ──────
 test('bootPrefersFile — like-for-like mtime beats the clock-skew inversion (#746)', () => {
   // The bug: a synced folder written by a slow-clocked device gives the file a small mtime,
@@ -11229,7 +11300,7 @@ test('reopenWorkspaceDoc: the local-newer branch guards on docId before rebindin
   assert.ok(fn.includes('workspaceFile = null'), 'a corrupt file in this branch must detach + pause auto-save, never rebind');
 });
 
-test('reopenWorkspaceDoc: the file-wins branch is loud and recoverable, never a silent loss (#729, src pins)', () => {
+test('reopenWorkspaceDoc: the file-wins branch is loud and recoverable, never a silent loss (#729, src pins)', async () => {
   const fn = fnBody(_src, 'reopenWorkspaceDoc');
   // the losing local payload is captured BEFORE adoptDoc overwrites the autosave slot
   const cap = fn.indexOf('localPayload = localStorage.getItem(AUTOSAVE_KEY)');
@@ -11246,9 +11317,10 @@ test('reopenWorkspaceDoc: the file-wins branch is loud and recoverable, never a 
   // cross-doc case and stays quiet
   assert.ok(/if \(unknownIdentity\) \{\s*\n\s*flashHint\(/.test(fn), 'identity-unknown flashes the notice');
   assert.ok(fn.includes('Restore earlier version'), 'the notice names the recovery door');
-  // the stash helper guards its inputs (no payload / no id → no write, reported false)
-  assert.equal(c.stashPayloadAsPrev(null, 'x'), false);
-  assert.equal(c.stashPayloadAsPrev('payload', null), false);
+  // the stash helper guards its inputs (no payload / no id → no write, reported false).
+  // #846: stashPayloadAsPrev is async now (the RMW runs under the cross-tab lock).
+  assert.equal(await c.stashPayloadAsPrev(null, 'x'), false);
+  assert.equal(await c.stashPayloadAsPrev('payload', null), false);
 });
 
 test('rekeyPayloadDocId — rewrites the embedded identity, preserving everything else (#729)', () => {
@@ -11263,6 +11335,172 @@ test('rekeyPayloadDocId — rewrites the embedded identity, preserving everythin
   assert.equal(c.rekeyPayloadDocId(JSON.stringify({ noRoot: 1 }), 'x'), null, 'a payload with no root → null');
   assert.equal(c.rekeyPayloadDocId(null, 'x'), null);
   assert.equal(c.rekeyPayloadDocId(payload, null), null);
+});
+
+// ── workspace file-op data-safety (#839 / #841 / #843 / #848 — src pins) ──────
+// The FSA paths aren't reachable from the vm sandbox; the pure decisions are pinned
+// above (docIsBlank / connectWriteDecision), these pin the wiring + ordering.
+test('connectWorkspace decides before it touches the folder; the adopt path never writes (#839, src pins)', () => {
+  const fn = fnBody(_src, 'connectWorkspace');
+  const decide = fn.indexOf('connectWriteDecision(');
+  const create = fn.indexOf('getFileHandle(name, { create: true })');
+  assert.ok(decide !== -1, 'connectWorkspace must route through the pure decision core');
+  assert.ok(create !== -1 && decide < create, 'the decision must run BEFORE any create-capable handle is taken');
+  assert.ok(fn.includes('connectAdoptExisting(dir, decision.name)'), 'the adopt action opens the existing document');
+  assert.ok(fn.includes('_showingExamples'), 'the first-run Examples doc counts as blank (it is not the user\'s doc)');
+  assert.ok(fn.includes('already exists and was left untouched'), 'a collision rename is announced (P4)');
+  const adopt = fnBody(_src, 'connectAdoptExisting');
+  assert.ok(adopt.length > 0, 'connectAdoptExisting must exist');
+  assert.ok(!adopt.includes('createWritable') && !adopt.includes('writeH(') && !adopt.includes('safeWriteOpml('),
+    'the adopt path must be read-only on the folder (never writes or truncates)');
+  assert.ok(!adopt.includes('create: true'), 'the adopt path must never take a create-capable handle');
+});
+
+test('deleteWorkspaceDoc neutralizes the write target after a successful delete (#841, src pins)', () => {
+  const fn = fnBody(_src, 'deleteWorkspaceDoc');
+  const remove = fn.indexOf('removeEntry(name)');
+  const stash = fn.indexOf('stashPayloadAsPrev(');
+  const cleart = fn.indexOf('clearTimeout(autosaveTimer)');
+  const clean = fn.indexOf('markClean()');
+  const nullify = fn.indexOf('workspaceFile = null');
+  const stopw = fn.indexOf('stopWorkspaceWatch()');
+  const swtch = fn.indexOf('switchWorkspaceDoc(');
+  // order: delete succeeds → stash the restore point → neutralize → only then switch/new.
+  // (Both switchWorkspaceDoc and newWorkspaceDoc open with a pre-swap flush that would
+  // RECREATE the deleted file if workspaceFile/dirty still pointed at it — the zombie bug.)
+  assert.ok(remove !== -1 && stash > remove, 'the stash comes after a SUCCESSFUL delete (a failed delete keeps its save target)');
+  assert.ok(cleart > stash && clean > stash && nullify > stash && stopw > stash, 'the restore point is stashed BEFORE neutralizing');
+  assert.ok(swtch > nullify && swtch > clean && swtch > stopw, 'the switch/new fallthrough runs only after the write machinery is neutral');
+  assert.ok(fn.includes('name === fileName && workspaceFile'), 'neutralization is scoped to the folder-backed current doc');
+  assert.ok(fn.includes('was kept as a restore point'), 'the stash is mentioned in the delete flash (P4)');
+});
+
+test('a deleted or unopenable document leaves the tab strip (#843, src pins)', () => {
+  const del = fnBody(_src, 'deleteWorkspaceDoc');
+  assert.ok(/openTabs = openTabs\.filter\(n => n !== name\)/.test(del), 'delete prunes the tab');
+  assert.ok(del.includes('persistOpenTabs()') && del.includes('renderDocTabs()'), 'delete persists + re-renders the strip');
+  const sw = fnBody(_src, 'switchWorkspaceDoc');
+  const fail = sw.indexOf('Could not open');
+  const prune = sw.indexOf('openTabs = openTabs.filter(n => n !== name)');
+  assert.ok(fail !== -1 && prune > fail, 'a tab that fails to open removes itself (self-healing against external deletions)');
+});
+
+test('reconcileDuplicateDocIds re-checks the mtime before writing back a loser file (#848, src pin)', () => {
+  const fn = fnBody(_src, 'reconcileDuplicateDocIds');
+  const recheck = fn.indexOf('.lastModified !== readFile.lastModified');
+  const write = fn.indexOf('safeWriteOpml(dir, name, toOpml(r))');
+  assert.ok(recheck !== -1 && write !== -1 && recheck < write,
+    'the read → mutate → write loop must re-check the mtime and skip on an external change');
+});
+
+// ── #846: cross-tab prev-store lock ───────────────────────────────────────────
+test('withPrevStoreLock — no-locks fallback runs the RMW synchronously and never throws (#846)', () => {
+  // In this Node sandbox navigator.locks is absent ('locks' in the stub → false), so the
+  // fallback path runs fn inline — pinning that a boot without Web Locks keeps today's
+  // synchronous behavior instead of silently skipping the write.
+  let ran = false;
+  const p = c.withPrevStoreLock(() => { ran = true; });
+  assert.equal(ran, true, 'fn runs synchronously when navigator.locks is unavailable');
+  assert.ok(p && typeof p.then === 'function', 'always returns a Promise so async callers can await');
+  // a throwing fn is swallowed: best-effort store maintenance must never break the caller
+  assert.doesNotThrow(() => c.withPrevStoreLock(() => { throw new Error('boom'); }));
+});
+
+test('the prev-store RMW sites route through the lock, read INSIDE it (#846, src pins)', () => {
+  const stash = fnBody(_src, 'stashPayloadAsPrev');
+  assert.ok(stash.includes('withPrevStoreLock('), 'stashPayloadAsPrev runs its RMW under the cross-tab lock');
+  assert.ok(stash.indexOf('readPrevVersions()') > stash.indexOf('withPrevStoreLock('),
+    'the READ happens inside the locked fn, so it merges over the other tab\'s newest entries');
+  const wla = fnBody(_src, 'writeLocalAutosave');
+  assert.ok(wla.includes('withPrevStoreLock('), 'the autosave prev-roll RMW runs under the lock');
+  assert.ok(wla.indexOf('readPrevVersions()') > wla.indexOf('withPrevStoreLock('),
+    'the autosave prev-roll READ happens inside the locked fn too');
+  const lockFn = fnBody(_src, 'withPrevStoreLock');
+  assert.ok(lockFn.includes("'locks' in navigator"), 'feature-detected: boots without Web Locks fall back');
+  assert.ok(lockFn.includes("'pl-prev-store'"), 'one shared lock name across every RMW site');
+});
+
+// ── #847: multi-tab presence pure cores ───────────────────────────────────────
+test('updatePeers — folds open/here/close into the peers map; malformed messages are inert (#847)', () => {
+  let m = c.updatePeers({}, { type: 'open', tab: 'a', docId: 'd1' }, 1000);
+  assert.deepEqual(host(m), { a: { docId: 'd1', at: 1000 } });
+  m = c.updatePeers(m, { type: 'here', tab: 'b', docId: 'd2' }, 2000);
+  assert.deepEqual(host(m), { a: { docId: 'd1', at: 1000 }, b: { docId: 'd2', at: 2000 } });
+  m = c.updatePeers(m, { type: 'here', tab: 'a', docId: 'd3' }, 3000);
+  assert.equal(m.a.docId, 'd3', 'a peer that switched docs is replaced, never duplicated');
+  m = c.updatePeers(m, { type: 'close', tab: 'b' }, 4000);
+  assert.equal('b' in m, false, 'close drops the peer');
+  // malformed / unknown → the map is returned unchanged, never a throw
+  const before = m;
+  assert.equal(c.updatePeers(before, null, 5000), before);
+  assert.equal(c.updatePeers(before, { type: 'open', tab: '', docId: 'x' }, 5000), before, 'no tab id → inert');
+  assert.equal(c.updatePeers(before, { type: 'open', tab: 'z', docId: '' }, 5000), before, 'no docId → inert');
+  assert.equal(c.updatePeers(before, { type: 'weird', tab: 'z', docId: 'x' }, 5000), before, 'unknown type → inert');
+  assert.deepEqual(host(c.updatePeers(null, { type: 'open', tab: 'a', docId: 'd' }, 1)),
+    { a: { docId: 'd', at: 1 } }, 'a null map is tolerated');
+});
+
+test('peerHoldsDoc — presence needs a fresh same-doc peer; the TTL ages a crashed tab out (#847)', () => {
+  const peers = { a: { docId: 'd1', at: 1000 } };
+  assert.equal(c.peerHoldsDoc(peers, 'd1', 6000, 90000), true, 'fresh same-doc peer → present');
+  assert.equal(c.peerHoldsDoc(peers, 'd2', 6000, 90000), false, 'a peer on a different doc is not presence');
+  assert.equal(c.peerHoldsDoc(peers, 'd1', 91001, 90000), false, 'stale beyond the TTL → aged out (a crashed tab cannot pin prompts forever)');
+  assert.equal(c.peerHoldsDoc(peers, '', 2000, 90000), false, 'no docId → never present');
+  assert.equal(c.peerHoldsDoc(null, 'd1', 2000, 90000), false, 'no peers map → never present');
+});
+
+// ── #844: shared io-card guard rails (src pins — the harness is DOM, pinned by wiring) ──
+test('#844 — background dialogs defer, wedge flags are finally-cleared, promise dialogs are supersede-safe (src pins)', () => {
+  const hec = fnBody(_src, 'handleExternalChange');
+  assert.match(hec, /withBgDialog\(\(\) =>[^\n]*openReconcileDialog\(/,
+    'the reconcile prompt routes through the background-dialog queue, never wiping a user dialog');
+  assert.ok(hec.includes("workspaceFile === wf ? openReconcileDialog"),
+    'a doc swap during the deferral voids the prompt (never asks about a file no longer open)');
+  assert.match(hec, /finally\s*\{\s*_wsReconciling = false;/,
+    '_wsReconciling is cleared in a finally (stuck true = folder auto-write silently dead)');
+  const dup = fnBody(_src, 'reconcileDuplicateDocIds');
+  assert.ok(dup.includes('withBgDialog(() => openDupDocIdDialog('),
+    'the dup-id prompt routes through the background-dialog queue');
+  assert.match(dup, /finally\s*\{\s*_dupReconcileRunning = false;/,
+    '_dupReconcileRunning is cleared in a finally');
+  const q = fnBody(_src, 'withBgDialog');
+  assert.ok(q.includes('while (ioCardBusy())'), 'a background open WAITS for a free card (defer + retry)');
+  for (const name of ['openConfirmDialog', 'openReconcileDialog', 'openDupDocIdDialog']) {
+    const fn = fnBody(_src, name);
+    assert.ok(fn.includes('registerIoPending({ owner: finish'), name + ' registers for supersession dismissal');
+    assert.ok(fn.includes('if (done) return; done = true;'), name + ' finish is idempotent');
+    assert.ok(fn.includes("ioBack.removeEventListener('keydown', onKey)"),
+      name + ' removes its keydown listener on ANY teardown (no stale listener can act)');
+  }
+});
+
+test('#845 — dismissing the reconcile prompt defers; it never picks the destructive overwrite (src pins)', () => {
+  const dlg = fnBody(_src, 'openReconcileDialog');
+  assert.ok(dlg.includes("ioCancel = () => finish('later')"), 'Escape/backdrop resolve later, not mine');
+  assert.ok(!dlg.includes("finish('mine')") || !dlg.includes("ioCancel = () => finish('mine')"),
+    'the old destructive dismissal default is gone');
+  assert.ok(dlg.includes("dismiss: () => finish('later', true)"), 'a superseded prompt also resolves later');
+  assert.ok(dlg.includes('press Escape to decide later'), 'the dialog copy states what dismissal does (P4)');
+  const hec = fnBody(_src, 'handleExternalChange');
+  assert.ok(hec.includes("else if (choice === 'mine')"), 'the force-write is gated on the explicit mine button');
+  const tail = hec.slice(hec.indexOf("else if (choice === 'mine')"));
+  assert.ok(tail.includes('_wsPromptSnooze = Date.now() + WS_PROMPT_SNOOZE_MS'),
+    'dismissal snoozes the re-ask instead of force-writing');
+  assert.ok(tail.includes('flashHint('), 'dismissal is announced, never silent (P4)');
+  assert.ok(hec.includes('Date.now() < _wsPromptSnooze'), 'a snoozed prompt is not re-asked on the next tick');
+});
+
+test('#847 — presence suppresses the silent reload; announces ride the doc-swap chokepoint (src pins)', () => {
+  const hec = fnBody(_src, 'handleExternalChange');
+  const suppress = hec.indexOf('peerHasSameDoc()');
+  const reload = hec.indexOf('adoptDoc(fromOpml(');
+  assert.ok(suppress !== -1, 'the presence check exists');
+  assert.ok(reload !== -1 && suppress < reload, 'the presence check runs BEFORE the silent-reload branch');
+  const adopt = fnBody(_src, 'adoptDoc');
+  assert.ok(adopt.includes("plAnnounce('open')"), 'every runtime doc swap announces which doc this tab holds');
+  assert.ok(_src.includes("window.addEventListener('pagehide', () => plAnnounce('close'))"), 'presence clears on tab close');
+  assert.ok(_src.includes("new BroadcastChannel('pointliner')"), 'the presence channel exists');
+  assert.ok(_src.includes("typeof BroadcastChannel === 'undefined'"), 'feature-detected: inert where BroadcastChannel is absent');
 });
 
 // flashError was referenced by ~10 catch blocks but never defined — an error path threw a
@@ -15495,4 +15733,69 @@ test('starters (#565) — gallery entries present, heading-rooted, em-dash-free'
   assert.equal(opmls.length, 12, 'one embedded OPML per starter');
   for (const o of opmls) assert.match(o, /<outline text="# /, 'each starter roots in a # heading subtree');
   assert.ok(!block.includes('—'), 'no em dashes in starter copy (user-facing)');
+});
+
+// ─── workspace sync-safety batch (#840/#842/#845 items 1+2) ───────────────────
+const _fSync = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#840 — the size fingerprint is anchored wherever the mtime anchor is set', () => {
+  // one shared declaration next to the mtime anchor
+  assert.ok(_fSync.includes('let _wsKnownSize = 0;'), '_wsKnownSize declared');
+  // anchorWorkspaceFile captures both from ONE getFile() (post-write, connect, writeH)
+  assert.match(_fSync, /async function anchorWorkspaceFile\(\) \{\s*\n\s*if \(!workspaceFile\) \{ _wsKnownModified = 0; _wsKnownSize = 0; return; \}[\s\S]{0,400}_wsKnownSize = f\.size \|\| 0;/,
+    'anchorWorkspaceFile must reset + capture the size with the mtime');
+  // every direct `_wsKnownModified = file.lastModified` anchor site carries the size twin
+  const direct = _fSync.split('_wsKnownModified = file.lastModified || 0;').length - 1;
+  const twins  = _fSync.split('_wsKnownSize = file.size || 0;').length - 1;
+  assert.ok(direct >= 5, 'expected the reopen/switch/reload/theirs/copy direct anchor sites, saw ' + direct);
+  assert.equal(twins, direct, 'every direct mtime anchor site must set _wsKnownSize from the same File');
+  // teardown resets both
+  assert.match(_fSync, /function stopWorkspaceWatch\(\) \{[\s\S]{0,200}_wsKnownModified = 0;\s*\n\s*_wsKnownSize = 0;/, 'stopWorkspaceWatch must drop the size anchor too');
+});
+test('#840 — the flush pre-write gate and the change detector pass both fingerprints', () => {
+  assert.match(_fSync, /let diskModified = _wsKnownModified, diskSize = _wsKnownSize;\s*\n\s*try \{ const f = await workspaceFile\.getFile\(\); diskModified = f\.lastModified \|\| 0; diskSize = f\.size \|\| 0; \} catch \(_\) \{\}\s*\n\s*const action = reconcileAction\(\{ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty: true \}\);/,
+    'flushWorkspaceFile pre-write staleness gate must compare size too');
+  assert.match(_fSync, /catch \(_\) \{ return; \}\s*\n\s*const action = reconcileAction\(\{ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty \}\);/,
+    'checkExternalChange must compare size too');
+});
+test('#842 — BOTH mid-session losing-copy branches stash the local copy before adopting (the #729/#746 doctrine)', () => {
+  const fn = _fSync.slice(_fSync.indexOf('async function handleExternalChange('), _fSync.indexOf('function openReconcileDialog('));
+  // the silent 'reload' branch: capture pre-adopt, stash, and point at the restore door
+  const reload = fn.slice(0, fn.indexOf('_wsReconciling = true;'));
+  assert.match(reload, /localPayload = localStorage\.getItem\(AUTOSAVE_KEY\);[\s\S]{0,700}adoptDoc\(fromOpml\(await file\.text\(\)\)[\s\S]{0,400}stashPayloadAsPrev\(localPayload, localId\)/,
+    'reload branch must capture the payload pre-adopt and stash it');
+  assert.ok(reload.includes("(stashed ? ' Your previous copy: File menu, Restore earlier version.' : '')"), 'reload flash must carry the restore pointer when stashed');
+  // the 'theirs' choice: same capture-pre-adopt + stash + pointer
+  const theirs = fn.slice(fn.indexOf("if (choice === 'theirs')"), fn.indexOf("else if (choice === 'copy')"));
+  assert.match(theirs, /localPayload = localStorage\.getItem\(AUTOSAVE_KEY\);[\s\S]{0,700}adoptDoc\(fromOpml\(await file\.text\(\)\)[\s\S]{0,400}stashPayloadAsPrev\(localPayload, localId\)/,
+    "'theirs' must capture the payload pre-adopt and stash it");
+  assert.ok(theirs.includes("(stashed ? ' Your previous copy: File menu, Restore earlier version.' : '')"), "'theirs' flash must carry the restore pointer when stashed");
+  // the recorded asymmetry: 'mine' deliberately does NOT stash the foreign disk tree
+  const mine = fn.slice(fn.indexOf("// 'mine' (or dismissed)"));
+  assert.ok(!mine.includes('stashPayloadAsPrev'), "'mine' must not stash (recorded asymmetry)");
+});
+test('#845 item 1 — every boot losing-copy path flashes, honestly, whether or not the stash stuck', () => {
+  const fn = _fSync.slice(_fSync.indexOf('async function reopenWorkspaceDoc('), _fSync.indexOf('function unmarkedFilesNote('));
+  // sameDocDiverged: the old code gated the whole hint on stash success — silence exactly when storage is full
+  assert.ok(!fn.includes('sameDocDiverged && stashPayloadAsPrev'), 'the success-gated hint must be gone');
+  // (the stash is awaited since #846 made stashPayloadAsPrev async under the prev-store lock)
+  assert.match(fn, /if \(sameDocDiverged\) \{\s*\n\s*const stashed = await stashPayloadAsPrev\(localPayload, localId\);/, 'sameDocDiverged must stash then branch the flash');
+  // three honest failure variants (sameDocDiverged, identity-unknown, provably-different)
+  const failures = fn.split('could not be kept as a restore point; storage may be full.').length - 1;
+  assert.equal(failures, 3, 'all three losing-copy paths must name a failed stash');
+  // the provably-different-document branch (flashed nothing at all before) now speaks
+  assert.match(fn, /\} else if \(localId\) \{[\s\S]{0,600}The document open before was kept; open it and use File menu, Restore earlier version\./,
+    'the different-document branch must flash');
+});
+test('#845 item 2 — unmarkedFilesNote (pure): the no-docId scan skip is named, not silent', () => {
+  assert.equal(c.unmarkedFilesNote(0), '');
+  assert.equal(c.unmarkedFilesNote(null), '');
+  assert.equal(c.unmarkedFilesNote(-2), '');
+  assert.equal(c.unmarkedFilesNote(1), '1 file in the folder carries no identity mark yet, so links and search skip it; open it to stamp it.');
+  assert.equal(c.unmarkedFilesNote(3), '3 files in the folder carry no identity mark yet, so links and search skip them; open one to stamp it.');
+  assert.ok(!c.unmarkedFilesNote(1).includes('—') && !c.unmarkedFilesNote(2).includes('—'), 'user-facing copy carries no em dash');
+});
+test('#845 item 2 — scanWorkspace counts the skips and the broken-links report surfaces them', () => {
+  assert.match(_fSync, /if \(!r\.docId\) \{ unmarked\+\+; continue; \}/, 'the scan must count, not silently continue');
+  assert.match(_fSync, /const idx = buildWorkspaceIndex\(docs\);\s*\n\s*idx\.unmarked = unmarked;\s*\n\s*return idx;/, 'the count must ride the returned index');
+  assert.match(_fSync, /const unmarkedMsg = unmarkedFilesNote\(workspaceIndex \? workspaceIndex\.unmarked : 0\);/, 'the broken-links report must consume the count');
 });
