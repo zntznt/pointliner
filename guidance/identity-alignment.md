@@ -76,7 +76,7 @@ changed, and the §3 rule now stands as the guard for future greeting copy.
 
 ## Tier 2 — loyalty checks that likely pass but must be verified (review items)
 
-### IA-4 · The substrate review of chronicle / lore dates / custom calendars (§8a, §9.2) ✓ ANALYSIS DONE (#861 — owner to ratify)
+### IA-4 · The substrate review of chronicle / lore dates / custom calendars (§8a, §9.2) ✓ DONE + RATIFIED (#861, keep-as-is)
 The recorded owner unease: genuinely good solo-RPG tools, but did they reach the
 substrate or encode a schema? First-pass reading to structure the review: custom
 calendars look substrate-shaped (they generalize "what is a date" the way sequences
@@ -130,8 +130,8 @@ general instrument on demand, not on spec" rule (the same rule that governs the 
 **Revisit trigger:** the next time the journal or the chronicle needs a substantive change, unify
 them then — the change is already touching the duplicated code, so the extraction is nearly free.
 The cursor generalization waits for a second real caller (a journal/log that wants a now-marker).
-**Owner decision requested:** ratify keep-as-is + the recorded refactor trigger, or direct the
-unification now.
+**Owner decision (2026-07-17, ratified):** keep-as-is + the recorded refactor trigger; the
+unification waits for the next substantive change to either log.
 
 ### IA-5 · The exit story, stated where users look (§3b, freedom to leave) ✓ DONE (#862)
 The exports exist and are good; what's missing is the FRAMING — the guide never says
