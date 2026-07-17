@@ -9,8 +9,9 @@ before it goes anywhere else.
 
 Provenance: distilled 2026-07-16 from an external product-identity questionnaire pass
 (the "would I invest / join / commit years" question set), answered against the shipped
-app and the recorded decisions, then corrected the same day by the owner on the central
-point (§2: the drive is solo-RPG and never drifts; the product enables thought in writing). Everything stated as fact below is **built truth or a
+app and the recorded decisions, then corrected by the owner on the central point (§2:
+the app is at its core a TOOL for thinking in writing; solo-RPG is the founding problem
+and flagship proof, not the product category). Everything stated as fact below is **built truth or a
 recorded owner decision** — nothing aspirational is stated as fact, and the one genuinely
 open question is flagged as open rather than papered over.
 
@@ -38,27 +39,40 @@ Stated as the one-sentence versions:
   roll dice, generate names, or do math." (RPG flavor: "a dice roller, an oracle, and
   Perchance living inside your campaign notes, offline.")
 
-## 2. The drive and the product (owner clarification, 2026-07-16)
+## 2. A tool forged by solo-RPG, not a solo-RPG product (owner, 2026-07-16/17)
 
-Two things are true at once, and the distinction is the identity:
+**Pointliner is, at its core, a tool — an instrument for thinking in writing — not a
+solo-RPG product.** The relationship between the two is causal, and getting it right is
+the identity:
 
-> **The drive that created Pointliner is the solo-RPG table, and that drive will never
-> drift.** It is why the app exists, where it is sharpest, and where the worked examples
-> live (thirteen cases in `guide/solo-rpg/`).
->
-> **But the product is more than a solo-RPG thing: it exists to enable thought in
-> writing** — free-flowing, flexible, *variable* thought. The dice, grammars, oracles,
-> variables, and rollups are instruments of that: text that can surprise you, compute for
-> you, and bend as your thinking bends.
+1. **Solo-RPG is the founding problem.** It is why the app exists, and that origin will
+   never be disowned: the worked examples live there (`guide/solo-rpg/`, thirteen cases),
+   and it remains the front door and the flagship demo.
+2. **Solving that problem well forced a set of requirements.** Solo play is an unusually
+   demanding form of thinking in writing: you narrate in prose, you need randomness you
+   do not control (dice, oracles, tables — the surprise is the point), you track state
+   that must not drift (HP, threads, a cast), you compute as you go (modifiers, totals,
+   odds), you restructure constantly (scenes, threads, campaigns), and you do it alone,
+   offline, in a file of your own. A tool equal to that must be: plain text first,
+   natively generative, natively computational, freely restructurable, private, portable.
+3. **Those requirements are not RPG-shaped.** They are the requirements of freeform,
+   adaptable thought in general — brainstorming that needs its rut broken, worldbuilding,
+   research notes, planning under uncertainty, a budget that checks itself, any thinking
+   whose parts are *variable*: values that change and propagate, outcomes that vary on
+   purpose, structure that bends as the thinking bends.
+4. **So the product that emerged is a general instrument.** The dice, grammars, oracles,
+   variables, and rollups are not genre features; they are what "text that thinks along
+   with you" turns out to require. Solo-RPG proved the tool, because it is the one use
+   that needs all of it at once — and anything that survives that table serves the rest.
 
-So the pitch leads with the living, thinking document; solo-RPG is named as the origin
-and the flagship proof (the README's current shape: engine-first headline, "born at the
-solo-RPG table, and that is still where it is sharpest" immediately after). This
-**amends roadmap #515**: #515's insight stands — solo-RPG is the one surface where every
-feature is wanted by the same person at once, and it stays the front-door worked example,
-never demoted — but "solo-RPG player is THE customer the pitch names" over-corrected.
-The customer is the person who wants their written thinking to be alive; the solo-RPG
-player is the clearest instance of that person, not the boundary of them.
+The pitch follows from the causality: lead with the living, thinking document (the tool);
+name solo-RPG as where it was born and where it is sharpest (the proof). The README's
+current opening is the reference execution of exactly this shape. This **amends roadmap
+#515**: its insight stands — solo-RPG is the surface where every feature is wanted by one
+person at one moment, and it stays the flagship — but "the solo-RPG player is THE
+customer the pitch names" mistook the founding problem for the product category. The
+customer is anyone who wants their written thinking to be alive; the solo-RPG player is
+the clearest and most demanding instance of that person, not the boundary of them.
 
 **Who should never use Pointliner** (a strong product excludes; these are recorded, not
 accidental):
@@ -85,10 +99,13 @@ inventory is identity discipline, not just UX hygiene).
 
 ## 4. What we are competing with
 
-**Not note apps.** The real competition is **the stack of single-purpose tools a session
-otherwise juggles**: the dice roller, the Perchance tab, the random-table PDF, the yes/no
-oracle app, the spreadsheet for the sheet math, plus the notebook they all orbit.
-Pointliner's pitch is that the stack collapses into the document itself.
+**Not note apps.** The real competition is **the stack of single-purpose tools any
+thinking session otherwise juggles** around its notebook. At the solo-RPG table that
+stack is vivid — the dice roller, the Perchance tab, the random-table PDF, the oracle
+app, the spreadsheet for the sheet math — but the same stack exists around planning
+(calculator + spreadsheet + notes), research (notes + tracker), and brainstorming
+(notes + whatever breaks the rut). Pointliner's pitch is that the stack collapses into
+the document itself.
 
 Against the named rivals, the confident answers:
 
@@ -148,9 +165,9 @@ This is the single identity gap; closing it is an owner decision, not a build ta
   here) — *a feature earns its place where it composes with the generative/computational
   layer; parity with database/PKM apps is the scope creep the fences exist to stop.*
   When a proposal leans database-parity, this file is the counterweight to cite.
-- **As the pitch source:** README and first-run copy conform to §2 — the living,
-  thinking document leads; solo-RPG is named as the origin and flagship proof, never
-  erased and never made the boundary. (This amends #515's README instruction; the
+- **As the pitch source:** README and first-run copy conform to §2 — the tool (the
+  living, thinking document) leads; solo-RPG is named as the origin and flagship proof,
+  never erased and never made the category. (This amends #515's README instruction; the
   README's current shape is the reference execution.)
 - **As the questionnaire answer key:** the confident answers live here; empirical
   questions (what real users feel, who actually discovers it, retention) are marked

@@ -22,12 +22,15 @@ discoverability / UX strategy in `guidance/ux.md`.
    *(Supersedes the former "Direction: balance both" — which conflated build order with positioning.
    Build-order interleaving of PKM and generative features is unchanged; only the customer the pitch
    names is now decided.)*
-   **Amended (owner, 2026-07-16):** the "THE customer" phrasing over-corrected. The drive that
-   created the app is solo-RPG and will never drift — it stays the front door, the worked examples,
-   the sharpest surface. But the product itself is broader: **it enables thought in writing** —
-   free-flowing, flexible, variable thought. The pitch leads with the living/thinking document and
-   names solo-RPG as the origin and flagship proof (the README's current opening is the reference
-   execution). Canonical statement: `guidance/product-identity.md` §2.
+   **Amended (owner, 2026-07-16/17):** the "THE customer" phrasing mistook the founding problem
+   for the product category. **Pointliner is at its core a tool for thinking in writing, not a
+   solo-RPG product**: solo-RPG is the founding problem and stays the front door, the worked
+   examples, the sharpest surface — but the requirements solving it forced (natively generative,
+   natively computational, freely restructurable plain text, private and portable) are the
+   requirements of freeform, adaptable thought in general, so the tool serves far more than the
+   genre that forged it. The pitch leads with the tool; solo-RPG is named as origin and flagship
+   proof (the README's current opening is the reference execution). Canonical statement + the full
+   causal chain: `guidance/product-identity.md` §2.
 2. **Link scope: multi-document Zettelkasten** — a workspace of many notes/files, with
    **cross-file *and* same-file** linking on top.
 3. **Mirrors / cloned items: shelved** — hardest item, conflicts with the strict
