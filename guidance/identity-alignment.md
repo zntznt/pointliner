@@ -133,7 +133,7 @@ The cursor generalization waits for a second real caller (a journal/log that wan
 **Owner decision requested:** ratify keep-as-is + the recorded refactor trigger, or direct the
 unification now.
 
-### IA-5 · The exit story, stated where users look (§3b, freedom to leave)
+### IA-5 · The exit story, stated where users look (§3b, freedom to leave) ✓ DONE (#862)
 The exports exist and are good; what's missing is the FRAMING — the guide never says
 "here is how you leave, whole." Freedom-to-leave is a promise worth stating where a
 wavering user will look for it.
@@ -142,8 +142,14 @@ wavering user will look for it.
 form); one sentence in the guide README. Verify the Markdown export's pill-freezing is
 legible for every artifact type while writing it.
 **Size:** S.
+**Shipped 2026-07-17 (closes #862):** a "Taking your work elsewhere" section states the three exits
+in the freedom-to-leave frame — OPML the full-fidelity reopenable archive, Markdown/plain-text the
+one-way readable snapshots (each pill frozen to its shown value), self-contained HTML the live copy
+for someone without the app — plus the guide-README pointer. The Markdown freezing was
+browser-verified legible across types: `{2d6}` → `2d6 = 11`, `{sword | shield}` → `shield`,
+`{= sum(cost)}` → the total, `{5 to 10}` → `5 to 10 ≈ 7.22 (4.87 – 9.86)` + sparkline.
 
-### IA-6 · Menu sweep under the mission test (§9.1)
+### IA-6 · Menu sweep under the mission test (§9.1) ✓ DONE (#862, verified clean)
 The `/` and `@` menus accumulated during the PKM build-out. Most entries compose with the
 engine; any that are pure parity should be candidates for verbosity-gating (the `ux.md`
 dial), not removal.
@@ -151,6 +157,24 @@ dial), not removal.
 substrate / parity. Output is a short table appended here; gating decisions are
 follow-ups.
 **Size:** S.
+
+**Result (2026-07-17): the menu is clean — NO pure-parity command exists; nothing to gate.** Every
+entry is one of three kinds: **engine** (the `{…}`/`evalMath` core — the 10%), **outliner/text
+substrate** (the freeform-text foundation the engine rides on), or a **date/structure/organization
+instrument** that either composes with the engine or is itself a substrate generalization.
+
+| Tag | Commands | Why it belongs |
+| --- | --- | --- |
+| **Engine (composes — the 10% core)** | dice, markov, rolltable, rollpick, grammar, deck, oracle, math, var, est, count, query, meter, progress, clock, check | The generative/computational pills; this IS the product. |
+| **Text / outliner substrate** | ul, ol, todo, para, code, divider, quote, secret, bold, italic, uline, inlcode, strike, mark, note, footnote, link, image, alias, refile | The plain-text primitives and restructuring the engine rides on; the freeform foundation (freedom-of-form). |
+| **Structure that carries the engine** | base, querybase, table, prop | Structure whose cells/values carry pills, formulas and rollups (bases are generative-first by §0b; props are what `sum`/`check` compute over). Not database parity — structure that composes. |
+| **Substrate generalizations** | sequence (generalizes "a to-do state"), due/dates (dates are epoch-day numbers the engine computes), journal/chronicle (instances of the "dated log" substrate, IA-4), custom-calendars (generalizes "a date") | Each generalizes a built-in rather than encoding a domain schema. |
+| **Doors / reuse (neutral utility)** | template, savetemplate (freeform subtree reuse), variables (opens the panel), capture-inbox, export, files | Productivity primitives with no schema; text in, text out. |
+
+The closest-to-parity candidates (`base`/`querybase`/`table`, `prop`) were exactly the surfaces the
+bases program was disciplined to keep **composing** with the engine rather than drifting to
+database parity — so they pass the mission test by construction. No verbosity-gating is warranted;
+the finding, like IA-3 and IA-4, is that the menu is already loyal.
 
 ## Tier 3 — standing guards (no work now; re-check on every relevant PR)
 
@@ -171,7 +195,13 @@ follow-ups.
 1. ~~**IA-1** (the missing exit verb — the one place the app contradicts §3b today)~~ ✓ #858
 2. ~~**IA-2 + IA-3** together (one first-minutes pass: audit, reorder, translate)~~ ✓ #859 (atom-forward hint + tour pill) · #860 (copy verified clean)
 3. ~~**IA-4** (the substrate review — analysis PR ending in an owner decision)~~ ✓ #861 — verdict written, owner to ratify (recommendation: keep-as-is + a recorded unification trigger)
-4. **IA-5 + IA-6** (the exit story; the menu table)
+4. ~~**IA-5 + IA-6** (the exit story; the menu table)~~ ✓ #862 — exit story shipped; menu verified clean (no pure-parity command)
+
+**Program complete (2026-07-17):** IA-1…6 closed. Tier-1 gaps fixed (IA-1 base→text exit; IA-2
+atom-forward first run), the copy/menu/substrate reviews all came back loyal (IA-3, IA-4, IA-6
+verified clean; IA-4 ratified keep-as-is), the exit story is stated (IA-5). The standing guards
+(IA-7 no telemetry, IA-8 mixed gallery, IA-9 substrate-test-before-shipping) remain live on every
+relevant PR.
 
 Each lands as its own PR against this file; an item closes by linking the PR or the
 recorded decision beside its heading.
