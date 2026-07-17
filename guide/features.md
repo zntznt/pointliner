@@ -4,10 +4,11 @@
 line, with a link to where you learn it. If you want to know "can it do X?", this is the page to
 skim. For the deep how-to, follow the links.*
 
-Pointliner is an **outliner** (nested bullet points, like a foldable to-do list or a notebook) with
-two extra powers built in: it can **generate** text (dice, random tables, name makers) and
-**compute** with your outline (math, dates, sums that roll up the tree). All of it runs in one file,
-offline, with nothing to install.
+Pointliner is a document that **generates** text (dice, random tables, name makers) and **computes**
+over what you write (math, dates, sums that roll up the tree), all inside the writing itself. The
+surface is an **outline** (nested bullet points, like a foldable to-do list or a notebook), because
+that is what lets you reorganize thought freely; the generating and computing are the point. All of
+it runs in one file, offline, with nothing to install.
 
 Nothing below needs code. If you can type `{`, you can use it.
 
