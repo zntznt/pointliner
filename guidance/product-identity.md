@@ -238,6 +238,11 @@ generalize the cursor) is a clean-up toward the substrate, not a removal, and pe
 general instrument on demand, not on spec" rule it waits for a real trigger (recorded: the next
 substantive change to either log). This entry stays the standing example of the substrate test (§9)
 turned on our own work — the answer was "not a schema," and the discipline caught the duplication.
+A separate finding — the chronicle's user-facing *framing* read RPG-specific ("in-world log," "game
+log," "beat") rather than "a dated log in any calendar" — was addressed by a **copy-only de-theme**
+(SR-9, 2026-07-17): the user-visible strings and general guide pages now read neutral (keeping the
+word "chronicle"), the solo-RPG worked examples stay themed, and every internal identifier +
+persisted format is unchanged. The substrate *mechanism* verdict above is untouched; only the copy was.
 
 **8b. The falsification test for the tools-for-thought claim.** "Tools for thought" is
 a category with a history of vague claims, so this doc states what would DISPROVE ours:

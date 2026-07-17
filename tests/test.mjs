@@ -15561,10 +15561,10 @@ test('#653 — normalizeCalendarBindings: shape guarantee + re-validation', () =
 // #653 — the coexistence wiring src-pins: the bullet-menu door, the OPML persistence, and the seams
 // that resolve a node's calendar. Guards that no piece of the feature is silently dropped in a refactor.
 test('#653 — calendar coexistence: door + persistence + seam wiring', () => {
-  // the bullet-menu bind/unbind door (front door, P2)
-  assert.ok(_src.includes('Bind as in-world log'), 'the in-world-log bind door is missing');
-  assert.ok(_src.includes('Unbind in-world log'), 'the unbind label is missing');
-  assert.ok(_src.includes('In-world log (needs a custom calendar)'), 'the needs-a-calendar guard label is missing');
+  // the bullet-menu set/unset door (front door, P2) — SR-9 de-themed the copy (chronicle, not "in-world log")
+  assert.ok(_src.includes('Set as chronicle'), 'the chronicle set door is missing');
+  assert.ok(_src.includes('Unset chronicle'), 'the unset label is missing');
+  assert.ok(_src.includes('Chronicle (needs a custom calendar)'), 'the needs-a-calendar guard label is missing');
   // OPML round-trip (both save + load sides)
   assert.ok(_src.includes("headEl('_calendars'") && _src.includes("headEl('_gamelog'"), 'the calendars/gamelog head elements are not emitted');
   assert.ok(_src.includes("head > _calendars") && _src.includes("head > _gamelog"), 'the calendars/gamelog head elements are not parsed on load');
