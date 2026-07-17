@@ -1,10 +1,13 @@
 # Query base (QP-2): proposal
 
-**Status: PROPOSAL, awaiting owner sign-off.** This document reopens the `bases-direction.md`
-scope fence (§4 lists "filters as data operations" as deferred). Per that doc's Rule, building it
-requires moving the item above the line first. Nothing here is built; this is the design to approve
-or redirect. Read alongside `bases-direction.md` (the locked base doctrine) and the QP-1 register
-entry (the query pill, the shipped inline sibling).
+**Status: SHIPPED IN FULL — Phase A 2026-07-02, Phases B and C 2026-07-16.** The proposal was
+approved as "a mode of the existing base" (§6's recommendation); Phase B (the show-all cap toggle +
+stable row identity) and Phase C (property-cell write-through, with the §0.4 footguns answered:
+announced commits, undo-locality, properties-only writes) later shipped under the owner's
+below-the-line call, and SV-2 added a persisted config sort. The authoritative shipped-record now
+lives in `bases-direction.md` §4; this document is retained as the design rationale and the record
+of what §5 deliberately kept out (the saved-views database layer stays out — see
+`saved-views-proposal.md` for that decision). Read alongside `bases-direction.md`.
 
 ---
 

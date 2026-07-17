@@ -51,6 +51,28 @@ next to it. The pill unfolds back to the `{…}` you typed; fix it and click awa
   with no install and no account.
 - **Installable.** Served over https it's a PWA, so "Install" gives you a standalone app
   that works offline; the downloaded `index.html` still works identically from disk.
+- **No AI required.** The generative layer is deterministic and local: dice, grammars, a
+  real expression engine, Monte-Carlo estimates. Nothing phones a model; if AI vanished
+  tomorrow, Pointliner would work exactly the same.
+- **It slots in and out of how you already think.** Freeform text is the primary surface;
+  every structure (tables, boards, properties, workflows) is one optional, reversible way
+  to organize it, never the required way. And leaving is always whole: Markdown, plain
+  text, OPML, or a runnable HTML take everything with you. Pointliner earns its place in
+  your process instead of locking the door behind you.
+
+## What it will never be
+
+Strong tools exclude on purpose. These are commitments, not gaps on a roadmap:
+
+- **No accounts, no cloud backend, no team collaboration.** Your filesystem is the
+  storage; your choice of sync (Dropbox, iCloud, git, none) is the sync.
+- **No build step, no dependencies.** The app stays one file you can read, save, and run.
+- **No plugin code execution.** Extensibility is data (grammar rules, variables, emoji
+  packs), never programs running inside your notes.
+- **No second syntax.** Everything generative or computed speaks the one `{…}` language.
+
+If you need real-time team editing, a cloud workspace, or WYSIWYG rich text, Pointliner
+is deliberately not your tool, and it won't grow into one.
 
 ## What's in the box
 

@@ -244,10 +244,10 @@ Clock in/out on tasks + time reports. **Fit — medium, niche.**
 Attach a URL/citation to a note so revisiting the source surfaces it (literature-note workflow).
 **Fit — medium, niche.**
 
-### ☐ Board / Kanban view
+### ✓ Board / Kanban view — shipped (BV-1, 2026-07; plus cards + calendar views, `bases-direction.md` §4)
 Render a level as columns. **Fit — hard** (an alternate view layer over the same tree).
 
-### ☐ Recurring tasks (repeat + roll-forward-on-complete)
+### ✓ Recurring tasks (repeat + roll-forward-on-complete) — shipped (#462; completing rolls the date forward and re-opens)
 From the 2026-07-02 design review (Planner Junkie). `every day`/`weekly`/etc. with the due/start
 range advancing when the task is completed. **NOT a backend limit** — recurrence is pure
 client-side date math (`addMonths`, `today`, `daysuntil` all exist), so it is in-scope-yet-missing,
