@@ -342,6 +342,18 @@ They do arithmetic, and the uncertainty propagates:
 {(5 to 10) * (2 to 3)}      multiply two uncertain values
 ```
 
+**They read your variables too.** Any bound can be a declared variable, so an estimate composes with
+the rest of the number system:
+
+```
+cost_low = 20
+cost_high = 40
+{cost_low to cost_high}     a range driven by declared bounds
+{units * (5 to 10)}         scale an uncertain unit cost by a variable count
+```
+
+A variable that holds text (not a number) fails visibly, the same way it does in `{= …}` math.
+
 Click the pill to **re-sample**. The result is reproducible (it stores a seed, not the samples),
 so it survives save/reload and exports.
 

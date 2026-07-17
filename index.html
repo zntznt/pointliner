@@ -15134,7 +15134,7 @@ function classifyBraceBody(body, rules, vars) {
   if (dvp0 && resolveDottedVar(dvp0.segs, vars) != null) return 'artifact';
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
   if (diceish && parseDice(body, vars)) return 'artifact';
-  if (estParts(body)) return 'artifact';                               // {5 to 10}
+  if (estParts(body, vars)) return 'artifact';                         // {5 to 10} / {lo to hi}
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
@@ -15200,7 +15200,7 @@ function braceTypeLabel(body, rules, vars) {
   }
   const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));
   if (diceish && parseDice(body, vars)) return ['dice', null];
-  if (estParts(body)) return ['estimate', null];                       // {5 to 10}
+  if (estParts(body, vars)) return ['estimate', null];                 // {5 to 10} / {lo to hi}
   if (splitTopLevel(body, '|').length > 1) return ['grammar', null];
   if (/^[a-z_][\w]*$/i.test(body)) {
     const low = body.toLowerCase();
@@ -17877,7 +17877,7 @@ function announceDebut(type, rec, node) {
     case 'est': {
       // UXP-149: carry the sampled summary the way dice carries its total, so the est debut is as
       // informative as a re-roll (same one-liner rerollEst runs). node is needed for subtree refs.
-      const sm = (() => { const s = sampleUncertain(rec.expr, EST_N, rec.seed, node); return s && distSummary(s); })();
+      const sm = (() => { const s = sampleUncertain(rec.expr, EST_N, rec.seed, node, collectVars()); return s && distSummary(s); })();
       msg = sm ? `Estimate ${rec.expr}: ${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : `Estimate ${rec.expr}`;
       break;
     }
@@ -19451,8 +19451,8 @@ function resolveBrace(body, ctx) {
   const orp = oracleParts(body);
   if (orp) return expandTemplate(`{${orp.body}}`, ctx);   // #543: a Yes/No pick at the band's odds
 
-  const ep = estParts(body);   // estParts returns the expr STRING (or null), not an object
-  if (ep) { const s = sampleUncertain(ep, 400, ep, cookieNode || null); return s ? formatDist(s) : `{est?}`; }
+  const ep = estParts(body, ctx.vars);   // estParts returns the expr STRING (or null), not an object
+  if (ep) { const s = sampleUncertain(ep, 400, ep, cookieNode || null, ctx.vars); return s ? formatDist(s) : `{est?}`; }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
   if (body[0] === '=') {
@@ -21059,9 +21059,10 @@ function promoteBraceBody(node, body) {
   }
   // uncertain estimate: {5 to 10}, {normal(8, 2)}, {uniform(0, 10)} — a distribution
   // constructor (sum/avg rollups are authored via the @estimate dialog, not typed).
-  const estE = estParts(body);
+  const estVars = collectVars();   // SR-7: a constructor may reference declared variables ({lo to hi})
+  const estE = estParts(body, estVars);
   if (estE) {
-    const rec = makeEstRoll(estE);
+    const rec = makeEstRoll(estE, estVars);
     if (rec) { (node.est ||= []).push(rec); return `[[est:${rec.key}]]`; }
   }
   // conditional text: {cond: then | else} → an anonymous grammar. Wrap the body
@@ -21381,7 +21382,7 @@ function artifactToShorthand(type, rec) {
   // dialog-authored and estParts rejects it, so unfolding it would strand the pill — an edit of the
   // unfolded text can't re-promote and the distribution silently becomes inert prose (#528). Rollup
   // est pills stay ATOMIC (return null), the same rule dialog-declared vars follow.
-  if (type === 'est')  return rec.expr && estParts(rec.expr) ? `{${rec.expr}}` : null;
+  if (type === 'est')  return rec.expr && estParts(rec.expr, collectVars()) ? `{${rec.expr}}` : null;
   if (type === 'seq') {
     // LEAN FLOOR: a named sequence unfolds to its {seq Name: active | held? | done} source so it can
     // be EDITED inline (keyboard-only, no dialog) — it round-trips LOSSLESSLY: the states+bands come
@@ -22341,8 +22342,11 @@ function tokenizeUncertain(s) {
 
 // Parse an uncertain expression into an AST, or null if malformed. Precedence,
 // loosest first: `to` (CI constructor) < +,− < *,/ < unary − < atom. A bare word
-// is valid ONLY as the keyword `to`, a constructor name, or a sum/avg argument.
-function parseUncertain(expr) {
+// is valid ONLY as the keyword `to`, a constructor name, a sum/avg argument, or —
+// when a `vars` map is supplied (SR-7 / #876) — a declared variable that resolves in
+// it (a scalar broadcasts across the sample array at sample time). Unknown words still
+// fail to null, so `{note to self}` never promotes and the #ERR gate is preserved.
+function parseUncertain(expr, vars = null) {
   const s = String(expr == null ? '' : expr).toLowerCase()
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
   if (!s.trim()) return null;
@@ -22414,7 +22418,12 @@ function parseUncertain(expr) {
         }
         return null;                                        // unknown function
       }
-      return null;                                          // bare word (incl. stray `to`)
+      // a bare word (incl. stray `to`): a declared variable when `vars` resolves it,
+      // else null (unknown → the whole expr fails to parse, the #ERR/no-promote gate).
+      // hasOwnProperty (not `in`) so a plain-object vars map never reads `constructor` etc.
+      // off the prototype as a phantom variable.
+      if (vars && Object.prototype.hasOwnProperty.call(vars, tk.v)) { pos++; return { k: 'var', name: tk.v }; }
+      return null;
     }
     return null;
   }
@@ -22442,13 +22451,21 @@ function estChildPropExpr(node, prop) {
 // Sample an AST node → a length-n array. Distributions zip element-wise under
 // + − × ÷; scalars broadcast. `node` is the point being rendered, so sum/avg
 // aggregate over its direct children's uncertain properties (Monte-Carlo rollup).
-function sampleUncAst(ast, n, rng, node) {
+// `vars` (SR-7 / #876) is the resolved doc variable map: a `var` node broadcasts its
+// numeric value across the array (a scalar, like `num`); a non-numeric/text var fills
+// NaN so the estimate reads #ERR — the same type-safety contract math variables follow.
+function sampleUncAst(ast, n, rng, node, vars) {
   switch (ast.k) {
     case 'num': return new Array(n).fill(ast.v);
-    case 'neg': return sampleUncAst(ast.a, n, rng, node).map(x => -x);
+    case 'var': {
+      const v = vars && vars[ast.name];
+      const num = (typeof v === 'number' && Number.isFinite(v)) ? v : NaN;
+      return new Array(n).fill(num);
+    }
+    case 'neg': return sampleUncAst(ast.a, n, rng, node, vars).map(x => -x);
     case 'bin': {
-      const L = sampleUncAst(ast.left, n, rng, node);
-      const R = sampleUncAst(ast.right, n, rng, node);
+      const L = sampleUncAst(ast.left, n, rng, node, vars);
+      const R = sampleUncAst(ast.right, n, rng, node, vars);
       const out = new Array(n);
       for (let i = 0; i < n; i++) {
         const a = L[i], b = R[i];
@@ -22457,18 +22474,18 @@ function sampleUncAst(ast, n, rng, node) {
       return out;
     }
     case 'to':
-      return sampleLogNormalCI(meanOfSamples(sampleUncAst(ast.lo, n, rng, node)),
-                               meanOfSamples(sampleUncAst(ast.hi, n, rng, node)), n, rng);
+      return sampleLogNormalCI(meanOfSamples(sampleUncAst(ast.lo, n, rng, node, vars)),
+                               meanOfSamples(sampleUncAst(ast.hi, n, rng, node, vars)), n, rng);
     case 'normal': {
-      const m = meanOfSamples(sampleUncAst(ast.a, n, rng, node));
-      const sd = meanOfSamples(sampleUncAst(ast.b, n, rng, node));
+      const m = meanOfSamples(sampleUncAst(ast.a, n, rng, node, vars));
+      const sd = meanOfSamples(sampleUncAst(ast.b, n, rng, node, vars));
       const out = new Array(n);
       for (let i = 0; i < n; i++) out[i] = m + sd * estGaussian(rng);
       return out;
     }
     case 'uniform': {
-      const lo = meanOfSamples(sampleUncAst(ast.a, n, rng, node));
-      const hi = meanOfSamples(sampleUncAst(ast.b, n, rng, node));
+      const lo = meanOfSamples(sampleUncAst(ast.a, n, rng, node, vars));
+      const hi = meanOfSamples(sampleUncAst(ast.b, n, rng, node, vars));
       const out = new Array(n);
       for (let i = 0; i < n; i++) out[i] = lo + (hi - lo) * rng();
       return out;
@@ -22481,9 +22498,9 @@ function sampleUncAst(ast, n, rng, node) {
       for (const c of kids) {
         const raw = estChildPropExpr(c, ast.prop);
         if (raw == null) continue;
-        const sub = parseUncertain(raw);
+        const sub = parseUncertain(raw, vars);              // a child's uncertain prop may reference doc vars too
         if (!sub) continue;
-        cols.push(sampleUncAst(sub, n, rng, c));            // child as node → nested rollups resolve
+        cols.push(sampleUncAst(sub, n, rng, c, vars));      // child as node → nested rollups resolve
       }
       const out = new Array(n).fill(0);
       for (const col of cols) for (let i = 0; i < n; i++) out[i] += col[i];
@@ -22495,12 +22512,14 @@ function sampleUncAst(ast, n, rng, node) {
 }
 
 // THE public sampler: an uncertain expression → a length-n sample array, or null
-// if malformed. Deterministic given (expr, seed). node? supplies sum/avg children.
-function sampleUncertain(expr, n, seed, node) {
-  const ast = parseUncertain(expr);
+// if malformed. Deterministic given (expr, seed). node? supplies sum/avg children;
+// vars? (SR-7 / #876) is the resolved doc variable map so the expression can reference
+// declared variables (a scalar broadcasts across the array).
+function sampleUncertain(expr, n, seed, node, vars = null) {
+  const ast = parseUncertain(expr, vars);
   if (!ast) return null;
   const rng = rngFromSeed((seed >>> 0) || 1);
-  return sampleUncAst(ast, (n | 0) || EST_N, rng, node || null);
+  return sampleUncAst(ast, (n | 0) || EST_N, rng, node || null, vars);
 }
 
 // {mean, p5, p50, p95} of a sample array (non-finite values dropped), or null.
@@ -22557,22 +22576,28 @@ function formatDist(samples) {
 // Sniff a {…} body that should promote to an estimate pill: an uncertain
 // CONSTRUCTOR — `lo to hi`, normal( ), uniform( ). (sum/avg rollups are authored
 // via the @estimate dialog, so a bare {sum(cost)} never silently diverges from the
-// {= sum(cost)} deterministic-math form.) Returns the trimmed expr, or null.
-function estParts(body) {
+// {= sum(cost)} deterministic-math form.) `vars` (SR-7 / #876) lets a constructor's
+// bounds be declared variables (`{cost_low to cost_high}`); parseUncertain(b, vars) is
+// the real gate, so an unknown word never promotes regardless of the sniff. Returns the
+// trimmed expr, or null.
+function estParts(body, vars = null) {
   const b = String(body || '').trim();
   const low = b.toLowerCase();
-  const sniff = (/\bto\b/.test(low) && /\d/.test(low)) || /^(normal|uniform)\s*\(/.test(low);
+  // The digit requirement is dropped: parseUncertain is the truth (a `to` form with
+  // unknown/non-variable words fails there), so a var-driven `{lo to hi}` can promote.
+  const sniff = /\bto\b/.test(low) || /^(normal|uniform)\s*\(/.test(low);
   if (!sniff) return null;
-  return parseUncertain(b) ? b : null;
+  return parseUncertain(b, vars) ? b : null;
 }
 
 function estKey() { return 'u' + Math.random().toString(36).slice(2, 9); }
 
 // Build an estimate record from an uncertain expression, or null if it won't parse.
 // The record is tiny — {key, expr, seed}; the distribution is re-derived on render.
-function makeEstRoll(input) {
+// `vars` (SR-7 / #876) lets the expression reference declared variables and still validate.
+function makeEstRoll(input, vars = null) {
   const expr = String(input || '').trim();
-  if (!expr || !parseUncertain(expr)) return null;
+  if (!expr || !parseUncertain(expr, vars)) return null;
   return { key: estKey(), expr, seed: estNewSeed() };
 }
 
@@ -22581,7 +22606,8 @@ function makeEstRoll(input) {
 // aria-label is the mean±CI text; the sparkline is decorative (aria-hidden) — P3.
 function renderEstPill(key, e) {
   if (!e) return `<span class="est-pill est-bad" data-key="${escQ(key)}" aria-label="Estimate (missing data)">≈ ?</span>`;
-  const samples = sampleUncertain(e.expr, EST_N, e.seed, cookieNode);
+  // globalVarMap is the render-set doc variable map (SR-7): an estimate may reference declared vars.
+  const samples = sampleUncertain(e.expr, EST_N, e.seed, cookieNode, globalVarMap);
   const sm = samples && distSummary(samples);
   if (!sm) {
     return `<span class="est-pill est-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Invalid expression. Click to edit"`
@@ -22613,20 +22639,21 @@ const EST_CHIPS = [
 ];
 
 function openEstimateDialog({ title, submitLabel, expr = '', existing = null, node = null, onResult }) {
+  const dlgVars = collectVars();   // SR-7: preview/validate/build against the doc's declared variables
   openInsertDialog({
     icon: { fa:'fa-solid fa-left-right', fb:'≈' },
     title: title || 'Estimate (uncertain value)',
     submitLabel: submitLabel || 'Add',
     fields: [
       { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,
-        hint:'An uncertain value: a 90% range lo to hi, normal(mean, sd) or uniform(lo, hi). Combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
+        hint:'An uncertain value: a 90% range lo to hi, normal(mean, sd) or uniform(lo, hi). Reference declared variables and combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
         preview: v => {
           const ex = (v.expr || '').trim();
           if (!ex) return '';
-          if (!parseUncertain(ex)) return `<span class="io-preview-bad">Not a valid uncertain expression</span>`;
+          if (!parseUncertain(ex, dlgVars)) return `<span class="io-preview-bad">Not a valid uncertain expression</span>`;
           const save = cookieNode; cookieNode = node || null;   // so a sum(prop) preview resolves against this point's children
           try {
-            const samples = sampleUncertain(ex, EST_N, 0x9e3779b9, cookieNode);  // fixed preview seed → stable while typing
+            const samples = sampleUncertain(ex, EST_N, 0x9e3779b9, cookieNode, dlgVars);  // fixed preview seed → stable while typing
             const sm = samples && distSummary(samples);
             if (!sm) return `<span class="io-preview-bad">No finite samples</span>`;
             return `<span class="est-preview"><b>${escHtml(estNumFmt(sm.mean))}</b> (${escHtml(estNumFmt(sm.p5))} – ${escHtml(estNumFmt(sm.p95))}) `
@@ -22634,9 +22661,9 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
           } finally { cookieNode = save; }
         } },
     ],
-    validate: v => !!(v.expr && parseUncertain(v.expr)),
+    validate: v => !!(v.expr && parseUncertain(v.expr, dlgVars)),
     onSubmit: v => {
-      const rec = makeEstRoll(v.expr);
+      const rec = makeEstRoll(v.expr, dlgVars);
       if (!rec) return;
       if (existing) rec.key = existing;
       onResult(rec);
@@ -22651,7 +22678,7 @@ function rerollEst(node, key) {
   if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   e.seed = estNewSeed();
   markDirty();
-  const sm = (() => { const s = sampleUncertain(e.expr, EST_N, e.seed, node); return s && distSummary(s); })();
+  const sm = (() => { const s = sampleUncertain(e.expr, EST_N, e.seed, node, collectVars()); return s && distSummary(s); })();
   announce(sm ? `${e.expr} re-sampled: ${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : `${e.expr} re-sampled`);
   const el = repaintNodeContent(node);
   el?.querySelector(`.est-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('est-rolled');
@@ -27390,7 +27417,7 @@ function frozenTokenText(type, key, node, varMap, rootNode = root) {
   }
   if (type === 'est') {
     const e = node.est?.find(x => x.key === key); if (!e) return '';
-    const samples = sampleUncertain(e.expr, EST_N, e.seed, node);
+    const samples = sampleUncertain(e.expr, EST_N, e.seed, node, varMap);   // SR-7: resolve declared vars in export too
     return `${e.expr} ≈ ${samples ? formatDist(samples) : '#ERR'}`;
   }
   if (type === 'seq') {
@@ -31037,12 +31064,13 @@ const GUIDE = [
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
-    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-`, `*` and `/`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
-    related:['math','rollups'],
+    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-`, `*` and `/`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nAny bound can be a declared variable, so an estimate composes with the rest of the number system: declare `cost_low` and `cost_high` and write `{cost_low to cost_high}`, or scale an uncertain unit cost by a count with `{units * (5 to 10)}`. A variable that holds text fails visibly, the same as in a calculation.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
+    related:['math','rollups','variables'],
     examples:[
       { syn:'{5 to 10}',      desc:'a 90% range, most likely 5 to 10' },
       { syn:'{normal(8, 2)}', desc:'a bell curve around 8' },
       { syn:'{uniform(1, 6)}',desc:'any value 1 to 6, equally likely' },
+      { syn:'{cost_low to cost_high}', desc:'a range driven by declared variables' },
       { syn:'{5 to 10} + {2 to 4}', desc:'add two ranges together' },
       { syn:'Click the pill', desc:'re-sample it, like re-rolling dice' },
     ] },

@@ -3490,6 +3490,30 @@ test('makeEstRoll — builds {key, expr, seed}; rejects malformed', () => {
   assert.equal(c.makeEstRoll('nonsense'), null);
 });
 
+test('estimates read declared variables (SR-7 / #876)', () => {
+  // parse gate: a bare word resolves ONLY when the vars map holds it; unknown stays null,
+  // so {note to self} never promotes and the #ERR/no-promote gate is preserved.
+  assert.equal(c.parseUncertain('lo to hi'), null, 'no vars → bare words fail (unchanged)');
+  assert.ok(c.parseUncertain('lo to hi', { lo: 5, hi: 10 }), 'declared bounds parse');
+  assert.equal(c.parseUncertain('note to self', { lo: 5 }), null, 'undeclared words still fail');
+  assert.equal(c.parseUncertain('constructor to 5', {}), null, 'no phantom prototype variable');
+  // sampling: a declared scalar broadcasts, so {lo to hi} lands its CI at the declared bounds
+  const xs = c.sampleUncertain('lo to hi', 4000, 12345, null, { lo: 5, hi: 10 });
+  const s = c.distSummary(xs);
+  assert.ok(Math.abs(s.p5 - 5) < 0.6 && Math.abs(s.p95 - 10) < 0.9, 'CI lands at the variable bounds');
+  // a variable composes with the arithmetic: mult * (5 to 10) ≈ 2× the base mean
+  const base = c.distSummary(c.sampleUncertain('5 to 10', 4000, 31));
+  const scaled = c.distSummary(c.sampleUncertain('mult * (5 to 10)', 4000, 31, null, { mult: 2 }));
+  assert.ok(Math.abs(scaled.mean - 2 * base.mean) < 0.7, 'scalar var scales the distribution');
+  // a TEXT variable fails visibly (type-safety contract): NaN samples → no finite → #ERR
+  assert.equal(c.distSummary(c.sampleUncertain('lo to hi', 500, 7, null, { lo: 'x', hi: 10 })), null,
+    'a text variable yields no finite samples (reads #ERR)');
+  // estParts / makeEstRoll gate on the same vars map (classify + promote lockstep)
+  assert.equal(c.estParts('lo to hi'), null, 'no vars → not an estimate');
+  assert.equal(c.estParts('lo to hi', { lo: 5, hi: 10 }), 'lo to hi', 'declared bounds → an estimate');
+  assert.ok(c.makeEstRoll('normal(mean, sd)', { mean: 8, sd: 2 }), 'a var-driven constructor builds a record');
+});
+
 test('renderEstPill — frozen summary + aria-label = mean±CI, sparkline aria-hidden', () => {
   const r = c.makeEstRoll('5 to 10');
   const html = c.renderEstPill(r.key, r);
