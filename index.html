@@ -2039,7 +2039,15 @@ body:not(.v-guided) .bm-desc{display:none}
   .mt-rowh{width:22px;min-width:22px}
   .mt-rowh::before{opacity:.5}
   /* name-pill header: keep a comfortable tap height (tap around the pill = Column menu) */
-  .mt-colhead{padding-top:5px;padding-bottom:5px}
+  .mt-colhead{padding-top:5px;padding-bottom:5px;padding-right:34px}
+  /* #811: the ▾ Column-menu door needs a real finger target. The name pill fills the
+     header, so a center tap lands in name edit and the mouse's click-around-the-pill
+     zone is sub-finger-size. Give the ▾ its own tap column at the header's right edge
+     (pointer-events back on — the header click handler already routes any non-pill tap
+     to the Column menu; a click after a pan never fires, so scrolling over it is safe)
+     and pad the header (above) so a long name never sits under it. Press-and-hold
+     anywhere on the header is the other touch door (attachBaseHeaderTouchMenu). */
+  .mt-col-open{pointer-events:auto;top:0;right:0;transform:none;width:32px;height:100%;display:inline-flex;align-items:center;justify-content:center}
   /* toolbar controls: meet the coarse-pointer tap-target floor (~44px). The icon/level/
      logo buttons are 28px tall on desktop; give them a 44px touch height (keep the visual
      compact — padding/min-height grows the hit area, the glyph stays put). */
@@ -8981,6 +8989,16 @@ function hideColPanel() {
   const ret = mtPanelReturn; mtPanelReturn = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }
+// One-shot dismissal guard (#811). Menus opened from a MOUSEDOWN-activated control
+// (a bullet-menu row via mkCmdItem, the chrome Rows button, a Column-options list
+// row) get the SAME gesture's trailing click delivered AFTER the panel is open —
+// and it lands outside the panel, so the document-level outside-click closed the
+// menu in the same breath it opened (the header/row-handle openers never hit this:
+// they open on CLICK and stop propagation). The opener arms the guard; the next
+// click inside the window is that tail and is swallowed once. An unconsumed guard
+// (keyboard activation has no click tail) expires harmlessly.
+let _mtPanelOpenGuard = 0;
+function mtGuardPanelDismiss() { _mtPanelOpenGuard = Date.now() + 350; }
 
 // Shared builders for the column/row dropdown menus (§7.1 menu pattern: role=menu/
 // menuitem, arrow/Enter/Esc nav, reduced-motion). Both reuse the one #mt-colpanel
@@ -9184,6 +9202,53 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   }
 
   mtOpenMenu(panel, anchorEl);
+}
+
+// Touch door to the Column menu (#811): PRESS AND HOLD a column header. The mouse
+// path (click the header around the name pill) has no finger-sized target — the
+// pill fills the header, so a tap lands in name edit. Mirrors the bullet's
+// attachBulletTouchGestures: a 450ms hold opens the menu, movement past slop
+// hands the gesture back to the native pan/scroll, and a fired hold swallows its
+// own tap tail (touchend preventDefault) so the name pill under the finger never
+// enters edit and the trailing click can't dismiss the just-opened panel. No
+// touch-action change: a stationary hold needs none, and the grid's pan must stay
+// native (see the base touch-action note in the hover:none CSS). A focused pill
+// (name edit in progress) keeps its native selection behavior. Attached only on
+// touch devices (IS_TOUCH), only on editable grids (read-only bases render
+// .mt-headcell, never .mt-colhead, so the selector cannot match there).
+function attachBaseHeaderTouchMenu(host, node) {
+  let timer = null, sx = 0, sy = 0, fired = false;
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  host.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;   // a real mouse has the click zone + hover cues
+    const colhead = e.target.closest('.mt-colhead');
+    if (!colhead || e.target.closest('.mt-col-resize')) return;
+    const pill = e.target.closest('.mt-name-pill');
+    if (pill && pill === document.activeElement) return;   // mid name-edit: native selection wins
+    sx = e.clientX; sy = e.clientY; fired = false;
+    cancel();
+    timer = setTimeout(() => {
+      timer = null; fired = true;
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+      showColPanel(node, +colhead.dataset.c, colhead);
+    }, 450);
+  });
+  host.addEventListener('pointermove', e => {
+    if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel();   // a pan/scroll, not a hold
+  });
+  host.addEventListener('pointerup', cancel);
+  host.addEventListener('pointercancel', () => { cancel(); fired = false; });
+  // A fired hold must swallow its own tap tail: without this the synthesized click
+  // focuses the contenteditable name pill (name edit) under the open menu, and the
+  // document-level outside-click handler closes the panel the hold just opened.
+  host.addEventListener('touchend', e => {
+    if (!fired) return;
+    fired = false;
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+  // Chromium fires contextmenu at its own long-press threshold; the Column menu is
+  // already open by then — suppress the competing native callout for the fired hold.
+  host.addEventListener('contextmenu', e => { if (fired) e.preventDefault(); });
 }
 
 // ── whole-base operations (surfaced on the base bullet's menu) ────────────────
@@ -9659,6 +9724,7 @@ function mtAddRowsCapSection(node, addSection, addItem, divider = false) {
 // The rows-cap menu (the chrome button's pointer path). Reuses the shared
 // mt-colpanel menu chrome so it matches the Column/Row/card menus.
 function showBaseRowsMenu(node, anchorEl) {
+  mtGuardPanelDismiss();   // opened on mousedown: its own click tail must not dismiss it
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const { addSection, addItem } = mtMenuBuilder(panel);
@@ -9670,6 +9736,7 @@ function showBaseRowsMenu(node, anchorEl) {
 // whole-base setting instead of leaving view/rows as chrome-only buttons. The
 // chrome (the view switcher strip, the rows button) stays the on-widget path.
 function showBaseSettingsMenu(node, anchorEl) {
+  mtGuardPanelDismiss();   // opened from a bullet-menu row (mousedown): guard the click tail
   const panel = document.getElementById('mt-colpanel');
   panel.innerHTML = '';
   const { addSection, addItem } = mtMenuBuilder(panel);
@@ -9678,6 +9745,37 @@ function showBaseSettingsMenu(node, anchorEl) {
   [['table','Table'],['board','Board'],['cards','Cards'],['calendar','Calendar']]
     .forEach(([k, label]) => addItem(label, { active: kind === k, onApply: () => mtSetView(node, k) }));
   mtAddRowsCapSection(node, addSection, addItem, true);
+  mtOpenMenu(panel, anchorEl);
+}
+// Pure: the user-facing label for a base column — the header cell's text with
+// markdown stripped, or "Column N" when blank. (Node-testable; the columns door.)
+function mtColumnLabel(model, c) {
+  const nm = stripMd(String(model.rows?.[0]?.[c] ?? '')).trim();
+  return nm || 'Column ' + (c + 1);
+}
+// The bullet-menu door to per-column ops (#811): list the base's columns; picking
+// one opens its Column menu (Calculate, Formula, Show as, Sort, Alignment, Width,
+// Insert/Move/Delete). The on-widget doors (click around the name pill, the ▾,
+// the touch press-and-hold) stay the direct paths; this one rides the bullet menu,
+// which every input method can open. The pick defers a frame, like the Column
+// panel's Formula item, so hideColPanel's focus-restore runs before the Column
+// menu claims focus.
+function showBaseColumnsMenu(node, anchorEl) {
+  mtGuardPanelDismiss();   // opened from a bullet-menu row (mousedown): guard the click tail
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const model = mtModelRead(node);
+  addSection('Column options');
+  model.aligns.forEach((_, c) => {
+    addItem(mtColumnLabel(model, c), { onApply: () => requestAnimationFrame(() => {
+      // The re-open replaces the columns list with the picked column's menu; the pick's
+      // own click tail lands outside the re-anchored panel, so guard this hop too.
+      mtGuardPanelDismiss();
+      const th = mtHost(node.id)?.querySelector(`th[data-c="${c}"]`);
+      showColPanel(node, c, th || anchorEl);
+    }) });
+  });
   mtOpenMenu(panel, anchorEl);
 }
 
@@ -10139,6 +10237,9 @@ function buildTableWidget(node, readOnly) {
       showRowPanel(node, +rh.dataset.r, rh);
     }
   });
+  // #811: the touch door to the same Column menu — press and hold a column header
+  // (a finger tap on the header lands on the name pill, which is name edit).
+  if (IS_TOUCH) attachBaseHeaderTouchMenu(host, node);
   // column resize: drag the right-edge grip; double-click it to auto-fit (clear width)
   host.addEventListener('mousedown', e => {
     const grip = e.target.closest('.mt-col-resize'); if (!grip) return;
@@ -16330,7 +16431,9 @@ _mtColPanel.addEventListener('keydown', e => {
 });
 document.addEventListener('click', e => {
   // The header-cell opener stops propagation when it opens the panel, so a click that
-  // reaches here is always "outside" — close unless it landed inside the panel.
+  // reaches here is always "outside" — close unless it landed inside the panel. A
+  // mousedown-activated opener's own click tail is swallowed once by the guard (#811).
+  if (Date.now() < _mtPanelOpenGuard) { _mtPanelOpenGuard = 0; return; }
   if (!e.target.closest('#mt-colpanel')) hideColPanel();
 });
 
@@ -16617,6 +16720,15 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       sec:'Base', prim:true, icon: { fa:'fa-solid fa-table-list', fb:'▤' },
       label: 'View & rows shown',
       fn: () => { hideBpop(); showBaseSettingsMenu(node, bulletEl); },
+    });
+    // #811: per-column ops from the bullet menu too. The header's own doors need a
+    // pointer on the header; this one rides the menu every input method can open
+    // (touch long-press on the bullet included). Authored bases only: a query
+    // base's projected headers are read-only and have no Column menu.
+    if (!node.qbase) actions.push({
+      sec:'Base', prim:true, icon: { fa:'fa-solid fa-table-cells', fb:'▥' },
+      label: 'Column options',
+      fn: () => { hideBpop(); showBaseColumnsMenu(node, bulletEl); },
     });
   }
   // Todo nodes: a "Set state…" action opens the same picker (so a plain/no-keyword
@@ -29682,7 +29794,7 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead.\n\nIn a base, arrow keys move between cells, and the Alt combinations below move, insert and resize columns and rows and set a column's role without leaving the keyboard; the column menu (or Shift+F10 on a cell) has sorting, delete, the Width presets and the rest.\n\nCells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead.\n\nIn a base, arrow keys move between cells, and the Alt combinations below move, insert and resize columns and rows and set a column's role without leaving the keyboard; the column menu (or Shift+F10 on a cell) has sorting, delete, the Width presets and the rest. On touch, press and hold a column header (or tap the arrow at its right edge) to open that menu; the base's bullet menu lists it too, under Column options.\n\nCells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
     related:['base-views','querybase'],
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'a typed table that renders formatted' },

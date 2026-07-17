@@ -4452,6 +4452,18 @@ test('aggKindLabel: maps each aggregate kind to its footer label', () => {
   assert.equal(aggKindLabel(mtColAggKind('@>$2=vmean(@2$2..@-1$2)', 2)), 'Average');
 });
 
+// #811: mtColumnLabel — the per-column label the bullet menu's Column options door
+// lists (header text, markdown stripped; a blank or missing header falls back to
+// the positional "Column N" so every column stays pickable).
+test('mtColumnLabel: header text, markdown stripped, blank fallback', () => {
+  const model = { aligns: ['left', 'left', 'left'], rows: [['Name', '**HP**', '  ']] };
+  assert.equal(c.mtColumnLabel(model, 0), 'Name');
+  assert.equal(c.mtColumnLabel(model, 1), 'HP');          // emphasis stripped
+  assert.equal(c.mtColumnLabel(model, 2), 'Column 3');    // blank cell → positional
+  assert.equal(c.mtColumnLabel(model, 5), 'Column 6');    // out of range → positional
+  assert.equal(c.mtColumnLabel({ aligns: [], rows: [] }, 0), 'Column 1');   // no header row
+});
+
 // mtApplyAggregate is DOM-adjacent but its DOM calls no-op through vm stubs,
 // so the node.text mutation is fully testable. We verify the stale-value fix:
 // setting a column to None must blank its total cell, not leave a stale literal.
@@ -13113,7 +13125,22 @@ test('board card opener and the document closer agree on the click event (#417)'
   const body = clickBody.slice(0, clickBody.indexOf('});'));
   assert.ok(body.includes('showCardMenu('), 'the click listener is the one that opens the menu');
   assert.ok(body.includes('e.stopPropagation()'), 'the opener must stop propagation so the document closer never sees the opening click');
-  assert.ok(/document\.addEventListener\('click', e => \{[^]{0,300}hideColPanel\(\)/.test(_src), 'the document-level closer must listen on click, matching the opener');
+  const closers = [..._src.matchAll(/document\.addEventListener\('click', e => \{/g)]
+    .map(m => _src.slice(m.index, _src.indexOf('});', m.index)));
+  const closer = closers.find(b => b.includes('hideColPanel()'));
+  assert.ok(closer, 'the document-level closer must listen on click, matching the opener');
+  // #811: a mousedown-activated opener (a bullet-menu row via mkCmdItem, the chrome Rows
+  // button, a Column-options list row) gets its own gesture's trailing click delivered at
+  // document level AFTER the panel opens — outside the panel, so the closer shut the menu
+  // in the same breath it opened. The one-shot guard must swallow that tail BEFORE the
+  // outside-click close runs (armed by mtGuardPanelDismiss in the mousedown-based openers).
+  assert.ok(closer.includes('_mtPanelOpenGuard')
+    && closer.indexOf('_mtPanelOpenGuard') < closer.indexOf('hideColPanel()'),
+    'the opener-tail guard must run before the outside-click close (#811)');
+  for (const opener of ['function showBaseRowsMenu', 'function showBaseSettingsMenu', 'function showBaseColumnsMenu']) {
+    const body = _src.slice(_src.indexOf(opener), _src.indexOf('mtOpenMenu(panel', _src.indexOf(opener)));
+    assert.ok(body.includes('mtGuardPanelDismiss()'), `${opener} is mousedown-activated and must arm the dismissal guard (#811)`);
+  }
 });
 
 // ── toastGate (#391): the shared toast element has error priority ──
