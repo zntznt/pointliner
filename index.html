@@ -6003,8 +6003,10 @@ function mdInline(s) {
       const icon = (cls) => `<i class="fa-solid ${glyph}${cls}" aria-hidden="true"></i>`;
       const icons = icon('').repeat(pool.filled) + icon(' meter-icon-empty').repeat(pool.empty);
       // the label reports the ROUNDED counts the icons actually show (#708), never the raw
-      // value — else a fractional hp:3.5 would show 4 filled icons but say "3.5 of 5".
-      return stash(`<span class="meter meter-pool${full}" aria-label="Meter, ${pool.filled} of ${pool.filled + pool.empty}">${icons}</span>`);
+      // value — else a fractional hp:3.5 would show 4 filled icons but say "3.5 of 5" — and
+      // names the pool's style word (hearts/skulls/…) so the announced label describes the
+      // row of icons the eye sees, in the clock's established "N of M filled" pattern.
+      return stash(`<span class="meter meter-pool${full}" aria-label="Meter, ${parsed.style}, ${pool.filled} of ${pool.filled + pool.empty} filled">${icons}</span>`);
     }
     // the bar's label carries the exact value (the bar's fill rounds visually, but the number
     // beside it is exact, so "8.5 of 12" matches what the pill shows).
