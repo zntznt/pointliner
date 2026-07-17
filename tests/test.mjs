@@ -15252,10 +15252,10 @@ test('starters (#565) — gallery entries present, heading-rooted, em-dash-free'
   const start = _fStarters.indexOf('const STARTERS = [');
   const block = _fStarters.slice(start, _fStarters.indexOf('\n];', start));
   assert.ok(start > -1, 'STARTERS array present');
-  for (const id of ['campaign-oracle', 'oracle-play', 'character-sheet', 'project-tracker', 'reading-log', 'life-dashboard'])
+  for (const id of ['campaign-oracle', 'oracle-play', 'character-sheet', 'project-tracker', 'reading-log', 'life-dashboard', 'meal-planner', 'trip-planner', 'decision-helper', 'flashcards', 'home-inventory', 'worldbuilding'])
     assert.ok(block.includes(`id: '${id}'`), `starter ${id} present`);
   const opmls = block.split('opml: `').slice(1);
-  assert.equal(opmls.length, 6, 'one embedded OPML per starter');
+  assert.equal(opmls.length, 12, 'one embedded OPML per starter');
   for (const o of opmls) assert.match(o, /<outline text="# /, 'each starter roots in a # heading subtree');
   assert.ok(!block.includes('—'), 'no em dashes in starter copy (user-facing)');
 });
