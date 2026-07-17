@@ -188,6 +188,9 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 .logo:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:var(--r-xs)}
 .logo-mark{width:17px;height:17px;color:var(--acc);flex-shrink:0;display:block}
 .logo:hover{opacity:.75}
+/* #827 item 1: the "File ▾" cue beside the wordmark — the visible name for the menu the
+   welcome copy points at. The .mt-view-btn text-button recipe (.78em/600/muted, --r-sm). */
+.logo-file-cue{font-size:.78em;font-weight:600;color:var(--muted);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:2px 7px;line-height:1;white-space:nowrap}
 
 .spacer{flex:1}
 .dirty-dot{width:6px;height:6px;border-radius:50%;background:var(--acc);display:none;flex-shrink:0}
@@ -954,6 +957,13 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .node-content h4.md-h{font-size:1.05em;font-variation-settings:'opsz' 14}
 .node-content h5.md-h{font-size:.8em;font-weight:600;text-transform:uppercase;letter-spacing:.07em}
 .node-content h6.md-h{font-size:.8em;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+/* #827 item 10: a pill inside a heading inherits the heading scale (.86em of an h1's 2em
+   nearly doubles it), dominating the line. A pill is a computed value — body content, not
+   display type — so inside any .md-h it steps back to the body pill size: .86 of the body's
+   1.0625rem (keep the two in sync with the body font-size rule). Rem-anchored so every
+   heading level, the zoomed step-downs, and the phone overrides all land on one pill scale;
+   the smaller box also stops stretching the heading's tighter line box. */
+.md-h :is(.dice-roll,.mk-roll,.gr-roll,.math-roll,.est-pill,.var-pill,.seq-pill){font-size:calc(.86 * 1.0625rem)}
 /* UXP-108: inside a zoomed page the .zoom-title (30px / opsz 60, 22px mobile) is the masthead,
    so descendant headings step down beneath it — a `# child` must not out-size/out-grade the title
    of the page it lives on (DL §2). h1→1.5em (~25.5px) / opsz 60 sits clearly under the 30px title
@@ -1876,6 +1886,15 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .logo{padding:4px 3px}
   .logo-mark{width:20px;height:20px}
   #toolbar-row{gap:6px;padding:0 8px}
+  /* #827 item 14: seven icon toggles no longer fit one 390px row at touch tap sizes — the
+     cluster compressed into a scrollbar-less hidden overflow, clipping the Notes toggle with
+     no affordance. Let the row wrap instead: the cluster is flex-shrink:0 here so, when it
+     does not fit, it drops whole onto its own full-width line (and wraps internally on
+     ultra-narrow screens) rather than compressing into the scroll. Everything stays visible;
+     the toolbar's ResizeObserver re-pads the outline below the taller bar. Desktop-narrow
+     windows (28px buttons) still fit one row, so nothing changes there. */
+  #toolbar-row{height:auto;min-height:44px;flex-wrap:wrap}
+  #tbtn-cluster{flex-shrink:0;flex-wrap:wrap;overflow:visible;max-width:100%;margin-left:auto}
   /* Phone: put the search magnifier immediately after the logo (hide the first spacer,
      the one between the dirty-dot and the search wrap), and keep the second spacer so it
      pushes the 5 icon toggles to the right. */
@@ -2186,7 +2205,10 @@ body:not(.v-guided) .bm-desc{display:none}
 <script type="application/xml" id="pl-embedded-doc"></script>
 <div id="toolbar">
   <div id="toolbar-row">
-    <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-menu" aria-label="Pointliner menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span></span>
+    <!-- #827 item 1: the logo alone never read as a menu door — the welcome copy says "open the
+         File menu" but nothing on screen said File. The "File ▾" cue names the door (it stays
+         visible on phones where the wordmark hides); one button, same click/keyboard semantics. -->
+    <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-menu" aria-label="File menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span><span class="logo-file-cue" aria-hidden="true">File ▾</span></span>
     <span class="dirty-dot" id="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
     <span class="spacer"></span>
     <div id="search-wrap">
@@ -2255,7 +2277,7 @@ body:not(.v-guided) .bm-desc{display:none}
   <div id="chronicle-strip" role="region" aria-label="Chronicle"></div>
   <div id="agenda-strip" role="region" aria-label="Agenda"></div>
 </div>
-<div id="file-menu" role="dialog" aria-modal="true" aria-label="Pointliner menu">
+<div id="file-menu" role="dialog" aria-modal="true" aria-label="File menu">
   <!-- Header + two-pane body mirror the concept guide (#603): a title-and-search header row, then a
        category nav on the left and the selected category's actions on the right. Rows keep their ids
        so every handler wired elsewhere by id still fires; only their grouping/presentation changed. -->
@@ -3647,9 +3669,10 @@ const APPEARANCE_ICONS = ['fa-tag', 'fa-dollar-sign', 'fa-calendar-day', 'fa-inb
   'fa-circle-check', 'fa-clipboard-check', 'fa-calculator', 'fa-image', 'fa-folder-open',
   'fa-pen', 'fa-dice-d20', 'fa-circle-nodes', 'fa-link'];  // ONLY in-subset glyphs (verified against FA_GLYPHS)
 // A valid hashtag name: `[\w-]+` segments joined by `/` (mirrors the mdInline / collectTags
-// grammar). Used to reject a color on a name that could never render as a #tag. Pure.
+// grammar, incl. the #827 first-segment-needs-a-letter rule — a bare number like "1" could
+// never render as a #tag). Used to reject a color on a name that could never render. Pure.
 function isValidTagName(name) {
-  return /^[\w-]+(?:\/[\w-]+)*$/.test(String(name || '').replace(/^#/, ''));
+  return /^(?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*$/.test(String(name || '').replace(/^#/, ''));
 }
 // The swatch color for a tag, or null. Hierarchical like tag search: a color set on `thread`
 // also colors `thread/torn-letter` (the nearest configured ancestor wins). Pure.
@@ -5992,7 +6015,12 @@ function mdInline(s) {
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
   // hashtags: segments are [\w-]+, joined by / for nested tags (#thread/torn-letter).
   // A trailing / is NOT consumed (so "#a/" tags as #a), keeping the slug clean.
-  s = s.replace(/(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g, (_,t) => {
+  // #827 item 3: the FIRST segment must contain at least one letter — the (?=[\d_-]*[a-zA-Z])
+  // lookahead — so a bare number ("#1 priority", "#2024") stays plain text instead of
+  // false-positiving into a tag pill; digits elsewhere still tag (#v2, #2024-plans).
+  // This rule is mirrored in collectTags, parseSearchQuery/termMatchesNode, and
+  // isValidTagName — the three-place lockstep (CLAUDE.md); change one, change all.
+  s = s.replace(/(?<![a-zA-Z0-9])#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)/g, (_,t) => {
     const col = tagColorOf(t); // #464: an on-brand swatch, hierarchical (nearest configured ancestor)
     return `<a class="hashtag" data-tag="#${t}"${col ? ` data-color="${col}"` : ''} role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`;
   });
@@ -13726,7 +13754,9 @@ function parseSearchQuery(q) {
     // a|b, a negated -|, and a quoted "|" all stay literal text (the escape hatch).
     if (tok === '|' && !neg) { terms.push({ kind: 'or' }); continue; }
     let t;
-    if ((t = tok.match(/^#([\w-]+(?:\/[\w-]+)*)$/)) && t[1].length <= 512) terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
+    // #827 item 3: the first segment needs a letter (mdInline/collectTags lockstep), so a
+    // "#1" query is a literal text search — matching the "#1 priority" prose it no longer tags.
+    if ((t = tok.match(/^#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)$/)) && t[1].length <= 512) terms.push({ neg, kind: 'tag',  value: t[1].toLowerCase() });
     // a >512-char "#tag" (never a real hashtag) falls through to a text term, so termMatchesNode
     // never feeds it to `new RegExp('...#'+value+'...')` — a ~32k tag exceeds V8's regex program
     // limit and throws mid-render(). (Adversarial pass, blast: crash.) The `else if` chain below
@@ -13923,7 +13953,9 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     // doc-wide index: is any point linking TO this one (same-document; the cross-doc
     // index is CF-4's, not this filter's).
     if (term.value === 'link' && /\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|[^\]\n]*)?\]\]/i.test(node.text || '')) return true;
-    if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\w-]/.test(tagScanText(node.text))) return true;
+    // (#827 item 3: the sniff requires a letter before any /, mirroring the tag grammar,
+    // so a bare "#1" no longer counts as carrying a tag)
+    if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\d_-]*[a-zA-Z]/.test(tagScanText(node.text))) return true;
     if (term.value === 'backlink') {
       const lk = links || collectLinks();
       if ((lk.backlinks[node.id] || []).length) return true;
@@ -15086,7 +15118,7 @@ function exitEdit(content, node) {
     // the tag roster may have crossed the "worth rolling on" threshold — nudge once about
     // {roll: #tag}. Cheap: the tag-count scan only runs when a tag was newly typed, and the
     // Guided-only + once-ever guards inside short-circuit the rest.
-    if (/(?<![a-zA-Z0-9])#[\w-]/.test(node.text) && node.text !== prevText) maybeNudgeRoll();
+    if (/(?<![a-zA-Z0-9])#[\d_-]*[a-zA-Z]/.test(node.text) && node.text !== prevText) maybeNudgeRoll();   // the #827 letter rule: a bare "#1" is not a tag, so it never nudges
     const tblfm = extractTblfm(node.text); // the user may have typed/edited a #+TBLFM: line
     // A #+TBLFM: fragment that didn't land on its own line can't be associated with the
     // grid; surface it instead of silently dropping the formula (P4 feedback).
@@ -19459,7 +19491,9 @@ function collectTags(rootNode) {
   if (useCache) rootNode = root;
   if (useCache && _tagsCacheVer === _varsVer && _tagsCached) return _tagsCached;
   const counts = new Map();
-  const TAG_RE = /(?<![a-zA-Z0-9])#([\w-]+(?:\/[\w-]+)*)/g; // mirror mdInline's hashtag rule (nested tags via /)
+  // mirror mdInline's hashtag rule (nested tags via /; #827 item 3: the first segment
+  // needs a letter, so a bare "#1" is never indexed as a tag)
+  const TAG_RE = /(?<![a-zA-Z0-9])#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)/g;
   function walk(n) {
     // Blank [[…]] tokens (link/artifact targets) AND the leading org priority marker
     // `[#A]` (UXP-109), so neither the `#id` inside a link nor the `#A` inside a priority
@@ -20180,8 +20214,14 @@ function renderSeqGenPill(key, g) {
   const cta = ended ? 'Spent. Edit to reset'
     : willRecycle ? 'Last card. Click to reshuffle and draw'
     : ('Click to ' + verb);
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${cta}"`
-    + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${cta}">`
+  // #827 item 6: a shuffle deck's position is invisible beyond the last-card whisper —
+  // say how many cards remain in the bag in the title/aria (the glanceable count). Only
+  // for a mid-round deck: a pristine bag is undefined (lazy), and the empty-bag boundary
+  // is already voiced by the "Last card" cta. Display-layer only; draw state untouched.
+  const left = g.mode === 'shuffle' && Array.isArray(g.bag) && g.bag.length > 0 && !ended
+    ? `${g.bag.length} of ${g.items.length} cards left. ` : '';
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${left}${cta}"`
+    + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${left}${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit deck" title="Edit deck"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -20206,8 +20246,12 @@ function renderGrammarPill(key, g) {
   if (!g) return `<span class="gr-roll gr-bad" data-key="${escQ(key)}" aria-label="Grammar (missing data)"><span class="gr-ico"><i class="fa-solid fa-shuffle" aria-hidden="true"></i></span> ?</span>`;
   if (g.mode) return renderSeqGenPill(key, g);   // a stateful sequence rides on the grammar record
   // a non-anon record's origin is a user-declared, doc-wide callable name —
-  // show it (the named-table affordance: tells you what {name} calls)
-  const name = !g.anon && g.origin ? g.origin : '';
+  // show it (the named-table affordance: tells you what {name} calls).
+  // #827 item 15: the dialog placeholder's default start rule is literally named
+  // "origin", so that one is NOT a chosen name — captioning it ("origin | result")
+  // reads as noise. Hide the caption for it (and for anon records); a real name
+  // (loot, monster) keeps teaching what {name} calls.
+  const name = !g.anon && g.origin && g.origin.toLowerCase() !== 'origin' ? g.origin : '';
   const nameTag = name ? `<span class="gr-name" title="Callable as {${escQ(name)}}">${escHtml(name)}</span>` : '';
   // UXP-140/145: an oracle answer gets a whisper of valence — a leading-Yes tints the result plate
   // faintly positive, a leading-No muted. The INK stays full-contrast --fg (the verdict is
@@ -31854,7 +31898,15 @@ requestAnimationFrame(() => {
   // Otherwise focus the first node so the user can start typing immediately.
   // Desktop only: on touch, focusing a contenteditable pops the soft keyboard over
   // half the screen before the user has seen the document. They tap when ready.
-  if (flatRows.length > 0 && !IS_TOUCH) focusNode(flatRows[0].node.id);
+  // #827 item 11: a RESTORED document is the same read-first situation as a snapshot —
+  // dropping into edit-mode-on-point-1 renders its first point as raw markdown and unfolds
+  // its pills, so reopening the app looked broken. Open restored docs in display mode
+  // (click-anywhere-to-edit is one click away); keep the caret only when the restored doc
+  // is effectively blank (one empty point — e.g. New then reload), where typing is the
+  // only sensible next act. A fresh no-autosave boot (Examples failed / blank fallback)
+  // still focuses, so the new-doc experience is unchanged.
+  const blankDoc = flatRows.length === 1 && !(flatRows[0].node.text || '').trim() && !(flatRows[0].node.children || []).length;
+  if (flatRows.length > 0 && !IS_TOUCH && (!_restoredFromAutosave || blankDoc)) focusNode(flatRows[0].node.id);
 });
 
 // Reopen on load (Phase 1, steps 3–5a): if a workspace folder was connected in a previous

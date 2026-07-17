@@ -219,7 +219,7 @@ export function loadCores() {
     'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
     'classifyBraceBody','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
-    'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill',
+    'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
     'rolltableDefToRules','migrateRolltables',
