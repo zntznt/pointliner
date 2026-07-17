@@ -131,13 +131,42 @@ an **environment**. An environment shapes how its inhabitants think and owns the
 process; that is exactly what freedom-to-leave refuses. If users one day report that it
 changed how they think, that is theirs to say — the product never claims it first.
 
+## 3c. Inviting, not persuasive (owner, 2026-07-17)
+
+**Pointliner is not being sold, and there is no one to convince.** No campaign, no launch
+timed against inertia, no funnel, no conversion. The owner's stance is explicit: the goal
+is not to win anyone over. The **one** property worth keeping from marketing is
+**invitingness** — and invitingness is not persuasion, it is openness.
+
+The distinction is the whole point:
+
+- **Persuasion pushes.** Urgency, argument, "you should switch," friction that traps, a
+  wall before the value, a guilt-trip on the way out. Pointliner does none of it.
+- **Invitation opens.** Try it in seconds with nothing to lose; understand it fast; stay
+  as long as it helps; leave with everything. It welcomes; it never argues.
+
+Invitingness is **freedom-to-leave's welcoming twin**: §3b says *you can always go*; this
+says *come in whenever, and it costs you nothing to look.* Where it already lives, as
+built facts: no account or signup wall (open the file, it runs); the atom in the first
+thirty seconds — value before any commitment (§7); the empty canvas that says "or just
+start editing"; the whole exit story (§3b) that lets a wavering user see the door is
+unlocked *before* they walk in. The README executes this by **showing** the live text,
+never preaching it (the §3 translation rule).
+
+**The guard:** a feature that nags, upsells, manufactures urgency, gates value behind a
+commitment, or guilt-trips a user for leaving is violating this section, even if it would
+"convert" better. Optimize for welcome, never for capture. This is a design principle with
+the force of the never-build list — not a marketing tactic.
+
 ## 4. What we are competing with
 
 **Not note apps.** The real competition is **the stack of single-purpose tools a
 thinking session otherwise juggles around its notebook**: the calculator, the
 spreadsheet, the dice roller or random picker, the generator tab — plus the notes they
-all orbit. Whatever the session is about, the stack is the same shape, and Pointliner's
-pitch is that it collapses into the document itself.
+all orbit. Whatever the session is about, the stack is the same shape, and Pointliner
+collapses it into the document itself. (This §4 is internal competitive *analysis* — how
+to think about where the tool sits — not a pitch to deliver; per §3c the product invites,
+it does not sell.)
 
 Against the named rivals, the confident answers:
 
@@ -192,7 +221,7 @@ contents. Generation, computation, live state, and bending structure, all in one
 document that thinks along. (The same demo in its native habitat is the first case in
 `guide/solo-rpg/`.)
 
-## 8. Open questions (flagged, not papered over)
+## 8. Questions held honestly (open, resolved, or dissolved — never papered over)
 
 **8a. The chronicle/lore/custom-calendar set — substrate review DONE + RATIFIED (IA-4,
 2026-07-17; owner ratified keep-as-is).** The owner's recorded unease was *"did I rush to solve a problem with a rigid
@@ -218,64 +247,18 @@ Pointliner is a note app, whatever this document says. The claim is falsifiable 
 observed use, and the product surfaces (the `{2d6}`-first onboarding, the `?` cheat
 sheet, the concept guide) exist precisely to keep the engine from being missable.
 
-**8c. "Why now?" — a working thesis (refined 2026-07-17; owner to keep refining).** This was the
-one blank the doc refused to fake. It carries an argued thesis, stated AS a thesis — a claim about
-the market moment, not a built truth — and built on the AI-independence fact (§6).
-
-*The thesis, in one line:* **Pointliner is the legible, ownable answer that the AI moment made
-possible to explain.**
-
-**AI is the contrast, not the fuel.** The temptation is to say the AI wave created an appetite for
-"text that generates" and Pointliner rides it. That is the weak version, and it is probably wrong:
-the appetite AI created is for *an LLM in your notes* (open-ended, semantic, "write this for me"),
-not for a dice roller or a grammar. Pointliner is generative *without* AI (§6), so riding the AI
-appetite would contradict the product. The real gift the wave gave Pointliner is **legibility**.
-Before 2023, "your notes can generate and compute in place" had no reference point and was genuinely
-hard to explain. Now everyone has used generation-in-a-document (ChatGPT in a doc), so the pitch
-lands in one sentence: *like that, but deterministic, local, and yours.* The wave didn't create
-demand for our thing; it created the vocabulary and the foil that make our thing finally sayable.
-
-**And the wave produced its own discontents**, which is where "deterministic" stops being a quality
-and becomes the differentiator: outputs you can't reproduce, cloud/subscription dependence, privacy
-surrendered by default, and real fatigue. Deterministic generativity isn't merely "trustworthy" — it
-is a **medium primitive**: a `{2d6}` composes with `{= …}`, lives in a file forever, and re-runs on
-your machine, where an LLM call is a rented capability that returns an uncomposable blob. That is §3's
-belief ("generation is a writing primitive, not a separate app") stated as the reason the *timing*
-favors us: the moment taught people the difference between a primitive they own and a feature they
-rent.
-
-*The honest temporal argument (why now, not next year):* not a demand deadline — a **positioning
-window**. The category "generative notes" is being *defined right now*; the mental slot for "the
-deterministic, own-it one" is cheapest to claim before the category sets and someone else's framing
-hardens. That is a real reason to move now, and an honest one — it is about naming, not urgency.
-
-*Two why-nows, kept separate (the market's is real; the user's is weak):*
-- **Market why-now: real but soft.** The legibility is fresh and the discontent is near its peak — a
-  favorable moment, partly time-bound (if LLM-notes tools normalize the tradeoffs, the contrast
-  dulls). Favorable, not act-or-lose.
-- **User why-now: weak, and we should admit it.** For an individual, inertia wins; nothing forces a
-  switch *today*. The only real user trigger is a *concrete present pain* — you are copying numbers
-  between your notes and a spreadsheet this week, or you need a random table for tonight — not the
-  grand moment. The market thesis sells the category; a specific pain sells the download.
-
-*The wedge inside the moment (a sentiment hypothesis, not measured):* the communities most actively
-rejecting AI-generated content right now are creative ones — including the solo-RPG and worldbuilding
-crowd, the beachhead (§2). For them a generator that is provably **not AI** is not a compromise, it is
-the point. If that sentiment is real, the beachhead and the why-now align: Pointliner is the
-generative tool a person who dislikes generative-AI can love. (Flagged as a hypothesis about a
-community's mood; validate before leaning on it.)
-
-*Falsification (confront the strongest objection):* the thesis fails if the appetite people formed is
-specifically for **LLM capability** — semantic, open-ended, do-it-for-me — and does not transfer to
-deterministic, mechanical generativity at all. If "generative notes" means only "AI in my notes" to
-the market, then AI is not our foil but our replacement, the legibility cuts against us, and
-Pointliner is a strong *niche* tool for a deterministic-preferring minority (still viable — no wide
-moment). Watch for it; do not overclaim the moment.
-
-*Where this shows up externally:* nowhere as a slogan (the §3 translation rule holds). It shapes
-*emphasis* — the README's "No AI required" bullet and the "runnable, yours, offline" frame are this
-thesis as product facts. The thesis is for strategy (positioning, fundraising, what to build next),
-not the front page.
+**8c. "Why now?" — dissolved (owner, 2026-07-17). It was the wrong question for this product.**
+The investment questionnaire posed "why now" as a *selling* question: why should someone switch
+today rather than next year. Pointliner is **not being sold** (§3c), so the question dissolves rather
+than gets answered — there is no launch to time against inertia because there is no campaign, and no
+one who needs convincing. The doc previously carried a market thesis here (positioning window,
+fundraising framing, a wedge to "win"); the owner has retired it as off-key. What survives is one
+small, true, *non-selling* observation, and it serves invitingness, not persuasion: **the AI moment
+made the tool easier to explain.** Before 2023, "your notes can generate and compute in place" had no
+reference point; now "like an LLM in a document, but deterministic, local, and yours" lands in a
+sentence. That legibility lowers the barrier to *understanding* Pointliner — which is invitingness
+(§3c), the welcome mat, not a reason to sell. "Why now" is therefore closed, not open: the product's
+answer is that it does not ask the question.
 
 ## 9. How this file is used
 
@@ -290,13 +273,19 @@ not the front page.
      flagged when it encodes one domain's shape directly (§8a is the standing example).
   When a proposal leans database-parity or domain-schema, this file is the counterweight
   to cite.
-- **As the pitch source:** README and first-run copy conform to §2 — the tool (the
-  living, thinking document) leads. The origin gets its one born-at sentence and the
+- **As the voice source (invitingness, §3c — show, don't sell):** README and first-run
+  copy conform to §2 — the tool (the living, thinking document) leads, by *showing* the
+  live text, never by arguing for it. The origin gets its one born-at sentence and the
   pointer to the worked examples, nothing more; it is never erased and never made the
   category. The README's current shape is the reference execution.
+- **As the invitingness guard (§3c):** any feature or copy that nags, upsells, manufactures
+  urgency, gates value behind a commitment, or discourages leaving is checked against §3c
+  and cut — optimize for welcome, never for capture.
 - **As the questionnaire answer key:** the confident answers live here; empirical
   questions (what real users feel, who actually discovers it, retention) are marked
-  unknowable-from-code and stay out until there is user evidence.
+  unknowable-from-code and stay out until there is user evidence. Note: the questionnaire's
+  *selling* questions (why-now, conversion, the pitch) are answered by §3c's stance — the
+  product is not sold, only made inviting — not by market theses.
 
 ## 10. Hypotheses only users can settle (held, not asserted)
 
