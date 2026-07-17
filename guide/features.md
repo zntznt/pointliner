@@ -91,7 +91,8 @@ A live calculator that can see your outline. Math pills recompute on their own. 
   (`{= daysuntil(due)}`).
   ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
-  spreadsheet column. ([aggregation](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
+  spreadsheet column, and `{= sum("#task", cost)}` totals it over everything matching a live search.
+  ([aggregation](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
 - **Word counts.** `{= words(subtree)}` counts the prose under a heading; per-point notes stay out
   of the count unless you write `{= words(subtree, notes)}`.
   ([word counts](computing-numbers.md#roll-a-number-up-your-outline-aggregation))

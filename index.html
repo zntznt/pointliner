@@ -3464,6 +3464,22 @@ function nudgeRollTag(tagList, threshold = 3) {
   return top ? top.name : null;
 }
 
+// The reducer's identity semantics, shared by the child-prop rollups AND the query
+// reducers (SR-8 / #877) so both agree on the empty-set answer: count = length; min/max
+// return their IDENTITY element on an empty set (+∞ / −∞), not 0 — so a constraint like
+// `min(start) >= kickoff` with no qualifying value is vacuously TRUE instead of spuriously
+// failing on a 0 sentinel (formatMathResult already renders ±∞); sum/avg of nothing → 0.
+// Pure; `vals` are the already-numeric, already-filtered values. (count over a query is a
+// cardinality of MATCHES, computed by the caller — it never reaches here.)
+function reduceAgg(fn, vals) {
+  if (fn === 'count') return vals.length;
+  if (fn === 'min') return vals.length ? Math.min(...vals) : Infinity;
+  if (fn === 'max') return vals.length ? Math.max(...vals) : -Infinity;
+  if (!vals.length) return 0;
+  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
+  if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+  return 0;
+}
 function aggregateChildren(node, fn, prop, depth = 1) {
   // UXP-159: `depth` selects how deep the rollup reaches — 1 = direct children (the default,
   // unchanged), 2 = plus grandchildren, Infinity = the whole subtree. The nodes are gathered by the
@@ -3473,17 +3489,7 @@ function aggregateChildren(node, fn, prop, depth = 1) {
     const v = childPropNumber(c, prop);
     if (v !== null) vals.push(v);
   }
-  if (fn === 'count') return vals.length;
-  // min/max return their IDENTITY element on an empty set (+∞ / −∞), not 0 — so a
-  // constraint like `min(start) >= kickoff` with no dated children is vacuously TRUE
-  // (+∞ >= kickoff) instead of spuriously failing on a 0 sentinel. These run before
-  // the sum/avg empty-guard for that reason. formatMathResult already renders ±∞.
-  if (fn === 'min') return vals.length ? Math.min(...vals) : Infinity;
-  if (fn === 'max') return vals.length ? Math.max(...vals) : -Infinity;
-  if (!vals.length) return 0;                          // sum/avg of nothing → 0
-  if (fn === 'sum') return vals.reduce((a, b) => a + b, 0);
-  if (fn === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
-  return 0;
+  return reduceAgg(fn, vals);
 }
 // Substitute every sum|avg|count|min|max(propName) in a math expression with its
 // computed value over `node`'s direct children. A SINGLE bare-identifier argument is
@@ -3692,6 +3698,19 @@ function expandAggExpr(expr, node, vars = null) {
   // rollups. v1 fence: the argument cannot contain a double quote (no "exact phrase").
   if (/\bcount\s*\(\s*"/.test(e)) {
     e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*\)/g, (_, q) => '(' + queryCountIn(q, node) + ')');
+  }
+  // sum/avg/min/max("query", prop) — REDUCE a property over a live query set (SR-8 / #877), the
+  // generalization of count("query"). The quoted 1st arg is the search, the 2nd a property key, so
+  // {= sum("is:task", cost)} totals the cost of every point matching the query within the node's
+  // subtree, {= avg("#risk", severity)} averages a tag's severity, {= max("due:overdue", cost)} the
+  // priciest overdue item. Substituted to a number here like every rollup. The quoted 1st arg keeps
+  // it distinct from the bare child-prop rollup below (which requires an identifier first arg), so
+  // there is no ambiguity and no ordering dependency. A node-less caller (validation) reduces an
+  // empty scope → the identity, silent like count("query"). v1 fence: the query cannot contain a
+  // double quote (matches count("query")).
+  if (/\b(?:sum|avg|min|max)\s*\(\s*"/.test(e)) {
+    e = e.replace(/\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*\)/g,
+      (m, fn, q, prop) => '(' + queryReduce(fn, q, prop, node) + ')');
   }
   // sum/avg/count are NOT evalMath functions — the rollup is their only meaning — so the
   // 2nd arg can be a keyword scope OR a numeric depth: sum(cost) = direct children (default),
@@ -14323,17 +14342,27 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
 // DOC-WIDE (optional params for tests): a custom #STATE or variable declared elsewhere
 // in the document still drives the match. The F5-lite engine behind count("query") in
 // checks and math pills (see expandAggExpr). Pure when seqs/vars are passed.
-function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) {
+// queryReduce(fn, expr, prop, scope) — reduce a property over a LIVE query set (SR-8 / #877),
+// the generalization of count("query"): sum/avg/min/max the `prop` of every point in `scope`'s
+// subtree that matches the search `expr`. Reuses the shared collectScoped fold (whole subtree,
+// the query itself is the filter), the queryMatchesNode predicate, childPropNumber's numeric
+// coercion, and reduceAgg's identity semantics. count ignores `prop` (it is a cardinality of
+// MATCHES, mirroring count("query")); the other reducers count only matches whose prop is a
+// number. Empty query / empty scope → the reducer's identity (0, or ±∞ for min/max), silent
+// like count("query") — an empty match is a valid dynamic answer here, not a typo signal. Pure
+// when seqs/vars are passed.
+function queryReduce(fn, expr, prop, scope, seqs = allSequences(), vars = collectVars()) {
   const terms = parseSearchQuery(expr || '');
-  if (!terms.length || !scope) return 0;
-  let n = 0;
-  (function walk(node) {
-    for (const c of (node.children || [])) {
-      if (queryMatchesNode(terms, c, seqs, vars)) n++;
-      walk(c);
-    }
-  })(scope);
-  return n;
+  if (!terms.length || !scope) return reduceAgg(fn, []);
+  const matches = collectScoped(scope, Infinity).filter(c => queryMatchesNode(terms, c, seqs, vars));
+  if (fn === 'count') return matches.length;
+  const vals = [];
+  for (const c of matches) { const v = childPropNumber(c, prop); if (v !== null) vals.push(v); }
+  return reduceAgg(fn, vals);
+}
+// count("query") — the original cardinality form, now a thin delegate to the general reducer.
+function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) {
+  return queryReduce('count', expr, null, scope, seqs, vars);
 }
 
 // #558: the {roll: query} payoff should read as fiction, not as its own database key.
@@ -31076,7 +31105,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
@@ -31084,13 +31113,15 @@ const GUIDE = [
       { syn:'{= sum(cost, 2)}', desc:'reach two levels down (children + grandchildren)' },
       { syn:'{= avg(score)}', desc:'average the scores' },
       { syn:'{= count(cost)}',desc:'how many children have a cost' },
+      { syn:'{= sum("#task", cost)}', desc:'total a property over everything matching a search' },
+      { syn:'{= max("due:overdue", cost)}', desc:'the priciest overdue item below' },
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
       { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
       { syn:'{= words(subtree, notes)}', desc:'include per-point notes in the count' },
     ] },
   { id:'check', cat:'compute', covers:['check'], related:['rollups','properties','recipe-budget'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough points, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog.\n\nWrite the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough points, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog.\n\nWrite the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property; sum, avg, min and max take the same quoted-search form with a property, so sum(\"#task\", cost) <= budget caps a live query's total. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },

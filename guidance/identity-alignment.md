@@ -267,13 +267,18 @@ deterministic / plain-text tenets. Build on demand, not on spec — these are pr
   No new syntax; record stays `{key, expr, seed}`. **The L option — full evaluator unification so a
   distribution flows through `evalMath` — remains OUT (touches the "always a NUMBER" invariant; do
   NOT force).**
-- **SR-8 · Query reducers + shared scoped-fold (issue #877).** Only `count("query")` was
-  special-cased in `expandAggExpr`; `sum/avg/min/max("query", prop)` is the missing generalization
-  (reuse `queryMatchesNode` + `childPropNumber`). First extract a shared **scoped-fold**
-  (`(node, scope) → collectScoped`) that every reducer plugs into — it makes the query reducers (and
-  any future median/stdev rollup) nearly free, and centralizes the `self/children/subtree/N` depth
-  vocabulary currently re-implemented across `expandAggExpr`/`subtreeWords`/`firstEmptyRollup`/
-  `parseUncertain`. Size: S–M (scoped-fold) then M (query reducers).
+- **SR-8 · Query reducers + shared scoped-fold (issue #877). SHIPPED.** Only `count("query")` was
+  special-cased in `expandAggExpr`; added `{= sum/avg/min/max("query", prop)}` — reduce a property
+  over a live query set — via `queryReduce` (`collectScoped(scope, Infinity)` + `queryMatchesNode` +
+  `childPropNumber` + a new shared `reduceAgg` identity helper that `aggregateChildren` was refactored
+  onto; `queryCountIn` is now a thin `queryReduce('count', …)` delegate). The **shared scoped-fold
+  enabler was already in place** (`resolveScopeDepth`/`collectScoped`, used by `expandAggExpr`/
+  `subtreeWords`/`firstEmptyRollup`/`parseUncertain`), so this reused it. A **quoted** first arg is the
+  disambiguator vs the bare child-prop rollup (no ordering dependency); an empty match reduces to the
+  identity **silently**, like `count("query")` (a query matching nothing now is a valid dynamic answer,
+  so it deliberately does not feed the `firstEmptyRollup` typo-guard). Works in checks for free
+  (`evalCheck` → `expandAggExpr`): `sum("#task", cost) <= budget`. No new syntax (the quoted-query
+  convention already existed for `count`).
 
 ### Notes (recorded, no new issue)
 - **SR-9 (RC-2) — chronicle framing.** The chronicle is the one feature whose *identity* is
