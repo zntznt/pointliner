@@ -2308,7 +2308,7 @@ body:not(.v-guided) .bm-desc{display:none}
         <div class="fm-cat-head">Learn &amp; help</div>
         <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Help &amp; guide</span><span class="cmd-desc">Shortcuts and every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
         <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
-        <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Start from an example</span><span class="cmd-desc">Drop in a ready-made solo-RPG oracle, character sheet, or campaign</span></div></div>
+        <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Start from an example</span><span class="cmd-desc">Drop in a live example: an oracle, a character sheet, a project tracker, a life dashboard</span></div></div>
         <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
         <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
       </div>
@@ -31523,6 +31523,108 @@ const STARTERS = [
   <outline text="## How to run it">
     <outline text="Change a stat and the sheet moves: set Level to 5 and the hit points row ({= level * 8}) jumps to forty on its own. Search is:failing to find every check that is currently red."/>
     <outline text="Nothing here is new syntax: stats are variables, derived rows are math that reads them, the pack total is a child rollup, and the encumbrance rule is a check on the Carried load point."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+  { id: 'project-tracker',
+    name: 'Project tracker',
+    desc: 'Tasks that tally themselves, costs that total against a budget check, dates on the agenda.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Project tracker</title></head><body>
+<outline text="# Project tracker">
+  <outline text="A small project that adds itself up: the task list tallies into a progress bar, the materials total live against a budget, and every dated point shows up in the agenda (the toolbar calendar button). Every {…} is a live pill."/>
+  <outline text="## The build: a garden shed [/]">
+    <outline text="- [x] Clear and level the corner"/>
+    <outline text="#TODO [#A] Pour the base {date due: today+2}"/>
+    <outline text="#TODO Frame the walls {date due: today+7}"/>
+    <outline text="- [ ] Felt the roof"/>
+    <outline text="- [ ] Paint and tidy up"/>
+  </outline>
+  <outline text="## Materials">
+    <outline text="Budget: {budget := 400}"/>
+    <outline text="Materials so far: {= sum(cost)} of {budget} (the chip turns red past the budget)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(cost) &lt;= budget&quot;}]">
+      <outline text="Timber {prop cost: 180}"/>
+      <outline text="Roof felt {prop cost: 60}"/>
+      <outline text="Screws and brackets {prop cost: 35}"/>
+      <outline text="Paint {prop cost: 40}"/>
+    </outline>
+    <outline text="Add a child with a cost, like Hinges {prop cost: 90}, and watch the check flip red the moment the total crosses the budget."/>
+  </outline>
+  <outline text="## Honest estimates">
+    <outline text="Framing the walls: about {6 to 10} hours."/>
+    <outline text="The whole build: {2 to 4} weekends. Click an estimate to re-sample it."/>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="Check a task off and the progress bar on the section title moves. The due dates surface in the agenda and read as urgent when they slip. Search is:failing to find every check that is currently red."/>
+    <outline text="Nothing here is new syntax: the progress bar is a cookie counting the tasks beneath it, the total is a child rollup, the budget rule is a check, and the estimates are sampled ranges."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+  { id: 'reading-log',
+    name: 'Reading log',
+    desc: 'Your shelf as data: live counts, page totals, an average rating, and a roll to pick the next book.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Reading log</title></head><body>
+<outline text="# Reading log">
+  <outline text="Your shelf as data. The log counts itself, totals the pages, averages your ratings, and picks your next book when you cannot decide. Every {…} is a live pill."/>
+  <outline text="## Up next">
+    <outline text="Cannot decide? Let the shelf choose: {roll: #toread}"/>
+    <outline text="Waiting on the shelf: {count: #toread}"/>
+  </outline>
+  <outline text="## The shelf (tag a book #toread and the picker learns it)">
+    <outline text="The Dispossessed, Ursula K. Le Guin #toread"/>
+    <outline text="Piranesi, Susanna Clarke #toread"/>
+    <outline text="The Name of the Rose, Umberto Eco #toread"/>
+    <outline text="The Fifth Season, N. K. Jemisin #toread"/>
+  </outline>
+  <outline text="## Finished">
+    <outline text="Read so far: {= sum(pages)} pages, rated {= avg(rating)} on average.">
+      <outline text="- [x] The Left Hand of Darkness {prop pages: 304} {prop rating: 5}"/>
+      <outline text="- [x] Annihilation {prop pages: 195} {prop rating: 3}"/>
+      <outline text="- [x] The Hobbit {prop pages: 310} {prop rating: 4}"/>
+    </outline>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="Finish a book? Move it under Finished (drag its bullet, or Refile from the bullet menu), check it off, and give it pages and a rating: the totals recompute on their own. Add any book to the shelf with the toread tag and the next roll can land on it."/>
+    <outline text="Nothing here is new syntax: the picker is a roll on a tag, the shelf counter is a search, and the totals are child rollups over ordinary properties."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+  { id: 'life-dashboard',
+    name: 'Life dashboard',
+    desc: 'A document that watches itself: live counts, a today list, and a habit nudge.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Life dashboard</title></head><body>
+<outline text="# Life dashboard">
+  <outline text="A document that watches itself. The counters and the today list at the top read every point below them, live: check something off anywhere and the numbers move. Every {…} is a live pill."/>
+  <outline text="## At a glance">
+    <outline text="Open tasks right now: {count: is:todo}"/>
+    <outline text="Due today: {count: due:today}"/>
+    <outline text="On today's plate: {query: due:today}"/>
+    <outline text="One small win, picked for you: {roll: #habit}"/>
+  </outline>
+  <outline text="## Tasks">
+    <outline text="#TODO [#A] Renew the passport {date due: today+7}"/>
+    <outline text="#TODO Call the dentist {date due: today}"/>
+    <outline text="- [ ] Clear the email backlog"/>
+    <outline text="- [x] Water the plants"/>
+  </outline>
+  <outline text="## Habits (tag one #habit and the nudge learns it)">
+    <outline text="Stretch for five minutes #habit"/>
+    <outline text="Read ten pages #habit"/>
+    <outline text="Step outside before noon #habit"/>
+  </outline>
+  <outline text="## This week [%]">
+    <outline text="- [ ] Plan Saturday's hike"/>
+    <outline text="- [x] Book the car service"/>
+    <outline text="- [ ] Finish the library book"/>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="The agenda (the toolbar calendar button) lays every dated point on a timeline. The counters are ordinary searches, so they see the whole document, including everything you add after this example."/>
+    <outline text="Nothing here is new syntax: the counters are searches in a pill, the today list is an embedded query, the nudge is a roll on a tag, and the weekly bar is a cookie counting its checkboxes."/>
   </outline>
 </outline>
 </body></opml>`,
