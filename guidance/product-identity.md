@@ -194,8 +194,8 @@ document that thinks along. (The same demo in its native habitat is the first ca
 
 ## 8. Open questions (flagged, not papered over)
 
-**8a. The chronicle/lore/custom-calendar set — substrate review DONE (IA-4, 2026-07-17;
-owner to ratify).** The owner's recorded unease was *"did I rush to solve a problem with a rigid
+**8a. The chronicle/lore/custom-calendar set — substrate review DONE + RATIFIED (IA-4,
+2026-07-17; owner ratified keep-as-is).** The owner's recorded unease was *"did I rush to solve a problem with a rigid
 schema?"* The review against the shipped code (full verdict: `identity-alignment.md` IA-4) is
 reassuring: **none of the three is a rigid schema.** Custom calendars are clean substrate (a general
 `{months, week, eras}` bijection over epoch-day integers — the *sequences* pattern applied to "what
@@ -203,7 +203,7 @@ is a date"); lore dates are the thinnest possible instance (a recognized propert
 timeline). The chronicle is substrate-REUSE (its dating is identical to the journal's; it is the
 journal generalized to any home and any calendar) with one real finding: **the journal and chronicle
 are two instances of an un-extracted "dated log" substrate**, and the moving-now cursor is a novel
-construct welded to the singular `gamelog` binding. **Recommendation (owner to ratify): keep all
+construct welded to the singular `gamelog` binding. **Owner decision (2026-07-17, ratified): keep all
 three shipped; do not refactor now** — the substrate-completing move (unify journal + chronicle,
 generalize the cursor) is a clean-up toward the substrate, not a removal, and per the "build the
 general instrument on demand, not on spec" rule it waits for a real trigger (recorded: the next
@@ -218,11 +218,50 @@ Pointliner is a note app, whatever this document says. The claim is falsifiable 
 observed use, and the product surfaces (the `{2d6}`-first onboarding, the `?` cheat
 sheet, the concept guide) exist precisely to keep the engine from being missable.
 
-**8c. "Why now?" has no recorded answer.** Nothing in the repo argues why someone should
-switch today rather than next year. Candidate ingredients exist (local-first sentiment,
-subscription fatigue, the solo-RPG boom, AI-slop fatigue making deterministic tools
-fresh) but no thesis has been chosen. Until one is, marketing copy should not fake one.
-This is the single identity gap; closing it is an owner decision, not a build task.
+**8c. "Why now?" — a working thesis (first draft, 2026-07-17; owner to refine).** This was the
+one blank the doc refused to fake. It now carries an argued thesis — stated AS a thesis, not a fact:
+a claim about the market moment, not a built truth. It builds directly on the AI-independence fact
+(§6).
+
+*The thesis, in one line:* **Pointliner is the deterministic, own-it answer to the generative
+moment.** The AI wave (2023–2025) did two things at once, and Pointliner sits exactly at the fold
+between them:
+
+1. **It made "your text should generate and compute" a mainstream expectation.** Three years ago,
+   telling someone "your notes can roll, generate, and compute in place" was a niche pitch; the AI
+   wave trained the whole culture to expect text that *does things*. The appetite Pointliner feeds is
+   now normal, where it used to need explaining.
+2. **It produced its own discontents** — outputs you can't reproduce (a model answers differently
+   every time, unverifiable), cloud and subscription dependence, privacy surrendered by default, and
+   a real, growing fatigue among people who want tools they can trust and own.
+
+Pointliner delivers the generativity and computation the moment made people **want**, in the form the
+same moment made people newly **value**: deterministic (a dice roll is a dice roll, a grammar
+reproduces from its seed, math is math — reproducible and trustworthy), local (yours, offline), and
+unsubscribed. So "why *now*, not next year": the appetite is at its peak *and* the fatigue is at its
+peak, a convergence that is partly time-bound — in 2022 the appetite wasn't mainstream, and if LLM
+tools eventually satisfy it fully, the window narrows.
+
+*The honest limits (this is a thesis, held to the doc's fact bar):*
+- **No forcing catalyst.** Nothing makes someone switch *today* specifically; the argument is "the
+  moment is unusually favorable," not "act now or lose it." The time-bound-ness of the favorable
+  conditions is the reason to lead now rather than later — a probabilistic argument, not a deadline.
+- **The load-bearing ingredient is the AI counterwave**, and it is the one genuinely *time-sensitive*
+  element. The others are real but are tailwinds, not catalysts: local-first has matured from fringe
+  (2019) to a reachable audience (an *enabling condition* — the audience is ready), the single-file
+  web platform matured enough to carry a capable app in one HTML file with real disk access (you
+  couldn't have built this as credibly in 2018), and subscription fatigue has been true for years and
+  will be true next year (a standing tailwind, no "now"). The solo-RPG surge is the *beachhead
+  audience*, not the timing (and per §2, provenance not positioning).
+- **Falsifiable.** If the mainstream appetite for generative text turns out fully satisfied by LLM
+  tools — if people do not mind non-reproducibility, cloud, and subscription — the broad "why now"
+  evaporates and Pointliner is a strong niche tool for a deterministic-preferring audience (still
+  viable, but no wide moment). Watch for that; do not overclaim the moment against it.
+
+*Where this shows up externally:* nowhere as a slogan (the belief-translation rule, §3, still holds).
+It shapes *emphasis* — the README's "No AI required" bullet and the "runnable, yours, offline" frame
+are this thesis executed as product facts, not as a timing pitch. The thesis is for strategy
+(fundraising, positioning, deciding what to build next), not for the front page.
 
 ## 9. How this file is used
 
