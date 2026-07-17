@@ -6516,6 +6516,47 @@ test('workspaceFileName: sanitizes path separators and reserved characters', () 
   assert.equal(c.workspaceFileName(odd, 'unsaved'), 'outline.opml');
 });
 
+// ── #839: connect-collision guard cores (connect must never overwrite a folder file) ──
+test('docIsBlank: a fresh doc is blank; any text, note, props, or doc config is not (#839)', () => {
+  const blank = c.mkRoot(); blank.children.push(c.mkNode(''));
+  assert.equal(c.docIsBlank(blank), true, 'the fresh-boot doc (one empty point) is blank');
+  const ws = c.mkRoot(); ws.children.push(c.mkNode('   \n  '));
+  assert.equal(c.docIsBlank(ws), true, 'whitespace-only text is still blank');
+  assert.equal(c.docIsBlank(null), true);
+  const texted = c.mkRoot(); texted.children.push(c.mkNode('real content'));
+  assert.equal(c.docIsBlank(texted), false);
+  const nested = c.mkRoot(); const p = c.mkNode(''); p.children.push(c.mkNode('deep')); nested.children.push(p);
+  assert.equal(c.docIsBlank(nested), false, 'text anywhere in the tree counts');
+  const noted = c.mkRoot(); const n = c.mkNode(''); n.note = 'a note'; noted.children.push(n);
+  assert.equal(c.docIsBlank(noted), false, 'a per-point note counts');
+  const propped = c.mkRoot(); const q = c.mkNode(''); q.props = [{ key: 'due', val: '2026-01-01' }]; propped.children.push(q);
+  assert.equal(c.docIsBlank(propped), false, 'a property counts');
+  const templated = c.mkRoot(); templated.templates = [{ name: 't', node: {} }];
+  assert.equal(c.docIsBlank(templated), false, 'doc-level templates count');
+  const saved = c.mkRoot(); saved.savedSearches = ['#tag'];
+  assert.equal(c.docIsBlank(saved), false, 'saved searches count');
+  const packed = c.mkRoot(); packed.plugins = [{ id: 'p1' }];
+  assert.equal(c.docIsBlank(packed), false, 'data packs count');
+});
+
+test('connectWriteDecision: free name creates; taken + blank adopts; taken + content uniquifies (#839)', () => {
+  assert.deepEqual(host(c.connectWriteDecision({ existing: [], name: 'outline.opml', blank: true })),
+    { action: 'create', name: 'outline.opml' });
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['other.opml'], name: 'outline.opml', blank: false })),
+    { action: 'create', name: 'outline.opml' });
+  // THE #839 kill case: blank doc + the folder already holds outline.opml → open it, write nothing
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['outline.opml'], name: 'outline.opml', blank: true })),
+    { action: 'adopt', name: 'outline.opml' });
+  // real content + collision → collision-safe name; the existing file is never the target
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['outline.opml'], name: 'outline.opml', blank: false })),
+    { action: 'create', name: 'outline-2.opml' });
+  // case-insensitive, like the rest of the filename layer
+  assert.deepEqual(host(c.connectWriteDecision({ existing: ['OUTLINE.OPML'], name: 'outline.opml', blank: true })),
+    { action: 'adopt', name: 'outline.opml' });
+  assert.deepEqual(host(c.connectWriteDecision({ existing: undefined, name: 'x.opml', blank: true })),
+    { action: 'create', name: 'x.opml' });
+});
+
 test('lastAutosaveSavedAt: returns 0 when localStorage has no autosave', () => {
   // The vm sandbox's localStorage stub returns null from getItem — same as a fresh session.
   assert.equal(c.lastAutosaveSavedAt(), 0);
@@ -11293,6 +11334,62 @@ test('rekeyPayloadDocId — rewrites the embedded identity, preserving everythin
   assert.equal(c.rekeyPayloadDocId(JSON.stringify({ noRoot: 1 }), 'x'), null, 'a payload with no root → null');
   assert.equal(c.rekeyPayloadDocId(null, 'x'), null);
   assert.equal(c.rekeyPayloadDocId(payload, null), null);
+});
+
+// ── workspace file-op data-safety (#839 / #841 / #843 / #848 — src pins) ──────
+// The FSA paths aren't reachable from the vm sandbox; the pure decisions are pinned
+// above (docIsBlank / connectWriteDecision), these pin the wiring + ordering.
+test('connectWorkspace decides before it touches the folder; the adopt path never writes (#839, src pins)', () => {
+  const fn = fnBody(_src, 'connectWorkspace');
+  const decide = fn.indexOf('connectWriteDecision(');
+  const create = fn.indexOf('getFileHandle(name, { create: true })');
+  assert.ok(decide !== -1, 'connectWorkspace must route through the pure decision core');
+  assert.ok(create !== -1 && decide < create, 'the decision must run BEFORE any create-capable handle is taken');
+  assert.ok(fn.includes('connectAdoptExisting(dir, decision.name)'), 'the adopt action opens the existing document');
+  assert.ok(fn.includes('_showingExamples'), 'the first-run Examples doc counts as blank (it is not the user\'s doc)');
+  assert.ok(fn.includes('already exists and was left untouched'), 'a collision rename is announced (P4)');
+  const adopt = fnBody(_src, 'connectAdoptExisting');
+  assert.ok(adopt.length > 0, 'connectAdoptExisting must exist');
+  assert.ok(!adopt.includes('createWritable') && !adopt.includes('writeH(') && !adopt.includes('safeWriteOpml('),
+    'the adopt path must be read-only on the folder (never writes or truncates)');
+  assert.ok(!adopt.includes('create: true'), 'the adopt path must never take a create-capable handle');
+});
+
+test('deleteWorkspaceDoc neutralizes the write target after a successful delete (#841, src pins)', () => {
+  const fn = fnBody(_src, 'deleteWorkspaceDoc');
+  const remove = fn.indexOf('removeEntry(name)');
+  const stash = fn.indexOf('stashPayloadAsPrev(');
+  const cleart = fn.indexOf('clearTimeout(autosaveTimer)');
+  const clean = fn.indexOf('markClean()');
+  const nullify = fn.indexOf('workspaceFile = null');
+  const stopw = fn.indexOf('stopWorkspaceWatch()');
+  const swtch = fn.indexOf('switchWorkspaceDoc(');
+  // order: delete succeeds → stash the restore point → neutralize → only then switch/new.
+  // (Both switchWorkspaceDoc and newWorkspaceDoc open with a pre-swap flush that would
+  // RECREATE the deleted file if workspaceFile/dirty still pointed at it — the zombie bug.)
+  assert.ok(remove !== -1 && stash > remove, 'the stash comes after a SUCCESSFUL delete (a failed delete keeps its save target)');
+  assert.ok(cleart > stash && clean > stash && nullify > stash && stopw > stash, 'the restore point is stashed BEFORE neutralizing');
+  assert.ok(swtch > nullify && swtch > clean && swtch > stopw, 'the switch/new fallthrough runs only after the write machinery is neutral');
+  assert.ok(fn.includes('name === fileName && workspaceFile'), 'neutralization is scoped to the folder-backed current doc');
+  assert.ok(fn.includes('was kept as a restore point'), 'the stash is mentioned in the delete flash (P4)');
+});
+
+test('a deleted or unopenable document leaves the tab strip (#843, src pins)', () => {
+  const del = fnBody(_src, 'deleteWorkspaceDoc');
+  assert.ok(/openTabs = openTabs\.filter\(n => n !== name\)/.test(del), 'delete prunes the tab');
+  assert.ok(del.includes('persistOpenTabs()') && del.includes('renderDocTabs()'), 'delete persists + re-renders the strip');
+  const sw = fnBody(_src, 'switchWorkspaceDoc');
+  const fail = sw.indexOf('Could not open');
+  const prune = sw.indexOf('openTabs = openTabs.filter(n => n !== name)');
+  assert.ok(fail !== -1 && prune > fail, 'a tab that fails to open removes itself (self-healing against external deletions)');
+});
+
+test('reconcileDuplicateDocIds re-checks the mtime before writing back a loser file (#848, src pin)', () => {
+  const fn = fnBody(_src, 'reconcileDuplicateDocIds');
+  const recheck = fn.indexOf('.lastModified !== readFile.lastModified');
+  const write = fn.indexOf('safeWriteOpml(dir, name, toOpml(r))');
+  assert.ok(recheck !== -1 && write !== -1 && recheck < write,
+    'the read → mutate → write loop must re-check the mtime and skip on an external change');
 });
 
 // flashError was referenced by ~10 catch blocks but never defined — an error path threw a

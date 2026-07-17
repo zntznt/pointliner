@@ -25764,6 +25764,37 @@ function uniqueWorkspaceName(existing, base) {
   }
 }
 
+// Pure (#839): is the document effectively blank — nothing a user would miss if it were
+// swapped out? True when no point in the tree carries any text, note, or properties, and
+// no document-level config (saved searches, templates, data packs) rides the root: the
+// fresh-boot document. connectWorkspace uses this to decide that connecting a blank doc
+// to a folder that already holds a file under the derived name means OPENING that
+// document, never writing over it. (Node-testable; no DOM.)
+function docIsBlank(doc) {
+  if (!doc) return true;
+  if ((doc.savedSearches || []).length || (doc.templates || []).length || (doc.plugins || []).length) return false;
+  const blank = n => !((n.text || '').trim()) && !((n.note || '').trim())
+    && !((n.props || []).length) && (n.children || []).every(blank);
+  return (doc.children || []).every(blank);
+}
+
+// Pure (#839): what should connect do about the filename it derived for the current doc?
+// getFileHandle(name, {create:true}) OPENS an existing file rather than failing, and the
+// first write TRUNCATES it — so a taken name must never be written blind (the blank-doc
+// derived name is 'outline.opml', also the likeliest name already in a real notebook;
+// the clobbered content never touched this browser, so no restore point could help).
+//   - name free                     → 'create' under it (the normal first-connect flow)
+//   - name taken + current doc blank → 'adopt' the existing file (connect = open the
+//                                      notebook; a blank doc has nothing to lose)
+//   - name taken + real content      → 'create' under a collision-safe uniqueWorkspaceName
+// Case-insensitive like uniqueWorkspaceName (filesystems often are). (Node-testable.)
+function connectWriteDecision({ existing, name, blank }) {
+  const taken = new Set([...(existing || [])].map(n => String(n).toLowerCase()));
+  if (!taken.has(String(name).toLowerCase())) return { action: 'create', name };
+  if (blank) return { action: 'adopt', name };
+  return { action: 'create', name: uniqueWorkspaceName(existing, name) };
+}
+
 // Pure: shape a raw directory listing into the document list — keep only '.opml' files
 // (case-insensitive), de-dupe (case-insensitive, first spelling wins), and sort locale-
 // aware/case-insensitive for a stable menu. (Node-testable; no DOM.)
@@ -26088,7 +26119,20 @@ async function gotoDocTab(n) {
 async function connectWorkspace() {
   try {
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
-    const name = workspaceFileName(root, fileName);
+    // #839: never overwrite a file already in the chosen folder. getFileHandle({create:true})
+    // below OPENS an existing file, and the first write truncates it — content this browser
+    // has never seen, so no restore point could bring it back. Decide first (pure core):
+    // free name → create (the normal "bring my doc into the folder" flow); taken + blank
+    // doc → OPEN the existing document instead (connecting a fresh profile to a notebook
+    // means opening it — the first-run Examples doc counts as blank, it is not the user's);
+    // taken + real content → save under a collision-safe name and say so (P4). The
+    // list-then-create gap is a milliseconds-wide race we accept, like the delete path's.
+    let existing = [];
+    try { existing = await listWorkspaceNames(dir); } catch (_) {}
+    const base = workspaceFileName(root, fileName);
+    const decision = connectWriteDecision({ existing, name: base, blank: docIsBlank(root) || _showingExamples });
+    if (decision.action === 'adopt') { await connectAdoptExisting(dir, decision.name); return; }
+    const name = decision.name;
     const fh = await dir.getFileHandle(name, { create: true });
     if (!await writeH(fh)) return;     // first write failed (writeH already flashed) — don't claim "connected" to an unwritten file
     fileHandle = fh; fileName = name;  // the folder file is now the backing file
@@ -26102,13 +26146,45 @@ async function connectWorkspace() {
     renderFileName();
     updateTitle();
     renderWorkspaceAffordance();       // also registers the current doc as a tab + renders the strip
-    flashHint('Folder connected. Saved “' + displayName(name) + '”');
+    flashHint(name === base
+      ? 'Folder connected. Saved “' + displayName(name) + '”'
+      : 'Folder connected. Saved “' + displayName(name) + '”; “' + displayName(base) + '” already exists and was left untouched');
     await reconcileDuplicateDocIds(dir);   // #745: repair any duplicate-docId collision before indexing
     refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
   } catch (e) {
     if (e && e.name === 'AbortError') return; // user cancelled the picker — silent no-op (P4)
     flashError('Could not connect folder: ' + (e && e.message ? e.message : e));
   }
+}
+
+// #839: the connect-by-opening path — the current doc is blank and the chosen folder
+// already holds a file under the derived name, so connecting means OPENING that document,
+// not writing over it. Adopts the existing file as the folder-backed doc. If it will not
+// read/parse, the folder still connects but the doc stays detached and the file is left
+// byte-for-byte intact (the audit-#1 invariant: never make a file an auto-write target
+// when its content failed to load). Throws surface to connectWorkspace's catch.
+async function connectAdoptExisting(dir, name) {
+  workspaceDir = dir; pendingDir = null; _wsWarned = false;
+  let fh = null, fileRoot = null;
+  try { fh = await dir.getFileHandle(name); fileRoot = fromOpml(await (await fh.getFile()).text()); }
+  catch (_) { fileRoot = null; }
+  if (fileRoot) {
+    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });   // renders, marks clean, sets the title
+    await anchorWorkspaceFile();       // sync-safety: anchor to the version we just read
+    startWorkspaceWatch();             // sync-safety: watch the connected file
+    await idbSet(WORKSPACE_KEY, { dir, name });
+    clearLastFileHandle();             // UXP-127: the doc is folder-backed now
+    renderWorkspaceAffordance();       // registers the current doc as a tab + renders the strip
+    flashHint('Folder connected. Opened “' + displayName(name) + '”');
+  } else {
+    // Unreadable/corrupt: connect the folder, leave the doc detached and the file untouched.
+    // Reopen-on-load handles the stored name the same way (detach + warn), so this persists.
+    await idbSet(WORKSPACE_KEY, { dir, name });
+    renderWorkspaceAffordance();
+    flashError('Folder connected, but “' + displayName(name) + '” could not be read and was left untouched. Use Switch document to open another.');
+  }
+  await reconcileDuplicateDocIds(dir);   // #745: repair any duplicate-docId collision before indexing
+  refreshWorkspaceIndex();           // CF-1: rebuild the cross-doc index for the freshly-connected folder
 }
 
 // Reconnect (user gesture): a stored handle was rehydrated but lacks permission; re-request
@@ -26349,7 +26425,13 @@ async function switchWorkspaceDoc(name) {
     startWorkspaceWatch();                                      // sync-safety: watch the newly-open file
     await idbSet(WORKSPACE_KEY, { dir: workspaceDir, name });   // this is now the doc reopen-on-load restores
     _wsWarned = false; renderWorkspaceAffordance(); refreshWorkspaceIndex(); return true;  // affordance registers the tab + renders the strip
-  } catch (e) { flashError('Could not open “' + displayName(name) + '”: ' + (e.message || e)); return false; }
+  } catch (e) {
+    flashError('Could not open “' + displayName(name) + '”: ' + (e.message || e));
+    // #843 self-heal: a tab whose file cannot be opened (deleted or renamed outside the
+    // app) removes itself, so the strip never keeps offering a dead document.
+    if (openTabs.includes(name)) { openTabs = openTabs.filter(n => n !== name); persistOpenTabs(); renderDocTabs(); }
+    return false;
+  }
 }
 
 // New document inside the folder (collision-safe). Reroutes File → New when a folder is
@@ -26443,7 +26525,36 @@ async function deleteWorkspaceDoc(name) {
   })) return false;
   try { await workspaceDir.removeEntry(name); }
   catch (e) { flashError('Could not delete “' + displayName(name) + '”: ' + (e.message || e)); return false; }
-  flashHint('Deleted “' + displayName(name) + '”');   // UX audit: confirm a permanent delete (P4)
+  let stashed = false;
+  if (name === fileName && workspaceFile) {
+    // #841: the file is gone, but the write machinery still points at it — and both
+    // switchWorkspaceDoc and newWorkspaceDoc open with a pre-swap safety flush
+    // (workspaceFile && dirty → safeWriteOpml under the OLD fileName) that would
+    // RECREATE the file we just deleted, with full content; on a synced folder the
+    // zombie then propagates to every device. Neutralize the write target now —
+    // strictly AFTER removeEntry succeeded (a failed delete must keep its save
+    // target intact) and BEFORE the switch/new fallthrough below. A write already
+    // in flight when removeEntry lands (the milliseconds-wide temp+move window)
+    // can still resurrect the file once; that residual race is accepted — deleting
+    // again clears it. First, cheap insurance: keep the doc's last autosave as a
+    // restore point under its own docId, so "deleted by accident" is never a total
+    // loss (the #729 discipline: destruction is visible AND leaves a recovery trail).
+    let payload = null; try { payload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
+    stashed = stashPayloadAsPrev(payload, root?.docId);
+    clearTimeout(autosaveTimer);   // a pending debounce would flush to the deleted file
+    markClean();                   // nothing left to flush; the doc is deliberately gone
+    workspaceFile = null;          // no auto-write target
+    stopWorkspaceWatch();          // nothing to watch; drop the staleness anchor
+  }
+  flashHint(stashed
+    ? 'Deleted “' + displayName(name) + '”. Its last auto-saved copy was kept as a restore point in this browser'
+    : 'Deleted “' + displayName(name) + '”');   // UX audit: confirm a permanent delete (P4)
+  // #843: a deleted document must leave the tab strip — a tab for a gone file could only
+  // flash "Could not open". (The current-doc case re-registers the NEW active doc via
+  // renderWorkspaceAffordance inside the switch/new fallthrough, as before.)
+  openTabs = openTabs.filter(n => n !== name);
+  persistOpenTabs();
+  renderDocTabs();
   if (name === fileName) {
     const rest = await listWorkspaceNames(workspaceDir);
     if (rest.length) await switchWorkspaceDoc(rest[0]);   // switch refreshes the index
@@ -26752,9 +26863,17 @@ async function reconcileDuplicateDocIds(dir) {
           if (workspaceFile && fileName === name) {         // the OPEN doc: re-stamp in memory + flush
             root.docId = uid(); markDirty(); await flushWorkspaceFile();
           } else {                                          // an unopened file: read, re-stamp, write back
-            const r = fromOpml(await (await (await dir.getFileHandle(name)).getFile()).text());
+            const fh = await dir.getFileHandle(name);
+            const readFile = await fh.getFile();
+            const r = fromOpml(await readFile.text());
             if (!r) continue;
             r.docId = uid();
+            // #848: read → mutate → write is not atomic — a folder-sync update landing on
+            // this file in between would be clobbered wholesale by the write below. Re-read
+            // the mtime just before writing and skip on any change; the loop already
+            // tolerates skips (the next connect/reconnect scan re-offers this group). The
+            // residual sub-millisecond window after this check is accepted.
+            if ((await fh.getFile()).lastModified !== readFile.lastModified) continue;
             await safeWriteOpml(dir, name, toOpml(r));
           }
           reminted++;

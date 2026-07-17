@@ -20,7 +20,9 @@ tabs: a project document, a daily log, a person page, each its own file but sear
 [linkable](links-and-references.md#links-across-documents) together.
 
 Connect a folder once (**Chrome, Edge or a similar browser only**) and every document saves to disk as you type and reopens
-right where you left it after a reload. A **tab strip** appears under the toolbar with the documents
+right where you left it after a reload. Connecting never overwrites what is already in the folder: with a
+blank document, connecting to a folder that already holds a document under the same name simply opens that
+document; a document with real content saves under a fresh name instead when its name is taken. A **tab strip** appears under the toolbar with the documents
 you have open: click a tab to switch, the `×` to close it or the `+` to open another. `Ctrl/Cmd+Shift+]`
 and `[` step to the next and previous tab, and `Alt+1` through `Alt+9` jump straight to that numbered
 tab. Tabs are the documents you have opened (not the whole folder),
